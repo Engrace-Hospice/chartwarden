@@ -25,12 +25,16 @@
 //     until the enum widening lands, same as the query adapter): the legal-hold/Part 2 guards ran
 //     per (class, kind, id) group, so a row of a DIFFERENT class under the same resource was never
 //     evaluated and must survive this call.
+//   • NOT held (GAP-008, ADR-0051): a row with an overlay entry (`legal_hold_audit_event`) under a still-ACTIVE hold is
+//     excluded from the DELETE itself, so the per-row protection holds even when the group-level check (which vets whole
+//     groups by selector) is bypassed or stale; the database trigger on `audit_event` is the second backstop.
 // The returned count is rows ACTUALLY destroyed (`.returning()` length) — never the requested
 // group size — so a certificate line can only certify what left the database.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
 import type { EraseInput, EraserPorts } from "./eraser";
+import { rowHeldByActiveLegalHold } from "./hold-overlay";
 
 const A = schema.auditEvents;
 
@@ -66,6 +70,8 @@ export function createDbAuditEraseExecutor(db: DbClient): AuditEraseExecutor {
                   and(isNull(A.resourceId), eq(A.id, input.resourceId)),
                 ),
                 sql`${A.retentionClass}::text = ${input.retentionClass}`,
+                // GAP-008: a row an active legal hold covers is never destroyed (the overlay, not a retention_class flip).
+                sql`NOT ${rowHeldByActiveLegalHold()}`,
                 // GAP-008: inside the span the legal-hold check ran against - never wider (see EraseInput).
                 input.createdAtFrom ? gte(A.createdAt, new Date(input.createdAtFrom)) : undefined,
                 // Exclusive of the NEXT millisecond: the span came from JS Dates (ms) but created_at is microsecond.

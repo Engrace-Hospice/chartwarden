@@ -3005,7 +3005,7 @@ Per HIPAA §164.310(d)(2)(i), destruction of PHI requires documentation. WardenX
 Any data class can be moved to `legal_hold` retention by compliance officer action:
 
 - Affected records identified by query
-- All matching records’ retention class flipped to `legal_hold`
+- All matching records’ retention class flipped to `legal_hold` (for the append-only `audit_event` trail the hold is an **overlay**, not a column write — `retention_class` is part of the integrity hash and `wardenx_app` has no UPDATE; see [ADR-0051](../adr/ADR-0051-legal-hold-is-an-overlay-not-a-retention-class-flip.md))
 - Retention jobs skip `legal_hold` records
 - Audit trail: `data.legal_hold_applied` / `data.legal_hold_released`
 - Release returns records to original retention class with adjusted clock

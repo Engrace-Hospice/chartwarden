@@ -26,6 +26,7 @@ const rowsOf = (n: number): Array<Record<string, unknown>> =>
 
 function fakeCatalog(partitionRows: Record<string, Array<Record<string, unknown>>>) {
   const detached: Array<[string, number]> = [];
+  const attested: boolean[] = [];
   const catalog: ArchiveCatalogPort = {
     async candidates() {
       return Object.entries(partitionRows).map(([partitionName, rows]) => ({
@@ -40,11 +41,12 @@ function fakeCatalog(partitionRows: Record<string, Array<Record<string, unknown>
       const start = afterId === null ? 0 : all.findIndex((r) => r.id === afterId) + 1;
       return all.slice(start, start + limit);
     },
-    async detach(partition, expected) {
+    async detach(partition, expected, manifestVerified) {
       detached.push([partition, expected]);
+      attested.push(manifestVerified);
     },
   };
-  return { catalog, detached };
+  return { catalog, detached, attested };
 }
 
 const sha = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -123,7 +125,7 @@ describe("archivePartition", () => {
   });
 
   it("detaches only after the manifest is verified, and only when opted in", async () => {
-    const { catalog, detached } = fakeCatalog({ audit_event_2025_01: rowsOf(10) });
+    const { catalog, detached, attested } = fakeCatalog({ audit_event_2025_01: rowsOf(10) });
     const off = await archivePartition(candidate(10), catalog, fakeStore().store, CONFIG);
     expect(off.detached).toBe(false);
     expect(detached).toEqual([]);
@@ -133,6 +135,9 @@ describe("archivePartition", () => {
     });
     expect(on.detached).toBe(true);
     expect(detached).toEqual([["audit_event_2025_01", 10]]);
+    // GAP-008: the SQL function refuses a partition holding actively-held rows without this attestation, and the job gives
+    // it only after the manifest PUT was read back verified.
+    expect(attested).toEqual([true]);
   });
 
   it("a corrupt or missing stored object fails verification and the partition is NOT detached", async () => {

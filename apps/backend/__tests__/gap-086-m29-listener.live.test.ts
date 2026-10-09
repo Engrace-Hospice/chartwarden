@@ -357,6 +357,26 @@ describe.skipIf(!DB_URL || !hasOpenssl())("GAP-086 M29 listener + parse worker â
     expect(down.every((a) => a.severity === "critical")).toBe(true);
   });
 
+  // GAP-043 (second half) â€” the tick also leaves the FACTS the worker-role watcher decides from: a heartbeat and whether the
+  // feed was actually bound. Written as the real app role under RLS; the watcher-owned columns are never touched.
+  it("leaves a per-feed heartbeat + bound flag for the worker-role watcher", async () => {
+    const rows = await rowsOf(
+      `SELECT feed_id, listener_bound, listener_heartbeat_at, circuit_state, outage_opened_at
+         FROM external_feed_listener_state WHERE organization_id=$1`,
+      [ORG],
+    );
+    const stateOf = (feedId: string) => rows.find((r) => r.feed_id === feedId);
+    expect(stateOf(FEED_LAB)?.listener_bound).toBe(true);
+    expect(stateOf(FEED_BAA)?.listener_bound).toBe(false); // refused by the BAA gate => never bound
+    expect(stateOf(FEED_LAB)?.listener_heartbeat_at).not.toBeNull();
+    expect(Date.now() - new Date(stateOf(FEED_LAB)?.listener_heartbeat_at).getTime()).toBeLessThan(
+      120_000,
+    );
+    // the listener never writes a decision: those columns are the watcher's
+    expect(stateOf(FEED_LAB)?.circuit_state).toBe("closed");
+    expect(stateOf(FEED_LAB)?.outage_opened_at).toBeNull();
+  });
+
   it("rejects a client with no certificate and one from an unrelated CA (mTLS), persisting nothing", async () => {
     await expect(send(portLab, oru("NOCERT1", PID), false)).rejects.toThrow();
     await expect(

@@ -22628,6 +22628,13 @@ export interface operations {
                     baaExpiresOn?: string;
                     rateLimitMsgPerSec?: number;
                     inFlightLeaseSeconds?: number | null;
+                    listenerDownThresholdSeconds?: number | null;
+                    expectedQuietWindows?: {
+                        days: number[];
+                        start: string;
+                        end: string;
+                        tz: string;
+                    }[] | null;
                     /** Format: uuid */
                     labDestinationFacilityId?: string;
                     mshSendingApplication?: string;

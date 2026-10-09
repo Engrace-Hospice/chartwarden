@@ -9,6 +9,7 @@ import type { ListenerCircuitState } from "./circuit-breaker";
 import type { FeedHealthStorePort } from "./health-sweep";
 
 const HEALTH = schema.externalFeedHealth;
+const LISTENER_STATE = schema.externalFeedListenerState;
 const INBOUND = schema.hl7MessageInbound;
 const OUTBOUND = schema.hl7MessageOutbound;
 const SYSTEM_USER_ID = "";
@@ -41,6 +42,24 @@ export function createDrizzleFeedHealthStore(deps: { readonly db: DbClient }): F
           state: asState(latest?.state),
           lastFrameAtMs: frame?.at ? new Date(frame.at).getTime() : null,
         };
+      });
+    },
+
+    async heartbeat(feed, fact) {
+      await inOrg(feed.organizationId, async (tx) => {
+        // Only the listener-owned columns: the watcher's circuit_state / outage_opened_at are never touched here.
+        await tx
+          .insert(LISTENER_STATE)
+          .values({
+            feedId: feed.id,
+            organizationId: feed.organizationId,
+            listenerHeartbeatAt: fact.at,
+            listenerBound: fact.bound,
+          })
+          .onConflictDoUpdate({
+            target: LISTENER_STATE.feedId,
+            set: { listenerHeartbeatAt: fact.at, listenerBound: fact.bound, updatedAt: fact.at },
+          });
       });
     },
 
@@ -88,7 +107,7 @@ export function createDrizzleFeedHealthStore(deps: { readonly db: DbClient }): F
             organizationId: feed.organizationId,
             listenerUpSeconds: row.upSecondsDelta,
             listenerDownSeconds: row.downSecondsDelta,
-            listenerCircuitState: row.state,
+            ...(row.state === undefined ? {} : { listenerCircuitState: row.state }),
             ...counts,
           })
           .onConflictDoUpdate({
@@ -96,7 +115,7 @@ export function createDrizzleFeedHealthStore(deps: { readonly db: DbClient }): F
             set: {
               listenerUpSeconds: sql`${HEALTH.listenerUpSeconds} + ${row.upSecondsDelta}`,
               listenerDownSeconds: sql`${HEALTH.listenerDownSeconds} + ${row.downSecondsDelta}`,
-              listenerCircuitState: row.state,
+              ...(row.state === undefined ? {} : { listenerCircuitState: row.state }),
               ...counts,
             },
           });

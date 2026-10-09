@@ -13,6 +13,7 @@
 import { ValidationError } from "@wardenx/types";
 
 import { CertPinError, certPinFromPem } from "../feed/cert-pin";
+import { parseQuietWindows } from "../listener/quiet-window";
 import {
   classifyHostname,
   isProductionEnv,
@@ -60,6 +61,13 @@ export function assertHostAcceptable(host: string | undefined, env: Env): void {
   if (refusal !== null) {
     refuse("host", "DESTINATION_REFUSED", `is not an acceptable feed destination (${refusal})`);
   }
+}
+
+/** GAP-043 - reject quiet windows with an unknown zone, equal start/end or duplicate days at write time (re-read at watch time). */
+export function assertQuietWindowsAcceptable(raw: unknown): void {
+  if (raw === undefined || raw === null) return;
+  const parsed = parseQuietWindows(raw);
+  if (!parsed.ok) refuse("expectedQuietWindows", "QUIET_WINDOW_INVALID", parsed.reason);
 }
 
 export function assertProtocolAcceptable(

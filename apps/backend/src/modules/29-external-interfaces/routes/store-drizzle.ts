@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from "node:crypto";
 // apps/backend/src/modules/29-external-interfaces/routes/store-drizzle.ts — M29-T08 the PRODUCTION M29Store.
 //
 // The Drizzle-backed repo the §4.1/§4.2 routes run against. Every org-scoped statement opens `withOrgContext`
@@ -10,7 +11,7 @@
 // stored as its sha256 DIGEST in the NOT-NULL `secret_cipher` with the `fingerprint` = the digest's first 8
 // hex; the plaintext is never persisted in the clear and never returned (the M28 posture). The compliance
 // decrypt route (§4.1.3) therefore fails closed with a typed 501 until the platform cipher lands.
-import { createHash, randomUUID } from "node:crypto";
+import { type QuietWindow, parseQuietWindows } from "../listener/quiet-window";
 
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -76,6 +77,13 @@ const num = (v: string | null): number | null => (v === null ? null : Number(v))
  * persisted — which was the task-11 gap: `decideProposal` has produced these envelopes since
  * M29-T04 and this store silently discarded them, so the M5/M6 accept consumers starved.
  */
+/** The stored `expected_quiet_windows` as a view value; unreadable => null. */
+function storedQuietWindows(raw: unknown): readonly QuietWindow[] | null {
+  if (raw === null || raw === undefined) return null;
+  const parsed = parseQuietWindows(raw);
+  return parsed.ok ? parsed.windows : null;
+}
+
 export interface M29WriteOutboxPort {
   publish(
     tx: DbClient,
@@ -218,6 +226,9 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
     mshReceivingFacility: row.mshReceivingFacility,
     receiverDedupesControlId: row.receiverDedupesControlId,
     inFlightLeaseSeconds: row.inFlightLeaseSeconds,
+    listenerDownThresholdSeconds: row.listenerDownThresholdSeconds,
+    // A stored value that no longer parses reads as none (fail toward alerting), exactly as the watcher reads it.
+    expectedQuietWindows: storedQuietWindows(row.expectedQuietWindows),
     proposedByMembershipId: row.proposedByMembershipId,
     approvedByOpId: row.approvedByOpId,
     approvedByComplId: row.approvedByComplId,
@@ -436,6 +447,14 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
               args.inFlightLeaseSeconds === undefined
                 ? feed.inFlightLeaseSeconds
                 : args.inFlightLeaseSeconds,
+            listenerDownThresholdSeconds:
+              args.listenerDownThresholdSeconds === undefined
+                ? feed.listenerDownThresholdSeconds
+                : args.listenerDownThresholdSeconds,
+            expectedQuietWindows:
+              args.expectedQuietWindows === undefined
+                ? feed.expectedQuietWindows
+                : args.expectedQuietWindows,
             updatedAt: new Date(),
           })
           .where(and(eq(FEED.id, feedId), eq(FEED.organizationId, orgId)))

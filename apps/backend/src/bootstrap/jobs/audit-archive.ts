@@ -56,7 +56,11 @@ export interface ArchiveCatalogPort {
     afterId: string | null,
     limit: number,
   ): Promise<ReadonlyArray<Record<string, unknown>>>;
-  detach(partitionName: string, expectedRows: number): Promise<void>;
+  /**
+   * `manifestVerified` attests the archive manifest was written AND read back verified: the SQL function refuses a partition
+   * holding actively-held rows (GAP-008) without it. `archivePartition` passes true only after `putAndVerify` of the manifest.
+   */
+  detach(partitionName: string, expectedRows: number, manifestVerified: boolean): Promise<void>;
 }
 
 /** The slice of the object store the job needs (`ObjectStorePort`'s `putObject` + `inspectObject`). */
@@ -227,7 +231,7 @@ export async function archivePartition(
 
   let detached = false;
   if (config.detach) {
-    await catalog.detach(candidate.partitionName, total);
+    await catalog.detach(candidate.partitionName, total, true);
     detached = true;
   }
   return {
@@ -310,8 +314,10 @@ export function createSqlArchiveCatalog(tx: DbClient): ArchiveCatalogPort {
       );
       return (rows as Array<{ r: Record<string, unknown> }>).map((x) => x.r);
     },
-    async detach(partitionName, expectedRows) {
-      await tx.execute(sql`SELECT audit_archive_detach(${partitionName}, ${expectedRows}::bigint)`);
+    async detach(partitionName, expectedRows, manifestVerified) {
+      await tx.execute(
+        sql`SELECT audit_archive_detach(${partitionName}, ${expectedRows}::bigint, ${manifestVerified}::boolean)`,
+      );
     },
   };
 }

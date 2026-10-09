@@ -1119,6 +1119,7 @@ import {
   buildM29OutboundDispatchConsumer,
   buildM29PatientDeceasedConsumer,
   buildNppesManualSyncTrigger,
+  createDrizzleFeedWatchStore,
   createDrizzleM29PublishedSeamStore,
   createDrizzleM29Store,
   createInboundCipher as createM29InboundCipher,
@@ -1130,10 +1131,14 @@ import {
   ormOutboundFeedsForOrders,
   outboundBaaCleared,
   primaryTaxonomyCode,
+  probeTcpPort,
   registerM29AbacPredicates,
+  registerM29FeedHealthWatchWorker,
   registerM29OutboundRetrySweepWorker,
   registerM29PublishedSeams,
   registerNppesSyncWorker,
+  resolveFeedHealthWatchConfig,
+  scheduleM29FeedHealthWatchJob,
   scheduleM29OutboundRetrySweepJob,
   scheduleNppesSyncJob,
   startListenerProcess as startM29ListenerProcess,
@@ -1159,12 +1164,14 @@ import {
   idgQualityFlaggedEventsForOrg,
   mountM30Routes,
   registerM30AbacPredicates,
+  registerM30AlertRepeatWorker,
   registerM30CapOverdueWorker,
   registerM30CronWorkers,
   registerM30PublishedSeams,
   registerM30ReviewOverdueWorker,
   registerM30Workers,
   registerQualityErasers,
+  scheduleM30AlertRepeatJob,
   scheduleM30CapOverdueJob,
   scheduleM30Jobs,
   scheduleM30ReviewOverdueJob,
@@ -1339,6 +1346,7 @@ import {
   registerM35Workers,
   scheduleM35Jobs,
 } from "./modules/35-subscription/index";
+import { emitWithRecipientFallback } from "./modules/36-messaging/alert-recipient-fallback";
 import { cronAlertCorrelationId } from "./modules/36-messaging/cron-alert-correlation";
 import {
   M36_DELIVERY_PLATFORM_JOB_ID,
@@ -1371,6 +1379,7 @@ import { buildM36AmendmentSlaAlertConsumer } from "./modules/36-messaging/outbox
 import { buildM36CapThresholdAlertConsumer } from "./modules/36-messaging/outbox-consumers/cap-threshold-alerts";
 import { buildM36ChannelMembershipSyncConsumer } from "./modules/36-messaging/outbox-consumers/channel-membership-sync";
 import { buildM36EmarAlertConsumer } from "./modules/36-messaging/outbox-consumers/emar-alerts";
+import { buildM36FeedHealthAlertConsumer } from "./modules/36-messaging/outbox-consumers/feed-health-alerts";
 import { buildM36FieldSafetyAlertConsumer } from "./modules/36-messaging/outbox-consumers/field-safety-alerts";
 import { buildM36IpuAlertConsumer } from "./modules/36-messaging/outbox-consumers/ipu-alerts";
 import { buildM36IpuIvAlertConsumer } from "./modules/36-messaging/outbox-consumers/ipu-iv-alerts";
@@ -5346,7 +5355,14 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     registerModuleSeams: () =>
       wireModuleSeams({
         sessionContextStore: dbHandle
-          ? createDbSessionContextStore(dbHandle.db, createDbActorEnrichmentReader(dbHandle.db))
+          ? createDbSessionContextStore(
+              dbHandle.db,
+              createDbActorEnrichmentReader(dbHandle.db, {
+                // GAP-007 - ids and counts only, never the scope body.
+                onMalformedGrantScope: (report) =>
+                  app.log.warn(report, "auth.grant_scope_malformed"),
+              }),
+            )
           : undefined,
         db: dbHandle?.db,
         organizationDb: platformDbHandle?.db,
@@ -6404,6 +6420,31 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     } catch (err) {
       app.log.error(err, "M30 review-overdue cron-schedule registration failed");
     }
+    // GAP-049 - the REPEAT half of the sentinel / abuse (4h / 6h until triaged), outbreak (12h until reviewed) and
+    // threshold (7d until a project is chartered) cadences. Origin-anchored buckets over the consumer's correlation id;
+    // a page that resolves nobody falls back to the tenant admins rather than being absorbed by the dedupe.
+    const m30AlertRepeatWorker = registerM30AlertRepeatWorker({
+      connection: queueConnection,
+      db: dbHandle.db,
+      listActiveOrgs: () => m30ActiveOrgs.listActiveOrgs(),
+      emit: (organizationId, input) =>
+        emitWithRecipientFallback(
+          getSeam("AlertEmitter") as AlertEmitter,
+          organizationId,
+          input,
+          (message, context) => app.log.warn(context, message),
+        ),
+      warn: (message, context) => app.log.warn(context, message),
+    });
+    m30Workers.push(m30AlertRepeatWorker);
+    try {
+      const m30AlertRepeatSchedule = await scheduleM30AlertRepeatJob(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all([m30AlertRepeatWorker.close(), m30AlertRepeatSchedule.close()]);
+      });
+    } catch (err) {
+      app.log.error(err, "M30 alert-repeat cron-schedule registration failed");
+    }
     // GAP-161 - M32 §4.8 `ai:hallucination-triage-followup` consumer: executes the plan R18/R20 enqueue
     // (platform kill switch, the incident_demotion edge attributed to the triage owner, the system-locked alert).
     {
@@ -6861,6 +6902,45 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       app.log.info("M29 outbound-dispatch retry-sweep cron worker constructed");
     } else {
       app.log.warn("M29 outbound-dispatch retry-sweep cron disabled: configure REDIS_URL");
+    }
+    // GAP-043 - the listener-health WATCHER: decides `listener_down` / `listener_recovered` from the listener's heartbeat, an
+    // active TCP probe and the newest inbound frame, in THIS (worker) process so it survives the listener dying. State and
+    // event are one transaction; the M36 `feed-health-alerts` consumer (bound below, unconditionally) turns the event into the
+    // page. OFF unless M29_LISTENER_WATCH_ENABLED=true (an env with no listener must not page "down" for every active feed);
+    // when on, M29_LISTENER_PROBE_HOST is required and the listener process stops paging listener_down itself.
+    const feedHealthWatch = resolveFeedHealthWatchConfig(process.env);
+    if (feedHealthWatch.enabled && queueConnection) {
+      const feedWatchOrgs = buildActiveOrgEnumerator({
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M29_PLATFORM_JOB_ID,
+        reason: "M29 listener-health watcher fan-out (active-org enumeration)",
+      });
+      const feedHealthWatchWorker = registerM29FeedHealthWatchWorker({
+        connection: queueConnection,
+        activeOrgs: feedWatchOrgs,
+        store: createDrizzleFeedWatchStore({ db: dbHandle.db, outbox: m29OutboxPublisher }),
+        probeTcp: probeTcpPort,
+        probeHost: feedHealthWatch.probeHost,
+        now: () => new Date(),
+        log: (level, event, fields) => app.log[level](fields, event),
+      });
+      app.addHook("onClose", async () => {
+        await feedHealthWatchWorker.close();
+      });
+      try {
+        const feedHealthWatchQueue = await scheduleM29FeedHealthWatchJob(queueConnection);
+        app.addHook("onClose", async () => {
+          await feedHealthWatchQueue.close();
+        });
+      } catch (err) {
+        app.log.error(err, "M29 listener-health watcher schedule registration failed");
+      }
+      app.log.info("M29 listener health watcher constructed (M29_LISTENER_WATCH_ENABLED)");
+    } else if (feedHealthWatch.enabled) {
+      app.log.error(
+        "M29_LISTENER_WATCH_ENABLED=true but no queue connection (REDIS_URL): the listener-health watcher is NOT running and the listener has stopped paging listener_down",
+      );
     }
     // F-222 (#248) — M31 §4.8 `m31.post-discharge-grace.cron`: the daily sweep that ends care-time portal access
     // for patients discharged alive past the 30-day grace FLOOR and not re-admitted. Reads M6 through the org-
@@ -8744,6 +8824,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       baaGate: () => getSeam("BaaStatusProvider") as ExternalInterfaceBaaGate,
       alerts: () => getSeam("AlertEmitter") as ListenerAlertPort,
       log: (level, event, fields) => app.log[level](fields, event),
+      // GAP-043 - with the worker-role watcher on, this process leaves facts (heartbeat + bound) and the watcher pages.
+      watcherOwnsListenerDown: resolveFeedHealthWatchConfig(process.env).enabled,
     });
     app.addHook("onClose", async () => {
       await listener.shutdown();
@@ -9053,7 +9135,12 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           buildM36FieldSafetyAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
           // GAP-049 — M30's sentinel / abuse-allegation incident, outbreak, threshold-breach and CAHPS-sample
           // events (M30 spec §4.9): previously unconsumed (`declaredConsumers: []`), so none of them paged anyone.
-          buildM36QualityAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
+          // GAP-043 - M29's listener-down / listener-recovered events (published by the worker-role watcher): the page.
+          buildM36FeedHealthAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
+          buildM36QualityAlertConsumer(
+            getSeam("AlertEmitter") as AlertEmitter,
+            (message, context) => app.log.warn(context, message),
+          ),
           // GAP-107 — M37's IV-continuous bedside-check-overdue watchdog alert (M37 §2.6/D7, §4.8): previously
           // unconsumed, so a lapsed bedside check on a running IPU infusion told the care team nothing.
           buildM36IpuIvAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),

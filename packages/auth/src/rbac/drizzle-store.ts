@@ -23,7 +23,7 @@ import type {
   OrgScope,
 } from "@wardenx/types";
 import { and, eq, gt, inArray, isNull, or } from "drizzle-orm";
-import { effectiveReach } from "../roles/grant-scope";
+import { effectiveReachWithDiagnostics } from "../roles/grant-scope";
 import { roleConfersKey } from "../roles/platform-reserved";
 import { setEffectivePermissionResolver } from "./require-role";
 import {
@@ -136,7 +136,22 @@ function locationIdsOf(raw: unknown): readonly string[] {
   return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [];
 }
 
-export function createDbActorEnrichmentReader(db: DbClient): ActorEnrichmentReader {
+/** Counts only - never the scope body - so a diagnostic cannot leak what a grant covered. */
+export interface MalformedGrantScopeReport {
+  readonly membershipId: string;
+  readonly malformedGrantCount: number;
+  readonly liveGrantCount: number;
+}
+
+export interface ActorEnrichmentReaderOptions {
+  /** GAP-007 - called when a live grant carries a stored scope that does not parse (it then contributes no reach). */
+  readonly onMalformedGrantScope?: (report: MalformedGrantScopeReport) => void;
+}
+
+export function createDbActorEnrichmentReader(
+  db: DbClient,
+  options: ActorEnrichmentReaderOptions = {},
+): ActorEnrichmentReader {
   return {
     async read(scope: OrgScope, userId: string): Promise<ActorEnrichment | null> {
       return withOrgContext(db, { organizationId: scope.orgId, userId }, async (tx) => {
@@ -187,7 +202,9 @@ export function createDbActorEnrichmentReader(db: DbClient): ActorEnrichmentRead
         // GAP-007 — a grant's `scope` NARROWS the member's default reach (see roles/grant-scope.ts): the PE /
         // location ids stamped on the request context, which `provider_entity_scope` / `location_scope` and every
         // module's own scope predicate read, are the union of the live roles' reach, never wider than the defaults.
-        const reach = effectiveReach(
+        // A grant whose stored scope does not parse contributes NOTHING (fail closed); if none is readable the reach
+        // is the NO_REACH_ID sentinel, never an empty list (an empty list reads as org-wide in several predicates).
+        const { reach, malformedGrantCount } = effectiveReachWithDiagnostics(
           {
             providerEntityIds: membership.defaultProviderEntityId
               ? [membership.defaultProviderEntityId]
@@ -196,6 +213,13 @@ export function createDbActorEnrichmentReader(db: DbClient): ActorEnrichmentRead
           },
           liveGrants,
         );
+        if (malformedGrantCount > 0) {
+          options.onMalformedGrantScope?.({
+            membershipId: membership.id,
+            malformedGrantCount,
+            liveGrantCount: liveGrants.length,
+          });
+        }
         return {
           membershipId: membership.id,
           roles,

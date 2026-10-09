@@ -1235,6 +1235,94 @@ describe("M29-external-interfaces-inject — F-183 feed reclaim policy", () => {
     await app.close();
   });
 
+  // GAP-043 (§4.11.5) - per-feed listener-down threshold (tighten-only, 60..300 s) and expected quiet windows.
+  it("listener-down config: defaults to null, round-trips on update, and null clears it", async () => {
+    const { app } = makeServer({ env: { NODE_ENV: "production" } });
+    const created = await app.inject({
+      method: "POST",
+      url: FEEDS,
+      headers: SUPER,
+      payload: outbound(),
+    });
+    expect(created.json().feed).toMatchObject({
+      listenerDownThresholdSeconds: null,
+      expectedQuietWindows: null,
+    });
+    const feedId = created.json().feed.id as string;
+    const windows = [
+      { days: [1, 2, 3, 4, 5], start: "20:00", end: "06:00", tz: "America/New_York" },
+    ];
+    const set = await app.inject({
+      method: "PATCH",
+      url: `${FEEDS}/${feedId}`,
+      headers: SUPER,
+      payload: { listenerDownThresholdSeconds: 120, expectedQuietWindows: windows },
+    });
+    expect(set.statusCode).toBe(200);
+    expect(set.json().feed).toMatchObject({
+      listenerDownThresholdSeconds: 120,
+      expectedQuietWindows: windows,
+    });
+    const cleared = await app.inject({
+      method: "PATCH",
+      url: `${FEEDS}/${feedId}`,
+      headers: SUPER,
+      payload: { listenerDownThresholdSeconds: null, expectedQuietWindows: null },
+    });
+    expect(cleared.json().feed).toMatchObject({
+      listenerDownThresholdSeconds: null,
+      expectedQuietWindows: null,
+    });
+    await app.close();
+  });
+
+  it("the threshold can be TIGHTENED to 60s but never loosened above the 5 minute default - 422", async () => {
+    const { app } = makeServer({ env: { NODE_ENV: "production" } });
+    const created = await app.inject({
+      method: "POST",
+      url: FEEDS,
+      headers: SUPER,
+      payload: outbound(),
+    });
+    const feedId = created.json().feed.id as string;
+    const patch = (payload: Record<string, unknown>) =>
+      app.inject({ method: "PATCH", url: `${FEEDS}/${feedId}`, headers: SUPER, payload });
+    expect((await patch({ listenerDownThresholdSeconds: 60 })).statusCode).toBe(200);
+    expect((await patch({ listenerDownThresholdSeconds: 300 })).statusCode).toBe(200);
+    for (const bad of [59, 301, 900, 0, 90.5]) {
+      expect((await patch({ listenerDownThresholdSeconds: bad })).statusCode).toBe(422);
+    }
+    await app.close();
+  });
+
+  it("a quiet window with an unknown zone, equal start/end, or a malformed time is refused with a stable code - 422", async () => {
+    const { app } = makeServer({ env: { NODE_ENV: "production" } });
+    const created = await app.inject({
+      method: "POST",
+      url: FEEDS,
+      headers: SUPER,
+      payload: outbound(),
+    });
+    const feedId = created.json().feed.id as string;
+    const patch = (window: Record<string, unknown>) =>
+      app.inject({
+        method: "PATCH",
+        url: `${FEEDS}/${feedId}`,
+        headers: SUPER,
+        payload: {
+          expectedQuietWindows: [{ days: [0], start: "01:00", end: "02:00", tz: "UTC", ...window }],
+        },
+      });
+    const unknownZone = await patch({ tz: "Mars/Olympus" });
+    expect(unknownZone.statusCode).toBe(422);
+    expect(JSON.stringify(unknownZone.json())).toContain("QUIET_WINDOW_INVALID");
+    expect((await patch({ start: "01:00", end: "01:00" })).statusCode).toBe(422);
+    expect((await patch({ start: "25:00" })).statusCode).toBe(422);
+    expect((await patch({ days: [7] })).statusCode).toBe(422);
+    expect((await patch({})).statusCode).toBe(200);
+    await app.close();
+  });
+
   it("a lease outside the 60..3600 s bounds (or a non-integer / non-boolean value) is refused at the boundary — 422", async () => {
     const { app } = makeServer({ env: { NODE_ENV: "production" } });
     for (const bad of [59, 3601, 0, -5, 90.5]) {

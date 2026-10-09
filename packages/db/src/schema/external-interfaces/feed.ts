@@ -106,6 +106,10 @@ export const externalFeed = pgTable(
     retryPolicy: jsonb("retry_policy")
       .notNull()
       .default({ maxAttempts: 5, backoffSecs: [1, 4, 16, 64, 256] }),
+    /** GAP-043 (migration 1052) - per-feed listener-down threshold, 60..300s (tighten-only; NULL = the 5 minute default). */
+    listenerDownThresholdSeconds: integer("listener_down_threshold_seconds"),
+    /** GAP-043 - [{ days: 0-6[], start: "HH:MM", end: "HH:MM", tz: IANA }]; silence inside never trips the breaker. */
+    expectedQuietWindows: jsonb("expected_quiet_windows"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

@@ -410,6 +410,9 @@ jobs:
           - { name: "M29 NPPES platform sync", scripts: "test:m29:nppes-sync:live" }
           - { name: "M29 unmatched-lab review", scripts: "test:m29:unmatched-lab-review:live" }
           - { name: "M29 MLLP listener + inbound parse worker (GAP-086)", scripts: "test:m29:listener:live" }
+          # GAP-043 - the worker-role watcher decides listener_down/recovered from heartbeat + TCP probe + frames; real
+          # publisher, relay, M36 consumer and RLS as wardenx_app; LIVE by necessity.
+          - { name: "M29 listener-health watcher - dead listener, probe, outbox, M36 page", scripts: "test:gap043:listener-watch:live" }
           # GAP-086: the `sud_test_loinc` M38 value set is seeded (mig 0500) and the real M29 adapter flags it.
           - { name: "M29 SUD test-LOINC seed (GAP-086)", scripts: "test:m29:sud-loinc-seed:live" }
           - { name: "M29 lab list caseload scope (GAP-085)", scripts: "test:m29:lab-list-scope:live" }
@@ -476,6 +479,16 @@ jobs:
           - {
               name: "M1 idempotency — atomic claim and expiry reclaim",
               scripts: "test:gap007:idempotency-claim:live",
+            }
+          # GAP-007 - the 422 through the real store, the CHECK on every writer, legacy-blob quarantine and the fail-closed reader; LIVE by necessity.
+          - {
+              name: "M3 membership_role.scope - shape CHECK, quarantine, fail-closed reach",
+              scripts: "test:gap007:grant-scope:live",
+            }
+          # GAP-049 - the repeat half of the M30 §4.9 cadences on the real emitter and RLS as wardenx_app; LIVE by necessity.
+          - {
+              name: "M30 alert repeat cadences - sentinel/abuse/outbreak/threshold",
+              scripts: "test:gap049:alert-repeat:live",
             }
           # F-035 (#95) — LIVE by necessity: the bearer lookup is decided by RLS, the two tenant
           # resolvers exist only as SECURITY DEFINER functions in migration 0233, and the disclosure
@@ -713,6 +726,9 @@ jobs:
           - { name: "M2 auth audit trail + MFA matrix", scripts: "test:m2:auth-hardening:live" }
           - { name: "M3 role-template materialization", scripts: "test:m3:role-templates:live" }
           - { name: "M4 legal-hold supremacy at destruction", scripts: "test:m4:legal-hold-supremacy:live" }
+          # GAP-008 - a legal hold is an append-only overlay, not a retention_class flip (ADR-0043): materialiser, DELETE guard,
+          # BEFORE DELETE trigger as the real wardenx_destruction role, partition-detach attestation, tenant isolation.
+          - { name: "M4 legal-hold overlay - materialise, DELETE guard, trigger, detach, RLS", scripts: "test:gap008:legal-hold-overlay:live" }
           # M36 Postmark adapter bound to a local fake HTTP server: magic-link + funeral invite delivery, retry, fail-closed.
           - { name: "M36 transactional email provider", scripts: "test:m36:transactional-email:live" }
           - { name: "GAP-173 M40 license + grief RLS", scripts: "test:gap-173:live" }

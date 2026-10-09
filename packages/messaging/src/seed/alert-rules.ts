@@ -782,6 +782,18 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // GAP-043 - the paired notice: a feed whose `listener_down` page went out is serving again. `alert` has no
+  // open/resolved state to auto-resolve (only an `outcome`), so recovery is announced to the same audience instead.
+  {
+    eventType: "external_feed.listener_recovered",
+    category: "administrative",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
   // ── M3 break-glass (GAP-010; M3 spec §4.5/§7.4) ────────────────────────────────────────────────────────────────────
   // `m3.breakglass.invoked` is published in the invoke's own transaction and delivered by M36's
   // `breakglass-alert` outbox consumer. Critical, to the Compliance Officer with `org_admin` as the backstop for a
@@ -1155,6 +1167,20 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     recipientResolver: "role_set",
     resolverArgs: { roleKeys: ["qapi_coordinator", "medical_director"] },
     channelsOverride: ["in_app", "push"],
+    systemLocked: false,
+    enabled: true,
+  },
+  // GAP-049 - the safety-page safety net. A quality alert whose role_set resolved to NOBODY (the tenant never
+  // provisioned `qapi_coordinator` / `infection_control_lead`, or the holders are all inactive) is persisted with no
+  // deliveries and its correlation id is then spent, so a repeat would be absorbed too. The consumer and the repeat sweep
+  // therefore re-emit the SAME page, once, under this event type and a `:fb` correlation id, to the tenant admins.
+  {
+    eventType: "m30.alerts.recipient_fallback",
+    category: "administrative",
+    severityFloor: "info",
+    recipientResolver: "tenant_admins",
+    resolverArgs: {},
+    channelsOverride: ["in_app", "push", "email"],
     systemLocked: false,
     enabled: true,
   },

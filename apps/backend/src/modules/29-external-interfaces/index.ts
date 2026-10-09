@@ -466,6 +466,24 @@ export {
   buildM29InboundSeamPorts,
 } from "./inbound/inbound-seam-ports";
 export { createDrizzleFeedLoader } from "./listener/feed-loader";
+// GAP-043 - the worker-role listener-health watcher (decides listener_down where it survives the listener dying).
+export {
+  type FeedHealthWatchDeps,
+  type FeedWatchStore,
+  type WatchedFeed,
+  HEARTBEAT_STALE_MS,
+  decideFeedWatch,
+  runFeedHealthWatch,
+} from "./listener/health-watch";
+export {
+  M29_FEED_HEALTH_WATCH_QUEUE,
+  registerM29FeedHealthWatchWorker,
+  resolveFeedHealthWatchConfig,
+  scheduleM29FeedHealthWatchJob,
+} from "./listener/health-watch-job";
+export { createDrizzleFeedWatchStore } from "./listener/health-watch-store-drizzle";
+export { parseQuietWindows } from "./listener/quiet-window";
+export { probeTcpPort } from "./listener/tcp-probe";
 export { createDrizzleIngestSinkFactory, summarizeInboundSegments } from "./listener/ingest-sink";
 export {
   type ListenerAlertPort,

@@ -103,9 +103,11 @@ export {
   buildM30WorkerPorts,
   registerM30CapOverdueWorker,
   registerM30CronWorkers,
+  registerM30AlertRepeatWorker,
   registerM30ReviewOverdueWorker,
   registerM30Workers,
   scheduleM30CapOverdueJob,
+  scheduleM30AlertRepeatJob,
   scheduleM30ReviewOverdueJob,
   scheduleM30Jobs,
 } from "./jobs/index";

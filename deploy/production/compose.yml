@@ -212,6 +212,12 @@ services:
     command: ["bun", "run", "apps/backend/src/worker.ts"]
     environment:
       WORKER_PORT: "3001"
+      # GAP-043 / M29 §4.11.5 — the listener-health WATCHER (decides listener_down / listener_recovered from the listener's
+      # heartbeat + a TCP probe + the newest frame, so a DEAD listener still pages). Read from the SAME variable as the
+      # `hl7-listener` service, which stops paging when it is on: turn it on only where the listener runs. The probe host is
+      # where the listener's feed ports are reachable from this container (the compose service name by default).
+      M29_LISTENER_WATCH_ENABLED: ${M29_LISTENER_WATCH_ENABLED:-false}
+      M29_LISTENER_PROBE_HOST: ${M29_LISTENER_PROBE_HOST:-hl7-listener}
       DATABASE_URL: postgresql://wardenx_app:${WARDENX_APP_PASSWORD}@postgres:5432/wardenx
       DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${WARDENX_PLATFORM_PASSWORD}@postgres:5432/wardenx
       DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${WARDENX_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
@@ -271,6 +277,8 @@ services:
       PROCESS_ROLE: listener
       LISTENER_HEALTH_PORT: "3002"
       M29_MLLP_LISTENER_ENABLED: ${M29_MLLP_LISTENER_ENABLED:-false}
+      # GAP-043 — when on, the worker-role watcher pages listener_down; this process then only leaves its heartbeat.
+      M29_LISTENER_WATCH_ENABLED: ${M29_LISTENER_WATCH_ENABLED:-false}
       DATABASE_URL: postgresql://wardenx_app:${WARDENX_APP_PASSWORD}@postgres:5432/wardenx
       DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${WARDENX_PLATFORM_PASSWORD}@postgres:5432/wardenx
       DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${WARDENX_DESTRUCTION_PASSWORD}@postgres:5432/wardenx

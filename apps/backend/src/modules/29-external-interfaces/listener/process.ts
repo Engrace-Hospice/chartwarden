@@ -73,6 +73,11 @@ export interface ListenerProcessDeps {
   readonly allowPlainProtocol?: boolean;
   readonly reconcileIntervalMs?: number;
   readonly readTimeoutMs?: number;
+  /**
+   * GAP-043 - the worker-role watcher (`M29_LISTENER_WATCH_ENABLED=true`) decides `listener_down`; this process then only
+   * leaves the heartbeat + bound facts. Omitted/false => this process still pages (no watcher, nobody left unpaged).
+   */
+  readonly watcherOwnsListenerDown?: boolean;
 }
 
 export interface ReconcileSummary {
@@ -266,6 +271,9 @@ export async function startListenerProcess(
           isBound: (feedId) => registry.boundFeedIds().includes(feedId),
           store: healthStore,
           dispatchAlert,
+          ...(deps.watcherOwnsListenerDown === undefined
+            ? {}
+            : { watcherOwnsListenerDown: deps.watcherOwnsListenerDown }),
           now,
           log: deps.log,
         },

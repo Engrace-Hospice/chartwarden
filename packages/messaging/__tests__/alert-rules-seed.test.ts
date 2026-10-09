@@ -132,6 +132,7 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "external_feed.listener_blocked",
       // GAP-043 — an active inbound feed went silent with its listener not serving (circuit OPEN).
       "external_feed.listener_down",
+      "external_feed.listener_recovered",
       // GAP-010 — M3 break-glass Compliance notification (M36 consumer `breakglass-alert`).
       "m3.breakglass.invoked",
       // GAP-032 — the verbal pre-expiry and lab-results-overdue sweeps.
@@ -171,6 +172,7 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m30.alerts.incident_abuse_allegation",
       "m30.alerts.outbreak_detected",
       "m30.alerts.measure_threshold_breached",
+      "m30.alerts.recipient_fallback",
       "m30.alerts.cahps_sample_ready",
       "m30.alerts.mortality_review_due",
       "m30.alerts.cop_review_overdue",

@@ -35,6 +35,12 @@ export interface AuditEventRecord {
     | "compliance"
     | "legal_hold"
     | "compliance_42cfr_part2";
+  /**
+   * GAP-008 (ADR-0051): true while an ACTIVE legal hold covers this row (the `legal_hold_audit_event` overlay). `retentionClass`
+   * stays the hashed base column - a hold never rewrites it - so reporting reads THIS to show a row as held. Absent when the
+   * record was built without the overlay lookup (in-memory slice, point read).
+   */
+  readonly legalHold?: boolean;
 }
 
 /** Filters for the §4.2 audit-event search (every field optional; AND-combined). */

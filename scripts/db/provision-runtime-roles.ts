@@ -168,7 +168,7 @@ const PLATFORM_WRITER_FUNCTIONS = [
   // is SECURITY DEFINER and validates its partition name against `pg_inherits` before using it. None can drop.
   "audit_archive_candidates(int)",
   "audit_archive_read_batch(text, uuid, int)",
-  "audit_archive_detach(text, bigint)",
+  "audit_archive_detach(text, bigint, boolean)",
 ] as const;
 
 /** The M35 platform-only tables (migration 0143 — RLS with no wardenx_app grant): full write. */
