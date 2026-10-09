@@ -29,7 +29,7 @@
 --   * trg_claim_line_no_reparent: claim_line.claim_id / organization_id are immutable (no re-parenting a line onto a
 --     draft). The other seven tables already reject every UPDATE (m23_enforce_append_only_unless_draft_claim / 0079).
 --   * m23_claim_is_deletable() also requires that no claim_submission or claim_acknowledgment row references the claim.
---   * Every guard function is SECURITY INVOKER with `SET search_path = pg_catalog, public, pg_temp` and schema-qualified
+--   * Every guard function is SECURITY INVOKER with `SET search_path = pg_catalog, pg_temp` and schema-qualified
 --     table references, so a TEMP table or a changed search_path cannot shadow `claim`. (No REVOKE TEMP ON DATABASE:
 --     the repo has no such convention and provisioning does not manage database-level privileges.)
 -- Further hardening (security re-review):
@@ -59,7 +59,7 @@ GRANT DELETE ON "sia_calculation" TO wardenx_app;--> statement-breakpoint
 
 -- The erase role on the guarded tables (the 1056 shape): a NON-superuser member of wardenx_destruction only.
 CREATE OR REPLACE FUNCTION m23_is_destruction_role() RETURNS boolean
-LANGUAGE sql STABLE SET search_path = pg_catalog, public, pg_temp AS $$
+LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp AS $$
   SELECT pg_has_role(current_user, 'wardenx_destruction', 'MEMBER')
      AND NOT (SELECT r.rolsuper FROM pg_catalog.pg_roles r WHERE r.rolname = current_user)
 $$;--> statement-breakpoint
@@ -67,7 +67,7 @@ $$;--> statement-breakpoint
 -- A claim's subtree may be deleted only while the claim is DRAFT, no row with that id is anything else, and nothing was
 -- ever transmitted or acknowledged for it. VOLATILE + FOR SHARE: see the header.
 CREATE OR REPLACE FUNCTION m23_claim_is_deletable(p_claim_id uuid, p_org_id uuid) RETURNS boolean
-LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, public, pg_temp AS $$
+LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
   PERFORM 1 FROM public.claim c WHERE c.id = p_claim_id AND c.organization_id = p_org_id FOR SHARE;
   RETURN EXISTS (SELECT 1 FROM public.claim c WHERE c.id = p_claim_id AND c.organization_id = p_org_id AND c.state = 'DRAFT')
@@ -77,7 +77,7 @@ BEGIN
 END $$;--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION m23_claim_delete_guard() RETURNS trigger
-LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
   IF public.m23_is_destruction_role() THEN
     RETURN OLD;
@@ -93,7 +93,7 @@ CREATE TRIGGER "trg_claim_delete_guard" BEFORE DELETE ON "claim"
   FOR EACH ROW EXECUTE FUNCTION m23_claim_delete_guard();--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION m23_claim_no_revert_to_draft() RETURNS trigger
-LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
   IF NEW.id IS DISTINCT FROM OLD.id OR NEW.organization_id IS DISTINCT FROM OLD.organization_id
      OR NEW.provider_entity_id IS DISTINCT FROM OLD.provider_entity_id THEN
@@ -110,8 +110,12 @@ CREATE TRIGGER "trg_claim_no_revert_to_draft" BEFORE UPDATE ON "claim"
   FOR EACH ROW EXECUTE FUNCTION m23_claim_no_revert_to_draft();--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION m23_claim_no_duplicate_id() RETURNS trigger
-LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
+  -- Serialise inserters of the same id: without this, two concurrent inserts under different provider entities both
+  -- pass the read below (neither sees the other's uncommitted row) and both commit. The second inserter blocks here
+  -- until the first commits or aborts, then sees its row.
+  PERFORM pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(NEW.id::text, 0));
   IF EXISTS (SELECT 1 FROM public.claim c WHERE c.id = NEW.id AND c.provider_entity_id <> NEW.provider_entity_id) THEN
     RAISE EXCEPTION 'M23_CLAIM_DUPLICATE_ID: a claim with id % already exists under another provider entity', NEW.id
       USING ERRCODE = 'unique_violation';
@@ -123,7 +127,7 @@ CREATE TRIGGER "trg_claim_no_duplicate_id" BEFORE INSERT ON "claim"
   FOR EACH ROW EXECUTE FUNCTION m23_claim_no_duplicate_id();--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION m23_claim_line_delete_guard() RETURNS trigger
-LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
   IF public.m23_is_destruction_role() OR public.m23_claim_is_deletable(OLD.claim_id, OLD.organization_id) THEN
     RETURN OLD;
@@ -136,7 +140,7 @@ CREATE TRIGGER "trg_claim_line_delete_guard" BEFORE DELETE ON "claim_line"
   FOR EACH ROW EXECUTE FUNCTION m23_claim_line_delete_guard();--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION m23_claim_line_no_reparent() RETURNS trigger
-LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
   IF NEW.claim_id IS DISTINCT FROM OLD.claim_id OR NEW.organization_id IS DISTINCT FROM OLD.organization_id THEN
     RAISE EXCEPTION 'M23_CLAIM_LINE_REPARENT: claim_line % cannot move to another claim or organization', OLD.id
@@ -152,7 +156,7 @@ CREATE TRIGGER "trg_claim_line_no_reparent" BEFORE UPDATE ON "claim_line"
 -- how the row reaches its claim: 'claim' (own claim_id), 'run' (validation_run_id), 'result' (result_id via
 -- validation_result). Fail closed: an unresolvable owner is not a draft.
 CREATE OR REPLACE FUNCTION m23_enforce_append_only_unless_draft_claim() RETURNS trigger
-LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
   v_row jsonb := to_jsonb(OLD);
   v_claim uuid;

@@ -451,7 +451,11 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
         await c.query("SELECT set_config('app.org_id', $1, true)", [ORG_A]);
         return c;
       };
-      const stillPending = async (p: Promise<unknown>): Promise<boolean> => {
+      /**
+       * True once a backend is observed WAITING ON A LOCK (pg_stat_activity, optionally with a query fragment) while `p`
+       * is still unsettled; false if `p` settles first or nothing blocks within the timeout. No fixed sleeps.
+       */
+      const waitUntilBlocked = async (p: Promise<unknown>, fragment = ""): Promise<boolean> => {
         let settled = false;
         p.then(
           () => {
@@ -461,8 +465,31 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
             settled = true;
           },
         );
-        await new Promise((r) => setTimeout(r, 400));
-        return !settled;
+        const deadline = Date.now() + 10_000;
+        while (Date.now() < deadline && !settled) {
+          const { rows } = await admin.query(
+            `SELECT 1 FROM pg_stat_activity
+              WHERE datname = current_database() AND wait_event_type = 'Lock' AND state = 'active'
+                AND query ILIKE $1`,
+            [`%${fragment}%`],
+          );
+          if (rows.length > 0) return !settled;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        return false;
+      };
+
+      const waitForLockWaiters = async (n: number): Promise<void> => {
+        const deadline = Date.now() + 10_000;
+        while (Date.now() < deadline) {
+          const { rows } = await admin.query(
+            `SELECT count(*)::int AS n FROM pg_stat_activity
+              WHERE datname = current_database() AND wait_event_type = 'Lock' AND state = 'active'`,
+          );
+          if (rows[0].n >= n) return;
+          await new Promise((r) => setTimeout(r, 50));
+        }
+        throw new Error(`fewer than ${n} backends ever waited on a lock`);
       };
 
       it("a line delete that raced a move to VALIDATING blocks, then fails; nothing is deleted", async () => {
@@ -475,7 +502,7 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
             () => "deleted",
             (e: Error) => e.message,
           );
-          expect(await stillPending(outcome)).toBe(true);
+          expect(await waitUntilBlocked(outcome)).toBe(true);
           await mover.query("COMMIT");
           expect(await outcome).toMatch(/M23_CLAIM_NOT_DRAFT/);
         } finally {
@@ -497,7 +524,9 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
               () => "deleted",
               (e: Error) => e.message,
             );
-          expect(await stillPending(outcome)).toBe(true);
+          // The handler's own lockClaim (SELECT ... FOR UPDATE) is what blocks, before any delete is issued: this proves
+          // the handler lock independently of the database guard.
+          expect(await waitUntilBlocked(outcome, "FOR UPDATE")).toBe(true);
           await mover.query("COMMIT");
           expect(await outcome).toMatch(/draft/i);
         } finally {
@@ -518,13 +547,91 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
               () => "rewritten",
               (e: Error) => e.message,
             );
-          expect(await stillPending(outcome)).toBe(true);
+          expect(await waitUntilBlocked(outcome, "FOR UPDATE")).toBe(true);
           await mover.query("COMMIT");
           expect(await outcome).not.toBe("rewritten");
         } finally {
           await mover.end();
         }
         expect(await count("claim_line", "claim_id=$1", [claimId])).toBe(2);
+      });
+
+      it("two concurrent inserts of one id under different provider entities: the second blocks, then is refused", async () => {
+        const id = uuid();
+        const t1 = await open();
+        const t2 = await open();
+        try {
+          await decoyInsert(t1, id, PE);
+          const second = decoyInsert(t2, id, PE2).then(
+            () => "inserted",
+            (e: Error) => e.message,
+          );
+          expect(await waitUntilBlocked(second, "INSERT INTO claim")).toBe(true);
+          await t1.query("COMMIT");
+          expect(await second).toMatch(/M23_CLAIM_DUPLICATE_ID/);
+        } finally {
+          await t2.query("ROLLBACK").catch(() => undefined);
+          await t1.end();
+          await t2.end();
+        }
+        expect(await count("claim", "id=$1", [id])).toBe(1);
+      });
+
+      it("a multi-row INSERT ... SELECT carrying one id under two provider entities is refused as a whole", async () => {
+        const id = uuid();
+        await asApp(ORG_A, (c) =>
+          expect(
+            c.query(
+              `INSERT INTO claim (id, organization_id, provider_entity_id, patient_id, admission_id, election_period_id_from,
+                 election_period_id_to, patient_payer_id, tob, service_from, service_to, state, claim_control_number,
+                 mac_jurisdiction, sequestration_applied_pct, sequestration_policy_id, created_by_membership_id)
+               SELECT $1::uuid, $2::uuid, pe, gen_random_uuid(), $4::uuid, $4::uuid, $4::uuid, $4::uuid, '811', DATE '2026-09-01',
+                 DATE '2026-09-30', 'DRAFT', 'CCN-MULTI-' || pe::text, 'cgs_j15', '2.00', $4::uuid, $5::uuid
+                 FROM unnest(ARRAY[$3::uuid, $6::uuid]) AS pe`,
+              [id, ORG_A, PE, ANY, MEMBERSHIP_A, PE2],
+            ),
+          ).rejects.toThrow(/M23_CLAIM_DUPLICATE_ID/),
+        );
+        expect(await count("claim", "id=$1", [id])).toBe(0);
+      });
+
+      it("two concurrent raw DELETEs of one draft claim do not deadlock: one wins, the other is a clean no-op", async () => {
+        const { claimId } = await seedClaim(ORG_A, "DRAFT");
+        // t0 holds the row so BOTH deleters reach the guard at the same moment and are released together. This
+        // documents (and pins) that no 40P01 occurs: Postgres locks the target tuple EXCLUSIVELY (GetTupleForTrigger)
+        // before any BEFORE ROW trigger runs, so the guard's FOR SHARE is taken on a row the deleter already owns and
+        // the two deleters simply serialise. Hence no FOR UPDATE is needed in the claim delete guard.
+        const t0 = await open();
+        const t1 = await open();
+        const t2 = await open();
+        const settle = (c: Client) =>
+          c.query("DELETE FROM claim WHERE id=$1", [claimId]).then(
+            (r) => ({ c, ok: true as const, rows: r.rowCount, code: undefined }),
+            (e: { code?: string }) => ({ c, ok: false as const, rows: 0, code: e.code }),
+          );
+        try {
+          await t0.query("SELECT 1 FROM claim WHERE id=$1 FOR UPDATE", [claimId]);
+          const p1 = settle(t1);
+          const p2 = settle(t2);
+          await waitForLockWaiters(2);
+          await t0.query("ROLLBACK");
+          const first = await Promise.race([p1, p2]);
+          // the winner commits, which releases the other deleter
+          if (first.ok) await first.c.query("COMMIT");
+          const [r1, r2] = await Promise.all([p1, p2]);
+          const results = [r1, r2];
+          expect(results.filter((r) => !r.ok && r.code === "40P01")).toEqual([]);
+          expect(results.filter((r) => r.ok && r.rows === 1)).toHaveLength(1);
+        } finally {
+          for (const c of [t0, t1, t2]) {
+            await c.query("COMMIT").catch(() => undefined);
+            await c.end();
+          }
+        }
+        expect(await count("claim", "id=$1", [claimId])).toBe(0);
+        expect(
+          await count("audit_event", "event_type='claim.delete' AND resource_id=$1", [claimId]),
+        ).toBe(1);
       });
     });
 
@@ -645,8 +752,7 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
         ],
       );
       expect(rows).toHaveLength(7);
-      for (const r of rows)
-        expect(r.proconfig).toContain("search_path=pg_catalog, public, pg_temp");
+      for (const r of rows) expect(r.proconfig).toContain("search_path=pg_catalog, pg_temp");
     });
   });
 });
