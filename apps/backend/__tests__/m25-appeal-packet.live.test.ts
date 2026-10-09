@@ -1,24 +1,35 @@
 /**
  * GAP-036 - the appeal packet render request carries the TYPED AppealPacketRenderPayload, LIVE Postgres as the
- * NOBYPASSRLS `wardenx_app` role through the real catalog-validating outbox publisher.
+ * NOBYPASSRLS `wardenx_app` role through the real catalog-validating outbox publisher AND the real cross-module
+ * seams (M23 `ClaimSubmissionReader`, M22 `DocumentReader`).
  *
- * Before: submitAppeal published `m25.appeal_packet.render_requested` with `payload: {}` (the late good-cause path
- * with `{ lateGoodCauseFiling: true }` only), so M22 rendered a letter with no narrative, no document index and no
- * claim / remittance references - and the stored narrative never reached it. Now the payload is built server-side
- * from the appeal + denial rows, validates against AppealPacketRenderPayload, and renders as a real PDF.
+ * Before: submitAppeal published `m25.appeal_packet.render_requested` with `payload: {}` (later: ids only), so M22
+ * rendered a letter that cited `Claim ab12cd34` and listed raw uuids, and nothing checked that an attached document
+ * id existed, belonged to the org, or belonged to the claim's patient. Now the payload is built server-side from the
+ * appeal, denial, claim, remittance and document records, every enclosure is validated BEFORE anything reaches the
+ * outbox, and the letter prints the claim lines, the 835 adjustments and the named enclosures.
  *
  *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m25:appeal-packet:live
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { repositories } from "@wardenx/billing";
 import { createDbClient } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import { appealPacketViolations } from "@wardenx/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { registerSeam } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import {
+  createDocumentReader,
+  createDrizzleDocumentReaderStore,
+} from "../src/modules/22-documents/index";
 import { renderPdfForTemplate } from "../src/modules/22-documents/render-pdf";
+import { registerM23PublishedSeams } from "../src/modules/23-billing-medicare/cost-report-seams";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
+import { buildSeamAppealSourcePorts } from "../src/modules/25-remittance/routes/appeal-packet-sources";
 import { buildDrizzleM25WriteService } from "../src/modules/25-remittance/routes/write-service-drizzle";
 import { appRoleConnectionString } from "./_live-app-role";
 
@@ -26,6 +37,7 @@ const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG = "11111111-1111-1111-1111-111111111111";
+const ORG_B = "22222222-2222-2222-2222-222222222222";
 const NARRATIVE =
   "Hospice eligibility was certified timely; the face-to-face encounter is enclosed.";
 
@@ -40,10 +52,18 @@ describe.skipIf(!DB_URL)("GAP-036 - appeal packet render payload - LIVE Postgres
     stepUpRecent: boolean;
   };
   let providerEntityId = "";
-  const claimId = randomUUID();
-  const remittanceLineId = randomUUID();
-  const docA = randomUUID();
-  const docB = randomUUID();
+  const patient = randomUUID();
+  const otherPatient = randomUUID();
+  let claimId = "";
+  let remittanceLineId = "";
+  let docF2f = "";
+  let docCti = "";
+  let docBundle = "";
+  let docOtherPatient = "";
+  let docPart2 = "";
+  let docSuperseded = "";
+  let docOtherTenant = "";
+  let docLegalHold = "";
 
   const outbox = buildTxOutboxPublisher(buildBootOutboxCatalog([M25_OUTBOX_EVENTS]));
   const m25Outbox = {
@@ -53,11 +73,42 @@ describe.skipIf(!DB_URL)("GAP-036 - appeal packet render payload - LIVE Postgres
     ) =>
       outbox.publish(tx as Parameters<typeof outbox.publish>[0], { ...input, callerModule: "m25" }),
   };
+  /** The production adapter: M22 / M23 seams resolved through the M1 registry. */
+  const write = () =>
+    buildDrizzleM25WriteService(handle.db, m25Outbox, {
+      appealSources: buildSeamAppealSourcePorts(),
+    });
+
+  async function seedDocument(
+    org: string,
+    patientId: string | null,
+    title: string,
+    over: { retentionClass?: string; status?: string; aggregateType?: string } = {},
+  ): Promise<string> {
+    return (
+      await admin.query(
+        `INSERT INTO document (organization_id, patient_id, retention_class, source_kind, aggregate_type, title,
+           status, created_by_membership_id)
+         VALUES ($1,$2,$3,'user_upload',$4,$5,$6,$7) RETURNING id`,
+        [
+          org,
+          patientId,
+          over.retentionClass ?? "clinical_record",
+          over.aggregateType ?? "f2f",
+          title,
+          over.status ?? "active",
+          actor.membershipId,
+        ],
+      )
+    ).rows[0].id as string;
+  }
 
   async function seedAppeal(
     tier: string,
     deadline: string,
+    opts: { withRemit?: boolean } = {},
   ): Promise<{ id: string; denialId: string }> {
+    const withRemit = opts.withRemit ?? true;
     const denialId = (
       await admin.query(
         `INSERT INTO denial_case (organization_id, provider_entity_id, claim_id, remittance_line_id,
@@ -65,7 +116,7 @@ describe.skipIf(!DB_URL)("GAP-036 - appeal packet render payload - LIVE Postgres
            taxonomy_status)
          VALUES ($1,$2,$3,$4,$5,'50','N115','denial','evv_aggregator_rejection','in_progress',1234.50,'mapped')
          RETURNING id`,
-        [ORG, providerEntityId, claimId, remittanceLineId, randomUUID()],
+        [ORG, providerEntityId, claimId, withRemit ? remittanceLineId : null, randomUUID()],
       )
     ).rows[0].id as string;
     const id = (
@@ -84,6 +135,10 @@ describe.skipIf(!DB_URL)("GAP-036 - appeal packet render payload - LIVE Postgres
         [appealId],
       )
     ).rows;
+  const appealState = async (appealId: string) =>
+    (await admin.query("SELECT state FROM appeal_case WHERE id=$1", [appealId])).rows[0].state;
+  const outboxCount = async () =>
+    Number((await admin.query("SELECT count(*)::int AS n FROM outbox_event")).rows[0].n);
 
   beforeAll(async () => {
     admin = new Client({ connectionString: DB_URL });
@@ -99,10 +154,14 @@ describe.skipIf(!DB_URL)("GAP-036 - appeal packet render payload - LIVE Postgres
       .filter((x) => x.endsWith(".sql"))
       .sort())
       await admin.query(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
-    await admin.query(
-      "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'m25-pkt','A','A')",
-      [ORG],
-    );
+    for (const [org, slug] of [
+      [ORG, "m25-pkt"],
+      [ORG_B, "m25-pkt-b"],
+    ])
+      await admin.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,'A','A')",
+        [org, slug],
+      );
     const userId = (
       await admin.query(`INSERT INTO "user" (email) VALUES ('m25pkt@x.test') RETURNING id`)
     ).rows[0].id as string;
@@ -129,6 +188,101 @@ describe.skipIf(!DB_URL)("GAP-036 - appeal packet render payload - LIVE Postgres
     handle = createDbClient({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
+
+    // The claim M23 holds: header + two lines (one with an HCPCS, one without).
+    const claim = await withOrgContext(handle.db, { organizationId: ORG, userId: "" }, (tx) =>
+      new repositories.ClaimRepository(tx).create({
+        organizationId: ORG,
+        providerEntityId,
+        patientId: patient,
+        admissionId: randomUUID(),
+        electionPeriodIdFrom: randomUUID(),
+        electionPeriodIdTo: randomUUID(),
+        patientPayerId: randomUUID(),
+        tob: "811",
+        serviceFrom: "2026-03-01",
+        serviceTo: "2026-03-31",
+        claimControlNumber: "CCN-GAP036-0042",
+        payerClaimControlNumber: null,
+        macJurisdiction: "ngs_j6",
+        sequestrationAppliedPct: "2.00",
+        sequestrationPolicyId: randomUUID(),
+        createdByMembershipId: randomUUID(),
+        totalChargeCents: 1_234_500,
+      }),
+    );
+    claimId = claim.id;
+    await admin.query("UPDATE claim SET state = 'DENIED' WHERE id = $1", [claimId]);
+    await admin.query(
+      `INSERT INTO claim_line (organization_id, claim_id, line_number, revenue_code, q_code, level_of_care,
+         service_date_from, service_date_to, unit_count, unit_rate_cents, line_charge_cents, level_of_care_period_id)
+       VALUES ($1,$2,1,'0651','Q5001','RHC','2026-03-01','2026-03-31',30,41150,1234500,$1)`,
+      [ORG, claimId],
+    );
+
+    // The 835 line the denial came from: payment detail, one CO-50 adjustment, one remark, one service line.
+    const advice = (
+      await admin.query(
+        `INSERT INTO remittance_advice (organization_id, provider_entity_id, payer_id, payer_kind,
+           interchange_control_number, transaction_set_control_number, check_or_eft_trace_number, payment_method,
+           total_payment_amount, production_date, minio_object_key, file_sha256, parse_status)
+         VALUES ($1,$2,$3,'medicare','900000036','100036','TRC036036','eft',0, now(),'k',$4,'partial_posted')
+         RETURNING id, received_at`,
+        [ORG, providerEntityId, randomUUID(), "0".repeat(64)],
+      )
+    ).rows[0];
+    remittanceLineId = (
+      await admin.query(
+        `INSERT INTO remittance_line (organization_id, remittance_advice_id, claim_id, clp07_payer_icn,
+           clp02_status_code, clp03_total_charge_amount, clp04_total_payment_amount,
+           clp05_patient_responsibility_amount, match_state, received_at)
+         VALUES ($1,$2,$3,'ICN-036',4,1234.50,0,0,'auto_matched',$4) RETURNING id`,
+        [ORG, advice.id, claimId, advice.received_at],
+      )
+    ).rows[0].id as string;
+    await admin.query(
+      `INSERT INTO remittance_adjustment (organization_id, remittance_line_id, cas_group_code, cas_reason_code,
+         adjustment_amount, post_action, taxonomy_status, received_at)
+       VALUES ($1,$2,'CO','50',1234.50,'denial_seeded','mapped',$3)`,
+      [ORG, remittanceLineId, advice.received_at],
+    );
+    await admin.query(
+      `INSERT INTO remittance_remark (organization_id, remittance_line_id, remark_kind, remark_code, received_at)
+       VALUES ($1,$2,'LQ','N115',$3)`,
+      [ORG, remittanceLineId, advice.received_at],
+    );
+    await admin.query(
+      `INSERT INTO remittance_service_line (organization_id, remittance_line_id, svc01_procedure_code,
+         svc01_revenue_code, svc02_charge_amount, svc03_paid_amount, received_at)
+       VALUES ($1,$2,'Q5001','0651',1234.50,0,$3)`,
+      [ORG, remittanceLineId, advice.received_at],
+    );
+
+    // M22 documents: two enclosable ones for the claim's patient, a bundle, and the ones that must be refused.
+    docF2f = await seedDocument(ORG, patient, "Face-to-face encounter 2026-02-20");
+    docCti = await seedDocument(ORG, patient, "Certification of terminal illness", {
+      aggregateType: "cti",
+    });
+    docBundle = await seedDocument(ORG, patient, "Medical records March 2026", {
+      aggregateType: "encounter",
+    });
+    docLegalHold = await seedDocument(ORG, patient, "Election statement (legal hold)", {
+      status: "legal_hold",
+      aggregateType: "election_statement",
+    });
+    docOtherPatient = await seedDocument(ORG, otherPatient, "SECRET other patient's note");
+    docPart2 = await seedDocument(ORG, patient, "SECRET SUD treatment note", {
+      retentionClass: "compliance_42cfr_part2",
+    });
+    docSuperseded = await seedDocument(ORG, patient, "Old version", { status: "superseded" });
+    docOtherTenant = await seedDocument(ORG_B, null, "SECRET other tenant's document");
+
+    // The REAL cross-module seams, registered the way the composition root does.
+    registerM23PublishedSeams(handle.db);
+    registerSeam(
+      "DocumentReader",
+      createDocumentReader(createDrizzleDocumentReaderStore(handle.db)),
+    );
   }, 240_000);
 
   afterAll(async () => {
@@ -136,13 +290,16 @@ describe.skipIf(!DB_URL)("GAP-036 - appeal packet render payload - LIVE Postgres
     if (admin) await admin.end();
   });
 
-  it("submitAppeal publishes a valid typed packet built from the appeal + denial rows", async () => {
+  it("submitAppeal publishes a valid typed packet built from the appeal, denial, claim, remittance and documents", async () => {
     const { id, denialId } = await seedAppeal("redetermination", "2027-03-01T00:00:00Z");
-    const write = buildDrizzleM25WriteService(handle.db, m25Outbox);
-    await write.submitAppeal(
+    await write().submitAppeal(
       actor,
       id,
-      { appealNarrative: NARRATIVE, attachedDocumentIds: [docA, docB] },
+      {
+        appealNarrative: NARRATIVE,
+        attachedDocumentIds: [docF2f, docCti, docLegalHold],
+        medicalRecordsBundleDocumentId: docBundle,
+      },
       1,
     );
 
@@ -158,11 +315,49 @@ describe.skipIf(!DB_URL)("GAP-036 - appeal packet render payload - LIVE Postgres
       appealNarrative: NARRATIVE,
       denial: { carcCode: "50", rarcCode: "N115", dollarValue: "1234.50" },
       supportingDocuments: [
-        { ordinal: 1, documentId: docA },
-        { ordinal: 2, documentId: docB },
+        {
+          ordinal: 1,
+          documentId: docF2f,
+          title: "Face-to-face encounter 2026-02-20",
+          documentKind: "f2f",
+        },
+        {
+          ordinal: 2,
+          documentId: docCti,
+          title: "Certification of terminal illness",
+          documentKind: "cti",
+        },
+        { ordinal: 3, documentId: docLegalHold, documentKind: "election_statement" },
       ],
+      medicalRecordsBundleRef: { documentId: docBundle, title: "Medical records March 2026" },
       signedClaimCopyRef: { claimId },
+      claimCopy: {
+        controlNumber: "CCN-GAP036-0042",
+        tob: "811",
+        totalChargeCents: 1_234_500,
+        lines: [
+          {
+            lineNumber: 1,
+            revenueCode: "0651",
+            hcpcsCode: "Q5001",
+            units: 30,
+            chargeCents: 1_234_500,
+          },
+        ],
+      },
       remitCopyRef: { remittanceLineId },
+      remitCopy: {
+        checkOrEftTrace: "TRC036036",
+        payerIcn: "ICN-036",
+        claimStatusCode: 4,
+        chargeCents: 123_450,
+        paidCents: 0,
+        adjustments: [{ group: "CO", carc: "50", amountCents: 123_450 }],
+        remarks: [{ kind: "LQ", rarc: "N115" }],
+        serviceLines: [
+          { revenueCode: "0651", hcpcsCode: "Q5001", chargeCents: 123_450, paidCents: 0 },
+        ],
+      },
     });
     // and the submitted-at on the sibling event is the real instant, not the epoch
     const submitted = (
@@ -174,8 +369,10 @@ describe.skipIf(!DB_URL)("GAP-036 - appeal packet render payload - LIVE Postgres
     expect(Date.parse(submitted.submittedAt)).toBeGreaterThan(Date.parse("2026-01-01"));
   });
 
-  it("the published payload renders as a real PDF carrying the narrative and the document index", async () => {
-    const [{ id }] = (await admin.query("SELECT id FROM appeal_case")).rows;
+  it("the published payload renders as a real PDF carrying the claim lines, the 835 adjustments and the named enclosures", async () => {
+    const [{ id }] = (
+      await admin.query("SELECT id FROM appeal_case WHERE state = 'submitted' LIMIT 1")
+    ).rows;
     const [{ payload }] = await renderRequested(id);
     const bytes = renderPdfForTemplate(
       "appeal_packet",
@@ -184,20 +381,112 @@ describe.skipIf(!DB_URL)("GAP-036 - appeal packet render payload - LIVE Postgres
     );
     const raw = Buffer.from(bytes).toString("latin1");
     expect(raw.startsWith("%PDF-1.4")).toBe(true);
-    expect(raw).toContain("Request for Redetermination");
-    expect(raw).toContain("face-to-face");
     expect(raw).not.toContain("wardenx-render");
+    const text = [...raw.matchAll(/\(((?:\\.|[^\\)])*)\) Tj/g)].map((m) => m[1]).join("\n");
+    expect(text).toContain("Request for Redetermination");
+    expect(text).toContain("face-to-face");
+    // the as-submitted claim and the 835, in words
+    expect(text).toContain("CCN-GAP036-0042");
+    expect(text).toContain("0651");
+    expect(text).toContain("Q5001");
+    expect(text).toContain("TRC036036");
+    expect(text).toContain("ICN-036");
+    expect(text).toContain("N115");
+    // enclosures named, not cited by uuid prefix
+    expect(text).toContain("Face-to-face encounter 2026-02-20");
+    expect(text).toContain("Medical records March 2026");
+    expect(text).not.toContain("SECRET");
+  });
+
+  describe("an enclosure that cannot be named is refused BEFORE anything reaches the outbox", () => {
+    const attemptWith = async (attached: string[], bundle?: string) => {
+      const { id } = await seedAppeal("redetermination", "2027-03-01T00:00:00Z");
+      const before = await outboxCount();
+      const err = await write()
+        .submitAppeal(
+          actor,
+          id,
+          {
+            appealNarrative: NARRATIVE,
+            attachedDocumentIds: attached,
+            ...(bundle ? { medicalRecordsBundleDocumentId: bundle } : {}),
+          },
+          1,
+        )
+        .then(
+          () => null,
+          (e: unknown) => e as { code?: string; statusCode?: number; message: string },
+        );
+      // nothing published, the appeal is still a draft (the submit rolled back as one unit)
+      expect(await outboxCount()).toBe(before);
+      expect(await renderRequested(id)).toHaveLength(0);
+      expect(await appealState(id)).toBe("draft");
+      return err;
+    };
+
+    it.each([
+      ["another patient's document", () => [docOtherPatient], "other_patient"],
+      ["another tenant's document id", () => [docOtherTenant], "not_found"],
+      ["a nonexistent id", () => [randomUUID()], "not_found"],
+      ["a 42 CFR Part 2 record", () => [docF2f, docPart2], "part2_restricted"],
+      ["a superseded document", () => [docSuperseded], "not_active"],
+    ])("%s -> 422 APPEAL_DOCUMENT_NOT_ATTACHABLE", async (_label, ids, reason) => {
+      const err = await attemptWith(ids());
+      expect(err).toMatchObject({ code: "APPEAL_DOCUMENT_NOT_ATTACHABLE", statusCode: 422 });
+      expect(err?.message).toContain(reason);
+      // the refusal carries ids and a reason code only - never a document title
+      expect(err?.message).not.toContain("SECRET");
+    });
+
+    it("a bad medical-records bundle id fails the whole filing", async () => {
+      const err = await attemptWith([docF2f], docPart2);
+      expect(err).toMatchObject({ code: "APPEAL_DOCUMENT_NOT_ATTACHABLE", statusCode: 422 });
+    });
+
+    it("a duplicated enclosure is refused", async () => {
+      const err = await attemptWith([docF2f, docF2f]);
+      expect(err).toMatchObject({ code: "APPEAL_DUPLICATE_ENCLOSURE", statusCode: 422 });
+    });
+  });
+
+  it("with no document / claim source bound the submit is refused (503), never filed half-empty", async () => {
+    const { id } = await seedAppeal("redetermination", "2027-03-01T00:00:00Z");
+    const before = await outboxCount();
+    const err = await buildDrizzleM25WriteService(handle.db, m25Outbox)
+      .submitAppeal(actor, id, { appealNarrative: NARRATIVE, attachedDocumentIds: [docF2f] }, 1)
+      .then(
+        () => null,
+        (e: unknown) => e as { code?: string; statusCode?: number },
+      );
+    expect(err).toMatchObject({ code: "SEAM_UNBOUND", statusCode: 503 });
+    expect(await outboxCount()).toBe(before);
+    expect(await appealState(id)).toBe("draft");
+  });
+
+  it("a pre-835 denial (no remittance line) is a valid packet with no remit copy", async () => {
+    const { id } = await seedAppeal("redetermination", "2027-03-01T00:00:00Z", {
+      withRemit: false,
+    });
+    await write().submitAppeal(
+      actor,
+      id,
+      { appealNarrative: NARRATIVE, attachedDocumentIds: [docF2f] },
+      1,
+    );
+    const [{ payload }] = await renderRequested(id);
+    expect(appealPacketViolations(payload.payload)).toEqual([]);
+    expect(payload.payload.remitCopyRef).toEqual({ remittanceLineId: null });
+    expect(payload.payload.remitCopy).toBeUndefined();
   });
 
   it("a late good-cause filing carries the justification and the flag in the typed packet", async () => {
     const { id } = await seedAppeal("reconsideration", "2025-01-01T00:00:00Z");
-    const write = buildDrizzleM25WriteService(handle.db, m25Outbox);
-    await write.submitAppealLateGoodCause(
+    await write().submitAppealLateGoodCause(
       actor,
       id,
       {
         appealNarrative: NARRATIVE,
-        attachedDocumentIds: [],
+        attachedDocumentIds: [docF2f],
         goodCauseJustification:
           "The MAC notice was misdelivered to a prior address on file with CMS.",
       },
@@ -208,8 +497,22 @@ describe.skipIf(!DB_URL)("GAP-036 - appeal packet render payload - LIVE Postgres
     expect(payload.payload).toMatchObject({
       lateGoodCauseFiling: true,
       tier: "reconsideration",
-      supportingDocuments: [],
+      supportingDocuments: [{ ordinal: 1, documentId: docF2f }],
     });
     expect(payload.payload.goodCauseJustification).toContain("misdelivered");
+  });
+
+  it("a claim the packet cannot read is refused (422), not filed with a bare reference", async () => {
+    const { id } = await seedAppeal("redetermination", "2027-03-01T00:00:00Z");
+    await admin.query("UPDATE appeal_case SET claim_id = $1 WHERE id = $2", [randomUUID(), id]);
+    const before = await outboxCount();
+    const err = await write()
+      .submitAppeal(actor, id, { appealNarrative: NARRATIVE, attachedDocumentIds: [docF2f] }, 1)
+      .then(
+        () => null,
+        (e: unknown) => e as { code?: string; statusCode?: number },
+      );
+    expect(err).toMatchObject({ code: "APPEAL_CLAIM_UNAVAILABLE", statusCode: 422 });
+    expect(await outboxCount()).toBe(before);
   });
 });

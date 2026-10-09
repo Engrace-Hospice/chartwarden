@@ -579,9 +579,23 @@ export interface DocumentRequestConsumerDeps {
     readonly eventType: string;
     readonly organizationId: string;
     readonly aggregateId: string;
-    readonly kind: "unknown_template" | "sud_consent_absent" | "baa_inactive";
+    readonly kind:
+      | "unknown_template"
+      | "sud_consent_absent"
+      | "baa_inactive"
+      | "render_guard_refused";
     readonly detail: string;
   }) => void;
+  /**
+   * A template-specific, fail-closed pre-render check (GAP-036: the appeal packet re-verifies its enclosures at
+   * render time). A returned refusal is a SETTLED decision - the row completes, the sink hears it, nothing is
+   * rendered and nothing is retried into a disclosure. A throw is a delivery failure (retry-then-DLQ).
+   */
+  readonly renderGuard?: (request: {
+    readonly organizationId: string;
+    readonly templateKey: string;
+    readonly content: Record<string, unknown>;
+  }) => Promise<{ readonly detail: string } | null>;
   /** Template table override (tests); defaults to the T04 published table. */
   readonly templates?: Readonly<Record<string, TemplateDescriptor>>;
   /**
@@ -759,6 +773,21 @@ export function buildM22DocumentRequestConsumer(
           return; // §4.12 — settled refusal; no out-of-network disclosure without an active BAA.
         case "render": {
           const { render } = action;
+          const blocked = await deps.renderGuard?.({
+            organizationId: payload.organizationId,
+            templateKey: render.templateKey,
+            content: render.content,
+          });
+          if (blocked) {
+            deps.onRefusal?.({
+              eventType: event.eventType,
+              organizationId: payload.organizationId,
+              aggregateId: payload.aggregateId,
+              kind: "render_guard_refused",
+              detail: blocked.detail,
+            });
+            return; // settled refusal - the enclosure may no longer be named in a payer filing.
+          }
           // The RESOLVED routing wins over the content blob, which is why it is spread first (F-100).
           // The other way round, a source module whose payload happens to carry an `aggregateId` or
           // `patientId` of its own silently overwrites the identity the normalizer just decided — and it

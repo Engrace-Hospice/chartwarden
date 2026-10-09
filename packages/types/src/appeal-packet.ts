@@ -8,6 +8,7 @@
 // (not @wardenx/forms) because M25 produces it and M22 consumes it - neither may import the other (ADR-0005).
 import { type Static, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import type { DocumentDigest } from "./documents";
 
 export const APPEAL_TIERS = [
   "redetermination",
@@ -44,8 +45,86 @@ export const APPEAL_TIER_LETTERS: Readonly<
   },
 };
 
+/** The most enclosures one appeal filing may carry (a MAC portal / fax packet has a hard ceiling). */
+export const MAX_APPEAL_ENCLOSURES = 50;
+
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });
+const cents = Type.Integer();
+const nullableStr = Type.Union([Type.String({ minLength: 1 }), Type.Null()]);
+
+/**
+ * One enclosure document as the filing lists it: the reference the biller attached PLUS the facts M25 read from
+ * M22's `DocumentReader` at submit (title, date, kind) so the letter identifies it in words, not by a short id.
+ * Never the document's bytes or contents.
+ */
+const SupportingDocument = Type.Object({
+  ordinal: Type.Integer({ minimum: 1 }),
+  documentId: id,
+  title: Type.String({ minLength: 1 }),
+  /** When the document was created (ISO instant). */
+  documentDate: isoInstant,
+  /** The document's aggregate type (e.g. `election_statement`), humanized by the renderer. */
+  documentKind: Type.String({ minLength: 1 }),
+});
+export type AppealSupportingDocument = Static<typeof SupportingDocument>;
+
+/**
+ * The claim as the MAC received it, read by M25 from M23 at submit (header + lines; no MBI, per M23 D13). An 837I has
+ * no wet signature, so this is the as-submitted electronic claim, not a "signed" copy.
+ */
+export const AppealClaimCopy = Type.Object({
+  controlNumber: Type.String({ minLength: 1 }),
+  tob: Type.String({ minLength: 1 }),
+  state: Type.String({ minLength: 1 }),
+  serviceFrom: Type.String({ minLength: 1 }),
+  serviceTo: Type.String({ minLength: 1 }),
+  totalChargeCents: cents,
+  lines: Type.Array(
+    Type.Object({
+      lineNumber: Type.Integer({ minimum: 1 }),
+      revenueCode: Type.String({ minLength: 1 }),
+      hcpcsCode: nullableStr,
+      serviceFrom: Type.String({ minLength: 1 }),
+      serviceTo: Type.String({ minLength: 1 }),
+      units: Type.Integer(),
+      chargeCents: cents,
+    }),
+  ),
+});
+export type AppealClaimCopy = Static<typeof AppealClaimCopy>;
+
+/** The 835 claim payment the denial came from, read by M25 from its own remittance tables (no free text). */
+export const AppealRemitCopy = Type.Object({
+  remittanceAdviceId: id,
+  receivedAt: isoInstant,
+  paymentMethod: Type.String({ minLength: 1 }),
+  checkOrEftTrace: nullableStr,
+  payerIcn: nullableStr,
+  claimStatusCode: Type.Integer(),
+  chargeCents: cents,
+  paidCents: cents,
+  patientResponsibilityCents: cents,
+  adjustments: Type.Array(
+    Type.Object({
+      group: Type.String({ minLength: 1 }),
+      carc: Type.String({ minLength: 1 }),
+      amountCents: cents,
+    }),
+  ),
+  remarks: Type.Array(
+    Type.Object({ kind: Type.String({ minLength: 1 }), rarc: Type.String({ minLength: 1 }) }),
+  ),
+  serviceLines: Type.Array(
+    Type.Object({
+      revenueCode: nullableStr,
+      hcpcsCode: nullableStr,
+      chargeCents: cents,
+      paidCents: cents,
+    }),
+  ),
+});
+export type AppealRemitCopy = Static<typeof AppealRemitCopy>;
 
 export const AppealPacketRenderPayload = Type.Object({
   appealCaseId: id,
@@ -69,15 +148,25 @@ export const AppealPacketRenderPayload = Type.Object({
     dollarValue: Type.String({ minLength: 1 }),
   }),
   /** The index of attached supporting documents, in the order the biller attached them. */
-  supportingDocuments: Type.Array(
-    Type.Object({ ordinal: Type.Integer({ minimum: 1 }), documentId: id }),
-  ),
-  /** Reference to the signed claim copy (the M23 claim). */
+  supportingDocuments: Type.Array(SupportingDocument),
+  /** Reference to the as-submitted claim (the M23 claim). The name predates the as-built wording: an 837I carries
+   *  no wet signature, so the letter calls it the as-submitted claim. */
   signedClaimCopyRef: Type.Object({ claimId: id }),
+  /** The claim's header and lines, so the filing shows what was billed instead of citing a short id. */
+  claimCopy: AppealClaimCopy,
   /** Reference to the remittance (835) line the denial came from; null for a pre-835 (277CA / EVV) denial. */
   remitCopyRef: Type.Object({ remittanceLineId: Type.Union([id, Type.Null()]) }),
-  /** Reference to the medical-records bundle, when one has been assembled for this claim. */
-  medicalRecordsBundleRef: Type.Optional(Type.Object({ documentId: id })),
+  /** The 835 payment detail behind `remitCopyRef`; absent exactly when there is no remittance line. */
+  remitCopy: Type.Optional(AppealRemitCopy),
+  /** The medical-records bundle the biller attached (an existing M22 document, validated like any enclosure). */
+  medicalRecordsBundleRef: Type.Optional(
+    Type.Object({
+      documentId: id,
+      title: Type.String({ minLength: 1 }),
+      documentDate: isoInstant,
+      documentKind: Type.String({ minLength: 1 }),
+    }),
+  ),
   macReferenceNumbers: Type.Optional(Type.Record(Type.String(), Type.String())),
 });
 export type AppealPacketRenderPayload = Static<typeof AppealPacketRenderPayload>;
@@ -90,7 +179,10 @@ export interface AppealPacketFacts {
   readonly tierDeadlineAt: string;
   readonly submittedAt: string;
   readonly appealNarrative: string;
-  readonly attachedDocumentIds: readonly string[];
+  /** The attached enclosures, in the order the biller chose, each with the metadata M25 read from M22. */
+  readonly attachedDocuments: readonly Omit<AppealSupportingDocument, "ordinal">[];
+  readonly claimCopy: AppealClaimCopy;
+  readonly remitCopy?: AppealRemitCopy;
   readonly denial: {
     readonly carcCode: string;
     readonly rarcCode: string | null;
@@ -98,7 +190,7 @@ export interface AppealPacketFacts {
     readonly remittanceLineId: string | null;
   };
   readonly lateGoodCause?: { readonly justification: string };
-  readonly medicalRecordsBundleDocumentId?: string;
+  readonly medicalRecordsBundle?: Omit<AppealSupportingDocument, "ordinal">;
 }
 
 /** Pure: assemble the packet payload from the facts M25 holds. Throws if the result is not a valid packet. */
@@ -124,17 +216,52 @@ export function buildAppealPacketRenderPayload(
       rarcCode: facts.denial.rarcCode,
       dollarValue: facts.denial.dollarValue,
     },
-    supportingDocuments: facts.attachedDocumentIds.map((documentId, i) => ({
-      ordinal: i + 1,
-      documentId,
-    })),
+    supportingDocuments: facts.attachedDocuments.map((doc, i) => ({ ordinal: i + 1, ...doc })),
     signedClaimCopyRef: { claimId: facts.claimId },
+    claimCopy: facts.claimCopy,
     remitCopyRef: { remittanceLineId: facts.denial.remittanceLineId },
-    ...(facts.medicalRecordsBundleDocumentId
-      ? { medicalRecordsBundleRef: { documentId: facts.medicalRecordsBundleDocumentId } }
+    ...(facts.remitCopy ? { remitCopy: facts.remitCopy } : {}),
+    ...(facts.medicalRecordsBundle
+      ? {
+          medicalRecordsBundleRef: {
+            documentId: facts.medicalRecordsBundle.documentId,
+            title: facts.medicalRecordsBundle.title,
+            documentDate: facts.medicalRecordsBundle.documentDate,
+            documentKind: facts.medicalRecordsBundle.documentKind,
+          },
+        }
       : {}),
   };
   return assertAppealPacketRenderPayload(payload);
+}
+
+/** Why a document may not be enclosed in an appeal filing. */
+export type AppealEnclosureRefusal =
+  | "not_found"
+  | "not_active"
+  | "other_patient"
+  | "part2_restricted";
+
+/**
+ * Pure: why `digest` (M22's `DocumentReader.documentMetadata`, or null when the document is not visible to the org)
+ * may not be enclosed in an appeal for a claim of `claimPatientId`, or null when it may. M25 runs it at submit with
+ * the claim's patient; M22 re-runs it at render time (`claimPatientId = null`: the patient was proven at submit, but
+ * a document's status or retention class can change between submit and render).
+ *   - a 42 CFR Part 2 record is never named in a payer filing from here (checked first: it wins over every other
+ *     reason); there is no consent override on this reference-only path;
+ *   - ACTIVE or on legal hold is enclosable (a hold blocks destruction, not use); superseded / destroyed is not;
+ *   - the document must be linked to the claim's patient (a document with no patient is refused).
+ */
+export function appealEnclosureRefusal(
+  digest: Pick<DocumentDigest, "status" | "patientId" | "retentionClass"> | null,
+  claimPatientId: string | null,
+): AppealEnclosureRefusal | null {
+  if (digest === null) return "not_found";
+  if (digest.retentionClass === "compliance_42cfr_part2") return "part2_restricted";
+  if (digest.status !== "active" && digest.status !== "legal_hold") return "not_active";
+  if (claimPatientId !== null && (digest.patientId === null || digest.patientId !== claimPatientId))
+    return "other_patient";
+  return null;
 }
 
 /** The first schema violations, as `path: message` strings (empty = valid). */
@@ -146,6 +273,12 @@ export function appealPacketViolations(payload: unknown): string[] {
     const p = payload as AppealPacketRenderPayload;
     if (p.lateGoodCauseFiling === true && !p.goodCauseJustification)
       errors.push("/goodCauseJustification: required for a late good-cause filing");
+    // A remittance reference and its payment detail travel together: a ref with no detail would print an empty
+    // enclosure, and detail with no ref could not be traced to the denial.
+    if (p.remitCopyRef.remittanceLineId !== null && p.remitCopy === undefined)
+      errors.push("/remitCopy: required when the denial came from a remittance line");
+    if (p.remitCopyRef.remittanceLineId === null && p.remitCopy !== undefined)
+      errors.push("/remitCopy: must be absent when the denial has no remittance line");
   }
   return errors.slice(0, 5);
 }

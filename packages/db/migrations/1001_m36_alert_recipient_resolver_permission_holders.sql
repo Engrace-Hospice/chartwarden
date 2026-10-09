@@ -1,0 +1,12 @@
+-- 1001 - M36/M26 GAP-040: the `permission_holders` alert recipient resolver.
+--
+-- The seeded M26 cap alerts named the role keys `cfo` / `billing_manager`; neither is a role template and no template
+-- grants `cap.event.read`, so a fresh tenant's watch/warn/breach alert resolved to nobody. The audience becomes "the
+-- active members whose live, enabled role grants hold the permission key" (resolver_args.permissionKeys), with the org
+-- administrators as the floor. The boot seed (`alert_rule_platform_upsert`) converts the seeded rows in place: for every
+-- resolver other than M34's two it is `ON CONFLICT (event_type) DO UPDATE SET recipient_resolver, resolver_args`
+-- (migration 0741), so no duplicate audience rows appear.
+--
+-- A new enum value is not usable until the migration that adds it has committed, so this file does ONLY the ADD VALUE and
+-- nothing in it (or in any migration run in the same transaction) references 'permission_holders'.
+ALTER TYPE "public"."alert_recipient_resolver" ADD VALUE IF NOT EXISTS 'permission_holders';

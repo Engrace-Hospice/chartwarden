@@ -260,6 +260,7 @@
     "test:m16:encounter-signed:live": "vitest run apps/backend/__tests__/m16-encounter-signed.live.test.ts",
     "test:m16:document-rendered:live": "vitest run apps/backend/__tests__/m16-document-rendered.live.test.ts",
     "test:m26:cap-consumer-store:live": "vitest run apps/backend/__tests__/m26-cap-consumer-store.live.test.ts",
+    "test:gap-038:cap-day-backfill:live": "vitest run apps/backend/__tests__/gap-038-cap-day-backfill.live.test.ts",
     "test:m29:patient-deceased-freeze:live": "vitest run apps/backend/__tests__/m29-patient-deceased-freeze.live.test.ts",
     "test:m29:outbound-dispatch:live": "vitest run apps/backend/__tests__/m29-outbound-dispatch.live.test.ts",
     "test:m31:portal-telehealth-consumers:live": "vitest run apps/backend/__tests__/m31-portal-telehealth-consumers.live.test.ts",

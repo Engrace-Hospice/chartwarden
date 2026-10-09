@@ -1,7 +1,7 @@
 import { capYearForDate } from "@wardenx/cap-management";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 // apps/backend/src/modules/26-cap/consumers/drizzle-store.ts — the Drizzle-backed `CapConsumerStore`
 // (F-131, #248). `./handlers.ts`'s five §4.4 handlers (`handleRemittancePosted`, `handleClaimReversed`,
 // `handleInpatientDay`, `handleFreeze`, `handleTransfer`) have been complete, pure and unit-tested since
@@ -41,7 +41,13 @@ import { and, eq, sql } from "drizzle-orm";
 // UPDATEs themselves are single atomic `SET col = col + delta` statements — safe under concurrent
 // deliveries for the same patient, never a read-then-write-back race.
 import type { WriteOutboxPort } from "../routes/write-service";
-import type { AccrualLineToRecord, CapConsumerStore, InpatientDayToRecord } from "./handlers";
+import type {
+  AccrualLineToRecord,
+  CapConsumerStore,
+  InpatientDayToRecord,
+  InpatientDaysReversal,
+} from "./handlers";
+import { reconcileInpatientAccrual } from "./inpatient-reconcile";
 
 const P = schema.capPeriod;
 const BA = schema.capBeneficiaryAccrual;
@@ -240,11 +246,13 @@ export function createDrizzleCapConsumerStore(
         db,
         { organizationId: day.organizationId, userId: CAP_CONSUMER_SYSTEM_USER_ID },
         async (tx) => {
-          const insertedLine = await tx
+          // GAP-038 - the ledger insert carries the claim identity.
+          const [line] = await tx
             .insert(IDL)
             .values({
               organizationId: day.organizationId,
               capPeriodId: period.id,
+              claimId: day.claimId,
               patientId: day.patientId,
               sourceId: day.sourceId,
               revCode: day.revCode,
@@ -255,7 +263,34 @@ export function createDrizzleCapConsumerStore(
             })
             .onConflictDoNothing()
             .returning({ id: IDL.id });
-          if (!insertedLine[0]) return { recorded: false }; // replay — already recorded
+          if (!line) {
+            // A replay, a re-delivery, or a re-pay after a recoup: only the two annotation columns may move,
+            // NEVER the days.
+            //   claim_id     stamped on a row written before the column existed (COALESCE: first identity wins);
+            //   reversed_at  cleared when this delivery was posted AT OR AFTER the reversal (a claim re-paid after
+            //                a recoup reuses the same claim_line ids, and one 835 can carry the CLP02=22 reversal
+            //                and the corrected payment at the same posting instant); a stale re-delivery posted
+            //                BEFORE the reversal leaves it set.
+            await tx
+              .update(IDL)
+              .set({
+                claimId: sql`coalesce(${IDL.claimId}, ${day.claimId}::uuid)`,
+                reversedAt: sql`CASE WHEN ${IDL.reversedAt} IS NOT NULL AND ${day.postedAt}::timestamptz >= ${IDL.reversedAt} THEN NULL ELSE ${IDL.reversedAt} END`,
+              })
+              .where(
+                and(
+                  eq(IDL.organizationId, day.organizationId),
+                  eq(IDL.capPeriodId, period.id),
+                  eq(IDL.sourceKind, "claim_line"),
+                  eq(IDL.sourceId, day.sourceId),
+                  eq(IDL.revCode, day.revCode),
+                ),
+              );
+            // The ledger may have just been re-stamped / un-reversed, and a pre-fix row's roll-up may be
+            // stale (total_patient_days = 0): rebuild it from the ledger in this same transaction.
+            await reconcileInpatientAccrual(tx, day.organizationId, period.id);
+            return { recorded: false };
+          }
           // rev_code '0655' = IRC, '0656' = GIP (packages/db/src/schema/cap/accrual.ts's own comment).
           const gipDelta = day.revCode === "0656" ? day.days : 0;
           const ircDelta = day.revCode === "0655" ? day.days : 0;
@@ -263,7 +298,7 @@ export function createDrizzleCapConsumerStore(
           // deliveries for the same (org, period) racing an UPDATE-if-exists-else-INSERT would let one
           // lose its delta entirely on an ON CONFLICT DO NOTHING insert. ON CONFLICT DO UPDATE folds
           // the delta into the existing row (or seeds it, on first insert) under one row lock.
-          // GAP-038 — every level-of-care day (RHC/CHC/IRC/GIP) is the cap's denominator, so
+          // GAP-038 - every level-of-care day (RHC/CHC/IRC/GIP) is the cap's denominator, so
           // total_patient_days grows by the same replay-safe line (the unique key above gates it).
           await tx
             .insert(IA)
@@ -284,6 +319,42 @@ export function createDrizzleCapConsumerStore(
               },
             });
           return { recorded: true };
+        },
+      );
+    },
+
+    async reverseInpatientDays(reversal: InpatientDaysReversal) {
+      return withOrgContext(
+        db,
+        { organizationId: reversal.organizationId, userId: CAP_CONSUMER_SYSTEM_USER_ID },
+        async (tx) => {
+          const reversedAt = reversal.reversedAt ? new Date(reversal.reversedAt) : new Date();
+          const hit = await tx
+            .update(IDL)
+            .set({
+              reversedAt,
+              claimId: sql`coalesce(${IDL.claimId}, ${reversal.claimId}::uuid)`,
+            })
+            .where(
+              and(
+                eq(IDL.organizationId, reversal.organizationId),
+                sql`${IDL.reversedAt} IS NULL`,
+                or(
+                  eq(IDL.claimId, reversal.claimId),
+                  // A pre-identity row: no claim id yet, matched by its claim_line id.
+                  reversal.claimLineIds && reversal.claimLineIds.length > 0
+                    ? and(isNull(IDL.claimId), inArray(IDL.sourceId, [...reversal.claimLineIds]))
+                    : undefined,
+                ),
+              ),
+            )
+            .returning({ periodId: IDL.capPeriodId });
+          // The roll-up is a cache of the ledger: rebuild every period the claim's days touched, same tx.
+          const periodIds = [...new Set(hit.map((r) => r.periodId))];
+          for (const periodId of periodIds) {
+            await reconcileInpatientAccrual(tx, reversal.organizationId, periodId);
+          }
+          return { reversed: hit.length };
         },
       );
     },

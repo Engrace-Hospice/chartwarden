@@ -19,6 +19,7 @@ import {
 } from "../domain";
 import type { M25WriteActor } from "./actor";
 import { loadAppealPacketPayload } from "./appeal-packet-payload";
+import { type AppealSourcePorts, UNBOUND_APPEAL_SOURCES } from "./appeal-packet-sources";
 import { VersionConflictError } from "./concurrency";
 import { type RemittanceCommandDeps, buildRemittanceCommands } from "./remittance-commands-drizzle";
 import type {
@@ -52,8 +53,12 @@ class InvalidTransitionError extends WardenXError {
 export function buildDrizzleM25WriteService(
   db: DbClient,
   outbox: WriteOutboxPort = NOOP_OUTBOX,
-  ports: Pick<RemittanceCommandDeps, "claims" | "audit"> = {},
+  ports: Pick<RemittanceCommandDeps, "claims" | "audit"> & {
+    /** GAP-036 - where the appeal packet reads the claim copy and the enclosure facts (default: refuse). */
+    readonly appealSources?: AppealSourcePorts;
+  } = {},
 ): M25WriteService {
+  const appealSources = ports.appealSources ?? UNBOUND_APPEAL_SOURCES;
   const RA = schema.remittanceAdvice;
   const RL = schema.remittanceLine;
   const DC = schema.denialCase;
@@ -321,6 +326,16 @@ export function buildDrizzleM25WriteService(
           },
         },
         async (tx, cur) => {
+          // GAP-036 - the typed packet payload (narrative, enclosure index, claim copy, 835 detail), built FIRST
+          // from the appeal + denial rows under RLS and the claim / document seams: a claim that cannot be read or
+          // an enclosure that is not attachable throws here, rolling the submit back before anything is published.
+          const packet = await loadAppealPacketPayload(
+            tx,
+            { id, organizationId: actor.organizationId, ...cur },
+            input,
+            submittedAt,
+            appealSources,
+          );
           await outbox.publish(tx, {
             eventName: "m25.appeal.submitted",
             organizationId: actor.organizationId,
@@ -333,18 +348,12 @@ export function buildDrizzleM25WriteService(
               submittedAt: submittedAt.toISOString(),
             },
           });
-          // GAP-036 - the typed packet payload (narrative, document index, claim / remit refs), built from
-          // the appeal + denial rows under RLS; M22 validates it before drawing the letter.
           await outbox.publish(tx, {
             eventName: "m25.appeal_packet.render_requested",
             organizationId: actor.organizationId,
             aggregateKind: "appeal_case",
             aggregateId: id,
-            payload: {
-              appealCaseId: id,
-              tier: cur.tier,
-              payload: await loadAppealPacketPayload(tx, { id, ...cur }, input, submittedAt),
-            },
+            payload: { appealCaseId: id, tier: cur.tier, payload: packet },
           });
         },
       );
@@ -368,6 +377,13 @@ export function buildDrizzleM25WriteService(
           },
         },
         async (tx, cur) => {
+          const packet = await loadAppealPacketPayload(
+            tx,
+            { id, organizationId: actor.organizationId, ...cur },
+            input,
+            submittedAt,
+            appealSources,
+          );
           await outbox.publish(tx, {
             eventName: "m25.appeal.submitted",
             organizationId: actor.organizationId,
@@ -386,11 +402,7 @@ export function buildDrizzleM25WriteService(
             organizationId: actor.organizationId,
             aggregateKind: "appeal_case",
             aggregateId: id,
-            payload: {
-              appealCaseId: id,
-              tier: cur.tier,
-              payload: await loadAppealPacketPayload(tx, { id, ...cur }, input, submittedAt),
-            },
+            payload: { appealCaseId: id, tier: cur.tier, payload: packet },
           });
         },
         (cur) => {

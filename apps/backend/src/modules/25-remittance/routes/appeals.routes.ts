@@ -99,7 +99,13 @@ export function registerAppealRoutes(app: FastifyInstance, deps: AppealRouteDeps
         await writeService.submitAppeal(
           actor,
           idOf(request),
-          { appealNarrative: body.appealNarrative, attachedDocumentIds: body.attachedDocumentIds },
+          {
+            appealNarrative: body.appealNarrative,
+            attachedDocumentIds: body.attachedDocumentIds,
+            ...(body.medicalRecordsBundleDocumentId
+              ? { medicalRecordsBundleDocumentId: body.medicalRecordsBundleDocumentId }
+              : {}),
+          },
           ifMatchVersion(request),
         ),
       );
@@ -122,6 +128,9 @@ export function registerAppealRoutes(app: FastifyInstance, deps: AppealRouteDeps
           {
             appealNarrative: body.appealNarrative,
             attachedDocumentIds: body.attachedDocumentIds,
+            ...(body.medicalRecordsBundleDocumentId
+              ? { medicalRecordsBundleDocumentId: body.medicalRecordsBundleDocumentId }
+              : {}),
             goodCauseJustification: body.goodCauseJustification,
           },
           ifMatchVersion(request),

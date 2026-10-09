@@ -232,11 +232,12 @@ export function buildM26SeamImpls(db: DbClient, read: M26ReadService): M26SeamIm
     },
   };
 
-  // Recipient resolution for M36's generic AlertEmitter (M36-F03). Cap alerts are delivered by M36's own
-  // `cap-threshold-alerts` consumer against the seeded platform `alert_rule` role sets (cfo / billing_manager,
-  // + compliance_officer / org_admin on a breach), so this seam is not on the delivery path. The M3
-  // user-permission query binds here when M36 moves to cap.event.read holders; the empty floor is fail-safe
-  // (no spurious recipients).
+  // Recipient resolution for M36's generic AlertEmitter (M36-F03). GAP-040: cap alerts are delivered by M36's own
+  // `cap-threshold-alerts` consumer against the seeded platform `alert_rule`s, whose audience is M36's generic
+  // `permission_holders` resolver over `cap.event.read` (org administrators as the floor; a breach adds
+  // compliance_officer / org_admin). That resolution lives in M36 (it reads M3's grants, which M26 cannot), so this
+  // seam is not on the delivery path and nothing consumes it. It stays empty rather than inventing per-user band
+  // subscriptions: a per-user band choice is M36's notification preferences / severity floor, not a cap fact.
   const subscribers: CapAlertSubscriberProvider = {
     async listSubscribers() {
       return [];

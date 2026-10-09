@@ -19,6 +19,8 @@ export interface AccrualLineToRecord {
 /** The level-of-care day-line write the m23 line_finalized consumer produces (rev 0651/0652/0655/0656). */
 export interface InpatientDayToRecord {
   readonly organizationId: string;
+  /** The M23 claim the line belongs to - the ledger identity a later replace/void/recoup reverses by. */
+  readonly claimId: string;
   readonly patientId: string;
   readonly sourceId: string;
   readonly revCode: "0651" | "0652" | "0655" | "0656";
@@ -28,10 +30,25 @@ export interface InpatientDayToRecord {
   readonly postedAt: string;
 }
 
+/** A claim whose payment was taken back (replaced / voided / recouped): its ledger days stop counting. */
+export interface InpatientDaysReversal {
+  readonly organizationId: string;
+  readonly claimId: string;
+  /**
+   * The claim's claim_line ids, when the caller has them (the platform-ops backfill). A ledger row written before
+   * the ledger carried a claim id is found by these (`source_id`) and gets the claim identity stamped.
+   */
+  readonly claimLineIds?: readonly string[];
+  /** When the payment was taken back; defaults to the store's clock when the event carries no instant. */
+  readonly reversedAt?: string;
+}
+
 /** The store the consumers drive (the Drizzle binding records lines for the active cap period under RLS). */
 export interface CapConsumerStore {
   recordAccrualLine(line: AccrualLineToRecord): Promise<{ recorded: boolean }>;
   recordInpatientDay(day: InpatientDayToRecord): Promise<{ recorded: boolean }>;
+  /** GAP-038 - annotate the claim's live day lines reversed and rebuild the roll-up; `reversed` = lines hit. */
+  reverseInpatientDays(reversal: InpatientDaysReversal): Promise<{ reversed: number }>;
   freezePatient(
     organizationId: string,
     patientId: string,
@@ -129,6 +146,7 @@ export async function handleInpatientDay(
   if (revCode !== "0651" && revCode !== "0652" && revCode !== "0655" && revCode !== "0656")
     return { recorded: false };
   const organizationId = str(p.organizationId);
+  const claimId = str(p.claimId);
   const patientId = str(p.patientId);
   const sourceId = str(p.claimLineId);
   const serviceFrom = str(p.serviceFrom);
@@ -137,6 +155,7 @@ export async function handleInpatientDay(
   const days = cents(p.days);
   if (
     !organizationId ||
+    !claimId ||
     !patientId ||
     !sourceId ||
     !serviceFrom ||
@@ -148,6 +167,7 @@ export async function handleInpatientDay(
   }
   return store.recordInpatientDay({
     organizationId,
+    claimId,
     patientId,
     sourceId,
     revCode,
@@ -155,6 +175,31 @@ export async function handleInpatientDay(
     serviceFrom,
     serviceTo,
     postedAt,
+  });
+}
+
+/**
+ * GAP-038 - m23.claim.replaced / m23.claim.voided / m25.remittance.claim_recouped → the claim's inpatient day
+ * lines stop counting toward the cap's numerator and denominator. The three payloads name the affected claim
+ * differently: replaced/voided carry `originalClaimId` (the PAID claim being corrected - NEVER the
+ * replacement/void claim, which has no paid lines yet) and no patient or period; the recoup carries `claimId`
+ * (its nullable patientId/service dates are irrelevant here). The caller passes the payload field to read.
+ * Unlike the money-side `handleClaimReversed` this needs nothing but the claim id, so it never no-ops on the
+ * replaced/voided payloads.
+ */
+export async function handleClaimDaysReversed(
+  store: CapConsumerStore,
+  p: Record<string, unknown>,
+  claimIdField: "originalClaimId" | "claimId",
+): Promise<{ reversed: number }> {
+  const organizationId = str(p.organizationId);
+  const claimId = str(p[claimIdField]);
+  if (!organizationId || !claimId) return { reversed: 0 };
+  const postedAt = str(p.postedAt);
+  return store.reverseInpatientDays({
+    organizationId,
+    claimId,
+    ...(postedAt ? { reversedAt: postedAt } : {}),
   });
 }
 

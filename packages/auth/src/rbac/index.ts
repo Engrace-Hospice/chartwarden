@@ -40,6 +40,7 @@ export {
   createDbActorEnrichmentReader,
   createDbAdminMembershipReader,
   createDbEffectivePermissionStore,
+  createDbPermissionHolderReader,
   registerDbEffectivePermissionResolver,
 } from "./drizzle-store";
 // M31 / M2 — permissions held by SESSION CLASS (portal, funeral-home), not by membership.

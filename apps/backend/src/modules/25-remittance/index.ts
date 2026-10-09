@@ -48,6 +48,7 @@ export {
   buildDrizzleM25WriteService,
 } from "./routes/index";
 export { mountM25Routes } from "./routes/mount";
+export { buildSeamAppealSourcePorts } from "./routes/appeal-packet-sources";
 
 // §4.8 platform tenancy — the cron job id + the PLATFORM_CONTEXT_ALLOWLIST registration the active-org
 // enumerator's `withPlatformContext` fan-out requires (the M30/M33/M34 wiring.ts precedent).

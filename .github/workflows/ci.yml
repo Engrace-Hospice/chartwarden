@@ -671,7 +671,7 @@ jobs:
           # feeding a real Drizzle-backed store for 8 of M26's 9 `handlers-unbound` events.
           - {
               name: "M26 Cap Management",
-              scripts: "test:m26:cost-report-cap-seam:live test:m26:cap-consumer-store:live test:m26:psr-import:live test:m26:projections-alerts:live",
+              scripts: "test:m26:cost-report-cap-seam:live test:m26:cap-consumer-store:live test:m26:psr-import:live test:m26:projections-alerts:live test:gap-038:cap-day-backfill:live",
             }
           - {
               name: "M30 HQRP & Quality",

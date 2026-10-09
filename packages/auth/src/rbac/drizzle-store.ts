@@ -22,7 +22,7 @@ import type {
   AdminMembershipReader,
   OrgScope,
 } from "@wardenx/types";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, or } from "drizzle-orm";
 import { effectiveReach } from "../roles/grant-scope";
 import { roleConfersKey } from "../roles/platform-reserved";
 import { setEffectivePermissionResolver } from "./require-role";
@@ -236,5 +236,52 @@ export function createDbAdminMembershipReader(db: DbClient): AdminMembershipRead
         return ids;
       });
     },
+  };
+}
+
+/**
+ * GAP-040 - the user ids of the ACTIVE members holding ANY of `permissionKeys` through a live grant, for audience
+ * resolution (M36's `permission_holders` alert resolver). Same predicates as `loadGrants` / the engine's
+ * `resolveEffectivePermissions`: membership `active`, grant not expired, role `enabled`, and the role must confer
+ * (`roleConfersKey` - a tenant-owned row carrying a reserved platform key or category confers nothing). Exact
+ * keys, no wildcards (the engine has none). Runs under `withOrgContext`, so RLS scopes it to `app.org_id` beneath
+ * the explicit org predicates. `abacOverride` is deliberately not read: a notification audience is a role-level
+ * fact, not a per-record entitlement. Returns distinct user ids; an empty key list reads as nobody.
+ */
+export function createDbPermissionHolderReader(
+  db: DbClient,
+): (orgId: string, permissionKeys: readonly string[]) => Promise<readonly string[]> {
+  return async (orgId, permissionKeys) => {
+    if (permissionKeys.length === 0) return [];
+    return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
+      const rows = await tx
+        .selectDistinct({
+          userId: schema.memberships.userId,
+          organizationId: schema.roles.organizationId,
+          key: schema.roles.key,
+          category: schema.roles.category,
+        })
+        .from(schema.membershipRoles)
+        .innerJoin(schema.roles, eq(schema.roles.id, schema.membershipRoles.roleId))
+        .innerJoin(
+          schema.memberships,
+          eq(schema.memberships.id, schema.membershipRoles.membershipId),
+        )
+        .innerJoin(schema.rolePermissions, eq(schema.rolePermissions.roleId, schema.roles.id))
+        .where(
+          and(
+            eq(schema.membershipRoles.organizationId, orgId),
+            eq(schema.memberships.organizationId, orgId),
+            inArray(schema.rolePermissions.permissionKey, [...permissionKeys]),
+            eq(schema.roles.enabled, true),
+            eq(schema.memberships.status, "active"),
+            or(
+              isNull(schema.membershipRoles.expiresAt),
+              gt(schema.membershipRoles.expiresAt, new Date()),
+            ),
+          ),
+        );
+      return [...new Set(rows.filter(roleConfersKey).map((r) => r.userId))];
+    });
   };
 }
