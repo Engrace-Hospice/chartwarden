@@ -51,3 +51,38 @@ Please answer in writing. Items marked **blocking** gate our build.
 12. What does test mode cover for hospice claims and NOE/NOTR? What certification or pilot steps do you
     and the MAC expect before production?
 13. Idempotency keys last 24 hours. Any recommended pattern for longer-term duplicate protection?
+
+## Answers received 2026-10-09 (Customer Operations, by email)
+
+- **Raw X12 837I:** Stedi generates the envelopes. Set `ST03` to `005010X223A2` and put the payer ID in 2010BB `NM109`. (Q1/Q2 in part)
+- **Responses:** 999s, Stedi's 277CA, the MAC's 277CA and 835s all arrive as processed transaction events. Payloads are references (`transactionId`, `fileExecutionId`). Each destination has its own rotatable signing secret. Use the poll transactions endpoint to reconcile missed events. (Q9, Q10)
+- **Eligibility:** Medicare runs through HETS (payer ID `CMS`) via raw X12 or the CAQH CORE SOAP endpoint. Each NPI needs CMS enrollment and attestation, which Stedi handles. Pass upstream IPs in `X-Forwarded-For`. Requests from outside the U.S. are blocked, and production testing with CMS is coordinated through Stedi. (Q11)
+- **Testing:** test claims to any payer ID return test 277CAs, and the Stedi Test Payer returns test 835s. (Q12 in part)
+- **Not yet answered:** hospice-specific items and tenant setup, to be covered on a 30-minute technical call. Stedi also asked for expected weekly or monthly volume of checks and claims.
+
+Note: the answer that test claims to any payer ID return test 277CAs does not match what the sandbox
+returned on 2026-10-09 (`ACCOUNT_NOT_PROVISIONED` on every 837I that passed edits). See follow-up Q14.
+
+## Follow-up questions (sandbox probe, 2026-10-09)
+
+Payer search with the sandbox key shows Medicare Oregon Part A as Stedi ID `MDCKC`, payer ID `12M41`,
+with 837I, 835 and eligibility all `ENROLLMENT_REQUIRED`. NGS `MFPWU` (13001) shows 837I
+`NOT_SUPPORTED`.
+
+14. Our sandbox key returns `ACCOUNT_NOT_PROVISIONED` (HTTP 400) on every 837I that passes your edits,
+    and on 277/835 report fetches and the polling endpoint. Your reply says test claims to any payer ID
+    return test 277CAs. What provisioning does this account need, and can you enable it?
+15. Is `MDCKC` / `12M41` the right payer for Oregon hospice 837I and for NOE/NOTR (TOB 81A/81B, 82A/82B)?
+    Our CCN is 381588 (Pendleton, OR 97801). Do NOE/NOTR use the same payer ID and the same 837I
+    transaction?
+16. What does enrollment for `12M41` require (CCN, NPI, PTAN, signed forms), and how long does it take?
+    Can we test NOE/NOTR before enrollment completes?
+17. Your docs say Original Medicare does not accept claim frequency 7 or 8 for resubmissions, yet your
+    edit accepts them when `REF*F8` follows `CL1`. Does the MAC accept hospice adjustments (7) and
+    cancels (8)? If not, what is the supported path?
+18. Does your edit engine apply any hospice-specific rules (NOE timeliness, benefit-period dates,
+    revenue-code/HCPCS pairing)? Our tests found none, and we treat our own validation as the gate.
+19. Volume estimate (you asked): ADC 30-50; per month about 35-60 837I claims (incl. ~10% adjustments), 10-15 NOE, 10-15 NOTR, 25-45 eligibility checks; about 100-170 transactions in total.
+
+Evidence for the technical call: payloads that pass your edits are in the session scratchpad
+(`FINAL_837I_hospice_*`); synthetic data only.

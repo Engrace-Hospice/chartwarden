@@ -314,7 +314,7 @@ chain, strict basis) and `m6-f2f-real-dates.live.test.ts` (`test:m6:f2f-real-dat
 
 **Already fixed on main before batch 12 (verified against code, not re-done):** GAP-038/039/040 (M13 `extend-schedule`, `missed-dose-sweep`, `prn-reassessment-overdue` and the other three crons, wired via `registerM13CronWorkers`), GAP-044 (M15 five crons), GAP-048 (M16 four §4.9 crons), GAP-061 (M20 overdue detector + coverage-gap watchdog), GAP-062 (M21 par / unreturned-kit / supply-request monitors) — all landed in batch 9 (#324).
 
-## Batch 17 — GAP-151..164 (M28–M34, all P2) from `docs/audits/GAP_ANALYSIS_20261004.md`
+## Batch 17 — GAP-151..164 (M28–M34, all P2) from `docs/audits/GAP_ANALYSIS_20261004.md` (file removed from the tree; see git history)
 
 **Closed.**
 - GAP-151 (M28): already fixed on `main` — export poll and cancel both 404 unless `job.clientId === ctx.clientId`.
