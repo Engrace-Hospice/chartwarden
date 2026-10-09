@@ -1204,6 +1204,64 @@
                       }
                     ]
                   },
+                  "listenerDownThresholdSeconds": {
+                    "anyOf": [
+                      {
+                        "minimum": 60,
+                        "maximum": 300,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "expectedQuietWindows": {
+                    "anyOf": [
+                      {
+                        "maxItems": 14,
+                        "type": "array",
+                        "items": {
+                          "additionalProperties": false,
+                          "type": "object",
+                          "required": [
+                            "days",
+                            "start",
+                            "end",
+                            "tz"
+                          ],
+                          "properties": {
+                            "days": {
+                              "minItems": 1,
+                              "maxItems": 7,
+                              "type": "array",
+                              "items": {
+                                "minimum": 0,
+                                "maximum": 6,
+                                "type": "integer"
+                              }
+                            },
+                            "start": {
+                              "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                              "type": "string"
+                            },
+                            "end": {
+                              "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                              "type": "string"
+                            },
+                            "tz": {
+                              "minLength": 1,
+                              "maxLength": 64,
+                              "type": "string"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "labDestinationFacilityId": {
                     "format": "uuid",
                     "type": "string"
