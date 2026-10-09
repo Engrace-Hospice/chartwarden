@@ -1,0 +1,92 @@
+{
+  "title": "Notice of Patient Rights - Acknowledgment",
+  "createdAtIso": "2026-09-02T00:00:00.000Z",
+  "blocks": [
+    {
+      "kind": "title",
+      "text": "Notice of Patient Rights - Acknowledgment",
+      "subtitle": "Evergreen Hospice LLC"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Patient",
+          "Zelda Quillfeather-Ramirez"
+        ],
+        [
+          "Medical record number",
+          "MRN-ZQR-90417"
+        ],
+        [
+          "Date of birth",
+          "1941-03-07"
+        ],
+        [
+          "Document date",
+          "2026-09-02 00:00 UTC"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Acknowledgment"
+    },
+    {
+      "kind": "fieldGrid",
+      "cells": [
+        [
+          "Acknowledged on",
+          "2026-09-02"
+        ],
+        [
+          "Acknowledged by",
+          "Patient's representative"
+        ],
+        [
+          "Method",
+          "Wet Ink Scanned"
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Notice of patient rights"
+    },
+    {
+      "kind": "legalText",
+      "id": "beneficiary_rights_text",
+      "text": "I have received, and the hospice has explained to me, a written notice of my rights as a hospice patient. The notice explains my rights, including the right to be informed of my rights before care is furnished; to be treated with dignity and respect; to have my person and property respected; to take part in planning my care; to choose my attending physician; to refuse care or treatment; to voice grievances without discrimination or reprisal; and to have my records kept confidential. The hospice has also given me information about its policies on advance directives.",
+      "cite": "42 CFR 418.52(a)"
+    },
+    {
+      "kind": "keepTogether",
+      "blocks": [
+        {
+          "kind": "signature",
+          "role": "Patient or representative",
+          "printedName": "Zelda Quillfeather-Ramirez",
+          "signedAt": "2026-09-02",
+          "method": "wet_ink_scanned",
+          "meaning": "acknowledgment",
+          "ref": "1a2b3c4d-0000-4000-8000-000000000009",
+          "capacity": "Authorized representative of the patient",
+          "ruledLine": true
+        },
+        {
+          "kind": "signature",
+          "role": "Witness",
+          "printedName": "Pat Witness",
+          "signedAt": "2026-09-02",
+          "method": "electronic",
+          "meaning": "witness",
+          "ref": "1a2b3c4d-0000-4000-8000-000000000009"
+        }
+      ]
+    }
+  ],
+  "runningHeader": "Zelda Quillfeather-Ramirez - MRN MRN-ZQR-90417 - Notice of Patient Rights - Acknowledgment",
+  "discloseDegradedGlyphs": true
+}

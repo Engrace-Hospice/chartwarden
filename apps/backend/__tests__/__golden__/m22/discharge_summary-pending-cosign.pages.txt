@@ -1,0 +1,37 @@
+--- page 1 ---
+Discharge Summary
+Evergreen Hospice LLC
+Patient
+Zelda Quillfeather-Ramirez
+Medical record number
+MRN-ZQR-90417
+Date of birth
+1941-03-07
+Document date
+2026-09-30 14:05 UTC
+Discharge
+Discharge date
+2026-10-06
+Status
+Pending Cosign
+This for-cause discharge is awaiting medical-director cosign. It is not final until cosigned.
+Reason for discharge
+Reason
+For Cause
+For-cause reason
+Unsafe home environment for staff
+Physician discharge order
+Order reference
+ORD-17
+Order
+Discharge per medical director order.
+Narrative
+Discharged for cause after repeated unsafe-environment events.
+Discharge filed by
+Electronically signed by Nina Filer on 2026-09-30 14:05 UTC.
+Meaning of signature: Authorship.
+Signature record ref 1a2b3c4d.
+Physician discharge order signed by
+Electronically signed by Dr. Imani Okafor, MD (NPI 1234567893) on 2026-09-30 14:05 UTC.
+Meaning of signature: Discharge Order.
+Signature record ref 1a2b3c4d.

@@ -71,6 +71,7 @@ import {
   resolvePatientRedirect,
   transitionDocument,
 } from "../src/modules/22-documents/index";
+import { CTI } from "./_m22-form-fixtures";
 
 const ORG = "org_a";
 const PAT = "00000000-0000-4000-8000-0000000000aa";
@@ -101,6 +102,7 @@ describe("M22-T11 §7.2 W2 — form render handshake", () => {
   it("renders a typed CTI payload → object written under a PHI-free key + a queryable back-ref (W2 AC)", async () => {
     const { renderer, store, liveObjects } = makeRenderer();
     const { documentId } = await renderer.render(scope, "cti", {
+      ...CTI,
       aggregateId: "cti-1",
       patientId: PAT,
     });

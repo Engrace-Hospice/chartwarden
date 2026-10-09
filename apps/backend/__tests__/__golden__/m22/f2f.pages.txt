@@ -1,0 +1,33 @@
+--- page 1 ---
+Face-to-Face Encounter Attestation
+Evergreen Hospice LLC
+Patient
+Zelda Quillfeather-Ramirez
+Medical record number
+MRN-ZQR-90417
+Date of birth
+1941-03-07
+Document date
+2026-09-30 14:05 UTC
+Encounter
+[42 CFR 418.22(a)(4)]
+Date of encounter
+2026-09-12
+Location / modality
+Patient Home
+Performed by
+Hospice nurse practitioner
+Timing
+Within the 30 calendar days before the benefit period
+Attestation
+[42 CFR 418.22(b)(4)]
+I attest that I had a face-to-face encounter with the patient named above on the date of encounter shown
+above. The clinical findings of that visit were provided to the certifying physician for use in determining
+continued eligibility for hospice care.
+Clinical findings and basis of the attestation
+Visited the patient at home; findings: cachexia, dyspnea at rest, PPS 30 percent. Findings were shared with the
+certifying physician.
+Clinician who performed the face-to-face encounter
+Electronically signed by Dr. Imani Okafor, NP (NPI 1234567893) on 2026-09-30 14:05 UTC.
+Meaning of signature: Attestation.
+Signature record ref 1a2b3c4d.

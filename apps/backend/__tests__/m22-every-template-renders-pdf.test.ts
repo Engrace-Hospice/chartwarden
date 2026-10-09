@@ -4,6 +4,7 @@
 import {
   APPEAL_TIER_LETTERS,
   type AppealTier,
+  RenderPayloadError,
   appealPacketViolations,
   buildAppealPacketRenderPayload,
 } from "@wardenx/types";
@@ -53,8 +54,17 @@ const RICH_PAYLOAD = {
 
 describe("every platform template renders a real PDF (GAP-033)", () => {
   const keys = Object.keys(PLATFORM_TEMPLATE_TABLE);
-  /** appeal_packet validates its typed payload and fails closed by design - covered in its own describe below. */
-  const strictKeys = new Set(["appeal_packet"]);
+  /** These validate a typed payload and fail closed by design (appeal_packet: its own describe below; the M6 CoP
+   *  forms: m22-forms-wave1.test.ts). An id-only payload for them is a malformed request, never a generic dump. */
+  const strictKeys = new Set([
+    "appeal_packet",
+    "cti",
+    "f2f",
+    "nor",
+    "revocation",
+    "discharge_summary",
+    "discharge_summary_transfer",
+  ]);
 
   it("covers the full template table (guards against the loop matching nothing)", () => {
     expect(keys.length).toBeGreaterThanOrEqual(50);
@@ -95,8 +105,33 @@ describe("every platform template renders a real PDF (GAP-033)", () => {
       { a: { b: { c: { d: 1 } } } },
       { a: [null, [1, 2], { b: null }] },
     ]) {
-      expectValidPdf(renderPdfForTemplate("cti", payload, "Certification of Terminal Illness"));
+      expectValidPdf(renderPdfForTemplate("encounter", payload, "Encounter"));
     }
+  });
+
+  it.each([...strictKeys].filter((k) => k !== "appeal_packet"))(
+    "%s: a hostile or id-only payload fails closed with a typed error (retry -> DLQ), never a blank form",
+    (key) => {
+      for (const payload of [
+        null,
+        undefined,
+        "x",
+        7,
+        [],
+        { aggregateId: "agg-1", patientId: null },
+      ]) {
+        expect(() => renderPdfForTemplate(key, payload, key)).toThrow(RenderPayloadError);
+      }
+    },
+  );
+
+  it("a legacy id-only M6 event drained under the explicit fallback flag renders generically, not as a form", () => {
+    const bytes = renderPdfForTemplate(
+      "cti",
+      { aggregateId: "agg-1", patientId: null, legacyUntyped: true },
+      "Certification of Terminal Illness",
+    );
+    expectValidPdf(bytes);
   });
 });
 

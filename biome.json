@@ -19,6 +19,7 @@
       "**/tsconfig*.json",
       "**/package.json",
       "scripts/__fixtures__",
+      "apps/backend/__tests__/__golden__",
       "services/**/.venv"
     ]
   },
