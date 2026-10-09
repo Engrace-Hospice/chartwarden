@@ -45,6 +45,11 @@ import {
 } from "../../shell/document-workflows";
 import { MdmEntityLookupField, ProviderEntityLookupField } from "../../shell/entity-lookups";
 import { useSession } from "../../shell/session";
+import {
+  AdmissionCodesFields,
+  EMPTY_ADMISSION_CODES,
+  admissionCodesBody,
+} from "./admission-codes-fields";
 import { EvidenceUploadDrawer, type EvidenceUploadKind } from "./admission-evidence-upload";
 import { AdmissionHoldAction } from "./admission-hold-action";
 import {
@@ -87,6 +92,8 @@ interface AdmissionDetailView extends SummaryRow {
   patientResidenceAddressId?: string | null;
   serviceAddressSnapshot?: AddressView | null;
   hospicePhysicianId?: string | null;
+  admissionTypeCode?: string | null;
+  admissionSourceCode?: string | null;
   hospicePhysician?: PhysicianSummary | null;
   primaryDiagnosisIcd10?: string | null;
   referringDxText?: string | null;
@@ -296,6 +303,7 @@ export function AdmissionDetail({
   const [admissionDate, setAdmissionDate] = useState("");
   const [providerEntityId, setProviderEntityId] = useState("");
   const [hospicePhysicianId, setHospicePhysicianId] = useState("");
+  const [admissionCodes, setAdmissionCodes] = useState(EMPTY_ADMISSION_CODES);
   const [electionEffectiveDate, setElectionEffectiveDate] = useState("");
   const [primaryDiagnosisIcd10, setPrimaryDiagnosisIcd10] = useState("");
   const [electedProviderEntityId, setElectedProviderEntityId] = useState("");
@@ -351,6 +359,10 @@ export function AdmissionDetail({
     setAdmissionDate(toDateInput(detail.admissionAt));
     setProviderEntityId(detail.providerEntityId ?? "");
     setHospicePhysicianId(detail.hospicePhysicianId ?? "");
+    setAdmissionCodes({
+      admissionTypeCode: detail.admissionTypeCode ?? "",
+      admissionSourceCode: detail.admissionSourceCode ?? "",
+    });
     setPrimaryDiagnosisIcd10(detail.primaryDiagnosisIcd10 ?? "");
     setCtiDiagnosisIcd10(detail.primaryDiagnosisIcd10 ?? "");
     const [p, w, r, h, ec, patientResult, addressResult] = await Promise.all([
@@ -513,6 +525,7 @@ export function AdmissionDetail({
         admissionAt: dateInputToIso(admissionDate),
         providerEntityId,
         hospicePhysicianId,
+        ...admissionCodesBody(admissionCodes),
       } as never,
     });
     if (err) {
@@ -528,6 +541,7 @@ export function AdmissionDetail({
     admissionDate,
     providerEntityId,
     hospicePhysicianId,
+    admissionCodes,
     patientAddresses,
     client,
     branchError,
@@ -1577,6 +1591,8 @@ export function AdmissionDetail({
                 valueLabel={admission!.hospicePhysician?.displayName}
                 required
               />
+
+              <AdmissionCodesFields draft={admissionCodes} onChange={setAdmissionCodes} />
 
               {actionError ? (
                 <p role="alert" aria-live="assertive" style={alertStyle}>

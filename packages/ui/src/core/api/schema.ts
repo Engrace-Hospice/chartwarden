@@ -27566,6 +27566,10 @@ export interface operations {
                     attendingPhysicianId?: string;
                     /** Format: uuid */
                     hospiceMedicalDirectorId: string;
+                    /** @description UB-04 FL 14 Type of Admission: 1 emergency, 2 urgent, 3 elective, 5 trauma, 9 information not available. */
+                    admissionTypeCode?: "1" | "2" | "3" | "5" | "9";
+                    /** @description UB-04 FL 15 Point of Origin: 1 non-health care facility, 2 clinic/physician office, 4 hospital transfer, 5 SNF/ICF transfer, 6 other health care facility, 8 court/law enforcement, 9 information not available. */
+                    admissionSourceCode?: "1" | "2" | "4" | "5" | "6" | "8" | "9";
                     /** @description A readmission: the patient's earlier, live-discharged admission (GET /admissions/:id/readmission-context). */
                     readmittedFromAdmissionId?: string;
                     benefitPeriod?: {
@@ -27978,6 +27982,8 @@ export interface operations {
                             npi?: string | null;
                         } | null;
                         attendingPhysicianId?: string | null;
+                        admissionTypeCode?: string | null;
+                        admissionSourceCode?: string | null;
                         admissionRecommendation?: {
                             recommendedByUserId: string;
                             capacity: "medical_director" | "physician_designee" | "idg_physician_member";
@@ -28019,6 +28025,8 @@ export interface operations {
                     providerEntityId?: string;
                     /** Format: uuid */
                     locationId?: string;
+                    admissionTypeCode?: ("1" | "2" | "3" | "5" | "9") | null;
+                    admissionSourceCode?: ("1" | "2" | "4" | "5" | "6" | "8" | "9") | null;
                     ifVersion: number;
                 };
             };

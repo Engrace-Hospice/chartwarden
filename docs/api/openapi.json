@@ -18387,6 +18387,64 @@
                     "format": "uuid",
                     "type": "string"
                   },
+                  "admissionTypeCode": {
+                    "description": "UB-04 FL 14 Type of Admission: 1 emergency, 2 urgent, 3 elective, 5 trauma, 9 information not available.",
+                    "anyOf": [
+                      {
+                        "const": "1",
+                        "type": "string"
+                      },
+                      {
+                        "const": "2",
+                        "type": "string"
+                      },
+                      {
+                        "const": "3",
+                        "type": "string"
+                      },
+                      {
+                        "const": "5",
+                        "type": "string"
+                      },
+                      {
+                        "const": "9",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "admissionSourceCode": {
+                    "description": "UB-04 FL 15 Point of Origin: 1 non-health care facility, 2 clinic/physician office, 4 hospital transfer, 5 SNF/ICF transfer, 6 other health care facility, 8 court/law enforcement, 9 information not available.",
+                    "anyOf": [
+                      {
+                        "const": "1",
+                        "type": "string"
+                      },
+                      {
+                        "const": "2",
+                        "type": "string"
+                      },
+                      {
+                        "const": "4",
+                        "type": "string"
+                      },
+                      {
+                        "const": "5",
+                        "type": "string"
+                      },
+                      {
+                        "const": "6",
+                        "type": "string"
+                      },
+                      {
+                        "const": "8",
+                        "type": "string"
+                      },
+                      {
+                        "const": "9",
+                        "type": "string"
+                      }
+                    ]
+                  },
                   "readmittedFromAdmissionId": {
                     "minLength": 1,
                     "maxLength": 64,
@@ -21098,6 +21156,26 @@
                         }
                       ]
                     },
+                    "admissionTypeCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "admissionSourceCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "admissionRecommendation": {
                       "anyOf": [
                         {
@@ -21272,6 +21350,78 @@
                   "locationId": {
                     "format": "uuid",
                     "type": "string"
+                  },
+                  "admissionTypeCode": {
+                    "anyOf": [
+                      {
+                        "description": "UB-04 FL 14 Type of Admission: 1 emergency, 2 urgent, 3 elective, 5 trauma, 9 information not available.",
+                        "anyOf": [
+                          {
+                            "const": "1",
+                            "type": "string"
+                          },
+                          {
+                            "const": "2",
+                            "type": "string"
+                          },
+                          {
+                            "const": "3",
+                            "type": "string"
+                          },
+                          {
+                            "const": "5",
+                            "type": "string"
+                          },
+                          {
+                            "const": "9",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "admissionSourceCode": {
+                    "anyOf": [
+                      {
+                        "description": "UB-04 FL 15 Point of Origin: 1 non-health care facility, 2 clinic/physician office, 4 hospital transfer, 5 SNF/ICF transfer, 6 other health care facility, 8 court/law enforcement, 9 information not available.",
+                        "anyOf": [
+                          {
+                            "const": "1",
+                            "type": "string"
+                          },
+                          {
+                            "const": "2",
+                            "type": "string"
+                          },
+                          {
+                            "const": "4",
+                            "type": "string"
+                          },
+                          {
+                            "const": "5",
+                            "type": "string"
+                          },
+                          {
+                            "const": "6",
+                            "type": "string"
+                          },
+                          {
+                            "const": "8",
+                            "type": "string"
+                          },
+                          {
+                            "const": "9",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "ifVersion": {
                     "minimum": 0,
