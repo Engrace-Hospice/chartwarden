@@ -39,6 +39,27 @@ describe("composeFacilitySpans", () => {
     });
   });
 
+  it("does not let an open M5 span block a later M37-known stay: M5 is clipped to the stays M37 does not know", () => {
+    const earlyUnknown = { levelOfCarePeriodId: "loc-early", from: "2026-11-01", to: "2026-11-03" };
+    const laterKnown = { levelOfCarePeriodId: "loc-late", from: "2026-11-10", to: "2026-11-14" };
+    const spans = composeFacilitySpans(
+      [earlyUnknown, laterKnown],
+      new Map([["loc-late", "97838"]]), // hospital, known to M37
+      [NURSING_HOME_OPEN], // M5: the nursing home, open-ended
+    );
+    // the M5 span only speaks for the early stay it can stand in for
+    expect(spans).toContainEqual({
+      effectiveFrom: "2026-11-01",
+      effectiveTo: "2026-11-03",
+      postalCode: "97801",
+    });
+    expect(spans.some((s) => s.effectiveTo === null)).toBe(false);
+    expect(facilityPostalCodeForInpatientDates([earlyUnknown, laterKnown], spans)).toEqual({
+      status: "found",
+      postalCode: "97838", // the LATEST facility, not an ambiguity with the nursing home
+    });
+  });
+
   it("is empty when M37 knows nothing and no M5 span overlaps", () => {
     expect(
       composeFacilitySpans([STAY], new Map(), [

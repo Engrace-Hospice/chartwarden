@@ -14,9 +14,9 @@ const REASON_TEXT: Readonly<Record<MissingValueCode["reason"], string>> = {
   zip_unknown: "the recorded ZIP code is not in the CMS wage-index geography",
   county_unknown: "the ZIP's county has no CMS wage-index area for this fiscal year",
   no_zip_recorded: "no ZIP code is recorded for it",
-  no_facility_stay: "no facility residence span overlaps the inpatient dates on the claim",
+  no_facility_stay: "no inpatient facility found for the claim's inpatient dates",
   ambiguous_facility:
-    "more than one facility with different (or missing) ZIP codes overlaps the inpatient dates",
+    "more than one facility with different (or missing) ZIP codes served the last inpatient day",
 };
 
 const SOURCE: Readonly<Record<MissingValueCode["code"], string>> = {

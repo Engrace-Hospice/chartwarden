@@ -79,7 +79,6 @@ export async function readAssemblyFacts(
   const electionAddendum = seams.electionAddendum
     ? await seams.electionAddendum.forAdmission(orgId, admission.admissionId)
     : undefined;
-  // Wage-index value codes (61 / G8): the CBSA areas of the residence / latest facility; undefined when unbound.
   const faceToFace = await seams.faceToFace.forPatient(orgId, patientId, range);
   const resolvedLoc = await seams.levelOfCare.periodsInRange(orgId, patientId, range);
   // Wage-index value codes (61 / G8): the CBSA areas of the residence (period end) and of the facility that

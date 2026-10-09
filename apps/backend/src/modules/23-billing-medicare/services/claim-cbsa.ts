@@ -55,12 +55,19 @@ export function composeFacilitySpans(
       : [],
   );
   const unknownToM37 = stays.filter((s) => !m37PostalByPeriod.has(s.levelOfCarePeriodId));
-  const overlapsAny = (span: FacilitySpan) =>
-    unknownToM37.some(
-      (s) =>
-        span.effectiveFrom <= s.to && (span.effectiveTo === null || span.effectiveTo >= s.from),
-    );
-  return [...fromM37, ...m5Spans.filter(overlapsAny)];
+  // An M5 span stands in only for the stays M37 does not know: clip it to each of them (intersect), so an open-ended
+  // nursing-home span cannot also speak for a later stay M37 knows and contradict it.
+  const clipped = m5Spans.flatMap((span) =>
+    unknownToM37.flatMap((stay) => {
+      const from = span.effectiveFrom > stay.from ? span.effectiveFrom : stay.from;
+      const to =
+        span.effectiveTo !== null && span.effectiveTo < stay.to ? span.effectiveTo : stay.to;
+      return from <= to
+        ? [{ effectiveFrom: from, effectiveTo: to, postalCode: span.postalCode }]
+        : [];
+    }),
+  );
+  return [...fromM37, ...clipped];
 }
 
 /** M5 residence spans (structural: kind + facility + window) joined with M40 facility postal codes. */

@@ -52,6 +52,11 @@ the demo seed produces records that pass the new rules.**
 - The ch. 11 §30.3 rules (value codes 61 / G8: end-of-period residence, latest facility; Pricer BENE-CBSA / PROV-CBSA) were verified
   against the manual text (clm104c11.pdf). 42 CFR 418.306(c) was verified too, but it only defines the labor market by OMB CBSAs, the
   wage adjustment and the 5% cap; the SSA §1814(i)(2)(D) citation was dropped because it could not be verified here.
+- **SIA across Oct 1.** The SIA add-on is priced with the fiscal year of the death date (that year's CHC hourly rate, rate-table
+  version effective on the death date, and the residence-area index for that year where the claim is priced by area). Each
+  `hipps_calculation` segment records the fiscal year and wage-index factor it was priced with (jsonb, no migration). Known gap:
+  `sia_calculation` itself stores no rate / fiscal year / factor (that would need a column), so the SIA basis is re-derived from the
+  death date's fiscal year and the factor recorded on the home segments of that year.
 - Deferred by decision: PM modifier, Q5006 inpatient-facility summary reporting, diagnoses (Phase 4). No web screen yet for the
   visit-charge schedule (API only).
 
@@ -59,7 +64,9 @@ the demo seed produces records that pass the new rules.**
 
 `/ecc:code-review` of `origin/main...HEAD`: no CRITICAL or HIGH findings. Two MEDIUM and five LOW findings were all fixed:
 
-- M1 G8 facility from the overlapping span; M2 per-fiscal-year pricing for a claim crossing Oct 1.
+- M1 G8 facility from the overlapping span (later refined to M37 stays and the latest facility); M2 per-fiscal-year pricing for a
+  claim crossing Oct 1 (a follow-up pass also prices the SIA add-on with the death date's fiscal year and clips M5 spans to the stays
+  M37 does not know).
 - L1 migration 1058 idempotent; L2 a missing visit charge throws instead of billing `0`; L3 stale rule-count and HIPPS-example
   comments; L4 an unrelated biome reformat of three IDG test files reverted; L5 this note.
 
