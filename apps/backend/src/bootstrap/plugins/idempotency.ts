@@ -54,7 +54,14 @@ export function applyIdempotency(app: FastifyInstance, store: IdempotencyStore):
     const orgId = request.context?.organizationId;
     if (!orgId) return; // unauthenticated route — nothing to scope the key by
 
-    const requestHash = computeIdempotencyHash(orgId, key, request.body ?? null);
+    // The fingerprint also binds the CALLER: a key reused by a different user in the same org is a conflict (409), never a
+    // replay of the first user's cached response (which for e.g. a billing override echoes the typed rationale), and it
+    // is answered before any route-level permission guard runs.
+    const requestHash = computeIdempotencyHash(
+      `${orgId}|${request.context?.userId ?? ""}`,
+      key,
+      request.body ?? null,
+    );
     const answerFrom = (existing: IdempotencyRecord) => {
       if (existing.requestHash !== requestHash) throw new IdempotencyConflictError();
       if (existing.state === "complete") {

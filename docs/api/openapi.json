@@ -180593,6 +180593,99 @@
         }
       }
     },
+    "/api/v1/patients/messaging-search": {
+      "get": {
+        "operationId": "getApiV1PatientsMessagingsearch",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Search authorized patients for the secure-messaging picker",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 120,
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 32,
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "patients"
+                  ],
+                  "properties": {
+                    "patients": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "patientId",
+                          "displayName",
+                          "medicalRecordNumber"
+                        ],
+                        "properties": {
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "medicalRecordNumber": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/payment_methods": {
       "get": {
         "operationId": "getApiV1Paymentmethods",

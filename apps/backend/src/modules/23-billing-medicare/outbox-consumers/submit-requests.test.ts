@@ -146,7 +146,7 @@ describe("M23 work-request outbox bridge (GAP-070)", () => {
     });
     expect(calls).toEqual([
       [
-        "validation-run",
+        "m23.validation-run",
         "run-1",
         {
           organizationId: "org-1",
@@ -212,10 +212,10 @@ describe("M23 outbox-backed submission gate", () => {
   it("accepts validation-run when its capability is on and refuses eligibility.refresh while HETS is unbound", async () => {
     const gate = buildM23OutboxBackedSubmissionGate({
       "claim.submit": false,
-      "validation-run": true,
+      "m23.validation-run": true,
       "eligibility.refresh": false,
     });
-    await expect(gate.enqueue("validation-run", "k1", {})).resolves.toEqual({
+    await expect(gate.enqueue("m23.validation-run", "k1", {})).resolves.toEqual({
       jobId: "outbox:k1",
     });
     await expect(gate.enqueue("eligibility.refresh", "k2", {})).rejects.toMatchObject({

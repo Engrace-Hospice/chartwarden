@@ -68,6 +68,8 @@ export const GATES = [
   "arch:context-attributes",
   "arch:route-reachability",
   "arch:live-suites",
+  // Two modules declaring one BullMQ queue name share a Redis queue and steal each other's jobs (M23/M27 `validation-run`).
+  "arch:queue-names",
   "arch:outbox-bindings",
   "arch:org-indexes",
   "arch:audit-denylist-sync",

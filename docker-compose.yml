@@ -107,6 +107,9 @@ services:
       # F-236 (ADR-0048) — DocLens stage 2. A worker-specific dev placeholder secret, not INTERNAL_SERVICE_TOKEN.
       DOCLING_WORKER_URL: http://docling-worker:8000
       DOCLING_WORKER_TOKEN: wardenx-local-docling-dev-token-not-for-production
+      # Billing credential KEK (M24 trading-partner + M23 MAC-portal secrets), 32 bytes base64, from your .env. Unset =>
+      # saving a MAC/trading-partner credential answers 503 (fail closed). Generate: openssl rand -base64 32.
+      M24_CREDENTIAL_ENCRYPTION_KEY: ${M24_CREDENTIAL_ENCRYPTION_KEY:-}
       # Optional transactional email (M36 Postmark): unset = unbound, dev logs links via the console transport.
       POSTMARK_SERVER_TOKEN: ${POSTMARK_SERVER_TOKEN:-}
       POSTMARK_FROM_ADDRESS: ${POSTMARK_FROM_ADDRESS:-}

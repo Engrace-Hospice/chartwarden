@@ -13,6 +13,15 @@
 // producer↔consumer wire names 1:1. The cron + retry + consumer queues have no producer yet, so they take
 // the bare names consistent with the work queues.
 
+/** The wire prefix a module-prefixed M23 queue name carries. */
+export const M23_QUEUE_WIRE_PREFIX = "m23.";
+
+/**
+ * The queue M23's validation jobs were enqueued on BEFORE the rename. It is the bare name M27 also owns, so jobs
+ * may still sit in it; `migrateLegacyValidationRunJobs` moves M23's out. Never listen on it from M23 again.
+ */
+export const M23_LEGACY_VALIDATION_RUN_QUEUE = "validation-run"; // queue-names:reference (M27 owns this name)
+
 /** The §4.8 backoff envelope (kept local so the catalog takes no specific bullmq type-export dependency). */
 export interface M23BackoffOptions {
   readonly type: "exponential" | "fixed";
@@ -36,8 +45,13 @@ export const M23_QUEUES = {
   transferNoticeSubmit: "transfer_notice.submit",
   /** Drain `m23.eligibility.refresh_requested`: unlock MBI, run HETS 270/271, append eligibility_check row. */
   eligibilityRefresh: "eligibility.refresh",
-  /** Drain a validation-run job (validateClaim route + revalidate consumer enqueue this): run rules, transition. */
-  validationRun: "validation-run",
+  /**
+   * Drain a validation-run job (validateClaim route + revalidate consumer enqueue this): run rules, transition.
+   * MODULE-PREFIXED: M27 owns the bare `validation-run` queue. Both modules once listened on it, so each worker could
+   * pick up the other's jobs (an M27 worker failed an M23 job with "cost_report_validation … not found" and sent it
+   * to the DLQ). `scripts/check-queue-names.ts` (arch:queue-names) keeps every queue name unique across modules.
+   */
+  validationRun: "m23.validation-run",
   /** Consume the §4.8 revalidation events: find affected VALIDATING/READY claims, enqueue a re-validation run. */
   revalidateConsumer: "revalidate.consumer",
 } as const;
@@ -172,5 +186,10 @@ export const M23_IDEMPOTENCY_KEYS = {
  * '_' — the id stays deterministic, so a relay redelivery is still a BullMQ-level no-op.
  */
 export function m23JobId(queueName: string, key: string): string {
-  return `m23:${queueName}:${key.replaceAll(":", "_")}`;
+  // The `m23.` wire prefix is not repeated in the id (it already starts `m23:`), so a job id is independent of the
+  // queue rename: `m23:validation-run:<key>` before and after, which keeps the legacy-queue migration a no-op on dedupe.
+  const bare = queueName.startsWith(M23_QUEUE_WIRE_PREFIX)
+    ? queueName.slice(M23_QUEUE_WIRE_PREFIX.length)
+    : queueName;
+  return `m23:${bare}:${key.replaceAll(":", "_")}`;
 }

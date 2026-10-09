@@ -12,6 +12,8 @@ const bullmqAccepts = (id: string): boolean =>
 describe("m23JobId", () => {
   it("keeps a simple key as m23:<queue>:<key>", () => {
     expect(m23JobId("validation-run", "run-1")).toBe("m23:validation-run:run-1");
+    // the module-prefixed wire name does not change the id (stable across the queue rename)
+    expect(m23JobId("m23.validation-run", "run-1")).toBe("m23:validation-run:run-1");
   });
 
   it("folds a composite key's ':' so BullMQ accepts it, deterministically", () => {

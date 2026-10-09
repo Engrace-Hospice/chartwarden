@@ -176,6 +176,7 @@ import { siteDisplayForOrg } from "./bootstrap/site-display-for-org";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
 import { createDrizzleSystemStatusReader } from "./bootstrap/system-status-store";
 import { createPlatformKekAdapter, loadPlatformKekRing } from "./bootstrap/tenant-kek";
+import { buildM23OverrideAuditPort } from "./m23-override-audit";
 import {
   type AuthAuditDb,
   createAuthAuditSink,
@@ -888,6 +889,7 @@ import {
   type M23HetsConfig,
   M23_OUTBOX_EVENTS,
   M23_PLATFORM_JOB_ID,
+  M23_QUEUES,
   type ProviderCcnPort,
   buildClaimStateService,
   buildClaimValidationContextPort,
@@ -921,6 +923,7 @@ import {
   buildM23WorkRequestConsumer,
   buildM23WorkerDeps,
   buildMacJurisdictionLister,
+  buildMacSecretCipherFromEnv,
   buildNoticeWindowPort,
   buildTransferNoticeService,
   createDrizzleBillingEraseStore,
@@ -939,6 +942,7 @@ import {
   registerM23WatchCronWorkers,
   scheduleM23Jobs,
   scheduleM23WatchJobs,
+  sweepLegacyValidationRunQueue,
   validateBillingAiBlockAtBoot,
   wireM23Tenancy,
 } from "./modules/23-billing-medicare/index";
@@ -3689,9 +3693,16 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   // M24 §8.7 — the trading-partner secret cipher port. Built once at boot so a missing/short KEK surfaces
   // here, not on the first tenant write; left undefined when no key is configured, which makes credential
   // WRITES fail closed while every other M24 route keeps working (production requires the key via env.ts).
-  const m24CredentialCipher = process.env.M24_CREDENTIAL_ENCRYPTION_KEY
+  // ONE trimmed "is the key set" test for M24 and M23, so a whitespace-only value is "unset" for both.
+  const billingCredentialKeyConfigured =
+    (process.env.M24_CREDENTIAL_ENCRYPTION_KEY?.trim() ?? "") !== "";
+  const m24CredentialCipher = billingCredentialKeyConfigured
     ? buildCredentialCipherPort()
     : undefined;
+  // M23 — the MAC-portal client-secret cipher (`POST /billing/mac-credentials`). Same custody model and KEK as the M24
+  // cipher above (domain-separated per module); built once at boot so a malformed key fails the boot, not the first
+  // write. Unset => the write path answers 503 SEAM_UNBOUND (production requires the key via env.ts).
+  const m23MacSecretCipher = buildMacSecretCipherFromEnv(process.env);
   // M24 (WX-PR-011) — the per-PE trading-partner credential resolver the submit/poll workers decrypt
   // through. Requires BOTH a db handle and the cipher port; absent either, the worker construction below
   // stays gated off (RULE 4 — never fabricate a credential, never submit without one).
@@ -4761,12 +4772,15 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                 "noe.submit": m23SubmissionQueues !== null,
                 "notr.submit": m23SubmissionQueues !== null,
                 // GAP-070 — real `validation-run` worker + outbox bridge whenever a queue connection exists.
-                "validation-run": m23WorkQueues !== null,
+                [M23_QUEUES.validationRun]: m23WorkQueues !== null,
                 // HETS 270/271: accepted only when a transport is configured AND a worker can drain the
                 // queue; otherwise refuse (503) rather than accept a request no worker can complete.
                 "eligibility.refresh": m23WorkQueues !== null && m23HetsConfig !== null,
               }),
               providerCcn: m23ProviderCcn,
+              ...(m23MacSecretCipher ? { secretCipher: m23MacSecretCipher } : {}),
+              // §4.5 validation override: one prominent audit_event per override, in the override's own transaction.
+              audit: buildM23OverrideAuditPort(),
               // GAP-144 — the MAC sandbox probe (portal health) when the launch gateway is configured.
               ...(m23LaunchGateway
                 ? {
@@ -6762,6 +6776,15 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         "M23 launch workers disabled: configure X12 and MAC gateway URLs and bearer tokens",
       );
     }
+    // M23 and M27 once shared a queue named `validation-run`; move any M23 job still stranded on it (never dropped).
+    sweepLegacyValidationRunQueue(queueConnection)
+      .then((result) =>
+        app.log.info(
+          result,
+          "M23 legacy validation-run queue sweep complete (jobs moved, never dropped)",
+        ),
+      )
+      .catch((err) => app.log.error(err, "M23 legacy validation-run queue sweep failed"));
     attachDlqAlertsToAll(m23Workers, "m23");
     app.addHook("onClose", async () => {
       await Promise.all(m23Workers.map((worker) => worker.close()));

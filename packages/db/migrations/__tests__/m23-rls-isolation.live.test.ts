@@ -339,13 +339,21 @@ describe.skipIf(!DB_URL)(
       expect(upd.rowCount, "org B updated an org-A rule config").toBe(0);
     });
 
-    it("NO M23 table grants DELETE to the runtime role — the billing ledger is append-and-amend", async () => {
-      // Discovered while writing this suite: a cross-tenant DELETE fails with "permission denied",
-      // not with zero rows, because `wardenx_app` holds INSERT/SELECT/UPDATE and nothing more on every
-      // M23 table. That is a stronger guarantee than RLS gives — a claim, its lines, its validation
-      // history and its submissions cannot be removed by the application at all, only superseded
-      // (REPLACED / VOIDED are claim STATES, not row deletions). Asserted so a future GRANT that
-      // quietly adds DELETE to a billing table has to argue with a test.
+    it("only the DRAFT-claim subtree grants DELETE to the runtime role, each behind a draft-only trigger", async () => {
+      // The billing ledger is append-and-amend. Migration 1061 grants DELETE on EXACTLY the eight tables a DRAFT claim
+      // owns (discard an unbilled draft; re-assembly rewrites the lines), and each is guarded in the database so a
+      // claim past DRAFT cannot lose a row (m23-draft-claim-delete.live.test.ts proves the behaviour). Any other
+      // table gaining DELETE has to argue with this test.
+      const DRAFT_SUBTREE = [
+        "claim",
+        "claim_line",
+        "claim_state_history",
+        "hipps_calculation",
+        "sia_calculation",
+        "validation_override",
+        "validation_result",
+        "validation_run",
+      ];
       const r = await db.query<{ table_name: string }>(
         `SELECT DISTINCT table_name
          FROM information_schema.role_table_grants
@@ -356,8 +364,17 @@ describe.skipIf(!DB_URL)(
       );
       expect(
         r.rows.map((x) => x.table_name),
-        "M23 table(s) newly deletable by the app role",
-      ).toEqual([]);
+        "M23 table(s) deletable by the app role",
+      ).toEqual(DRAFT_SUBTREE);
+      const guarded = await db.query<{ relname: string }>(
+        `SELECT DISTINCT c.relname FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+          WHERE NOT t.tgisinternal AND c.relname = ANY($1)
+            AND t.tgname IN ('trg_claim_delete_guard','trg_claim_line_delete_guard')
+             OR (NOT t.tgisinternal AND c.relname = ANY($1) AND t.tgname LIKE 'trg_append_only_%')
+          ORDER BY c.relname`,
+        [DRAFT_SUBTREE],
+      );
+      expect(guarded.rows.map((x) => x.relname)).toEqual(DRAFT_SUBTREE);
     });
 
     it("terminalizes a queued claim submission exactly once and rejects deletion", async () => {

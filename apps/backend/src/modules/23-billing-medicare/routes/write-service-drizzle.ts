@@ -39,7 +39,8 @@ import {
 import * as schema from "@wardenx/db/schema";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, DegradedError, NotFoundError, WardenXError } from "@wardenx/types";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { M23_QUEUES } from "../jobs/queues";
 import { buildNoticeCorrectionService } from "../services/notice-correction-service";
 import {
   PriorElectionNotClosedError,
@@ -198,6 +199,118 @@ function mapLines(
 const sumCharges = (lines: readonly AssembledClaimLineInput[]): number =>
   lines.reduce((acc, l) => acc + l.lineChargeCents, 0);
 
+/**
+ * Delete a DRAFT claim and everything it owns, children first so each database delete guard (migration 1061) can still
+ * resolve the owning claim: override -> result -> run -> state history -> SIA -> HIPPS -> lines -> claim. The database,
+ * not this function, is what refuses a non-draft claim (`M23_CLAIM_NOT_DRAFT`); every statement is org-scoped here and by RLS.
+ */
+async function deleteDraftClaimSubtree(
+  tx: BillingDb,
+  organizationId: string,
+  claimId: string,
+): Promise<void> {
+  const runIds = tx
+    .select({ id: schema.validationRun.id })
+    .from(schema.validationRun)
+    .where(
+      and(
+        eq(schema.validationRun.claimId, claimId),
+        eq(schema.validationRun.organizationId, organizationId),
+      ),
+    );
+  const resultIds = tx
+    .select({ id: schema.validationResult.id })
+    .from(schema.validationResult)
+    .where(
+      and(
+        inArray(schema.validationResult.validationRunId, runIds),
+        eq(schema.validationResult.organizationId, organizationId),
+      ),
+    );
+  await tx
+    .delete(schema.validationOverride)
+    .where(
+      and(
+        inArray(schema.validationOverride.resultId, resultIds),
+        eq(schema.validationOverride.organizationId, organizationId),
+      ),
+    );
+  await tx
+    .delete(schema.validationResult)
+    .where(
+      and(
+        inArray(schema.validationResult.validationRunId, runIds),
+        eq(schema.validationResult.organizationId, organizationId),
+      ),
+    );
+  await tx
+    .delete(schema.validationRun)
+    .where(
+      and(
+        eq(schema.validationRun.claimId, claimId),
+        eq(schema.validationRun.organizationId, organizationId),
+      ),
+    );
+  await tx
+    .delete(schema.claimStateHistory)
+    .where(
+      and(
+        eq(schema.claimStateHistory.claimId, claimId),
+        eq(schema.claimStateHistory.organizationId, organizationId),
+      ),
+    );
+  await tx
+    .delete(schema.siaCalculation)
+    .where(
+      and(
+        eq(schema.siaCalculation.claimId, claimId),
+        eq(schema.siaCalculation.organizationId, organizationId),
+      ),
+    );
+  await tx
+    .delete(schema.hippsCalculation)
+    .where(
+      and(
+        eq(schema.hippsCalculation.claimId, claimId),
+        eq(schema.hippsCalculation.organizationId, organizationId),
+      ),
+    );
+  await tx
+    .delete(schema.claimLine)
+    .where(
+      and(
+        eq(schema.claimLine.claimId, claimId),
+        eq(schema.claimLine.organizationId, organizationId),
+      ),
+    );
+  await tx
+    .delete(schema.claim)
+    .where(and(eq(schema.claim.id, claimId), eq(schema.claim.organizationId, organizationId)));
+}
+
+const PG_UNIQUE_VIOLATION = "23505";
+
+/** True when `err` (or its driver cause) is a Postgres unique-index violation. */
+function isUniqueViolation(err: unknown): boolean {
+  const code = (e: unknown): unknown => (e as { code?: unknown } | null)?.code;
+  return (
+    code(err) === PG_UNIQUE_VIOLATION ||
+    code((err as { cause?: unknown } | null)?.cause) === PG_UNIQUE_VIOLATION
+  );
+}
+
+/** Run `fn`; a lost first-create race (unique violation) becomes a typed 409, never a 500. */
+const mapUniqueViolation =
+  (message: string) =>
+  async <T>(fn: () => Promise<T>): Promise<T> => {
+    try {
+      return await fn();
+    } catch (err) {
+      if (isUniqueViolation(err)) throw new ConflictError(message);
+      throw err;
+    }
+  };
+
 // ── the factory ────────────────────────────────────────────────────────────────────────────────────
 
 const denyCcn: ProviderCcnPort = {
@@ -207,7 +320,11 @@ const denyCcn: ProviderCcnPort = {
 };
 const denyCipher: SecretCipherPort = {
   encrypt: async () => {
-    throw new WardenXError("SEAM_UNBOUND", "the secret-cipher port is not bound", 503);
+    throw new WardenXError(
+      "SEAM_UNBOUND",
+      "the MAC credential secret cipher is not bound (set M24_CREDENTIAL_ENCRYPTION_KEY, 32 bytes base64)",
+      503,
+    );
   },
 };
 const denyAudit: AuditEventPort = {
@@ -321,6 +438,16 @@ export function buildDrizzleM23WriteService(
     error === "GUARD_FAILED"
       ? new WardenXError("GUARD_FAILED", `the '${event}' transition guard failed`, 422)
       : new ConflictError(`cannot '${event}' a record in its current state`);
+
+  /**
+   * Take the claim row's write lock before reading its state, so a concurrent transition (e.g. DRAFT -> VALIDATING)
+   * either finishes first (we then see the new state and refuse) or waits for us. The database guards re-check too.
+   */
+  const lockClaim = async (tx: BillingDb, actor: M23WriteActor, claimId: string): Promise<void> => {
+    await tx.execute(
+      sql`SELECT 1 FROM claim WHERE id = ${claimId} AND organization_id = ${actor.organizationId} FOR UPDATE`,
+    );
+  };
 
   const loadClaim = async (
     tx: BillingDb,
@@ -509,6 +636,7 @@ export function buildDrizzleM23WriteService(
 
     async updateDraftClaim(actor, claimId, args: UpdateDraftClaimArgs): Promise<ClaimDetailView> {
       return inOrgCtx(actor, async (tx) => {
+        await lockClaim(tx, actor, claimId);
         const claim = await loadClaim(tx, actor, claimId);
         if (claim.state !== "draft") {
           throw new ConflictError("only a draft claim can be edited");
@@ -546,26 +674,30 @@ export function buildDrizzleM23WriteService(
 
     async deleteDraftClaim(actor, claimId): Promise<void> {
       return inOrgCtx(actor, async (tx) => {
+        await lockClaim(tx, actor, claimId);
         const claim = await loadClaim(tx, actor, claimId);
         if (claim.state !== "draft") {
           throw new ConflictError("only a draft claim can be deleted");
         }
-        await tx
-          .delete(schema.claimLine)
-          .where(
-            and(
-              eq(schema.claimLine.claimId, claimId),
-              eq(schema.claimLine.organizationId, actor.organizationId),
-            ),
+        // L1: M23 never writes `replaced_by_claim_id` on the original (it moves to REPLACED only when the 277CA accepts the
+        // replacement, in the ack consumer), so deleting a DRAFT replacement leaves no dangling pointer to clear.
+        // Defence in depth with the database guard: a claim that was ever transmitted or acknowledged is never deletable.
+        const transmitted = await tx
+          .select({ id: schema.claimSubmission.id })
+          .from(schema.claimSubmission)
+          .where(eq(schema.claimSubmission.claimId, claimId))
+          .limit(1);
+        const acknowledged = await tx
+          .select({ id: schema.claimAcknowledgment.id })
+          .from(schema.claimAcknowledgment)
+          .where(eq(schema.claimAcknowledgment.claimId, claimId))
+          .limit(1);
+        if (transmitted.length > 0 || acknowledged.length > 0) {
+          throw new ConflictError(
+            "a claim that has been transmitted or acknowledged cannot be deleted",
           );
-        await tx
-          .delete(schema.claim)
-          .where(
-            and(
-              eq(schema.claim.id, claimId),
-              eq(schema.claim.organizationId, actor.organizationId),
-            ),
-          );
+        }
+        await deleteDraftClaimSubtree(tx, actor.organizationId, claimId);
       });
     },
 
@@ -603,7 +735,7 @@ export function buildDrizzleM23WriteService(
           validationRunId,
         });
         const { jobId } = await jobs.enqueue(
-          "validation-run",
+          M23_QUEUES.validationRun,
           `${actor.organizationId}:${claim.id}:${validationRunId}`,
           { claimId: claim.id, validationRunId, trigger },
         );
@@ -767,6 +899,11 @@ export function buildDrizzleM23WriteService(
         if (await overrideRepo.findByResult(result.id)) {
           throw new ConflictError("this validation result has already been overridden");
         }
+        // One correlation id for this override: the explicit audit event below AND the row-level M4 write-audit trigger on
+        // validation_override (which reads the transaction-local `app.correlation_id`) must carry the same id, so a
+        // surveyor can join them (and the request's logs). Prefer the request's id; fall back to a fresh one.
+        const correlationId = actor.request?.correlationId ?? randomUUID();
+        await tx.execute(sql`SELECT set_config('app.correlation_id', ${correlationId}, true)`);
         // Record the §4.5 prominent M4 audit event in the same tx (the @wardenx/audit helper is the only
         // sanctioned writer of `audit_event`); its id is stamped onto the NOT-NULL override back-ref.
         const { auditEventId } = await auditPort.recordOverrideAudit(tx, {
@@ -777,6 +914,11 @@ export function buildDrizzleM23WriteService(
           resultId: result.id,
           ruleKey: result.ruleKey,
           overrideRole: args.overrideRole,
+          actorUserId: actor.userId,
+          correlationId,
+          ...(actor.request?.requestId ? { requestId: actor.request.requestId } : {}),
+          ...(actor.request?.sourceIp ? { sourceIp: actor.request.sourceIp } : {}),
+          ...(actor.request?.userAgent ? { userAgent: actor.request.userAgent } : {}),
           reason: args.reason,
         });
         const override = await overrideRepo.append({
@@ -1044,69 +1186,88 @@ export function buildDrizzleM23WriteService(
     // ── MAC credentials (step-up; secret encrypted at the boundary) ──
     async upsertMacCredential(actor, args: UpsertMacCredentialArgs): Promise<MacCredentialView> {
       requireStepUp(actor);
-      return inOrgCtx(actor, async (tx) => {
-        const { cipher, dekVersion } = await secretCipher.encrypt(
-          actor.organizationId,
-          args.clientSecret,
-        );
-        const repo = new repositories.MacSubmitterCredentialRepository(tx);
-        const existing = await repo.findByProviderEntity(args.providerEntityId);
-        let row: repositories.MacSubmitterCredentialSafeRecord;
-        if (existing) {
-          if (existing.organizationId !== actor.organizationId) {
+      return mapUniqueViolation(
+        "a MAC credential already exists for this provider entity; send its current version in If-Match to update it",
+      )(() =>
+        inOrgCtx(actor, async (tx) => {
+          const repo = new repositories.MacSubmitterCredentialRepository(tx);
+          const existing = await repo.findByProviderEntity(args.providerEntityId);
+          if (existing && existing.organizationId !== actor.organizationId) {
             throw new NotFoundError("mac credential");
           }
-          if (args.expectedVersion === undefined) {
-            throw new WardenXError(
-              "IF_MATCH_REQUIRED",
-              "an If-Match version is required to update an existing MAC credential",
-              428,
+          // A credential row is bound to one provider entity AND one MAC jurisdiction (both are in the cipher's AAD);
+          // changing the jurisdiction is a new credential, not an update of this one.
+          if (existing && existing.macJurisdiction !== args.macJurisdiction) {
+            throw new ConflictError(
+              "this provider entity's MAC credential is for a different MAC jurisdiction",
             );
           }
-          const res = await repo.updateWithVersion(existing.id, args.expectedVersion, {
-            submitterId: args.submitterId,
-            tradingPartnerId: args.tradingPartnerId,
-            clientId: args.clientId,
-            clientSecretCipher: cipher,
-            clientSecretDekVersion: dekVersion,
-            ...(args.baaRecordRef !== undefined ? { baaRecordRef: args.baaRecordRef } : {}),
-            ...(args.credentialExpiresAt !== undefined
-              ? { credentialExpiresAt: new Date(args.credentialExpiresAt) }
-              : {}),
-          });
-          if (!res.ok) throw conflict412(res.currentVersion);
-          row = res.row;
-        } else {
-          row = await repo.create({
+          const { cipher, dekVersion } = await secretCipher.encrypt(
+            actor.organizationId,
+            args.clientSecret,
+            // The database stores uuids lowercase; bind the same spelling the worker will read back.
+            {
+              providerEntityId: args.providerEntityId.toLowerCase(),
+              macJurisdiction: args.macJurisdiction,
+            },
+          );
+          let row: repositories.MacSubmitterCredentialSafeRecord;
+          if (existing) {
+            if (existing.organizationId !== actor.organizationId) {
+              throw new NotFoundError("mac credential");
+            }
+            if (args.expectedVersion === undefined) {
+              throw new WardenXError(
+                "IF_MATCH_REQUIRED",
+                "an If-Match version is required to update an existing MAC credential",
+                428,
+              );
+            }
+            const res = await repo.updateWithVersion(existing.id, args.expectedVersion, {
+              submitterId: args.submitterId,
+              tradingPartnerId: args.tradingPartnerId,
+              clientId: args.clientId,
+              clientSecretCipher: cipher,
+              clientSecretDekVersion: dekVersion,
+              ...(args.baaRecordRef !== undefined ? { baaRecordRef: args.baaRecordRef } : {}),
+              ...(args.credentialExpiresAt !== undefined
+                ? { credentialExpiresAt: new Date(args.credentialExpiresAt) }
+                : {}),
+            });
+            if (!res.ok) throw conflict412(res.currentVersion);
+            row = res.row;
+          } else {
+            row = await repo.create({
+              organizationId: actor.organizationId,
+              providerEntityId: args.providerEntityId,
+              macJurisdiction:
+                args.macJurisdiction as schema.NewMacSubmitterCredential["macJurisdiction"],
+              submitterId: args.submitterId,
+              tradingPartnerId: args.tradingPartnerId,
+              clientId: args.clientId,
+              clientSecretCipher: cipher,
+              clientSecretDekVersion: dekVersion,
+              setByMembershipId: actor.membershipId,
+              ...(args.baaRecordRef !== undefined ? { baaRecordRef: args.baaRecordRef } : {}),
+              ...(args.credentialExpiresAt !== undefined
+                ? { credentialExpiresAt: new Date(args.credentialExpiresAt) }
+                : {}),
+            });
+          }
+          await emit(tx, {
+            eventName: "m23.mac_credential.updated",
             organizationId: actor.organizationId,
-            providerEntityId: args.providerEntityId,
-            macJurisdiction:
-              args.macJurisdiction as schema.NewMacSubmitterCredential["macJurisdiction"],
-            submitterId: args.submitterId,
-            tradingPartnerId: args.tradingPartnerId,
-            clientId: args.clientId,
-            clientSecretCipher: cipher,
-            clientSecretDekVersion: dekVersion,
-            setByMembershipId: actor.membershipId,
-            ...(args.baaRecordRef !== undefined ? { baaRecordRef: args.baaRecordRef } : {}),
-            ...(args.credentialExpiresAt !== undefined
-              ? { credentialExpiresAt: new Date(args.credentialExpiresAt) }
-              : {}),
+            aggregateKind: "mac_submitter_credential",
+            aggregateId: row.id,
+            payload: {
+              providerEntityId: args.providerEntityId,
+              macJurisdiction: args.macJurisdiction,
+              version: row.version,
+            },
           });
-        }
-        await emit(tx, {
-          eventName: "m23.mac_credential.updated",
-          organizationId: actor.organizationId,
-          aggregateKind: "mac_submitter_credential",
-          aggregateId: row.id,
-          payload: {
-            providerEntityId: args.providerEntityId,
-            macJurisdiction: args.macJurisdiction,
-            version: row.version,
-          },
-        });
-        return mapMacCredential(row);
-      });
+          return mapMacCredential(row);
+        }),
+      );
     },
 
     async testMacCredential(actor, providerEntityId): Promise<MacCredentialTestView> {

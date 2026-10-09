@@ -51,6 +51,13 @@ export interface M23WriteActor extends M23ReadActor {
   readonly stepUpRecent: boolean;
   /** The acting principal kind (`user` / `system` / `ai_*`); the §D13 AI-block rejects every `ai_*`. */
   readonly actorKind: string;
+  /** Request facts carried onto audit records (correlation id, request id, source IP, user agent). Optional: workers have none. */
+  readonly request?: {
+    readonly correlationId?: string;
+    readonly requestId?: string;
+    readonly sourceIp?: string;
+    readonly userAgent?: string;
+  };
 }
 
 /** Extract the write actor (org + user + roles + active membership + step-up + actor-kind), or 401/403. */
@@ -71,6 +78,12 @@ export function writeActorOf(request: FastifyRequest): M23WriteActor {
     membershipId,
     stepUpRecent: ctx.attributes?.stepUpRecent === true,
     actorKind,
+    request: {
+      ...(ctx.correlationId ? { correlationId: ctx.correlationId } : {}),
+      requestId: request.id,
+      ...(ctx.ip ? { sourceIp: ctx.ip } : {}),
+      ...(ctx.userAgent ? { userAgent: ctx.userAgent } : {}),
+    },
   };
 }
 

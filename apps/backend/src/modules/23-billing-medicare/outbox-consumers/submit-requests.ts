@@ -3,6 +3,7 @@ import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,
 } from "../../../bootstrap/outbox-dispatcher";
+import { M23_QUEUES } from "../jobs/queues";
 import type { JobEnqueuePort } from "../routes/write-service";
 
 export const M23_SUBMISSION_REQUEST_EVENTS = [
@@ -29,7 +30,7 @@ type M23QueueName =
   | "noe.submit"
   | "notr.submit"
   | "transfer_notice.submit"
-  | "validation-run"
+  | typeof M23_QUEUES.validationRun
   | "eligibility.refresh";
 
 /**
@@ -115,7 +116,7 @@ function queueRequest(event: DispatchableOutboxEvent): {
     const claimId = requiredString(event.payload.claimId, "claimId");
     const validationRunId = requiredString(event.payload.validationRunId, "validationRunId");
     return {
-      queue: "validation-run",
+      queue: M23_QUEUES.validationRun,
       key: validationRunId,
       payload: { claimId, validationRunId, trigger },
     };
@@ -166,7 +167,10 @@ export function buildM23WorkRequestConsumer(queue: M23SubmissionQueuePort): Outb
 }
 
 /** The request-thread queue names the outbox bridge can serve. */
-const GATED_QUEUES: ReadonlySet<string> = new Set(["validation-run", "eligibility.refresh"]);
+const GATED_QUEUES: ReadonlySet<string> = new Set([
+  M23_QUEUES.validationRun,
+  "eligibility.refresh",
+]);
 
 /**
  * Request-thread gate: proves the durable consumer and worker capability exist without touching Redis.

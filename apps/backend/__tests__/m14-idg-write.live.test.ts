@@ -685,7 +685,9 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       svc.adjournMeeting(ORG_A, MEMBER, m, true),
     ]);
     expect(settled.filter((result) => result.status === "fulfilled")).toHaveLength(1);
-    const loser = settled.find((result): result is PromiseRejectedResult => result.status === "rejected");
+    const loser = settled.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
     expect(loser?.reason).toMatchObject({ code: "ILLEGAL_MEETING_TRANSITION", statusCode: 409 });
     const { rows } = await admin.query(
       `SELECT event_type, count(*)::int AS n
@@ -697,7 +699,10 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     );
     expect(rows.find((row) => row.event_type === "m14.meeting.adjourned")?.n).toBe(1);
     expect(rows.find((row) => row.event_type === "m14.minutes.signed")?.n).toBe(1);
-    expect((await admin.query("SELECT count(*)::int AS n FROM idg_minutes WHERE idg_meeting_id=$1", [m])).rows[0].n).toBe(1);
+    expect(
+      (await admin.query("SELECT count(*)::int AS n FROM idg_minutes WHERE idg_meeting_id=$1", [m]))
+        .rows[0].n,
+    ).toBe(1);
   });
 
   it("attendance racing adjournment is either frozen into minutes or refused", async () => {
@@ -708,7 +713,9 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     ]);
     expect(settled[1]?.status).toBe("fulfilled");
     const attendance = settled[0];
-    const snapshot = (await admin.query("SELECT attendance_snapshot FROM idg_minutes WHERE idg_meeting_id=$1", [m])).rows[0].attendance_snapshot as Array<{ attendanceId: string }>;
+    const snapshot = (
+      await admin.query("SELECT attendance_snapshot FROM idg_minutes WHERE idg_meeting_id=$1", [m])
+    ).rows[0].attendance_snapshot as Array<{ attendanceId: string }>;
     if (attendance?.status === "fulfilled") {
       expect(snapshot.map((row) => row.attendanceId)).toContain(attendance.value.id);
     } else {
@@ -728,7 +735,12 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     ]);
     expect(settled[1]?.status).toBe("fulfilled");
     const creation = settled[0];
-    const snapshot = (await admin.query("SELECT action_item_list_snapshot FROM idg_minutes WHERE idg_meeting_id=$1", [m])).rows[0].action_item_list_snapshot as Array<{ actionItemId: string }>;
+    const snapshot = (
+      await admin.query(
+        "SELECT action_item_list_snapshot FROM idg_minutes WHERE idg_meeting_id=$1",
+        [m],
+      )
+    ).rows[0].action_item_list_snapshot as Array<{ actionItemId: string }>;
     if (creation?.status === "fulfilled") {
       expect(snapshot.map((row) => row.actionItemId)).toContain(creation.value.id);
     } else {
@@ -819,15 +831,17 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       patientId: PATIENT,
     });
     await svc.cancelMeeting(ORG_A, MEMBER, m, "meeting cancelled");
-    await expect(svc.updateAttendance(ORG_A, MEMBER, attendance.id, "excused")).rejects.toMatchObject({
+    await expect(
+      svc.updateAttendance(ORG_A, MEMBER, attendance.id, "excused"),
+    ).rejects.toMatchObject({
       code: "ILLEGAL_MEETING_TRANSITION",
     });
     await expect(svc.removeAgendaItem(ORG_A, MEMBER, agenda.id)).rejects.toMatchObject({
       code: "ILLEGAL_MEETING_TRANSITION",
     });
-    await expect(
-      svc.addAgendaItem(ORG_A, MEMBER, m, { kind: "other" }),
-    ).rejects.toMatchObject({ code: "ILLEGAL_MEETING_TRANSITION" });
+    await expect(svc.addAgendaItem(ORG_A, MEMBER, m, { kind: "other" })).rejects.toMatchObject({
+      code: "ILLEGAL_MEETING_TRANSITION",
+    });
   });
 
   it("cancel / reschedule re-derive meeting_carry_forward_count in the same tx (a cancelled meeting is not counted — D8)", async () => {

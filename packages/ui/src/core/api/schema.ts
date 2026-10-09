@@ -15110,6 +15110,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/messaging-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search authorized patients for the secure-messaging picker */
+        get: operations["getApiV1PatientsMessagingsearch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/payment_methods": {
         parameters: {
             query?: never;
@@ -66748,6 +66765,39 @@ export interface operations {
                             /** Format: date */
                             asOfDate: string;
                         } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PatientsMessagingsearch: {
+        parameters: {
+            query?: {
+                q?: string;
+                status?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        patients: {
+                            patientId: string;
+                            displayName: string;
+                            medicalRecordNumber: string;
+                        }[];
                     };
                 };
             };

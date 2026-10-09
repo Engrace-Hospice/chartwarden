@@ -1,6 +1,11 @@
 // apps/backend/src/modules/23-billing-medicare/services/override-service.ts — the M23 validation-override
 // SERVICE (spec §10 task 29 / §4.5 / §4.7, D5).
 //
+// TEST-ONLY / NOT WIRED: this standalone service is imported only by its own unit test and is NOT reachable from any route
+// or from `index.ts`. The live override route runs `overrideValidationResult` in `routes/write-service-drizzle.ts`
+// (audited through the `AuditEventPort` bound in `src/m23-override-audit.ts`). This file is kept as the spec's
+// service-level reference (its gate order and role resolution); do not bind it without reconciling it with the route's.
+//
 // Records a role-gated, reason-required (≥40 chars), M4-audited override against a FAILING validation
 // result so a claim may proceed past it. The four gates, all fail-closed:
 //   1. NEVER VIA AI (D13): `assertNotAiActor` rejects any `ai_*` principal — an override is a human
