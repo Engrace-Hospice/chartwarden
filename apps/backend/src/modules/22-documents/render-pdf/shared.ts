@@ -36,10 +36,10 @@ export function humanize(v: unknown): string {
   return s
     .split(/[_\-\s]+/)
     .filter((w) => w.length > 0)
-    .map((w) =>
+    .map((w, i) =>
       UPPER_WORDS.has(w.toLowerCase())
         ? w.toUpperCase()
-        : LOWER_WORDS.has(w.toLowerCase())
+        : LOWER_WORDS.has(w.toLowerCase()) && i > 0
           ? w.toLowerCase()
           : w[0]?.toUpperCase() + w.slice(1).toLowerCase(),
     )
@@ -69,6 +69,16 @@ export const shortId = (v: unknown): string => {
 };
 
 export const PART2_WITHHELD = "Withheld — 42 CFR Part 2";
+
+/** 42 CFR 2.32 redisclosure notice, printed on any document that carries Part 2 content. One string, one place. */
+export const PART2_REDISCLOSURE_NOTICE =
+  "42 CFR Part 2: this record is protected by federal confidentiality rules. Federal rules prohibit further disclosure of this record without the specific written consent of the person it pertains to, or as otherwise permitted by 42 CFR Part 2. A general authorization for the release of medical or other information is not sufficient for this purpose.";
+
+/** A calendar date (`YYYY-MM-DD`) prints as the date alone; anything else as an instant. */
+export function fmtWhen(v: unknown): string {
+  const s = str(v);
+  return s !== undefined && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : fmtInstant(v);
+}
 
 /** Discipline keys the packet uses (§2.5) plus the free-form `discipline` strings the meeting records. */
 const DISCIPLINE_LABELS: Readonly<Record<string, string>> = {

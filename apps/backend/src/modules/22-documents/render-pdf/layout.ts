@@ -1,8 +1,9 @@
 // apps/backend/src/modules/22-documents/render-pdf/layout.ts — the pure layout engine: DocModel -> pages of
 // drawing ops (US Letter). Wraps text with the Helvetica metrics, paginates paragraphs/tables/entries line
 // by line, repeats table headers on each page and keeps headings with the text that follows them.
-import type { Block, DocModel, Tone } from "./doc-model";
-import { type FontKey, sanitizeText, textWidth, wrapText } from "./text";
+import type { Block, DocModel, SignatureBlock, Tone } from "./doc-model";
+import { signatureLines } from "./signature-lines";
+import { type FontKey, countDegradedGlyphs, sanitizeText, textWidth, wrapText } from "./text";
 
 export const PAGE_WIDTH = 612;
 export const PAGE_HEIGHT = 792;
@@ -116,7 +117,10 @@ function flowLines(
   }
 }
 
-function layoutBlock(c: Cursor, b: Block): void {
+/** How many closing lines of a keepWithNext paragraph must share a page with the block that follows. */
+const KEEP_WITH_NEXT_LINES = 3;
+
+function layoutBlock(c: Cursor, b: Block, reserveAfter = 0): void {
   switch (b.kind) {
     case "title": {
       const lines = wrapText(b.text, "F2", 18, CONTENT_WIDTH);
@@ -159,7 +163,23 @@ function layoutBlock(c: Cursor, b: Block): void {
     }
     case "paragraph": {
       const lines = wrapText(b.text, "F1", BODY, CONTENT_WIDTH);
-      flowLines(c, lines, MARGIN_X, "F1", BODY, BODY_LEADING, b.muted ? MUTED : INK);
+      const color = b.muted ? MUTED : INK;
+      if (b.keepWithNext && reserveAfter > 0) {
+        const tail = Math.min(KEEP_WITH_NEXT_LINES, lines.length);
+        flowLines(
+          c,
+          lines.slice(0, lines.length - tail),
+          MARGIN_X,
+          "F1",
+          BODY,
+          BODY_LEADING,
+          color,
+        );
+        c.ensure(tail * BODY_LEADING + reserveAfter);
+        flowLines(c, lines.slice(lines.length - tail), MARGIN_X, "F1", BODY, BODY_LEADING, color);
+      } else {
+        flowLines(c, lines, MARGIN_X, "F1", BODY, BODY_LEADING, color);
+      }
       c.y -= 4;
       return;
     }
@@ -295,7 +315,201 @@ function layoutBlock(c: Cursor, b: Block): void {
     case "pageBreak":
       c.newPage();
       return;
+    case "fieldGrid":
+      layoutFieldGrid(c, b.cells);
+      return;
+    case "legalText":
+      layoutLegalText(c, b.cite, b.text);
+      return;
+    case "attestation":
+      layoutAttestation(c, b.text, b.checked);
+      return;
+    case "signature":
+      layoutSignature(c, b);
+      return;
+    case "options":
+      layoutOptions(c, b.title, b.items);
+      return;
+    case "keepTogether": {
+      const height = measureBlocks(b.blocks);
+      // A group taller than a page cannot be kept together; it then flows like ordinary blocks.
+      if (height <= PAGE_HEIGHT - MARGIN_TOP - MARGIN_BOTTOM) c.ensure(height);
+      for (const inner of b.blocks) layoutBlock(c, inner);
+      return;
+    }
   }
+}
+
+/** Height `blocks` would consume if laid out from the top of a fresh page (Infinity when they span pages). */
+function measureBlocks(blocks: readonly Block[]): number {
+  const scratch = new Cursor();
+  const top = scratch.y;
+  for (const inner of blocks) layoutBlock(scratch, inner);
+  return scratch.pages.length > 1 ? Number.POSITIVE_INFINITY : top - scratch.y;
+}
+
+const FIELD_GAP = 8;
+const FIELD_PAD = 5;
+const LABEL_SIZE = 7.5;
+
+function layoutFieldGrid(
+  c: Cursor,
+  cells: ReadonlyArray<readonly [label: string, value: string]>,
+): void {
+  const cellW = (CONTENT_WIDTH - FIELD_GAP) / 2;
+  for (let i = 0; i < cells.length; i += 2) {
+    const pair = cells.slice(i, i + 2);
+    const measured = pair.map(([label, value]) => ({
+      label: wrapText(label, "F2", LABEL_SIZE, cellW - 2 * FIELD_PAD),
+      value: wrapText(value === "" ? "-" : value, "F1", BODY, cellW - 2 * FIELD_PAD),
+    }));
+    const rowH =
+      Math.max(...measured.map((m) => m.label.length * 10 + m.value.length * BODY_LEADING)) +
+      2 * FIELD_PAD;
+    c.ensure(rowH + 4);
+    measured.forEach((m, col) => {
+      const x = MARGIN_X + col * (cellW + FIELD_GAP);
+      c.page.ops.push({ op: "rect", x, y: c.y - rowH, w: cellW, h: rowH, stroke: RULE });
+      let ty = c.y - FIELD_PAD;
+      for (const line of m.label) {
+        drawText(c, line, x + FIELD_PAD, ty - LABEL_SIZE, "F2", LABEL_SIZE, MUTED);
+        ty -= 10;
+      }
+      for (const line of m.value) {
+        drawText(c, line, x + FIELD_PAD, ty - BODY, "F1", BODY, INK);
+        ty -= BODY_LEADING;
+      }
+    });
+    c.y -= rowH + 4;
+  }
+  c.y -= 2;
+}
+
+const LEGAL_SIZE = 9.5;
+const LEGAL_LEADING = 12.5;
+const MIN_LINES_PER_SIDE = 2;
+
+/** Verbatim regulatory language: never truncated; two lines minimum either side of a page break. */
+function layoutLegalText(c: Cursor, cite: string | undefined, text: string): void {
+  if (cite) {
+    c.ensure(2 * LEGAL_LEADING + SMALL_LEADING);
+    drawText(c, `[${cite}]`, MARGIN_X, c.y - SMALL, "F2", SMALL, MUTED);
+    c.y -= SMALL_LEADING;
+  }
+  const lines = wrapText(text, "F1", LEGAL_SIZE, CONTENT_WIDTH);
+  let done = 0;
+  while (done < lines.length) {
+    const remaining = lines.length - done;
+    let fit = Math.floor(c.room / LEGAL_LEADING);
+    if (fit < Math.min(remaining, MIN_LINES_PER_SIDE)) {
+      c.newPage();
+      fit = Math.floor(c.room / LEGAL_LEADING);
+    }
+    let take = Math.min(fit, remaining);
+    // Never strand a single closing line on the next page.
+    if (take < remaining && remaining - take < MIN_LINES_PER_SIDE) {
+      take = Math.max(MIN_LINES_PER_SIDE, remaining - MIN_LINES_PER_SIDE);
+    }
+    for (let k = 0; k < take; k++) {
+      drawText(c, lines[done + k] as string, MARGIN_X, c.y - LEGAL_SIZE, "F1", LEGAL_SIZE, INK);
+      c.y -= LEGAL_LEADING;
+    }
+    done += take;
+  }
+  c.y -= 4;
+}
+
+const BOX = 9;
+
+/** A drawn check box (WinAnsi has no ballot-box glyph): an outline square, crossed when selected. */
+function drawCheckBox(c: Cursor, x: number, topY: number, checked: boolean): void {
+  c.page.ops.push({ op: "rect", x, y: topY - BOX, w: BOX, h: BOX, stroke: INK });
+  if (!checked) return;
+  const [lo, hi] = [1.5, BOX - 1.5];
+  for (const [ya, yb] of [
+    [lo, hi],
+    [hi, lo],
+  ] as const) {
+    c.page.ops.push({
+      op: "line",
+      x1: x + lo,
+      y1: topY - BOX + ya,
+      x2: x + hi,
+      y2: topY - BOX + yb,
+      stroke: INK,
+      width: 1.2,
+    });
+  }
+}
+
+function layoutAttestation(c: Cursor, text: string, checked: boolean): void {
+  const lines = wrapText(text, "F1", BODY, CONTENT_WIDTH - 36);
+  const h = lines.length * BODY_LEADING + 14;
+  // Keep with the signature that follows: the box plus a signature's worth of room must fit.
+  c.ensure(h + 80);
+  c.page.ops.push({ op: "rect", x: MARGIN_X, y: c.y - h, w: CONTENT_WIDTH, h, stroke: INK });
+  drawCheckBox(c, MARGIN_X + 8, c.y - 8, checked);
+  let ty = c.y - 7;
+  for (const line of lines) {
+    drawText(c, line, MARGIN_X + 26, ty - BODY, "F1", BODY, INK);
+    ty -= BODY_LEADING;
+  }
+  c.y -= h + 8;
+}
+
+function layoutOptions(
+  c: Cursor,
+  title: string,
+  items: ReadonlyArray<{ readonly label: string; readonly selected: boolean }>,
+): void {
+  const titleLines = wrapText(title, "F2", BODY, CONTENT_WIDTH);
+  const rows = items.map((i) => wrapText(i.label, "F1", BODY, CONTENT_WIDTH - 20));
+  const total =
+    titleLines.length * BODY_LEADING + rows.reduce((s, r) => s + r.length * BODY_LEADING + 4, 0);
+  c.ensure(total + 6);
+  flowLines(c, titleLines, MARGIN_X, "F2", BODY, BODY_LEADING, INK);
+  rows.forEach((lines, idx) => {
+    drawCheckBox(c, MARGIN_X + 2, c.y - 2, items[idx]?.selected === true);
+    for (const line of lines) {
+      drawText(c, line, MARGIN_X + 20, c.y - BODY, "F1", BODY, INK);
+      c.y -= BODY_LEADING;
+    }
+    c.y -= 4;
+  });
+  c.y -= 4;
+}
+
+const RULED_LINE_ROOM = 26;
+
+function layoutSignature(c: Cursor, sig: SignatureBlock): void {
+  const lines = signatureLines(sig).flatMap((l) =>
+    wrapText(l.text, l.bold ? "F2" : "F1", BODY, CONTENT_WIDTH - 20).map((t) => ({
+      t,
+      bold: l.bold,
+    })),
+  );
+  const ruled = sig.ruledLine === true;
+  const h = lines.length * BODY_LEADING + 14 + (ruled ? RULED_LINE_ROOM : 0);
+  c.ensure(h + 8);
+  c.page.ops.push({ op: "rect", x: MARGIN_X, y: c.y - h, w: CONTENT_WIDTH, h, stroke: RULE });
+  let ty = c.y - 7;
+  for (const l of lines) {
+    drawText(c, l.t, MARGIN_X + 10, ty - BODY, l.bold ? "F2" : "F1", BODY, INK);
+    ty -= BODY_LEADING;
+  }
+  if (ruled) {
+    const lineY = ty - 18;
+    const right = MARGIN_X + CONTENT_WIDTH - 10;
+    for (const [x1, x2] of [
+      [MARGIN_X + 10, MARGIN_X + 330],
+      [MARGIN_X + 350, right],
+    ] as const) {
+      c.page.ops.push({ op: "line", x1, y1: lineY, x2, y2: lineY, stroke: INK, width: 0.75 });
+    }
+    drawText(c, "Signature", MARGIN_X + 10, lineY - 9, "F1", 7.5, MUTED);
+    drawText(c, "Date", MARGIN_X + 350, lineY - 9, "F1", 7.5, MUTED);
+  }
+  c.y -= h + 8;
 }
 
 function layoutTable(c: Cursor, b: Extract<Block, { kind: "table" }>): void {
@@ -390,10 +604,31 @@ function layoutTable(c: Cursor, b: Extract<Block, { kind: "table" }>): void {
   }
 }
 
+/** Every string leaf of a block tree (labels, values, text) - the corpus the degraded-glyph counter scans. */
+function stringLeaves(value: unknown, out: string[] = []): string[] {
+  if (typeof value === "string") out.push(value);
+  else if (Array.isArray(value)) for (const v of value) stringLeaves(v, out);
+  else if (typeof value === "object" && value !== null)
+    for (const v of Object.values(value)) stringLeaves(v, out);
+  return out;
+}
+
+/** Number of code points in the document the standard font cannot draw (each is printed as "?"). */
+export function documentDegradedGlyphs(doc: DocModel): number {
+  return stringLeaves(doc.blocks).reduce((n, t) => n + countDegradedGlyphs(t), 0);
+}
+
 /** Lay the document out into pages of drawing ops (footers are added by the writer, which knows the total). */
 export function layoutDocument(doc: DocModel): LaidOutPage[] {
   const c = new Cursor();
-  for (const block of doc.blocks) layoutBlock(c, block);
+  doc.blocks.forEach((block, i) => {
+    const next = doc.blocks[i + 1];
+    const keeps = block.kind === "paragraph" && block.keepWithNext === true && next !== undefined;
+    const reserve = keeps
+      ? Math.min(measureBlocks([next as Block]), PAGE_HEIGHT - MARGIN_TOP - MARGIN_BOTTOM) + 4
+      : 0;
+    layoutBlock(c, block, reserve);
+  });
   return c.pages;
 }
 

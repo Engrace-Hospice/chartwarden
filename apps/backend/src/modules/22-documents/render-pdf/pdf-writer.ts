@@ -7,7 +7,7 @@
 // text-only, standard-font documents need ~150 lines of PDF syntax. Adding a dependency would pull a new
 // supply-chain surface (and an `arch:vuln-allowlist` review) into an EHR for no capability we use.
 import { createHash } from "node:crypto";
-import type { DocModel } from "./doc-model";
+import type { DocModel, DocWatermark, Tone } from "./doc-model";
 import {
   type LaidOutPage,
   MARGIN_X,
@@ -15,6 +15,7 @@ import {
   PAGE_WIDTH,
   type PageOp,
   type Rgb,
+  documentDegradedGlyphs,
   layoutDocument,
 } from "./layout";
 import { type FontKey, textWidth, toWinAnsi } from "./text";
@@ -63,11 +64,59 @@ function opToStream(op: PageOp): string {
   }
 }
 
-function footerOps(title: string, pageNo: number, pageCount: number): PageOp[] {
+const DEGRADED_NOTE = "Some characters could not be displayed - see the chart for the original.";
+const RUNNING_HEADER_Y = PAGE_HEIGHT - 38;
+
+/** Pages 2..N: a one-line identity header so a loose page of a legal document is still attributable. */
+function runningHeaderOps(text: string): PageOp[] {
+  const color: Rgb = [0.38, 0.4, 0.45];
+  return [
+    { op: "text", x: MARGIN_X, y: RUNNING_HEADER_Y, font: "F1", size: 8, text, color },
+    {
+      op: "line",
+      x1: MARGIN_X,
+      y1: RUNNING_HEADER_Y - 5,
+      x2: PAGE_WIDTH - MARGIN_X,
+      y2: RUNNING_HEADER_Y - 5,
+      stroke: [0.8, 0.82, 0.85],
+      width: 0.5,
+    },
+  ];
+}
+
+const WATERMARK_INK: Readonly<Record<Tone, Rgb>> = {
+  info: [0.1, 0.2, 0.45],
+  warn: [0.45, 0.3, 0],
+  danger: [0.55, 0.1, 0.08],
+};
+const WATERMARK_SIZE = 64;
+const WATERMARK_DEG = 45;
+
+/** A translucent diagonal word centred on the page, drawn FIRST so content stays legible above it. */
+function watermarkStream(w: DocWatermark): string {
+  const rad = (WATERMARK_DEG * Math.PI) / 180;
+  const [cos, sin] = [Math.cos(rad), Math.sin(rad)];
+  const width = textWidth(w.text, "F2", WATERMARK_SIZE);
+  const [dx, dy] = [-width / 2, -WATERMARK_SIZE / 3];
+  const tx = PAGE_WIDTH / 2 + dx * cos - dy * sin;
+  const ty = PAGE_HEIGHT / 2 + dx * sin + dy * cos;
+  return `q /GS1 gs BT /F2 ${WATERMARK_SIZE} Tf ${rgb(WATERMARK_INK[w.tone])} rg ${num(cos)} ${num(sin)} ${num(-sin)} ${num(cos)} ${num(tx)} ${num(ty)} Tm ${pdfString(w.text)} Tj ET Q`;
+}
+
+function footerOps(
+  title: string,
+  pageNo: number,
+  pageCount: number,
+  degradedNote: boolean,
+): PageOp[] {
   const color: Rgb = [0.45, 0.47, 0.52];
   const label = `Page ${pageNo} of ${pageCount}`;
   const font: FontKey = "F1";
+  const note: PageOp[] = degradedNote
+    ? [{ op: "text", x: MARGIN_X, y: 24, font, size: 7.5, text: DEGRADED_NOTE, color }]
+    : [];
   return [
+    ...note,
     {
       op: "line",
       x1: MARGIN_X,
@@ -113,14 +162,23 @@ export function writePdf(doc: DocModel, pages: readonly LaidOutPage[]): Uint8Arr
   bodies[4] =
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>";
   const date = pdfDate(doc.createdAtIso);
+  const degradedNote = doc.discloseDegradedGlyphs === true && documentDegradedGlyphs(doc) > 0;
+  const resources = doc.watermark ? " /ExtGState << /GS1 << /ca 0.12 /CA 0.12 >> >>" : "";
   bodies[5] = `<< /Title ${pdfString(doc.title)} /Producer (WardenX M22 renderer) /Creator (WardenX) /CreationDate (${date}) /ModDate (${date}) >>`;
 
   for (let i = 0; i < pageCount; i++) {
-    const ops = [...(pages[i]?.ops ?? []), ...footerOps(doc.title, i + 1, pageCount)];
-    const stream = ops.map(opToStream).join("\n");
+    const ops = [
+      ...(i > 0 && doc.runningHeader ? runningHeaderOps(doc.runningHeader) : []),
+      ...(pages[i]?.ops ?? []),
+      ...footerOps(doc.title, i + 1, pageCount, degradedNote),
+    ];
+    const stream = [
+      ...(doc.watermark ? [watermarkStream(doc.watermark)] : []),
+      ...ops.map(opToStream),
+    ].join("\n");
     const pageNum = firstPageObj + i * 2;
     bodies[pageNum] =
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${pageNum + 1} 0 R >>`;
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >>${resources} >> /Contents ${pageNum + 1} 0 R >>`;
     bodies[pageNum + 1] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
   }
 
