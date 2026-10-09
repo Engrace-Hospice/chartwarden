@@ -305,7 +305,7 @@ describe("GAP-070 workers", () => {
     await runRevalidateConsumer({} as never, deps, job);
 
     expect(enqueued).toHaveLength(2);
-    expect(enqueued[0]?.queue).toBe("validation-run");
+    expect(enqueued[0]?.queue).toBe("m23.validation-run");
     expect(enqueued[0]?.payload.claimId).toBe("c-ready");
     expect(enqueued[0]?.payload.trigger).toBe("re_validation_after_correction");
     expect(String(enqueued[0]?.payload.validationRunId)).toMatch(

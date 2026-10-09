@@ -127,6 +127,7 @@ export {
   buildM23RevalidateEnqueuePort,
   registerM23CronWorkers,
   registerM23DomainWorkers,
+  sweepLegacyValidationRunQueue,
   registerM23PortalHealthWorker,
   registerM23Workers,
   registerM23LaunchWorkers,

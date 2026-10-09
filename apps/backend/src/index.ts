@@ -888,6 +888,7 @@ import {
   type M23HetsConfig,
   M23_OUTBOX_EVENTS,
   M23_PLATFORM_JOB_ID,
+  M23_QUEUES,
   type ProviderCcnPort,
   buildClaimStateService,
   buildClaimValidationContextPort,
@@ -940,6 +941,7 @@ import {
   registerM23WatchCronWorkers,
   scheduleM23Jobs,
   scheduleM23WatchJobs,
+  sweepLegacyValidationRunQueue,
   validateBillingAiBlockAtBoot,
   wireM23Tenancy,
 } from "./modules/23-billing-medicare/index";
@@ -4766,7 +4768,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                 "noe.submit": m23SubmissionQueues !== null,
                 "notr.submit": m23SubmissionQueues !== null,
                 // GAP-070 — real `validation-run` worker + outbox bridge whenever a queue connection exists.
-                "validation-run": m23WorkQueues !== null,
+                [M23_QUEUES.validationRun]: m23WorkQueues !== null,
                 // HETS 270/271: accepted only when a transport is configured AND a worker can drain the
                 // queue; otherwise refuse (503) rather than accept a request no worker can complete.
                 "eligibility.refresh": m23WorkQueues !== null && m23HetsConfig !== null,
@@ -6768,6 +6770,15 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         "M23 launch workers disabled: configure X12 and MAC gateway URLs and bearer tokens",
       );
     }
+    // M23 and M27 once shared a queue named `validation-run`; move any M23 job still stranded on it (never dropped).
+    sweepLegacyValidationRunQueue(queueConnection)
+      .then((result) =>
+        app.log.info(
+          result,
+          "M23 legacy validation-run queue sweep complete (jobs moved, never dropped)",
+        ),
+      )
+      .catch((err) => app.log.error(err, "M23 legacy validation-run queue sweep failed"));
     attachDlqAlertsToAll(m23Workers, "m23");
     app.addHook("onClose", async () => {
       await Promise.all(m23Workers.map((worker) => worker.close()));

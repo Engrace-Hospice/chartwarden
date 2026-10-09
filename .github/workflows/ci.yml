@@ -1063,6 +1063,9 @@ jobs:
           # authoring a report. Proves RLS isolation and the concurrent-accept idempotency guard
           # (report_definition_system_org_base_uq, migration 0248).
           - { name: "M33 system dashboards", scripts: "test:m33:system-dashboards:live" }
+          # M23 and M27 once shared a BullMQ queue named `validation-run` (an M27 worker failed M23 jobs into the DLQ). Real
+          # producers, one consumer per module: a job reaches only its own module; stranded legacy jobs are moved, not dropped.
+          - { name: "M23/M27 validation queue isolation", scripts: "test:m23:validation-queue-isolation:live" }
     services:
       # F-025 (#59): four of the newly-wired suites gate on `WARDENX_TEST_REDIS_URL` as well as the
       # database — `test:m30:scheduled-jobs:live`, `test:m33:scheduled-jobs:live`,

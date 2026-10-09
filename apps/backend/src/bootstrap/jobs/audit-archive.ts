@@ -21,6 +21,7 @@
 // `skipped: "unconfigured"` and touches nothing — the hot tier simply keeps the partitions.
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
+import { AUDIT_QUEUES } from "@wardenx/audit";
 import type { DbClient } from "@wardenx/db";
 import {
   type PlatformBypassAuditor,
@@ -30,8 +31,8 @@ import {
 import { sql } from "drizzle-orm";
 
 export const AUDIT_ARCHIVE_JOB_ID = "platform.audit_archive";
-/** M1 spec §4.8 queue name. */
-export const AUDIT_ARCHIVE_QUEUE = "audit.archive";
+/** M1 spec §4.8 queue name — the audit catalog's `archive` entry (one declaration, so arch:queue-names sees one owner). */
+export const AUDIT_ARCHIVE_QUEUE = AUDIT_QUEUES.archive;
 /** Monthly, 03:30 on the 2nd (after the 1st's partition rotation has settled). */
 export const AUDIT_ARCHIVE_CRON = "30 3 2 * *";
 /** Closed partitions younger than this many months stay hot. */

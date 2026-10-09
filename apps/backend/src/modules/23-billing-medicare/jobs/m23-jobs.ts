@@ -1407,12 +1407,16 @@ export async function runRevalidateConsumer(
     if (!claim || (claim.state !== "validating" && claim.state !== "ready")) continue;
     // Deterministic per (event, claim) — idempotent — and a real uuid: it becomes `validation_run.id`.
     const validationRunId = deterministicUuid(`${job.eventId}:${claimId}`);
-    await enqueue.enqueue("validation-run", `${job.organizationId}:${claimId}:${job.eventId}`, {
-      organizationId: job.organizationId,
-      claimId,
-      validationRunId,
-      trigger: "re_validation_after_correction",
-    });
+    await enqueue.enqueue(
+      M23_QUEUES.validationRun,
+      `${job.organizationId}:${claimId}:${job.eventId}`,
+      {
+        organizationId: job.organizationId,
+        claimId,
+        validationRunId,
+        trigger: "re_validation_after_correction",
+      },
+    );
   }
 }
 

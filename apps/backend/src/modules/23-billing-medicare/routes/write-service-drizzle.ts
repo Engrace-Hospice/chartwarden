@@ -40,6 +40,7 @@ import * as schema from "@wardenx/db/schema";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, DegradedError, NotFoundError, WardenXError } from "@wardenx/types";
 import { and, eq, inArray } from "drizzle-orm";
+import { M23_QUEUES } from "../jobs/queues";
 import { buildNoticeCorrectionService } from "../services/notice-correction-service";
 import {
   PriorElectionNotClosedError,
@@ -681,7 +682,7 @@ export function buildDrizzleM23WriteService(
           validationRunId,
         });
         const { jobId } = await jobs.enqueue(
-          "validation-run",
+          M23_QUEUES.validationRun,
           `${actor.organizationId}:${claim.id}:${validationRunId}`,
           { claimId: claim.id, validationRunId, trigger },
         );

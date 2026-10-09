@@ -17,6 +17,10 @@ export {
   M23_QUEUES,
 } from "./queues";
 export {
+  migrateLegacyValidationRunJobs,
+  sweepLegacyValidationRunQueue,
+} from "./legacy-validation-queue";
+export {
   type ActiveOrgListPort,
   type ClaimSubmitJob,
   type ClaimSubmitRetryJob,
