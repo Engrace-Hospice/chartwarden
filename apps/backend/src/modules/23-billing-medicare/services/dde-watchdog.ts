@@ -27,7 +27,9 @@ export interface DdeWatchdogPort {
   ensureNoticeItem(tx: BillingTx, notice: DdeNoticeAtRisk): Promise<{ readonly created: boolean }>;
 }
 
-export function buildDdeWatchdog(ports: { readonly outbox?: WriteOutboxPort } = {}): DdeWatchdogPort {
+export function buildDdeWatchdog(
+  ports: { readonly outbox?: WriteOutboxPort } = {},
+): DdeWatchdogPort {
   return {
     async ensureNoticeItem(tx, notice) {
       const subjectKind = notice.itemType === "noe" ? "noe_record" : "notr_record";

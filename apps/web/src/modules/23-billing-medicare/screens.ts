@@ -54,6 +54,7 @@ const SubmissionsTimeline = lazy(() =>
 const SurveyorReadView = lazy(() =>
   import("./surveyor-read-view").then((m) => ({ default: m.SurveyorReadView })),
 );
+const DdeQueue = lazy(() => import("./dde-queue").then((m) => ({ default: m.DdeQueue })));
 const WageIndexes = lazy(() => import("./wage-indexes").then((m) => ({ default: m.WageIndexes })));
 const ValidationWorklist = lazy(() =>
   import("./validation-worklist").then((m) => ({ default: m.ValidationWorklist })),
@@ -177,6 +178,15 @@ export const billingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Billing",
       requiredPermission: "billing.noe.read",
       screen: TransferNotices,
+    },
+    // --- DDE work queue: human work tracking for Medicare Direct Data Entry (ADR-0052) ---
+    {
+      id: "billing.dde-queue",
+      path: "/billing/dde",
+      title: "DDE Work Queue",
+      navGroup: "Billing",
+      requiredPermission: "billing.dde.read",
+      screen: DdeQueue,
     },
     // --- validation rule config (§5.1 #12) ---
     {

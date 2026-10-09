@@ -1,3 +1,4 @@
+import type { Static } from "@sinclair/typebox";
 // apps/backend/src/modules/23-billing-medicare/services/dde-queue-service.ts — the M23 DDE work-queue service
 // (ADR-0052): HUMAN WORK TRACKING for Medicare Direct Data Entry (FISS). WardenX holds no DDE credential and
 // performs no DDE call; `record submission` is an operator attestation, never a verified fact.
@@ -25,7 +26,6 @@ import {
 } from "@wardenx/billing";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, NotFoundError, ValidationError, WardenXError } from "@wardenx/types";
-import type { Static } from "@sinclair/typebox";
 import type {
   AssignDdeItemBodySchema,
   CreateDdeItemBodySchema,

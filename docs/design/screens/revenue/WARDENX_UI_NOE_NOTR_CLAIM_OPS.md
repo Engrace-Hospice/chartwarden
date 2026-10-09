@@ -42,8 +42,29 @@ Work Table (work items)  |  Right Detail Panel (selected item + actions)
 
 - Queue of admissions needing an NOE, each with a **5-calendar-day** countdown from election
 - Timely / at-risk / late chips; late items carry the forfeited-day span and a reason field
-- Submit via clearinghouse (837I-equivalent / DDE), or record manual DDE submission + receipt
+- Submit via clearinghouse (837I-equivalent), or work it in the **DDE Work Queue** (below)
 - Money fields (`tabular-nums`): admission date, election date, days remaining, days forfeited
+
+## DDE Work Queue
+
+*As built 2026-10 (ADR-0052; Billing → DDE queue, `/billing/dde`).* Human work tracking for the Medicare
+Direct Data Entry (FISS) work a biller must key by hand: NOE and NOTR, claim entry, RTP corrections,
+adjustments, cancels and ADR responses. WardenX never connects to DDE and holds no DDE credential, so
+everything recorded here is the operator's word, and it is audited.
+
+- Work table (patient · work type · deadline · status) with Overdue / At risk chips and filters for status,
+  type, overdue and at risk; counts line above the table
+- Right detail panel: deadline, keyed-in-DDE time, MAC acceptance date, DCN / ICN, RTP reason code, history
+  timeline, and only the actions the server allows now (take it, start, record as keyed, record what came
+  back, reopen as a new attempt, close, cancel)
+- An NOE/NOTR deadline is its filing window target; it is **met only when a MAC acceptance date on or before
+  it is recorded**. A keyed notice with no acceptance date stays **At risk**. Recording an accepted NOE/NOTR
+  takes the notice's existing acceptance transition and stores the entered date as its payer status date
+  (source "DDE date entered by staff")
+- "Record as keyed in DDE" needs a recent step-up (`billing.dde.mark_submitted`)
+- The screen shows no Medicare number (MBI) and accepts none: notes are capped and MBI-shaped text is refused;
+  identity comes from the patient chart under its existing reveal controls
+- The NOE/NOTR window watch queues an item for a notice nearing its window, once per notice
 
 ## NOTR Manager
 

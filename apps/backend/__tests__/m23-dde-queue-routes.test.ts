@@ -227,7 +227,11 @@ describe("M23 DDE work-queue routes (ADR-0052)", () => {
 
   it("a read-only holder cannot work an item (403); a worker can claim, start and record an outcome", async () => {
     const { app, calls } = makeServer();
-    const post = (headers: Record<string, string>, path: string, payload: unknown) =>
+    const post = (
+      headers: Record<string, string>,
+      path: string,
+      payload: Record<string, unknown>,
+    ) =>
       app.inject({
         method: "POST",
         url: `${BASE}/${ITEM}/${path}`,

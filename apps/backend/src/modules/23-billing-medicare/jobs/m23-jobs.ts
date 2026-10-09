@@ -32,10 +32,10 @@
 // AI-BLOCK (D13): no `@wardenx/ai-platform` import anywhere here; a background job has no acting user.
 import { createHash } from "node:crypto";
 import {
-  DDE_WATCHDOG_LOOKAHEAD_DAYS,
   type ClaimDocument837i,
   type ClaimState,
   type ClaimTransitionEvent,
+  DDE_WATCHDOG_LOOKAHEAD_DAYS,
   type EligibilityOutcome,
   type NoticeState,
   canTransition as canClaimTransition,
