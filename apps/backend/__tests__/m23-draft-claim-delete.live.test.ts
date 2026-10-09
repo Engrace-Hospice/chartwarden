@@ -329,4 +329,152 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
       await c.end();
     }
   });
+
+  describe("the draft-only guard cannot be defeated from the app role (H1)", () => {
+    it.each(["SUBMITTED", "PAID", "VALIDATING", "READY"])(
+      "refuses to flip a %s claim back to DRAFT, so flip-then-delete fails and nothing is lost",
+      async (state) => {
+        const { claimId } = await seedClaim(ORG_A, state);
+        await asApp(ORG_A, async (c) => {
+          await expect(
+            c.query("UPDATE claim SET state='DRAFT' WHERE id=$1", [claimId]),
+          ).rejects.toThrow(/M23_CLAIM_STATE_REVERT/);
+        });
+        // the same attack as one script: flip, then delete the subtree
+        await asApp(ORG_A, async (c) => {
+          await c.query("SAVEPOINT s");
+          await c
+            .query("UPDATE claim SET state='DRAFT' WHERE id=$1", [claimId])
+            .catch(() => undefined);
+          await c.query("ROLLBACK TO SAVEPOINT s");
+          await expect(
+            c.query("DELETE FROM claim_line WHERE claim_id=$1", [claimId]),
+          ).rejects.toThrow(/M23_CLAIM_NOT_DRAFT/);
+        });
+        expect(await count("claim", "id=$1 AND state=$2", [claimId, state])).toBe(1);
+        expect(await count("claim_line", "claim_id=$1", [claimId])).toBe(2);
+      },
+    );
+
+    it("still lets a DRAFT claim move forward and a same-state aggregate patch through", async () => {
+      const { claimId } = await seedClaim(ORG_A, "DRAFT");
+      await asApp(ORG_A, async (c) => {
+        await c.query("UPDATE claim SET total_charge_cents=5 WHERE id=$1", [claimId]);
+        await c.query("UPDATE claim SET state='VALIDATING' WHERE id=$1", [claimId]);
+      });
+    });
+
+    it("refuses to re-parent a claim_line onto a draft claim, so re-parent-then-delete fails", async () => {
+      const sent = await seedClaim(ORG_A, "SUBMITTED");
+      const draft = await seedClaim(ORG_A, "DRAFT");
+      await asApp(ORG_A, (c) =>
+        expect(
+          c.query("UPDATE claim_line SET claim_id=$1 WHERE claim_id=$2", [
+            draft.claimId,
+            sent.claimId,
+          ]),
+        ).rejects.toThrow(/M23_CLAIM_LINE_REPARENT/),
+      );
+      await asApp(ORG_A, (c) =>
+        expect(
+          c.query("UPDATE claim_line SET organization_id=$1 WHERE claim_id=$2", [
+            ORG_B,
+            sent.claimId,
+          ]),
+        ).rejects.toThrow(),
+      );
+      expect(await count("claim_line", "claim_id=$1", [sent.claimId])).toBe(2);
+    });
+
+    it("closes the same re-parenting hole on every other table in the allow-list", async () => {
+      const sent = await seedClaim(ORG_A, "SUBMITTED");
+      const draft = await seedClaim(ORG_A, "DRAFT");
+      const cases: Array<[string, unknown[]]> = [
+        [
+          "UPDATE hipps_calculation SET claim_id=$2 WHERE claim_id=$1",
+          [sent.claimId, draft.claimId],
+        ],
+        ["UPDATE sia_calculation SET claim_id=$2 WHERE claim_id=$1", [sent.claimId, draft.claimId]],
+        ["UPDATE validation_run SET claim_id=$2 WHERE claim_id=$1", [sent.claimId, draft.claimId]],
+        [
+          "UPDATE claim_state_history SET claim_id=$2 WHERE claim_id=$1",
+          [sent.claimId, draft.claimId],
+        ],
+        [
+          "UPDATE validation_result SET validation_run_id=$2 WHERE validation_run_id=$1",
+          [sent.runId, draft.runId],
+        ],
+        [
+          "UPDATE validation_override SET result_id=$2 WHERE result_id=$1",
+          [sent.resultId, draft.resultId],
+        ],
+      ];
+      for (const [sql, args] of cases) {
+        await asApp(ORG_A, (c) =>
+          expect(c.query(sql, args)).rejects.toThrow(/M23_TABLE_APPEND_ONLY/),
+        );
+      }
+    });
+
+    it("refuses to delete a DRAFT claim that already has a submission or acknowledgment row", async () => {
+      const { claimId } = await seedClaim(ORG_A, "DRAFT");
+      const sub = uuid();
+      await admin.query(
+        `INSERT INTO claim_submission (id, organization_id, provider_entity_id, kind, claim_id, claim_control_number, attempt_index)
+         VALUES ($1,$2,$3,'claim_837i',$4,$5,0)`,
+        [sub, ORG_A, PE, claimId, `CCN-SUB-${claimId}`],
+      );
+      await expect(svc().deleteDraftClaim(actorA, claimId)).rejects.toThrow(/transmitted/i);
+      await asApp(ORG_A, (c) =>
+        expect(c.query("DELETE FROM claim WHERE id=$1", [claimId])).rejects.toThrow(
+          /M23_CLAIM_NOT_DRAFT/,
+        ),
+      );
+      expect(await count("claim", "id=$1", [claimId])).toBe(1);
+      expect(await count("claim_line", "claim_id=$1", [claimId])).toBe(2);
+    });
+
+    it("cannot be fooled by a TEMP table named claim shadowing the real one (M1)", async () => {
+      const sent = await seedClaim(ORG_A, "SUBMITTED");
+      await asApp(ORG_A, async (c) => {
+        await c.query(
+          "CREATE TEMP TABLE claim (id uuid, organization_id uuid, state text) ON COMMIT DROP",
+        );
+        await c.query("INSERT INTO pg_temp.claim VALUES ($1,$2,'DRAFT')", [sent.claimId, ORG_A]);
+        await expect(
+          c.query("DELETE FROM claim_line WHERE claim_id=$1", [sent.claimId]),
+        ).rejects.toThrow(/M23_CLAIM_NOT_DRAFT/);
+        await c.query("ROLLBACK").catch(() => undefined);
+        await c.query("BEGIN");
+        await c.query("SELECT set_config('app.org_id', $1, true)", [ORG_A]);
+        await c.query(
+          "CREATE TEMP TABLE validation_run (id uuid, organization_id uuid, claim_id uuid) ON COMMIT DROP",
+        );
+        await expect(
+          c.query("DELETE FROM hipps_calculation WHERE claim_id=$1", [sent.claimId]),
+        ).rejects.toThrow(/M23_TABLE_APPEND_ONLY/);
+      });
+      expect(await count("claim_line", "claim_id=$1", [sent.claimId])).toBe(2);
+    });
+
+    it("pins every guard function's search_path with pg_temp last", async () => {
+      const { rows } = await admin.query(
+        `SELECT proname, proconfig FROM pg_proc WHERE proname = ANY($1)`,
+        [
+          [
+            "m23_is_destruction_role",
+            "m23_claim_delete_guard",
+            "m23_claim_line_delete_guard",
+            "m23_enforce_append_only_unless_draft_claim",
+            "m23_claim_is_deletable",
+            "m23_claim_no_revert_to_draft",
+            "m23_claim_line_no_reparent",
+          ],
+        ],
+      );
+      expect(rows).toHaveLength(7);
+      for (const r of rows)
+        expect(r.proconfig).toContain("search_path=pg_catalog, public, pg_temp");
+    });
+  });
 });

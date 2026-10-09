@@ -22,6 +22,16 @@
 --      unconditional `m23_enforce_append_only`: a draft has none, and a transmitted claim's wire record is never
 --      deletable. Every delete still lands in `audit_event` (compliance class) through the existing M4 triggers, so
 --      the evidence that a draft existed and was discarded is preserved there.
+-- Hardening against defeating the guard from the app role (which holds UPDATE on claim / claim_line):
+--   * trg_claim_no_revert_to_draft: no UPDATE may move a claim INTO 'DRAFT' from another state. The claim machine has no
+--     transition into draft (only draft -> validating), so this forbids nothing legitimate; without it an app-role
+--     session could flip a SUBMITTED claim to DRAFT and then delete it in the same transaction.
+--   * trg_claim_line_no_reparent: claim_line.claim_id / organization_id are immutable (no re-parenting a line onto a
+--     draft). The other seven tables already reject every UPDATE (m23_enforce_append_only_unless_draft_claim / 0079).
+--   * m23_claim_is_deletable() also requires that no claim_submission or claim_acknowledgment row references the claim.
+--   * Every guard function is SECURITY INVOKER with `SET search_path = pg_catalog, public, pg_temp` and schema-qualified
+--     table references, so a TEMP table or a changed search_path cannot shadow `claim`. (No REVOKE TEMP ON DATABASE:
+--     the repo has no such convention and provisioning does not manage database-level privileges.)
 -- Delete order (children first, so each guard can still resolve its owning claim): validation_override ->
 -- validation_result -> validation_run -> claim_state_history -> sia_calculation -> hipps_calculation -> claim_line ->
 -- claim. Idempotent.
@@ -37,45 +47,84 @@ GRANT DELETE ON "sia_calculation" TO wardenx_app;--> statement-breakpoint
 
 -- The erase role on the guarded tables (the 1056 shape): a NON-superuser member of wardenx_destruction only.
 CREATE OR REPLACE FUNCTION m23_is_destruction_role() RETURNS boolean
-LANGUAGE sql STABLE AS $$
+LANGUAGE sql STABLE SET search_path = pg_catalog, public, pg_temp AS $$
   SELECT pg_has_role(current_user, 'wardenx_destruction', 'MEMBER')
      AND NOT (SELECT r.rolsuper FROM pg_catalog.pg_roles r WHERE r.rolname = current_user)
 $$;--> statement-breakpoint
 
+-- A claim's subtree may be deleted only while the claim is DRAFT and nothing was ever transmitted or acknowledged for it.
+CREATE OR REPLACE FUNCTION m23_claim_is_deletable(p_claim_id uuid, p_org_id uuid) RETURNS boolean
+LANGUAGE sql STABLE SET search_path = pg_catalog, public, pg_temp AS $$
+  SELECT EXISTS (SELECT 1 FROM public.claim c WHERE c.id = p_claim_id AND c.organization_id = p_org_id AND c.state = 'DRAFT')
+     AND NOT EXISTS (SELECT 1 FROM public.claim_submission s WHERE s.claim_id = p_claim_id)
+     AND NOT EXISTS (SELECT 1 FROM public.claim_acknowledgment a WHERE a.claim_id = p_claim_id)
+$$;--> statement-breakpoint
+
 CREATE OR REPLACE FUNCTION m23_claim_delete_guard() RETURNS trigger
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
 BEGIN
-  IF m23_is_destruction_role() OR OLD.state = 'DRAFT' THEN
+  IF public.m23_is_destruction_role() THEN
     RETURN OLD;
   END IF;
-  RAISE EXCEPTION 'M23_CLAIM_NOT_DRAFT: claim % is % and cannot be deleted (only a DRAFT claim may be)', OLD.id, OLD.state
+  IF OLD.state = 'DRAFT'
+     AND NOT EXISTS (SELECT 1 FROM public.claim_submission s WHERE s.claim_id = OLD.id)
+     AND NOT EXISTS (SELECT 1 FROM public.claim_acknowledgment a WHERE a.claim_id = OLD.id) THEN
+    RETURN OLD;
+  END IF;
+  RAISE EXCEPTION 'M23_CLAIM_NOT_DRAFT: claim % is % (or has a submission on record) and cannot be deleted', OLD.id, OLD.state
     USING ERRCODE = 'restrict_violation';
 END $$;--> statement-breakpoint
 DROP TRIGGER IF EXISTS "trg_claim_delete_guard" ON "claim";--> statement-breakpoint
 CREATE TRIGGER "trg_claim_delete_guard" BEFORE DELETE ON "claim"
   FOR EACH ROW EXECUTE FUNCTION m23_claim_delete_guard();--> statement-breakpoint
 
-CREATE OR REPLACE FUNCTION m23_claim_line_delete_guard() RETURNS trigger
-LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION m23_claim_no_revert_to_draft() RETURNS trigger
+LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
 BEGIN
-  IF m23_is_destruction_role() THEN
+  IF NEW.id IS DISTINCT FROM OLD.id OR NEW.organization_id IS DISTINCT FROM OLD.organization_id THEN
+    RAISE EXCEPTION 'M23_CLAIM_STATE_REVERT: claim identity is immutable' USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF NEW.state = 'DRAFT' AND OLD.state <> 'DRAFT' THEN
+    RAISE EXCEPTION 'M23_CLAIM_STATE_REVERT: claim % cannot return to DRAFT from %', OLD.id, OLD.state
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END $$;--> statement-breakpoint
+DROP TRIGGER IF EXISTS "trg_claim_no_revert_to_draft" ON "claim";--> statement-breakpoint
+CREATE TRIGGER "trg_claim_no_revert_to_draft" BEFORE UPDATE ON "claim"
+  FOR EACH ROW EXECUTE FUNCTION m23_claim_no_revert_to_draft();--> statement-breakpoint
+
+CREATE OR REPLACE FUNCTION m23_claim_line_delete_guard() RETURNS trigger
+LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
+BEGIN
+  IF public.m23_is_destruction_role() OR public.m23_claim_is_deletable(OLD.claim_id, OLD.organization_id) THEN
     RETURN OLD;
   END IF;
-  IF EXISTS (SELECT 1 FROM claim c WHERE c.id = OLD.claim_id AND c.organization_id = OLD.organization_id AND c.state = 'DRAFT') THEN
-    RETURN OLD;
-  END IF;
-  RAISE EXCEPTION 'M23_CLAIM_NOT_DRAFT: claim_line % belongs to a claim that is not DRAFT and cannot be deleted', OLD.id
+  RAISE EXCEPTION 'M23_CLAIM_NOT_DRAFT: claim_line % belongs to a claim that is not a deletable DRAFT', OLD.id
     USING ERRCODE = 'restrict_violation';
 END $$;--> statement-breakpoint
 DROP TRIGGER IF EXISTS "trg_claim_line_delete_guard" ON "claim_line";--> statement-breakpoint
 CREATE TRIGGER "trg_claim_line_delete_guard" BEFORE DELETE ON "claim_line"
   FOR EACH ROW EXECUTE FUNCTION m23_claim_line_delete_guard();--> statement-breakpoint
 
--- Append-only children: UPDATE always rejected; DELETE only for a row owned by a DRAFT claim. TG_ARGV[0] says how the
--- row reaches its claim: 'claim' (own claim_id), 'run' (validation_run_id), 'result' (result_id via validation_result).
--- Fail closed: an unresolvable owner is not a draft.
+CREATE OR REPLACE FUNCTION m23_claim_line_no_reparent() RETURNS trigger
+LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
+BEGIN
+  IF NEW.claim_id IS DISTINCT FROM OLD.claim_id OR NEW.organization_id IS DISTINCT FROM OLD.organization_id THEN
+    RAISE EXCEPTION 'M23_CLAIM_LINE_REPARENT: claim_line % cannot move to another claim or organization', OLD.id
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END $$;--> statement-breakpoint
+DROP TRIGGER IF EXISTS "trg_claim_line_no_reparent" ON "claim_line";--> statement-breakpoint
+CREATE TRIGGER "trg_claim_line_no_reparent" BEFORE UPDATE ON "claim_line"
+  FOR EACH ROW EXECUTE FUNCTION m23_claim_line_no_reparent();--> statement-breakpoint
+
+-- Append-only children: UPDATE always rejected; DELETE only for a row owned by a deletable DRAFT claim. TG_ARGV[0] says
+-- how the row reaches its claim: 'claim' (own claim_id), 'run' (validation_run_id), 'result' (result_id via
+-- validation_result). Fail closed: an unresolvable owner is not a draft.
 CREATE OR REPLACE FUNCTION m23_enforce_append_only_unless_draft_claim() RETURNS trigger
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE
   v_row jsonb := to_jsonb(OLD);
   v_claim uuid;
@@ -84,16 +133,14 @@ BEGIN
     IF TG_ARGV[0] = 'claim' THEN
       v_claim := (v_row ->> 'claim_id')::uuid;
     ELSIF TG_ARGV[0] = 'run' THEN
-      SELECT r.claim_id INTO v_claim FROM validation_run r
+      SELECT r.claim_id INTO v_claim FROM public.validation_run r
        WHERE r.id = (v_row ->> 'validation_run_id')::uuid AND r.organization_id = OLD.organization_id;
     ELSIF TG_ARGV[0] = 'result' THEN
-      SELECT r.claim_id INTO v_claim FROM validation_result vr
-        JOIN validation_run r ON r.id = vr.validation_run_id AND r.organization_id = vr.organization_id
+      SELECT r.claim_id INTO v_claim FROM public.validation_result vr
+        JOIN public.validation_run r ON r.id = vr.validation_run_id AND r.organization_id = vr.organization_id
        WHERE vr.id = (v_row ->> 'result_id')::uuid AND vr.organization_id = OLD.organization_id;
     END IF;
-    IF v_claim IS NOT NULL AND EXISTS (
-      SELECT 1 FROM claim c WHERE c.id = v_claim AND c.organization_id = OLD.organization_id AND c.state = 'DRAFT'
-    ) THEN
+    IF v_claim IS NOT NULL AND public.m23_claim_is_deletable(v_claim, OLD.organization_id) THEN
       RETURN OLD;
     END IF;
   END IF;
