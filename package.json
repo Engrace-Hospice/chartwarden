@@ -133,6 +133,7 @@
     "test:f073:idempotency-bodiless:live": "vitest run apps/backend/__tests__/f-073-idempotency-bodiless-response.live.test.ts",
     "test:gap007:idempotency-claim:live": "vitest run apps/backend/__tests__/gap-007-idempotency-claim.live.test.ts",
     "test:gap007:grant-scope:live": "vitest run apps/backend/__tests__/gap-007-grant-scope-route.live.test.ts",
+    "test:gap049:alert-repeat:live": "vitest run apps/backend/__tests__/gap-049-m30-alert-repeat.live.test.ts",
     "test:m28:fhir-gateway:live": "vitest run apps/backend/__tests__/m28-fhir-gateway.live.test.ts",
     "test:m28:outbox-catalog:live": "vitest run apps/backend/__tests__/m28-outbox-catalog.live.test.ts",
     "test:m2:outbox-audit-rls:live": "vitest run apps/backend/__tests__/m2-outbox-audit-rls.live.test.ts",

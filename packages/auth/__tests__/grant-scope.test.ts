@@ -158,8 +158,10 @@ describe("patient-level scope", () => {
     expect(violations[0]?.message).toContain("caseload");
   });
   it("is also unreadable when stored, so a stored patientIds blob grants no reach", () => {
-    expect(effectiveReachWithDiagnostics(NONE, [{ scope: { patientIds: [LOC_X] } }])).toMatchObject({
-      malformedGrantCount: 1,
-    });
+    expect(effectiveReachWithDiagnostics(NONE, [{ scope: { patientIds: [LOC_X] } }])).toMatchObject(
+      {
+        malformedGrantCount: 1,
+      },
+    );
   });
 });

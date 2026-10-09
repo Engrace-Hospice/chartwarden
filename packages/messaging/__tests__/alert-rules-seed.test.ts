@@ -171,6 +171,7 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m30.alerts.incident_abuse_allegation",
       "m30.alerts.outbreak_detected",
       "m30.alerts.measure_threshold_breached",
+      "m30.alerts.recipient_fallback",
       "m30.alerts.cahps_sample_ready",
       "m30.alerts.mortality_review_due",
       "m30.alerts.cop_review_overdue",

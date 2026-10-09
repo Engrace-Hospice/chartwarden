@@ -25,6 +25,12 @@ export {
   registerM30CapOverdueWorker,
   scheduleM30CapOverdueJob,
 } from "./cap-overdue-scan";
+// GAP-049 - the repeat half of the sentinel / abuse / outbreak / threshold cadences.
+export {
+  M30_ALERT_REPEAT_QUEUE,
+  registerM30AlertRepeatWorker,
+  scheduleM30AlertRepeatJob,
+} from "./alert-repeat-sweeps";
 // GAP-049 - the mortality-review-overdue and CoP-attestation-cadence sweeps (scheduled §4.9 alerts).
 export {
   M30_REVIEW_OVERDUE_QUEUE,

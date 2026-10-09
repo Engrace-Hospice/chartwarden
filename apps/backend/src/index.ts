@@ -1155,12 +1155,14 @@ import {
   idgQualityFlaggedEventsForOrg,
   mountM30Routes,
   registerM30AbacPredicates,
+  registerM30AlertRepeatWorker,
   registerM30CapOverdueWorker,
   registerM30CronWorkers,
   registerM30PublishedSeams,
   registerM30ReviewOverdueWorker,
   registerM30Workers,
   registerQualityErasers,
+  scheduleM30AlertRepeatJob,
   scheduleM30CapOverdueJob,
   scheduleM30Jobs,
   scheduleM30ReviewOverdueJob,
@@ -1335,6 +1337,7 @@ import {
   registerM35Workers,
   scheduleM35Jobs,
 } from "./modules/35-subscription/index";
+import { emitWithRecipientFallback } from "./modules/36-messaging/alert-recipient-fallback";
 import { cronAlertCorrelationId } from "./modules/36-messaging/cron-alert-correlation";
 import {
   M36_DELIVERY_PLATFORM_JOB_ID,
@@ -6387,6 +6390,31 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     } catch (err) {
       app.log.error(err, "M30 review-overdue cron-schedule registration failed");
     }
+    // GAP-049 - the REPEAT half of the sentinel / abuse (4h / 6h until triaged), outbreak (12h until reviewed) and
+    // threshold (7d until a project is chartered) cadences. Origin-anchored buckets over the consumer's correlation id;
+    // a page that resolves nobody falls back to the tenant admins rather than being absorbed by the dedupe.
+    const m30AlertRepeatWorker = registerM30AlertRepeatWorker({
+      connection: queueConnection,
+      db: dbHandle.db,
+      listActiveOrgs: () => m30ActiveOrgs.listActiveOrgs(),
+      emit: (organizationId, input) =>
+        emitWithRecipientFallback(
+          getSeam("AlertEmitter") as AlertEmitter,
+          organizationId,
+          input,
+          (message, context) => app.log.warn(context, message),
+        ),
+      warn: (message, context) => app.log.warn(context, message),
+    });
+    m30Workers.push(m30AlertRepeatWorker);
+    try {
+      const m30AlertRepeatSchedule = await scheduleM30AlertRepeatJob(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all([m30AlertRepeatWorker.close(), m30AlertRepeatSchedule.close()]);
+      });
+    } catch (err) {
+      app.log.error(err, "M30 alert-repeat cron-schedule registration failed");
+    }
     // GAP-161 - M32 §4.8 `ai:hallucination-triage-followup` consumer: executes the plan R18/R20 enqueue
     // (platform kill switch, the incident_demotion edge attributed to the triage owner, the system-locked alert).
     {
@@ -9034,7 +9062,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           buildM36FieldSafetyAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
           // GAP-049 — M30's sentinel / abuse-allegation incident, outbreak, threshold-breach and CAHPS-sample
           // events (M30 spec §4.9): previously unconsumed (`declaredConsumers: []`), so none of them paged anyone.
-          buildM36QualityAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
+          buildM36QualityAlertConsumer(
+            getSeam("AlertEmitter") as AlertEmitter,
+            (message, context) => app.log.warn(context, message),
+          ),
           // GAP-107 — M37's IV-continuous bedside-check-overdue watchdog alert (M37 §2.6/D7, §4.8): previously
           // unconsumed, so a lapsed bedside check on a running IPU infusion told the care team nothing.
           buildM36IpuIvAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),

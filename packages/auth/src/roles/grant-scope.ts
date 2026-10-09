@@ -195,7 +195,6 @@ export function validateRoleGrant(input: GrantInput): readonly GrantViolation[] 
   return violations;
 }
 
-
 /** The reduced reach plus how many live grants were unreadable and therefore contributed nothing. */
 export interface ReachWithDiagnostics {
   readonly reach: MembershipReach;

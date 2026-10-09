@@ -479,6 +479,11 @@ jobs:
               name: "M3 membership_role.scope - shape CHECK, quarantine, fail-closed reach",
               scripts: "test:gap007:grant-scope:live",
             }
+          # GAP-049 - the repeat half of the M30 §4.9 cadences on the real emitter and RLS as wardenx_app; LIVE by necessity.
+          - {
+              name: "M30 alert repeat cadences - sentinel/abuse/outbreak/threshold",
+              scripts: "test:gap049:alert-repeat:live",
+            }
           # F-035 (#95) — LIVE by necessity: the bearer lookup is decided by RLS, the two tenant
           # resolvers exist only as SECURITY DEFINER functions in migration 0233, and the disclosure
           # ledger's append-only posture is a GRANT. The in-memory store answers all of it happily,

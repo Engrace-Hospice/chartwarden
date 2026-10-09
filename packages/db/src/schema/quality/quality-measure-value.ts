@@ -44,6 +44,9 @@ export const qualityMeasureValue = pgTable(
     denominator: integer("denominator").notNull(), // V-2
     ratio: numeric("ratio", { precision: 6, scale: 4 }),
     thresholdMet: boolean("threshold_met"), // for HCI-indicator-style measures
+    // GAP-049 (migration 1051): the public band as computed. NULL on rows that predate it (their band is
+    // reconstructed from ratio/threshold_met, which cannot tell yellow from red).
+    bandColor: text("band_color"),
     computationSnapshot: jsonb("computation_snapshot")
       .$type<MeasureComputationSnapshot>()
       .notNull(), // input seam state; DENYLISTED (§3.6)

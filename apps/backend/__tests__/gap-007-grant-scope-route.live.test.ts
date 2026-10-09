@@ -98,10 +98,10 @@ describe.skipIf(!DB_URL)("GAP-007 membership_role.scope — LIVE Postgres", () =
     );
   };
   const seedUser = async (id: string, email: string) => {
-    await admin.query(
-      `INSERT INTO "user" (id,email,name,email_verified) VALUES ($1,$2,$2,true)`,
-      [id, email],
-    );
+    await admin.query(`INSERT INTO "user" (id,email,name,email_verified) VALUES ($1,$2,$2,true)`, [
+      id,
+      email,
+    ]);
   };
   const seedMembership = async (user: string, org: string, locations: string[] = []) =>
     (
@@ -205,9 +205,13 @@ describe.skipIf(!DB_URL)("GAP-007 membership_role.scope — LIVE Postgres", () =
     });
 
     it("is idempotent: replaying the migration changes nothing", async () => {
-      const before = await admin.query("SELECT id, scope, scope_legacy, expires_at FROM membership_role ORDER BY id");
+      const before = await admin.query(
+        "SELECT id, scope, scope_legacy, expires_at FROM membership_role ORDER BY id",
+      );
       await applyMigrations((f) => f === SHAPE_MIGRATION);
-      const after = await admin.query("SELECT id, scope, scope_legacy, expires_at FROM membership_role ORDER BY id");
+      const after = await admin.query(
+        "SELECT id, scope, scope_legacy, expires_at FROM membership_role ORDER BY id",
+      );
       expect(after.rows).toEqual(before.rows);
     });
 
@@ -382,10 +386,9 @@ describe.skipIf(!DB_URL)("GAP-007 membership_role.scope — LIVE Postgres", () =
       await admin.query("ALTER TABLE membership_role DROP CONSTRAINT membership_role_scope_shape");
       const reports: unknown[] = [];
       try {
-        await admin.query(
-          "DELETE FROM membership_role WHERE membership_id = $1",
-          [ids.memberBMembership],
-        );
+        await admin.query("DELETE FROM membership_role WHERE membership_id = $1", [
+          ids.memberBMembership,
+        ]);
         await admin.query(
           "INSERT INTO membership_role (organization_id,membership_id,role_id,scope) VALUES ($1,$2,$3,$4::jsonb)",
           [ORG_B, ids.memberBMembership, ids.roleB, JSON.stringify({ patientIds: [PATIENT] })],

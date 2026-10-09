@@ -1158,6 +1158,20 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // GAP-049 - the safety-page safety net. A quality alert whose role_set resolved to NOBODY (the tenant never
+  // provisioned `qapi_coordinator` / `infection_control_lead`, or the holders are all inactive) is persisted with no
+  // deliveries and its correlation id is then spent, so a repeat would be absorbed too. The consumer and the repeat sweep
+  // therefore re-emit the SAME page, once, under this event type and a `:fb` correlation id, to the tenant admins.
+  {
+    eventType: "m30.alerts.recipient_fallback",
+    category: "administrative",
+    severityFloor: "info",
+    recipientResolver: "tenant_admins",
+    resolverArgs: {},
+    channelsOverride: ["in_app", "push", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
   {
     eventType: "m30.alerts.cahps_sample_ready",
     category: "administrative",
