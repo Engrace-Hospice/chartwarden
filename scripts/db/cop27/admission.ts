@@ -206,6 +206,8 @@ async function ensureTransferInAdmission(
           body: {
             patientId: patient.id,
             intakeMethod: "transfer_in",
+            admissionTypeCode: "3",
+            admissionSourceCode: "6",
             hospiceMedicalDirectorId: setup.hospiceMdId,
             ...(ctx.attending ? { attendingPhysicianId: ctx.attending.id } : {}),
           },

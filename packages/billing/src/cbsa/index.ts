@@ -15,17 +15,28 @@ export type HospiceAreaResolution =
       readonly status: "resolved";
       readonly cbsaCode: string;
       readonly areaKind: HospiceAreaKind;
-      readonly countyFips: string;
+      /** The county the ZIP's ZCTA falls in; `null` when the ZIP was placed by its 3-digit prefix. */
+      readonly countyFips: string | null;
+      /** `zip` = the ZIP's own ZCTA; `zip3_unanimous` = a ZIP with no ZCTA (PO box) placed by a prefix every one of
+       *  whose ZIPs shares this code. */
+      readonly via: "zip" | "zip3_unanimous";
+      /** The published hospice wage index for the code and fiscal year; `null` when none is published. */
+      readonly wageIndex: string | null;
     }
   | { readonly status: "unresolved"; readonly reason: UnresolvedReason };
 
 /** The two reference reads the resolver needs (backed by `hospice_zip_county` / `hospice_cbsa_county`). */
+export interface HospiceAreaInfo {
+  readonly cbsaCode: string;
+  readonly areaKind: HospiceAreaKind;
+  readonly wageIndex?: string | null;
+}
+
 export interface HospiceAreaLookup {
   countyForZip(zip5: string): string | undefined;
-  areaForCounty(
-    fiscalYearStarting: number,
-    countyFips: string,
-  ): { readonly cbsaCode: string; readonly areaKind: HospiceAreaKind } | undefined;
+  areaForCounty(fiscalYearStarting: number, countyFips: string): HospiceAreaInfo | undefined;
+  /** Only where every ZCTA sharing the prefix is in the same area for the fiscal year (never a majority guess). */
+  areaForZip3?(fiscalYearStarting: number, zip3: string): HospiceAreaInfo | undefined;
 }
 
 const ZIP5 = /^\d{5}$/;
@@ -38,10 +49,28 @@ export function resolveHospiceArea(
   const zip5 = postalCode.trim().slice(0, 5);
   if (!ZIP5.test(zip5)) return { status: "unresolved", reason: "invalid_zip" };
   const countyFips = lookup.countyForZip(zip5);
-  if (countyFips === undefined) return { status: "unresolved", reason: "zip_unknown" };
+  if (countyFips === undefined) {
+    const byPrefix = lookup.areaForZip3?.(fiscalYearStarting, zip5.slice(0, 3));
+    if (byPrefix === undefined) return { status: "unresolved", reason: "zip_unknown" };
+    return {
+      status: "resolved",
+      cbsaCode: byPrefix.cbsaCode,
+      areaKind: byPrefix.areaKind,
+      countyFips: null,
+      via: "zip3_unanimous",
+      wageIndex: byPrefix.wageIndex ?? null,
+    };
+  }
   const area = lookup.areaForCounty(fiscalYearStarting, countyFips);
   if (area === undefined) return { status: "unresolved", reason: "county_unknown" };
-  return { status: "resolved", ...area, countyFips };
+  return {
+    status: "resolved",
+    cbsaCode: area.cbsaCode,
+    areaKind: area.areaKind,
+    countyFips,
+    via: "zip",
+    wageIndex: area.wageIndex ?? null,
+  };
 }
 
 export type ValueCode = "61" | "G8";

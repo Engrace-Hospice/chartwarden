@@ -924,6 +924,42 @@ describe("837I claim header — physician NPIs (UB-04 FL 76 attending / FL 78 ce
     expect(claim.certifyingPhysicianNpi).toBe("1982736455");
   });
 
+  it("prices a home level of care with the beneficiary's area index, not the provider's", async () => {
+    const seams = buildSeams({
+      cbsa: {
+        areasFor: async () => ({
+          residence: {
+            status: "resolved",
+            cbsaCode: "99938",
+            areaKind: "rural",
+            countyFips: "41059",
+            via: "zip",
+            wageIndex: "0.8000", // differs from the provider's "1.0000"
+          },
+          facility: null,
+        }),
+      },
+    });
+    await buildClaimAssemblyService(makeFakeDb() as never, seams).assemble(ACTOR, REQUEST);
+    expect(store.lines[0].unitRateCents as number).toBeLessThan(20_000); // the provider-index price
+    expect([...store.claims.values()][0].valueCodes).toEqual([{ code: "61", cbsaCode: "99938" }]);
+  });
+
+  it("refuses to price when the beneficiary's area has no resolved index (never the provider's)", async () => {
+    const seams = buildSeams({
+      cbsa: {
+        areasFor: async () => ({
+          residence: { status: "unresolved", reason: "zip_unknown" },
+          facility: null,
+        }),
+      },
+    });
+    await expect(
+      buildClaimAssemblyService(makeFakeDb() as never, seams).assemble(ACTOR, REQUEST),
+    ).rejects.toMatchObject({ code: "WAGE_INDEX_AREA_UNRESOLVED", statusCode: 422 });
+    expect(store.claims.size).toBe(0);
+  });
+
   it("records the admission type and point of origin from the M6 admission on the claim", async () => {
     const base = buildSeams();
     const seams = buildSeams({

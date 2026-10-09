@@ -12,6 +12,9 @@ import {
   ChcHoursError,
   type HippsRateTable,
   type SignedEncounterSnapshot,
+  type ValueCodeAreas,
+  WageIndexAreaError,
+  type WageIndexAreaFactors,
   addDaysIso,
   calculateHipps,
   calculateSia,
@@ -203,6 +206,13 @@ export async function readAssemblyFacts(
 
 export type AssemblyFacts = Awaited<ReturnType<typeof readAssemblyFacts>>;
 
+/** The area wage indexes the resolved value-code areas publish; `null` where an area did not resolve. */
+function wageIndexAreaFactorsOf(areas: ValueCodeAreas): WageIndexAreaFactors {
+  const indexOf = (a: ValueCodeAreas["residence"]) =>
+    a?.status === "resolved" ? a.wageIndex : null;
+  return { residence: indexOf(areas.residence), facility: indexOf(areas.facility) };
+}
+
 /**
  * D7 — the HIPPS per-diem derivation over the resolved level-of-care periods + rate table. Shared by the
  * assembly (which builds the claim lines from it) and the re-validation path (which compares the persisted
@@ -215,7 +225,8 @@ export function computeClaimHipps(
    *  absent ⇒ M6's own-stays count. */
   rhcPriorDays?: number,
 ): ReturnType<typeof calculateHipps> {
-  const { admission, resolvedLoc, rateTable, pe, fiscalYearStarting, wageIndex } = facts;
+  const { admission, resolvedLoc, rateTable, pe, fiscalYearStarting, wageIndex, valueAreas } =
+    facts;
   try {
     return calculateHipps({
       claimServiceFrom: window.serviceFrom,
@@ -233,8 +244,19 @@ export function computeClaimHipps(
       wageIndexCcn: pe.ccn,
       wageIndexFiscalYear: fiscalYearStarting,
       wageIndexFactorDecimal: wageIndex.factorDecimal,
+      // CMS prices home care by the beneficiary's CBSA and inpatient care by the facility's, not the provider's
+      // (42 CFR 418.306(c); Pub. 100-04 ch. 11 §30.3) — see `wage-index-area.ts`. Unbound geography ⇒ provider index.
+      ...(valueAreas ? { wageIndexAreaFactors: wageIndexAreaFactorsOf(valueAreas) } : {}),
     });
   } catch (err) {
+    if (err instanceof WageIndexAreaError) {
+      const where = err.source === "residence" ? "patient residence" : "inpatient facility";
+      throw new WardenXError(
+        "WAGE_INDEX_AREA_UNRESOLVED",
+        `${err.message}; correct the ${where} address (ZIP code) and retry`,
+        422,
+      );
+    }
     // F-211 — CHC is paid hourly; an undocumented / sub-8h / >24h / non-quarter-hour CHC day cannot be priced.
     if (err instanceof ChcHoursError) {
       throw new WardenXError("CHC_HOURS_UNPRICEABLE", err.message, 422);

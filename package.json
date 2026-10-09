@@ -30,6 +30,7 @@
     "db:seed:patients": "bun run scripts/db/seed-patients.ts",
     "db:seed:clinical": "bun run scripts/db/seed-clinical.ts",
     "db:seed:mdm": "bun run scripts/db/seed-mdm.ts",
+    "db:seed:wage-index": "bun run scripts/db/seed-wage-index.ts",
     "db:seed:terminology": "bun run scripts/db/seed-terminology.ts",
     "terminology:x12:fetch": "bun run scripts/terminology/import-x12-codes.ts",
     "db:load:icd10cm": "bun run scripts/db/load-icd10cm.ts",

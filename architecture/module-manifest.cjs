@@ -781,6 +781,7 @@ exports.MODULES = [
       "validation_run",
       "wage_index_factor",
       "hospice_zip_county",
+      "hospice_zip3_area",
       "hospice_cbsa_county",
       "hospice_cbsa_wage_index",
     ],

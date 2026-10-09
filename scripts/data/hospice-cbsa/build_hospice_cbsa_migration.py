@@ -10,6 +10,10 @@ Sources (public; download by hand into <src-dir>; versions pinned here so a reru
       (508-Version-{Urban-Areas,Rural-Areas,Transition-Wage-Index}.csv)
   * OMB Bulletin 23-01 delineation (July 2023), List 1 (CBSA -> FIPS county) -> <src>/list1_2023.xlsx:
       https://www.census.gov/geographies/reference-files/time-series/demo/metro-micro/delineation-files.html
+  * Census Connecticut planning-region change (town -> 2022 planning region) -> <src>/ct_cou_to_cousub.txt, and the
+    ZCTA5 -> county subdivision (town) relationship -> <src>/zcta_cousub.txt:
+      https://www2.census.gov/geo/docs/reference/ct_change/ct_cou_to_cousub_crosswalk.txt
+      https://www2.census.gov/geo/docs/maps-data/data/rel2020/zcta520/tab20_zcta520_cousub20_natl.txt
   * Census 2020 ZCTA5 -> county relationship file -> <src>/zcta_county.txt, and the national county list:
       https://www.census.gov/geographies/reference-files/2020/geo/relationship-files.html
       https://www2.census.gov/geo/docs/reference/codes2020/national_county2020.txt -> <src>/national_county2020.txt
@@ -57,6 +61,19 @@ for line in open(os.path.join(SRC, "national_county2020.txt"), encoding="utf-8-s
     st, sfp, cfp = line.split("|")[:3]
     counties[sfp + cfp] = st
 
+# Connecticut: CMS (FY2026+) and OMB 23-01 use the 2022 planning regions (FIPS 09110..09190), not the old counties.
+# Census publishes the town -> planning-region crosswalk; the 2020 ZCTA file is also available at town (county
+# subdivision) level, so a ZIP can be placed in a planning region exactly.
+ct_town_to_region = {}  # old cousub geoid (state+old county+town) -> planning-region fips5
+with open(os.path.join(SRC, "ct_cou_to_cousub.txt"), encoding="utf-8-sig", newline="") as f:
+    for row in list(csv.reader(f, delimiter="|"))[1:]:
+        if len(row) >= 8 and row[0].strip() == "09":
+            ct_town_to_region[row[6].strip()] = "09" + row[3].strip()
+for fips in [k for k, v in counties.items() if v == "CT"]:
+    del counties[fips]  # the superseded counties
+for region in set(ct_town_to_region.values()):
+    counties[region] = "CT"
+
 wb = openpyxl.load_workbook(os.path.join(SRC, "list1_2023.xlsx"), read_only=True)
 omb = {}  # fips5 -> CBSA code
 for r in list(wb.worksheets[0].iter_rows(values_only=True))[3:]:
@@ -98,12 +115,7 @@ for fy, folder in FYS.items():
             wage_rows.append((fy, code, "Transition " + code, idx))
     got, unresolved = {}, []
     for fips, st in counties.items():
-        if st == "CT":
-            # CMS adopted Connecticut's planning regions (OMB 23-01); the Census 2020 ZCTA file still uses the old
-            # counties, so a ZIP cannot be mapped to a region from these sources. Leave unresolved (fail closed)
-            # rather than let the rural fall-through price Connecticut as rural.
-            unresolved.append(fips)
-        elif fips in trans:
+        if fips in trans:
             code = trans[fips][0]
             kind = "transition" if code.startswith("5") else ("rural" if code.startswith("99") else "urban")
             got[fips] = (code, kind)
@@ -135,7 +147,37 @@ for i, line in enumerate(open(os.path.join(SRC, "zcta_county.txt"), encoding="ut
         continue
     if z not in best or int(area) > best[z][1]:
         best[z] = (c, int(area))
+# Connecticut ZCTAs: place by town -> planning region (the ZCTA/county file has only the superseded counties).
+best = {z: v for z, v in best.items() if not v[0].startswith("09")}
+ct_best = {}
+for i, line in enumerate(open(os.path.join(SRC, "zcta_cousub.txt"), encoding="utf-8-sig")):
+    if i == 0:
+        continue
+    p = line.rstrip("\n").split("|")
+    z, g, area = p[1].strip(), p[9].strip(), p[16].strip()
+    region = ct_town_to_region.get(g)
+    if z and region and area and (z not in ct_best or int(area) > ct_best[z][1]):
+        ct_best[z] = (region, int(area))
+for z, v in ct_best.items():
+    if z not in best or int(v[1]) > best[z][1]:
+        best[z] = v
 zip_rows = sorted((z, c) for z, (c, _a) in best.items() if c in counties)
+
+# ZIP3 fallback for ZIPs with no ZCTA (PO-box / unique-organisation ZIPs): a 3-digit prefix is used ONLY when every
+# ZCTA sharing it falls in the same CBSA/rural code for that fiscal year (unanimous). A mixed prefix stays unresolved.
+area_of = {(fy, f): c for fy, f, c, _k in county_rows}
+kind_of = {(fy, f): k for fy, f, _c, k in county_rows}
+zip3_rows = []
+for fy in FYS:
+    groups = {}
+    for z, c in zip_rows:
+        a = area_of.get((fy, c))
+        groups.setdefault(z[:3], set()).add((a, kind_of.get((fy, c))))
+    for z3, vals in sorted(groups.items()):
+        if len(vals) == 1 and next(iter(vals))[0] is not None:
+            code, kind = next(iter(vals))
+            zip3_rows.append((fy, z3, code, kind))
+report.append(f"{len(zip3_rows)} (fiscal year, ZIP3) prefixes unanimous")
 report.append(f"{len(zip_rows)} ZCTAs mapped to a county")
 
 
@@ -165,6 +207,13 @@ CREATE TABLE hospice_cbsa_wage_index (
   area_name text NOT NULL,
   wage_index numeric(6,4) NOT NULL,
   PRIMARY KEY (fiscal_year_starting, cbsa_code)
+);--> statement-breakpoint
+CREATE TABLE hospice_zip3_area (
+  fiscal_year_starting integer NOT NULL,
+  zip3 text NOT NULL CHECK (zip3 ~ '^[0-9]{3}$'),
+  cbsa_code text NOT NULL CHECK (cbsa_code ~ '^[0-9]{5}$'),
+  area_kind text NOT NULL CHECK (area_kind IN ('urban','rural','transition')),
+  PRIMARY KEY (fiscal_year_starting, zip3)
 );--> statement-breakpoint
 CREATE TABLE hospice_zip_county (
   zip5 text PRIMARY KEY CHECK (zip5 ~ '^[0-9]{5}$'),
@@ -203,7 +252,13 @@ insert(
     lambda r: f"({r[0]},{q(r[1])},{q(r[2])},{r[3]})",
 )
 insert("hospice_zip_county", "zip5, county_fips", zip_rows, lambda r: f"({q(r[0])},{q(r[1])})")
-for t in ("hospice_cbsa_county", "hospice_cbsa_wage_index", "hospice_zip_county"):
+insert(
+    "hospice_zip3_area",
+    "fiscal_year_starting, zip3, cbsa_code, area_kind",
+    zip3_rows,
+    lambda r: f"({r[0]},{q(r[1])},{q(r[2])},{q(r[3])})",
+)
+for t in ("hospice_cbsa_county", "hospice_cbsa_wage_index", "hospice_zip_county", "hospice_zip3_area"):
     # PLATFORM-SHARED (the wage_index_factor precedent, migration 0078): tenants read, only the loader role writes.
     sb = ";--> statement-breakpoint\n"
     out.write(f"ALTER TABLE {t} ENABLE ROW LEVEL SECURITY{sb}ALTER TABLE {t} FORCE ROW LEVEL SECURITY{sb}")

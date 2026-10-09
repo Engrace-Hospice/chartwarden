@@ -44,11 +44,12 @@ async function main(): Promise<void> {
     `INSERT INTO provider_entity
        (id, organization_id, ccn, legal_name, doing_business_as, fiscal_intermediary, npi,
         tax_id_encrypted, fiscal_year_end, addresses, iqies_facility_id, status, created_at, updated_at)
-     VALUES ($1,$2,'341234','WardenX Demo Hospice, Inc.','WardenX Demo Hospice','Palmetto GBA',
+     VALUES ($1,$2,'381588','WardenX Demo Hospice, Inc.','WardenX Demo Hospice','CGS Administrators',
              '1234567890','enc:demo-tax-id-not-real','1231',
-             '[{"line1":"100 Hospice Way","city":"Asheville","state":"NC","postalCode":"28801"}]'::jsonb,
+             -- Demo provider fixture: CCN 381588, Pendleton, Oregon (ZIP 97801, Umatilla County). Never a default.
+             '[{"line1":"100 Hospice Way","city":"Pendleton","state":"OR","postalCode":"97801"}]'::jsonb,
              -- Demo iQIES facility ID (HOPE FAC_ID); a real one is assigned by CMS at iQIES registration.
-             'DEMO341234', 'active', now(), now())
+             'DEMO381588', 'active', now(), now())
      ON CONFLICT (id) DO NOTHING`,
     [PROVIDER_ENTITY_ID, orgId],
   );

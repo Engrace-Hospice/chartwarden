@@ -54,6 +54,7 @@ export * from "./rate-table";
 // F-211 the tenant-entered wage index's pure validation + tenant-then-authoritative-platform precedence.
 export * from "./wage-index";
 export * from "./cbsa";
+export * from "./cbsa/wage-index-seed";
 // D11 the pure sequestration applier (active-policy-or-platform-default percentage over money.ts).
 export * from "./sequestration";
 // D4 / D14 the pure Type-of-Bill derivation (811/812/813/814/817/818 from admission + claim cadence).

@@ -26,7 +26,34 @@ describe("resolveHospiceArea", () => {
       cbsaCode: "31084",
       areaKind: "urban",
       countyFips: "06037",
+      via: "zip",
+      wageIndex: null,
     });
+  });
+
+  it("places a ZIP with no ZCTA by its 3-digit prefix only when the lookup says the prefix is unanimous", () => {
+    const withZip3: HospiceAreaLookup = {
+      ...lookup,
+      areaForZip3: (fy, zip3) =>
+        fy === 2026 && zip3 === "902"
+          ? { cbsaCode: "31084", areaKind: "urban", wageIndex: "1.5" }
+          : undefined,
+    };
+    expect(resolveHospiceArea("90299", 2026, withZip3)).toEqual({
+      status: "resolved",
+      cbsaCode: "31084",
+      areaKind: "urban",
+      countyFips: null,
+      via: "zip3_unanimous",
+      wageIndex: "1.5",
+    });
+    // a mixed prefix (the lookup returns nothing) stays unresolved — never a majority guess, never rural
+    expect(resolveHospiceArea("91799", 2026, withZip3)).toEqual({
+      status: "unresolved",
+      reason: "zip_unknown",
+    });
+    // and without a ZIP3 table at all
+    expect(resolveHospiceArea("90299", 2026, lookup)).toMatchObject({ status: "unresolved" });
   });
 
   it("uses the fiscal year's own delineation", () => {
@@ -74,12 +101,16 @@ describe("claimValueCodes", () => {
     cbsaCode: "31084",
     areaKind: "urban",
     countyFips: "06037",
+    via: "zip",
+    wageIndex: "1.2",
   } as const;
   const facility = {
     status: "resolved",
     cbsaCode: "99935",
     areaKind: "rural",
     countyFips: "38017",
+    via: "zip",
+    wageIndex: "0.8",
   } as const;
   const unresolved = { status: "unresolved", reason: "zip_unknown" } as const;
 

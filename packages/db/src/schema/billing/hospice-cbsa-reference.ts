@@ -3,6 +3,7 @@
 // precedent, migration 0078) — all three are on the check-tenancy NON_ORG_SCOPED allowlist.
 //
 //   hospice_zip_county       zip5 -> county FIPS   (Census 2020 ZCTA, largest-overlap county)
+//   hospice_zip3_area        (fiscal year, ZIP3) -> area, ONLY where every ZCTA sharing the prefix agrees (PO-box ZIPs)
 //   hospice_cbsa_county      (fiscal year, county FIPS) -> CBSA / rural 999NN / transition 5000N code
 //   hospice_cbsa_wage_index  (fiscal year, code) -> the published hospice wage index
 //
@@ -13,6 +14,17 @@ export const hospiceZipCounty = pgTable("hospice_zip_county", {
   zip5: text("zip5").primaryKey(),
   countyFips: text("county_fips").notNull(),
 });
+
+export const hospiceZip3Area = pgTable(
+  "hospice_zip3_area",
+  {
+    fiscalYearStarting: integer("fiscal_year_starting").notNull(),
+    zip3: text("zip3").notNull(),
+    cbsaCode: text("cbsa_code").notNull(),
+    areaKind: text("area_kind", { enum: ["urban", "rural", "transition"] }).notNull(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.fiscalYearStarting, t.zip3] }) }),
+);
 
 export const hospiceCbsaCounty = pgTable(
   "hospice_cbsa_county",

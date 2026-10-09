@@ -35,7 +35,23 @@ async function lookupFor(db: Db, zip5: string, fiscalYearStarting: number) {
     .from(schema.hospiceZipCounty)
     .where(eq(schema.hospiceZipCounty.zip5, zip5))
     .limit(1);
-  const [areaRow] = zipRow
+  // A ZIP with no ZCTA (PO box) falls back to its 3-digit prefix, which exists only where unanimous.
+  const [zip3Row] = zipRow
+    ? []
+    : await db
+        .select({
+          cbsaCode: schema.hospiceZip3Area.cbsaCode,
+          areaKind: schema.hospiceZip3Area.areaKind,
+        })
+        .from(schema.hospiceZip3Area)
+        .where(
+          and(
+            eq(schema.hospiceZip3Area.fiscalYearStarting, fiscalYearStarting),
+            eq(schema.hospiceZip3Area.zip3, zip5.slice(0, 3)),
+          ),
+        )
+        .limit(1);
+  const [countyRow] = zipRow
     ? await db
         .select({
           cbsaCode: schema.hospiceCbsaCounty.cbsaCode,
@@ -50,9 +66,25 @@ async function lookupFor(db: Db, zip5: string, fiscalYearStarting: number) {
         )
         .limit(1)
     : [];
+  const found = countyRow ?? zip3Row;
+  const [indexRow] = found
+    ? await db
+        .select({ wageIndex: schema.hospiceCbsaWageIndex.wageIndex })
+        .from(schema.hospiceCbsaWageIndex)
+        .where(
+          and(
+            eq(schema.hospiceCbsaWageIndex.fiscalYearStarting, fiscalYearStarting),
+            eq(schema.hospiceCbsaWageIndex.cbsaCode, found.cbsaCode),
+          ),
+        )
+        .limit(1)
+    : [];
+  const withIndex = (a: typeof found) =>
+    a ? { ...a, wageIndex: indexRow?.wageIndex ?? null } : undefined;
   const lookup: HospiceAreaLookup = {
     countyForZip: () => zipRow?.countyFips,
-    areaForCounty: () => areaRow,
+    areaForCounty: () => withIndex(countyRow),
+    areaForZip3: () => withIndex(zip3Row),
   };
   return lookup;
 }

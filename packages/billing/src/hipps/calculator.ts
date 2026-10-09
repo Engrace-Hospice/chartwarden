@@ -45,6 +45,7 @@ import {
   perDiemAmountCents,
   sumCents,
 } from "../domain/money";
+import { type WageIndexAreaFactors, wageIndexFactorForLevelOfCare } from "./wage-index-area";
 
 /** CMS: a CHC day needs at least this many hours of care (predominantly skilled nursing) in the 24-hour day. */
 export const CHC_MIN_HOURS_PER_DAY = 8;
@@ -136,6 +137,12 @@ export interface HippsCalculationInput {
   readonly wageIndexFiscalYear: number;
   /** The wage index factor as a decimal STRING (e.g. `"0.9234"`) — never a float. */
   readonly wageIndexFactorDecimal: string;
+  /**
+   * The wage index of the beneficiary's residence area (prices home levels of care) and of the inpatient facility's
+   * area (prices GIP / inpatient respite) — see `wage-index-area.ts`. Absent ⇒ every level of care is priced at
+   * `wageIndexFactorDecimal` (the provider's index); present but missing the area a level needs ⇒ throws.
+   */
+  readonly wageIndexAreaFactors?: WageIndexAreaFactors;
 }
 
 /** One contiguous (level-of-care, RHC-bucket) segment of the claim, with its wage-adjusted per-diem. */
@@ -150,6 +157,8 @@ export interface HippsSegmentResult {
   /** The wage-index-ADJUSTED per-diem actually billed for this segment. */
   readonly ratePerDiemCents: Cents;
   readonly rhcDayBucket: RhcDayBucket;
+  /** The wage-index factor this segment's labor share was adjusted with (its area's index — `wage-index-area.ts`). */
+  readonly wageIndexFactorApplied: string;
   /** F-211 — CHC only: the documented hours this (single-day) segment was priced on; `null` for other levels of care. */
   readonly chcHours: number | null;
   /** F-211 — CHC only: the wage-index-adjusted HOURLY rate the day was priced at; `null` for other levels of care. */
@@ -270,6 +279,7 @@ interface DayResolution {
   readonly iso: IsoDate;
   readonly levelOfCare: LevelOfCare;
   readonly bucket: RhcDayBucket;
+  readonly wageIndexFactorApplied: string;
   readonly baseRatePerDiemCents: Cents;
   readonly ratePerDiemCents: Cents;
   readonly chcHours: number | null;
@@ -312,9 +322,14 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
         : "n/a";
     const baseRate = baseRateFor(input.rateTable, loc, bucket);
     // The wage index adjusts the LABOR SHARE only (F-211): base × (labor × WI + (1 − labor)).
+    const dayWageIndex = wageIndexFactorForLevelOfCare(
+      loc,
+      input.wageIndexFactorDecimal,
+      input.wageIndexAreaFactors,
+    );
     const adjustedRate = applyWageIndexToLaborShare(
       baseRate,
-      input.wageIndexFactorDecimal,
+      dayWageIndex,
       laborShareFor(input.rateTable, loc),
     );
     if (loc === "continuous_home_care") {
@@ -324,6 +339,7 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
         iso,
         levelOfCare: loc,
         bucket,
+        wageIndexFactorApplied: dayWageIndex,
         baseRatePerDiemCents: lineChargeCents(hours, baseRate),
         ratePerDiemCents: lineChargeCents(hours, adjustedRate),
         chcHours: hours,
@@ -334,6 +350,7 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
         iso,
         levelOfCare: loc,
         bucket,
+        wageIndexFactorApplied: dayWageIndex,
         baseRatePerDiemCents: baseRate,
         ratePerDiemCents: adjustedRate,
         chcHours: null,
@@ -372,6 +389,7 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
         baseRatePerDiemCents: dayRes.baseRatePerDiemCents,
         ratePerDiemCents: dayRes.ratePerDiemCents,
         rhcDayBucket: dayRes.bucket,
+        wageIndexFactorApplied: dayRes.wageIndexFactorApplied,
         chcHours: dayRes.chcHours,
         chcAdjustedHourlyRateCents: dayRes.chcAdjustedHourlyRateCents,
         hippsCharPosition: position,

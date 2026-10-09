@@ -203,6 +203,7 @@ const NON_ORG_SCOPED = new Set<string>([
   // the published index) is platform-shared reference data like wage_index_factor: no organization_id, no PHI,
   // tenants SELECT only, the billing_platform_loader role writes.
   "hospice_zip_county",
+  "hospice_zip3_area",
   "hospice_cbsa_county",
   "hospice_cbsa_wage_index",
   // M24 Billing — Medicaid (WX-PR-011): medicaid_state_plan_code is PLATFORM-shared per-state Medicaid

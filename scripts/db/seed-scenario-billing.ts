@@ -73,6 +73,7 @@ import { Client } from "pg";
 import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session";
 import { grantPlatformRole } from "./lib/platform-role";
 import { stepUpSession } from "./lib/step-up";
+import { seedWageIndex } from "./seed-wage-index";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const PROVIDER_ENTITY_ID = "44444444-0000-4000-8000-000000000001"; // db:seed:org-structure
@@ -262,6 +263,12 @@ async function seedMacSubmitterCredential(
   }
 }
 
+/** The federal fiscal year (Oct 1) an ISO date falls in, as its starting calendar year. */
+function fiscalYearStartingOf(isoDate: string): number {
+  const year = Number(isoDate.slice(0, 4));
+  return Number(isoDate.slice(5, 7)) >= 10 ? year : year - 1;
+}
+
 async function main(): Promise<void> {
   const admin = await signIn("orgadmin@wardenx.local");
   const log = new ScenarioLog("billing (Whitfield / org-wide)");
@@ -299,8 +306,17 @@ async function main(): Promise<void> {
   // MAC_SUBMITTER_CREDENTIAL_MISSING). Oregon's home health & hospice MAC is CGS (J15). Dev credential
   // only — no clearinghouse is configured locally, so nothing is ever submitted with it.
   await seedMacSubmitterCredential(admin);
+  // The demo provider (CCN 381588, Pendleton OR, ZIP 97801) wage index, taken from the CMS hospice geography
+  // (migration 1058) instead of keyed by hand: the provider's ZIP is placed in its CBSA / rural area.
+  const fiscalYear = fiscalYearStartingOf(serviceFrom);
+  const demoWageIndex = await seedWageIndex(admin, {
+    ccn: "381588",
+    zip: "97801",
+    fiscalYears: [fiscalYear - 1, fiscalYear],
+  });
+  log.dup(`Medicare (M23): demo provider wage index seeded — ${demoWageIndex.join("; ")}`);
   log.dup(
-    "Medicare (M23): MAC submitter credential seeded; rate tables / wage indexes / sequestration are tenant-entered (assemble names whichever is missing)",
+    "Medicare (M23): MAC submitter credential seeded; rate tables / sequestration are tenant-entered (assemble names whichever is missing)",
   );
 
   // ── M24 — Billing Medicaid (full lifecycle: assemble → validate → submit) ──────────────────────────

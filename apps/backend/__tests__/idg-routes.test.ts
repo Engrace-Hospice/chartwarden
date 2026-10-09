@@ -112,7 +112,12 @@ function makeServer(status: "scheduled" | "live" = "scheduled") {
           roleKey: "seed",
           enabled: true,
           expiresAt: null,
-          permissionKeys: ["idg.read", "idg.coordinate", "idg.schedule", "idg.override_review_floor"],
+          permissionKeys: [
+            "idg.read",
+            "idg.coordinate",
+            "idg.schedule",
+            "idg.override_review_floor",
+          ],
         },
       ],
     },
@@ -120,7 +125,12 @@ function makeServer(status: "scheduled" | "live" = "scheduled") {
       orgId: ORG,
       userId: "member",
       grants: [
-        { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ["idg.read", "idg.act"] },
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: ["idg.read", "idg.act"],
+        },
       ],
     },
   ]);
@@ -387,11 +397,7 @@ describe("M14 Lot 1 — list scope", () => {
 describe("M14 Lot 1 — child resource scope", () => {
   it.each([
     ["PATCH", "/api/v1/idg/agenda/88888888-8888-4888-8888-888888888888", { noteText: "x" }],
-    [
-      "PATCH",
-      "/api/v1/idg/attendance/88888888-8888-4888-8888-888888888888",
-      { status: "tardy" },
-    ],
+    ["PATCH", "/api/v1/idg/attendance/88888888-8888-4888-8888-888888888888", { status: "tardy" }],
     [
       "PATCH",
       "/api/v1/idg/decisions/88888888-8888-4888-8888-888888888888",

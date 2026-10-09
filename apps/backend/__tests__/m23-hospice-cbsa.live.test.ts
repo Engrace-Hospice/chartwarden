@@ -7,8 +7,8 @@
  * role (`_live-app-role.ts`), that:
  *   - real ZIPs resolve through `buildHospiceCbsaReader` to the CMS CBSA / rural / transition code for the claim's
  *     fiscal year (urban, a micropolitan-rural ZIP, a metropolitan division, a transition county);
- *   - a ZIP the sources cannot place (Connecticut — CMS adopted planning regions the Census file lacks; an unknown ZIP)
- *     is `unresolved`, never silently rural;
+ *   - Connecticut resolves via its planning regions; a PO-box ZIP via its ZIP3 only when unanimous; G8 reads the facility ZIP;
+ *     a ZIP nothing can place is `unresolved`, never silently rural;
  *   - tenants can read the reference data but cannot write it (platform-shared, loader-only writes);
  *   - the wage index is published for the resolved code, and `claim.value_codes` exists with its array CHECK.
  *
@@ -20,6 +20,7 @@ import { type DbClient, createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildHospiceCbsaReader } from "../src/modules/23-billing-medicare/services/claim-cbsa";
+import { facilityPostalCodesForIds } from "../src/modules/40-mdm/facility-kind-reader";
 import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -91,11 +92,80 @@ describe.skipIf(!DB_URL)("M23 hospice CBSA geography — LIVE Postgres (migratio
     expect(a.facility).toMatchObject({ cbsaCode: "31084" });
   });
 
-  it("fails closed for Connecticut (planning regions) and for an unknown ZIP — never silently rural", async () => {
-    expect((await areaFor("06103", null, FY2027_END)).residence).toEqual({
-      status: "unresolved",
-      reason: "county_unknown",
+  it("resolves Connecticut through its 2022 planning regions (Census town crosswalk + OMB 23-01)", async () => {
+    const hartford = await areaFor("06103", null, FY2027_END); // Hartford -> Capitol planning region
+    expect(hartford.residence).toMatchObject({
+      status: "resolved",
+      cbsaCode: "25540",
+      areaKind: "urban",
+      via: "zip",
     });
+    // Pomfret (Northeastern CT region) is rural under the planning-region delineation.
+    expect((await areaFor("06259", null, FY2027_END)).residence).toMatchObject({
+      status: "resolved",
+      areaKind: "rural",
+    });
+  });
+
+  it("places the demo provider (CCN 381588, Pendleton OR, ZIP 97801) in Umatilla County's area", async () => {
+    const { residence } = await areaFor("97801", null, FY2027_END);
+    expect(residence).toMatchObject({ status: "resolved", countyFips: "41059", via: "zip" });
+    expect(residence?.status === "resolved" && residence.wageIndex).toMatch(/^\d\.\d{4}$/);
+  });
+
+  // A 5-digit ZIP under `zip3` that has no ZCTA (the stand-in for a PO-box / unique-organisation ZIP).
+  const unusedZipUnder = async (zip3: string): Promise<string | null> => {
+    const { rows } = await admin.query(
+      `SELECT lpad(n::text, 2, '0') AS tail FROM generate_series(0, 99) n
+        WHERE NOT EXISTS (SELECT 1 FROM hospice_zip_county z WHERE z.zip5 = $1 || lpad(n::text, 2, '0'))
+        LIMIT 1`,
+      [zip3],
+    );
+    return rows[0] ? zip3 + (rows[0].tail as string) : null;
+  };
+
+  it("places a PO-box ZIP (no ZCTA) by its 3-digit prefix only when every ZIP sharing it agrees", async () => {
+    const { rows } = await admin.query(
+      "SELECT zip3, cbsa_code FROM hospice_zip3_area WHERE fiscal_year_starting = 2026 ORDER BY zip3",
+    );
+    let poBox: string | null = null;
+    let expected = "";
+    for (const row of rows) {
+      poBox = await unusedZipUnder(row.zip3 as string);
+      if (poBox) {
+        expected = row.cbsa_code as string;
+        break;
+      }
+    }
+    expect(poBox).not.toBeNull();
+    expect((await areaFor(poBox as string, null, FY2027_END)).residence).toMatchObject({
+      status: "resolved",
+      cbsaCode: expected,
+      countyFips: null,
+      via: "zip3_unanimous",
+    });
+  });
+
+  it("does NOT guess a PO-box ZIP whose prefix spans different areas — it stays unresolved", async () => {
+    const { rows } = await admin.query(
+      `SELECT DISTINCT left(z.zip5, 3) AS zip3 FROM hospice_zip_county z
+        WHERE NOT EXISTS (SELECT 1 FROM hospice_zip3_area a
+                           WHERE a.fiscal_year_starting = 2026 AND a.zip3 = left(z.zip5, 3))
+        ORDER BY 1`,
+    );
+    let poBox: string | null = null;
+    for (const row of rows) {
+      poBox = await unusedZipUnder(row.zip3 as string);
+      if (poBox) break;
+    }
+    expect(poBox).not.toBeNull();
+    expect((await areaFor(poBox as string, null, FY2027_END)).residence).toEqual({
+      status: "unresolved",
+      reason: "zip_unknown",
+    });
+  });
+
+  it("never defaults an unknown or malformed ZIP to rural", async () => {
     expect((await areaFor("00000", null, FY2027_END)).residence).toEqual({
       status: "unresolved",
       reason: "zip_unknown",
@@ -104,6 +174,44 @@ describe.skipIf(!DB_URL)("M23 hospice CBSA geography — LIVE Postgres (migratio
       status: "unresolved",
       reason: "invalid_zip",
     });
+  });
+
+  it("reads a facility's ZIP from the real facility.primary_address shape and resolves G8 from it", async () => {
+    const FACILITY = "f0f0f0f0-f0f0-40f0-80f0-f0f0f0f0f0f0";
+    const MERGED = "e0e0e0e0-e0e0-40e0-80e0-e0e0e0e0e0e0";
+    const NO_ADDRESS = "d0d0d0d0-d0d0-40d0-80d0-d0d0d0d0d0d0";
+    // The seed-mdm.ts shape: { line1, city, state, postalCode }.
+    await admin.query(
+      `INSERT INTO facility (id, ccn, npi, kind, name, primary_address, sending_facility_codes, status, merged_from, created_at, updated_at)
+       VALUES ($1,NULL,NULL,'hospital','Good Shepherd Medical Center',$2,'[]','active','{}',now(),now()),
+              ($3,NULL,NULL,'snf','No Address SNF',NULL,'[]','active','{}',now(),now())`,
+      [
+        FACILITY,
+        JSON.stringify({
+          line1: "610 NW 11th St",
+          city: "Hermiston",
+          state: "OR",
+          postalCode: "97838",
+        }),
+        NO_ADDRESS,
+      ],
+    );
+    await admin.query(
+      `INSERT INTO facility (id, ccn, npi, kind, name, primary_address, sending_facility_codes, status, merged_from, merged_into_id, created_at, updated_at)
+       VALUES ($1,NULL,NULL,'hospital','Old Name','{"postalCode":"00000"}','[]','merged','{}',$2,now(),now())`,
+      [MERGED, FACILITY],
+    );
+    const postal = await facilityPostalCodesForIds(handle.db, [FACILITY, MERGED, NO_ADDRESS]);
+    expect(postal.get(FACILITY)).toBe("97838");
+    expect(postal.get(MERGED)).toBe("97838"); // chases merged_into_id to the survivor
+    expect(postal.has(NO_ADDRESS)).toBe(false); // no address -> absent, never a guess
+
+    const reader = buildHospiceCbsaReader(handle.db, {
+      residencePostalCode: async () => "97801",
+      inpatientFacilityPostalCode: async () => postal.get(FACILITY) ?? null,
+    });
+    const areas = await reader.areasFor(ORG, "patient-1", { from: "2026-11-01", to: FY2027_END });
+    expect(areas.facility).toMatchObject({ status: "resolved", countyFips: "41059" });
   });
 
   it("uses the fiscal year the billing period ends in", async () => {
