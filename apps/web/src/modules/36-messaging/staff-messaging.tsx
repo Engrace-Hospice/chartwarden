@@ -4,6 +4,7 @@ import {
   EmptyState,
   Glyph,
   LoadingSpinner,
+  Modal,
   OffsetPagination,
   PageHeader,
   StatusPill,
@@ -18,9 +19,9 @@ import {
 // composer. Backed by GET /messaging/channels, GET/POST /messaging/channels/:id/messages. The list's
 // last-message preview/time isn't exposed by the channels read yet, so the secondary line shows the
 // channel's real scope (patient-scoped / kind) rather than a fabricated preview.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX } from "react";
-import { authClient } from "../02-identity/auth-client";
+import { useSession } from "../../shell";
 
 interface ChannelSummary {
   channelId: string;
@@ -38,6 +39,11 @@ interface Message {
   bodyKind: string;
   createdAt: string;
   parentMessageId: string | null;
+}
+interface DmStaffMember {
+  userId: string;
+  displayName: string;
+  roles: string[];
 }
 
 const CHANNEL_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
@@ -69,22 +75,31 @@ function relTime(iso: string): string {
 
 export function StaffMessaging(): JSX.Element {
   const client = useApiClient();
+  const session = useSession();
+  const organizationId = session?.organizationId ?? "";
   const [channels, setChannels] = useState<ChannelSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [meId, setMeId] = useState<string | null>(null);
+  const [newConversationOpen, setNewConversationOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [scopeFilter, setScopeFilter] = useState<"all" | "patient" | "general">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "unread" | "archived">("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-
-  useEffect(() => {
-    void authClient.getSession().then(({ data }) => setMeId(data?.user?.id ?? null));
-  }, []);
+  const organizationGeneration = useRef(0);
 
   useEffect(() => {
     let active = true;
+    organizationGeneration.current += 1;
+    setChannels(null);
+    setError(null);
+    setActiveId(null);
+    setSearchQuery("");
+    setScopeFilter("all");
+    setStatusFilter("all");
+    setPage(1);
+    setNewConversationOpen(false);
+    if (!organizationId) return () => undefined;
     (async () => {
       const { data, error: err } = await client.GET("/api/v1/messaging/channels");
       if (!active) return;
@@ -95,12 +110,28 @@ export function StaffMessaging(): JSX.Element {
       }
       const list = (data?.channels ?? []) as ChannelSummary[];
       setChannels(list);
-      setActiveId((prev) => prev ?? list[0]?.channelId ?? null);
+      setActiveId(list[0]?.channelId ?? null);
     })();
     return () => {
       active = false;
     };
-  }, [client]);
+  }, [client, organizationId]);
+
+  const openConversation = useCallback(
+    async (channelId: string): Promise<void> => {
+      const generation = organizationGeneration.current;
+      const { data, error: loadError } = await client.GET("/api/v1/messaging/channels");
+      if (generation !== organizationGeneration.current) return;
+      if (loadError) {
+        setError("The conversation was created, but the channel list could not be refreshed.");
+        return;
+      }
+      setChannels((data?.channels ?? []) as ChannelSummary[]);
+      setActiveId(channelId);
+      setNewConversationOpen(false);
+    },
+    [client],
+  );
 
   const filteredChannels = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -140,10 +171,25 @@ export function StaffMessaging(): JSX.Element {
   return (
     <div style={pageShellStyle}>
       <PageHeader title="Messaging" breadcrumb="General / Messaging">
-        <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-          Secure staff conversations and patient-scoped channels.
+        <div style={headerActionsStyle}>
+          <span style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+            Secure staff conversations and patient-scoped channels.
+          </span>
+          <Button type="button" onClick={() => setNewConversationOpen(true)}>
+            New conversation
+          </Button>
         </div>
       </PageHeader>
+
+      <NewConversationDialog
+        key={`${organizationId}:${newConversationOpen ? "open" : "closed"}`}
+        open={newConversationOpen}
+        organizationId={organizationId}
+        organizationName={session?.organizationName ?? "Active organization"}
+        currentUserId={session?.userId ?? ""}
+        onClose={() => setNewConversationOpen(false)}
+        onCreated={openConversation}
+      />
 
       <div style={filterShellStyle}>
         {error ? (
@@ -232,7 +278,11 @@ export function StaffMessaging(): JSX.Element {
             }
           >
             {activeChannel ? (
-              <Thread channel={activeChannel} meId={meId} />
+              <Thread
+                key={`${organizationId}:${activeChannel.channelId}`}
+                channel={activeChannel}
+                meId={session?.userId ?? null}
+              />
             ) : (
               <EmptyState
                 title="No channel selected"
@@ -243,6 +293,191 @@ export function StaffMessaging(): JSX.Element {
         </div>
       )}
     </div>
+  );
+}
+
+function apiErrorMessage(error: unknown, fallback: string): string {
+  if (error && typeof error === "object") {
+    const candidate = error as { message?: unknown; error?: { message?: unknown } };
+    if (typeof candidate.message === "string" && candidate.message) return candidate.message;
+    if (typeof candidate.error?.message === "string" && candidate.error.message) {
+      return candidate.error.message;
+    }
+  }
+  return fallback;
+}
+
+function NewConversationDialog({
+  open,
+  organizationId,
+  organizationName,
+  currentUserId,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  organizationId: string;
+  organizationName: string;
+  currentUserId: string;
+  onClose: () => void;
+  onCreated: (channelId: string) => Promise<void>;
+}): JSX.Element {
+  const client = useApiClient();
+  const [query, setQuery] = useState("");
+  const [staff, setStaff] = useState<DmStaffMember[] | null>(null);
+  const [selected, setSelected] = useState<DmStaffMember | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const requestSequence = useRef(0);
+
+  useEffect(
+    () => () => {
+      requestSequence.current += 1;
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!open || !organizationId) return;
+    // The attempt token intentionally participates in this effect so Retry performs a fresh read.
+    const searchAttempt = retry;
+    const sequence = ++requestSequence.current;
+    setStaff(null);
+    setSearchError(null);
+    const timer = window.setTimeout(() => {
+      void client
+        .GET("/api/v1/messaging/dm/staff", { params: { query: { q: query.trim() || undefined } } })
+        .then(({ data, error }) => {
+          if (sequence !== requestSequence.current || searchAttempt !== retry) return;
+          if (error) {
+            setStaff([]);
+            setSearchError(apiErrorMessage(error, "Could not search staff in this organization."));
+            return;
+          }
+          const eligible = ((data?.staff ?? []) as DmStaffMember[]).filter(
+            (person) => person.userId !== currentUserId,
+          );
+          setStaff(eligible);
+          setSelected((previous) =>
+            previous && eligible.some((person) => person.userId === previous.userId)
+              ? previous
+              : null,
+          );
+        });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [client, currentUserId, open, organizationId, query, retry]);
+
+  async function createConversation(): Promise<void> {
+    if (!selected || creating) return;
+    setCreating(true);
+    setCreateError(null);
+    const sequence = requestSequence.current;
+    const { data, error } = await client.POST("/api/v1/messaging/dm", {
+      body: { userId: selected.userId },
+    });
+    if (sequence !== requestSequence.current) return;
+    setCreating(false);
+    if (error || !data?.channelId) {
+      setCreateError(
+        apiErrorMessage(error, "Could not start this conversation. Please try again."),
+      );
+      return;
+    }
+    await onCreated(data.channelId);
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={creating ? undefined : onClose}
+      ariaLabel="New conversation"
+      width="36rem"
+    >
+      <div style={dialogStyle}>
+        <div>
+          <h2 style={dialogTitleStyle}>New conversation</h2>
+          <p style={dialogSubtitleStyle}>
+            Search active staff in <strong>{organizationName}</strong>.
+          </p>
+        </div>
+        <label style={dialogSearchStyle}>
+          <span>Staff member</span>
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setSelected(null);
+            }}
+            placeholder="Search by name or email…"
+            aria-label="Search eligible staff"
+          />
+        </label>
+        <div aria-live="polite" style={staffResultsStyle}>
+          {staff === null ? (
+            <div style={dialogStateStyle}>
+              <LoadingSpinner />
+            </div>
+          ) : searchError ? (
+            <div role="alert" style={dialogStateStyle}>
+              <span>{searchError}</span>
+              <Button size="sm" tone="secondary" onClick={() => setRetry((value) => value + 1)}>
+                Retry
+              </Button>
+            </div>
+          ) : staff.length === 0 ? (
+            <EmptyState title="No eligible staff found" description="Try a different search." />
+          ) : (
+            <ul style={staffListStyle}>
+              {staff.map((person) => (
+                <li key={person.userId}>
+                  <button
+                    type="button"
+                    style={{
+                      ...staffOptionStyle,
+                      background:
+                        selected?.userId === person.userId ? t.primaryTint : t.surfaceLowest,
+                    }}
+                    aria-pressed={selected?.userId === person.userId}
+                    onClick={() => setSelected(person)}
+                  >
+                    <span style={listAvatarStyle} aria-hidden>
+                      {initialsOf(person.displayName)}
+                    </span>
+                    <span style={channelTextStyle}>
+                      <span style={convTitleStyle}>{person.displayName}</span>
+                      <span style={convPreviewStyle}>
+                        {person.roles.join(" · ") || "Staff member"}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        {createError ? (
+          <div role="alert" style={errorBannerStyle}>
+            {createError}
+          </div>
+        ) : null}
+        <div style={dialogActionsStyle}>
+          <Button type="button" tone="secondary" onClick={onClose} disabled={creating}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void createConversation()}
+            disabled={!selected || creating}
+          >
+            {creating ? "Opening…" : "Open conversation"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -345,17 +580,24 @@ function Thread({ channel, meId }: { channel: ChannelSummary; meId: string | nul
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const loadSequence = useRef(0);
 
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
     const { data } = await client.GET("/api/v1/messaging/channels/{id}/messages", {
       params: { path: { id: channelId }, query: { limit: 50 } },
     });
+    if (sequence !== loadSequence.current) return;
     setMessages((data?.messages ?? []) as Message[]);
   }, [client, channelId]);
 
   useEffect(() => {
     setMessages(null);
+    setDraft("");
     void load();
+    return () => {
+      loadSequence.current += 1;
+    };
   }, [load]);
 
   async function send(): Promise<void> {
@@ -454,6 +696,74 @@ const pageShellStyle: CSSProperties = {
   flexDirection: "column",
   minHeight: 0,
   flex: 1,
+};
+const headerActionsStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "1rem",
+  flexWrap: "wrap",
+};
+const dialogStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "1rem",
+  padding: "1.5rem",
+};
+const dialogTitleStyle: CSSProperties = {
+  margin: 0,
+  color: t.onSurface,
+  fontFamily: t.fontDisplay,
+  fontSize: "1.25rem",
+};
+const dialogSubtitleStyle: CSSProperties = {
+  margin: "0.35rem 0 0",
+  color: t.onSurfaceVariant,
+  fontSize: "0.875rem",
+};
+const dialogSearchStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.4rem",
+  color: t.onSurface,
+  fontSize: "0.8125rem",
+  fontWeight: 600,
+};
+const staffResultsStyle: CSSProperties = {
+  minHeight: "12rem",
+  maxHeight: "min(22rem, 45vh)",
+  overflowY: "auto",
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: t.radiusLg,
+};
+const dialogStateStyle: CSSProperties = {
+  minHeight: "12rem",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "0.75rem",
+  padding: "1rem",
+  color: t.onSurfaceVariant,
+  textAlign: "center",
+};
+const staffListStyle: CSSProperties = { listStyle: "none", padding: 0, margin: 0 };
+const staffOptionStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.75rem",
+  width: "100%",
+  padding: "0.75rem",
+  border: "none",
+  borderBottom: `1px solid color-mix(in srgb, ${t.outlineVariant} 50%, transparent)`,
+  textAlign: "left",
+  cursor: "pointer",
+};
+const dialogActionsStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: "0.75rem",
+  flexWrap: "wrap",
 };
 const filterShellStyle: CSSProperties = {
   display: "flex",

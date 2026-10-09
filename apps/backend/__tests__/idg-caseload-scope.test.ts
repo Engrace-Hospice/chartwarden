@@ -8,6 +8,8 @@ import { createInMemoryIdgBackend } from "../src/modules/14-idg/index";
 import {
   assertIdgPatientInScope,
   filterIdgPatientsInScope,
+  filterNullableIdgPatientsInScope,
+  resolveIdgPatientIdsInScope,
 } from "../src/modules/14-idg/routes/caseload-scope";
 
 const ORG = "org_a";
@@ -57,6 +59,21 @@ describe("per-patient caseload scope (GAP-128)", () => {
       { patientId: P_ON },
     ]);
   });
+
+  it("keeps meeting-level rows, filters nullable patient rows, and fails closed when the seam is unavailable", async () => {
+    const rows = [{ patientId: null }, { patientId: P_ON }, { patientId: P_OFF }];
+    expect(await filterNullableIdgPatientsInScope(facts(), ORG, rows, caseload)).toEqual([
+      { patientId: null },
+      { patientId: P_ON },
+    ]);
+    const down = async () => {
+      throw new Error("CaseloadProvider unavailable");
+    };
+    expect(await resolveIdgPatientIdsInScope(facts(), ORG, down)).toEqual([]);
+    expect(await filterNullableIdgPatientsInScope(facts(), ORG, rows, down)).toEqual([
+      { patientId: null },
+    ]);
+  });
 });
 
 describe("action-item assignee and adjourn guards (GAP-127)", () => {
@@ -96,12 +113,17 @@ describe("action-item assignee and adjourn guards (GAP-127)", () => {
     );
   });
 
-  it("refuses to remove an action item once the meeting is adjourned (409)", async () => {
-    const svc = seed("adjourned");
+  it("freezes removal but preserves assignee follow-up once the meeting is adjourned", async () => {
+    const svc = seed("live");
     const item = await newItem(svc);
+    await svc.adjournMeeting(ORG, "m_coord", MEETING, true);
     await expect(svc.removeActionItem(ORG, "m_coord", item.id)).rejects.toMatchObject({
+      code: "MEETING_ADJOURNED",
       statusCode: 409,
     });
+    expect((await svc.updateActionItem(ORG, ASSIGNEE, item.id, "in_progress")).status).toBe(
+      "in_progress",
+    );
   });
 
   it("enforces If-Match on action-item update/remove (412 on a stale version, version bumps on write)", async () => {

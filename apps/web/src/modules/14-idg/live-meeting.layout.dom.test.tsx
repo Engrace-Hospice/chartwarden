@@ -92,14 +92,14 @@ const SESSION = {
   organizationId: "org-1",
   membershipId: "membership-1",
   roles: ["idg_coordinator"],
-  permissions: [],
+  permissions: ["idg.read", "idg.attend", "idg.coordinate", "idg.decide", "idg.act"],
   isAdmin: false,
 };
 
-const mount = () =>
+const mount = (session = SESSION) =>
   render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
-      <SessionProvider session={SESSION}>
+      <SessionProvider session={session}>
         <ToastProvider>
           <MemoryRouter initialEntries={[`/idg/meetings/${MEETING}/live`]}>
             <Routes>
@@ -179,5 +179,15 @@ describe("Live meeting — three-pane redesign", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Record for this patient" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Record a decision")).toBeTruthy();
+  });
+
+  it("keeps read-only clinicians on the live surface without rendering forbidden mutation controls", async () => {
+    mount({ ...SESSION, permissions: ["idg.read"] });
+    await screen.findByRole("region", { name: "Patient worklist" });
+    expect(screen.queryByRole("button", { name: "Check in" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add agenda item" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Record decision" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Adjourn" })).toBeNull();
+    expect(screen.queryByLabelText(/Attendance status for/)).toBeNull();
   });
 });

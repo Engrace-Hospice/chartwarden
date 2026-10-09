@@ -19,6 +19,8 @@ export function toSession(ctx: ActorContextResponse): Session {
     organizationName: ctx.organizationName ?? undefined,
     membershipId: ctx.membershipId ?? undefined,
     roles: ctx.roles,
+    locationIds: ctx.locationIds,
+    orgWidePatientScope: ctx.orgWidePatientScope,
     permissions: ctx.permissions,
     isAdmin: ctx.isAdmin,
   };

@@ -6,6 +6,68 @@
 import { Glyph, type GlyphName, t } from "@wardenx/ui";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
+import "./idg-lifecycle.css";
+
+const MEETING_STAGES = [
+  ["scheduled", "Scheduled"],
+  ["packets_building", "Building packets"],
+  ["packets_ready", "Ready"],
+  ["live", "Live"],
+  ["adjourned", "Adjourned"],
+] as const;
+
+export function MeetingProgress({
+  status,
+  scheduledStart,
+  adjournedAt,
+}: {
+  status: string;
+  scheduledStart: string;
+  adjournedAt?: string | null;
+}): JSX.Element {
+  const current = MEETING_STAGES.findIndex(([value]) => value === status);
+  const alternate = status === "cancelled" || status === "rescheduled";
+  const format = (value: string): string => {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+      ? "Date unavailable"
+      : date.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+  };
+
+  return (
+    <section className="wx-idg-progress" aria-label="Meeting progress">
+      {alternate ? (
+        <div className="wx-idg-progress-terminal" role="status">
+          <Glyph name="alert-circle" size={16} />
+          This meeting was {status}; it did not advance to finalized adjournment.
+        </div>
+      ) : null}
+      <ol>
+        {MEETING_STAGES.map(([value, label], index) => {
+          const state = alternate
+            ? "remaining"
+            : index < current
+              ? "complete"
+              : index === current
+                ? "current"
+                : "remaining";
+          const date =
+            value === "scheduled" ? scheduledStart : value === "adjourned" ? adjournedAt : null;
+          return (
+            <li
+              key={value}
+              data-state={state}
+              aria-current={state === "current" ? "step" : undefined}
+            >
+              <strong>{label}</strong>
+              {date ? <small>{format(date)}</small> : null}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
 
 export function IdgPageHead({
   title,

@@ -1,5 +1,6 @@
 import {
   EmptyState,
+  ErrorState,
   Glyph,
   LoadingSpinner,
   Panel,
@@ -74,14 +75,17 @@ export function IdgSchedule(): JSX.Element {
   const [params, setParams] = useSearchParams();
   const location = params.get("location") ?? undefined;
   const [locations, setLocations] = useState<LocationOption[] | null>(null);
+  const [locationsError, setLocationsError] = useState(false);
+  const [locationsRetry, setLocationsRetry] = useState(0);
   const [meetings, setMeetings] = useState<MeetingRow[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ kind: "forbidden" | "error"; message: string } | null>(null);
   const [scheduling, setScheduling] = useState(false);
   const session = useSession();
+  const canSchedule = session?.permissions?.includes("idg.schedule") ?? false;
   const memberNames = useMemberNames(session?.organizationId);
   const coordinatorName = useCallback(
     (id: string | undefined): string =>
@@ -109,28 +113,43 @@ export function IdgSchedule(): JSX.Element {
   // The org's sites, for the location picker and to name the location column.
   useEffect(() => {
     let active = true;
+    setLocationsError(false);
     void client
       .GET("/api/v1/locations", { params: { query: {} } })
       .then((r) => {
         if (!active) return;
+        if (r.error) throw new Error("locations read failed");
         const items = Array.isArray(r.data?.items) ? r.data.items : [];
-        setLocations(
-          items.filter((l) => l.status !== "inactive").map((l) => ({ id: l.id, name: l.name })),
-        );
+        const activeLocations = items
+          .filter((l) => l.status !== "inactive")
+          .map((l) => ({ id: l.id, name: l.name }));
+        const allowed = session?.orgWidePatientScope
+          ? activeLocations
+          : activeLocations.filter((candidate) =>
+              (session?.locationIds ?? []).includes(candidate.id),
+            );
+        setLocations(allowed);
       })
-      .catch(() => active && setLocations([]));
+      .catch(() => {
+        if (!active) return;
+        setLocationsError(true);
+        setLocations([]);
+      });
     return () => {
       active = false;
     };
-  }, [client]);
+  }, [client, locationsRetry, session?.locationIds, session?.orgWidePatientScope]);
 
   // No `?location=` → open the first site rather than a permanently empty screen.
   const firstLocationId = locations?.[0]?.id;
   useEffect(() => {
     if (!location && firstLocationId) {
       setParams({ location: firstLocationId }, { replace: true });
+    } else if (location && locations && !locations.some((item) => item.id === location)) {
+      if (firstLocationId) setParams({ location: firstLocationId }, { replace: true });
+      else setParams({}, { replace: true });
     }
-  }, [location, firstLocationId, setParams]);
+  }, [location, locations, firstLocationId, setParams]);
 
   const locationName = useCallback(
     (id: string): string => locations?.find((l) => l.id === id)?.name ?? "Location unavailable",
@@ -142,19 +161,26 @@ export function IdgSchedule(): JSX.Element {
       setLoading(false);
       return;
     }
+    if (locations === null || !locations.some((item) => item.id === location)) return;
     setLoading(true);
     setError(null);
-    const { data, error: err } = await client.GET("/api/v1/idg/schedule", {
+    const { data, error: err, response } = await client.GET("/api/v1/idg/schedule", {
       params: { query: { location, from: range.from, to: range.to } },
     });
     if (err) {
-      setError("Could not load the IDG schedule for this location.");
+      setError({
+        kind: response.status === 403 || response.status === 404 ? "forbidden" : "error",
+        message:
+          response.status === 403 || response.status === 404
+            ? "This location is not available in your current access scope."
+            : "Could not load the IDG schedule for this location.",
+      });
       setLoading(false);
       return;
     }
     setMeetings((data ?? []) as MeetingRow[]);
     setLoading(false);
-  }, [client, location, range]);
+  }, [client, location, locations, range]);
 
   useEffect(() => {
     void load();
@@ -220,11 +246,11 @@ export function IdgSchedule(): JSX.Element {
             <button type="button" className="wx-btn-secondary" onClick={clearFilters}>
               Clear filters
             </button>
-          ) : (
+          ) : canSchedule ? (
             <button type="button" className="wx-btn-primary" onClick={() => setScheduling(true)}>
               Schedule Meeting
             </button>
-          )
+          ) : undefined
         }
       />
     </div>
@@ -242,11 +268,11 @@ export function IdgSchedule(): JSX.Element {
         <IdgPageHead
           title="IDG Schedule"
           subtitle="Review upcoming interdisciplinary group meetings for the selected location."
-          actions={
+          actions={canSchedule ? (
             <button type="button" className="wx-btn-primary" onClick={() => setScheduling(true)}>
               <Glyph name="plus" size={16} /> Schedule Meeting
             </button>
-          }
+          ) : undefined}
         />
 
         <IdgSubtabs current="schedule" />
@@ -327,11 +353,24 @@ export function IdgSchedule(): JSX.Element {
         </IdgFilterPanel>
 
         {error ? (
-          <div role="alert" className="wx-list-state">
-            <EmptyState title="IDG schedule unavailable" description={error} />
-            <button type="button" className="wx-btn-secondary" onClick={() => void load()}>
-              Try again
-            </button>
+          <div className="wx-list-state">
+            <ErrorState
+              title={error.kind === "forbidden" ? "Location unavailable" : "IDG schedule unavailable"}
+              description={error.message}
+              onRetry={() => void load()}
+              action={<Link to="/idg/schedule">Back to schedule</Link>}
+            />
+          </div>
+        ) : locationsError ? (
+          <div className="wx-list-state">
+            <ErrorState
+              title="Locations unavailable"
+              description="Could not load the locations available to your account."
+              onRetry={() => {
+                setLocations(null);
+                setLocationsRetry((value) => value + 1);
+              }}
+            />
           </div>
         ) : !location ? (
           <div className="wx-list-state">
@@ -371,11 +410,11 @@ export function IdgSchedule(): JSX.Element {
                   <tr
                     key={m.id}
                     className="wx-data-row-interactive"
-                    {...interactiveRowProps(() => navigate(`/idg/meetings/${m.id}`), false, true)}
+                    {...interactiveRowProps(() => navigate(`/idg/meetings/${m.id}?location=${location}`), false, true)}
                   >
                     <td>
                       <Link
-                        to={`/idg/meetings/${m.id}`}
+                        to={`/idg/meetings/${m.id}?location=${location}`}
                         className="wx-row-title"
                         onClick={(e) => e.stopPropagation()}
                       >
@@ -396,7 +435,7 @@ export function IdgSchedule(): JSX.Element {
                     </td>
                     <td style={{ textAlign: "right" }}>
                       <Link
-                        to={`/idg/meetings/${m.id}`}
+                        to={`/idg/meetings/${m.id}?location=${location}`}
                         className="wx-icon-link"
                         aria-label={`Open IDG meeting on ${dayLabel(m.scheduledStart)}`}
                         onClick={(e) => e.stopPropagation()}
@@ -424,7 +463,7 @@ export function IdgSchedule(): JSX.Element {
         <Panel
           title="Next IDG meeting"
           icon="calendar-check"
-          action={kpis.next ? <Link to={`/idg/meetings/${kpis.next.id}`}>Open</Link> : undefined}
+          action={kpis.next ? <Link to={`/idg/meetings/${kpis.next.id}?location=${location}`}>Open</Link> : undefined}
         >
           {kpis.next ? (
             <dl className="wx-kv" style={{ gridTemplateColumns: "5.5rem minmax(0, 1fr)" }}>
@@ -455,14 +494,14 @@ export function IdgSchedule(): JSX.Element {
 
         <Panel title="Quick actions" icon="zap">
           <div style={{ display: "grid", gap: "0.5rem" }}>
-            <button
+            {canSchedule ? <button
               type="button"
               className="wx-btn-secondary"
               style={{ justifyContent: "flex-start" }}
               onClick={() => setScheduling(true)}
             >
               <Glyph name="plus" size={16} /> Schedule a meeting
-            </button>
+            </button> : null}
             <Link
               to="/idg/action-items"
               className="wx-btn-secondary"
@@ -472,7 +511,7 @@ export function IdgSchedule(): JSX.Element {
             </Link>
             {kpis.next ? (
               <Link
-                to={`/idg/meetings/${kpis.next.id}`}
+                to={`/idg/meetings/${kpis.next.id}?location=${location}`}
                 className="wx-btn-secondary"
                 style={{ justifyContent: "flex-start" }}
               >
