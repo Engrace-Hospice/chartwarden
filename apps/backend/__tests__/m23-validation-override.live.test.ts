@@ -2,14 +2,21 @@
  * M23 validation OVERRIDE — LIVE Postgres proof (the `ports.audit` deny-stub 503 fix).
  *
  * `POST /api/v1/claims/:id/validation-runs/:runId/results/:resultId/override` answered 503 "the override audit port is
- * not bound" because the composition root never passed `ports.audit`. This drives the REAL route (real guards, a stand-in
- * only for the M3 override-eligibility / step-up predicates) over the real write service on the NOBYPASSRLS `wardenx_app`
- * role, with the audit port built by the same factory the composition root uses, and proves:
+ * not bound" because the composition root never passed `ports.audit`. This drives the REAL route (real guards) over the
+ * real write service on the NOBYPASSRLS `wardenx_app` role, with the audit port built by the same factory the composition
+ * root uses. The M23 `provider_entity_billing_scope` and `override_role_eligible` predicates are the REAL ones (resolving
+ * facts from the database as `wardenx_app`); only the M3 `step_up_recent` predicate is a documented stand-in (it reads the
+ * test header's step-up flag), because a real step-up needs an authenticated session this suite does not have. It proves:
  *   - 201 for an eligible actor with step-up; one prominent `m23.validation.override_applied` audit_event is written in the
  *     same transaction, its id is the override's NOT-NULL `m4_audit_event_id`, and it carries ids, the rule key, the role
- *     and the reason LENGTH only: never the free-text reason;
- *   - 403 without the permission, 403 without step-up, 404 for an unknown result or a result of another claim, 409 for a
- *     second override and for a passing result, 422 for a short reason, and in every failure NOTHING is written;
+ *     and the reason LENGTH only;
+ *   - the free-text reason reaches NO audit_event at all (event type 'validation_override.insert' written by the row-level
+ *     trigger is scrubbed by migration 1062), nor the outbox payload; it exists only on `validation_override.reason`;
+ *   - the app event and the trigger event share the request's correlation id; the source IP is recorded;
+ *   - 403 without the permission, 403 without step-up, 404 for an actor without the rule's override role, 404 for an unknown
+ *     result or a result of another claim, 409 for a second override and for a passing result, a 4xx for a short reason,
+ *     and in every failure NOTHING is written; a replay of the same Idempotency-Key returns the stored answer without a
+ *     second write, and the same key from a different user is refused (409), not replayed;
  *   - the override does not move the claim (still not a DRAFT) and the draft-delete guard (migration 1061) still refuses it;
  *   - an unbound audit port stays a fail-closed 503 that writes nothing.
  *
@@ -32,6 +39,7 @@ import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { buildM23OverrideAuditPort } from "../src/m23-override-audit";
+import { buildM23AbacPredicates } from "../src/modules/23-billing-medicare/abac-predicates";
 import { buildDrizzleM23ReadService } from "../src/modules/23-billing-medicare/routes/read-service-drizzle";
 import { registerValidationRoutes } from "../src/modules/23-billing-medicare/routes/validation.routes";
 import { buildDrizzleM23WriteService } from "../src/modules/23-billing-medicare/routes/write-service-drizzle";
@@ -61,7 +69,8 @@ function headerAuth(request: FastifyRequest): void {
   if (typeof user !== "string") return;
   request.context.userId = user === "plain" ? OTHER_USER : USER;
   request.context.organizationId = ORG;
-  request.context.roles = ["billing_manager"];
+  request.context.roles = user === "ineligible" ? ["scheduler"] : ["billing_manager"];
+  request.context.providerEntityIds = [PE];
   request.context.attributes.membershipId = MEMBERSHIP;
   request.context.attributes.stepUpRecent = request.headers["x-test-stepup"] === "yes";
 }
@@ -92,8 +101,12 @@ describe.skipIf(!DB_URL)("M23 validation override — LIVE Postgres", () => {
       ]).store,
     );
     const reg = createPredicateRegistry();
-    reg.register("provider_entity_billing_scope", async () => true);
-    reg.register("override_role_eligible", async () => true);
+    // The REAL M23 predicates (facts resolved from the database as wardenx_app); only step_up_recent is a stand-in.
+    for (const [name, predicate] of Object.entries(
+      buildM23AbacPredicates({ db: handle.db as never }),
+    )) {
+      reg.register(name, predicate);
+    }
     reg.register("step_up_recent", async (ctx) => ctx.attributes.stepUpRecent === true);
     registerAbacRegistry(reg);
     const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
@@ -127,7 +140,7 @@ describe.skipIf(!DB_URL)("M23 validation override — LIVE Postgres", () => {
     );
     await admin.query(
       `INSERT INTO validation_result (id, organization_id, validation_run_id, rule_key, rule_version, severity, outcome)
-       VALUES ($1,$2,$3,'modifier_required',1,'error',$4)`,
+       VALUES ($1,$2,$3,'admission_codes_present',1,'error',$4)`,
       [resultId, ORG, runId, outcome],
     );
     return { claimId, runId, resultId };
@@ -228,7 +241,7 @@ describe.skipIf(!DB_URL)("M23 validation override — LIVE Postgres", () => {
     expect(res.statusCode).toBe(201);
     const view = res.json();
     const { rows } = await admin.query(
-      "SELECT id, resource_kind, resource_id, actor_user_id, severity, before, after, context FROM audit_event WHERE event_type=$1 AND resource_id=$2",
+      "SELECT id, resource_kind, resource_id, actor_user_id, severity, correlation_id, source_ip, before, after, context FROM audit_event WHERE event_type=$1 AND resource_id=$2",
       [EVENT, s.resultId],
     );
     expect(rows).toHaveLength(1);
@@ -238,11 +251,31 @@ describe.skipIf(!DB_URL)("M23 validation override — LIVE Postgres", () => {
     expect(ev.context).toEqual({
       claimId: s.claimId,
       validationRunId: s.runId,
-      ruleKey: "modifier_required",
+      ruleKey: "admission_codes_present",
       overrideRole: "billing_manager",
       reasonLength: REASON.length,
     });
     expect(JSON.stringify(ev)).not.toContain("Payer confirmed");
+    // The free-text reason reaches NO audit_event of ANY type (before / after / context), including the row-level trigger's.
+    const leaks = await admin.query(
+      `SELECT count(*)::int AS n FROM audit_event
+        WHERE after::text LIKE $1 OR before::text LIKE $1 OR context::text LIKE $1`,
+      [`%Payer confirmed%`],
+    );
+    expect(leaks.rows[0].n).toBe(0);
+    // ... yet the trigger event exists and shows THAT the column was set, scrubbed.
+    const trig = (
+      await admin.query(
+        "SELECT correlation_id, after FROM audit_event WHERE event_type='validation_override.insert' AND after->>'result_id'=$1",
+        [s.resultId],
+      )
+    ).rows;
+    expect(trig).toHaveLength(1);
+    expect(trig[0].after.reason).toBe("<changed>");
+    // Both events carry the request's correlation id (not 'system'), and the app event recorded the source IP.
+    expect(trig[0].correlation_id).toBe(ev.correlation_id);
+    expect(ev.correlation_id).not.toBe("system");
+    expect(ev.source_ip).toBeTruthy();
     const ov = (
       await admin.query(
         "SELECT m4_audit_event_id, reason FROM validation_override WHERE result_id=$1",
@@ -315,6 +348,34 @@ describe.skipIf(!DB_URL)("M23 validation override — LIVE Postgres", () => {
     expect((await post(app, s)).statusCode).toBe(201);
     const afterFirst = await written();
     expect((await post(app, s)).statusCode).toBe(409);
+    expect(await written()).toEqual(afterFirst);
+  });
+
+  it("404s an actor who lacks the override role the rule demands (REAL override_role_eligible), writing nothing", async () => {
+    const s = await seed();
+    const before = await written();
+    const res = await post(server(true), s, {}, { "x-test-user": "ineligible" });
+    expect(res.statusCode).toBe(404);
+    expect(await written()).toEqual(before);
+    // the same actor with the right role is let through
+    expect((await post(server(true), s)).statusCode).toBe(201);
+  });
+
+  it("replays the stored answer for the same Idempotency-Key without a second write, and refuses the same key from another user", async () => {
+    const s = await seed();
+    const app = server(true);
+    const key = { "idempotency-key": `replay-${uuid()}` };
+    const first = await post(app, s, {}, key);
+    expect(first.statusCode).toBe(201);
+    const afterFirst = await written();
+    const again = await post(app, s, {}, key);
+    expect(again.statusCode).toBe(201);
+    expect(again.json()).toEqual(first.json());
+    expect(await written()).toEqual(afterFirst);
+    // another user in the same org reusing the key (and the identical body) must NOT be handed the first user's answer
+    const stolen = await post(app, s, {}, { ...key, "x-test-user": "plain" });
+    expect(stolen.statusCode).toBe(409);
+    expect(stolen.body).not.toContain(first.json().overrideId);
     expect(await written()).toEqual(afterFirst);
   });
 });

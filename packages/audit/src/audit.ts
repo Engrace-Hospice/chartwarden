@@ -111,7 +111,21 @@ export async function audit(
   ctx: AuditContext,
   input: AuditEventInput,
 ): Promise<void> {
-  await tx.insert(schema.auditEvents).values(buildRow(ctx, input));
+  await insertAudit(tx, ctx, input);
+}
+
+/**
+ * The single insert path. `id` is passed by {@link auditReturningId} only (never read from the public input, so a caller
+ * cannot choose it); without it the database default generates the id.
+ */
+async function insertAudit(
+  tx: AuditExecutor,
+  ctx: AuditContext,
+  input: AuditEventInput,
+  id?: string,
+): Promise<void> {
+  const row = buildRow(ctx, input);
+  await tx.insert(schema.auditEvents).values(id === undefined ? row : { ...row, id });
 }
 
 /**
@@ -125,7 +139,7 @@ export async function auditReturningId(
   input: AuditEventInput,
 ): Promise<string> {
   const id = randomUUID();
-  await tx.insert(schema.auditEvents).values({ ...buildRow(ctx, input), id });
+  await insertAudit(tx, ctx, input, id);
   return id;
 }
 

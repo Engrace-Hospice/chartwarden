@@ -899,6 +899,11 @@ export function buildDrizzleM23WriteService(
         if (await overrideRepo.findByResult(result.id)) {
           throw new ConflictError("this validation result has already been overridden");
         }
+        // One correlation id for this override: the explicit audit event below AND the row-level M4 write-audit trigger on
+        // validation_override (which reads the transaction-local `app.correlation_id`) must carry the same id, so a
+        // surveyor can join them (and the request's logs). Prefer the request's id; fall back to a fresh one.
+        const correlationId = actor.request?.correlationId ?? randomUUID();
+        await tx.execute(sql`SELECT set_config('app.correlation_id', ${correlationId}, true)`);
         // Record the §4.5 prominent M4 audit event in the same tx (the @wardenx/audit helper is the only
         // sanctioned writer of `audit_event`); its id is stamped onto the NOT-NULL override back-ref.
         const { auditEventId } = await auditPort.recordOverrideAudit(tx, {
@@ -910,6 +915,10 @@ export function buildDrizzleM23WriteService(
           ruleKey: result.ruleKey,
           overrideRole: args.overrideRole,
           actorUserId: actor.userId,
+          correlationId,
+          ...(actor.request?.requestId ? { requestId: actor.request.requestId } : {}),
+          ...(actor.request?.sourceIp ? { sourceIp: actor.request.sourceIp } : {}),
+          ...(actor.request?.userAgent ? { userAgent: actor.request.userAgent } : {}),
           reason: args.reason,
         });
         const override = await overrideRepo.append({

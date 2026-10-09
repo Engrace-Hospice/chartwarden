@@ -12,6 +12,7 @@ import {
   CENSOR,
   audit,
   auditRead,
+  auditReturningId,
   isDenied,
   redact,
   registerRetention,
@@ -173,5 +174,65 @@ describe("auditRead()", () => {
     expect(row.outcome).toBe("success");
     expect(row.before).toBeUndefined();
     expect(row.after).toBeUndefined();
+  });
+});
+
+describe("auditReturningId()", () => {
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+  beforeEach(() => resetRetentionRegistry());
+
+  it("returns the id of the row it inserted, and the id is a fresh uuid each call", async () => {
+    const { tx, rows } = captureExecutor();
+    const a = await auditReturningId(tx, CTX, { eventType: "x.done", resourceKind: "x", outcome: "success" });
+    const b = await auditReturningId(tx, CTX, { eventType: "x.done", resourceKind: "x", outcome: "success" });
+    expect(a).toMatch(UUID_RE);
+    expect(b).not.toBe(a);
+    expect(rows.map((r) => r.id)).toEqual([a, b]);
+  });
+
+  it("redacts snapshots and context exactly like audit()", async () => {
+    const viaId = captureExecutor();
+    const viaAudit = captureExecutor();
+    const input = {
+      eventType: "x.done",
+      resourceKind: "x",
+      outcome: "success",
+      context: { ssn: "123-45-6789", ruleKey: "kept" },
+      after: { firstName: "Ada", n: 1 },
+    } as const;
+    await auditReturningId(viaId.tx, CTX, input);
+    await audit(viaAudit.tx, CTX, input);
+    const strip = ({ id: _id, ...rest }: NewAuditEvent) => rest;
+    expect(strip(viaId.rows[0] as NewAuditEvent)).toEqual(strip(viaAudit.rows[0] as NewAuditEvent));
+    expect(viaId.rows[0]?.context).toEqual({ ssn: CENSOR, ruleKey: "kept" });
+  });
+
+  it("resolves retention the same way as audit(), including a registered override and an explicit class", async () => {
+    registerRetention("x.operational", "operational");
+    const { tx, rows } = captureExecutor();
+    await auditReturningId(tx, CTX, { eventType: "x.operational", resourceKind: "x", outcome: "success" });
+    await auditReturningId(tx, CTX, { eventType: "x.other", resourceKind: "x", outcome: "success" });
+    await auditReturningId(tx, CTX, {
+      eventType: "x.other",
+      resourceKind: "x",
+      outcome: "success",
+      retentionClass: "operational",
+    });
+    expect(rows.map((r) => r.retentionClass)).toEqual(["operational", "compliance", "operational"]);
+  });
+
+  it("cannot have its id chosen by the input, even through a smuggled property", async () => {
+    const { tx, rows } = captureExecutor();
+    const smuggled = { eventType: "x.done", resourceKind: "x", outcome: "success", id: "attacker-chosen" };
+    const id = await auditReturningId(tx, CTX, smuggled as never);
+    expect(id).not.toBe("attacker-chosen");
+    expect(rows[0]?.id).toBe(id);
+  });
+
+  it("plain audit() leaves the id to the database default", async () => {
+    const { tx, rows } = captureExecutor();
+    await audit(tx, CTX, { eventType: "x.done", resourceKind: "x", outcome: "success" });
+    expect(rows[0]?.id).toBeUndefined();
   });
 });

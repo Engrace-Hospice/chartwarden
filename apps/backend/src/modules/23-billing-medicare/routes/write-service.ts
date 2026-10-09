@@ -112,6 +112,11 @@ export interface AuditEventPort {
       readonly overrideRole: string;
       /** The acting user (the audit actor); the membership above is the billing-side identity. */
       readonly actorUserId: string;
+      /** Request facts for the audit record; `correlationId` is also set as the transaction's `app.correlation_id`. */
+      readonly correlationId: string;
+      readonly requestId?: string;
+      readonly sourceIp?: string;
+      readonly userAgent?: string;
       /**
        * The compliance rationale (40-2000 chars, free text). It is persisted ONLY on `validation_override.reason`;
        * an implementation must NOT copy it into the audit event, an outbox payload or a log (record its length at most).
