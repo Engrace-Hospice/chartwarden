@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1470,
-    "coveredRoutes": 1470,
-    "directRoutesReferenced": 1408
+    "routes": 1471,
+    "coveredRoutes": 1471,
+    "directRoutesReferenced": 1409
   },
   "modules": [
     {
@@ -470,7 +470,7 @@
     },
     {
       "module": "36-messaging",
-      "routes": 24,
+      "routes": 25,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
@@ -482,7 +482,7 @@
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 23
+      "directRoutesReferenced": 24
     },
     {
       "module": "37-ipu",
