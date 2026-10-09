@@ -780,6 +780,7 @@ import {
   DenyBodySchema as M5EDenyBodySchema,
   MergeBodySchema as M5EMergeBodySchema,
   MergeResponseSchema as M5EMergeResponseSchema,
+  MessagingPatientSearchResponseSchema as M5EMessagingPatientSearchResponseSchema,
   PatientAddressesResponseSchema as M5EPatientAddressesResponseSchema,
   PatientCareTeamResponseSchema as M5EPatientCareTeamResponseSchema,
   PatientDemographicsSchema as M5EPatientDemographicsSchema,
@@ -1243,6 +1244,7 @@ import {
   ListMessagesQuerySchema as M36ListMessagesQuerySchema,
   MessageListResponseSchema as M36MessageListResponseSchema,
   NotificationPreferencesResponseSchema as M36NotificationPreferencesResponseSchema,
+  OpenCareTeamConversationResponseSchema as M36OpenCareTeamConversationResponseSchema,
   OpenDmBodySchema as M36OpenDmBodySchema,
   OpenDmResponseSchema as M36OpenDmResponseSchema,
   PreferencesBodySchema as M36PreferencesBodySchema,
@@ -6450,6 +6452,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     query: M5EPatientListQuerySchema,
     response: M5EPatientListResponseSchema,
   },
+  "GET /api/v1/patients/messaging-search": {
+    summary: "Search authorized patients for the secure-messaging picker",
+    query: M5EPatientListQuerySchema,
+    response: M5EMessagingPatientSearchResponseSchema,
+  },
   "GET /api/v1/patients/census-metrics": {
     summary: "Census KPI metrics — active count + per-status breakdown (§4.2)",
     response: M5ECensusMetricsResponseSchema,
@@ -8803,6 +8810,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Search active staff eligible for a direct conversation",
     query: M36DmStaffSearchQuerySchema,
     response: M36DmStaffSearchResponseSchema,
+  },
+  "POST /api/v1/messaging/patients/:patientId/care-team-channel": {
+    summary: "Open or provision an authorized patient care-team conversation",
+    response: M36OpenCareTeamConversationResponseSchema,
   },
   "POST /api/v1/messaging/channels/:id/members": {
     summary: "Add a manual member (admin override on auto channels; 204)",

@@ -31,7 +31,7 @@ import type { paths } from "@wardenx/ui";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import type { FormEvent, JSX, ReactNode } from "react";
 
@@ -2171,6 +2171,7 @@ export function CareTeamTab({
 }): JSX.Element {
   const client = useApiClient();
   const toast = useToast();
+  const navigate = useNavigate();
   const [team, setTeam] = useState<CareTeam | null>(null);
   const [members, setMembers] = useState<Map<string, TeamMember>>(new Map());
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -2184,6 +2185,43 @@ export function CareTeamTab({
     title: string;
     message: string;
   } | null>(null);
+  const [openingConversation, setOpeningConversation] = useState(false);
+  const conversationRequest = useRef(0);
+  const conversationScope = `${organizationId}:${patientId}`;
+
+  useEffect(
+    () => () => {
+      void conversationScope;
+      conversationRequest.current += 1;
+    },
+    [conversationScope],
+  );
+
+  const openCareTeamConversation = useCallback(async (): Promise<void> => {
+    if (openingConversation) return;
+    setOpeningConversation(true);
+    const request = ++conversationRequest.current;
+    try {
+      const result = await client.POST("/api/v1/messaging/patients/{patientId}/care-team-channel", {
+        params: { path: { patientId } },
+      });
+      if (request !== conversationRequest.current) return;
+      if (result.error || !result.data?.channelId) {
+        toast.show("The care team conversation is unavailable or your access has changed.", {
+          tone: "error",
+        });
+        return;
+      }
+      navigate("/messaging", {
+        state: { messagingChannelId: result.data.channelId },
+      });
+    } catch {
+      if (request !== conversationRequest.current) return;
+      toast.show("The care team conversation could not be opened. Try again.", { tone: "error" });
+    } finally {
+      if (request === conversationRequest.current) setOpeningConversation(false);
+    }
+  }, [client, navigate, openingConversation, patientId, toast]);
 
   const reload = useCallback(
     async (showLoading = false) => {
@@ -2261,14 +2299,23 @@ export function CareTeamTab({
         title="Care Team & Assignments"
         description="Clinical assignments, caregivers, legal representatives and emergency contacts in one place."
         trailing={
-          <Button
-            onClick={() => {
-              setAssignmentError(null);
-              setAssignOpen(true);
-            }}
-          >
-            Assign care team member
-          </Button>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            <Button
+              tone="secondary"
+              disabled={openingConversation}
+              onClick={() => void openCareTeamConversation()}
+            >
+              {openingConversation ? "Opening…" : "Open care team conversation"}
+            </Button>
+            <Button
+              onClick={() => {
+                setAssignmentError(null);
+                setAssignOpen(true);
+              }}
+            >
+              Assign care team member
+            </Button>
+          </div>
         }
       />
 
@@ -2512,9 +2559,7 @@ export function CareTeamTab({
               hint="Only active members of this organization are available."
               onChange={(value, option) => {
                 setMembershipId(value);
-                setClinicianUserId(
-                  option?.metadata?.userId ?? members.get(value)?.userId ?? "",
-                );
+                setClinicianUserId(option?.metadata?.userId ?? members.get(value)?.userId ?? "");
                 setMembershipLabel(option?.searchLabel ?? "");
                 setAssignmentError(null);
               }}

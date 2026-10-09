@@ -265,23 +265,50 @@ export function createDbMessagingProvider(
               ),
             )
             .limit(1)) as Array<{ id: string; isArchived: boolean }>;
-          const channelArchived = existing[0]?.isArchived ?? false;
-          const channelId = existing[0]
-            ? existing[0].id
-            : (
-                (
-                  await tx
-                    .insert(CH)
-                    .values({
-                      organizationId: orgId,
-                      channelKind: "care_team",
-                      subjectId: patientId,
-                      title: defaultTitle("care_team"),
-                      retentionClass: shape.retentionClass,
-                    })
-                    .returning({ id: CH.id })
-                )[0] as { id: string }
-              ).id;
+          let channel = existing[0];
+          if (!channel) {
+            const inserted = (await tx
+              .insert(CH)
+              .values({
+                organizationId: orgId,
+                channelKind: "care_team",
+                subjectId: patientId,
+                title: defaultTitle("care_team"),
+                retentionClass: shape.retentionClass,
+              })
+              // `channel_unique_subject` is the database arbiter. A concurrent request may win
+              // between the SELECT and INSERT; the loser retrieves that row instead of surfacing
+              // a uniqueness error or creating a second channel.
+              .onConflictDoNothing()
+              .returning({ id: CH.id, isArchived: CH.isArchived })) as Array<{
+              id: string;
+              isArchived: boolean;
+            }>;
+            channel = inserted[0];
+            if (!channel) {
+              const raced = (await tx
+                .select({ id: CH.id, isArchived: CH.isArchived })
+                .from(CH)
+                .where(
+                  and(
+                    eq(CH.organizationId, orgId),
+                    eq(CH.channelKind, "care_team"),
+                    eq(CH.subjectId, patientId),
+                  ),
+                )
+                .limit(1)) as Array<{ id: string; isArchived: boolean }>;
+              channel = raced[0];
+            }
+          }
+          if (!channel) {
+            throw new WardenXError(
+              "CARE_TEAM_CHANNEL_CREATE_FAILED",
+              "could not open care team conversation",
+              503,
+            );
+          }
+          const channelId = channel.id;
+          const channelArchived = channel.isArchived;
 
           const activeMembers = (await tx
             .select({ id: CM.id, userId: CM.userId, source: CM.source })

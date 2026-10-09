@@ -749,6 +749,33 @@ describe("M5-T09 — patient routes (§4.2, §4.7 gating, §7.1/§7.4/§7.7)", (
     await app.close();
   });
 
+  it("projects only minimum-necessary identifiers for the messaging patient picker", async () => {
+    const { app } = makeServer();
+    const visible = await app.inject({
+      url: `/api/v1/patients/messaging-search?q=${existing.lastName}&limit=25`,
+      headers: EDIT,
+    });
+    expect(visible.statusCode).toBe(200);
+    expect(visible.json()).toEqual({
+      patients: [
+        {
+          patientId: EXISTING,
+          displayName: `${existing.firstName} ${existing.lastName}`,
+          medicalRecordNumber: existing.mrn,
+        },
+      ],
+    });
+    expect(JSON.stringify(visible.json())).not.toContain(existing.dob);
+
+    const hidden = await app.inject({
+      url: `/api/v1/patients/messaging-search?q=${existing.lastName}`,
+      headers: OFF_CASELOAD,
+    });
+    expect(hidden.statusCode).toBe(200);
+    expect(hidden.json()).toEqual({ patients: [] });
+    await app.close();
+  });
+
   it("F-096 an org-wide oversight role still sees the whole census", async () => {
     // The DON is on no caseload at all. `hasOrgWideScope` answers for the LIST exactly as it answers
     // for the chart guard — one derivation, so the two halves of §7.5 cannot disagree about who is

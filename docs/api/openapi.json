@@ -151919,6 +151919,64 @@
         }
       }
     },
+    "/api/v1/messaging/patients/{patientId}/care-team-channel": {
+      "post": {
+        "operationId": "postApiV1MessagingPatientsByPatientIdCareteamchannel",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Open or provision an authorized patient care-team conversation",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "channelId",
+                    "kind",
+                    "patientId",
+                    "archived"
+                  ],
+                  "properties": {
+                    "channelId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "const": "care_team",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "archived": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/metrics/route-efficiency": {
       "get": {
         "operationId": "getApiV1MetricsRouteefficiency",

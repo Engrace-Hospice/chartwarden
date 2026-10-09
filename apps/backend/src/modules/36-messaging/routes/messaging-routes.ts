@@ -44,6 +44,7 @@ import {
   MemberParamsSchema,
   MessageParamsSchema,
   OpenDmBodySchema,
+  PatientConversationParamsSchema,
   PreferencesBodySchema,
   ReadBodySchema,
   RegisterEndpointBodySchema,
@@ -286,6 +287,29 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
       return {
         staff: await service.searchDmEligibleStaff(organizationId, userId, q?.trim() ?? ""),
       };
+    },
+  );
+
+  // Open/provision a patient care-team conversation. The service verifies tenant-bound patient
+  // identity, current clinical roster or an explicit manual grant, synchronizes through the M36
+  // provider, then revalidates effective access. The patient id never grants access by itself.
+  app.post(
+    "/api/v1/messaging/patients/:patientId/care-team-channel",
+    {
+      preHandler: [READ],
+      config: {
+        auditRead: {
+          resourceKind: "patient_care_team_conversation",
+          resourceIdParam: "patientId",
+          patientIdParam: "patientId",
+          fields: ["messaging_channel"],
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { patientId } = parse(PatientConversationParamsSchema, request.params);
+      return service.openCareTeamChannel(organizationId, userId, patientId);
     },
   );
 

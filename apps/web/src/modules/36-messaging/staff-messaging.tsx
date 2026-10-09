@@ -20,7 +20,8 @@ import {
 // last-message preview/time isn't exposed by the channels read yet, so the secondary line shows the
 // channel's real scope (patient-scoped / kind) rather than a fabricated preview.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, JSX } from "react";
+import type { CSSProperties, JSX, KeyboardEvent } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { useSession } from "../../shell";
 
 interface ChannelSummary {
@@ -45,6 +46,18 @@ interface DmStaffMember {
   displayName: string;
   roles: string[];
 }
+interface PatientSearchResult {
+  patientId: string;
+  displayName: string;
+  medicalRecordNumber: string;
+}
+interface PatientHeaderInfo {
+  id: string;
+  mrn: string;
+  firstName: string;
+  lastName: string;
+}
+type ConversationType = "direct" | "patient";
 
 const CHANNEL_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 
@@ -74,9 +87,45 @@ function relTime(iso: string): string {
 }
 
 export function StaffMessaging(): JSX.Element {
-  const client = useApiClient();
   const session = useSession();
+  const location = useLocation();
   const organizationId = session?.organizationId ?? "";
+  const userId = session?.userId ?? "";
+  const requestedChannelId =
+    location.state &&
+    typeof location.state === "object" &&
+    "messagingChannelId" in location.state &&
+    typeof location.state.messagingChannelId === "string"
+      ? location.state.messagingChannelId
+      : null;
+  return (
+    <OrganizationStaffMessaging
+      key={`${organizationId}:${userId}`}
+      organizationId={organizationId}
+      organizationName={session?.organizationName ?? "Active organization"}
+      userId={userId}
+      requestedChannelId={requestedChannelId}
+    />
+  );
+}
+
+/**
+ * Security boundary: this entire stateful subtree is keyed by organization + actor above. React
+ * destroys it during the organization-changing render, before an effect could briefly expose the
+ * previous tenant's channels, patient context, messages, filters, errors, dialog, or draft.
+ */
+function OrganizationStaffMessaging({
+  organizationId,
+  organizationName,
+  userId,
+  requestedChannelId,
+}: {
+  organizationId: string;
+  organizationName: string;
+  userId: string;
+  requestedChannelId: string | null;
+}): JSX.Element {
+  const client = useApiClient();
   const [channels, setChannels] = useState<ChannelSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -86,19 +135,11 @@ export function StaffMessaging(): JSX.Element {
   const [statusFilter, setStatusFilter] = useState<"all" | "unread" | "archived">("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const organizationGeneration = useRef(0);
+  const lifecycleGeneration = useRef(0);
 
   useEffect(() => {
     let active = true;
-    organizationGeneration.current += 1;
-    setChannels(null);
-    setError(null);
-    setActiveId(null);
-    setSearchQuery("");
-    setScopeFilter("all");
-    setStatusFilter("all");
-    setPage(1);
-    setNewConversationOpen(false);
+    lifecycleGeneration.current += 1;
     if (!organizationId) return () => undefined;
     (async () => {
       const { data, error: err } = await client.GET("/api/v1/messaging/channels");
@@ -110,18 +151,23 @@ export function StaffMessaging(): JSX.Element {
       }
       const list = (data?.channels ?? []) as ChannelSummary[];
       setChannels(list);
-      setActiveId(list[0]?.channelId ?? null);
+      setActiveId(
+        (requestedChannelId && list.some((channel) => channel.channelId === requestedChannelId)
+          ? requestedChannelId
+          : list[0]?.channelId) ?? null,
+      );
     })();
     return () => {
       active = false;
+      lifecycleGeneration.current += 1;
     };
-  }, [client, organizationId]);
+  }, [client, organizationId, requestedChannelId]);
 
   const openConversation = useCallback(
     async (channelId: string): Promise<void> => {
-      const generation = organizationGeneration.current;
+      const generation = lifecycleGeneration.current;
       const { data, error: loadError } = await client.GET("/api/v1/messaging/channels");
-      if (generation !== organizationGeneration.current) return;
+      if (generation !== lifecycleGeneration.current) return;
       if (loadError) {
         setError("The conversation was created, but the channel list could not be refreshed.");
         return;
@@ -185,8 +231,8 @@ export function StaffMessaging(): JSX.Element {
         key={`${organizationId}:${newConversationOpen ? "open" : "closed"}`}
         open={newConversationOpen}
         organizationId={organizationId}
-        organizationName={session?.organizationName ?? "Active organization"}
-        currentUserId={session?.userId ?? ""}
+        organizationName={organizationName}
+        currentUserId={userId}
         onClose={() => setNewConversationOpen(false)}
         onCreated={openConversation}
       />
@@ -281,7 +327,7 @@ export function StaffMessaging(): JSX.Element {
               <Thread
                 key={`${organizationId}:${activeChannel.channelId}`}
                 channel={activeChannel}
-                meId={session?.userId ?? null}
+                meId={userId || null}
               />
             ) : (
               <EmptyState
@@ -323,14 +369,19 @@ function NewConversationDialog({
   onCreated: (channelId: string) => Promise<void>;
 }): JSX.Element {
   const client = useApiClient();
+  const [type, setType] = useState<ConversationType>("direct");
   const [query, setQuery] = useState("");
   const [staff, setStaff] = useState<DmStaffMember[] | null>(null);
-  const [selected, setSelected] = useState<DmStaffMember | null>(null);
+  const [patients, setPatients] = useState<PatientSearchResult[] | null>(null);
+  const [selectedStaff, setSelectedStaff] = useState<DmStaffMember | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<PatientSearchResult | null>(null);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [retry, setRetry] = useState(0);
   const requestSequence = useRef(0);
+  const creatingRequest = useRef(false);
 
   useEffect(
     () => () => {
@@ -345,48 +396,123 @@ function NewConversationDialog({
     const searchAttempt = retry;
     const sequence = ++requestSequence.current;
     setStaff(null);
+    setPatients(null);
     setSearchError(null);
     const timer = window.setTimeout(() => {
+      if (type === "direct") {
+        void client
+          .GET("/api/v1/messaging/dm/staff", {
+            params: { query: { q: query.trim() || undefined } },
+          })
+          .then(({ data, error }) => {
+            if (sequence !== requestSequence.current || searchAttempt !== retry) return;
+            if (error) {
+              setStaff([]);
+              setSearchError(
+                apiErrorMessage(error, "Could not search staff in this organization."),
+              );
+              return;
+            }
+            const eligible = ((data?.staff ?? []) as DmStaffMember[]).filter(
+              (person) => person.userId !== currentUserId,
+            );
+            setStaff(eligible);
+            setSelectedStaff((previous) =>
+              previous && eligible.some((person) => person.userId === previous.userId)
+                ? previous
+                : null,
+            );
+          });
+        return;
+      }
       void client
-        .GET("/api/v1/messaging/dm/staff", { params: { query: { q: query.trim() || undefined } } })
+        .GET("/api/v1/patients/messaging-search", {
+          params: { query: { q: query.trim() || undefined, limit: 25 } },
+        })
         .then(({ data, error }) => {
           if (sequence !== requestSequence.current || searchAttempt !== retry) return;
           if (error) {
-            setStaff([]);
-            setSearchError(apiErrorMessage(error, "Could not search staff in this organization."));
+            setPatients([]);
+            setSearchError(
+              apiErrorMessage(error, "Could not search authorized patients in this organization."),
+            );
             return;
           }
-          const eligible = ((data?.staff ?? []) as DmStaffMember[]).filter(
-            (person) => person.userId !== currentUserId,
-          );
-          setStaff(eligible);
-          setSelected((previous) =>
-            previous && eligible.some((person) => person.userId === previous.userId)
+          const results = (data?.patients ?? []) as PatientSearchResult[];
+          setPatients(results);
+          setSelectedPatient((previous) =>
+            previous && results.some((patient) => patient.patientId === previous.patientId)
               ? previous
               : null,
           );
         });
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [client, currentUserId, open, organizationId, query, retry]);
+  }, [client, currentUserId, open, organizationId, query, retry, type]);
+
+  function changeType(next: ConversationType): void {
+    requestSequence.current += 1;
+    setType(next);
+    setQuery("");
+    setStaff(null);
+    setPatients(null);
+    setSelectedStaff(null);
+    setSelectedPatient(null);
+    setHighlightedIndex(0);
+    setSearchError(null);
+    setCreateError(null);
+  }
 
   async function createConversation(): Promise<void> {
-    if (!selected || creating) return;
+    if (creatingRequest.current || (type === "direct" ? !selectedStaff : !selectedPatient)) return;
+    creatingRequest.current = true;
     setCreating(true);
     setCreateError(null);
     const sequence = requestSequence.current;
-    const { data, error } = await client.POST("/api/v1/messaging/dm", {
-      body: { userId: selected.userId },
-    });
+    const result =
+      type === "direct"
+        ? await client.POST("/api/v1/messaging/dm", {
+            body: { userId: selectedStaff!.userId },
+          })
+        : await client.POST("/api/v1/messaging/patients/{patientId}/care-team-channel", {
+            params: { path: { patientId: selectedPatient!.patientId } },
+          });
     if (sequence !== requestSequence.current) return;
+    creatingRequest.current = false;
     setCreating(false);
-    if (error || !data?.channelId) {
+    if (result.error || !result.data?.channelId) {
       setCreateError(
-        apiErrorMessage(error, "Could not start this conversation. Please try again."),
+        apiErrorMessage(
+          result.error,
+          type === "patient"
+            ? "Your access to this patient may have changed. The conversation could not be opened."
+            : "Could not start this conversation. Please try again.",
+        ),
       );
       return;
     }
-    await onCreated(data.channelId);
+    await onCreated(result.data.channelId);
+  }
+
+  const results = type === "direct" ? (staff ?? []) : (patients ?? []);
+  const loading = type === "direct" ? staff === null : patients === null;
+  const selected = type === "direct" ? selectedStaff : selectedPatient;
+
+  function handleSearchKey(event: KeyboardEvent<HTMLInputElement>): void {
+    if (results.length === 0) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setHighlightedIndex((index) => (index + 1) % results.length);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setHighlightedIndex((index) => (index - 1 + results.length) % results.length);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      const item = results[highlightedIndex];
+      if (!item) return;
+      if (type === "direct") setSelectedStaff(item as DmStaffMember);
+      else setSelectedPatient(item as PatientSearchResult);
+    }
   }
 
   return (
@@ -400,24 +526,50 @@ function NewConversationDialog({
         <div>
           <h2 style={dialogTitleStyle}>New conversation</h2>
           <p style={dialogSubtitleStyle}>
-            Search active staff in <strong>{organizationName}</strong>.
+            Start a secure conversation in <strong>{organizationName}</strong>.
           </p>
         </div>
+        <div role="tablist" aria-label="Conversation type" style={conversationTypeStyle}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={type === "direct"}
+            disabled={creating}
+            style={{ ...typeButtonStyle, ...(type === "direct" ? selectedTypeButtonStyle : {}) }}
+            onClick={() => changeType("direct")}
+          >
+            Direct message
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={type === "patient"}
+            disabled={creating}
+            style={{ ...typeButtonStyle, ...(type === "patient" ? selectedTypeButtonStyle : {}) }}
+            onClick={() => changeType("patient")}
+          >
+            Patient care team
+          </button>
+        </div>
         <label style={dialogSearchStyle}>
-          <span>Staff member</span>
+          <span>{type === "direct" ? "Staff member" : "Patient"}</span>
           <input
             type="search"
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
-              setSelected(null);
+              setSelectedStaff(null);
+              setSelectedPatient(null);
+              setHighlightedIndex(0);
             }}
-            placeholder="Search by name or email…"
-            aria-label="Search eligible staff"
+            onKeyDown={handleSearchKey}
+            placeholder={type === "direct" ? "Search by name or email…" : "Search by name or MRN…"}
+            aria-label={type === "direct" ? "Search eligible staff" : "Search authorized patients"}
+            aria-controls="new-conversation-results"
           />
         </label>
-        <div aria-live="polite" style={staffResultsStyle}>
-          {staff === null ? (
+        <div id="new-conversation-results" aria-live="polite" style={staffResultsStyle}>
+          {loading ? (
             <div style={dialogStateStyle}>
               <LoadingSpinner />
             </div>
@@ -428,34 +580,72 @@ function NewConversationDialog({
                 Retry
               </Button>
             </div>
-          ) : staff.length === 0 ? (
-            <EmptyState title="No eligible staff found" description="Try a different search." />
+          ) : results.length === 0 ? (
+            <EmptyState
+              title={type === "direct" ? "No eligible staff found" : "No authorized patients found"}
+              description="Try a different search."
+            />
           ) : (
             <ul style={staffListStyle}>
-              {staff.map((person) => (
-                <li key={person.userId}>
-                  <button
-                    type="button"
-                    style={{
-                      ...staffOptionStyle,
-                      background:
-                        selected?.userId === person.userId ? t.primaryTint : t.surfaceLowest,
-                    }}
-                    aria-pressed={selected?.userId === person.userId}
-                    onClick={() => setSelected(person)}
-                  >
-                    <span style={listAvatarStyle} aria-hidden>
-                      {initialsOf(person.displayName)}
-                    </span>
-                    <span style={channelTextStyle}>
-                      <span style={convTitleStyle}>{person.displayName}</span>
-                      <span style={convPreviewStyle}>
-                        {person.roles.join(" · ") || "Staff member"}
-                      </span>
-                    </span>
-                  </button>
-                </li>
-              ))}
+              {type === "direct"
+                ? (staff ?? []).map((person, index) => (
+                    <li key={person.userId}>
+                      <button
+                        id={`conversation-result-${person.userId}`}
+                        type="button"
+                        style={{
+                          ...staffOptionStyle,
+                          background:
+                            selectedStaff?.userId === person.userId || highlightedIndex === index
+                              ? t.primaryTint
+                              : t.surfaceLowest,
+                        }}
+                        aria-pressed={selectedStaff?.userId === person.userId}
+                        onMouseEnter={() => setHighlightedIndex(index)}
+                        onClick={() => setSelectedStaff(person)}
+                      >
+                        <span style={listAvatarStyle} aria-hidden>
+                          {initialsOf(person.displayName)}
+                        </span>
+                        <span style={channelTextStyle}>
+                          <span style={convTitleStyle}>{person.displayName}</span>
+                          <span style={convPreviewStyle}>
+                            {person.roles.join(" · ") || "Staff member"}
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  ))
+                : (patients ?? []).map((patient, index) => {
+                    const displayName = patient.displayName;
+                    return (
+                      <li key={patient.patientId}>
+                        <button
+                          id={`conversation-result-${patient.patientId}`}
+                          type="button"
+                          aria-pressed={selectedPatient?.patientId === patient.patientId}
+                          style={{
+                            ...staffOptionStyle,
+                            background:
+                              selectedPatient?.patientId === patient.patientId ||
+                              highlightedIndex === index
+                                ? t.primaryTint
+                                : t.surfaceLowest,
+                          }}
+                          onMouseEnter={() => setHighlightedIndex(index)}
+                          onClick={() => setSelectedPatient(patient)}
+                        >
+                          <span style={listAvatarStyle} aria-hidden>
+                            {initialsOf(displayName)}
+                          </span>
+                          <span style={channelTextStyle}>
+                            <span style={convTitleStyle}>{displayName}</span>
+                            <span style={convPreviewStyle}>MRN {patient.medicalRecordNumber}</span>
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
             </ul>
           )}
         </div>
@@ -580,34 +770,58 @@ function Thread({ channel, meId }: { channel: ChannelSummary; meId: string | nul
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [patient, setPatient] = useState<PatientHeaderInfo | null>(null);
   const loadSequence = useRef(0);
 
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
-    const { data } = await client.GET("/api/v1/messaging/channels/{id}/messages", {
+    const { data, error } = await client.GET("/api/v1/messaging/channels/{id}/messages", {
       params: { path: { id: channelId }, query: { limit: 50 } },
     });
     if (sequence !== loadSequence.current) return;
+    if (error) {
+      setMessages([]);
+      setPatient(null);
+      setLoadError("This conversation is unavailable or your access has changed.");
+      return;
+    }
+    setLoadError(null);
     setMessages((data?.messages ?? []) as Message[]);
   }, [client, channelId]);
 
   useEffect(() => {
     setMessages(null);
     setDraft("");
+    setPatient(null);
+    setLoadError(null);
     void load();
+    if (channel.kind === "care_team" && channel.subjectId) {
+      const sequence = loadSequence.current;
+      void client
+        .GET("/api/v1/patients/{id}", { params: { path: { id: channel.subjectId } } })
+        .then(({ data, error }) => {
+          if (sequence !== loadSequence.current) return;
+          setPatient(error || !data ? null : (data as PatientHeaderInfo));
+        });
+    }
     return () => {
       loadSequence.current += 1;
     };
-  }, [load]);
+  }, [channel.kind, channel.subjectId, client, load]);
 
   async function send(): Promise<void> {
     const body = draft.trim();
     if (!body) return;
+    const generation = loadSequence.current;
     setSending(true);
     const { error } = await client.POST("/api/v1/messaging/channels/{id}/messages", {
       params: { path: { id: channelId } },
       body: { body },
     });
+    // The request was dispatched while this organization-keyed thread still owned the channel.
+    // If a tenant/channel switch unmounted it, never start a follow-up read or update the new tree.
+    if (generation !== loadSequence.current) return;
     setSending(false);
     if (!error) {
       setDraft("");
@@ -618,17 +832,39 @@ function Thread({ channel, meId }: { channel: ChannelSummary; meId: string | nul
   return (
     <>
       <div style={threadHeaderStyle}>
-        <span style={{ fontWeight: 600, color: t.onSurface }}>{channelLabel(channel)}</span>
-        {channel.subjectId ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem", minWidth: 0 }}>
+          <span style={{ fontWeight: 600, color: t.onSurface }}>
+            {patient && !loadError
+              ? `${patient.firstName} ${patient.lastName} · Care Team`
+              : channelLabel(channel)}
+          </span>
+          {patient && !loadError ? <span style={convPreviewStyle}>MRN {patient.mrn}</span> : null}
+        </div>
+        {channel.kind === "care_team" ? (
+          <>
+            <span style={scopeChipStyle}>
+              <Glyph name="shield" size={13} />
+              {channel.archivedAt ? "Archived · read only" : "Active care team"}
+            </span>
+            {patient && !loadError ? (
+              <Link to={`/patients/${patient.id}`} style={patientChartLinkStyle}>
+                Open patient chart
+              </Link>
+            ) : null}
+          </>
+        ) : channel.subjectId ? (
           <span style={scopeChipStyle}>
-            <Glyph name="shield" size={13} />
-            Patient-scoped
+            <Glyph name="shield" size={13} /> Patient-scoped
           </span>
         ) : null}
       </div>
 
       <div style={messagesAreaStyle}>
-        {messages === null ? (
+        {loadError ? (
+          <div role="alert" style={errorBannerStyle}>
+            {loadError}
+          </div>
+        ) : messages === null ? (
           <LoadingSpinner />
         ) : messages.length === 0 ? (
           <EmptyState title="No messages" description="Start the conversation below." />
@@ -672,21 +908,29 @@ function Thread({ channel, meId }: { channel: ChannelSummary; meId: string | nul
         )}
       </div>
 
-      <div style={composerStyle}>
-        <input
-          aria-label="Message"
-          placeholder={`Message ${channelLabel(channel)}...`}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") void send();
-          }}
-          style={composerInputStyle}
-        />
-        <Button type="button" onClick={() => void send()} disabled={sending || !draft.trim()}>
-          {sending ? "Sending..." : "Send"}
-        </Button>
-      </div>
+      {channel.archivedAt || loadError ? (
+        <output style={archivedComposerStyle}>
+          {channel.archivedAt
+            ? "This conversation is archived. Message history remains read-only."
+            : "Messaging is unavailable until access can be verified."}
+        </output>
+      ) : (
+        <div style={composerStyle}>
+          <input
+            aria-label="Message"
+            placeholder={`Message ${channelLabel(channel)}...`}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void send();
+            }}
+            style={composerInputStyle}
+          />
+          <Button type="button" onClick={() => void send()} disabled={sending || !draft.trim()}>
+            {sending ? "Sending..." : "Send"}
+          </Button>
+        </div>
+      )}
     </>
   );
 }
@@ -720,6 +964,28 @@ const dialogSubtitleStyle: CSSProperties = {
   margin: "0.35rem 0 0",
   color: t.onSurfaceVariant,
   fontSize: "0.875rem",
+};
+const conversationTypeStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: "0.5rem",
+  padding: "0.25rem",
+  borderRadius: t.radiusLg,
+  background: t.surfaceLow,
+};
+const typeButtonStyle: CSSProperties = {
+  border: "none",
+  borderRadius: t.radiusMd,
+  padding: "0.65rem 0.75rem",
+  background: "transparent",
+  color: t.onSurfaceVariant,
+  fontWeight: 600,
+  cursor: "pointer",
+};
+const selectedTypeButtonStyle: CSSProperties = {
+  background: t.surfaceLowest,
+  color: t.primary,
+  boxShadow: "0 1px 3px color-mix(in srgb, black 12%, transparent)",
 };
 const dialogSearchStyle: CSSProperties = {
   display: "flex",
@@ -886,6 +1152,13 @@ const scopeChipStyle: CSSProperties = {
   borderRadius: "9999px",
   padding: "0.15rem 0.55rem",
 };
+const patientChartLinkStyle: CSSProperties = {
+  marginLeft: "auto",
+  color: t.primary,
+  fontSize: "0.8rem",
+  fontWeight: 600,
+  textDecoration: "none",
+};
 const messagesAreaStyle: CSSProperties = {
   flex: 1,
   overflow: "auto",
@@ -924,6 +1197,14 @@ const composerStyle: CSSProperties = {
   padding: "1rem 1.5rem",
   borderTop: `1px solid color-mix(in srgb, ${t.outlineVariant} 35%, transparent)`,
   background: t.surfaceLowest,
+};
+const archivedComposerStyle: CSSProperties = {
+  padding: "1rem 1.5rem",
+  borderTop: `1px solid color-mix(in srgb, ${t.outlineVariant} 35%, transparent)`,
+  background: t.surfaceLow,
+  color: t.onSurfaceVariant,
+  fontSize: "0.85rem",
+  textAlign: "center",
 };
 const composerInputStyle: CSSProperties = {
   flex: 1,

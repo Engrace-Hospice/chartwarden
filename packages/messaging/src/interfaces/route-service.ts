@@ -131,6 +131,14 @@ export interface DmEligibleStaffMember {
   readonly roles: readonly string[];
 }
 
+/** The minimum response needed to enter a patient-linked care-team thread. */
+export interface CareTeamConversation {
+  readonly channelId: string;
+  readonly kind: "care_team";
+  readonly patientId: string;
+  readonly archived: boolean;
+}
+
 /**
  * The §4.1–4.2 application service the M36 routes compose over. Mutations are idempotent where
  * the spec calls for it (openDm, markRead). Domain failures throw `WardenXError` subclasses the
@@ -190,6 +198,13 @@ export interface MessagingRouteService {
     userId: string,
     peerUserId: string,
   ): Promise<{ channelId: string; created: boolean }>;
+  /** Open or provision the caller's authorized patient care-team channel. The implementation
+   *  revalidates current clinical access after synchronization and never adds the caller manually. */
+  openCareTeamChannel(
+    orgId: string,
+    userId: string,
+    patientId: string,
+  ): Promise<CareTeamConversation>;
   /** Active staff in the bound organization who may be selected as a DM peer. */
   searchDmEligibleStaff(
     orgId: string,

@@ -6,7 +6,7 @@
 // assert on the RECORDED REQUEST BODY, which is the contract the route validates.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";
 import { CareTeamTab } from "./patient-chart";
@@ -32,7 +32,18 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   const req = input instanceof Request ? input : new Request(String(input), init);
   const url = new URL(req.url, "http://localhost");
   if (req.method === "POST") {
-    posts.push({ path: url.pathname, body: await req.json() });
+    posts.push({
+      path: url.pathname,
+      body: req.headers.get("content-length") === "0" ? null : await req.json().catch(() => null),
+    });
+    if (url.pathname === `/api/v1/messaging/patients/${PATIENT}/care-team-channel`) {
+      return json({
+        channelId: "care-team-channel-1",
+        kind: "care_team",
+        patientId: PATIENT,
+        archived: false,
+      });
+    }
     return json({ id: "asg-1" }, 201);
   }
   if (url.pathname === `/api/v1/patients/${PATIENT}/care-team`) {
@@ -60,7 +71,35 @@ function mount() {
       <SessionProvider session={session}>
         <ToastProvider>
           <MemoryRouter>
-            <CareTeamTab patientId={PATIENT} organizationId={ORG} />
+            <Routes>
+              <Route path="*" element={<CareTeamTab patientId={PATIENT} organizationId={ORG} />} />
+            </Routes>
+          </MemoryRouter>
+        </ToastProvider>
+      </SessionProvider>
+    </ApiClientProvider>,
+  );
+}
+
+function MessagingDestination() {
+  const location = useLocation();
+  const state = location.state as { messagingChannelId?: string } | null;
+  return <div>Messaging destination {state?.messagingChannelId}</div>;
+}
+
+function mountWithMessagingDestination() {
+  return render(
+    <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
+      <SessionProvider session={session}>
+        <ToastProvider>
+          <MemoryRouter initialEntries={["/patients/care-team"]}>
+            <Routes>
+              <Route
+                path="/patients/care-team"
+                element={<CareTeamTab patientId={PATIENT} organizationId={ORG} />}
+              />
+              <Route path="/messaging" element={<MessagingDestination />} />
+            </Routes>
           </MemoryRouter>
         </ToastProvider>
       </SessionProvider>
@@ -99,5 +138,16 @@ describe("Assign care team member", () => {
 
     await waitFor(() => expect(posts).toHaveLength(1));
     expect(posts[0]?.body).toEqual({ clinicianUserId: RN_USER, role: "rn" });
+  });
+
+  it("opens the patient care-team conversation and navigates with only the opaque channel id", async () => {
+    mountWithMessagingDestination();
+    fireEvent.click(await screen.findByRole("button", { name: "Open care team conversation" }));
+
+    await screen.findByText("Messaging destination care-team-channel-1");
+    expect(posts).toContainEqual({
+      path: `/api/v1/messaging/patients/${PATIENT}/care-team-channel`,
+      body: null,
+    });
   });
 });

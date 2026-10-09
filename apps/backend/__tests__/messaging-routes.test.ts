@@ -15,10 +15,12 @@ import {
   resetAbacRegistry,
   resetAuthorizationContract,
   resetRbacEngine,
+  setBreakGlassAuditHook,
+  setBreakGlassChecker,
 } from "@wardenx/auth";
 import { type MessagingRouteService, createInMemoryMessagingService } from "@wardenx/messaging";
 import type { FastifyRequest } from "fastify";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
   CHANNEL_MEMBER_ADMIN_PREDICATE,
@@ -70,6 +72,7 @@ const PERMISSION_SEED = [
   },
   // intern: no messaging key at all → 403 everywhere.
   { userId: "intern_1", permissions: ["patient.read"] },
+  { userId: "suspended_1", permissions: ["messaging.read"] },
 ];
 
 function makeServer(): { app: ReturnType<typeof buildServer>; service: MessagingRouteService } {
@@ -89,6 +92,12 @@ function makeServer(): { app: ReturnType<typeof buildServer>; service: Messaging
         },
         { orgId: "org_b", userId: "foreign_1", displayName: "Foreign User", roles: [] },
       ],
+      careTeamPatients: [
+        { orgId: ORG, patientId: "patient_x", memberUserIds: ["rn_1"] },
+        { orgId: ORG, patientId: "patient_new", memberUserIds: ["rn_1"] },
+        { orgId: ORG, patientId: "patient_archived", memberUserIds: ["rn_1"] },
+        { orgId: "org_b", patientId: "patient_foreign", memberUserIds: ["foreign_1"] },
+      ],
       channels: [
         {
           channelId: CT,
@@ -97,6 +106,15 @@ function makeServer(): { app: ReturnType<typeof buildServer>; service: Messaging
           title: "Care Team — Patient X",
           subjectId: "patient_x",
           members: [{ userId: "rn_1", role: "owner" }],
+        },
+        {
+          channelId: "ch_archived",
+          orgId: ORG,
+          kind: "care_team",
+          title: "Archived care team",
+          subjectId: "patient_archived",
+          archivedAt: "2026-06-01T00:00:00.000Z",
+          members: [{ userId: "rn_1", source: "auto" }],
         },
       ],
       alerts: [
@@ -148,6 +166,11 @@ const RN1 = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "clinica
 const RN2 = { "x-test-user": "rn_2", "x-test-org": ORG, "x-test-roles": "clinical_rn" };
 const ADMIN = { "x-test-user": "admin_1", "x-test-org": ORG, "x-test-roles": "org_admin" };
 const INTERN = { "x-test-user": "intern_1", "x-test-org": ORG, "x-test-roles": "intern" };
+const SUSPENDED = {
+  "x-test-user": "suspended_1",
+  "x-test-org": ORG,
+  "x-test-roles": "clinical_rn",
+};
 
 beforeEach(() => {
   resetAuthorizationContract();
@@ -226,6 +249,58 @@ describe("M36-T07 messaging route inventory", () => {
         payload: { body: "hello" },
       });
       expect(res.statusCode).toBe(403);
+      await app.close();
+    });
+
+    it("denies detail and history as soon as effective clinical access is revoked", async () => {
+      const { app, service } = makeServer();
+      let clinicallyAuthorized = true;
+      const originalCanView = service.canViewChannel.bind(service);
+      service.canViewChannel = async (orgId, userId, channelId) =>
+        clinicallyAuthorized && originalCanView(orgId, userId, channelId);
+
+      const before = await app.inject({
+        method: "GET",
+        url: `/api/v1/messaging/channels/${CT}`,
+        headers: RN1,
+      });
+      expect(before.statusCode).toBe(200);
+
+      clinicallyAuthorized = false;
+      for (const url of [
+        `/api/v1/messaging/channels/${CT}`,
+        `/api/v1/messaging/channels/${CT}/messages`,
+      ]) {
+        const denied = await app.inject({ method: "GET", url, headers: RN1 });
+        expect(denied.statusCode).toBe(403);
+        expect(denied.json()).not.toHaveProperty("title");
+        expect(denied.json()).not.toHaveProperty("messages");
+      }
+      await app.close();
+    });
+
+    it("preserves an audited read-only break-glass access after normal visibility denies", async () => {
+      const { app, service } = makeServer();
+      service.canViewChannel = async () => false;
+      const audit = vi.fn(async () => undefined);
+      setBreakGlassChecker(async (_context, action, target) =>
+        action === "messaging.read" && target.id === CT ? { eventId: "bg-m36-1" } : null,
+      );
+      setBreakGlassAuditHook(audit);
+
+      const response = await app.inject({
+        method: "GET",
+        url: `/api/v1/messaging/channels/${CT}`,
+        headers: RN1,
+      });
+      expect(response.statusCode).toBe(200);
+      expect(audit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "messaging.read",
+          grant: { eventId: "bg-m36-1" },
+          target: { id: CT },
+        }),
+      );
       await app.close();
     });
   });
@@ -342,6 +417,80 @@ describe("M36-T07 messaging route inventory", () => {
         expect(response.statusCode).toBe(404);
         expect(response.json().code).toBe("NOT_FOUND");
       }
+      await app.close();
+    });
+  });
+
+  describe("patient care-team conversation", () => {
+    it("reuses an existing channel and idempotently provisions one through the care-team roster", async () => {
+      const { app } = makeServer();
+      const existing = await app.inject({
+        method: "POST",
+        url: "/api/v1/messaging/patients/patient_x/care-team-channel",
+        headers: RN1,
+      });
+      expect(existing.statusCode).toBe(200);
+      expect(existing.json()).toEqual({
+        channelId: CT,
+        kind: "care_team",
+        patientId: "patient_x",
+        archived: false,
+      });
+
+      const first = await app.inject({
+        method: "POST",
+        url: "/api/v1/messaging/patients/patient_new/care-team-channel",
+        headers: RN1,
+      });
+      const second = await app.inject({
+        method: "POST",
+        url: "/api/v1/messaging/patients/patient_new/care-team-channel",
+        headers: RN1,
+      });
+      expect(first.statusCode).toBe(200);
+      expect(second.statusCode).toBe(200);
+      expect(second.json().channelId).toBe(first.json().channelId);
+      await app.close();
+    });
+
+    it("conceals foreign, unknown, unassigned, and suspended access with no channel metadata", async () => {
+      const { app } = makeServer();
+      const attempts = [
+        { headers: RN1, patientId: "patient_foreign" },
+        { headers: RN1, patientId: "unknown_patient" },
+        { headers: RN2, patientId: "patient_x" },
+        { headers: SUSPENDED, patientId: "patient_x" },
+      ];
+      for (const attempt of attempts) {
+        const response = await app.inject({
+          method: "POST",
+          url: `/api/v1/messaging/patients/${attempt.patientId}/care-team-channel`,
+          headers: attempt.headers,
+        });
+        expect(response.statusCode).toBe(404);
+        expect(response.json()).not.toHaveProperty("channelId");
+        expect(response.json()).not.toHaveProperty("patientId");
+      }
+      await app.close();
+    });
+
+    it("preserves archived state and the existing member's read-only history", async () => {
+      const { app } = makeServer();
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/v1/messaging/patients/patient_archived/care-team-channel",
+        headers: RN1,
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ channelId: "ch_archived", archived: true });
+
+      const send = await app.inject({
+        method: "POST",
+        url: "/api/v1/messaging/channels/ch_archived/messages",
+        headers: RN1,
+        payload: { body: "must not send" },
+      });
+      expect(send.statusCode).toBe(410);
       await app.close();
     });
   });
