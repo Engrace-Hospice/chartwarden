@@ -23,9 +23,9 @@ describe("visitCodeFor — CMS ch. 11 §30.3 revenue-code / HCPCS table", () => 
     ["msw", "msw_assessment", "0561", "G0155"],
     ["msw", "msw_followup", "0561", "G0155"],
     ["msw", "telephonic", "0569", "G0155"],
-    ["pt", "routine_visit", "0421", "G0151"],
-    ["ot", "routine_visit", "0431", "G0152"],
-    ["slp", "routine_visit", "0441", "G0153"],
+    ["pt", "pt_visit", "0421", "G0151"],
+    ["ot", "ot_visit", "0431", "G0152"],
+    ["slp", "slp_visit", "0441", "G0153"],
   ])("%s / %s -> rev %s HCPCS %s", (discipline, encounterType, revenueCode, hcpcsCode) => {
     expect(visitCodeFor({ discipline, encounterType })).toEqual({ revenueCode, hcpcsCode });
   });
@@ -37,6 +37,9 @@ describe("visitCodeFor — CMS ch. 11 §30.3 revenue-code / HCPCS table", () => 
   });
 
   it.each([
+    ["pt", "telephonic"],
+    ["ot", "telephonic"],
+    ["slp", "telephonic"],
     ["chaplain", "chaplain_visit"],
     ["volunteer", "volunteer_visit"],
     ["md", "routine_visit"],

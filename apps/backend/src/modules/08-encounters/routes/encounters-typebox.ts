@@ -45,6 +45,9 @@ const ENCOUNTER_TYPE = [
   "volunteer_visit",
   "bereavement_contact",
   "idg_followup",
+  "pt_visit",
+  "ot_visit",
+  "slp_visit",
 ] as const;
 const ENCOUNTER_DISCIPLINE = [
   "rn",
@@ -55,6 +58,9 @@ const ENCOUNTER_DISCIPLINE = [
   "volunteer",
   "md",
   "np",
+  "pt",
+  "ot",
+  "slp",
 ] as const;
 
 const Text = (min = 1, max = 4000) => Type.String({ minLength: min, maxLength: max });

@@ -58,6 +58,27 @@ describe("template registry", () => {
     expect(t.sections.some((s) => s.id === "vitals_review")).toBe(false);
   });
 
+  it.each([
+    ["pt_visit", "pt"],
+    ["ot_visit", "ot"],
+    ["slp_visit", "slp"],
+  ] as const)(
+    "%s is pinned to its therapist and documents assessment + interventions, not vitals",
+    (type, discipline) => {
+      const t = resolveTemplate(type, discipline)!;
+      expect(t.sections.map((s) => s.id)).toEqual([
+        "chief_concern",
+        "assessment",
+        "interventions",
+        "plan",
+      ]);
+      expect(requiredSectionIds(t)).not.toContain("vitals_review");
+      // A therapist visit is not authorable by another discipline, and a therapist cannot author an RN visit type.
+      expect(resolveTemplate(type, "rn")).toBeUndefined();
+      expect(resolveTemplate("routine_visit", discipline)).toBeUndefined();
+    },
+  );
+
   it("section ids within a template are unique and ordered deterministically", () => {
     for (const t of TEMPLATES.values()) {
       const ids = t.sections.map((s) => s.id);

@@ -144,6 +144,10 @@ const AUTHORABLE_DISCIPLINE_ROLES: Readonly<Record<string, string>> = {
   hospice_physician: "md",
   medical_director: "md",
   np: "np",
+  // Therapists (migration 1055): the discipline role-key tokens, like `rn`/`msw`.
+  pt: "pt",
+  ot: "ot",
+  slp: "slp",
 };
 const authorDisciplinesOf = (roles: readonly string[]): ReadonlySet<string> =>
   new Set(roles.flatMap((r) => AUTHORABLE_DISCIPLINE_ROLES[r] ?? []));

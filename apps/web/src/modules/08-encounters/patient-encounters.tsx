@@ -448,6 +448,9 @@ const ALL_DISCIPLINES: readonly EncounterDiscipline[] = [
   "volunteer",
   "md",
   "np",
+  "pt",
+  "ot",
+  "slp",
 ];
 
 function PrnEncounterModal({

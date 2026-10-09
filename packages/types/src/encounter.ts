@@ -33,7 +33,7 @@ export type VocabVersionId = string;
 
 // ── §3.2 pgEnum value mirrors (kept in lock-step with `packages/db/src/enums.ts`) ────────────────────
 
-/** The 14 §2.2 visit types (mirrors `encounter_type`). */
+/** The 17 §2.2 visit types (mirrors `encounter_type`; the three therapy types came with migration 1055). */
 export type EncounterType =
   | "routine_visit"
   | "admission_visit"
@@ -48,7 +48,10 @@ export type EncounterType =
   | "chaplain_visit"
   | "volunteer_visit"
   | "bereavement_contact"
-  | "idg_followup";
+  | "idg_followup"
+  | "pt_visit"
+  | "ot_visit"
+  | "slp_visit";
 
 /** The §2.2 authoring/signing discipline (mirrors `encounter_discipline`). */
 export type EncounterDiscipline =
@@ -59,7 +62,10 @@ export type EncounterDiscipline =
   | "chaplain"
   | "volunteer"
   | "md"
-  | "np";
+  | "np"
+  | "pt"
+  | "ot"
+  | "slp";
 
 /** The §2.3 encounter lifecycle (mirrors `encounter_status`). */
 export type EncounterStatus =
@@ -158,6 +164,9 @@ export const ENCOUNTER_DISCIPLINE_RULES: {
   volunteer_visit: ["volunteer"],
   bereavement_contact: ["msw", "chaplain", "volunteer"],
   idg_followup: ["rn", "lpn", "msw", "chaplain", "md", "np"],
+  pt_visit: ["pt"],
+  ot_visit: ["ot"],
+  slp_visit: ["slp"],
 } as const;
 
 /** §2.2 — whether a `(encounterType, discipline)` pair is legal (the T04 validator's predicate). */

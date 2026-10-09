@@ -45772,8 +45772,8 @@ export interface operations {
                             patientId: string;
                             admissionId: string;
                             visitId: string | null;
-                            encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup";
-                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                            encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup" | "pt_visit" | "ot_visit" | "slp_visit";
+                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pt" | "ot" | "slp";
                             serviceDate: string;
                             status: "draft" | "finalized" | "signed" | "cosign_pending" | "cosigned" | "voided";
                             lateEntryTier: string;
@@ -45831,8 +45831,8 @@ export interface operations {
                     admissionId: string;
                     /** Format: uuid */
                     visitId?: string;
-                    encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup";
-                    discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                    encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup" | "pt_visit" | "ot_visit" | "slp_visit";
+                    discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pt" | "ot" | "slp";
                     /** Format: date */
                     serviceDate: string;
                     /** Format: uuid */
@@ -45886,8 +45886,8 @@ export interface operations {
                         patientId: string;
                         admissionId: string;
                         visitId: string | null;
-                        encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup";
-                        discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                        encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup" | "pt_visit" | "ot_visit" | "slp_visit";
+                        discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pt" | "ot" | "slp";
                         serviceDate: string;
                         status: "draft" | "finalized" | "signed" | "cosign_pending" | "cosigned" | "voided";
                         lateEntryTier: string;
@@ -46796,8 +46796,8 @@ export interface operations {
                         encounterId: string;
                         templateKey: string;
                         vocabVersion: string;
-                        encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup";
-                        discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                        encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup" | "pt_visit" | "ot_visit" | "slp_visit";
+                        discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pt" | "ot" | "slp";
                         sections: {
                             sectionId: string;
                             heading: string;
@@ -47029,8 +47029,8 @@ export interface operations {
                             patientId: string;
                             admissionId: string;
                             visitId: string | null;
-                            encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup";
-                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                            encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup" | "pt_visit" | "ot_visit" | "slp_visit";
+                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pt" | "ot" | "slp";
                             serviceDate: string;
                             status: "draft" | "finalized" | "signed" | "cosign_pending" | "cosigned" | "voided";
                             lateEntryTier: string;
@@ -47094,8 +47094,8 @@ export interface operations {
                             patientId: string;
                             admissionId: string;
                             visitId: string | null;
-                            encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup";
-                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                            encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup" | "pt_visit" | "ot_visit" | "slp_visit";
+                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pt" | "ot" | "slp";
                             serviceDate: string;
                             status: "draft" | "finalized" | "signed" | "cosign_pending" | "cosigned" | "voided";
                             lateEntryTier: string;
@@ -54078,8 +54078,8 @@ export interface operations {
                             patientId: string;
                             admissionId: string;
                             visitId: string | null;
-                            encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup";
-                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+                            encounterType: "routine_visit" | "admission_visit" | "recert_visit" | "face_to_face" | "telephonic" | "lpn_visit" | "chha_visit" | "msw_assessment" | "msw_followup" | "chaplain_assessment" | "chaplain_visit" | "volunteer_visit" | "bereavement_contact" | "idg_followup" | "pt_visit" | "ot_visit" | "slp_visit";
+                            discipline: "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np" | "pt" | "ot" | "slp";
                             serviceDate: string;
                             status: "draft" | "finalized" | "signed" | "cosign_pending" | "cosigned" | "voided";
                             lateEntryTier: string;

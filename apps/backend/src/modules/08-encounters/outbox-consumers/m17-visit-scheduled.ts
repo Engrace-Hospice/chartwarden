@@ -69,6 +69,9 @@ function encounterTypeOf(value: string): EncounterType {
     case "volunteer_visit":
     case "bereavement_contact":
     case "idg_followup":
+    case "pt_visit":
+    case "ot_visit":
+    case "slp_visit":
       return value;
     default:
       throw new Error(`m8.seed-visit-encounter: unsupported encounter type '${value}'`);
@@ -85,6 +88,9 @@ function disciplineOf(value: string): EncounterDiscipline {
     case "volunteer":
     case "md":
     case "np":
+    case "pt":
+    case "ot":
+    case "slp":
       return value;
     default:
       throw new Error(`m8.seed-visit-encounter: unsupported discipline '${value}'`);
