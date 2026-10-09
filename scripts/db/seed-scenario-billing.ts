@@ -242,16 +242,13 @@ async function wipePriorBilling(patientId: string, organizationId: string): Prom
 }
 
 /**
- * Upserts the demo provider entity's MAC submitter credential through the real (step-up) route. Returns
- * false when the product itself cannot store one: the composition root (`apps/backend/src/index.ts`) never
- * binds M23's `SecretCipherPort`, so `upsertMacCredential` answers 503 `SEAM_UNBOUND` on every deployment
- * (fail-closed by design, the secret is never accepted-then-dropped). That is a product gap, not something
- * a seed may route around, so the step is reported as skipped and the Medicare-assemble prerequisite it
- * would have satisfied stays missing.
+ * Upserts the demo provider entity's MAC submitter credential through the real (step-up) route. The API needs
+ * `M24_CREDENTIAL_ENCRYPTION_KEY` to seal the secret (documented in `.env.example`); without it the route answers
+ * 503 and this seed fails loudly rather than leaving Medicare assemble at MAC_SUBMITTER_CREDENTIAL_MISSING.
  */
 async function seedMacSubmitterCredential(
   admin: Awaited<ReturnType<typeof signIn>>,
-): Promise<boolean> {
+): Promise<void> {
   await stepUpSession(admin.userId);
   const res = await admin.client.POST("/api/v1/billing/mac-credentials", {
     headers: { "Idempotency-Key": crypto.randomUUID() },
@@ -265,12 +262,9 @@ async function seedMacSubmitterCredential(
     },
   });
   // An existing credential answers 428 IF_MATCH_REQUIRED — already seeded is fine on a re-run.
-  const errorCode = (res.error as { error?: { code?: string } } | undefined)?.error?.code;
-  if (res.response.status === 503 && errorCode === "SEAM_UNBOUND") return false;
   if (res.error && res.response.status !== 428) {
     throw new Error(`MAC submitter credential upsert failed: ${JSON.stringify(res.error)}`);
   }
-  return true;
 }
 
 /** The federal fiscal year (Oct 1) an ISO date falls in, as its starting calendar year. */
@@ -318,7 +312,7 @@ async function main(): Promise<void> {
   // Medicare assemble for the demo org fails (it used to surface as PROVIDER_ENTITY_UNRESOLVED, now as
   // MAC_SUBMITTER_CREDENTIAL_MISSING). Oregon's home health & hospice MAC is CGS (J15). Dev credential
   // only — no clearinghouse is configured locally, so nothing is ever submitted with it.
-  const macCredentialSeeded = await seedMacSubmitterCredential(admin);
+  await seedMacSubmitterCredential(admin);
   // The demo provider (CCN 381588, Pendleton OR, ZIP 97801) wage index, taken from the CMS hospice geography
   // (migration 1058) instead of keyed by hand: the provider's ZIP is placed in its CBSA / rural area.
   const fiscalYear = fiscalYearStartingOf(serviceFrom);
@@ -329,9 +323,7 @@ async function main(): Promise<void> {
   });
   log.dup(`Medicare (M23): demo provider wage index seeded — ${demoWageIndex.join("; ")}`);
   log.dup(
-    macCredentialSeeded
-      ? "Medicare (M23): MAC submitter credential seeded; rate tables / sequestration are tenant-entered (assemble names whichever is missing)"
-      : "Medicare (M23): MAC submitter credential SKIPPED — the product binds no M23 secret cipher (503 SEAM_UNBOUND), so Medicare assemble stays MAC_SUBMITTER_CREDENTIAL_MISSING; rate tables / sequestration are tenant-entered",
+    "Medicare (M23): MAC submitter credential seeded; rate tables / sequestration are tenant-entered (assemble names whichever is missing)",
   );
 
   // ── M24 — Billing Medicaid (full lifecycle: assemble → validate → submit) ──────────────────────────
