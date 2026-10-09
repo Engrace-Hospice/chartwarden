@@ -185,7 +185,9 @@ export type AlertRecipientResolver =
   | "role_set"
   | "tenant_admins"
   | "user_list"
-  | "broadcast";
+  | "broadcast"
+  // GAP-040 (migration 1001) - the members who hold one of the named permission keys.
+  | "permission_holders";
 
 /**
  * The §2.4.3 fan-out outcome of a dispatched alert.

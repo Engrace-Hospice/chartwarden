@@ -37,6 +37,7 @@ const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audi
 
 const ORG = "11111111-aaaa-4aaa-8aaa-111111111111";
 const ORG_B = "22222222-aaaa-4aaa-8aaa-222222222222";
+const ORG_C = "44444444-aaaa-4aaa-8aaa-444444444444"; // no cap.event.read holder at all: only an org_admin
 const USER = "33333333-aaaa-4aaa-8aaa-333333333333";
 const CAP_YEAR = "FY2026"; // wholly in the past, so the run-rate extrapolation factor is exactly 1
 const CAP_CENTS = 3_536_144; // the migration-0393 FY2026 per-beneficiary cap
@@ -100,6 +101,42 @@ describe.skipIf(!DB_URL)("M26 projections + alerts - LIVE Postgres", () => {
     );
     return userId;
   }
+  /**
+   * GAP-040 - a member whose role grants exactly `permissionKeys` through `role_permission`. `expired` stamps the
+   * grant's `expires_at` in the past, `enabled: false` disables the role: both must confer nothing.
+   */
+  async function addHolder(
+    orgId: string,
+    tag: string,
+    permissionKeys: readonly string[],
+    opts: { expired?: boolean; enabled?: boolean } = {},
+  ): Promise<string> {
+    const roleId = (
+      await admin.query(
+        "INSERT INTO role (organization_id, key, name, category, enabled) VALUES ($1,$2,$2,'billing_finance',$3) RETURNING id",
+        [orgId, `holder_${tag}`, opts.enabled ?? true],
+      )
+    ).rows[0].id as string;
+    for (const key of permissionKeys)
+      await admin.query(
+        "INSERT INTO role_permission (organization_id, role_id, permission_key) VALUES ($1,$2,$3)",
+        [orgId, roleId, key],
+      );
+    const userId = (
+      await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [`${tag}@m26.test`])
+    ).rows[0].id as string;
+    const membershipId = (
+      await admin.query(
+        `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+        [userId, orgId],
+      )
+    ).rows[0].id as string;
+    await admin.query(
+      "INSERT INTO membership_role (organization_id, membership_id, role_id, expires_at) VALUES ($1,$2,$3,$4)",
+      [orgId, membershipId, roleId, opts.expired ? new Date(Date.now() - 86_400_000) : null],
+    );
+    return userId;
+  }
   async function seedAccrual(patient: string, paid: number, deceasedAt: string | null = null) {
     await admin.query(
       `INSERT INTO cap_beneficiary_accrual (organization_id, cap_period_id, patient_id, mbi_normalized,
@@ -116,6 +153,7 @@ describe.skipIf(!DB_URL)("M26 projections + alerts - LIVE Postgres", () => {
     for (const [id, slug] of [
       [ORG, "m26-proj-a"],
       [ORG_B, "m26-proj-b"],
+      [ORG_C, "m26-proj-c"],
     ] as const)
       await admin.query(
         "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
@@ -126,6 +164,16 @@ describe.skipIf(!DB_URL)("M26 projections + alerts - LIVE Postgres", () => {
     user.biller = await addMember(ORG, "biller", "biller"); // bystander: holds no cap/billing-manager role
     user.billingManager = await addMember(ORG, "bm", "billing_manager");
     user.otherCfo = await addMember(ORG_B, "ocfo", "cfo");
+    // GAP-040 - the cap audience is whoever HOLDS cap.event.read, through any role, in THIS tenant, live.
+    user.holder = await addHolder(ORG, "holder", ["cap.event.read"]);
+    user.holderOnlyBilling = await addHolder(ORG, "billingonly", ["billing.claim.read"]);
+    user.holderExpired = await addHolder(ORG, "expired", ["cap.event.read"], { expired: true });
+    user.holderRoleDisabled = await addHolder(ORG, "disabled", ["cap.event.read"], {
+      enabled: false,
+    });
+    user.otherTenantHolder = await addHolder(ORG_B, "otherholder", ["cap.event.read"]);
+    user.compliance = await addMember(ORG, "co", "compliance_officer");
+    user.orgAdminC = await addMember(ORG_C, "adminc", "org_admin");
 
     handle = createDbClient({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
@@ -250,7 +298,7 @@ describe.skipIf(!DB_URL)("M26 projections + alerts - LIVE Postgres", () => {
   });
 
   // ── GAP-040 ───────────────────────────────────────────────────────────────────────────────────
-  it("a band escalation notifies the finance leads (and not a bystander or another tenant)", async () => {
+  it("a breach notifies the cap.event.read holders and the compliance escalation, and nobody else", async () => {
     const emitter = createDrizzleAlertEmitter(handle.db);
     const consumer = buildM36CapThresholdAlertConsumer(emitter);
     const rows = await q(
@@ -285,9 +333,51 @@ describe.skipIf(!DB_URL)("M26 projections + alerts - LIVE Postgres", () => {
     )
       .map((r) => r.recipient_user_id as string)
       .sort();
-    expect(recipients).toEqual([user.cfo, user.billingManager].sort());
-    expect(recipients).not.toContain(user.biller);
-    expect(recipients).not.toContain(user.otherCfo);
+    // the holder (a custom role that grants cap.event.read) + the breach's compliance_officer tier. NOT the old
+    // hand-made cfo / billing_manager role keys, NOT a member holding only billing.*, NOT an expired grant, NOT a
+    // disabled role, NOT another tenant's holder, NOT a bystander.
+    expect(recipients).toEqual([user.holder, user.compliance].sort());
+    for (const excluded of [
+      user.cfo,
+      user.billingManager,
+      user.holderOnlyBilling,
+      user.holderExpired,
+      user.holderRoleDisabled,
+      user.otherTenantHolder,
+      user.otherCfo,
+      user.biller,
+    ])
+      expect(recipients).not.toContain(excluded);
+  });
+
+  it("a watch band reaches ONLY the holders, and a tenant with no holder falls back to its org administrators", async () => {
+    const emitter = createDrizzleAlertEmitter(handle.db);
+    const watch = await emitter.emit(ORG, {
+      eventType: "m26.cap.patient_watch_90",
+      severity: "warn",
+      correlationId: "gap-040:watch:org-a",
+      payload: {},
+    });
+    const watchRecipients = (
+      await q("SELECT DISTINCT recipient_user_id FROM notification_delivery WHERE alert_id=$1", [
+        watch.alertId,
+      ])
+    ).map((r) => r.recipient_user_id as string);
+    expect(watchRecipients).toEqual([user.holder]); // no compliance tier below a breach
+
+    const floor = await emitter.emit(ORG_C, {
+      eventType: "m26.cap.patient_watch_90",
+      severity: "warn",
+      correlationId: "gap-040:watch:org-c",
+      payload: {},
+    });
+    expect(floor.resolvedRecipientCount).toBe(1);
+    const floorRecipients = (
+      await q("SELECT DISTINCT recipient_user_id FROM notification_delivery WHERE alert_id=$1", [
+        floor.alertId,
+      ])
+    ).map((r) => r.recipient_user_id as string);
+    expect(floorRecipients).toEqual([user.orgAdminC]);
   });
 
   // ── GAP-035 ───────────────────────────────────────────────────────────────────────────────────
@@ -299,12 +389,14 @@ describe.skipIf(!DB_URL)("M26 projections + alerts - LIVE Postgres", () => {
       correlationId: "m23-cron:m23.noe.window_breached:noe-1:2026-10-08",
       payload: { noeId: "noe-1", admissionId: "adm-1" },
     });
-    expect(res.resolvedRecipientCount).toBe(1); // the billing_manager; no compliance/org_admin role seeded
+    expect(res.resolvedRecipientCount).toBe(2); // the billing_manager + the compliance_officer (no org_admin seeded)
     const { rows } = await admin.query(
       "SELECT recipient_user_id FROM notification_delivery WHERE alert_id=$1",
       [res.alertId],
     );
-    expect(rows.map((r) => r.recipient_user_id)).toEqual([user.billingManager]);
+    expect(rows.map((r) => r.recipient_user_id as string).sort()).toEqual(
+      [user.billingManager, user.compliance].sort(),
+    );
   });
 
   // ── GAP-038 ───────────────────────────────────────────────────────────────────────────────────

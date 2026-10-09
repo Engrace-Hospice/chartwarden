@@ -55,6 +55,7 @@ export interface RecipientResolver {
     | "tenant_admins"
     | "user_list"
     | "broadcast"
+    | "permission_holders"
     // ADR-0024 cross-module composition resolvers (recipient resolution moved from M14):
     | "ordering_provider"
     | "ordering_provider_with_active_orders_for_physician"
