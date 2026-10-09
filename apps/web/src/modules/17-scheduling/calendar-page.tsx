@@ -524,22 +524,6 @@ export function CalendarPage(): JSX.Element {
           </div>
         ) : null}
 
-        <nav className="wx-subtabs" aria-label="Scheduling views">
-          <Link to="/calendar" aria-current="page" className="is-current">
-            Calendar
-          </Link>
-          <Link to="/me/visits">My Visits</Link>
-          {hasPermission(permissions, "visit.proposal.read") ? (
-            <Link to="/scheduling/proposals">Proposals</Link>
-          ) : null}
-          {hasPermission(permissions, "recurring_visit.read") ? (
-            <Link to="/scheduling/recurring">Recurrence</Link>
-          ) : null}
-          {hasPermission(permissions, "time_off.read_team") ? (
-            <Link to="/scheduling/time-off">Staff Time Off</Link>
-          ) : null}
-        </nav>
-
         <div className="wx-cal-toolbar">
           <button
             type="button"

@@ -2,7 +2,7 @@ import { Button, Glyph, Modal, StatusPill, t, useApiClient } from "@wardenx/ui";
 import type { ApiClient, EntityLookupOption } from "@wardenx/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, FormEvent, JSX, ReactNode } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   AdmissionLookupField,
   MdmEntityLookupField,
@@ -127,54 +127,18 @@ export function shortId(id: string | null | undefined): string {
   return id.length > 8 ? id.slice(0, 8) : id;
 }
 
-export function SchedulingNav({
+/** The shared shell owns Scheduling's route navigation; feature pages retain only this workflow action. */
+export function NewVisitButton({
   onNewVisit,
 }: {
-  onNewVisit?: () => void;
-}): JSX.Element {
-  const location = useLocation();
+  onNewVisit: () => void;
+}): JSX.Element | null {
   const session = useSession();
-  const permissions = session?.permissions;
-  const canCreate = hasPermission(permissions, "visit.create");
-  const tabs = [
-    { href: "/scheduling/day", label: "Day", permission: "visit.read_team" },
-    { href: "/scheduling/week", label: "Week", permission: "visit.read_team" },
-    { href: "/me/visits", label: "My Visits", permission: "visit.read" },
-    {
-      href: "/scheduling/recurring",
-      label: "Recurring",
-      permission: "recurring_visit.read",
-    },
-    {
-      href: "/scheduling/proposals",
-      label: "Proposals",
-      permission: "visit.proposal.read",
-    },
-    {
-      href: "/scheduling/time-off",
-      label: "Time Off",
-      permission: "time_off.read_team",
-    },
-  ] as const;
-  const visibleTabs = tabs.filter((tab) => hasPermission(permissions, tab.permission));
+  if (!hasPermission(session?.permissions, "visit.create")) return null;
   return (
-    <div style={navShell}>
-      <nav aria-label="Scheduling sections" style={navTabs}>
-        {visibleTabs.map(({ href, label }) => {
-          const active = location.pathname === href;
-          return (
-            <Link key={href} to={href} style={{ ...navLink, ...(active ? navLinkActive : null) }}>
-              {label}
-            </Link>
-          );
-        })}
-      </nav>
-      {canCreate && onNewVisit ? (
-        <Button size="sm" onClick={onNewVisit}>
-          <Glyph name="calendar" size={14} /> New Visit
-        </Button>
-      ) : null}
-    </div>
+    <Button size="sm" onClick={onNewVisit}>
+      <Glyph name="calendar" size={14} /> New Visit
+    </Button>
   );
 }
 
@@ -1136,31 +1100,6 @@ export function FieldValue({
   );
 }
 
-const navShell: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "1rem",
-  padding: "0 1.5rem 0.75rem",
-  flexWrap: "wrap",
-};
-const navTabs: CSSProperties = {
-  display: "flex",
-  gap: "0.35rem",
-  flexWrap: "wrap",
-};
-const navLink: CSSProperties = {
-  padding: "0.4rem 0.75rem",
-  borderRadius: "9999px",
-  color: t.onSurfaceVariant,
-  textDecoration: "none",
-  fontSize: "0.8rem",
-  fontWeight: 650,
-};
-const navLinkActive: CSSProperties = {
-  background: t.primaryTint,
-  color: t.primary,
-};
 const modalBody: CSSProperties = {
   padding: "1.25rem",
   display: "flex",

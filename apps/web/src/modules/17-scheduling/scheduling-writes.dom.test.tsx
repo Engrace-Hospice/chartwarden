@@ -203,7 +203,7 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
 }
 
 // The New Visit button and each per-visit ceremony render only for the permission that names them
-// (`SchedulingNav` / `VisitActionPanel`) — navigation affordance, not authorization; the server decides.
+// (`NewVisitButton` / `VisitActionPanel`) — navigation affordance, not authorization; the server decides.
 const SESSION = {
   userId: "user-1",
   organizationId: "org-1",
@@ -262,7 +262,7 @@ afterEach(() => {
   writeFailure = null;
 });
 
-// The create flow is main's `NewVisitModal` (scheduling-workflow.tsx), opened from the scheduling nav.
+// The create flow is main's `NewVisitModal` (scheduling-workflow.tsx), opened from its retained action.
 // Patient and admission are typeahead comboboxes; the admission lookup is PATIENT-scoped (F-066 /
 // #161) and filtered to active admissions client-side. The assignee is a <select> fed by the server's
 // advisory D8 projection (GET /scheduling/eligible-clinicians), offered once a patient and a valid
@@ -310,6 +310,13 @@ async function fillValidVisit(dialog: HTMLElement): Promise<void> {
   });
   await chooseClinician(dialog, /assigned clinician/i, MEMBER);
 }
+
+describe("shared Scheduling navigation", () => {
+  it("does not render the retired page-level Scheduling navigation", () => {
+    mountDay();
+    expect(screen.queryByRole("navigation", { name: "Scheduling sections" })).toBeNull();
+  });
+});
 
 describe("#91 — a visit can be scheduled", () => {
   it("choosing a patient scopes the admission lookup to that patient's ACTIVE admissions", async () => {
