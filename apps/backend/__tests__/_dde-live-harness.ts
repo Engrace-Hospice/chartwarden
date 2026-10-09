@@ -154,7 +154,7 @@ export async function buildDdeApp(
 /** Seed an NOE directly as the superuser (logical FKs only, so random ids are fine). */
 export async function seedNoe(
   admin: Client,
-  over: Partial<{ state: string; windowTarget: string; electionDate: string }> = {},
+  over: Partial<{ state: string; windowTarget: string; electionDate: string; orgId: string }> = {},
 ): Promise<string> {
   const id = randomUUID();
   await admin.query(
@@ -163,7 +163,7 @@ export async function seedNoe(
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
     [
       id,
-      ORG_A,
+      over.orgId ?? ORG_A,
       PE_A,
       randomUUID(),
       randomUUID(),

@@ -60253,7 +60253,7 @@
                     "type": "string"
                   },
                   "outcomeCode": {
-                    "description": "What came back, from a closed set.",
+                    "description": "How it was accepted, from a closed set.",
                     "anyOf": [
                       {
                         "const": "accepted",
@@ -60261,18 +60261,6 @@
                       },
                       {
                         "const": "accepted_with_edits",
-                        "type": "string"
-                      },
-                      {
-                        "const": "rtp",
-                        "type": "string"
-                      },
-                      {
-                        "const": "rejected",
-                        "type": "string"
-                      },
-                      {
-                        "const": "adr_requested",
                         "type": "string"
                       },
                       {
@@ -60685,16 +60673,8 @@
                     "type": "string"
                   },
                   "outcomeCode": {
-                    "description": "What came back, from a closed set.",
+                    "description": "Why it came back, from a closed set.",
                     "anyOf": [
-                      {
-                        "const": "accepted",
-                        "type": "string"
-                      },
-                      {
-                        "const": "accepted_with_edits",
-                        "type": "string"
-                      },
                       {
                         "const": "rtp",
                         "type": "string"

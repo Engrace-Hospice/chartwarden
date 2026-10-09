@@ -97,6 +97,12 @@ export const ddeWorkItem = pgTable(
     assigneeIdx: index("dde_work_item_assignee_idx")
       .on(t.organizationId, t.assigneeMembershipId)
       .where(sql`assignee_membership_id IS NOT NULL`),
+    subjectIdx: index("dde_work_item_subject_idx").on(
+      t.organizationId,
+      t.subjectKind,
+      t.subjectId,
+      t.itemType,
+    ),
     patientIdx: index("dde_work_item_patient_idx").on(t.organizationId, t.patientId),
   }),
 );

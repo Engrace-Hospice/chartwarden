@@ -58,16 +58,18 @@ const ExpectedVersion = Type.Integer({
   minimum: 0,
   description: "The item `version` the change is applied against (a stale value → 412).",
 });
-const OutcomeCode = Type.Union(
+const ReturnedOutcomeCode = Type.Union(
   [
-    Type.Literal("accepted"),
-    Type.Literal("accepted_with_edits"),
     Type.Literal("rtp"),
     Type.Literal("rejected"),
     Type.Literal("adr_requested"),
     Type.Literal("other"),
   ],
-  { description: "What came back, from a closed set." },
+  { description: "Why it came back, from a closed set." },
+);
+const AcceptedOutcomeCode = Type.Union(
+  [Type.Literal("accepted"), Type.Literal("accepted_with_edits"), Type.Literal("other")],
+  { description: "How it was accepted, from a closed set." },
 );
 const Dcn = Type.String({
   pattern: "^[A-Za-z0-9]{13,23}$",
@@ -122,7 +124,7 @@ export const RecordDdeOutcomeBodySchema = Type.Object({
     description: "The RTP / reject reason code.",
   }),
   dcn: Type.Optional(Dcn),
-  outcomeCode: Type.Optional(OutcomeCode),
+  outcomeCode: Type.Optional(ReturnedOutcomeCode),
   notes: Type.Optional(Notes),
 });
 
@@ -134,7 +136,7 @@ export const RecordDdeAcceptanceBodySchema = Type.Object({
     ),
   ),
   dcn: Type.Optional(Dcn),
-  outcomeCode: Type.Optional(OutcomeCode),
+  outcomeCode: Type.Optional(AcceptedOutcomeCode),
   notes: Type.Optional(Notes),
 });
 

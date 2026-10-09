@@ -14,6 +14,12 @@
 --      into the queue. NOE timeliness stays judged on `payer_status_date` (ADR-0052 D5).
 --   4. Permission catalog rows + admin-role grants for billing.dde.{read,work,mark_submitted,admin}.
 -- Idempotent.
+--
+-- NOTE (edited in place before merge): the CHECK constraints below (dcn 13-23 chars, closed outcome codes tied to
+-- the state, the extra lookup index) were tightened after a first draft of this file. A dev / Docker database that
+-- already applied the EARLIER 1060 keeps the old constraints (the guarded statements skip objects that already
+-- exist): recreate that database (`bun run db:reset`) rather than re-running this file. Nothing was ever released with
+-- the old version, so there is no production migration to write.
 
 -- ── 1. dde_work_item ──────────────────────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS "dde_work_item" (
@@ -62,6 +68,13 @@ CREATE TABLE IF NOT EXISTS "dde_work_item" (
 	-- A closed set: a free-form code is a place to hide an identifier.
 	CONSTRAINT "dde_work_item_outcome_code_chk" CHECK ("outcome_code" IS NULL OR "outcome_code" IN
 		('accepted', 'accepted_with_edits', 'rtp', 'rejected', 'adr_requested', 'other')),
+	-- The code must fit the state it describes: how it came back when returned, how it was accepted when accepted.
+	CONSTRAINT "dde_work_item_outcome_state_chk" CHECK (
+		"outcome_code" IS NULL
+		OR ("state" = 'returned' AND "outcome_code" IN ('rtp', 'rejected', 'adr_requested', 'other'))
+		OR ("state" = 'accepted' AND "outcome_code" IN ('accepted', 'accepted_with_edits', 'other'))
+		OR "state" NOT IN ('returned', 'accepted')
+	),
 	-- ADR-0052 D7: free-text notes are capped (the service also refuses MBI-shaped text).
 	CONSTRAINT "dde_work_item_notes_chk" CHECK ("notes" IS NULL OR length("notes") <= 500),
 	-- An item that was keyed carries when; an accepted/closed-after-accept item may carry the MAC date.
@@ -72,6 +85,9 @@ CREATE TABLE IF NOT EXISTS "dde_work_item" (
 -- At most one OPEN item per (subject, type).
 CREATE UNIQUE INDEX IF NOT EXISTS "dde_work_item_open_subject_uq" ON "dde_work_item" ("subject_kind", "subject_id", "item_type")
 	WHERE "state" IN ('queued', 'assigned', 'in_progress', 'submitted', 'returned');--> statement-breakpoint
+-- The watchdog's anti-join (`NOT EXISTS ... subject_kind, subject_id, item_type`) and any per-subject lookup: the
+-- partial open-items index above cannot serve a finished item.
+CREATE INDEX IF NOT EXISTS "dde_work_item_subject_idx" ON "dde_work_item" ("organization_id", "subject_kind", "subject_id", "item_type");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "dde_work_item_worklist_idx" ON "dde_work_item" ("organization_id", "state", "deadline_at");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "dde_work_item_assignee_idx" ON "dde_work_item" ("organization_id", "assignee_membership_id")
 	WHERE "assignee_membership_id" IS NOT NULL;--> statement-breakpoint

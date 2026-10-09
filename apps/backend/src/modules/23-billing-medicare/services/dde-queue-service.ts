@@ -20,6 +20,7 @@ import {
   type DdeWorkItemState,
   ddeDeadlineStatus,
   ddeWorkItemMachine,
+  isRealCalendarDate,
   medicareReceiptDay,
   repositories,
   validateDdeCodes,
@@ -77,10 +78,15 @@ export interface DdeQueueServicePorts {
   readonly outbox?: WriteOutboxPort;
   readonly now?: () => Date;
   /**
-   * Does this membership hold `billing.dde.work` through an active membership of the org? Injected at the composition
-   * root (membership and role grants are M2/M3 data). Absent => assigning is refused (fail closed).
+   * Can this membership be assigned an item of this provider entity: an ACTIVE member holding `billing.dde.work`
+   * whose provider-entity reach covers it? Injected at the composition root (membership and role grants are M2/M3
+   * data). Absent => assigning is refused (fail closed).
    */
-  readonly assigneeCanWork?: (organizationId: string, membershipId: string) => Promise<boolean>;
+  readonly assigneeCanWork?: (
+    organizationId: string,
+    membershipId: string,
+    providerEntityId: string,
+  ) => Promise<boolean>;
 }
 
 export interface DdeQueueService {
@@ -134,6 +140,14 @@ const ACTIONS_BY_STATE: Record<DdeWorkItemState, readonly Action[]> = {
 /** The calendar day on the CMS / CWF (Eastern) clock; deadlines are judged on it, not on the UTC date. */
 function toIsoDate(d: Date): string {
   return medicareReceiptDay(d);
+}
+
+/** A real calendar date or a 422 (2026-02-31 passes the shape check and would fail the database cast as a 500). */
+function assertRealDate(field: string, value: string | undefined): void {
+  if (value === undefined || isRealCalendarDate(value)) return;
+  throw new ValidationError("request validation failed", [
+    { field, code: "INVALID_DATE", message: "that is not a real calendar date" },
+  ]);
 }
 
 function screenCodes(codes: {
@@ -410,6 +424,7 @@ export function buildDdeQueueService(
     async create(actor, body) {
       assertNotAiActor(actor);
       screenNotes(body.notes);
+      assertRealDate("deadlineAt", body.deadlineAt);
       const row = await inOrg(actor, async (tx) => {
         const subject = await loadSubject(tx, actor.organizationId, body.itemType, body.subjectId);
         const isNotice = body.itemType === "noe" || body.itemType === "notr";
@@ -477,8 +492,13 @@ export function buildDdeQueueService(
 
     async assign(actor, id, body) {
       assertNotAiActor(actor);
+      const target = await inOrg(actor, (tx) => loadItem(tx, actor, id));
       const eligible = ports.assigneeCanWork
-        ? await ports.assigneeCanWork(actor.organizationId, body.assigneeMembershipId)
+        ? await ports.assigneeCanWork(
+            actor.organizationId,
+            body.assigneeMembershipId,
+            target.providerEntityId,
+          )
         : false;
       if (!eligible) {
         throw new ValidationError("request validation failed", [
@@ -486,7 +506,7 @@ export function buildDdeQueueService(
             field: "assigneeMembershipId",
             code: "ASSIGNEE_NOT_ELIGIBLE",
             message:
-              "the assignee must be an active member of this organization who can work DDE items",
+              "the assignee must be an active member of this organization who can work DDE items for this provider entity",
           },
         ]);
       }
@@ -543,6 +563,17 @@ export function buildDdeQueueService(
 
     recordOutcome(actor, id, body) {
       assertNotAiActor(actor);
+      // Defence in depth: this route is returned-only; an acceptance acts on the notice and goes through
+      // `recordAcceptance` (mark_submitted + step-up).
+      if (body.outcome !== "returned") {
+        throw new ValidationError("request validation failed", [
+          {
+            field: "outcome",
+            code: "NOT_RETURNED",
+            message: "use record-acceptance to record an acceptance",
+          },
+        ]);
+      }
       screenNotes(body.notes);
       screenCodes(body);
       return mutate(actor, id, (tx, item) =>
@@ -554,8 +585,9 @@ export function buildDdeQueueService(
           "return",
           {
             rtpReasonCode: body.rtpReasonCode,
+            // Always set: a code left from an earlier attempt must not outlive the state it described.
+            outcomeCode: body.outcomeCode ?? null,
             ...(body.dcn !== undefined ? { dcn: body.dcn } : {}),
-            ...(body.outcomeCode !== undefined ? { outcomeCode: body.outcomeCode } : {}),
             ...(body.notes !== undefined ? { notes: body.notes } : {}),
           },
           { rtpReasonCode: body.rtpReasonCode, dcn: body.dcn ?? null },
@@ -568,6 +600,7 @@ export function buildDdeQueueService(
       requireStepUp(actor);
       screenNotes(body.notes);
       screenCodes(body);
+      assertRealDate("macAcceptedOn", body.macAcceptedOn);
       return mutate(actor, id, async (tx, item) => {
         const isNotice = item.itemType === "noe" || item.itemType === "notr";
         if (isNotice && !body.macAcceptedOn) {
@@ -613,8 +646,8 @@ export function buildDdeQueueService(
           "accept",
           {
             ...(macAcceptedOn ? { macAcceptedOn } : {}),
+            outcomeCode: body.outcomeCode ?? null,
             ...(body.dcn !== undefined ? { dcn: body.dcn } : {}),
-            ...(body.outcomeCode !== undefined ? { outcomeCode: body.outcomeCode } : {}),
             ...(body.notes !== undefined ? { notes: body.notes } : {}),
           },
           { macAcceptedOn: macAcceptedOn ?? null, dcn: body.dcn ?? null },

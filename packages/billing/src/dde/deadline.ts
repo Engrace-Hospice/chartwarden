@@ -42,3 +42,10 @@ export function ddeDeadlineStatus(item: DdeDeadlineFacts, asOf: string): DdeDead
   if (item.state === "submitted" || daysLeft <= DDE_AT_RISK_DAYS) return "at_risk";
   return "on_track";
 }
+
+/** True for a real calendar date written `YYYY-MM-DD` (2026-02-31 is not one). */
+export function isRealCalendarDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const d = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
+}

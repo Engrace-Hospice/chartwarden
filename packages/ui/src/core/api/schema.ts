@@ -36042,8 +36042,8 @@ export interface operations {
                     macAcceptedOn?: string;
                     /** @description The DCN / ICN / receipt number FISS showed (13 to 23 characters). */
                     dcn?: string;
-                    /** @description What came back, from a closed set. */
-                    outcomeCode?: "accepted" | "accepted_with_edits" | "rtp" | "rejected" | "adr_requested" | "other";
+                    /** @description How it was accepted, from a closed set. */
+                    outcomeCode?: "accepted" | "accepted_with_edits" | "other";
                     /** @description Free text, capped. Never put an MBI here (MBI-shaped text is refused). Not copied into events or logs. */
                     notes?: string;
                 };
@@ -36118,8 +36118,8 @@ export interface operations {
                     rtpReasonCode: string;
                     /** @description The DCN / ICN / receipt number FISS showed (13 to 23 characters). */
                     dcn?: string;
-                    /** @description What came back, from a closed set. */
-                    outcomeCode?: "accepted" | "accepted_with_edits" | "rtp" | "rejected" | "adr_requested" | "other";
+                    /** @description Why it came back, from a closed set. */
+                    outcomeCode?: "rtp" | "rejected" | "adr_requested" | "other";
                     /** @description Free text, capped. Never put an MBI here (MBI-shaped text is refused). Not copied into events or logs. */
                     notes?: string;
                 };

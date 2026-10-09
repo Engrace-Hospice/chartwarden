@@ -122,6 +122,7 @@ import {
   wirePartitionRotationTenancy,
 } from "./bootstrap/jobs/partition-rotation";
 import { buildM11CosignerCounter } from "./bootstrap/m11-cosigner-counter";
+import { buildDdeAssigneeEligibility } from "./bootstrap/m23-dde-assignee";
 import { buildMortalityReviewerResolver } from "./bootstrap/m30-mortality-reviewer-resolver";
 import { m34ActiveMembershipUserId } from "./bootstrap/m34-identity-shred-subjects";
 import {
@@ -890,6 +891,7 @@ import {
   M23_OUTBOX_EVENTS,
   M23_PLATFORM_JOB_ID,
   M23_QUEUES,
+  ORG_WIDE_BILLING_SCOPE_ROLES,
   type ProviderCcnPort,
   buildClaimStateService,
   buildClaimValidationContextPort,
@@ -4810,12 +4812,12 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             ddeQueueService: buildDdeQueueService(dbHandle.db, {
               outbox: m23OutboxPublisher,
               // Assignable only to an active member whose role grants billing.dde.work (M3's holder reader).
-              assigneeCanWork: async (organizationId, membershipId) =>
-                (
-                  await createMembershipsHoldingPermissionReader(dbHandle.db)(organizationId, [
-                    "billing.dde.work",
-                  ])
-                ).has(membershipId),
+              assigneeCanWork: buildDdeAssigneeEligibility(
+                dbHandle.db,
+                createMembershipsHoldingPermissionReader(dbHandle.db),
+                createDbActorEnrichmentReader(dbHandle.db),
+                ORG_WIDE_BILLING_SCOPE_ROLES,
+              ),
             }),
             transferNoticeService: buildTransferNoticeService(dbHandle.db, {
               outbox: m23OutboxPublisher,
@@ -6760,6 +6762,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       hets: m23Hets,
       // ADR-0052 — the window-watch crons file a DDE work item for each at-risk NOE/NOTR (idempotent).
       ddeWatchdog: buildDdeWatchdog({ outbox: m23OutboxPublisher }),
+      logger: app.log,
     });
     let m23Workers: Worker[] = [
       ...registerM23DomainWorkers(m23CoreWorkerDeps),

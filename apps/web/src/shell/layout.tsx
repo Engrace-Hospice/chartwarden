@@ -23,6 +23,7 @@ import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, JSX, ReactNode } from "react";
 import { Link, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { canSeeScreen, needsOrgSelection } from "./actor-session";
+import { clearAllDrafts } from "./ceremony-drafts";
 import { ModuleNavigationTabs } from "./module-navigation-tabs";
 import { NotificationBell } from "./notification-bell";
 import { type NavEntry, activeEntryKey, buildPrimaryNav } from "./primary-nav";
@@ -335,6 +336,7 @@ function ActorMenu({ session }: { session: Session | null }): JSX.Element {
     setSignOutFailed(false);
     try {
       await authClient.signOut();
+      clearAllDrafts();
     } catch {
       // Not signed out: stay here and say so. Navigating to /login anyway could bounce straight back into a live session
       // on a shared workstation while the user believes they have left.

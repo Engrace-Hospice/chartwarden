@@ -6,6 +6,8 @@ import {
   type DdeWorkItemState,
   ddeDeadlineStatus,
   ddeWorkItemMachine,
+  isRealCalendarDate,
+  medicareReceiptDay,
   validateDdeCodes,
   validateDdeNotes,
 } from "@wardenx/billing";
@@ -201,5 +203,80 @@ describe("validateDdeCodes", () => {
       ok: false,
       field: "rtpReasonCode",
     });
+  });
+});
+
+describe("validateDdeNotes homoglyphs and accents", () => {
+  it.each([
+    ["a Cyrillic E", "1\u0415G4-TE5-MK73"],
+    ["a Greek K", "1EG4-TE5-M\u039a73"],
+    ["a Cyrillic E and a Greek K together", "1\u0415G4 TE5 M\u039a73"],
+    ["a precomposed accented letter", "1\u00c9G4TE5MK73"],
+    ["a combining accent", "1E\u0301G4TE5MK73"],
+    ["an Arabic-Indic digit", "1EG4TE5MK\u0667\u0663"],
+  ])("rejects an MBI hidden by %s", (_n, note) => {
+    expect(validateDdeNotes(note)).toEqual({ ok: false, reason: "NOTES_CONTAIN_MBI" });
+  });
+
+  it("does not flag ordinary non-Latin prose or accented text", () => {
+    expect(
+      validateDdeNotes(
+        "\u041f\u043e\u0437\u0432\u043e\u043d\u0438\u0442\u044c \u0432 \u043e\u0444\u0438\u0441 12 \u0440\u0430\u0437",
+      ),
+    ).toEqual({ ok: true });
+    expect(validateDdeNotes("Appel \u00e0 l'h\u00f4pital, r\u00e9f 4471 en attente")).toEqual({
+      ok: true,
+    });
+  });
+
+  it("screens the code fields too", () => {
+    expect(validateDdeCodes({ dcn: "X1\u0415G4TE5MK73ZZ" })).toMatchObject({
+      ok: false,
+      field: "dcn",
+    });
+    expect(validateDdeCodes({ outcomeCode: "1\u0415G4TE5MK73" })).toMatchObject({
+      ok: false,
+      field: "outcomeCode",
+    });
+    expect(validateDdeCodes({ rtpReasonCode: "1\u00c9G4TE5MK73" })).toMatchObject({
+      ok: false,
+      field: "rtpReasonCode",
+    });
+  });
+});
+
+describe("isRealCalendarDate", () => {
+  it("accepts real dates and refuses impossible ones", () => {
+    expect(isRealCalendarDate("2026-02-28")).toBe(true);
+    expect(isRealCalendarDate("2028-02-29")).toBe(true);
+    expect(isRealCalendarDate("2026-02-31")).toBe(false);
+    expect(isRealCalendarDate("2026-04-31")).toBe(false);
+    expect(isRealCalendarDate("2026-13-01")).toBe(false);
+    expect(isRealCalendarDate("2026-1-1")).toBe(false);
+  });
+});
+
+describe("the Eastern (CMS) day around daylight-saving changes", () => {
+  it.each([
+    // spring forward 2026-03-08 02:00 EST -> EDT: 03:30Z on Mar 9 is 23:30 EDT on Mar 8
+    ["2026-03-09T03:30:00Z", "2026-03-08"],
+    ["2026-03-09T04:00:00Z", "2026-03-09"],
+    ["2026-03-08T06:59:00Z", "2026-03-08"],
+    // fall back 2026-11-01 02:00 EDT -> EST: 03:30Z on Nov 2 is 22:30 EST on Nov 1
+    ["2026-11-02T03:30:00Z", "2026-11-01"],
+    ["2026-11-02T05:00:00Z", "2026-11-02"],
+    ["2026-11-01T05:30:00Z", "2026-11-01"],
+  ])("%s is Eastern day %s", (iso, day) => {
+    expect(medicareReceiptDay(new Date(iso))).toBe(day);
+  });
+
+  it("judges a deadline on that day, not on the UTC date", () => {
+    const item = { state: "queued", deadlineAt: "2026-03-08", macAcceptedOn: null } as const;
+    expect(ddeDeadlineStatus(item, medicareReceiptDay(new Date("2026-03-09T03:30:00Z")))).toBe(
+      "at_risk",
+    );
+    expect(ddeDeadlineStatus(item, medicareReceiptDay(new Date("2026-03-09T04:00:00Z")))).toBe(
+      "overdue",
+    );
   });
 });

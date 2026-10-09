@@ -53,7 +53,8 @@
         "apps/backend/__tests__/identity-routes.test.ts",
         "apps/backend/__tests__/m2-auditor-enrolment.live.test.ts",
         "apps/backend/__tests__/m2-auditor-redemption.live.test.ts",
-        "apps/backend/__tests__/m2-auth-hardening.live.test.ts"
+        "apps/backend/__tests__/m2-auth-hardening.live.test.ts",
+        "apps/backend/__tests__/m23-dde-queue-hardening.live.test.ts"
       ],
       "directRoutesReferenced": 16
     },

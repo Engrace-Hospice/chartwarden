@@ -44,6 +44,7 @@ export {
   type ReadingM23AbacResolver,
   type M23RegisteredAbacPredicate,
   M23_REGISTERED_ABAC_PREDICATES,
+  ORG_WIDE_BILLING_SCOPE_ROLES,
   buildDrizzleM23AbacResolver,
   denyStubM23AbacResolver,
   registerM23AbacPredicates,

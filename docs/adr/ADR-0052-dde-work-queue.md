@@ -75,14 +75,21 @@ calendar days; NOTR from the through-date). The deadline is **met only when a MA
 before it is recorded**; a `submitted` item with no acceptance is still at risk and is surfaced as such.
 The recorded acceptance date is the operator-entered FISS date and is stored as the notice's
 `payer_status_date` with a new source value `dde_manual`, so the existing late-NOE span-77 derivation and
-the timeliness rule keep reading the same column. Recording an `accepted` outcome on an `noe`/`notr` item
-applies the notice's existing acceptance transition through the notice-ack path — the queue never writes a
-second, divergent acceptance state.
+the timeliness rule keep reading the same column. An acceptance is recorded through its own route,
+`record-acceptance` (`record-outcome` is **returned-only**): it applies the notice's existing acceptance
+transition through the notice-ack path — the queue never writes a second, divergent acceptance state. The date
+may not precede the election (NOE) or termination (NOTR) date and may not be in the future. If the electronic
+path accepted the notice first, the notice is left untouched and the item takes the notice's own date.
 
 ### D6 — Controls
 
 - **Permissions** (new keys in `M23_PERMISSIONS`): `billing.dde.read`, `billing.dde.work`,
   `billing.dde.mark_submitted` (step-up required, like `billing.noe.submit`), `billing.dde.admin`.
+  `record-submission` and `record-acceptance` both require `billing.dde.mark_submitted` plus a recent step-up;
+  `record-outcome` (returned) needs `billing.dde.work`. **Granting `billing.dde.mark_submitted` is equivalent to
+  conferring the notice's acceptance authority**: the holder can walk a ready NOE/NOTR to `ack_accepted` with no
+  `billing.noe.*` permission, as an operator attestation (audited, step-up gated, date-bounded). Assigning an item
+  requires an assignee who is an active member holding `billing.dde.work` whose provider-entity reach covers it.
 - **ABAC:** the `provider_entity_billing_scope` predicate, as other M23 filing actions.
 - **Tenancy:** org-scoped table, three-column rule, RLS ENABLED and FORCEd.
 - **Audit:** every state change writes an audit event; reads are read-audited with a `resourceIdParam`.

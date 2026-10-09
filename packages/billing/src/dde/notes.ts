@@ -8,20 +8,30 @@
 /** The most characters a DDE note may hold. */
 export const DDE_NOTES_MAX_LENGTH = 500;
 
-const ALPHA = "[AC-HJKMNP-RT-Y]";
-const ALNUM = "[AC-HJKMNP-RT-Y0-9]";
-
-// Best-effort screen. The text is NFKC-normalised (full-width digits become ASCII), everything that is not a
-// letter or digit is dropped (spaces, tabs, NBSP, dots, dashes, zero-width characters), and the squashed string
-// is scanned for ANY 11-character MBI-shaped window, with no boundary assumptions: a glued prefix or suffix, a
-// doubled space or a dotted layout does not hide an MBI. It can false-positive on odd text; that is the safe side.
+// Best-effort screen. The text is NFKD-normalised (full-width digits become ASCII, accented letters lose their marks),
+// every combining mark is dropped, and what is left is squashed to letters and digits: spaces, tabs, NBSP, dots,
+// dashes and zero-width characters vanish. A remaining NON-ASCII letter (a Cyrillic or Greek lookalike) becomes the
+// wildcard `~` and a non-ASCII number becomes `#` instead of being deleted, so one lookalike cannot shorten the string
+// and slip an MBI through; a wildcard only stands in at a position of its own kind (a letter where the MBI has a
+// letter, a digit where it has a digit), so ordinary non-Latin prose is not flagged. Then ANY 11-character MBI-shaped
+// window is searched, with no boundary assumptions. It can false-positive on odd text; that is the safe side.
+const ALPHA = "[AC-HJKMNP-RT-Y~]";
+const ALNUM = "[AC-HJKMNP-RT-Y0-9~#]";
+const DIGIT = "[0-9#]";
 const MBI_WINDOW = new RegExp(
-  `[1-9]${ALPHA}${ALNUM}[0-9]${ALPHA}${ALNUM}[0-9]${ALPHA}${ALPHA}[0-9][0-9]`,
+  `[1-9#]${ALPHA}${ALNUM}${DIGIT}${ALPHA}${ALNUM}${DIGIT}${ALPHA}${ALPHA}${DIGIT}${DIGIT}`,
   "i",
 );
 
 function squash(text: string): string {
-  return text.normalize("NFKC").replace(/[^A-Za-z0-9]/g, "");
+  const decomposed = text.normalize("NFKD").replace(/\p{M}/gu, "");
+  let out = "";
+  for (const ch of decomposed) {
+    if (/[A-Za-z0-9]/.test(ch)) out += ch;
+    else if (/\p{N}/u.test(ch)) out += "#";
+    else if (/\p{L}/u.test(ch)) out += "~";
+  }
+  return out;
 }
 
 export type DdeNotesRejection = "NOTES_TOO_LONG" | "NOTES_CONTAIN_MBI";

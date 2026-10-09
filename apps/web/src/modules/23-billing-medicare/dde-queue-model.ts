@@ -166,20 +166,31 @@ export const NOTES_MAX = 500;
 const DCN_RE = /^[A-Za-z0-9]{13,23}$/;
 const RTP_RE = /^[A-Z0-9]{1,8}$/;
 
-const MBI_ALPHA = "[AC-HJKMNP-RT-Y]";
-const MBI_ALNUM = "[AC-HJKMNP-RT-Y0-9]";
+const MBI_ALPHA = "[AC-HJKMNP-RT-Y~]";
+const MBI_ALNUM = "[AC-HJKMNP-RT-Y0-9~#]";
+const MBI_DIGIT = "[0-9#]";
 const MBI_WINDOW = new RegExp(
-  `[1-9]${MBI_ALPHA}${MBI_ALNUM}[0-9]${MBI_ALPHA}${MBI_ALNUM}[0-9]${MBI_ALPHA}${MBI_ALPHA}[0-9][0-9]`,
+  `[1-9#]${MBI_ALPHA}${MBI_ALNUM}${MBI_DIGIT}${MBI_ALPHA}${MBI_ALNUM}${MBI_DIGIT}${MBI_ALPHA}${MBI_ALPHA}${MBI_DIGIT}${MBI_DIGIT}`,
   "i",
 );
 
+function squash(text: string): string {
+  let out = "";
+  for (const ch of text.normalize("NFKD").replace(/\p{M}/gu, "")) {
+    if (/[A-Za-z0-9]/.test(ch)) out += ch;
+    else if (/\p{N}/u.test(ch)) out += "#";
+    else if (/\p{L}/u.test(ch)) out += "~";
+  }
+  return out;
+}
+
 /**
- * Best-effort mirror of the server's note screen (`looksLikeMbi` in @wardenx/billing): NFKC-normalise, drop
- * everything that is not a letter or digit, and look for any MBI-shaped 11-character window. The server is the
- * authority; this only stops the obvious case before a request is sent.
+ * Best-effort mirror of the server's note screen (`looksLikeMbi` in @wardenx/billing): NFKD-normalise, drop marks and
+ * everything that is not a letter or digit, turn a non-ASCII lookalike into a wildcard, and look for any MBI-shaped
+ * 11-character window. The server is the authority; this only stops the obvious case before a request is sent.
  */
 export function looksLikeMbi(text: string): boolean {
-  return MBI_WINDOW.test(text.normalize("NFKC").replace(/[^A-Za-z0-9]/g, ""));
+  return MBI_WINDOW.test(squash(text));
 }
 
 const NOTES_MBI_MESSAGE = "Notes cannot contain a Medicare number (MBI). Remove it.";
@@ -216,6 +227,7 @@ export function validateOutcome(
   if (!d.outcome) e.outcome = "Choose what came back.";
   if (d.outcome === "accepted" && isNoticeType(item.itemType) && !d.macAcceptedOn)
     e.macAcceptedOn = "Enter the date the MAC accepted it, as DDE shows it.";
+  if (d.macAcceptedOn && !isRealDate(d.macAcceptedOn)) e.macAcceptedOn = "Enter a real date.";
   if (d.outcome === "returned" && !d.rtpReasonCode) e.rtpReasonCode = "Enter the RTP reason code.";
   if (d.rtpReasonCode && !RTP_RE.test(d.rtpReasonCode))
     e.rtpReasonCode = "Capital letters and digits only, up to 8 characters.";
@@ -224,6 +236,13 @@ export function validateOutcome(
   const notes = notesError(d.notes);
   if (notes) e.notes = notes;
   return e;
+}
+
+/** True for a real calendar date written `YYYY-MM-DD` (2026-02-31 is not one). */
+export function isRealDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const d = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
 }
 
 /** "1 item" / "2 items". */

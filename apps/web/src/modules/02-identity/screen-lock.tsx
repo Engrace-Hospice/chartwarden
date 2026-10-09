@@ -14,6 +14,7 @@ import { Modal } from "@wardenx/ui";
 // are never screen-locked. An unknown/absent class fails SAFE (the lock applies).
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
+import { clearAllDrafts } from "../../shell/ceremony-drafts";
 import { authClient } from "./auth-client";
 
 const IDLE_MS = SESSION_POLICY.screenLockSec * 1000;
@@ -126,6 +127,7 @@ export function ScreenLock(): JSX.Element | null {
           type="button"
           onClick={() => {
             void authClient.signOut().then(() => {
+              clearAllDrafts();
               window.location.href = "/login";
             });
           }}

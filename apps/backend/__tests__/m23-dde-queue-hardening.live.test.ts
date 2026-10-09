@@ -14,9 +14,13 @@
  *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m23:dde-queue-hardening:live
  */
 import { randomUUID } from "node:crypto";
+import { createDbActorEnrichmentReader } from "@wardenx/auth";
 import type { FastifyInstance } from "fastify";
 import type { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { buildDdeAssigneeEligibility } from "../src/bootstrap/m23-dde-assignee";
+import { createMembershipsHoldingPermissionReader } from "../src/modules/03-authorization/permission-holders";
+import { ORG_WIDE_BILLING_SCOPE_ROLES } from "../src/modules/23-billing-medicare/abac-predicates";
 import {
   type M23WorkerDeps,
   runNoeWindowWatch,
@@ -32,6 +36,8 @@ import {
   MEMBERSHIP_A,
   MEMBERSHIP_B,
   ORG_A,
+  ORG_B,
+  PE_A,
   USER_A,
   buildDdeApp,
   connectDdeLiveDb,
@@ -290,6 +296,146 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
     });
   });
 
+  describe("closed outcome codes and real dates", () => {
+    it("refuses an accepted code on a return, a returned code on an acceptance, and a code the state forbids", async () => {
+      const noe = await seedNoe(admin);
+      const [id, v] = await submitted("noe", noe);
+      const wrongOnReturn = await post(`/${id}/record-outcome`, asA(), {
+        expectedVersion: v,
+        outcome: "returned",
+        rtpReasonCode: "37001",
+        outcomeCode: "accepted",
+      });
+      expect(wrongOnReturn.statusCode).toBeGreaterThanOrEqual(400);
+      expect(wrongOnReturn.statusCode).toBeLessThan(500);
+      const wrongOnAccept = await accept(id, v, {
+        macAcceptedOn: "2026-01-18",
+        outcomeCode: "rtp",
+      });
+      expect(wrongOnAccept.statusCode).toBeGreaterThanOrEqual(400);
+      expect(wrongOnAccept.statusCode).toBeLessThan(500);
+      expect((await noeRow(noe)).state).toBe("READY");
+      await expect(
+        admin.query(
+          "UPDATE dde_work_item SET state='returned', outcome_code='accepted' WHERE id=$1",
+          [id],
+        ),
+      ).rejects.toThrow(/outcome_state_chk/);
+    });
+
+    it("refuses an impossible calendar date with a 422 (never a 500)", async () => {
+      const noe = await seedNoe(admin);
+      const [id, v] = await submitted("noe", noe);
+      const res = await accept(id, v, { macAcceptedOn: "2026-02-31" });
+      expect(res.statusCode).toBe(422);
+      expect((await noeRow(noe)).state).toBe("READY");
+    });
+  });
+
+  describe("the lookup index behind the watchdog's anti-join", () => {
+    it("is used by the NOT EXISTS probe (planner with seq scans disabled, as it would be on a large table)", async () => {
+      await seedNoe(admin);
+      await admin.query("BEGIN");
+      try {
+        await admin.query("SET LOCAL enable_seqscan = off");
+        const plan = (
+          await admin.query(
+            `EXPLAIN SELECT 1 FROM noe_record n WHERE NOT EXISTS (
+               SELECT 1 FROM dde_work_item d
+                WHERE d.subject_kind = 'noe_record' AND d.subject_id = n.id AND d.item_type = 'noe')`,
+          )
+        ).rows
+          .map((r) => r["QUERY PLAN"])
+          .join("\n");
+        expect(plan).toContain("dde_work_item_subject_idx");
+      } finally {
+        await admin.query("ROLLBACK");
+      }
+    });
+  });
+
+  describe("assignee eligibility through the REAL wiring (M3 holders + M2 status + provider reach)", () => {
+    const userIds = {
+      ok: randomUUID(),
+      suspended: randomUUID(),
+      revoked: randomUUID(),
+      outOfReach: randomUUID(),
+    };
+    const members: Record<string, string> = {};
+    let realApp: FastifyInstance;
+
+    beforeAll(async () => {
+      const role = (
+        await admin.query(
+          "INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,'dde-worker','DDE worker','clinical_staff',true) RETURNING id",
+          [ORG_A],
+        )
+      ).rows[0].id;
+      await admin.query(
+        "INSERT INTO role_permission (organization_id,role_id,permission_key) VALUES ($1,$2,'billing.dde.work')",
+        [ORG_A, role],
+      );
+      const plan: [keyof typeof userIds, string, string][] = [
+        ["ok", "active", PE_A],
+        ["suspended", "suspended", PE_A],
+        ["revoked", "revoked", PE_A],
+        ["outOfReach", "active", randomUUID()],
+      ];
+      for (const [k, status, pe] of plan) {
+        await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,$2)`, [
+          userIds[k],
+          `${k}@dde.test`,
+        ]);
+        const m = (
+          await admin.query(
+            "INSERT INTO membership (user_id,organization_id,status,default_provider_entity_id) VALUES ($1,$2,$3,$4) RETURNING id",
+            [userIds[k], ORG_A, status, pe],
+          )
+        ).rows[0].id;
+        members[k] = m;
+        await admin.query(
+          "INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)",
+          [ORG_A, m, role],
+        );
+      }
+      realApp = await buildDdeApp(live, {
+        assigneeCanWork: buildDdeAssigneeEligibility(
+          live.handle.db as never,
+          createMembershipsHoldingPermissionReader(live.handle.db as never),
+          createDbActorEnrichmentReader(live.handle.db as never),
+          ORG_WIDE_BILLING_SCOPE_ROLES,
+        ),
+      });
+    });
+
+    it("assigns an active member of the entity who holds billing.dde.work, and nobody else", async () => {
+      const noe = await seedNoe(admin);
+      const id = (
+        await realApp.inject({
+          method: "POST",
+          url: BASE,
+          headers: asA(),
+          payload: { itemType: "noe", subjectId: noe },
+        })
+      ).json().ddeWorkItemId;
+      const assign = (m: string, version: number) =>
+        realApp.inject({
+          method: "POST",
+          url: `${BASE}/${id}/assign`,
+          headers: asA(),
+          payload: { expectedVersion: version, assigneeMembershipId: m },
+        });
+      // a suspended or revoked member with a lingering role row, and one whose reach excludes the entity: 422
+      expect((await assign(members.suspended as string, 0)).statusCode).toBe(422);
+      expect((await assign(members.revoked as string, 0)).statusCode).toBe(422);
+      expect((await assign(members.outOfReach as string, 0)).statusCode).toBe(422);
+      expect((await assign(randomUUID(), 0)).statusCode).toBe(422);
+      const ok = await assign(members.ok as string, 0);
+      expect(ok.statusCode).toBe(200);
+      expect(ok.json().assigneeMembershipId).toBe(members.ok);
+    });
+  });
+
   describe("deadlines are judged on the Eastern day", () => {
     const viewAt = async (iso: string, id: string) => {
       const svc: DdeQueueService = buildDdeQueueService(live.handle.db as never, {
@@ -349,6 +495,56 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
       expect(await itemFor(newer)).toBe(1);
     });
 
+    it("contains a poison notice: the notices after it still get items, and the failure is reported", async () => {
+      const poison = await seedNoe(admin, { windowTarget: "2026-05-01" });
+      const fine = await seedNoe(admin, { windowTarget: "2026-05-02" });
+      const real = buildDdeWatchdog({ outbox: live.bound("m23") });
+      const logged: Record<string, unknown>[] = [];
+      const deps = depsAt("2026-05-01T15:00:00Z", {
+        ddeWatchdog: {
+          ensureNoticeItem: async (tx, notice) => {
+            if (notice.noticeId === poison) throw new Error("poison");
+            return real.ensureNoticeItem(tx, notice);
+          },
+        },
+        logger: { error: (fields) => void logged.push(fields) },
+      });
+      const err = await runNoeWindowWatch(deps).then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(err).toBeInstanceOf(AggregateError);
+      expect((err as AggregateError).errors.map((e: Error) => e.message)).toContain("poison");
+      expect(await itemFor(fine)).toBe(1);
+      expect(await itemFor(poison)).toBe(0);
+      expect(
+        logged.some((l) => l.organizationId === ORG_A && !JSON.stringify(l).includes("notes")),
+      ).toBe(true);
+    });
+
+    it("reports the failures of every org together (an AggregateError), not just the first", async () => {
+      await seedNoe(admin, { windowTarget: "2026-06-01" });
+      await seedNoe(admin, { windowTarget: "2026-06-01", orgId: ORG_B });
+      const deps = depsAt("2026-06-01T15:00:00Z", {
+        activeOrgs: {
+          listActiveOrgs: async () => [{ organizationId: ORG_A }, { organizationId: ORG_B }],
+        },
+        ddeWatchdog: {
+          ensureNoticeItem: async () => {
+            throw new Error("down");
+          },
+        },
+      });
+      const err = (await runNoeWindowWatch(deps).then(
+        () => null,
+        (e: unknown) => e,
+      )) as AggregateError;
+      expect(err).toBeInstanceOf(AggregateError);
+      expect(err.message).toContain(ORG_A);
+      expect(err.message).toContain(ORG_B);
+      expect(err.errors.length).toBeGreaterThanOrEqual(2);
+    });
+
     it("keeps the window warning when the DDE step fails (own transaction), then reports the failure", async () => {
       const noe = await seedNoe(admin, { windowTarget: "2026-04-01" });
       const failing = depsAt("2026-04-01T15:00:00Z", {
@@ -358,7 +554,12 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
           },
         },
       });
-      await expect(runNoeWindowWatch(failing)).rejects.toThrow("dde watchdog down");
+      const failed = (await runNoeWindowWatch(failing).then(
+        () => null,
+        (e: unknown) => e,
+      )) as AggregateError;
+      expect(failed).toBeInstanceOf(AggregateError);
+      expect(failed.errors.map((e: Error) => e.message)).toContain("dde watchdog down");
       const warned = await admin.query(
         "SELECT 1 FROM outbox_event WHERE event_type='m23.noe.window_warning' AND payload->>'noeId'=$1",
         [noe],

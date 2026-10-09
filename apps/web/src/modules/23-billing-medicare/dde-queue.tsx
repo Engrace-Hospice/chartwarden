@@ -15,7 +15,7 @@ import {
   interactiveRowProps,
   useApiClient,
 } from "@wardenx/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useSearchParams } from "react-router-dom";
 import { BillingTabs } from "../../shell/billing-tabs";
@@ -60,6 +60,10 @@ export function DdeQueue(): JSX.Element {
   const [atRisk, setAtRisk] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<string | null>(null);
+  // Bumped whenever the list starts over (filter change, reload): a "Load more" response from an older generation is
+  // discarded, so it can never append rows from a filter that is no longer selected.
+  const generation = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [detail, setDetail] = useState<DdeItemDetail | null>(null);
@@ -83,8 +87,11 @@ export function DdeQueue(): JSX.Element {
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey re-runs the load after an action / "Try again".
   useEffect(() => {
     let active = true;
+    generation.current += 1;
     setLoading(true);
     setError(null);
+    setMoreError(null);
+    setLoadingMore(false);
     void client
       .GET("/api/v1/billing/dde-items", { params: { query: filterQuery() } })
       .then(({ data, error: err }) => {
@@ -114,14 +121,17 @@ export function DdeQueue(): JSX.Element {
 
   const loadMore = useCallback(() => {
     if (!nextCursor || loadingMore) return;
+    const mine = generation.current;
     setLoadingMore(true);
+    setMoreError(null);
     void client
       .GET("/api/v1/billing/dde-items", {
         params: { query: { ...filterQuery(), cursor: nextCursor } },
       })
       .then(({ data, error: err }) => {
+        if (mine !== generation.current) return;
         if (err || !data) {
-          setError("More items could not be loaded.");
+          setMoreError("More items could not be loaded. Try again.");
           return;
         }
         setItems((prev) => {
@@ -131,8 +141,13 @@ export function DdeQueue(): JSX.Element {
         setHasMore(data.hasMore);
         setNextCursor(data.nextCursor ?? null);
       })
-      .catch(() => setError("More items could not be loaded. Check your connection."))
-      .finally(() => setLoadingMore(false));
+      .catch(() => {
+        if (mine === generation.current)
+          setMoreError("More items could not be loaded. Check your connection.");
+      })
+      .finally(() => {
+        if (mine === generation.current) setLoadingMore(false);
+      });
   }, [client, filterQuery, nextCursor, loadingMore]);
 
   // The selected item is always read by id, so a `?item=` deep link beyond the loaded page still opens, and the rail
@@ -259,17 +274,11 @@ export function DdeQueue(): JSX.Element {
           </p>
         </div>
 
-        {conflict ? (
-          <div role="alert">
-            <InlineAlert>{conflict}</InlineAlert>
-          </div>
-        ) : null}
+        {conflict ? <InlineAlert>{conflict}</InlineAlert> : null}
         {selectedId && detailState === "missing" ? (
-          <div role="alert">
-            <InlineAlert>
-              That item could not be found, or it is outside your billing scope.
-            </InlineAlert>
-          </div>
+          <InlineAlert>
+            That item could not be found, or it is outside your billing scope.
+          </InlineAlert>
         ) : null}
 
         {error ? (
@@ -342,6 +351,7 @@ export function DdeQueue(): JSX.Element {
                 </tbody>
               </table>
             </div>
+            {moreError ? <InlineAlert>{moreError}</InlineAlert> : null}
             <CursorPagination
               loadedCount={items.length}
               hasNextPage={hasMore}
@@ -360,7 +370,10 @@ export function DdeQueue(): JSX.Element {
           patientName={patientLabel(names[detail.patientId], detail.patientId)}
           notInList={notInList}
           onClose={() => select(null)}
-          onChanged={reload}
+          onChanged={() => {
+            setConflict(null);
+            reload();
+          }}
           onConflict={setConflict}
         />
       ) : null}

@@ -12,12 +12,13 @@ import {
   type DdeItem,
   deadlineNote,
   isNoticeType,
+  isRealDate,
   looksLikeMbi,
   plural,
   validateOutcome,
   validateSubmission,
 } from "../dde-queue-model";
-import { clearDraft } from "../write-workflow";
+import { clearAllDrafts, clearDraft, loadDraft, saveDraft } from "../write-workflow";
 
 const ITEM = "c3d4e5f6-0000-4000-8000-000000000001";
 const ITEM2 = "c3d4e5f6-0000-4000-8000-000000000002";
@@ -462,5 +463,104 @@ describe("dde-queue-model", () => {
     expect(
       validateOutcome({ ...empty, outcome: "accepted" }, { ...base, itemType: "adjustment" }),
     ).toEqual({});
+  });
+});
+
+describe("DdeQueue paging races and notices", () => {
+  const apiWith = (get: ReturnType<typeof vi.fn>, post = vi.fn(async () => ok({}))) =>
+    ({ GET: get, POST: post }) as unknown as ApiClient;
+  const page = (items: DdeItem[], hasMore = false, nextCursor: string | null = null) =>
+    ok({ items, hasMore, nextCursor });
+
+  it("discards a Load more response that arrives after a filter change", async () => {
+    let release: (v: unknown) => void = () => undefined;
+    const stale = item({ ddeWorkItemId: ITEM2, itemType: "cancel" });
+    const get = vi.fn((path: string, args?: { params?: { query?: Record<string, unknown> } }) => {
+      if (path !== "/api/v1/billing/dde-items") return Promise.resolve(ok({}));
+      const q = args?.params?.query ?? {};
+      if (q.cursor)
+        return new Promise((res) => {
+          release = res;
+        });
+      return Promise.resolve(
+        page([item({ itemType: q.itemType === "noe" ? "noe" : "adjustment" })], true, "C1"),
+      );
+    });
+    mount(apiWith(get), "/billing/dde");
+    fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+    fireEvent.change(screen.getByLabelText("Type"), { target: { value: "noe" } });
+    await waitFor(() =>
+      expect(within(screen.getByRole("table")).getAllByText("Notice of Election").length).toBe(1),
+    );
+    await act(async () => release(page([stale], false, null)));
+    expect(within(screen.getByRole("table")).queryByText("Claim cancel")).toBeNull();
+    expect(screen.getByRole("button", { name: "Load more" })).toBeTruthy();
+  });
+
+  it("keeps the rows and shows an error beside the control when Load more fails", async () => {
+    const get = vi.fn(
+      async (path: string, args?: { params?: { query?: Record<string, unknown> } }) => {
+        if (path !== "/api/v1/billing/dde-items") return ok({});
+        return args?.params?.query?.cursor ? fail(500, "INTERNAL") : page([item()], true, "C1");
+      },
+    );
+    mount(apiWith(get), "/billing/dde");
+    fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+    expect(await screen.findByText(/More items could not be loaded/)).toBeTruthy();
+    expect(within(screen.getByRole("table")).getAllByRole("row").length).toBe(2);
+    expect(screen.queryByText("DDE queue unavailable")).toBeNull();
+  });
+
+  it("clears the 412 notice once an action succeeds, without nesting alerts", async () => {
+    const post = vi
+      .fn()
+      .mockResolvedValueOnce(fail(412, "VERSION_CONFLICT"))
+      .mockResolvedValue(ok({}));
+    const { api } = setup({
+      post,
+      pages: [{ items: [item({ allowedActions: ["start"] })], hasMore: false, nextCursor: null }],
+    });
+    mount(api);
+    fireEvent.click((await rail()).getByRole("button", { name: "Start work" }));
+    const banner = await screen.findByText(/changed since you opened it/);
+    expect(banner.closest("[role=alert]")?.parentElement?.closest("[role=alert]")).toBeNull();
+    fireEvent.click((await rail()).getByRole("button", { name: "Start work" }));
+    await waitFor(() => expect(screen.queryByText(/changed since you opened it/)).toBeNull());
+  });
+
+  it("lets Escape close the rail again after an edited form is dismissed", async () => {
+    const { api } = setup();
+    mount(api);
+    const r = await rail();
+    fireEvent.click(r.getByRole("button", { name: "Record as keyed in DDE" }));
+    fireEvent.change(r.getByLabelText(/DCN/), { target: { value: DCN } });
+    const aside = screen.getByRole("complementary");
+    fireEvent.keyDown(aside, { key: "Escape" });
+    expect(screen.queryByRole("complementary")).toBeTruthy();
+    fireEvent.click(r.getByRole("button", { name: "Back" }));
+    fireEvent.keyDown(screen.getByRole("complementary"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
+  });
+});
+
+describe("dates and drafts", () => {
+  it("accepts only real calendar dates", () => {
+    expect(isRealDate("2026-02-28")).toBe(true);
+    expect(isRealDate("2026-02-31")).toBe(false);
+    expect(isRealDate("2026-13-01")).toBe(false);
+    expect(isRealDate("26-02-01")).toBe(false);
+    expect(
+      validateOutcome(
+        { outcome: "accepted", macAcceptedOn: "2026-02-31", rtpReasonCode: "", dcn: "", notes: "" },
+        item({ itemType: "adjustment" }),
+      ).macAcceptedOn,
+    ).toBeTruthy();
+  });
+
+  it("forgets every stashed draft on sign-out", () => {
+    saveDraft("dde:x", { panel: "submit" });
+    expect(loadDraft("dde:x")).toBeTruthy();
+    clearAllDrafts();
+    expect(loadDraft("dde:x")).toBeUndefined();
   });
 });

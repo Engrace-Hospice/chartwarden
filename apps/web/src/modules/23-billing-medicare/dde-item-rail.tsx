@@ -74,7 +74,6 @@ export function ItemRail({
   onChanged: () => void;
   onConflict: (message: string) => void;
 }): JSX.Element {
-  const drawer = useDrawerA11y<HTMLElement>(onClose);
   const client = useApiClient();
   const navigate = useNavigate();
   const location = useLocation();
@@ -82,6 +81,8 @@ export function ItemRail({
     const restored = loadDraft<Drafts>(draftKey(n.ddeWorkItemId));
     return restored ?? { panel: "none", submit: EMPTY_SUBMISSION, outcome: emptyOutcome(n) };
   });
+  // Escape is owned by an edited form; the flag resets when the form closes or the item changes under it.
+  const drawer = useDrawerA11y<HTMLElement>(onClose, `${n.version}:${drafts.panel}`);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const can = (a: DdeItem["allowedActions"][number]) => n.allowedActions.includes(a);
@@ -127,8 +128,8 @@ export function ItemRail({
           return;
         }
         if (response?.status === 412) {
+          onChanged(); // clears any older notice and reloads
           onConflict("This item changed since you opened it. It has been reloaded; try again.");
-          onChanged();
           return;
         }
         setActionError(errorMessage(error, fallback));
