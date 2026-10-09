@@ -4,9 +4,11 @@
 // `@wardenx/billing` decides. Nothing is guessed: a missing ZIP or an unplaceable one is reported as unresolved and
 // the `cbsa_value_codes_present` rule blocks the claim.
 import {
+  type FacilitySpan,
   type HospiceAreaLookup,
   type HospiceAreaResolution,
   type ValueCodeAreas,
+  facilityPostalCodeForInpatientDates,
   hospiceFiscalYearStartingOf,
   type repositories,
   resolveHospiceArea,
@@ -17,16 +19,39 @@ import type { DateRange, HospiceCbsaReader } from "./claim-assembly-types";
 
 type Db = repositories.BillingDb;
 
-/** The two address facts the value codes need; both are plain ZIP/postal strings or `null` (none recorded). */
+/** The two address facts the value codes need. */
 export interface ClaimZipPorts {
-  /** The patient's residence postal code on `asOf` (M5 `residenceAt`). */
+  /** The patient's residence postal code on `asOf` (M5 `residenceAt`); `null` = none recorded. */
   residencePostalCode(orgId: string, patientId: string, asOf: string): Promise<string | null>;
-  /** The postal code of the latest facility the patient resided in over `range` (M5 spans + M40 facility). */
-  inpatientFacilityPostalCode(
+  /** The patient's facility residence spans over `range` with each facility's postal code (M5 spans + M40 address). */
+  facilitySpans(
     orgId: string,
     patientId: string,
     range: DateRange,
-  ): Promise<string | null>;
+  ): Promise<readonly FacilitySpan[]>;
+}
+
+/** M5 residence spans (structural: kind + facility + window) joined with M40 facility postal codes. */
+export function toFacilitySpans(
+  spans: readonly {
+    readonly kind: string;
+    readonly facilityId: string | null;
+    readonly effectiveFrom: string;
+    readonly effectiveTo: string | null;
+  }[],
+  postalByFacility: ReadonlyMap<string, string>,
+): FacilitySpan[] {
+  return spans.flatMap((s) =>
+    s.kind === "facility" && s.facilityId
+      ? [
+          {
+            effectiveFrom: s.effectiveFrom,
+            effectiveTo: s.effectiveTo,
+            postalCode: postalByFacility.get(s.facilityId) ?? null,
+          },
+        ]
+      : [],
+  );
 }
 
 async function lookupFor(db: Db, zip5: string, fiscalYearStarting: number) {
@@ -100,19 +125,44 @@ async function resolveZip(
   return resolveHospiceArea(postalCode, fiscalYearStarting, lookup);
 }
 
-/** CMS: the CBSA is that of the residence at the END of the billing period, in the period's fiscal year. */
+/**
+ * CMS: value code 61 is the CBSA of the residence at the END of the billing period, in that period's fiscal year;
+ * G8 is the CBSA of the facility where the inpatient (0655/0656) care was delivered — the facility span overlapping
+ * the inpatient level-of-care dates (see `facility-zip.ts`).
+ */
 export function buildHospiceCbsaReader(db: Db, zips: ClaimZipPorts): HospiceCbsaReader {
   return {
-    async areasFor(orgId, patientId, range): Promise<ValueCodeAreas> {
+    async areasFor(orgId, patientId, range, inpatientRanges): Promise<ValueCodeAreas> {
       const fiscalYearStarting = hospiceFiscalYearStartingOf(range.to);
-      const [residence, facility] = await Promise.all([
-        zips.residencePostalCode(orgId, patientId, range.to),
-        zips.inpatientFacilityPostalCode(orgId, patientId, range),
-      ]);
+      const residence = await zips.residencePostalCode(orgId, patientId, range.to);
       return {
         residence: await resolveZip(db, residence, fiscalYearStarting),
-        facility: await resolveZip(db, facility, fiscalYearStarting),
+        facility: await resolveFacility(
+          db,
+          zips,
+          orgId,
+          patientId,
+          range,
+          inpatientRanges,
+          fiscalYearStarting,
+        ),
       };
     },
   };
+}
+
+async function resolveFacility(
+  db: Db,
+  zips: ClaimZipPorts,
+  orgId: string,
+  patientId: string,
+  range: DateRange,
+  inpatientRanges: readonly DateRange[],
+  fiscalYearStarting: number,
+): Promise<HospiceAreaResolution | null> {
+  if (inpatientRanges.length === 0) return null; // no inpatient care on the claim: G8 is not needed
+  const spans = await zips.facilitySpans(orgId, patientId, range);
+  const found = facilityPostalCodeForInpatientDates(inpatientRanges, spans);
+  if (found.status === "unresolved") return { status: "unresolved", reason: found.reason };
+  return resolveZip(db, found.postalCode, fiscalYearStarting);
 }

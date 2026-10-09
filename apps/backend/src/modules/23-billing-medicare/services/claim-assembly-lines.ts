@@ -130,7 +130,11 @@ export function visitLineInputs(args: {
     );
   }
   return args.result.lines.map((visit, idx) => {
-    const unitRateCents = visitUnitChargeOn(args.chargeVersions, visit.serviceDate, visit.discipline);
+    const unitRateCents = visitUnitChargeOn(
+      args.chargeVersions,
+      visit.serviceDate,
+      visit.discipline,
+    );
     if (unitRateCents === null) {
       // `missingVisitCharges` above found a charge for every line, so this is a logic error — never bill it as free.
       throw new WardenXError(

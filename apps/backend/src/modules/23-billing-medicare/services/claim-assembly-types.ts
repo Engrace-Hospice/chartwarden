@@ -326,7 +326,16 @@ export interface ElectionAddendumComplianceReader {
  * the `cbsa_value_codes_present` rule SKIPs.
  */
 export interface HospiceCbsaReader {
-  areasFor(orgId: string, patientId: string, range: DateRange): Promise<ValueCodeAreas>;
+  /**
+   * `inpatientRanges` = the dates of the claim's general-inpatient / inpatient-respite levels of care; G8 is the
+   * facility whose residence span overlaps THEM.
+   */
+  areasFor(
+    orgId: string,
+    patientId: string,
+    range: DateRange,
+    inpatientRanges: readonly DateRange[],
+  ): Promise<ValueCodeAreas>;
 }
 
 /** The full injected seam bundle the assembly service depends on. */

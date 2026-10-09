@@ -79,9 +79,13 @@ export async function readAssemblyFacts(
     ? await seams.electionAddendum.forAdmission(orgId, admission.admissionId)
     : undefined;
   // Wage-index value codes (61 / G8): the CBSA areas of the residence / latest facility; undefined when unbound.
-  const valueAreas = seams.cbsa ? await seams.cbsa.areasFor(orgId, patientId, range) : undefined;
   const faceToFace = await seams.faceToFace.forPatient(orgId, patientId, range);
   const resolvedLoc = await seams.levelOfCare.periodsInRange(orgId, patientId, range);
+  // Wage-index value codes (61 / G8): the CBSA areas of the residence (period end) and of the facility that
+  // delivered the inpatient care; undefined when the CBSA geography is unbound.
+  const valueAreas = seams.cbsa
+    ? await seams.cbsa.areasFor(orgId, patientId, range, inpatientRangesOf(resolvedLoc, range))
+    : undefined;
 
   const pe = await seams.mdm.resolveProviderEntity(orgId, providerEntityId);
   if (!pe) {
@@ -128,6 +132,7 @@ export async function readAssemblyFacts(
     macJurisdiction: pe.macJurisdiction,
     ccn: pe.ccn,
     range,
+    resolvedLoc,
     first: { rateTable, wageIndex },
     claimAreas: valueAreas,
   });
@@ -222,6 +227,25 @@ export async function readAssemblyFacts(
 
 export type AssemblyFacts = Awaited<ReturnType<typeof readAssemblyFacts>>;
 
+const INPATIENT_LEVELS_OF_CARE: ReadonlySet<string> = new Set([
+  "general_inpatient_care",
+  "inpatient_respite_care",
+]);
+
+/** The dates of the claim's inpatient (GIP / inpatient respite) levels of care, clipped to `within`. */
+function inpatientRangesOf(
+  resolvedLoc: readonly { levelOfCare: string; from: string; to: string }[],
+  within: DateRange,
+): DateRange[] {
+  return resolvedLoc
+    .filter((p) => INPATIENT_LEVELS_OF_CARE.has(p.levelOfCare))
+    .map((p) => ({
+      from: p.from > within.from ? p.from : within.from,
+      to: p.to < within.to ? p.to : within.to,
+    }))
+    .filter((r) => r.from <= r.to);
+}
+
 interface PricingReadInput {
   readonly orgId: string;
   readonly providerEntityId: string;
@@ -229,6 +253,7 @@ interface PricingReadInput {
   readonly macJurisdiction: Parameters<ClaimAssemblySeams["referenceData"]["hippsRateTable"]>[0];
   readonly ccn: string;
   readonly range: DateRange;
+  readonly resolvedLoc: readonly { levelOfCare: string; from: string; to: string }[];
   /** The rate table and provider wage index already read for the claim's first fiscal year. */
   readonly first: {
     readonly rateTable: HippsRateTable;
@@ -273,10 +298,12 @@ async function readFiscalYearPricing(
       parts.length === 1
         ? input.claimAreas
         : seams.cbsa
-          ? await seams.cbsa.areasFor(input.orgId, input.patientId, {
-              from: part.from,
-              to: part.to,
-            })
+          ? await seams.cbsa.areasFor(
+              input.orgId,
+              input.patientId,
+              { from: part.from, to: part.to },
+              inpatientRangesOf(input.resolvedLoc, part),
+            )
           : undefined;
     out.set(part.fiscalYearStarting, {
       fiscalYearStarting: part.fiscalYearStarting,

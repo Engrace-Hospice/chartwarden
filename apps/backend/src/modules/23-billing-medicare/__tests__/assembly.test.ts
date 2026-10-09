@@ -1022,6 +1022,52 @@ describe("837I claim header — physician NPIs (UB-04 FL 76 attending / FL 78 ce
     ]);
   });
 
+  it("hands the cbsa reader the claim's inpatient dates, and refuses to price a GIP day with an unresolved facility", async () => {
+    const seen: unknown[] = [];
+    const seams = buildSeams({
+      levelOfCare: {
+        periodsInRange: async () => [
+          {
+            levelOfCarePeriodId: "loc-1",
+            levelOfCare: "routine_home_care",
+            from: "2025-11-01",
+            to: "2025-11-04",
+            chcDocumentedHours: null,
+            gipAdmissionCriteriaDocumented: null,
+          },
+          {
+            levelOfCarePeriodId: "loc-2",
+            levelOfCare: "general_inpatient_care",
+            from: "2025-11-05",
+            to: "2025-11-07",
+            chcDocumentedHours: null,
+            gipAdmissionCriteriaDocumented: true,
+          },
+        ],
+      },
+      cbsa: {
+        areasFor: async (_org, _patient, _range, inpatientRanges) => {
+          seen.push(inpatientRanges);
+          return {
+            residence: {
+              status: "resolved",
+              cbsaCode: "99938",
+              areaKind: "rural",
+              countyFips: "41059",
+              via: "zip",
+              wageIndex: "1.0000",
+            },
+            facility: { status: "unresolved", reason: "ambiguous_facility" },
+          };
+        },
+      },
+    });
+    await expect(
+      buildClaimAssemblyService(makeFakeDb() as never, seams).assemble(ACTOR, REQUEST),
+    ).rejects.toMatchObject({ code: "WAGE_INDEX_AREA_UNRESOLVED" });
+    expect(seen[0]).toEqual([{ from: "2025-11-05", to: "2025-11-07" }]);
+  });
+
   it("records the admission type and point of origin from the M6 admission on the claim", async () => {
     const base = buildSeams();
     const seams = buildSeams({

@@ -8,7 +8,13 @@ import { hospiceValueCodeForRevenue } from "../claim-lines/value-codes";
 
 export type HospiceAreaKind = "urban" | "rural" | "transition";
 
-export type UnresolvedReason = "invalid_zip" | "zip_unknown" | "county_unknown" | "no_zip_recorded";
+export type UnresolvedReason =
+  | "invalid_zip"
+  | "zip_unknown"
+  | "county_unknown"
+  | "no_zip_recorded"
+  | "no_facility_stay"
+  | "ambiguous_facility";
 
 export type HospiceAreaResolution =
   | {

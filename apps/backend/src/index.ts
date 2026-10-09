@@ -942,6 +942,7 @@ import {
   validateBillingAiBlockAtBoot,
   wireM23Tenancy,
 } from "./modules/23-billing-medicare/index";
+import { toFacilitySpans } from "./modules/23-billing-medicare/services/claim-cbsa";
 import { resolveInpatientCapDifferential } from "./modules/23-billing-medicare/services/inpatient-cap-differential";
 // M24 (Billing — Medicaid) boot surface — the §4.11 outbox catalog, the §4.8 ABAC resolvers
 // (provider_entity_medicaid_billing_scope / medicaid_claim_in_billing_manager_caseload /
@@ -2988,9 +2989,9 @@ function buildM23AssemblyPorts(db: DbClient): {
         kindsFor: (facilityIds) => facilityKindsForIds(db, facilityIds),
       },
     },
-    // Wage-index value codes 61 / G8 (CMS ch. 11 s30.3): the residence ZIP on the claim's last day (M5) and the ZIP of
-    // the latest facility the patient resided in over the claim range (M5 spans + M40 facility address). Resolved
-    // lazily per call, like placeOfService above.
+    // Wage-index value codes 61 / G8 (CMS ch. 11 s30.3): the residence ZIP on the claim's last day (M5) and the
+    // patient's facility residence spans (M5) with each facility's address (M40); G8 is the facility overlapping the
+    // inpatient dates. Resolved lazily per call, like placeOfService above.
     claimZips: {
       residencePostalCode: async (orgId, patientId, asOf) =>
         (
@@ -3000,17 +3001,16 @@ function buildM23AssemblyPorts(db: DbClient): {
             asOf,
           )
         )?.postalCode ?? null,
-      inpatientFacilityPostalCode: async (orgId, patientId, range) => {
+      facilitySpans: async (orgId, patientId, range) => {
         const spans = await (
           getSeam("PatientAddressReader") as PatientAddressReader
         ).residencesBetween(orgId, patientId, range.from, range.to);
-        const latest = [...spans]
-          .filter((s) => s.kind === "facility" && s.facilityId)
-          .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0];
-        if (!latest?.facilityId) return null;
-        return (
-          (await facilityPostalCodesForIds(db, [latest.facilityId])).get(latest.facilityId) ?? null
-        );
+        const facilityIds = [
+          ...new Set(
+            spans.flatMap((s) => (s.kind === "facility" && s.facilityId ? [s.facilityId] : [])),
+          ),
+        ];
+        return toFacilitySpans(spans, await facilityPostalCodesForIds(db, facilityIds));
       },
     },
   };
