@@ -26,7 +26,9 @@ function event(eventType: string, payload: Record<string, unknown>): Dispatchabl
 }
 
 function harness() {
-  const emit = vi.fn(async () => ({}) as never);
+  // A real emitter always reports how many people it resolved; 1 here (the zero-recipient fallback is covered in
+  // m30-alert-repeat-sweeps.test.ts and the GAP-049 live suite).
+  const emit = vi.fn(async () => ({ alertId: "alert-1", resolvedRecipientCount: 1 }) as never);
   return { emit, consumer: buildM36QualityAlertConsumer({ emit } as unknown as AlertEmitter) };
 }
 

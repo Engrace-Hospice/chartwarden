@@ -19,6 +19,19 @@
 //     provider-entity ids (that is WIDER than its level); a `patient` role is link-bound, never granted this way.
 //   - roles of the time-bound category (`temporary_special`: on-call, locum, interim, travel, student supervision)
 //     require a future `expires_at`; any `expires_at` must be in the future.
+//   - PATIENT-LEVEL narrowing is NOT a role-scope dimension (M3 spec §3.4: "narrower PE/location ids than role
+//     default"; §4.2/§4.2.1: patient reach is the caseload model, `caseload_membership` through the `CaseloadProvider`
+//     seam, with ORG_WIDE_SCOPE_ROLES as the org-wide bypass). `scope.patientIds` is therefore refused with the
+//     dedicated `PATIENT_SCOPE_UNSUPPORTED` code rather than stored and silently never enforced. A second patient
+//     fence beside caseload could not be enforced centrally either: collection routes name no patient target.
+//   - FAIL CLOSED ON READ. A stored scope that does not parse (a legacy blob, an out-of-band writer) contributes
+//     NOTHING to the reach, not "no narrowing"; if every live grant is unreadable the actor reaches nothing, which is
+//     expressed as {@link NO_REACH_ID} in both dimensions (never `[]`: several evaluators read an empty list as
+//     "org-wide"). Migration 1050 also CHECKs the stored shape and quarantines legacy blobs, so this is the second wall.
+//   - Writers that bypass the route (org-spine-facts, f2f-clinician-roles, proposed-role-attacher, auditor-access-grant,
+//     SQL seeds) are bound by the DB CHECK on shape only; the semantic rules (subset of the membership defaults,
+//     role.scope_level, expiry) stay route-only. That is safe because the read caps every reach to the membership
+//     defaults: a direct writer can grant a scope no wider than the defaults, never wider.
 // All pure: the route validates with {@link validateRoleGrant}; the actor-enrichment reader reduces with
 // {@link effectiveReach}. Both live here so the write rule and the read rule cannot drift.
 
@@ -39,19 +52,45 @@ export const TIME_BOUND_ROLE_CATEGORY = "temporary_special";
 
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SCOPE_KEYS: ReadonlySet<string> = new Set(["providerEntityIds", "locationIds"]);
+/**
+ * The one extra key a STORED scope may carry: the auditor-link grant stamps `engagementId` as provenance (the engagement
+ * itself is enforced from the session / `auditor_engagement`, never from this key). It is not a reach dimension, and a
+ * SUBMITTED scope (the assign route) may not carry it.
+ */
+const STORED_ONLY_KEYS: ReadonlySet<string> = new Set(["engagementId"]);
+
+/**
+ * A uuid that matches no real location or provider entity. {@link effectiveReach} stamps it in both dimensions when no
+ * live grant is readable, so every `includes`-style scope predicate denies and no `length === 0 => org-wide` reading applies.
+ */
+export const NO_REACH_ID = "00000000-0000-0000-0000-000000000000";
+
+const PATIENT_SCOPE_MESSAGE =
+  "patient-level access is granted through caseload assignment (patient.assign), not role scope";
 
 export type GrantScopeParse =
   | { readonly ok: true; readonly scope: RoleGrantScope }
-  | { readonly ok: false; readonly reason: string };
+  | { readonly ok: false; readonly reason: string; readonly code?: "PATIENT_SCOPE_UNSUPPORTED" };
 
-/** Parse whatever is stored / submitted into a {@link RoleGrantScope}. `null`, `undefined` and `{}` mean "no narrowing". */
-export function parseRoleGrantScope(raw: unknown): GrantScopeParse {
+/**
+ * Parse whatever is stored / submitted into a {@link RoleGrantScope}. `null`, `undefined` and `{}` mean "no narrowing".
+ * `source: "stored"` additionally tolerates the auditor grant's provenance `engagementId` (ignored).
+ */
+export function parseRoleGrantScope(
+  raw: unknown,
+  source: "submitted" | "stored" = "submitted",
+): GrantScopeParse {
   if (raw === null || raw === undefined) return { ok: true, scope: {} };
   if (typeof raw !== "object" || Array.isArray(raw)) {
     return { ok: false, reason: "scope must be an object" };
   }
   const record = raw as Record<string, unknown>;
-  const unknownKey = Object.keys(record).find((k) => !SCOPE_KEYS.has(k));
+  if (Object.hasOwn(record, "patientIds")) {
+    return { ok: false, reason: PATIENT_SCOPE_MESSAGE, code: "PATIENT_SCOPE_UNSUPPORTED" };
+  }
+  const unknownKey = Object.keys(record).find(
+    (k) => !SCOPE_KEYS.has(k) && !(source === "stored" && STORED_ONLY_KEYS.has(k)),
+  );
   if (unknownKey !== undefined) {
     return {
       ok: false,
@@ -76,6 +115,7 @@ export function parseRoleGrantScope(raw: unknown): GrantScopeParse {
 export interface GrantViolation {
   readonly code:
     | "SCOPE_MALFORMED"
+    | "PATIENT_SCOPE_UNSUPPORTED"
     | "ROLE_NOT_ASSIGNABLE"
     | "SCOPE_WIDER_THAN_ROLE"
     | "ROLE_REQUIRES_NARROWING"
@@ -100,7 +140,7 @@ const subset = (ids: readonly string[], within: readonly string[]): boolean =>
 export function validateRoleGrant(input: GrantInput): readonly GrantViolation[] {
   const violations: GrantViolation[] = [];
   const parsed = parseRoleGrantScope(input.scope);
-  if (!parsed.ok) return [{ code: "SCOPE_MALFORMED", message: parsed.reason }];
+  if (!parsed.ok) return [{ code: parsed.code ?? "SCOPE_MALFORMED", message: parsed.reason }];
   const { scope } = parsed;
   const pe = scope.providerEntityIds ?? [];
   const loc = scope.locationIds ?? [];
@@ -155,28 +195,56 @@ export function validateRoleGrant(input: GrantInput): readonly GrantViolation[] 
   return violations;
 }
 
+/** The reduced reach plus how many live grants were unreadable and therefore contributed nothing. */
+export interface ReachWithDiagnostics {
+  readonly reach: MembershipReach;
+  readonly malformedGrantCount: number;
+}
+
 /**
  * The reach a member actually has, reduced from their LIVE role grants. `grants` are the live (enabled, unexpired,
- * conferring) grants' stored scopes; a malformed stored scope reads as "no narrowing" for that role (it can never
- * WIDEN: the result is always capped to the membership defaults when those are set).
+ * conferring) grants' stored scopes. A stored scope that fails to parse contributes NOTHING (fail closed: it neither
+ * narrows nor widens), and when no live grant is readable the reach is {@link NO_REACH_ID} in both dimensions. The
+ * result is always capped to the membership defaults when those are set.
  */
-export function effectiveReach(
+export function effectiveReachWithDiagnostics(
   defaults: MembershipReach,
   grants: readonly { readonly scope: unknown }[],
-): MembershipReach {
-  if (grants.length === 0) return defaults;
+): ReachWithDiagnostics {
+  if (grants.length === 0) return { reach: defaults, malformedGrantCount: 0 };
   const pe = new Set<string>();
   const loc = new Set<string>();
+  let malformedGrantCount = 0;
   for (const grant of grants) {
-    const parsed = parseRoleGrantScope(grant.scope);
-    const scope = parsed.ok ? parsed.scope : {};
-    for (const id of scope.providerEntityIds ?? defaults.providerEntityIds) pe.add(id);
-    for (const id of scope.locationIds ?? defaults.locationIds) loc.add(id);
+    const parsed = parseRoleGrantScope(grant.scope, "stored");
+    if (!parsed.ok) {
+      malformedGrantCount += 1;
+      continue;
+    }
+    for (const id of parsed.scope.providerEntityIds ?? defaults.providerEntityIds) pe.add(id);
+    for (const id of parsed.scope.locationIds ?? defaults.locationIds) loc.add(id);
+  }
+  if (malformedGrantCount === grants.length) {
+    return {
+      reach: { providerEntityIds: [NO_REACH_ID], locationIds: [NO_REACH_ID] },
+      malformedGrantCount,
+    };
   }
   const cap = (ids: Set<string>, within: readonly string[]): readonly string[] =>
     [...ids].filter((id) => within.length === 0 || within.includes(id));
   return {
-    providerEntityIds: cap(pe, defaults.providerEntityIds),
-    locationIds: cap(loc, defaults.locationIds),
+    reach: {
+      providerEntityIds: cap(pe, defaults.providerEntityIds),
+      locationIds: cap(loc, defaults.locationIds),
+    },
+    malformedGrantCount,
   };
+}
+
+/** {@link effectiveReachWithDiagnostics} without the diagnostics. */
+export function effectiveReach(
+  defaults: MembershipReach,
+  grants: readonly { readonly scope: unknown }[],
+): MembershipReach {
+  return effectiveReachWithDiagnostics(defaults, grants).reach;
 }

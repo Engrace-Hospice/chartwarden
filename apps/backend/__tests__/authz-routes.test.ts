@@ -900,6 +900,17 @@ describe("GAP-007 role grant scope and expiry rules", () => {
     await app.close();
   });
 
+  it("patient-level scope is refused with its own code (patient reach is the caseload model)", async () => {
+    const { app } = makeServer({ extraRoles: [orgRole] });
+    const res = await assign(app, {
+      roleId: "role_org",
+      scope: { patientIds: [LOC_X] },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(issues(res)).toEqual(["PATIENT_SCOPE_UNSUPPORTED"]);
+    await app.close();
+  });
+
   it("a patient-scoped role is not grantable to a membership", async () => {
     const { app } = makeServer({ extraRoles: [patientRole] });
     expect(issues(await assign(app, { roleId: "role_pt" }))).toContain("ROLE_NOT_ASSIGNABLE");

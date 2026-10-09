@@ -24,6 +24,10 @@ export const membershipRoles = pgTable(
       .notNull()
       .references(() => roles.id, { onDelete: "restrict" }),
     scope: jsonb("scope").notNull().default({}), // narrower PE/location ids than role default
+    // GAP-007 (migration 1050): the original blob of a row whose `scope` did not conform, quarantined when the row
+    // was expired and reset to {}. `scope` itself is CHECKed (membership_role_scope_shape) to {providerEntityIds?,
+    // locationIds?, engagementId?} - see packages/auth/src/roles/grant-scope.ts.
+    scopeLegacy: jsonb("scope_legacy"),
     grantedBy: uuid("granted_by").references(() => users.id, { onDelete: "set null" }),
     grantedAt: timestamp("granted_at", { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp("expires_at", { withTimezone: true }), // time-bound roles

@@ -8,7 +8,8 @@
 // filter/access/scope predicates are pushed to SQL so pagination is exact (LIMIT n+1).
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { type SQL, and, desc, eq, gte, lte, or, sql } from "drizzle-orm";
+import { type SQL, and, desc, eq, getTableColumns, gte, lte, or, sql } from "drizzle-orm";
+import { rowHeldByActiveLegalHold } from "../lifecycle/hold-overlay";
 import {
   ACCOUNTING_TPO_EXCLUSION_NOTE,
   type AccountingFilter,
@@ -29,7 +30,7 @@ import {
 const A = schema.auditEvents;
 
 /** Project a Drizzle `audit_event` row into the AuditEventRecord DTO (createdAt as ISO string). */
-function toRecord(r: typeof A.$inferSelect): AuditEventRecord {
+function toRecord(r: typeof A.$inferSelect & { legalHold?: boolean }): AuditEventRecord {
   return {
     id: r.id,
     createdAt: r.createdAt.toISOString(),
@@ -46,8 +47,12 @@ function toRecord(r: typeof A.$inferSelect): AuditEventRecord {
     after: (r.after as Record<string, unknown> | null) ?? null,
     context: (r.context as Record<string, unknown>) ?? {},
     retentionClass: r.retentionClass as AuditEventRecord["retentionClass"],
+    ...(r.legalHold === undefined ? {} : { legalHold: r.legalHold }),
   };
 }
+
+/** True while an ACTIVE legal hold covers the row: an overlay entry whose hold is still 'active' (ADR-0051). */
+const heldByActiveLegalHold = rowHeldByActiveLegalHold() as SQL<boolean>;
 
 /** Newest-first "strictly older than the cursor" predicate: (createdAt, id) < (cAt, cId). */
 function afterCursor(cursor?: string): SQL | undefined {
@@ -129,7 +134,7 @@ export function createDbAuditQuery(db: DbClient): AuditQuery {
     limit: number,
   ): Promise<AuditEventRecord[]> => {
     const rows = await tx
-      .select()
+      .select({ ...getTableColumns(A), legalHold: heldByActiveLegalHold })
       .from(A)
       .where(where)
       .orderBy(desc(A.createdAt), desc(A.id))

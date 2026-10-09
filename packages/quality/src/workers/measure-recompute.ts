@@ -277,6 +277,7 @@ export async function handleMeasureRecompute(
     // numeric(6,4) → string|null; the `insufficient_n` band carries a null rate (V).
     ratio: result.rate === null ? null : result.rate.toFixed(4),
     thresholdMet: result.thresholdMet,
+    bandColor: result.bandColor,
     computationSnapshot: result.computationSnapshot,
     snapshotContentHash,
     calculatorVersion: registration.calculatorVersion,
@@ -330,9 +331,14 @@ export async function handleMeasureRecompute(
   };
 }
 
-/** Recover the public band of a persisted value row (the row carries numerator/denominator/thresholdMet,
- *  not the band string; `ratio === null` ⇒ `insufficient_n`, else `thresholdMet` drives green/red). */
-function bandOf(row: Pick<schema.QualityMeasureValue, "ratio" | "thresholdMet">): string {
+/** The public band of a persisted value row. A row written since migration 1051 carries it (`bandColor`). An older
+ *  row has only numerator/denominator/thresholdMet, so its band is reconstructed (`ratio === null` ⇒ `insufficient_n`,
+ *  else `thresholdMet` drives green/red) - which cannot tell yellow from red, and is why the column exists. */
+export function bandOf(
+  row: Pick<schema.QualityMeasureValue, "ratio" | "thresholdMet"> &
+    Partial<Pick<schema.QualityMeasureValue, "bandColor">>,
+): string {
+  if (row.bandColor) return row.bandColor;
   if (row.ratio === null) return "insufficient_n";
   if (row.thresholdMet === null) return "green";
   return row.thresholdMet ? "green" : "red";

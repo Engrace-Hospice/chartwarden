@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 // apps/backend/src/modules/29-external-interfaces/routes/store.ts — M29-T08 route-facing repo PORT + DTOs
 // + in-memory impl.
 //
@@ -12,7 +13,7 @@
 // typed 501: the compliance decrypt of a stored HL7 payload (needs the per-tenant DEK), and the manual
 // bind / discard of an UNMATCHED lab result (materializing a `lab_observation` from a stored wire message —
 // T-29.13). Every such route still walks the full guard + actor chain; only the effect is deferred.
-import { randomUUID } from "node:crypto";
+import type { QuietWindow } from "../listener/quiet-window";
 
 import {
   ConflictError,
@@ -82,6 +83,10 @@ export interface FeedDetail extends FeedSummary {
    *  never auto-re-sent), and the feed's own `in_flight` lease in seconds (null = the platform default). */
   readonly receiverDedupesControlId: boolean;
   readonly inFlightLeaseSeconds: number | null;
+  /** GAP-043 (§4.11.5) - per-feed listener-down threshold in seconds, 60..300 (tighten-only; null = the 5 minute default). */
+  readonly listenerDownThresholdSeconds: number | null;
+  /** GAP-043 - windows in which silence is expected and never trips the listener-down breaker (null = none). */
+  readonly expectedQuietWindows: readonly QuietWindow[] | null;
   readonly proposedByMembershipId: string;
   readonly approvedByOpId: string | null;
   readonly approvedByComplId: string | null;
@@ -345,6 +350,10 @@ export interface UpdateFeedArgs {
   readonly receiverDedupesControlId?: boolean;
   /** `null` clears the per-feed lease back to the platform default. */
   readonly inFlightLeaseSeconds?: number | null;
+  /** GAP-043 - 60..300 (tighten-only); `null` clears it back to the 5 minute default. */
+  readonly listenerDownThresholdSeconds?: number | null;
+  /** GAP-043 - already validated (`parseQuietWindows`); `null` clears. */
+  readonly expectedQuietWindows?: readonly QuietWindow[] | null;
 }
 
 /** The route-facing repo the §4.1/§4.2 routes run against. Every method is org-scoped by its first arg. */
@@ -640,6 +649,8 @@ export function createInMemoryM29Store(
       mshReceivingFacility: feed.mshReceivingFacility ?? null,
       receiverDedupesControlId: feed.receiverDedupesControlId ?? false,
       inFlightLeaseSeconds: feed.inFlightLeaseSeconds ?? null,
+      listenerDownThresholdSeconds: feed.listenerDownThresholdSeconds ?? null,
+      expectedQuietWindows: feed.expectedQuietWindows ?? null,
       proposedByMembershipId: feed.proposedByMembershipId ?? "seed-op",
       approvedByOpId: feed.approvedByOpId ?? null,
       approvedByComplId: feed.approvedByComplId ?? null,
@@ -765,6 +776,8 @@ export function createInMemoryM29Store(
         mshReceivingFacility: args.mshReceivingFacility ?? null,
         receiverDedupesControlId: args.receiverDedupesControlId ?? false,
         inFlightLeaseSeconds: args.inFlightLeaseSeconds ?? null,
+        listenerDownThresholdSeconds: null,
+        expectedQuietWindows: null,
         proposedByMembershipId: membershipId,
         approvedByOpId: membershipId,
         createdAt: ts,
@@ -794,6 +807,14 @@ export function createInMemoryM29Store(
           args.inFlightLeaseSeconds === undefined
             ? f.inFlightLeaseSeconds
             : args.inFlightLeaseSeconds,
+        listenerDownThresholdSeconds:
+          args.listenerDownThresholdSeconds === undefined
+            ? f.listenerDownThresholdSeconds
+            : args.listenerDownThresholdSeconds,
+        expectedQuietWindows:
+          args.expectedQuietWindows === undefined
+            ? f.expectedQuietWindows
+            : args.expectedQuietWindows,
       });
       return feedDetailOf(f);
     },

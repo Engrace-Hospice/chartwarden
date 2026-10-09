@@ -3,7 +3,7 @@
 // retention-driven destruction (§10.6). Org-scoped on organization_id (standard app.org_id
 // RLS lands in M4-T05); not a PHI table itself — `criteria` carries only references/filters,
 // so the PE/location columns do not apply (mirrors break_glass_event).
-import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bigint, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { legalHoldStatus } from "../enums";
 import { organizations } from "./organizations";
 import { users } from "./users";
@@ -22,6 +22,11 @@ export const legalHolds = pgTable(
     appliedBy: uuid("applied_by").references(() => users.id),
     appliedAt: timestamp("applied_at", { withTimezone: true }).notNull().defaultNow(),
     releasedAt: timestamp("released_at", { withTimezone: true }),
+    // GAP-008 (migration 1053) - the overlay materialiser's progress. `pending` until the first window is written;
+    // supremacy never depends on it (the structural group check and the DELETE guard cover un-materialised rows).
+    materialisationStatus: text("materialisation_status").notNull().default("pending"),
+    materialisedThrough: timestamp("materialised_through", { withTimezone: true }),
+    materialisedCount: bigint("materialised_count", { mode: "number" }).notNull().default(0),
   },
   (t) => ({
     orgIdx: index("legal_hold_org_idx").on(t.organizationId),

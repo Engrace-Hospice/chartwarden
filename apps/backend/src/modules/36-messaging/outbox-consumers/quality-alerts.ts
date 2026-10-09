@@ -21,10 +21,16 @@
 // NO PHI: ids, enums, counts and instants only. A malformed event THROWS (relay retry -> DLQ — a visible
 // failure, never a silently dropped safety page).
 import type { AlertEmitter, AlertSeverity } from "@wardenx/messaging";
+import {
+  M30_ABUSE_INCIDENT_KIND,
+  M30_SENTINEL_INCIDENT_SEVERITY,
+  qualityAlertCorrelationId,
+} from "@wardenx/types";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,
 } from "../../../bootstrap/outbox-dispatcher";
+import { type FallbackWarn, emitWithRecipientFallback } from "../alert-recipient-fallback";
 
 export const M36_QUALITY_ALERT_CONSUMER = "m36.quality-alerts" as const;
 
@@ -35,10 +41,8 @@ export const M36_QUALITY_ALERT_EVENT_TYPES = [
   "m30.cahps.sample_ready",
 ] as const;
 
-/** The incident severity the spec calls a "sentinel" event (`m30_incident_severity`). */
-const SENTINEL_SEVERITY = "critical";
-/** The incident kind that raises the abuse-allegation alert (`m30_incident_kind`). */
-const ABUSE_KIND = "allegation_of_abuse";
+// The sentinel / abuse predicates live in @wardenx/types (m30-alert-cadence.ts) because the M30 repeat sweep replays
+// them against the owning tables: the consumer and the sweep must agree on what a sentinel is.
 
 export interface QualityAlertPlan {
   readonly alertType: string;
@@ -68,7 +72,7 @@ function incidentPlans(name: string, p: Record<string, unknown>): QualityAlertPl
     deepLink: `/quality/incidents/${incidentId}`,
   };
   const plans: QualityAlertPlan[] = [];
-  if (severity === SENTINEL_SEVERITY) {
+  if (severity === M30_SENTINEL_INCIDENT_SEVERITY) {
     plans.push({
       alertType: "m30.alerts.incident_sentinel",
       severity: "critical",
@@ -76,7 +80,7 @@ function incidentPlans(name: string, p: Record<string, unknown>): QualityAlertPl
       safe: { ...safe, message: "A sentinel-severity incident was submitted." },
     });
   }
-  if (kind === ABUSE_KIND) {
+  if (kind === M30_ABUSE_INCIDENT_KIND) {
     plans.push({
       alertType: "m30.alerts.incident_abuse_allegation",
       severity: "critical",
@@ -159,19 +163,29 @@ export function planQualityAlerts(event: DispatchableOutboxEvent): readonly Qual
   }
 }
 
-export function buildM36QualityAlertConsumer(alerts: AlertEmitter): OutboxConsumerBinding {
+export function buildM36QualityAlertConsumer(
+  alerts: AlertEmitter,
+  warn?: FallbackWarn,
+): OutboxConsumerBinding {
   return {
     consumerName: M36_QUALITY_ALERT_CONSUMER,
     consumerModule: "m36",
     eventTypes: M36_QUALITY_ALERT_EVENT_TYPES,
     async handle(event) {
       for (const plan of planQualityAlerts(event)) {
-        await alerts.emit(event.organizationId, {
-          eventType: plan.alertType,
-          severity: plan.severity,
-          correlationId: `outbox:${plan.alertType}:${plan.correlationKey}`,
-          payload: { eventType: plan.alertType, ...plan.safe },
-        });
+        // Bucket 0 of the repeat cadence (the M30 `alert_repeat_sweep` raises buckets >= 1 from the same id).
+        // A page that resolves nobody is re-routed to the tenant admins rather than dropped (see the fallback).
+        await emitWithRecipientFallback(
+          alerts,
+          event.organizationId,
+          {
+            eventType: plan.alertType,
+            severity: plan.severity,
+            correlationId: qualityAlertCorrelationId(plan.alertType, plan.correlationKey),
+            payload: { eventType: plan.alertType, ...plan.safe },
+          },
+          warn,
+        );
       }
     },
   };

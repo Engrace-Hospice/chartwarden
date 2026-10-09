@@ -52,6 +52,7 @@ const EXPORT_COLUMNS = [
   "outcome",
   "severity",
   "retentionClass",
+  "legalHold",
 ] as const;
 
 type ExportColumn = (typeof EXPORT_COLUMNS)[number];
@@ -70,6 +71,8 @@ function toRow(record: AuditEventRecord): Record<ExportColumn, string> {
     outcome: record.outcome,
     severity: record.severity,
     retentionClass: record.retentionClass,
+    // GAP-008: the hashed base class is unchanged by a hold; this column is how an export shows a row as held.
+    legalHold: record.legalHold === true ? "true" : "false",
   };
 }
 

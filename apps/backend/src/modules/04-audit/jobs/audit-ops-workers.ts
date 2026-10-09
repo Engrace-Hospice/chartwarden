@@ -17,11 +17,15 @@ import {
   runAuditFanout,
   runBuildExportSweepForOrg,
   runDestructionSweepForOrg,
+  runLegalHoldMaterialiseForOrg,
   runRetentionScanForOrg,
 } from "./audit-job-ops";
 
 const EXPORT_SWEEP_CRON = "*/2 * * * *";
 const DESTRUCTION_SWEEP_CRON = "*/10 * * * *";
+/** GAP-008 - the legal-hold overlay materialiser (a sweep, like export / destruction). Cheap when caught up. */
+export const LEGAL_HOLD_MATERIALISE_QUEUE = "audit.legal_hold_materialise";
+const LEGAL_HOLD_MATERIALISE_CRON = "*/5 * * * *";
 
 /** The platform job id the active-org enumeration enters `withPlatformContext` under (registered at boot). */
 export const M4_AUDIT_JOBS_PLATFORM_JOB_ID = "m4.audit_jobs";
@@ -37,6 +41,18 @@ export interface AuditOpsWorkerDeps {
 export function registerAuditOpsWorkers(deps: AuditOpsWorkerDeps): Worker[] {
   const { ops, connection } = deps;
   const workers: Worker[] = [
+    // GAP-008: always constructed (it needs only the tenant pool) - holds must be materialised whether or not a destruction
+    // credential is provisioned, because reporting and the DELETE guard read the overlay.
+    new Worker(
+      LEGAL_HOLD_MATERIALISE_QUEUE,
+      () =>
+        runAuditFanout(
+          ops.listOrgs,
+          (o) => runLegalHoldMaterialiseForOrg(ops, o),
+          "legal_hold_materialise",
+        ),
+      { connection, concurrency: 1 },
+    ),
     new Worker(
       AUDIT_QUEUES.retentionScan,
       () => runAuditFanout(ops.listOrgs, (o) => runRetentionScanForOrg(ops, o), "retention_scan"),
@@ -103,6 +119,7 @@ export async function scheduleAuditOpsJobs(
   opts: { exports: boolean; destruction: boolean; integrity?: boolean },
 ): Promise<Queue[]> {
   const specs: { name: string; pattern: string }[] = [
+    { name: LEGAL_HOLD_MATERIALISE_QUEUE, pattern: LEGAL_HOLD_MATERIALISE_CRON },
     { name: AUDIT_QUEUES.retentionScan, pattern: AUDIT_JOB_SCHEDULES.retentionScan },
     ...(opts.exports ? [{ name: AUDIT_QUEUES.buildExport, pattern: EXPORT_SWEEP_CRON }] : []),
     ...(opts.destruction

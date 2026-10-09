@@ -24,8 +24,13 @@ const FEED: SupervisorFeedDescriptor = {
   sendingFacilityAllowlist: [],
 };
 
-function harness(opts: { snapshot: FeedHealthSnapshot; bound: boolean }) {
+function harness(opts: {
+  snapshot: FeedHealthSnapshot;
+  bound: boolean;
+  watcherOwnsListenerDown?: boolean;
+}) {
   const records: FeedHealthRecord[] = [];
+  const heartbeats: { bound: boolean; at: Date }[] = [];
   const alerts: SupervisorAlert[] = [];
   const log = vi.fn();
   const deps = {
@@ -36,14 +41,23 @@ function harness(opts: { snapshot: FeedHealthSnapshot; bound: boolean }) {
       record: async (_f: SupervisorFeedDescriptor, r: FeedHealthRecord) => {
         records.push(r);
       },
+      heartbeat: async (
+        _f: SupervisorFeedDescriptor,
+        fact: { readonly bound: boolean; readonly at: Date },
+      ) => {
+        heartbeats.push({ bound: fact.bound, at: fact.at });
+      },
     },
+    ...(opts.watcherOwnsListenerDown === undefined
+      ? {}
+      : { watcherOwnsListenerDown: opts.watcherOwnsListenerDown }),
     dispatchAlert: async (a: SupervisorAlert) => {
       alerts.push(a);
     },
     now: () => NOW,
     log,
   };
-  return { deps, records, alerts, log };
+  return { deps, records, alerts, log, heartbeats };
 }
 
 const SILENT_MS = NOW.getTime() - LISTENER_DOWN_THRESHOLD_FLOOR_MS - 60_000;
@@ -91,6 +105,32 @@ describe("runFeedHealthTick", () => {
     expect(out.recovered).toEqual(["feed-1"]);
     expect(h.records[0]).toMatchObject({ state: "closed", upSecondsDelta: 30 });
     expect(h.alerts).toHaveLength(0);
+  });
+
+  it("leaves a heartbeat fact (bound or not) every tick - the watcher decides from it", async () => {
+    const bound = harness({ snapshot: { state: "closed", lastFrameAtMs: SILENT_MS }, bound: true });
+    await runFeedHealthTick(bound.deps, 30);
+    expect(bound.heartbeats).toEqual([{ bound: true, at: NOW }]);
+    const unbound = harness({
+      snapshot: { state: "closed", lastFrameAtMs: SILENT_MS },
+      bound: false,
+    });
+    await runFeedHealthTick(unbound.deps, 30);
+    expect(unbound.heartbeats).toEqual([{ bound: false, at: NOW }]);
+  });
+
+  it("hands the page and the breaker state to the watcher when it owns listener_down", async () => {
+    const h = harness({
+      snapshot: { state: "closed", lastFrameAtMs: SILENT_MS },
+      bound: false,
+      watcherOwnsListenerDown: true,
+    });
+    const out = await runFeedHealthTick(h.deps, 30);
+    expect(out.wentDown).toEqual(["feed-1"]); // still observed and reported in the summary
+    expect(h.alerts).toHaveLength(0); // ... but NOT paged from here
+    expect(h.records[0]).not.toHaveProperty("state"); // ... and the rollup state is left to the watcher
+    expect(h.records[0]).toMatchObject({ downSecondsDelta: 30, upSecondsDelta: 0 });
+    expect(h.heartbeats).toHaveLength(1); // the fact is still left behind
   });
 
   it("isolates a per-feed store failure and reports it", async () => {
