@@ -78,7 +78,7 @@ const SESSION = {
   organizationId: "org-1",
   membershipId: "membership-1",
   roles: ["idg_coordinator"],
-  permissions: [],
+  permissions: ["idg.read", "idg.attend", "idg.coordinate", "idg.decide", "idg.act"],
   isAdmin: false,
 };
 const mount = () =>

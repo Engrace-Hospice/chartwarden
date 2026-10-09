@@ -28,6 +28,7 @@
 // replay with an altered org cannot act cross-tenant (§7.12).
 import type { AuditContext, AuditExecutor } from "@wardenx/audit";
 import {
+  hasOrgWideScope,
   requireAbac,
   requirePermission,
   requireSession,
@@ -211,6 +212,8 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       membershipId: membership?.membershipId ?? null,
       displayName: membership?.displayName ?? null,
       roles: [...actor.roles],
+      locationIds: [...request.context.locationIds],
+      orgWidePatientScope: hasOrgWideScope(actor.roles),
       isAdmin: membership?.isAdmin ?? false,
       permissions,
     };

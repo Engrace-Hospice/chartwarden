@@ -135,6 +135,7 @@ export type {
   NotificationPreferencesInput,
   DeliveryEndpointView,
   DeliveryEndpointInput,
+  DmEligibleStaffMember,
   AlertInboxItem,
 } from "./interfaces/route-service";
 export {

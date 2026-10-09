@@ -30,6 +30,7 @@ import type {
   ChannelSummary,
   DeliveryEndpointInput,
   DeliveryEndpointView,
+  DmEligibleStaffMember,
   MessagingRouteService,
   NotificationPreferencesInput,
   NotificationPreferencesView,
@@ -132,6 +133,10 @@ interface AlertRuleOverrideRow {
 
 /** Seed shapes — the integration test injects channels/members/messages/alerts up front. */
 export interface InMemoryMessagingSeed {
+  readonly eligibleStaff?: readonly (DmEligibleStaffMember & {
+    orgId: string;
+    status?: "active" | "suspended" | "revoked";
+  })[];
   readonly channels?: readonly {
     channelId: string;
     orgId: string;
@@ -174,6 +179,16 @@ export function createInMemoryMessagingService(
   const overrides = new Map<string, AlertRuleOverrideRow>(); // key: `${orgId}:${eventType}`
   const readPointers = new Map<string, string>(); // `${orgId}:${userId}:${channelId}` -> createdAt
   const inbox = new Map<string, AlertInboxItem[]>(); // `${orgId}:${userId}` -> items
+  const eligibleStaff = new Map(
+    (options.seed?.eligibleStaff ?? []).map((staff) => [`${staff.orgId}:${staff.userId}`, staff]),
+  );
+
+  const assertEligibleStaff = (orgId: string, userId: string): void => {
+    const staff = eligibleStaff.get(`${orgId}:${userId}`);
+    if (!staff || (staff.status ?? "active") !== "active") {
+      throw new NotFoundError("eligible staff member", userId);
+    }
+  };
 
   for (const c of options.seed?.channels ?? []) {
     const members = new Map<string, { role: ChannelMemberRole; source: ChannelMemberSource }>();
@@ -334,10 +349,30 @@ export function createInMemoryMessagingService(
       readPointers.set(`${orgId}:${input.userId}:${m.channelId}`, m.createdAt);
     },
 
+    async searchDmEligibleStaff(orgId, userId, query) {
+      assertEligibleStaff(orgId, userId);
+      const needle = query.trim().toLowerCase();
+      return [...eligibleStaff.values()]
+        .filter(
+          (staff) =>
+            staff.orgId === orgId &&
+            staff.userId !== userId &&
+            (staff.status ?? "active") === "active" &&
+            (!needle ||
+              staff.displayName.toLowerCase().includes(needle) ||
+              staff.roles.some((role) => role.toLowerCase().includes(needle))),
+        )
+        .sort((a, b) => a.displayName.localeCompare(b.displayName))
+        .slice(0, 25)
+        .map(({ userId: id, displayName, roles }) => ({ userId: id, displayName, roles }));
+    },
+
     async openDm(orgId, userId, peerUserId) {
       if (peerUserId === userId) {
         throw new ConflictError("cannot open a DM with yourself");
       }
+      assertEligibleStaff(orgId, userId);
+      assertEligibleStaff(orgId, peerUserId);
       for (const ch of channels.values()) {
         if (
           ch.orgId === orgId &&
@@ -374,6 +409,8 @@ export function createInMemoryMessagingService(
     async addMember(orgId, input) {
       const ch = channelOr404(orgId, input.channelId);
       await assertMayManage(orgId, input.actor, ch);
+      if (ch.kind === "dm") throw new ForbiddenError("direct-message membership cannot be changed");
+      assertEligibleStaff(orgId, input.userId);
       ch.members.set(input.userId, { role: input.role ?? "member", source: "manual" });
     },
 
@@ -424,6 +461,8 @@ export function createInMemoryMessagingService(
     },
 
     async canViewChannel(orgId, userId, channelId) {
+      const staff = eligibleStaff.get(`${orgId}:${userId}`);
+      if (!staff || (staff.status ?? "active") !== "active") return false;
       const ch = channels.get(channelId);
       if (!ch || ch.orgId !== orgId) return false;
       // §4.5: the slice resolves visibility by the channel-member check (the "otherwise" branch);
@@ -458,6 +497,7 @@ export function createInMemoryMessagingService(
         throw new WardenXError("VACATION_FORWARD_SELF", "cannot forward to yourself", 409);
       }
       if (input.vacationForwardToUserId) {
+        assertEligibleStaff(orgId, input.vacationForwardToUserId);
         const target = preferences.get(`${orgId}:${input.vacationForwardToUserId}`);
         if (target?.vacationForwardToUserId === userId) {
           throw new WardenXError(

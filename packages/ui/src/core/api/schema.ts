@@ -12890,6 +12890,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/dm/staff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search active staff eligible for a direct conversation */
+        get: operations["getApiV1MessagingDmStaff"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/messages/{id}": {
         parameters: {
             query?: never;
@@ -32073,6 +32090,8 @@ export interface operations {
                         membershipId: string | null;
                         displayName: string | null;
                         roles: string[];
+                        locationIds: string[];
+                        orgWidePatientScope: boolean;
                         isAdmin: boolean;
                         permissions: string[];
                     };
@@ -50226,7 +50245,7 @@ export interface operations {
     getApiV1IdgActionitems: {
         parameters: {
             query?: {
-                assignee?: string;
+                assignee?: "me" | string;
                 status?: "open" | "in_progress" | "completed" | "cancelled";
             };
             header?: never;
@@ -59339,6 +59358,36 @@ export interface operations {
                     "application/json": {
                         channelId: string;
                         created: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingDmStaff: {
+        parameters: {
+            query?: {
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        staff: {
+                            userId: string;
+                            displayName: string;
+                            roles: string[];
+                        }[];
                     };
                 };
             };
