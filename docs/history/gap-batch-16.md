@@ -1,6 +1,6 @@
 # Gap batch 16 — GAP-137 … GAP-150 (M21–M26, production topology)
 
-Source: `docs/audits/GAP_ANALYSIS_20261004.md` §3. All P2. No migration was needed (the 0450–0459 range is unused).
+Source: `docs/audits/GAP_ANALYSIS_20261004.md` §3 (file removed from the tree; see git history). All P2. No migration was needed (the 0450–0459 range is unused).
 
 | GAP | Module | Outcome |
 |---|---|---|

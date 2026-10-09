@@ -87,7 +87,7 @@ The missing pieces are:
 
 ### Missing Hospice Visit Lines
 
-Current [`claim assembly`](../../packages/billing/src/claim-assembly.ts) creates hospice level-of-care lines using:
+Current [`claim assembly`](../../packages/billing/src/claim-lines/) creates hospice level-of-care lines using:
 
 - `0651`
 - `0652`

@@ -1,6 +1,6 @@
 # WardenX Gap Analysis — 20261008
 
-Generated: 2026-10-08T12:00:00Z · Repository: WardenX (`/Users/fabrice/Apps/x2/wardenx4`, branch `main`) · Brief: `docs/audits/GAP_ANALYSIS_AUDIT_PROMPT.md` · Prior audit: `docs/audits/GAP_ANALYSIS_20261004.md`
+Generated: 2026-10-08T12:00:00Z · Repository: WardenX (`/Users/fabrice/Apps/x2/wardenx4`, branch `main`) · Brief: `docs/audits/GAP_ANALYSIS_AUDIT_PROMPT.md` · Prior audit: `docs/audits/GAP_ANALYSIS_20261004.md` (removed; see git history)
 
 This report merges the output of **14 first-pass workers** (module batches plus the fitness-kit, seams, ui-parity, security, docs and discovered-gap workers). No worker failed. A verification pass followed the first pass:
 
@@ -36,7 +36,7 @@ Where a verifier corrected a finding, the corrected gap, evidence and severity r
 
 ### Delta vs. 2026-10-04 audit
 
-The prior audit (`docs/audits/GAP_ANALYSIS_20261004.md`) had 208 gaps (6 P0, 106 P1, 76 P2, 20 P3). This run has 253 (0 P0, 70 P1, 136 P2, 47 P3).
+The prior audit (`docs/audits/GAP_ANALYSIS_20261004.md` (removed; see git history)) had 208 gaps (6 P0, 106 P1, 76 P2, 20 P3). This run has 253 (0 P0, 70 P1, 136 P2, 47 P3).
 
 **Findings that carry prior ids (regressions / incompletely fixed).** By tally, 66 of the 253 findings carry at least one `prior_gap_ids` value, covering 56 distinct prior ids. Nothing in the worker data reports a previously closed fix being reverted; these are residuals of fixes judged only part closed, or prior gaps still open. Source wording is kept in the Nature column.
 

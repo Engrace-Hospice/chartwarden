@@ -82,7 +82,7 @@ with 837I, 835 and eligibility all `ENROLLMENT_REQUIRED`. NGS `MFPWU` (13001) sh
     cancels (8)? If not, what is the supported path?
 18. Does your edit engine apply any hospice-specific rules (NOE timeliness, benefit-period dates,
     revenue-code/HCPCS pairing)? Our tests found none, and we treat our own validation as the gate.
-19. Volume estimate (you asked): to be supplied by Engrace before the call.
+19. Volume estimate (you asked): ADC 30-50; per month about 35-60 837I claims (incl. ~10% adjustments), 10-15 NOE, 10-15 NOTR, 25-45 eligibility checks; about 100-170 transactions in total.
 
 Evidence for the technical call: payloads that pass your edits are in the session scratchpad
 (`FINAL_837I_hospice_*`); synthetic data only.
