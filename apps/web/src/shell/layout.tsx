@@ -23,6 +23,7 @@ import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, JSX, ReactNode } from "react";
 import { Link, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { canSeeScreen, needsOrgSelection } from "./actor-session";
+import { ModuleNavigationTabs } from "./module-navigation-tabs";
 import { NotificationBell } from "./notification-bell";
 import { type NavEntry, activeEntryKey, buildPrimaryNav } from "./primary-nav";
 import type { WebScreenDescriptor } from "./screen-registry";
@@ -190,6 +191,7 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
           </div>
         </header>
         <main className="wx-main wx-no-scrollbar" ref={mainRef} tabIndex={-1}>
+          <ModuleNavigationTabs sections={sections} pathname={pathname} />
           <Outlet />
         </main>
       </div>
@@ -202,7 +204,7 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
  * One primary-nav row. An entry with several screens gets a disclosure chevron that reveals them;
  * it opens by itself while one of its screens is current.
  */
-function PrimaryNavEntry({
+export function PrimaryNavEntry({
   entry,
   active,
   pathname,
@@ -224,6 +226,11 @@ function PrimaryNavEntry({
           to={entry.href ?? "/"}
           className={active ? "wx-nav-link active" : "wx-nav-link"}
           aria-current={active && pathname === entry.href ? "page" : undefined}
+          aria-expanded={hasChildren ? open : undefined}
+          aria-controls={hasChildren ? listId : undefined}
+          onClick={() => {
+            if (hasChildren) setOpen((current) => !current);
+          }}
         >
           <Glyph name={entry.icon} size={18} strokeWidth={1.75} />
           <span>{entry.label}</span>

@@ -468,6 +468,88 @@
     overflow: auto;
   }
 
+  /* ---- Contextual module navigation ---------------------------------------
+     Route links (not ARIA tab panels) derived from the same permission-filtered screen set as the
+     primary sidebar. The frame supplies stable shell-level placement while each screen keeps its own
+     title, breadcrumbs, KPI strip, filters and workflow state. */
+  .wx-module-tabs-frame {
+    flex: none;
+    min-width: 0;
+    padding: 0 1.5rem;
+    border-bottom: 1px solid var(--color-card-border);
+    background: var(--color-surface-lowest);
+  }
+  .wx-module-tabs {
+    position: relative;
+    min-width: 0;
+  }
+  .wx-module-tabs::before,
+  .wx-module-tabs::after {
+    content: "";
+    position: absolute;
+    z-index: 1;
+    top: 0;
+    bottom: 1px;
+    width: 1rem;
+    pointer-events: none;
+  }
+  .wx-module-tabs::before {
+    left: 0;
+    background: linear-gradient(90deg, var(--color-surface-lowest), transparent);
+  }
+  .wx-module-tabs::after {
+    right: 0;
+    background: linear-gradient(270deg, var(--color-surface-lowest), transparent);
+  }
+  .wx-module-tabs-scroll {
+    display: flex;
+    align-items: stretch;
+    gap: 0.25rem;
+    min-width: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-behavior: smooth;
+    scroll-snap-type: x proximity;
+    padding: 0 0.75rem;
+    touch-action: pan-x;
+  }
+  .wx-module-tab {
+    position: relative;
+    flex: none;
+    scroll-snap-align: nearest;
+    padding: 0.875rem 0.75rem 0.75rem;
+    color: var(--color-on-surface-variant);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.25;
+    white-space: nowrap;
+  }
+  .wx-module-tab::after {
+    content: "";
+    position: absolute;
+    inset: auto 0.75rem -1px;
+    height: 2px;
+    border-radius: 9999px 9999px 0 0;
+    background: transparent;
+  }
+  .wx-module-tab:hover {
+    color: var(--color-on-surface);
+    background: color-mix(in srgb, var(--color-primary) 5%, transparent);
+    text-decoration: none;
+  }
+  .wx-module-tab.active {
+    color: var(--color-primary);
+  }
+  .wx-module-tab.active::after {
+    background: var(--color-primary);
+  }
+  .wx-module-tab:focus-visible {
+    z-index: 2;
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: -2px;
+    border-radius: var(--radius-sm);
+  }
+
   /* Every <table> scrolls horizontally instead of blowing out the layout at narrow widths
      (TASK-033 / UI-004). `display: block` on the outer element only — thead/tbody/tr/td keep
      their table-* display by default (the UA stylesheet sets those on the descendant tags, not
@@ -489,6 +571,9 @@
     .wx-header {
       flex-wrap: wrap;
       padding: 0.5rem 0.75rem;
+    }
+    .wx-module-tabs-frame {
+      padding: 0 0.5rem;
     }
     .wx-nav-toggle {
       display: inline-flex;

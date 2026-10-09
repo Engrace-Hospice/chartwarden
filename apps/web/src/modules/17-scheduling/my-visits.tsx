@@ -25,8 +25,8 @@ import { stashStepUpDraft, stepUpRedirectFor, takeStepUpDraft } from "../../shel
 import { mapSchedulingApiError } from "./scheduling-errors";
 import { VISIT_TONE, stateLabel } from "./scheduling-status";
 import {
+  NewVisitButton,
   NewVisitModal,
-  SchedulingNav,
   findLinkedEncounter,
   hasPermission,
 } from "./scheduling-workflow";
@@ -213,7 +213,7 @@ export function MyVisits(): JSX.Element {
         }
         filters={
           <div style={filterShellStyle}>
-            <SchedulingNav onNewVisit={() => setCreating(true)} />
+            <NewVisitButton onNewVisit={() => setCreating(true)} />
             {error ? (
               <div role="alert" style={errorBannerStyle}>
                 <span>{error}</span>

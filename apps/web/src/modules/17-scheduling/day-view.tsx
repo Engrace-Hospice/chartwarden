@@ -9,7 +9,7 @@ import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient }
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { NewVisitModal, SchedulingNav } from "./scheduling-workflow";
+import { NewVisitButton, NewVisitModal } from "./scheduling-workflow";
 import { type VisitRow, VisitRows } from "./visit-table";
 
 export function SchedulingDay(): JSX.Element {
@@ -62,7 +62,7 @@ export function SchedulingDay(): JSX.Element {
         }
         filters={
           <div style={filterShellStyle}>
-            <SchedulingNav onNewVisit={() => setCreating(true)} />
+            <NewVisitButton onNewVisit={() => setCreating(true)} />
           </div>
         }
         table={

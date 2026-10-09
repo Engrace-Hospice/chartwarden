@@ -19,8 +19,8 @@ import { VISIT_TONE, stateLabel } from "./scheduling-status";
 import {
   type EncounterLink,
   FieldValue,
+  NewVisitButton,
   NewVisitModal,
-  SchedulingNav,
   VisitActionPanel,
   type VisitView,
   findLinkedEncounter,
@@ -132,7 +132,7 @@ export function VisitDetail(): JSX.Element {
     : "/calendar";
   const header = (
     <PageHeader title="Visit" breadcrumb="Scheduling">
-      <SchedulingNav onNewVisit={() => setCreating(true)} />
+      <NewVisitButton onNewVisit={() => setCreating(true)} />
     </PageHeader>
   );
 

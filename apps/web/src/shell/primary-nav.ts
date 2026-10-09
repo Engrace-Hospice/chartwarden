@@ -212,6 +212,8 @@ export interface NavEntry {
   label: string;
   icon: GlyphName;
   href: string | null;
+  /** Every visible static destination owned by this entry, including its landing screen. */
+  screens: NavScreen[];
   children: NavScreen[];
   /** Every prefix that makes this entry "current": its own target, its claims, and `activeOn`. */
   matchPrefixes: string[];
@@ -270,14 +272,28 @@ export function buildPrimaryNav(
             entry.key === "home"
               ? "/"
               : (children.find((c) => c.path === entry.to)?.path ?? children[0]?.path ?? null);
+          const landingScreen = children.find((child) => child.path === landing);
+          const orderedScreens = landingScreen
+            ? [landingScreen, ...children.filter((child) => child.path !== landing)]
+            : children;
           return {
             key: entry.key,
             label: entry.label,
             icon: entry.icon,
             href: landing,
+            // Mirrors the rendered sidebar: entry-row destination first, disclosed children after it.
+            screens: orderedScreens,
             // The landing screen is the entry row itself; list only the others under it.
             children: children.filter((c) => c.path !== landing),
-            matchPrefixes: [entry.to, ...entry.claims, ...(entry.activeOn ?? [])],
+            // Include resolved child paths as well as declared claims. This keeps the parent current
+            // for fallback-owned screens such as `/telehealth`, whose route deliberately has no
+            // broad `/telehealth` claim of its own.
+            matchPrefixes: [
+              entry.to,
+              ...entry.claims,
+              ...(entry.activeOn ?? []),
+              ...children.map((child) => child.path),
+            ],
           };
         })
         .filter((e) => e.href !== null),
