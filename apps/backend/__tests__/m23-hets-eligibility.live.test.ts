@@ -13,6 +13,7 @@
  *
  *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m23:hets-eligibility:live
  */
+import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { calculateHipps } from "@wardenx/billing";
@@ -214,6 +215,24 @@ describe.skipIf(!DB_URL)("M23 HETS 270/271 eligibility — LIVE Postgres as ward
       [patient.history],
     );
     expect(events.rows).toHaveLength(1);
+
+    // SEC-H1: the HETS unlock is a disclosure too — one audit row naming THIS check (the id the row was appended under).
+    const checkId = events.rows[0].payload.checkId as string;
+    const disclosed = await admin.query(
+      `SELECT actor_kind, resource_kind, context::text AS ctx FROM audit_event
+        WHERE event_type='patient_payer.mbi_disclosed' AND context->>'subjectId'=$1`,
+      [checkId],
+    );
+    expect(disclosed.rows).toHaveLength(1);
+    expect(disclosed.rows[0]).toMatchObject({
+      actor_kind: "system",
+      resource_kind: "patient_payer",
+    });
+    expect(JSON.parse(disclosed.rows[0].ctx as string)).toMatchObject({
+      purpose: "hets_270_eligibility",
+      patientId: patient.history,
+    });
+    expect(disclosed.rows[0].ctx).not.toContain(MBIS.history);
   });
 
   it("flags an open election at another hospice — no next period number", async () => {
@@ -380,6 +399,7 @@ describe.skipIf(!DB_URL)("M23 HETS 270/271 eligibility — LIVE Postgres as ward
         organizationId: ORG_B,
         patientId: patient.history as string,
         onDate: AS_OF,
+        disclosure: { purpose: "hets_270_eligibility", subjectId: randomUUID() },
       }),
     ).toBeNull();
     const view = await buildDrizzleM23ReadService(handle.db as never, {
@@ -413,21 +433,9 @@ describe.skipIf(!DB_URL)("M23 HETS 270/271 eligibility — LIVE Postgres as ward
       expect(MBI_SHAPE.test(dump), `${name} carries an MBI-shaped token`).toBe(false);
     }
   });
-  it("H1: an MBI unlock with a disclosure lands a patient_payer.mbi_disclosed audit (ids + purpose, no MBI); one without writes none", async () => {
+  it("H1: an MBI unlock lands a patient_payer.mbi_disclosed audit (ids + purpose + actor, no MBI), scoped by its subject", async () => {
     const unlock = buildMbiUnlockReader(handle.db);
-    const claimId = "99999999-9999-9999-9999-999999999999";
-    const before = await admin.query(
-      "SELECT count(*)::int AS n FROM audit_event WHERE event_type='patient_payer.mbi_disclosed'",
-    );
-    await unlock.unlockForEligibility({
-      organizationId: ORG_A,
-      patientId: patient.history as string,
-      onDate: AS_OF,
-    });
-    const afterPlain = await admin.query(
-      "SELECT count(*)::int AS n FROM audit_event WHERE event_type='patient_payer.mbi_disclosed'",
-    );
-    expect(afterPlain.rows[0].n).toBe(before.rows[0].n);
+    const claimId = randomUUID();
     const identity = await unlock.unlockForEligibility({
       organizationId: ORG_A,
       patientId: patient.history as string,
@@ -437,7 +445,8 @@ describe.skipIf(!DB_URL)("M23 HETS 270/271 eligibility — LIVE Postgres as ward
     expect(identity?.mbi).toBe(MBIS.history);
     const { rows } = await admin.query(
       `SELECT actor_kind, actor_user_id, resource_kind, resource_id, severity, context::text AS ctx
-         FROM audit_event WHERE event_type='patient_payer.mbi_disclosed'`,
+         FROM audit_event WHERE event_type='patient_payer.mbi_disclosed' AND context->>'subjectId'=$1`,
+      [claimId],
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
@@ -463,5 +472,81 @@ describe.skipIf(!DB_URL)("M23 HETS 270/271 eligibility — LIVE Postgres as ward
         disclosure: { purpose: "claim_837i_submission", subjectId: claimId },
       }),
     ).toBeNull();
+  });
+
+  it("M2: a user-triggered disclosure records who", async () => {
+    const unlock = buildMbiUnlockReader(handle.db);
+    const subjectId = randomUUID();
+    await unlock.unlockForEligibility({
+      organizationId: ORG_A,
+      patientId: patient.history as string,
+      onDate: AS_OF,
+      disclosure: { purpose: "claim_837i_submission", subjectId, actorUserId: USER },
+    });
+    const { rows } = await admin.query(
+      `SELECT actor_kind, actor_user_id FROM audit_event
+        WHERE event_type='patient_payer.mbi_disclosed' AND context->>'subjectId'=$1`,
+      [subjectId],
+    );
+    expect(rows).toEqual([{ actor_kind: "user", actor_user_id: USER }]);
+  });
+
+  it("M1: expectedPatientPayerId selects exactly that coverage; another patient's or an unknown id returns nothing and audits nothing", async () => {
+    const unlock = buildMbiUnlockReader(handle.db);
+    const own = (
+      await admin.query("SELECT id FROM patient_payer WHERE patient_id=$1", [patient.history])
+    ).rows[0].id as string;
+    const other = (
+      await admin.query("SELECT id FROM patient_payer WHERE patient_id=$1", [patient.open])
+    ).rows[0].id as string;
+    const base = {
+      organizationId: ORG_A,
+      patientId: patient.history as string,
+      onDate: AS_OF,
+    };
+    const okSubject = randomUUID();
+    const ok = await unlock.unlockForEligibility({
+      ...base,
+      expectedPatientPayerId: own,
+      disclosure: { purpose: "claim_837i_submission", subjectId: okSubject },
+    });
+    expect(ok?.patientPayerId).toBe(own);
+    for (const wrong of [other, randomUUID()]) {
+      const subjectId = randomUUID();
+      expect(
+        await unlock.unlockForEligibility({
+          ...base,
+          expectedPatientPayerId: wrong,
+          disclosure: { purpose: "claim_837i_submission", subjectId },
+        }),
+      ).toBeNull();
+      const n = await admin.query(
+        "SELECT count(*)::int AS n FROM audit_event WHERE event_type='patient_payer.mbi_disclosed' AND context->>'subjectId'=$1",
+        [subjectId],
+      );
+      expect(n.rows[0].n).toBe(0);
+    }
+  });
+
+  it("L1: a non-uuid subject or an unknown purpose is refused before anything is read or audited", async () => {
+    const unlock = buildMbiUnlockReader(handle.db);
+    const base = { organizationId: ORG_A, patientId: patient.history as string, onDate: AS_OF };
+    await expect(
+      unlock.unlockForEligibility({
+        ...base,
+        disclosure: { purpose: "claim_837i_submission", subjectId: MBIS.history },
+      }),
+    ).rejects.toThrow(/subjectId must be a uuid/);
+    await expect(
+      unlock.unlockForEligibility({
+        ...base,
+        disclosure: { purpose: "anything" as never, subjectId: randomUUID() },
+      }),
+    ).rejects.toThrow(/purpose/);
+    const leaked = await admin.query(
+      "SELECT count(*)::int AS n FROM audit_event WHERE context::text LIKE $1",
+      [`%${MBIS.history}%`],
+    );
+    expect(leaked.rows[0].n).toBe(0);
   });
 });

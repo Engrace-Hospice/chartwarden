@@ -1,7 +1,7 @@
-import { inspect } from "node:util";
 // M23 — the claim-to-837I loader: a persisted claim (+ lines, snapshot columns, M6 admission date, M5 identity via the
 // seams, parties) -> Claim837iInput -> the raw 837I and Stedi JSON. The golden claim reproduces the payload the Stedi
 // sandbox accepted on 2026-10-09 (packages/x12-837-client `stedi-claim.x12`), so a drift in the mapping shows here.
+import { inspect } from "node:util";
 import type { repositories } from "@wardenx/billing";
 import type { ClearinghouseContext } from "@wardenx/x12-837-client";
 import { describe, expect, it, vi } from "vitest";
@@ -475,11 +475,24 @@ describe("loadClaim837iInput gaps", () => {
       organizationId: ORG,
       patientId: PATIENT,
       onDate: "2026-01-01",
+      expectedPatientPayerId: PATIENT_PAYER_ID,
       disclosure: { purpose: "claim_837i_submission", subjectId: CLAIM_ID },
     });
     const unlockOrder = d.unlock.mock.invocationCallOrder[0] as number;
     expect(d.findPatient.mock.invocationCallOrder[0] as number).toBeLessThan(unlockOrder);
     expect(d.primaryAddress.mock.invocationCallOrder[0] as number).toBeLessThan(unlockOrder);
+  });
+
+  it("passes the acting user to the disclosure when the caller supplies one", async () => {
+    const d = deps();
+    const actorUserId = "00000000-0000-4000-8000-0000000000bb";
+    const r = await loadClaim837iInput(d.value, { ...args, actorUserId });
+    expect(r.ok).toBe(true);
+    expect(d.unlock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        disclosure: { purpose: "claim_837i_submission", subjectId: CLAIM_ID, actorUserId },
+      }),
+    );
   });
 
   it("reports an MBI that belongs to a different coverage than the one the claim bills", async () => {

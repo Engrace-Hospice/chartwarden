@@ -42,6 +42,9 @@ import {
 } from "@wardenx/x12-837-client";
 import type { HetsEligibilityPort, HetsEligibilityResult } from "./m23-jobs";
 
+/** The disclosure purpose recorded on the MBI-unlock audit event for a HETS 270. */
+export const HETS_DISCLOSURE_PURPOSE = "hets_270_eligibility" as const;
+
 /** Days an eligibility result stays fresh (M23 §11.A `eligibility_check_freshness_30d`). */
 export const ELIGIBILITY_FRESHNESS_DAYS = 30;
 const DAY_MS = 86_400_000;
@@ -117,6 +120,7 @@ export function buildHetsEligibilityPort(deps: HetsEligibilityPortDeps): HetsEli
           organizationId: input.organizationId,
           patientId: input.patientId,
           onDate: input.asOfServiceDate,
+          disclosure: { purpose: HETS_DISCLOSURE_PURPOSE, subjectId: input.eligibilityCheckId },
         });
       if (!subscriber) return failed("mbi_invalid", "mbi_not_on_file");
 

@@ -96,6 +96,13 @@ describe("retention registry", () => {
     expect(resolveRetention("audit.partition_archived")).toBe("operational");
   });
 
+  it("seeds the MBI-disclosure event as an explicit compliance entry that survives a reset", () => {
+    expect(resolveRetention("patient_payer.mbi_disclosed")).toBe("compliance");
+    registerRetention("patient_payer.mbi_disclosed", "operational");
+    resetRetentionRegistry();
+    expect(resolveRetention("patient_payer.mbi_disclosed")).toBe("compliance");
+  });
+
   it("an explicit per-call class overrides the registry", () => {
     registerRetention("x.event", "operational");
     expect(resolveRetention("x.event", "legal_hold")).toBe("legal_hold");

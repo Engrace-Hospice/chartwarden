@@ -20,6 +20,7 @@ const INPUT = {
   patientId: "22222222-2222-4222-8222-222222222222",
   providerEntityId: "33333333-3333-4333-8333-333333333333",
   asOfServiceDate: "2026-10-06",
+  eligibilityCheckId: "55555555-5555-4555-8555-555555555555",
 };
 
 const identity = (lastName = "DOE"): EligibilitySubscriberIdentity => ({
@@ -73,7 +74,12 @@ describe("buildHetsEligibilityPort", () => {
     const result = await port.check(INPUT);
 
     expect(unlockCalls).toEqual([
-      { organizationId: INPUT.organizationId, patientId: INPUT.patientId, onDate: "2026-10-06" },
+      {
+        organizationId: INPUT.organizationId,
+        patientId: INPUT.patientId,
+        onDate: "2026-10-06",
+        disclosure: { purpose: "hets_270_eligibility", subjectId: INPUT.eligibilityCheckId },
+      },
     ]);
     // The MBI went into the 270 (and only there).
     expect(sent).toHaveLength(1);

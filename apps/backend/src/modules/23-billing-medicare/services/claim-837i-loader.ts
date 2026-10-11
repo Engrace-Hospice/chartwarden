@@ -6,8 +6,12 @@
 //   • Nothing is invented. A field with no source is a typed gap; the loader returns ALL gaps it can find at once.
 //   • The MBI is read ONLY through M5's `MbiUnlockReader` seam (the M23-only unlock), held in the returned in-memory
 //     input (an opaque `SensitiveValue`) and never stored or logged here. The unlock is passed a `disclosure`
-//     (purpose `claim_837i_submission` + the claim id), so M5 writes the PHI-disclosure audit_event (ids and purpose,
+//     (purpose `claim_837i_submission` + the claim id + the optional acting user) and the claim's own
+//     `patientPayerId`, so M5 reads exactly that coverage and writes the PHI-disclosure audit_event (ids and purpose,
 //     never the MBI) in the same transaction as the read. The detailed claim document carries no beneficiary identity.
+//   • The audit is written AT UNLOCK, before the mapper and builders run. A later mapper/builder gap therefore still
+//     leaves a disclosure row: over-audit by design (the MBI was read; the record of that must not depend on whether
+//     the claim then turned out to be sendable). Every check that does not need the MBI runs before the unlock.
 //   • PHI is not read for a claim that is already unsubmittable: the claim-level and party checks run first, then the
 //     non-MBI beneficiary fields (sex, address, DOB) are read and checked, and the MBI is unlocked LAST.
 //   • The caller owns the clock and the interchange control number (a port-less, deterministic loader).
@@ -34,7 +38,7 @@ import type { AdmissionContextReader } from "./claim-assembly-types";
 import { SensitiveValue } from "./sensitive-value";
 
 /** The disclosure purpose recorded on the MBI-unlock audit event. */
-export const CLAIM_837I_DISCLOSURE_PURPOSE = "claim_837i_submission";
+export const CLAIM_837I_DISCLOSURE_PURPOSE = "claim_837i_submission" as const;
 
 /** The party records. Each section is `null` when its source cannot supply it (a typed gap, never a default). */
 export interface Claim837iPartiesPort {
@@ -86,6 +90,8 @@ export interface LoadClaim837iArgs {
   readonly context: ClearinghouseContext;
   readonly interchangeControlNumber: number;
   readonly createdAt: Date;
+  /** The user who triggered this load, when there is one; recorded on the MBI-disclosure audit (else system). */
+  readonly actorUserId?: string;
 }
 
 export type LoadClaim837iFailure =
@@ -141,6 +147,7 @@ function partyGaps(
 async function loadSubscriber(
   deps: Claim837iLoaderDeps,
   claim: repositories.ClaimRecord,
+  actorUserId: string | undefined,
 ): Promise<{ ok: true; value: TransientSubscriber } | { ok: false; gaps: readonly ClaimGap[] }> {
   const patient = await deps.patients.findById({
     organizationId: claim.organizationId,
@@ -166,7 +173,13 @@ async function loadSubscriber(
     organizationId: claim.organizationId,
     patientId: claim.patientId,
     onDate: claim.serviceFrom,
-    disclosure: { purpose: CLAIM_837I_DISCLOSURE_PURPOSE, subjectId: claim.id },
+    // Select the claim's own coverage (the post-check below stays as defense in depth).
+    expectedPatientPayerId: claim.patientPayerId,
+    disclosure: {
+      purpose: CLAIM_837I_DISCLOSURE_PURPOSE,
+      subjectId: claim.id,
+      ...(actorUserId === undefined ? {} : { actorUserId }),
+    },
   });
   if (identity === null) return { ok: false, gaps: [gap("subscriber.mbi", "missing")] };
   // The MBI must come from the very coverage this claim bills; a different Medicare row is not this claim's payer.
@@ -271,7 +284,7 @@ async function loadOnce(
     return fail(claimGaps);
   }
 
-  const subscriber = await loadSubscriber(deps, claim);
+  const subscriber = await loadSubscriber(deps, claim, args.actorUserId);
   if (!subscriber.ok) return fail(subscriber.gaps);
 
   const mapped = mapClaimTo837iInput({

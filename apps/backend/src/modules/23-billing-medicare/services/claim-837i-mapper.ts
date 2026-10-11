@@ -7,10 +7,10 @@
 import type { ClaimDocument837iDetail, ClaimGap, GapResult } from "@wardenx/billing";
 import { gap } from "@wardenx/billing";
 import {
-  Claim837iBuildError,
   type Claim837iInput,
   type StediClaimJson,
   type X12Address,
+  X12BuildError,
   build837iClaim,
   buildStediClaimJson,
 } from "@wardenx/x12-837-client";
@@ -144,7 +144,7 @@ export interface Rendered837i {
 }
 
 /**
- * Run both builders; a builder REFUSAL becomes a gap naming the builder's field (never a value). Any other error is
+ * Run both builders; a builder REFUSAL (any `X12BuildError`) becomes a gap naming the builder's field (never a value). Any other error is
  * a bug, not an input gap, and is rethrown (its message is never composed from field values).
  */
 export function render837i(input: Claim837iInput): GapResult<Rendered837i> {
@@ -152,7 +152,8 @@ export function render837i(input: Claim837iInput): GapResult<Rendered837i> {
     const x12 = build837iClaim(input);
     return { ok: true, value: { x12, stediJson: buildStediClaimJson(input) } };
   } catch (err) {
-    if (!(err instanceof Claim837iBuildError)) throw err;
+    // The base class: Claim837iBuildError AND the shared X12 writer's refusals (e.g. the Stedi-JSON-only checks).
+    if (!(err instanceof X12BuildError)) throw err;
     const gaps: readonly ClaimGap[] = [gap(err.field, "invalid")];
     return { ok: false, gaps };
   }
