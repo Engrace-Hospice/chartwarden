@@ -12,7 +12,7 @@ import type {
   NoeStatusSnapshot,
   RhcCarryOverSnapshot,
   ValidationContext,
-  calculateHipps,
+  calculatePerDiemClass,
   repositories,
 } from "@wardenx/billing";
 import { claimAdmissionCodes, claimValueCodes } from "@wardenx/billing";
@@ -39,7 +39,7 @@ export interface AssembleValidationContextInput {
   readonly facts: AssemblyFacts;
   readonly claim: ClaimFactsInput;
   readonly lines: readonly repositories.ClaimLineRecord[];
-  readonly hipps: ReturnType<typeof calculateHipps>;
+  readonly perDiemClass: ReturnType<typeof calculatePerDiemClass>;
   readonly siaQualifyingVisitCount: number;
   readonly siaCents: Cents;
   /** `null` when no usable HETS determination exists (or the eligibility seam is unbound) — the rule skips. */
@@ -54,7 +54,7 @@ export interface AssembleValidationContextInput {
 export function assembleValidationContext(
   input: AssembleValidationContextInput,
 ): ValidationContext {
-  const { orgId, facts, claim, lines, hipps } = input;
+  const { orgId, facts, claim, lines, perDiemClass } = input;
   const {
     admission,
     resolvedPeriods,
@@ -141,11 +141,11 @@ export function assembleValidationContext(
     evvBrackets,
     terminology,
     mdm: mdmResolution,
-    hipps: {
-      perDiemClassCode: hipps.perDiemClassCode,
-      perDiemRateCents: hipps.perDiemRateCents,
+    perDiemClass: {
+      perDiemClassCode: perDiemClass.perDiemClassCode,
+      perDiemRateCents: perDiemClass.perDiemRateCents,
       wageIndexFactorApplied: wageIndex.factorDecimal,
-      segments: hipps.segments.map((s) => ({
+      segments: perDiemClass.segments.map((s) => ({
         levelOfCare: s.levelOfCare,
         dateFrom: s.dateFrom,
         dateTo: s.dateTo,

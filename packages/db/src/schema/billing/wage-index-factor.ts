@@ -1,6 +1,6 @@
 // @wardenx/db — `wage_index_factor` (M23 Billing-Medicare §3.3, D12; non-partitioned; retention class
 // `reference`). The CMS per-CCN wage-index schedule consumed by HIPPS math (snapshotted onto
-// hipps_calculation at calculation time so the math is reproducible).
+// per_diem_rate_calculation at calculation time so the math is reproducible).
 //
 // PLATFORM-SHARED (no organization_id): this is the ONLY M23 table with NO organization_id column and
 // NO `.references(() => organizations.id)`. It must be added to the check-tenancy NON_ORG_SCOPED

@@ -1,5 +1,5 @@
 import { paramNumber } from "./_util";
-// @wardenx/billing — rule `rhc_carry_over_hets_fresh` (hipps, WARN, NON-regulatory). The two-tier RHC split
+// @wardenx/billing — rule `rhc_carry_over_hets_fresh` (perDiemClass, WARN, NON-regulatory). The two-tier RHC split
 // (days 1–60 high, 61+ low) continues across a readmission within 60 days of ANY prior hospice discharge,
 // including days at another hospice (Claims Processing Manual ch. 11 §30.2; CR 9201 / R3326CP). Medicare
 // counts those days from CWF; we only see other hospices' days through the HETS 271 history. When the
@@ -13,7 +13,7 @@ const KEY = "rhc_carry_over_hets_fresh";
 export const rhcCarryOverHetsFresh: Rule = {
   key: KEY,
   version: 1,
-  category: "hipps",
+  category: "perDiemClass",
   title: "RHC day count across a readmission is confirmed by a recent HETS check",
   description:
     "A readmission within 60 days of a prior hospice discharge carries the earlier hospice days (any hospice) " +

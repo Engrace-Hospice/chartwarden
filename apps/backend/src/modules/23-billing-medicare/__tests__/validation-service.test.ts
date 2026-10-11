@@ -116,7 +116,7 @@ function buildRegistry(rules: readonly Rule[]): BillingRuleRegistry {
 const passRule: Rule = {
   key: "test.always_pass",
   version: 1,
-  category: "hipps",
+  category: "perDiemClass",
   title: "pass",
   description: "d",
   severity: "error",

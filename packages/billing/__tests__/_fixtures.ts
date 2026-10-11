@@ -103,7 +103,7 @@ export function passingContext(): ValidationContext {
       },
       placeOfService: "home",
     },
-    hipps: {
+    perDiemClass: {
       perDiemClassCode: "HCODE",
       perDiemRateCents: 200_00,
       wageIndexFactorApplied: "0.9234",

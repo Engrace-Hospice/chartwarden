@@ -58,7 +58,7 @@ export * from "./dde/notes";
 export * from "./dde/deadline";
 export * from "./transfer-notice";
 // D7 the pure HIPPS calculator (LOC-segment → per-diem, days-1-7 vs days-8+, wage-index snapshot).
-export * from "./hipps";
+export * from "./per-diem-class";
 // D6 the pure SIA (Service Intensity Add-on) calculator (last-7-days-of-life RN/MSW care pricing).
 export * from "./sia";
 // F-210 the tenant-entered hospice rate table's pure validation / overlap / lookup rules.

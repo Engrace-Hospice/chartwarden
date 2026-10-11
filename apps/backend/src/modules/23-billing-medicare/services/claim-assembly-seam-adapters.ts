@@ -13,7 +13,7 @@ import {
   applyWageIndexToLaborShare,
   hasLaborShares,
   repositories,
-  toHippsRateTable,
+  toPerDiemRateTable,
 } from "@wardenx/billing";
 import type { LevelOfCare, NpiStatus, PhysicianResolution } from "@wardenx/billing";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -324,7 +324,7 @@ export function buildM23AdmissionRangeAdapters(reader: M6ClaimRangeReader): {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
-// 4 & 5. referenceData.{wageIndexForCcn,activeSequestrationPolicy,hippsRateTable,chcHourlyRateCents} — real,
+// 4 & 5. referenceData.{wageIndexForCcn,activeSequestrationPolicy,perDiemRateTable,chcHourlyRateCents} — real,
 //        over M23's own tables (the last two are the TENANT-ENTERED `hospice_rate_table`, F-210).
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -332,7 +332,7 @@ export function buildM23AdmissionRangeAdapters(reader: M6ClaimRangeReader): {
  * `BillingReferenceDataReader` was documented as a single unit of "genuine new infrastructure" (#250's
  * scoping). Checked per method rather than accepted as a bundle (the F-099/F-101 lesson): two of its four
  * methods had a real, already-migrated, already-repositoried backing table (#250); the other two
- * (`hippsRateTable`, `chcHourlyRateCents`) had none — no CMS per-diem rate file has ever been loaded anywhere in
+ * (`perDiemRateTable`, `chcHourlyRateCents`) had none — no CMS per-diem rate file has ever been loaded anywhere in
  * this repository — and were `SEAM_UNBOUND` until F-210 decided rates are TENANT-ENTERED (no bundled CMS data file
  * to go stale): a billing administrator keys each fiscal year's national base per-diems per provider entity through
  * `POST /billing/rate-tables`, into the M23-owned, effective-dated, append-only `hospice_rate_table`. Both methods
@@ -379,7 +379,7 @@ function laborSharesMissing(rateTableId: string): WardenXError {
 
 export function buildM23ReferenceDataAdapter(db: BillingDb): BillingReferenceDataReader {
   return {
-    async hippsRateTable(_macJurisdiction, _fiscalYearStarting, scope) {
+    async perDiemRateTable(_macJurisdiction, _fiscalYearStarting, scope) {
       const row = await hospiceRateTableEffectiveForOrg(
         db,
         scope.orgId,
@@ -388,7 +388,7 @@ export function buildM23ReferenceDataAdapter(db: BillingDb): BillingReferenceDat
       );
       if (!row) throw rateTableMissing(scope);
       if (!hasLaborShares(row)) throw laborSharesMissing(row.id);
-      return toHippsRateTable(row);
+      return toPerDiemRateTable(row);
     },
     async chcHourlyRateCents(_fiscalYearStarting, wageIndexFactorDecimal, scope) {
       const row = await hospiceRateTableEffectiveForOrg(

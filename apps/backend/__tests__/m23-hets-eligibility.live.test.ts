@@ -15,7 +15,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { calculateHipps } from "@wardenx/billing";
+import { calculatePerDiemClass } from "@wardenx/billing";
 import { createDbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { createSandboxHetsTransport } from "@wardenx/x12-837-client";
@@ -307,7 +307,7 @@ describe.skipIf(!DB_URL)("M23 HETS 270/271 eligibility — LIVE Postgres as ward
       ),
     );
     expect(carry.priorDays).toBe(21);
-    const hipps = calculateHipps({
+    const perDiemClass = calculatePerDiemClass({
       claimServiceFrom: "2026-10-01",
       claimServiceTo: "2026-10-31",
       hospiceAdmissionDate: "2026-09-07",
@@ -331,8 +331,8 @@ describe.skipIf(!DB_URL)("M23 HETS 270/271 eligibility — LIVE Postgres as ward
       wageIndexFactorDecimal: "1.0000",
     });
     // Day 22 on 09/07 → day 60 on 10/15: 10/01–10/15 high, 10/16–10/31 low (without HETS: all 31 high).
-    expect(hipps.rhcDays1to60).toBe(15);
-    expect(hipps.rhcDays61Plus).toBe(16);
+    expect(perDiemClass.rhcDays1to60).toBe(15);
+    expect(perDiemClass.rhcDays61Plus).toBe(16);
 
     // Tenant isolation: org B never sees org A's check.
     const otherOrg = await buildDrizzleM23ReadService(handle.db as never, {

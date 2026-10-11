@@ -2,7 +2,7 @@
 // DOMAIN: no Fastify, Drizzle, BullMQ, clock, PHI — every date is an already-resolved ISO string, every rate
 // comes from an injected resolver function, so this is deterministic and unit-testable without a database.
 //
-// SCOPE (mirrors the M23 `calculateHipps` precedent, simplified): a hospice level-of-care (LOC) period is
+// SCOPE (mirrors the M23 `calculatePerDiemClass` precedent, simplified): a hospice level-of-care (LOC) period is
 // walked and clipped to the claim's [serviceFrom, serviceTo] window, then collapsed into ONE claim line per
 // contiguous same-LOC run (not one line per calendar day — a 12-day RHC stretch is one line with units=12).
 // Unlike M23's HIPPS math (day-1-7 vs day-8+ RHC rate buckets from the hospice admission date, wage-index

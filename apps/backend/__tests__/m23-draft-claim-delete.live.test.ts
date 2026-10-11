@@ -89,7 +89,7 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
       [org, claimId, ANY],
     );
     await admin.query(
-      `INSERT INTO hipps_calculation (organization_id, claim_id, hipps_code, hipps_rate_cents, wage_index_ccn,
+      `INSERT INTO per_diem_rate_calculation (organization_id, claim_id, per_diem_class_code, per_diem_rate_cents, wage_index_ccn,
          wage_index_fiscal_year, wage_index_factor, segments) VALUES ($1,$2,'RHC',100,'111111',2026,'1.0','[]')`,
       [org, claimId],
     );
@@ -193,7 +193,7 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
     await svc().deleteDraftClaim(actorA, claimId);
     expect(await count("claim", "id=$1", [claimId])).toBe(0);
     expect(await count("claim_line", "claim_id=$1", [claimId])).toBe(0);
-    expect(await count("hipps_calculation", "claim_id=$1", [claimId])).toBe(0);
+    expect(await count("per_diem_rate_calculation", "claim_id=$1", [claimId])).toBe(0);
     expect(await count("sia_calculation", "claim_id=$1", [claimId])).toBe(0);
     expect(await count("validation_run", "id=$1", [runId])).toBe(0);
     expect(await count("validation_result", "id=$1", [resultId])).toBe(0);
@@ -209,9 +209,9 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
 
   it("deletes a draft claim that has no children at all", async () => {
     const { claimId } = await seedClaim(ORG_A, "DRAFT");
-    await admin.query("ALTER TABLE hipps_calculation DISABLE TRIGGER USER");
-    await admin.query("DELETE FROM hipps_calculation WHERE claim_id=$1", [claimId]);
-    await admin.query("ALTER TABLE hipps_calculation ENABLE TRIGGER USER");
+    await admin.query("ALTER TABLE per_diem_rate_calculation DISABLE TRIGGER USER");
+    await admin.query("DELETE FROM per_diem_rate_calculation WHERE claim_id=$1", [claimId]);
+    await admin.query("ALTER TABLE per_diem_rate_calculation ENABLE TRIGGER USER");
     await svc().deleteDraftClaim(actorA, claimId);
     expect(await count("claim", "id=$1", [claimId])).toBe(0);
   });
@@ -240,7 +240,7 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
       ),
     );
     for (const sql of [
-      "DELETE FROM hipps_calculation WHERE claim_id=$1",
+      "DELETE FROM per_diem_rate_calculation WHERE claim_id=$1",
       "DELETE FROM sia_calculation WHERE claim_id=$1",
       "DELETE FROM validation_run WHERE claim_id=$1",
       "DELETE FROM claim_state_history WHERE claim_id=$1",
@@ -260,7 +260,9 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
     const { claimId } = await seedClaim(ORG_A, "DRAFT");
     await asApp(ORG_A, (c) =>
       expect(
-        c.query("UPDATE hipps_calculation SET hipps_rate_cents=1 WHERE claim_id=$1", [claimId]),
+        c.query("UPDATE per_diem_rate_calculation SET per_diem_rate_cents=1 WHERE claim_id=$1", [
+          claimId,
+        ]),
       ).rejects.toThrow(/M23_TABLE_APPEND_ONLY/),
     );
   });
@@ -367,7 +369,7 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
       );
     const CHILD_DELETES = [
       "DELETE FROM claim_line WHERE claim_id=$1",
-      "DELETE FROM hipps_calculation WHERE claim_id=$1",
+      "DELETE FROM per_diem_rate_calculation WHERE claim_id=$1",
       "DELETE FROM sia_calculation WHERE claim_id=$1",
       "DELETE FROM claim_state_history WHERE claim_id=$1",
       "DELETE FROM validation_result WHERE validation_run_id IN (SELECT id FROM validation_run WHERE claim_id=$1)",
@@ -400,7 +402,7 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
         );
       }
       expect(await count("claim_line", "claim_id=$1", [real.claimId])).toBe(2);
-      expect(await count("hipps_calculation", "claim_id=$1", [real.claimId])).toBe(1);
+      expect(await count("per_diem_rate_calculation", "claim_id=$1", [real.claimId])).toBe(1);
       expect(await count("validation_run", "claim_id=$1", [real.claimId])).toBe(1);
       expect(await count("claim", "id=$1", [real.claimId])).toBe(2);
     });
@@ -672,7 +674,7 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
       const draft = await seedClaim(ORG_A, "DRAFT");
       const cases: Array<[string, unknown[]]> = [
         [
-          "UPDATE hipps_calculation SET claim_id=$2 WHERE claim_id=$1",
+          "UPDATE per_diem_rate_calculation SET claim_id=$2 WHERE claim_id=$1",
           [sent.claimId, draft.claimId],
         ],
         ["UPDATE sia_calculation SET claim_id=$2 WHERE claim_id=$1", [sent.claimId, draft.claimId]],
@@ -732,7 +734,7 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
           "CREATE TEMP TABLE validation_run (id uuid, organization_id uuid, claim_id uuid) ON COMMIT DROP",
         );
         await expect(
-          c.query("DELETE FROM hipps_calculation WHERE claim_id=$1", [sent.claimId]),
+          c.query("DELETE FROM per_diem_rate_calculation WHERE claim_id=$1", [sent.claimId]),
         ).rejects.toThrow(/M23_TABLE_APPEND_ONLY/);
       });
       expect(await count("claim_line", "claim_id=$1", [sent.claimId])).toBe(2);

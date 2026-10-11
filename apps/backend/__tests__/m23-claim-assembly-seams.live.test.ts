@@ -20,7 +20,7 @@
  * two rows `@wardenx/terminology`'s own seed now curates.
  *
  * The end-to-end `POST /claims/assemble` reachability boundary is unmoved by F-122/F-123/F-124 (stated,
- * not implied): as of F-210 the wall at `referenceData.hippsRateTable` is a typed, actionable
+ * not implied): as of F-210 the wall at `referenceData.perDiemRateTable` is a typed, actionable
  * `RATE_TABLE_MISSING` (422) until the tenant enters its rate table (the tenant-entered `hospice_rate_table`;
  * its own suite is `m23-rate-table.live.test.ts`) — no longer `SEAM_UNBOUND`.
  *
@@ -1917,7 +1917,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
   });
 
   describe("end-to-end boundary: POST /claims/assemble's real SEAM_UNBOUND wall today", () => {
-    it("progresses PAST the entire M6 block and fails at referenceData.hippsRateTable with the typed RATE_TABLE_MISSING when the tenant has entered no rates (F-121 #251, F-210)", async () => {
+    it("progresses PAST the entire M6 block and fails at referenceData.perDiemRateTable with the typed RATE_TABLE_MISSING when the tenant has entered no rates (F-121 #251, F-210)", async () => {
       const patientId = await seedPatient(ORG_A);
       await seedPatientPayer(ORG_A, patientId, 1, "medicare_ffs", "2020-01-01");
       const pe = await seedProviderEntity(ORG_A, "381240");
@@ -1997,7 +1997,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       await expect(assemble()).rejects.toMatchObject({ code: "RATE_TABLE_MISSING" });
     });
 
-    it("with a tenant-entered rate table + sequestration policy the wall MOVES PAST hippsRateTable/activeSequestrationPolicy to billableEncounters (F-210)", async () => {
+    it("with a tenant-entered rate table + sequestration policy the wall MOVES PAST perDiemRateTable/activeSequestrationPolicy to billableEncounters (F-210)", async () => {
       const patientId = await seedPatient(ORG_A);
       await seedPatientPayer(ORG_A, patientId, 1, "medicare_ffs", "2020-01-01");
       const pe = await seedProviderEntity(ORG_A, "381242");

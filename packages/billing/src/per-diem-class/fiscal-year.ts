@@ -2,18 +2,18 @@
 //
 // The hospice rates and the wage index change on Oct 1 (CMS publishes both per fiscal year). A claim whose
 // from-through range crosses Oct 1 therefore prices each day with ITS OWN fiscal year's rate table and wage index —
-// never the whole claim at the first day's year. `calculateHipps` stays single-year; this splits the range at Oct 1,
+// never the whole claim at the first day's year. `calculatePerDiemClass` stays single-year; this splits the range at Oct 1,
 // prices each part with that year's inputs, and merges the parts. The RHC day-of-stay count is computed from the
 // admission date inside each part, so it runs on across the boundary (day 60 -> 61 is unaffected by the split).
 import type { IsoDate } from "../contracts";
 import { addDaysIso } from "../domain/dates";
 import { hospiceFiscalYearStartingOf } from "../rate-table";
 import {
-  type HippsCalculationInput,
-  type HippsCalculationResult,
-  type HippsRateTable,
-  type HippsSegmentResult,
-  calculateHipps,
+  type PerDiemClassSegmentResult,
+  type PerDiemRateCalculationInput,
+  type PerDiemRateCalculationResult,
+  type PerDiemRateTable,
+  calculatePerDiemClass,
   derivePerDiemClassCode,
 } from "./calculator";
 import type { WageIndexAreaFactors } from "./wage-index-area";
@@ -41,25 +41,25 @@ export function splitAtFiscalYears(from: IsoDate, to: IsoDate): readonly FiscalY
 /** Everything that varies with the fiscal year. */
 export interface FiscalYearPricing {
   readonly fiscalYearStarting: number;
-  readonly rateTable: HippsRateTable;
+  readonly rateTable: PerDiemRateTable;
   /** The provider's wage index for the year (used when no area factors are bound). */
   readonly wageIndexFactorDecimal: string;
   readonly wageIndexAreaFactors?: WageIndexAreaFactors;
 }
 
 export type FiscalYearClaimInput = Omit<
-  HippsCalculationInput,
+  PerDiemRateCalculationInput,
   "rateTable" | "wageIndexFiscalYear" | "wageIndexFactorDecimal" | "wageIndexAreaFactors"
 >;
 
-export function calculateHippsByFiscalYear(
+export function calculatePerDiemClassByFiscalYear(
   input: FiscalYearClaimInput,
   pricingFor: (fiscalYearStarting: number) => FiscalYearPricing,
-): HippsCalculationResult {
+): PerDiemRateCalculationResult {
   const parts = splitAtFiscalYears(input.claimServiceFrom, input.claimServiceTo);
   const results = parts.map((part) => {
     const pricing = pricingFor(part.fiscalYearStarting);
-    return calculateHipps({
+    return calculatePerDiemClass({
       ...input,
       claimServiceFrom: part.from,
       claimServiceTo: part.to,
@@ -72,12 +72,13 @@ export function calculateHippsByFiscalYear(
     });
   });
   const [first] = results;
-  if (first === undefined) throw new RangeError("calculateHippsByFiscalYear: empty claim range");
+  if (first === undefined)
+    throw new RangeError("calculatePerDiemClassByFiscalYear: empty claim range");
   if (results.length === 1) return first;
 
-  const segments: HippsSegmentResult[] = results
+  const segments: PerDiemClassSegmentResult[] = results
     .flatMap((r) => r.segments)
-    .map((segment, index) => ({ ...segment, hippsCharPosition: index + 1 }));
+    .map((segment, index) => ({ ...segment, perDiemClassCharPosition: index + 1 }));
   return {
     perDiemClassCode: derivePerDiemClassCode(segments),
     perDiemRateCents: segments[0]?.ratePerDiemCents ?? 0,

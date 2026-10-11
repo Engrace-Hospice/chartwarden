@@ -9,13 +9,13 @@ import {
   evvBracketCoherence,
   f2fAttestedForRecert,
   f2fTelehealthG0679,
-  hippsCodingCorrect,
   icd10Sequencing,
   ipuCapProjection,
   levelOfCareCoherence,
   modifierCodesValid,
   noeTimeliness5d,
   patientEligibilityPartAActive,
+  perDiemClassCodingCorrect,
   physicianCredentialsActive,
   placeOfServiceConsistency,
   siaCalculationCorrect,
@@ -106,9 +106,9 @@ const RULE_META: ReadonlyArray<readonly [Rule, ExpectedMeta]> = [
     },
   ],
   [
-    hippsCodingCorrect,
+    perDiemClassCodingCorrect,
     {
-      key: "hipps_coding_correct",
+      key: "per_diem_class_coding_correct",
       severity: "error",
       regulatoryRequired: true,
       overrideRoleRequired: "billing_manager",
@@ -495,26 +495,32 @@ describe("level_of_care_coherence", () => {
   });
 });
 
-describe("hipps_coding_correct", () => {
+describe("per_diem_class_coding_correct", () => {
   it("passes on a structurally coherent HIPPS snapshot", () => {
-    expect(run(hippsCodingCorrect, passingContext()).passed).toBe(true);
+    expect(run(perDiemClassCodingCorrect, passingContext()).passed).toBe(true);
   });
   it("SKIPs (not_applicable) when no HIPPS derivation is present", () => {
-    const r = run(hippsCodingCorrect, { ...passingContext(), hipps: null });
+    const r = run(perDiemClassCodingCorrect, { ...passingContext(), perDiemClass: null });
     expect(isSkip(r)).toBe(true);
     expect(r.annotations?.skipReason).toBe("not_applicable");
   });
   it("fails when the HIPPS code is the wrong length", () => {
     const ctx = passingContext();
-    const r = run(hippsCodingCorrect, { ...ctx, hipps: { ...ctx.hipps!, perDiemClassCode: "AB" } });
+    const r = run(perDiemClassCodingCorrect, {
+      ...ctx,
+      perDiemClass: { ...ctx.perDiemClass!, perDiemClassCode: "AB" },
+    });
     expect(r.passed).toBe(false);
     expect(r.severity).toBe("error");
   });
   it("fails when an RHC segment carries no day-bucket", () => {
     const ctx = passingContext();
-    const r = run(hippsCodingCorrect, {
+    const r = run(perDiemClassCodingCorrect, {
       ...ctx,
-      hipps: { ...ctx.hipps!, segments: [{ ...ctx.hipps!.segments[0]!, rhcDayBucket: "n/a" }] },
+      perDiemClass: {
+        ...ctx.perDiemClass!,
+        segments: [{ ...ctx.perDiemClass!.segments[0]!, rhcDayBucket: "n/a" }],
+      },
     });
     expect(r.passed).toBe(false);
   });

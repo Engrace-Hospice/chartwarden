@@ -2,7 +2,7 @@
 // the per-day reference walk, and a hostile 271 (absurd dates, too many rows) is cheap, warned and bounded.
 import { type RhcHetsPeriod, computeRhcCarryOver } from "@wardenx/billing";
 import { describe, expect, it } from "vitest";
-import { attributeOwnedDays } from "../src/hipps/rhc-carry-over";
+import { attributeOwnedDays } from "../src/per-diem-class/rhc-carry-over";
 
 /** The original per-day walk: each day to the first ranked member covering it. Reference only (small inputs). */
 function perDayReference(

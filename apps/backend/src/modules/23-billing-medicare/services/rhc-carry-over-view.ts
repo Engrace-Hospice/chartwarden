@@ -1,5 +1,5 @@
 // apps/backend/src/modules/23-billing-medicare/services/rhc-carry-over-view.ts — the TYPES of the two-tier RHC
-// carry-over as M23 exposes it (claim detail `pricing.hipps.rhcCarryOver`, the hospice-periods read). Split from
+// carry-over as M23 exposes it (claim detail `pricing.perDiemClass.rhcCarryOver`, the hospice-periods read). Split from
 // `rhc-carry-over.ts` so the route-layer view types can name them without importing the resolver (no cycle).
 import type { IsoDate, RhcCarryOverResult } from "@wardenx/billing";
 
@@ -11,7 +11,7 @@ export interface RhcHetsCheckRef {
   readonly stale: boolean;
 }
 
-/** The computed carry-over + the HETS check it read; persisted as `hipps_calculation.rhc_carry_over`. */
+/** The computed carry-over + the HETS check it read; persisted as `per_diem_rate_calculation.rhc_carry_over`. */
 export interface RhcCarryOverView extends RhcCarryOverResult {
   readonly electionDate: IsoDate;
   /** The day of the RHC count the new stay starts at (priorDays + 1). */

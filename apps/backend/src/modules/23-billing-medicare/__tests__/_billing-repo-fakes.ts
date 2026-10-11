@@ -15,7 +15,7 @@
 export interface FakeStore {
   readonly claims: Map<string, any>;
   readonly lines: any[];
-  readonly hipps: any[];
+  readonly perDiemClass: any[];
   readonly sia: any[];
   readonly runs: Map<string, any>;
   readonly results: Map<string, any>;
@@ -38,7 +38,7 @@ export function buildFakeRepositories(): {
   const store: FakeStore = {
     claims: new Map<string, any>(),
     lines: [],
-    hipps: [],
+    perDiemClass: [],
     sia: [],
     runs: new Map<string, any>(),
     results: new Map<string, any>(),
@@ -49,7 +49,7 @@ export function buildFakeRepositories(): {
     reset(): void {
       this.claims.clear();
       this.lines.length = 0;
-      this.hipps.length = 0;
+      this.perDiemClass.length = 0;
       this.sia.length = 0;
       this.runs.clear();
       this.results.clear();
@@ -177,10 +177,10 @@ export function buildFakeRepositories(): {
     }
   }
 
-  class HippsCalculationRepository {
+  class PerDiemRateCalculationRepository {
     async append(v: any): Promise<any> {
-      const row = { id: newId("hipps"), ...v };
-      store.hipps.push(row);
+      const row = { id: newId("perDiemClass"), ...v };
+      store.perDiemClass.push(row);
       return row;
     }
   }
@@ -292,7 +292,7 @@ export function buildFakeRepositories(): {
     ClaimRepository,
     EligibilityCheckRepository,
     ClaimLineRepository,
-    HippsCalculationRepository,
+    PerDiemRateCalculationRepository,
     SiaCalculationRepository,
     ClaimStateHistoryRepository,
     ValidationRunRepository,

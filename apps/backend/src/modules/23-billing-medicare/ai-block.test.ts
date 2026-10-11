@@ -84,7 +84,7 @@ describe("validateAiBlockForBilling — fails boot on an M23-targeting template"
 
   it("fails boot for EVERY M23-owned table family (one synthetic template per family)", () => {
     for (const family of M23_OWNED_TABLE_FAMILIES) {
-      const outputType = `${family}thing`; // e.g. claim_thing, hipps_thing, wage_thing
+      const outputType = `${family}thing`; // e.g. claim_thing, per_diem_class_thing, wage_thing
       const templates = [{ key: `m32.target-${family}`, outputType }];
       expect(() => validateAiBlockForBilling(registryOf(templates))).toThrow(AiBlockViolationError);
     }
@@ -103,7 +103,7 @@ describe("outputTypeTargetsBilling — owned-table family matcher", () => {
   it("matches every owned family prefix (case- and whitespace-insensitive)", () => {
     expect(outputTypeTargetsBilling("claim_submission")).toBe(true);
     expect(outputTypeTargetsBilling("VALIDATION_RESULT")).toBe(true);
-    expect(outputTypeTargetsBilling("  hipps_calculation  ")).toBe(true);
+    expect(outputTypeTargetsBilling("  per_diem_rate_calculation  ")).toBe(true);
     expect(outputTypeTargetsBilling("sia_calculation")).toBe(true);
     expect(outputTypeTargetsBilling("eligibility_check")).toBe(true);
     expect(outputTypeTargetsBilling("sequestration_policy")).toBe(true);

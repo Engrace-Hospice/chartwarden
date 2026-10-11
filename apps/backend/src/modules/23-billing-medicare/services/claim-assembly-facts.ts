@@ -11,13 +11,13 @@ import {
   type Cents,
   ChcHoursError,
   type FiscalYearPricing,
-  type HippsRateTable,
+  type PerDiemRateTable,
   type SignedEncounterSnapshot,
   type ValueCodeAreas,
   WageIndexAreaError,
   type WageIndexAreaFactors,
   addDaysIso,
-  calculateHippsByFiscalYear,
+  calculatePerDiemClassByFiscalYear,
   calculateSia,
   splitAtFiscalYears,
   wageIndexFactorForLevelOfCare,
@@ -105,7 +105,7 @@ export async function readAssemblyFacts(
     );
   }
   const rateScope = { orgId, providerEntityId, serviceFrom };
-  const rateTable = await seams.referenceData.hippsRateTable(
+  const rateTable = await seams.referenceData.perDiemRateTable(
     pe.macJurisdiction,
     fiscalYearStarting,
     rateScope,
@@ -256,7 +256,7 @@ interface PricingReadInput {
   readonly orgId: string;
   readonly providerEntityId: string;
   readonly patientId: string;
-  readonly macJurisdiction: Parameters<ClaimAssemblySeams["referenceData"]["hippsRateTable"]>[0];
+  readonly macJurisdiction: Parameters<ClaimAssemblySeams["referenceData"]["perDiemRateTable"]>[0];
   readonly ccn: string;
   readonly range: DateRange;
   readonly resolvedLoc: readonly {
@@ -267,7 +267,7 @@ interface PricingReadInput {
   }[];
   /** The rate table and provider wage index already read for the claim's first fiscal year. */
   readonly first: {
-    readonly rateTable: HippsRateTable;
+    readonly rateTable: PerDiemRateTable;
     readonly wageIndex: { readonly factorDecimal: string };
   };
   /** The period-end areas (value codes 61 / G8); reused as the pricing areas when the claim is one fiscal year. */
@@ -298,11 +298,15 @@ async function readFiscalYearPricing(
     const rateTable =
       index === 0
         ? input.first.rateTable
-        : await seams.referenceData.hippsRateTable(input.macJurisdiction, part.fiscalYearStarting, {
-            orgId: input.orgId,
-            providerEntityId: input.providerEntityId,
-            serviceFrom: part.from,
-          });
+        : await seams.referenceData.perDiemRateTable(
+            input.macJurisdiction,
+            part.fiscalYearStarting,
+            {
+              orgId: input.orgId,
+              providerEntityId: input.providerEntityId,
+              serviceFrom: part.from,
+            },
+          );
     const wageIndex =
       index === 0
         ? input.first.wageIndex
@@ -346,16 +350,16 @@ function wageIndexAreaFactorsOf(areas: ValueCodeAreas): WageIndexAreaFactors {
  * assembly (which builds the claim lines from it) and the re-validation path (which compares the persisted
  * lines against a fresh derivation, so a changed LOC/rate/wage-index surfaces as a failing rule).
  */
-export function computeClaimHipps(
+export function computeClaimPerDiemClass(
   facts: AssemblyFacts,
   window: { readonly serviceFrom: string; readonly serviceTo: string },
   /** Two-tier RHC — the prior hospice days the stay continues (ours + other hospices', `rhc-carry-over.ts`);
    *  absent ⇒ M6's own-stays count. */
   rhcPriorDays?: number,
-): ReturnType<typeof calculateHippsByFiscalYear> {
+): ReturnType<typeof calculatePerDiemClassByFiscalYear> {
   const { admission, resolvedLoc, pe, fiscalYearPricing } = facts;
   try {
-    return calculateHippsByFiscalYear(
+    return calculatePerDiemClassByFiscalYear(
       {
         claimServiceFrom: window.serviceFrom,
         claimServiceTo: window.serviceTo,

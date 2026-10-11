@@ -1,5 +1,5 @@
-// @wardenx/billing · repositories — `hipps_calculation` (the reproducible HIPPS payment math for a claim,
-// §3.3; 1:1 with `claim` via `hipps_calculation_claim_uq`). APPEND-ONLY — mirrors the `validation_run`
+// @wardenx/billing · repositories — `per_diem_rate_calculation` (the reproducible HIPPS payment math for a claim,
+// §3.3; 1:1 with `claim` via `per_diem_rate_calculation_claim_uq`). APPEND-ONLY — mirrors the `validation_run`
 // exemplar: INSERT + READ ONLY, deliberately NO update/delete method (the DB carries an append-only
 // write-audit trigger from P1; the per-claim math is recorded once at assembly and never mutated — a
 // re-assembly is a re-derivation behind the same idempotent claim key).
@@ -13,10 +13,10 @@ import * as schema from "@wardenx/db/schema";
 import { eq } from "drizzle-orm";
 import type { BillingDb } from "./db";
 
-const H = schema.hippsCalculation;
+const H = schema.perDiemRateCalculation;
 
-/** Data port for `hipps_calculation` (APPEND-ONLY: idempotent per-claim insert + read; no update/delete). */
-export class HippsCalculationRepository {
+/** Data port for `per_diem_rate_calculation` (APPEND-ONLY: idempotent per-claim insert + read; no update/delete). */
+export class PerDiemRateCalculationRepository {
   constructor(private readonly db: BillingDb) {}
 
   /**
@@ -24,7 +24,7 @@ export class HippsCalculationRepository {
    * INSERT no-ops and the existing row is read back, so a re-derivation collapses to the original row.
    * Returns the persisted calculation.
    */
-  async append(values: schema.NewHippsCalculation): Promise<schema.HippsCalculation> {
+  async append(values: schema.NewPerDiemRateCalculation): Promise<schema.PerDiemRateCalculation> {
     const [inserted] = await this.db
       .insert(H)
       .values(values)
@@ -32,18 +32,19 @@ export class HippsCalculationRepository {
       .returning();
     if (inserted) return inserted;
     const existing = await this.findByClaim(values.claimId);
-    if (!existing) throw new Error("hipps_calculation append: conflict but no existing row found");
+    if (!existing)
+      throw new Error("per_diem_rate_calculation append: conflict but no existing row found");
     return existing;
   }
 
   /** Point read by id, or `null`. */
-  async findById(id: string): Promise<schema.HippsCalculation | null> {
+  async findById(id: string): Promise<schema.PerDiemRateCalculation | null> {
     const [row] = await this.db.select().from(H).where(eq(H.id, id)).limit(1);
     return row ?? null;
   }
 
   /** The 1:1 HIPPS calculation for a claim, or `null`. */
-  async findByClaim(claimId: string): Promise<schema.HippsCalculation | null> {
+  async findByClaim(claimId: string): Promise<schema.PerDiemRateCalculation | null> {
     const [row] = await this.db.select().from(H).where(eq(H.claimId, claimId)).limit(1);
     return row ?? null;
   }

@@ -57,7 +57,7 @@ import type {
   RuleConfigView,
   ValidationOverrideView,
 } from "./read-service";
-import { claimDischargeCodesView, hippsPricingView } from "./read-service";
+import { claimDischargeCodesView, perDiemClassPricingView } from "./read-service";
 import type {
   AssembleClaimArgs,
   AssembledClaimLineInput,
@@ -268,11 +268,11 @@ async function deleteDraftClaimSubtree(
       ),
     );
   await tx
-    .delete(schema.hippsCalculation)
+    .delete(schema.perDiemRateCalculation)
     .where(
       and(
-        eq(schema.hippsCalculation.claimId, claimId),
-        eq(schema.hippsCalculation.organizationId, organizationId),
+        eq(schema.perDiemRateCalculation.claimId, claimId),
+        eq(schema.perDiemRateCalculation.organizationId, organizationId),
       ),
     );
   await tx
@@ -482,7 +482,9 @@ export function buildDrizzleM23WriteService(
     const latestRun = await new repositories.ValidationRunRepository(tx).findLatestForClaim(
       claim.id,
     );
-    const hipps = await new repositories.HippsCalculationRepository(tx).findByClaim(claim.id);
+    const perDiemClass = await new repositories.PerDiemRateCalculationRepository(tx).findByClaim(
+      claim.id,
+    );
     const sia = await new repositories.SiaCalculationRepository(tx).findByClaim(claim.id);
     return {
       ...mapClaimSummary(claim),
@@ -516,7 +518,9 @@ export function buildDrizzleM23WriteService(
           }
         : null,
       pricing: {
-        hipps: hipps ? hippsPricingView(hipps, { admissionId: claim.admissionId }) : null,
+        perDiemClass: perDiemClass
+          ? perDiemClassPricingView(perDiemClass, { admissionId: claim.admissionId })
+          : null,
         sia: sia
           ? {
               windowStart: sia.windowStart,

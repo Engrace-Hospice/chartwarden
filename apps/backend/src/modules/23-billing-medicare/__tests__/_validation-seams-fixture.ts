@@ -92,7 +92,7 @@ export function fixedValidationSeams(
       }),
     },
     referenceData: {
-      hippsRateTable: async () => ({
+      perDiemRateTable: async () => ({
         rhcDays1to60PerDiemCents: 20_000,
         rhcDays61PlusPerDiemCents: 16_000,
         chcHourlyRateCents: 6_250,

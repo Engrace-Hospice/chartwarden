@@ -4747,7 +4747,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             buildM23AssemblyPorts(dbHandle.db);
           mountM23Routes(app, {
             // F-210 — the tenant-entered hospice rate table (`/billing/rate-tables`); the SAME table the
-            // assembly service's `referenceData.hippsRateTable`/`chcHourlyRateCents` read (M23-owned, so
+            // assembly service's `referenceData.perDiemRateTable`/`chcHourlyRateCents` read (M23-owned, so
             // the boot assembly reads it over `dbHandle.db` directly — no injected port).
             rateTableService: buildDrizzleRateTableService(dbHandle.db),
             // The tenant-entered hospice visit-charge schedule (`/billing/visit-charge-schedules`); the SAME table the

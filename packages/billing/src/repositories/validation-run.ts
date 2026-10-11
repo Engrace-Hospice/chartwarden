@@ -3,7 +3,7 @@
 // INSERT + READ ONLY — there is deliberately NO update/delete method: a run's outcome is recorded once at
 // completion and never mutated; a re-validation is a NEW row (a new `trigger`). This is the PATTERN every
 // other append-only M23 repo mirrors — `claim_state_history`, `validation_result`, `validation_override`,
-// `claim_submission`, `claim_acknowledgment`, `hipps_calculation`, `sia_calculation`, `eligibility_check`.
+// `claim_submission`, `claim_acknowledgment`, `per_diem_rate_calculation`, `sia_calculation`, `eligibility_check`.
 //
 // IDEMPOTENCY (§2.6): identical `(claim_id, trigger, run_input_hash)` collapses to one row via the
 // `validation_run_idempotency_uq` unique index; `append` is INSERT … ON CONFLICT DO NOTHING then read-back,

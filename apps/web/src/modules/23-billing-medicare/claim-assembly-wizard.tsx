@@ -37,7 +37,7 @@ interface AssembleResult {
   state: string;
   totalChargeCents: number;
   perDiemClassCode: string;
-  hippsRateCents: number;
+  perDiemRateCents: number;
   lineCount: number;
   initialValidationRunId: string;
   initialValidationOutcome: "all_pass" | "failures_present" | "overrides_required";
@@ -466,7 +466,7 @@ function AssembledResult({ result }: { result: AssembleResult }): JSX.Element {
           }
         />
         <DtDd label="Per-diem class (internal)" value={result.perDiemClassCode} mono />
-        <DtDd label="Per-diem rate" value={dollars(result.hippsRateCents)} />
+        <DtDd label="Per-diem rate" value={dollars(result.perDiemRateCents)} />
         <DtDd label="Lines" value={String(result.lineCount)} />
         <DtDd label="Total charge" value={dollars(result.totalChargeCents)} />
       </dl>

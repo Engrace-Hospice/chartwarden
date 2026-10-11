@@ -305,7 +305,7 @@ export const HospicePeriodsQuerySchema = Type.Object({
 /**
  * The two-tier RHC day-count carry-over (`computeRhcCarryOver`, Claims Processing Manual ch. 11 §30.2): the prior
  * hospice days (ours + other hospices' per HETS) a new election continues, the chain counted, the basis and any
- * warnings. Shared by the hospice-periods read and the claim detail's `pricing.hipps.rhcCarryOver`.
+ * warnings. Shared by the hospice-periods read and the claim detail's `pricing.perDiemClass.rhcCarryOver`.
  */
 export const RhcCarryOverSchema = Type.Object({
   electionDate: isoDate(),

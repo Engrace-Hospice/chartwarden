@@ -1,9 +1,9 @@
 import {
-  type HippsRateTable,
+  type PerDiemRateTable,
   type RhcCarryOverInput,
   type RhcHetsPeriod,
   addDaysIso,
-  calculateHipps,
+  calculatePerDiemClass,
   computeRhcCarryOver,
 } from "@wardenx/billing";
 // @wardenx/billing — the two-tier RHC carry-over across stays (ours + other hospices' per HETS). Pure.
@@ -43,9 +43,9 @@ describe("computeRhcCarryOver — the manual's example (ch. 11 §30.2)", () => {
     expect(r.warnings).toEqual([]);
   });
 
-  it("feeds calculateHipps so day 61 (the first low-rate day) is 03/27", () => {
+  it("feeds calculatePerDiemClass so day 61 (the first low-rate day) is 03/27", () => {
     const { priorDays } = run({ internalStays: [{ start: "2026-01-10", end: "2026-01-30" }] });
-    const rates: HippsRateTable = {
+    const rates: PerDiemRateTable = {
       rhcDays1to60PerDiemCents: 20_000,
       rhcDays61PlusPerDiemCents: 16_000,
       chcHourlyRateCents: 6_667,
@@ -56,7 +56,7 @@ describe("computeRhcCarryOver — the manual's example (ch. 11 §30.2)", () => {
       ircLaborShare: "0.5400",
       gipLaborShare: "0.6400",
     };
-    const hipps = calculateHipps({
+    const perDiemClass = calculatePerDiemClass({
       claimServiceFrom: "2026-03-01",
       claimServiceTo: "2026-03-28",
       hospiceAdmissionDate: "2026-02-16",
@@ -70,9 +70,9 @@ describe("computeRhcCarryOver — the manual's example (ch. 11 §30.2)", () => {
       wageIndexFactorDecimal: "1.0000",
     });
     // 21 + 39 high days (02/16 – 03/26), then 03/27 – 03/28 low.
-    expect(hipps.rhcDays1to60).toBe(26);
-    expect(hipps.rhcDays61Plus).toBe(2);
-    expect(hipps.segments.find((s) => s.rhcDayBucket === "days_61_plus")?.dateFrom).toBe(
+    expect(perDiemClass.rhcDays1to60).toBe(26);
+    expect(perDiemClass.rhcDays61Plus).toBe(2);
+    expect(perDiemClass.segments.find((s) => s.rhcDayBucket === "days_61_plus")?.dateFrom).toBe(
       "2026-03-27",
     );
   });

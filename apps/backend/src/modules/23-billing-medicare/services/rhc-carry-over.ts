@@ -4,7 +4,7 @@
 // `rhcPriorStays`) merged with the beneficiary's cross-hospice history from the latest RESOLVED HETS 271 check
 // (M23's own `eligibility_check.parsed_payload`), counted by the pure `computeRhcCarryOver` (@wardenx/billing,
 // which carries the CMS citations). Used by the claim assembly + re-validation (HIPPS split, persisted on
-// `hipps_calculation.rhc_carry_over`) and by the readmission screen's hospice-periods read.
+// `per_diem_rate_calculation.rhc_carry_over`) and by the readmission screen's hospice-periods read.
 //
 // BASIS: `internal_only` (no resolved check, or it returned no hospice section), `hets_merged` (a fresh check),
 // `hets_stale` (merged, but the check is past its stale_at or older than 30 days). With no HETS history AND no

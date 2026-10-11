@@ -7,7 +7,7 @@
 // 422; the overlap pre-check names the conflicting version for a precise 409; migration 0279's EXCLUDE constraint is
 // the race-safe backstop (a concurrent writer that slips past the pre-check surfaces as the same 409, never as two
 // live rows). Rates are append-only: a correction SUPERSEDES the old version (it stays readable as history) and
-// already-assembled claims are unaffected because assembly snapshots the priced per-diems onto `hipps_calculation`.
+// already-assembled claims are unaffected because assembly snapshots the priced per-diems onto `per_diem_rate_calculation`.
 import { randomUUID } from "node:crypto";
 import {
   checkRatesAgainstNationalReference,

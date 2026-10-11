@@ -6,7 +6,7 @@ import {
   fiscalYearWindow,
   hasLaborShares,
   hospiceFiscalYearStartingOf,
-  toHippsRateTable,
+  toPerDiemRateTable,
   validateRateTableEntry,
   windowCovers,
 } from "../src";
@@ -139,9 +139,9 @@ describe("dateRangesOverlap / windowCovers", () => {
   });
 });
 
-describe("toHippsRateTable", () => {
+describe("toPerDiemRateTable", () => {
   it("projects the rates + labor shares the HIPPS calculator injects (CHC as its HOURLY rate)", () => {
-    expect(toHippsRateTable({ ...GOOD })).toEqual({
+    expect(toPerDiemRateTable({ ...GOOD })).toEqual({
       rhcDays1to60PerDiemCents: 21_500,
       rhcDays61PlusPerDiemCents: 17_000,
       chcHourlyRateCents: 4_400,
@@ -163,7 +163,7 @@ describe("toHippsRateTable", () => {
       laborShareGip: null,
     };
     expect(hasLaborShares(legacy)).toBe(false);
-    expect(() => toHippsRateTable(legacy)).toThrow(RangeError);
+    expect(() => toPerDiemRateTable(legacy)).toThrow(RangeError);
     expect(hasLaborShares({ ...GOOD })).toBe(true);
     expect(hasLaborShares({ ...GOOD, laborShareGip: null })).toBe(false);
   });

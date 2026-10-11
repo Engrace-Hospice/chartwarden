@@ -4256,7 +4256,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Single-claim detail - lines + HIPPS + SIA + latest run + submissions + acks (§4.1 #3) */
+        /** Single-claim detail - lines + per-diem class + SIA + latest run + submissions + acks (§4.1 #3) */
         get: operations["getApiV1BillingClaimsById"];
         put?: never;
         post?: never;
@@ -4413,7 +4413,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Assemble a server-authoritative DRAFT claim (lines + HIPPS + SIA + initial validation run, §4.1 #1) */
+        /** Assemble a server-authoritative DRAFT claim (lines + per-diem class + SIA + initial validation run, §4.1 #1) */
         post: operations["postApiV1BillingClaimsAssemble"];
         delete?: never;
         options?: never;
@@ -35240,9 +35240,9 @@ export interface operations {
                             initiatedByMembershipId: string | null;
                         } | null;
                         pricing: {
-                            hipps: {
+                            perDiemClass: {
                                 perDiemClassCode: string;
-                                hippsRateCents: number;
+                                perDiemRateCents: number;
                                 wageIndexCcn: string;
                                 wageIndexFiscalYear: number;
                                 wageIndexFactor: string;
@@ -35706,7 +35706,7 @@ export interface operations {
                         state: "DRAFT";
                         totalChargeCents: number;
                         perDiemClassCode: string;
-                        hippsRateCents: number;
+                        perDiemRateCents: number;
                         lineCount: number;
                         /** Format: uuid */
                         initialValidationRunId: string;

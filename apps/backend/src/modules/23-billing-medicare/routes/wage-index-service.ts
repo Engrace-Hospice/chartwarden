@@ -7,7 +7,7 @@
 // "one live value per CCN + fiscal year" pre-check names the clashing version for a precise 409; migration 0280's partial
 // unique index is the race-safe backstop (a concurrent writer surfaces as the same 409, never as two live rows). Values are
 // append-only: a correction SUPERSEDES the old row (kept as history); already-assembled claims are unaffected because assembly
-// snapshots the applied factor onto `hipps_calculation`.
+// snapshots the applied factor onto `per_diem_rate_calculation`.
 import { randomUUID } from "node:crypto";
 import { repositories, resolveWageIndex, validateWageIndexEntry } from "@wardenx/billing";
 import type { ResolvedWageIndex } from "@wardenx/billing";

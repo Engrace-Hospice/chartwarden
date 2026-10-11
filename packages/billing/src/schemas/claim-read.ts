@@ -80,7 +80,7 @@ export const ClaimLineView = Type.Object({
 export type ClaimLineView = Static<typeof ClaimLineView>;
 
 /** The HIPPS derivation projection embedded in claim detail. */
-export const HippsView = Type.Object({
+export const PerDiemClassView = Type.Object({
   perDiemClassCode: Type.String(),
   perDiemRateCents: CentsSchema,
   wageIndexFactorApplied: Type.String(),
@@ -93,7 +93,7 @@ export const HippsView = Type.Object({
     }),
   ),
 });
-export type HippsView = Static<typeof HippsView>;
+export type PerDiemClassView = Static<typeof PerDiemClassView>;
 
 /** The SIA add-on projection embedded in claim detail (0..1). */
 export const SiaView = Type.Object({
@@ -145,7 +145,7 @@ export const ClaimDetailResponse = Type.Composite([
   ClaimSummaryView,
   Type.Object({
     lines: Type.Array(ClaimLineView),
-    hipps: Type.Union([HippsView, Type.Null()]),
+    perDiemClass: Type.Union([PerDiemClassView, Type.Null()]),
     sia: Type.Union([SiaView, Type.Null()]),
     latestValidationRun: Type.Union([ValidationRunSummaryView, Type.Null()]),
     submissions: Type.Array(SubmissionView),

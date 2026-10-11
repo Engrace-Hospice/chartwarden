@@ -113,7 +113,7 @@ export {
   type EligibilityCheckRecord,
   type NewEligibilityCheckInput,
 } from "./eligibility-check";
-export { HippsCalculationRepository } from "./hipps-calculation";
+export { PerDiemRateCalculationRepository } from "./per-diem-rate-calculation";
 export { SiaCalculationRepository } from "./sia-calculation";
 export { SequestrationPolicyRepository } from "./sequestration-policy";
 export { HospiceRateTableRepository } from "./hospice-rate-table";

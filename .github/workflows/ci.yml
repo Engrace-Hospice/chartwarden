@@ -132,6 +132,7 @@ jobs:
           - { name: "M20 Field Safety", script: "test:rls:live:m20" }
           - { name: "M21 Supplies/DME", script: "test:rls:live:m21" }
           - { name: "M23 Billing-Medicare", script: "test:rls:live:m23" }
+          - { name: "M23 per-diem-rate rename (1069)", script: "test:m23:per-diem-rate-rename:live" }
           - { name: "M24 Billing-Medicaid", script: "test:rls:live:m24" }
           - { name: "M25 Remittance", script: "test:rls:live:m25" }
           - { name: "M26 Cap Management", script: "test:rls:live:m26" }

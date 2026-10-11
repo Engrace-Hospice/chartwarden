@@ -1,10 +1,10 @@
-// `hipps_calculation.rhc_carry_over` (migration 0376) is an append-only pricing snapshot (M23 §3.6 / D7: the
+// `per_diem_rate_calculation.rhc_carry_over` (migration 0376) is an append-only pricing snapshot (M23 §3.6 / D7: the
 // BEFORE UPDATE OR DELETE trigger raises M23_TABLE_APPEND_ONLY; corrections go through a TOB 817 replacement), so
 // rows priced before the `sending_hospice` span kind existed are never rewritten. Between 981ece675 and 16dea2298
 // a transfer-in's sending-hospice span was stored as `{ source: "internal", kind: "stay" }` (with the sending
 // hospice's NPI when captured); the claim detail maps it to the current kind at READ time.
 import { describe, expect, it } from "vitest";
-import { hippsPricingView } from "../routes/read-service";
+import { perDiemClassPricingView } from "../routes/read-service";
 import { normalizeStoredRhcCarryOver } from "../services/rhc-carry-over-stored";
 
 const CLAIM_ADMISSION = "11111111-1111-4111-8111-111111111111";
@@ -86,12 +86,12 @@ describe("normalizeStoredRhcCarryOver — old span labels on immutable rows", ()
   });
 });
 
-describe("hippsPricingView — the claim detail reads the normalized carry-over", () => {
+describe("perDiemClassPricingView — the claim detail reads the normalized carry-over", () => {
   it("maps an old-shape row's sending span to the current kind", () => {
-    const view = hippsPricingView(
+    const view = perDiemClassPricingView(
       {
-        hippsCode: "651",
-        hippsRateCents: 21_800,
+        perDiemClassCode: "651",
+        perDiemRateCents: 21_800,
         wageIndexCcn: "381588",
         wageIndexFiscalYear: 2026,
         wageIndexFactor: "1.0000",

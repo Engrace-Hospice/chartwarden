@@ -60,7 +60,7 @@ import type {
   ValidationRunDetailView,
   ValidationRunView,
 } from "./read-service";
-import { claimDischargeCodesView, hippsPricingView } from "./read-service";
+import { claimDischargeCodesView, perDiemClassPricingView } from "./read-service";
 
 type BillingDb = repositories.BillingDb;
 
@@ -404,7 +404,9 @@ export function buildDrizzleM23ReadService(
         const latestRun = await new repositories.ValidationRunRepository(tx).findLatestForClaim(
           claimId,
         );
-        const hipps = await new repositories.HippsCalculationRepository(tx).findByClaim(claimId);
+        const perDiemClass = await new repositories.PerDiemRateCalculationRepository(
+          tx,
+        ).findByClaim(claimId);
         const sia = await new repositories.SiaCalculationRepository(tx).findByClaim(claimId);
         return {
           ...mapClaimSummary(row),
@@ -423,7 +425,9 @@ export function buildDrizzleM23ReadService(
           attention: null,
           latestValidation: latestRun ? mapValidationRun(latestRun) : null,
           pricing: {
-            hipps: hipps ? hippsPricingView(hipps, { admissionId: row.admissionId }) : null,
+            perDiemClass: perDiemClass
+              ? perDiemClassPricingView(perDiemClass, { admissionId: row.admissionId })
+              : null,
             sia: sia
               ? {
                   windowStart: sia.windowStart,
