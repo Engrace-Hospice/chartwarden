@@ -913,7 +913,10 @@ describe("claim 277CA rejection queues an RTP correction (ADR-0052)", () => {
     const boom = {
       ensureNoticeItem: async () => ({ created: false }),
       ensureClaimRtpItem: async () => {
-        throw new Error("db down 1EG4TE5MK73");
+        throw Object.assign(new Error("duplicate key (patient_id)=(1EG4TE5MK73) already exists"), {
+          code: "23505",
+          constraint: "dde_work_item_open_subject_uq",
+        });
       },
     };
     const h = harness();
@@ -926,7 +929,15 @@ describe("claim 277CA rejection queues an RTP correction (ADR-0052)", () => {
     expect(fakes.claims.get("claim-1")?.state).toBe("ack_rejected");
     expect(h.published.map((e) => e.eventName)).toContain("m23.claim.rejected");
     expect(errors).toHaveLength(1);
-    expect(errors[0]).toMatchObject({ organizationId: ORG, claimId: "claim-1" });
+    expect(errors[0]).toMatchObject({
+      organizationId: ORG,
+      claimId: "claim-1",
+      errorName: "Error",
+      code: "23505",
+      constraint: "dde_work_item_open_subject_uq",
+    });
+    // the raw driver message (which can embed an MBI or row detail) is never logged
+    expect(JSON.stringify(errors)).not.toContain("1EG4TE5MK73");
   });
 
   it("is a no-op when no DDE watchdog is bound", async () => {

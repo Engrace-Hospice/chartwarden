@@ -1528,11 +1528,17 @@ async function queueRtpCorrection(
       });
     });
   } catch (err) {
+    // Never log `err.message`: a Postgres error can embed row/key detail (patient or claim ids, an MBI). Ids plus the
+    // error class and SQLSTATE/constraint are enough to find the failure. `logger` is optional on the worker deps; when
+    // absent the failure is deliberately not reported (the rollback and the by-hand `POST /dde-items` path still hold).
+    const pgError = err as { code?: unknown; constraint?: unknown } | null;
     deps.logger?.error(
       {
         organizationId,
         claimId,
-        error: err instanceof Error ? err.message : String(err),
+        errorName: err instanceof Error ? err.name : typeof err,
+        ...(typeof pgError?.code === "string" ? { code: pgError.code } : {}),
+        ...(typeof pgError?.constraint === "string" ? { constraint: pgError.constraint } : {}),
       },
       "dde rtp queueing failed",
     );

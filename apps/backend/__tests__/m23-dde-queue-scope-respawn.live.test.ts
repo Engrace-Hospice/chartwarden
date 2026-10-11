@@ -626,6 +626,39 @@ describe.skipIf(!DB_URL)(
         expect(await rtpItems(claim.claimId)).toEqual([]);
         expect(errors).toHaveLength(1);
       });
+
+      it("the savepoint really rolls back: a publish that throws leaves no item and no history, but the rejection and ack stand", async () => {
+        const claim = await seedClaimWithSubmission(admin);
+        const realOutbox = live.bound("m23") as unknown as {
+          publish: (tx: unknown, event: { eventName: string }) => Promise<unknown>;
+        };
+        // the REAL watchdog inserts the item and its history row, then the publish throws: only the savepoint can undo them
+        const failingOutbox = {
+          publish: async (tx: unknown, event: { eventName: string }) => {
+            if (event.eventName === "m23.dde_item.created") throw new Error("publish refused");
+            return realOutbox.publish(tx, event);
+          },
+        };
+        const deps = {
+          ...rtpDeps([reject(claim)]),
+          ddeWatchdog: buildDdeWatchdog({ outbox: failingOutbox as never }),
+        } as unknown as M23WorkerDeps;
+
+        await runAckPull277ca(deps);
+
+        expect(await rtpItems(claim.claimId)).toEqual([]);
+        const history = await admin.query(
+          "SELECT 1 FROM dde_work_event e JOIN dde_work_item i ON i.id = e.work_item_id WHERE i.subject_id=$1",
+          [claim.claimId],
+        );
+        expect(history.rows).toEqual([]);
+        const state = await admin.query("SELECT state FROM claim WHERE id=$1", [claim.claimId]);
+        expect(state.rows[0].state).toBe("ACK_REJECTED");
+        const acks = await admin.query("SELECT 1 FROM claim_acknowledgment WHERE claim_id=$1", [
+          claim.claimId,
+        ]);
+        expect(acks.rows).toHaveLength(1);
+      });
     });
   },
 );
