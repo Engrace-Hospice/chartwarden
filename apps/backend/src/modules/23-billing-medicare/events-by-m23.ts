@@ -770,7 +770,7 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m23.dde_item.created",
     moduleOwner: "m23",
     description:
-      "A DDE work item was queued (by an operator, or by the NOE/NOTR watchdog for an at-risk notice).",
+      "A DDE work item was queued (by an operator, by the NOE/NOTR watchdog for an at-risk notice, or by the claim-ack cron as an rtp_correction item for a claim the MAC rejected at the payer stage).",
     payloadSchema: Type.Object({
       ddeItemId: id,
       itemType: ddeItemType,
