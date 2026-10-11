@@ -748,7 +748,11 @@ export interface M40PhysicianReader {
     orgId: string,
     id: string,
   ): Promise<{
-    readonly canonical: { readonly identifierValue: string | null };
+    readonly canonical: {
+      readonly identifierValue: string | null;
+      readonly firstName?: string;
+      readonly lastName?: string;
+    };
     readonly status: "active" | "deactivated" | "provisional";
   } | null>;
 }
@@ -790,6 +794,8 @@ async function toPhysicianResolution(
         : "not_found";
   return {
     npi: resolved.canonical.identifierValue,
+    ...(resolved.canonical.firstName ? { firstName: resolved.canonical.firstName } : {}),
+    ...(resolved.canonical.lastName ? { lastName: resolved.canonical.lastName } : {}),
     status,
     licenseUnexpiredOnServiceDates: false,
   };

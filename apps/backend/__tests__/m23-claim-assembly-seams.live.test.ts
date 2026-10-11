@@ -727,6 +727,9 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
         placeOfDeath: null,
         dischargeEventId: null,
         transferOut: null,
+        // UB-04 FL 14 / FL 15 (f8c294448): this admission was seeded without a type / point of origin.
+        admissionTypeCode: null,
+        admissionSourceCode: null,
         // F-127 (#251) — `activeAdmissionForRange` names M6_MD as the hospice physician.
         hospicePhysicianId: M6_MD,
       });
@@ -1613,6 +1616,9 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       const resolution = await seam.resolveClinicalParticipants(ORG_A, patientId, range.from);
       expect(resolution.hospicePhysician).toEqual({
         npi: "1122334455",
+        // The M40 canonical names ride along so claim assembly can snapshot them (C2).
+        firstName: "Hospice",
+        lastName: "MD",
         status: "active",
         // Honest, not fabricated — M40 tracks no per-state license expiry date for an external
         // physician (F-127); see `physician-credentials.ts`'s reworded defect message.
@@ -1620,6 +1626,8 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       });
       expect(resolution.attending).toEqual({
         npi: "1234567893",
+        firstName: "Attending",
+        lastName: "MD",
         status: "inactive",
         licenseUnexpiredOnServiceDates: false,
       });

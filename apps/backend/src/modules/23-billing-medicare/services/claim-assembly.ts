@@ -37,6 +37,7 @@ import {
   type LevelOfCare,
   type RuleResult,
   applySequestrationPolicy,
+  buildClaimSnapshot,
   claimAdmissionCodes,
   claimPhysicianNpis,
   claimValueCodes,
@@ -472,6 +473,9 @@ export function buildClaimAssemblyService(
           ...claimDischargeCodeColumns(dischargeCodes),
           // UB-04 FL 76 / FL 78 physician NPIs (migration 1054), also refreshed on every re-validation.
           ...claimPhysicianNpis(mdmResolution),
+          // Migration 1068 — the physicians' names and the diagnosis sequence as they stand NOW, frozen on the claim
+          // (refreshed with the NPIs on re-validation, frozen from SUBMITTED) so a sent claim does not move when M40 / M7 do.
+          ...buildClaimSnapshot(mdmResolution, icd10Sequence),
           // UB-04 FL 14 / FL 15 (migration 1057) from the M6 admission; also refreshed on re-validation.
           ...claimAdmissionCodes(admission),
           // UB-04 FL 39-41 value codes 61 / G8 (migration 1059), also refreshed on re-validation.

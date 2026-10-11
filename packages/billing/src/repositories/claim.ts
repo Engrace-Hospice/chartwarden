@@ -13,7 +13,10 @@
 //
 // No PHI / no MBI is ever read or written here (D13 / §3.6 / §8.7).
 import * as schema from "@wardenx/db/schema";
+import { WardenXError } from "@wardenx/types";
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import type { ClaimAssemblySnapshot } from "../claim-lines/claim-snapshot";
+import type { ClaimPhysicianNpis } from "../claim-lines/physician-npis";
 import type { ClaimState, TypeOfBill } from "../contracts";
 import {
   type BillingDb,
@@ -29,6 +32,10 @@ import {
 } from "./db";
 
 const C = schema.claim;
+
+/** The states in which the physician / diagnosis snapshot may still change (it follows the NPIs until submission). */
+const SNAPSHOT_MUTABLE_STATES: readonly ClaimState[] = ["draft", "validating", "ready"];
+const SNAPSHOT_MUTABLE_DB_STATES = SNAPSHOT_MUTABLE_STATES.map((s) => claimStateCodec.toDb(s));
 
 /** The domain-cased `claim` row: identical to `schema.Claim` except `state` is the lowercase `ClaimState`. */
 export interface ClaimRecord extends Omit<schema.Claim, "state"> {
@@ -360,33 +367,75 @@ export class ClaimRepository {
   }
 
   /**
-   * Keep the claim's physician NPIs (migration 1054; UB-04 FL 76 attending / FL 78 certifying) in step with the M40
-   * resolution the latest validation run saw. A derived projection like {@link refreshDischargeCodes}: no version
-   * bump, a no-op when unchanged; the write-audit trigger records the change. Returns whether the row changed.
+   * The claim's assembly-time snapshot (migration 1068): the physicians' names and the diagnosis sequence as they
+   * stood when it was assembled, or `null` when the claim does not exist. Never re-derived from M40 / M7.
    */
-  async refreshPhysicianNpis(
+  async snapshotFor(id: string): Promise<ClaimAssemblySnapshot | null> {
+    const [row] = await this.db
+      .select({
+        attendingPhysicianFirstName: C.attendingPhysicianFirstName,
+        attendingPhysicianLastName: C.attendingPhysicianLastName,
+        certifyingPhysicianFirstName: C.certifyingPhysicianFirstName,
+        certifyingPhysicianLastName: C.certifyingPhysicianLastName,
+        diagnosisSnapshot: C.diagnosisSnapshot,
+      })
+      .from(C)
+      .where(eq(C.id, id))
+      .limit(1);
+    return row ?? null;
+  }
+
+  /**
+   * Re-derive the claim's physician NPIs (migration 1054; UB-04 FL 76 / FL 78) TOGETHER with the names and diagnosis
+   * sequence that belong to them (migration 1068), in ONE statement, so an NPI and a name can never describe different
+   * physicians. The snapshot follows the NPIs until the claim is submitted: writable while the claim is DRAFT,
+   * VALIDATING or READY (assembly, re-assembly, every re-validation) and frozen from SUBMITTED onward - guarded in the
+   * statement (`state IN (...)`) and again by the `trg_claim_snapshot_immutable` trigger. A derived projection like the
+   * discharge codes: no version bump, a no-op when nothing changed (the write-audit trigger records a change). Returns
+   * whether the row changed (`false` also when the claim does not exist); a claim in a frozen state throws
+   * `CLAIM_SNAPSHOT_IMMUTABLE` (409).
+   */
+  async refreshSnapshot(
     id: string,
-    npis: {
-      readonly attendingPhysicianNpi: string | null;
-      readonly certifyingPhysicianNpi: string | null;
-    },
+    npis: ClaimPhysicianNpis,
+    snapshot: ClaimAssemblySnapshot,
   ): Promise<boolean> {
+    const dx = JSON.stringify(snapshot.diagnosisSnapshot);
     const rows = await this.db
       .update(C)
       .set({
         attendingPhysicianNpi: npis.attendingPhysicianNpi,
         certifyingPhysicianNpi: npis.certifyingPhysicianNpi,
+        attendingPhysicianFirstName: snapshot.attendingPhysicianFirstName,
+        attendingPhysicianLastName: snapshot.attendingPhysicianLastName,
+        certifyingPhysicianFirstName: snapshot.certifyingPhysicianFirstName,
+        certifyingPhysicianLastName: snapshot.certifyingPhysicianLastName,
+        diagnosisSnapshot: snapshot.diagnosisSnapshot.map((d) => ({ ...d })),
         updatedAt: new Date(),
       })
       .where(
         and(
           eq(C.id, id),
+          inArray(C.state, SNAPSHOT_MUTABLE_DB_STATES),
           sql`(${C.attendingPhysicianNpi} IS DISTINCT FROM ${npis.attendingPhysicianNpi}
-            OR ${C.certifyingPhysicianNpi} IS DISTINCT FROM ${npis.certifyingPhysicianNpi})`,
+            OR ${C.certifyingPhysicianNpi} IS DISTINCT FROM ${npis.certifyingPhysicianNpi}
+            OR ${C.attendingPhysicianFirstName} IS DISTINCT FROM ${snapshot.attendingPhysicianFirstName}
+            OR ${C.attendingPhysicianLastName} IS DISTINCT FROM ${snapshot.attendingPhysicianLastName}
+            OR ${C.certifyingPhysicianFirstName} IS DISTINCT FROM ${snapshot.certifyingPhysicianFirstName}
+            OR ${C.certifyingPhysicianLastName} IS DISTINCT FROM ${snapshot.certifyingPhysicianLastName}
+            OR ${C.diagnosisSnapshot} IS DISTINCT FROM ${dx}::jsonb)`,
         ),
       )
       .returning({ id: C.id });
-    return rows.length > 0;
+    if (rows.length > 0) return true;
+    const current = await this.findById(id);
+    if (current === null) return false;
+    if (SNAPSHOT_MUTABLE_STATES.includes(current.state)) return false; // unchanged
+    throw new WardenXError(
+      "CLAIM_SNAPSHOT_IMMUTABLE",
+      `the snapshot of a claim in state '${current.state}' cannot be changed; only a draft, validating or ready claim's can`,
+      409,
+    );
   }
 
   /**
@@ -412,7 +461,7 @@ export class ClaimRepository {
   /**
    * Keep the claim's Type of Admission / Point of Origin (migration 1057; UB-04 FL 14 / FL 15) in step with the
    * M6 admission the latest validation run read — a biller recording the missing codes after assembly must not
-   * need a new claim. A derived projection like {@link refreshPhysicianNpis}: no version bump, no-op when unchanged.
+   * need a new claim. A derived projection like {@link refreshSnapshot}: no version bump, no-op when unchanged.
    */
   async refreshAdmissionCodes(
     id: string,

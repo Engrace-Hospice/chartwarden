@@ -5,3 +5,4 @@ export * from "./visit-lines";
 export * from "./chc-units";
 export * from "./value-codes";
 export * from "./physician-npis";
+export * from "./claim-snapshot";

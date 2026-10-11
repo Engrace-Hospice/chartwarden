@@ -154,7 +154,8 @@ export async function readAssemblyFacts(
     range,
   );
   // F-209 (#251) — the claim's real diagnosis sequence (M7), read BEFORE terminology so M38 can resolve
-  // `icd10Billable` for exactly these codes. Not persisted to a claim column (no such column exists).
+  // `icd10Billable` for exactly these codes. Persisted on the claim as `diagnosis_snapshot` (migration 1068) and
+  // re-derived with the physician NPIs on every re-validation until the claim is submitted.
   const diagnosisRead = await seams.diagnoses.forRange(orgId, patientId, range);
   const icd10Sequence = diagnosisRead.sequence;
   const terminology = await seams.terminology.resolveForClaim(

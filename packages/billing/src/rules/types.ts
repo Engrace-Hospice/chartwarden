@@ -357,6 +357,9 @@ export type NpiStatus = "active" | "inactive" | "not_found" | "invalid";
 
 export interface PhysicianResolution {
   readonly npi: string;
+  /** M40 canonical given / family name, for the claim's assembly-time snapshot (migration 1068). Optional. */
+  readonly firstName?: string;
+  readonly lastName?: string;
   readonly status: NpiStatus;
   /** Whether the required state license is unexpired across the claim's service dates. */
   readonly licenseUnexpiredOnServiceDates: boolean;

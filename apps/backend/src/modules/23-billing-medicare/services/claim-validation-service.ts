@@ -26,6 +26,7 @@ import {
   type RuleResult,
   type TypeOfBill,
   type ValidationContext,
+  buildClaimSnapshot,
   claimAdmissionCodes,
   claimLateNoeSpans,
   claimPhysicianNpis,
@@ -219,8 +220,14 @@ export function buildClaimValidationService(
       claim.id,
       claimDischargeCodeColumns(context.claim.dischargeClaimCodes),
     );
-    // …and the attending / certifying physician NPIs (UB-04 FL 76 / FL 78) the run resolved from M40.
-    await claimRepo.refreshPhysicianNpis(claim.id, claimPhysicianNpis(context.mdm));
+    // …and the attending / certifying physician NPIs (UB-04 FL 76 / FL 78) the run resolved from M40, TOGETHER with the
+    // physician names and diagnosis sequence of that same resolution (migration 1068): one statement, so an NPI never
+    // belongs to a different physician than the name beside it. The snapshot follows the NPIs until submission.
+    await claimRepo.refreshSnapshot(
+      claim.id,
+      claimPhysicianNpis(context.mdm),
+      buildClaimSnapshot(context.mdm, context.claim.icd10Sequence),
+    );
     // …and the admission type / point of origin (UB-04 FL 14 / 15) the admission now records.
     await claimRepo.refreshAdmissionCodes(claim.id, claimAdmissionCodes(context.claim));
     // …and the wage-index value codes 61 / G8 (UB-04 FL 39-41) from the same run's ZIP-to-CBSA resolution.
