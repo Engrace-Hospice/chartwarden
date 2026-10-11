@@ -12,7 +12,7 @@
 // transaction, so RLS scopes them to the same `app.org_id` and they see the same snapshot the consumer's
 // write does. No method opens its own transaction or switches tenants.
 import { type DbClient, schema } from "@wardenx/db";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 
 const PROVIDER = schema.providerEntities;
 const LOCATION = schema.locations;
@@ -64,6 +64,16 @@ export interface FoundationSiteReader {
     tx: DbClient,
     providerEntityIds: readonly string[],
   ): Promise<readonly string[]>;
+  /**
+   * True when every id in `locationIds` is a non-closed location of a provider entity in `organizationId`
+   * (duplicates ignored; an empty list is trivially true). M2's user provisioning validates the default
+   * locations it assigns with this instead of reading M1's tables itself.
+   */
+  allLocationsOpenInOrg(
+    tx: DbClient,
+    organizationId: string,
+    locationIds: readonly string[],
+  ): Promise<boolean>;
   /** FY2027 — the provider entity's legal name: the "name of the hospice" the 42 CFR 418.24(c)(2) election
    *  statement addendum prints (M6). Null when the provider entity is not found in the org. */
   providerEntityLegalName(
@@ -140,6 +150,23 @@ export function buildFoundationSiteReader(): FoundationSiteReader {
         .where(eq(LOCATION.id, locationId))
         .limit(1);
       return location?.timezone ?? null;
+    },
+
+    async allLocationsOpenInOrg(tx, organizationId, locationIds) {
+      const wanted = [...new Set(locationIds)];
+      if (wanted.length === 0) return true;
+      const rows = await tx
+        .select({ id: LOCATION.id })
+        .from(LOCATION)
+        .innerJoin(PROVIDER, eq(PROVIDER.id, LOCATION.providerEntityId))
+        .where(
+          and(
+            eq(PROVIDER.organizationId, organizationId),
+            inArray(LOCATION.id, wanted),
+            ne(LOCATION.status, "closed"),
+          ),
+        );
+      return rows.length === wanted.length;
     },
 
     async providerEntityLegalName(tx, organizationId, providerEntityId) {
