@@ -1508,6 +1508,11 @@ async function applyClaimAck(
   const claimId = submission.claimId;
   if (!claimId) return;
   const reasonCodes = [...ack.reasonCodes];
+  if (ack.stage === "clearinghouse" && ack.kind !== "ack_999") {
+    throw new Error(
+      "claim ack: a clearinghouse-stage answer must be an ack_999 (it cannot reach ack_accepted)",
+    );
+  }
   const recorded = await new ClaimAcknowledgmentRepository(tx).append({
     organizationId: ack.organizationId,
     submissionId: submission.id,

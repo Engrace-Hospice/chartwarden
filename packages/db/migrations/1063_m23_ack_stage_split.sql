@@ -6,20 +6,19 @@
 -- so a clearinghouse-stage acceptance never advances a record to ACK_ACCEPTED and never stamps payer_status_date
 -- (ADR-0052 D4: NOE timeliness is judged on MAC acceptance).
 --
---   claim_acknowledgment.stage      'clearinghouse' | 'payer'. Backfill: ack_999 rows -> clearinghouse, ack_277ca and
---                                   ack_835 rows -> payer (the only path before a clearinghouse existed is direct MAC).
+--   claim_acknowledgment.stage      'clearinghouse' | 'payer', NULLABLE and NOT backfilled: the table is append-only
+--                                   (trg_append_only_claim_acknowledgment raises on any UPDATE, even for a superuser), so
+--                                   rows written before this migration keep NULL = "derive from kind" (ack_999 ->
+--                                   clearinghouse, ack_277ca / ack_835 -> payer). Every new row sets it explicitly.
 --   noe_record / notr_record / claim .clearinghouse_accepted_at  when the clearinghouse accepted the file (NULL = not yet).
 --   noe_record / notr_record        .rejection_stage additionally allows 'clearinghouse'.
 -- Forward-only and idempotent.
 
 ALTER TABLE "claim_acknowledgment" ADD COLUMN IF NOT EXISTS "stage" text;--> statement-breakpoint
-UPDATE "claim_acknowledgment" SET "stage" = CASE WHEN "kind" = 'ack_999' THEN 'clearinghouse' ELSE 'payer' END WHERE "stage" IS NULL;--> statement-breakpoint
-ALTER TABLE "claim_acknowledgment" ALTER COLUMN "stage" SET DEFAULT 'payer';--> statement-breakpoint
-ALTER TABLE "claim_acknowledgment" ALTER COLUMN "stage" SET NOT NULL;--> statement-breakpoint
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'claim_acknowledgment_stage_chk') THEN
     ALTER TABLE "claim_acknowledgment" ADD CONSTRAINT "claim_acknowledgment_stage_chk"
-      CHECK ("stage" IN ('clearinghouse', 'payer'));
+      CHECK ("stage" IS NULL OR "stage" IN ('clearinghouse', 'payer'));
   END IF;
 END $$;--> statement-breakpoint
 

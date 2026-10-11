@@ -687,7 +687,7 @@ export function LifecycleModal({
               Re-authenticate
             </Button>
           ) : null}
-          {status === 409 || (status === 412 && errorCode !== "STEP_UP_REQUIRED") ? (
+          {(status === 409 || (status === 412 && errorCode !== "STEP_UP_REQUIRED")) ? (
             <Button tone="secondary" onClick={() => navigate(0)} disabled={busy}>
               Refresh meeting
             </Button>

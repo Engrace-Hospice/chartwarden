@@ -347,7 +347,9 @@ export function NotificationsInbox(): JSX.Element {
                         </div>
                       </td>
                       <td style={tdStyle}>
-                        <span style={sourceChipStyle}>{humanizeIdentifier(alert.category)}</span>
+                        <span style={sourceChipStyle}>
+                          {humanizeIdentifier(alert.category)}
+                        </span>
                       </td>
                       <td style={tdStyle}>
                         <StatusPill

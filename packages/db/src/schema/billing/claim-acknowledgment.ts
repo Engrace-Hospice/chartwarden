@@ -45,7 +45,8 @@ export const claimAcknowledgment = pgTable(
     parsedPayload: jsonb("parsed_payload").$type<ClaimAcknowledgmentParsedPayload>().notNull(), // { status, reasonCodes, lineLevelResults?, ... }
 
     // High-level outcome cached for index:
-    stage: text("stage").$type<"clearinghouse" | "payer">().notNull().default("payer"),
+    // NULL on rows written before migration 1063 (append-only, not backfilled): derive from `kind`.
+    stage: text("stage").$type<"clearinghouse" | "payer">(),
     outcomeStatus: text("outcome_status").notNull(), // 'accepted'|'rejected'|'partial'|'paid'|'denied'
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

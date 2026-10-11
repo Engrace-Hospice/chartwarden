@@ -1,6 +1,7 @@
 // M25 — a clearinghouse-stage rejection (ADR-0053 D2) is an edit failure before the payer saw the claim: it must not
 // seed the payer-denial worklist. A payer-stage or 999 rejection still does.
 import { describe, expect, it, vi } from "vitest";
+import { dispatchM25UpstreamEvent } from "../src/modules/25-remittance/consumers";
 import { buildM23ClaimRejectedConsumer } from "../src/modules/25-remittance/outbox-consumers/m23-claim-rejected";
 
 function build() {
@@ -38,5 +39,25 @@ describe("m23.claim.rejected → denial seed, by stage", () => {
     const { consumer, resolve } = build();
     await consumer.handle(event(stage)).catch(() => undefined);
     expect(resolve).toHaveBeenCalledOnce();
+  });
+});
+
+describe("dispatchM25UpstreamEvent m23.claim.rejected", () => {
+  it("does not seed a denial for a clearinghouse-stage rejection", async () => {
+    const seedDenial = vi.fn(async () => null);
+    const report = await dispatchM25UpstreamEvent(
+      {
+        topic: "m23.claim.rejected",
+        payload: {
+          claimId: "c1",
+          organizationId: "o1",
+          rejectionStage: "clearinghouse",
+          rejectionCodes: ["A7"],
+        },
+      },
+      { seedStore: { seedDenial } } as never,
+    );
+    expect(report).toEqual({ handled: true, denialOpened: null });
+    expect(seedDenial).not.toHaveBeenCalled();
   });
 });
