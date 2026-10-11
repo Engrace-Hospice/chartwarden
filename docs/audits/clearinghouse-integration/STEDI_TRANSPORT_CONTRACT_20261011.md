@@ -33,6 +33,7 @@ Rows for a bad (not missing) key and for 409 are inferred from convention: **U**
 401 on events (O). Additional rules:
 
 - `IDEMPOTENCY_CONFLICT` and `UNKNOWN_ORIGINAL` are decided from OUR attempt record, not from a Stedi response.
+- The attempt record is `clearinghouse_submission_attempt` (migration 1066) and is written in two steps: **reserve** before the POST (live-unique on key and on control number per scope, so two concurrent submissions cannot both send), **complete** with Stedi's id after. A definitive refusal (4xx, 429) **releases** the reservation. An ambiguous failure (network error, timeout, 5xx) may have been filed, so the reservation is backdated and the next attempt re-sends at once under the **same wire key**, which Stedi replays inside its 24 h window; once 24 h have passed since the *first* reservation the adapter refuses to re-send, raises a `stale_reservation` anomaly and leaves it to reconciliation. A reservation another process made less than 15 minutes ago is held, not re-sent.
 - `verifyAndParseEvent` returns `INVALID_SIGNATURE` on any mismatch, missing header, malformed value or stale
   timestamp (fail closed, constant-time compare, bounded tolerance).
 - Mapping an edit rejection to `INVALID_REQUEST` is a deliberate choice: the port defines it as "refused before send",

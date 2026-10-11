@@ -27,6 +27,7 @@ function toAttempt(row: Row): SubmissionAttempt {
     identity: row.identity,
     status: row.status,
     clearinghouseSubmissionId: row.clearinghouseSubmissionId,
+    firstReservedAt: row.createdAt.toISOString(),
     reservedAt: row.reservedAt.toISOString(),
     receivedAt: row.receivedAt ? row.receivedAt.toISOString() : null,
   };
@@ -59,6 +60,7 @@ export function createDrizzleAttemptStore(db: DbClient): SubmissionAttemptStore 
             identity: attempt.identity,
             status: "reserved",
             reservedAt: new Date(attempt.reservedAt),
+            createdAt: new Date(attempt.firstReservedAt),
           })
           .onConflictDoNothing()
           .returning();

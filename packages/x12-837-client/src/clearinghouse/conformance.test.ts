@@ -3,6 +3,7 @@ import {
   CLEARINGHOUSE_CONFORMANCE_CASES,
   type ClearinghouseHarness,
   runClearinghouseConformance,
+  runConformance,
 } from "./conformance";
 import { createInMemoryHarness } from "./in-memory-transport";
 import type {
@@ -216,6 +217,51 @@ describe("conformance suite catches broken transports", () => {
     });
     expect(r.ok).toBe(false);
     expect(!r.ok && r.degraded.code).toBe("CH_INVALID_REQUEST");
+  });
+
+  it("flags a transport that sends during an outage as if it had filed", async () => {
+    // Reports success on the first send, then replays it: an outage that was recorded as sent.
+    const failures = await runClearinghouseConformance(
+      mutant((t) => ({
+        submitClaim: async (ctx, s) => {
+          const r = await t.submitClaim(ctx, s);
+          return r.ok
+            ? r
+            : {
+                ok: true,
+                data: {
+                  clearinghouseSubmissionId: "x",
+                  idempotencyKey: s.idempotencyKey,
+                  controlNumber: s.controlNumber,
+                  receivedAt: "2026-10-11T00:00:00.000Z",
+                  replayed: true,
+                },
+              };
+        },
+      })),
+    );
+    expect(failures.map((f) => f.id)).toContain("S01-submit-outage-fails-closed");
+  });
+
+  it("flags a transport that shares submission state across usage modes", async () => {
+    const failures = await runClearinghouseConformance(
+      mutant((t) => ({
+        submitClaim: (ctx, s) => t.submitClaim({ ...ctx, usage: "test" }, s),
+      })),
+    );
+    expect(failures.map((f) => f.id)).toContain("S02-submit-tenant-and-mode-isolation");
+  });
+
+  it("skips, by name, the cases a harness does not declare capabilities for", async () => {
+    const outcomes = await runConformance(async () => ({
+      ...createInMemoryHarness(),
+      capabilities: new Set(["submit"]),
+    }));
+    expect(outcomes.find((o) => o.id === "C10-remittance")).toMatchObject({
+      status: "skipped",
+      missing: ["receive"],
+    });
+    expect(outcomes.find((o) => o.id === "C04-idempotent-submission")?.status).toBe("passed");
   });
 
   it("passes the reference transport with no failures", async () => {

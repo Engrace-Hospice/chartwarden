@@ -25,7 +25,9 @@ export interface SubmissionAttempt {
   readonly status: AttemptStatus;
   /** Null until the vendor has taken the submission. */
   readonly clearinghouseSubmissionId: string | null;
-  /** When the current reservation was made or last retaken (ISO-8601). */
+  /** When the submission was FIRST reserved (ISO-8601); never changes. The vendor's key window runs from here. */
+  readonly firstReservedAt: string;
+  /** When the current reservation was made or last retaken or backdated (ISO-8601). The in-flight window runs from here. */
   readonly reservedAt: string;
   readonly receivedAt: string | null;
 }

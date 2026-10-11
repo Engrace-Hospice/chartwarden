@@ -10,7 +10,7 @@
 --     opaque id. No payload is stored.
 --   * Live (non-released) keys and control numbers are unique per scope, so a key or number can be reused only
 --     after a release. Rows are never deleted by the app role (billing history); only the destruction role erases.
---   * BEFORE UPDATE guard: identity columns are immutable; status moves only reserved -> sent | released, and a
+--   * BEFORE UPDATE guard: identity columns and created_at (the first reservation, which the vendor's key window runs from) are immutable; status moves only reserved -> sent | released, and a
 --     reserved row may have its reserved_at moved (a retake of an abandoned reservation).
 -- Idempotent.
 
@@ -82,7 +82,8 @@ BEGIN
      OR NEW.idempotency_key IS DISTINCT FROM OLD.idempotency_key
      OR NEW.control_number IS DISTINCT FROM OLD.control_number
      OR NEW.kind IS DISTINCT FROM OLD.kind
-     OR NEW.identity IS DISTINCT FROM OLD.identity THEN
+     OR NEW.identity IS DISTINCT FROM OLD.identity
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
     RAISE EXCEPTION 'clearinghouse_submission_attempt identity columns are immutable' USING ERRCODE = 'check_violation';
   END IF;
   IF OLD.status <> 'reserved' AND NEW IS DISTINCT FROM OLD THEN

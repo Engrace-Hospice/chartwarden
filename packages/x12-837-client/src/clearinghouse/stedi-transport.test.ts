@@ -310,18 +310,14 @@ describe("StediTransport HTTP failure mapping", () => {
     );
   });
 
-  it("keeps the reservation after an ambiguous failure: a prompt retry is held, a later one retakes it", async () => {
+  it("after an ambiguous failure the next attempt re-sends at once under the same wire key", async () => {
     let n = 0;
-    const { calls, transport, clock } = harness(() =>
+    const { calls, transport } = harness(() =>
       ++n === 1
         ? new Response("{}", { status: 503 })
         : Response.json({ claimReference: { correlationId: "later" } }),
     );
     expect(code(await transport.submitClaim(CTX, claim()))).toBe(CH.UNAVAILABLE);
-    // The first send may have reached Stedi: nothing is sent again while it could still be in flight.
-    expect(code(await transport.submitClaim(CTX, claim()))).toBe(CH.UNAVAILABLE);
-    expect(calls).toHaveLength(1);
-    clock.now = new Date(clock.now.getTime() + 16 * 60_000);
     const retry = await transport.submitClaim(CTX, claim());
     expect(retry.ok && retry.data.clearinghouseSubmissionId).toBe("later");
     expect(calls).toHaveLength(2);
@@ -329,6 +325,28 @@ describe("StediTransport HTTP failure mapping", () => {
     expect(new Headers(calls[1]?.init.headers).get("idempotency-key")).toBe(
       new Headers(calls[0]?.init.headers).get("idempotency-key"),
     );
+  });
+
+  it("stops re-sending once the vendor's key window has passed since the first attempt", async () => {
+    const anomalies: StediAnomaly[] = [];
+    const calls: string[] = [];
+    const clock = { now: new Date("2026-10-11T10:00:00.000Z") };
+    const transport = new StediTransport({
+      apiKey: KEY,
+      attempts: new InMemoryAttemptStore(),
+      fetch: (async (url: string | URL | Request) => {
+        calls.push(String(url));
+        return new Response("{}", { status: 503 });
+      }) as typeof fetch,
+      onAnomaly: (a) => anomalies.push(a),
+      now: () => clock.now,
+    });
+    expect(code(await transport.submitClaim(CTX, claim()))).toBe(CH.UNAVAILABLE);
+    expect(calls).toHaveLength(1);
+    clock.now = new Date(clock.now.getTime() + 25 * 60 * 60_000);
+    expect(code(await transport.submitClaim(CTX, claim()))).toBe(CH.UNAVAILABLE);
+    expect(calls).toHaveLength(1);
+    expect(anomalies).toEqual([{ type: "stale_reservation", idempotencyKey: "idem-1" }]);
   });
 
   it("treats a 200 with an unreadable body as filed, with a derived submission id", async () => {
@@ -356,6 +374,7 @@ describe("StediTransport reservation, completion and races", () => {
     identity: identityOf(claim()),
     status: "reserved",
     clearinghouseSubmissionId: null,
+    firstReservedAt: "2026-10-11T10:00:00.000Z",
     reservedAt: "2026-10-11T10:00:00.000Z",
     receivedAt: null,
     ...over,
@@ -435,7 +454,12 @@ describe("StediTransport reservation, completion and races", () => {
   });
 
   it("retakes a reservation abandoned past the in-flight window and sends under the same key", async () => {
-    const store = await seeded(reserved({ reservedAt: "2026-10-11T09:30:00.000Z" }));
+    const store = await seeded(
+      reserved({
+        firstReservedAt: "2026-10-11T09:30:00.000Z",
+        reservedAt: "2026-10-11T09:30:00.000Z",
+      }),
+    );
     const { transport, calls } = withStore(store);
     const r = await transport.submitClaim(CTX, claim());
     expect(r.ok && !r.data.replayed && r.data.clearinghouseSubmissionId).toBe("mine");
@@ -444,7 +468,12 @@ describe("StediTransport reservation, completion and races", () => {
 
   it("refuses to resend a reservation older than Stedi's key window, and says so", async () => {
     const anomalies: StediAnomaly[] = [];
-    const store = await seeded(reserved({ reservedAt: "2026-10-10T09:00:00.000Z" }));
+    const store = await seeded(
+      reserved({
+        firstReservedAt: "2026-10-10T09:00:00.000Z",
+        reservedAt: "2026-10-10T09:00:00.000Z",
+      }),
+    );
     const { transport, calls } = withStore(store, anomalies);
     expect(code(await transport.submitClaim(CTX, claim()))).toBe(CH.UNAVAILABLE);
     expect(calls).toHaveLength(0);

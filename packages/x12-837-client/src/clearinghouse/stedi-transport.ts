@@ -275,6 +275,7 @@ export class StediTransport implements ClearinghouseTransport {
       identity,
       status: "reserved",
       clearinghouseSubmissionId: null,
+      firstReservedAt: reservedAt,
       reservedAt,
       receivedAt: null,
     });
@@ -282,9 +283,14 @@ export class StediTransport implements ClearinghouseTransport {
 
     const sent = await this.send(scope, submission);
     if (!sent.ok) {
-      // Only a definitive refusal frees the key; an ambiguous failure may have been filed, so the reservation
-      // stays and a later retry re-sends under the same wire key once the in-flight window has passed.
-      if (!sent.ambiguous) await this.releaseQuietly(ctx.organizationId, scope, submission);
+      if (sent.ambiguous) {
+        // The request may have been filed. Re-sending under the SAME wire key is safe inside Stedi's 24 h window (it
+        // replays), so the next attempt must not wait out the in-flight window: backdate the reservation so it is
+        // retaken at once. The window itself keeps running from the first reservation.
+        await this.abandonQuietly(ctx.organizationId, scope, submission, reservedAt);
+      } else {
+        await this.releaseQuietly(ctx.organizationId, scope, submission);
+      }
       return sent.result;
     }
     return this.complete(ctx, scope, submission, sent.id);
@@ -322,17 +328,18 @@ export class StediTransport implements ClearinghouseTransport {
       }
 
       const age = this.now().getTime() - Date.parse(existing.reservedAt);
-      if (!(age >= IN_FLIGHT_MS)) {
-        return degraded(
-          CH.UNAVAILABLE,
-          "an earlier attempt at this submission may still be in flight",
-        );
-      }
-      if (age >= KEY_WINDOW_MS) {
+      const sinceFirst = this.now().getTime() - Date.parse(existing.firstReservedAt);
+      if (sinceFirst >= KEY_WINDOW_MS) {
         this.onAnomaly({ type: "stale_reservation", idempotencyKey: attempt.idempotencyKey });
         return degraded(
           CH.UNAVAILABLE,
           "an earlier attempt is past the vendor's key window and needs reconciliation before a re-send",
+        );
+      }
+      if (!(age >= IN_FLIGHT_MS)) {
+        return degraded(
+          CH.UNAVAILABLE,
+          "an earlier attempt at this submission may still be in flight",
         );
       }
       const won = await this.attempts.retake(
@@ -347,6 +354,26 @@ export class StediTransport implements ClearinghouseTransport {
         : degraded(CH.UNAVAILABLE, "an earlier attempt at this submission may still be in flight");
     } catch {
       return degraded(CH.UNAVAILABLE, "the submission record could not be reserved");
+    }
+  }
+
+  private async abandonQuietly(
+    organizationId: string,
+    scope: string,
+    submission: ClearinghouseSubmission,
+    reservedAt: string,
+  ): Promise<void> {
+    try {
+      const backdated = new Date(Date.parse(reservedAt) - IN_FLIGHT_MS).toISOString();
+      await this.attempts.retake(
+        organizationId,
+        scope,
+        submission.idempotencyKey,
+        reservedAt,
+        backdated,
+      );
+    } catch {
+      // The reservation ages out of the in-flight window on its own.
     }
   }
 

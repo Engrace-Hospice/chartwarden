@@ -48,6 +48,7 @@ export function reservation(
     identity: IDENTITY,
     status: "reserved",
     clearinghouseSubmissionId: null,
+    firstReservedAt: T0,
     reservedAt: T0,
     receivedAt: null,
     ...overrides,
@@ -148,6 +149,9 @@ export const ATTEMPT_STORE_CONTRACT: readonly AttemptStoreContractCase[] = [
       const scope = `scope-${ids.orgA}`;
       assert(!(await store.retake(ids.orgA, scope, "idem-1", T1, T1)), "wrong expected time loses");
       assert(await store.retake(ids.orgA, scope, "idem-1", T0, T1), "matching expected time wins");
+      const held = await store.reserve(reservation(ids));
+      assert(held.attempt.reservedAt === T1, "the retaken time is stored");
+      assert(held.attempt.firstReservedAt === T0, "the first reservation time never moves");
       assert(!(await store.retake(ids.orgA, scope, "idem-1", T0, T1)), "a stale taker loses");
       await store.complete(ids.orgA, scope, "idem-1", "ch-1", T1);
       assert(

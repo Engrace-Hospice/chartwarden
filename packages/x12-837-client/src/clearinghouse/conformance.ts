@@ -74,9 +74,49 @@ export interface ConformanceScript {
   ): Promise<RawWebhook>;
 }
 
+/**
+ * What a transport can honestly answer. A case lists what it `requires`; a harness that does not declare a capability
+ * has that case SKIPPED BY NAME (never silently passed), so an adapter is judged on everything it implements and the
+ * rest stays visible as a to-do. The reference transport declares them all.
+ */
+export type ConformanceCapability =
+  | "submit" // submitClaim / submitNotice
+  | "validate" // validateOnly
+  | "eligibility" // checkEligibility
+  | "receive" // acknowledgments, remittances, claim status, signed events
+  | "adjustment" // replacement / void claims
+  | "enrollment"; // a provider-not-enrolled outcome
+
+export const ALL_CONFORMANCE_CAPABILITIES: ReadonlySet<ConformanceCapability> = new Set([
+  "submit",
+  "validate",
+  "eligibility",
+  "receive",
+  "adjustment",
+  "enrollment",
+]);
+
+/**
+ * Payloads the transport under test will accept. The default is a synthetic string the in-memory reference takes; a
+ * vendor adapter supplies VALID documents (its preflight checks real X12 / JSON). `variant` is any short string: two
+ * variants must produce different payloads, one variant the same payload.
+ */
+export interface ConformancePayloads {
+  x12(
+    kind: ClearinghouseSubmission["kind"],
+    variant: string,
+    usage?: ClearinghouseScope["usage"],
+  ): string;
+  /** Two key-order permutations of one JSON claim document that the transport accepts. */
+  jsonDocuments?(): readonly [Record<string, unknown>, Record<string, unknown>];
+}
+
 export interface ClearinghouseHarness {
   readonly transport: ClearinghouseTransport;
   readonly script: ConformanceScript;
+  /** Defaults to every capability. */
+  readonly capabilities?: ReadonlySet<ConformanceCapability>;
+  readonly payloads?: ConformancePayloads;
 }
 
 /** Builds a fresh, empty harness. Called once per case so cases never share state. */
@@ -87,6 +127,8 @@ export interface ConformanceCase {
   /** The claim-cycle stage(s) this case guards (plan §2). */
   readonly stage: string;
   readonly title: string;
+  /** Capabilities the transport must declare for this case to apply. */
+  readonly requires: readonly ConformanceCapability[];
   run(harness: ClearinghouseHarness): Promise<void>;
 }
 
@@ -103,18 +145,28 @@ function ctxFor(scope: ClearinghouseScope = DEFAULT_SCOPE): ClearinghouseContext
   return { ...scope, payerId: "payer-conf", correlationId: "corr-conf" };
 }
 
-function submission(
-  kind: ClearinghouseSubmission["kind"],
-  controlNumber: string,
-  overrides: Partial<ClearinghouseSubmission> = {},
-): ClearinghouseSubmission {
-  return {
+const DEFAULT_PAYLOADS: ConformancePayloads = {
+  x12: (_kind, variant) => `ST*837*${variant}~SE*1*${variant}~`,
+};
+
+function supports(h: ClearinghouseHarness, cap: ConformanceCapability): boolean {
+  return (h.capabilities ?? ALL_CONFORMANCE_CAPABILITIES).has(cap);
+}
+
+/** Builds submissions whose payloads the harness's transport accepts. */
+function submissionFor(h: ClearinghouseHarness) {
+  const payloads = h.payloads ?? DEFAULT_PAYLOADS;
+  return (
+    kind: ClearinghouseSubmission["kind"],
+    controlNumber: string,
+    overrides: Partial<ClearinghouseSubmission> = {},
+  ): ClearinghouseSubmission => ({
     kind,
     controlNumber,
     idempotencyKey: `idem-${controlNumber}`,
-    payload: { format: "x12", x12: `ST*837*${controlNumber}~SE*1*${controlNumber}~` },
+    payload: { format: "x12", x12: payloads.x12(kind, controlNumber) },
     ...overrides,
-  };
+  });
 }
 
 // ─── Assertion helpers ──────────────────────────────────────────────────────────────────────────
@@ -148,7 +200,10 @@ async function submitClaimOk(
   overrides: Partial<ClearinghouseSubmission> = {},
 ): Promise<void> {
   ok(
-    await h.transport.submitClaim(ctxFor(scope), submission("claim", controlNumber, overrides)),
+    await h.transport.submitClaim(
+      ctxFor(scope),
+      submissionFor(h)("claim", controlNumber, overrides),
+    ),
     `submitClaim ${controlNumber}`,
   );
 }
@@ -178,6 +233,7 @@ const ELIGIBILITY_REQUEST = { mbi: SYNTHETIC_MBI, serviceDate: "2026-10-01" } as
 export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
   {
     id: "C01-eligibility-outcome-only",
+    requires: ["eligibility"],
     stage: "1 eligibility",
     title: "returns an outcome and as-of date, and the MBI appears nowhere in the result",
     async run(h) {
@@ -192,11 +248,13 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
   },
   {
     id: "C02-validate-only-has-no-side-effects",
+    requires: ["validate"],
     stage: "2 validation",
     title:
       "a dry-run reports issues, creates no submission and does not consume the idempotency key",
     async run(h) {
-      const bad = submission("claim", "CCN-0002", { payload: { format: "x12", x12: "" } });
+      const sub = submissionFor(h);
+      const bad = sub("claim", "CCN-0002", { payload: { format: "x12", x12: "" } });
       const report = ok(await h.transport.validateOnly(ctxFor(), bad), "validateOnly(bad)");
       check(!report.valid, "an empty payload is invalid");
       check(
@@ -204,7 +262,7 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
         "an invalid report carries an error issue",
       );
       check(!leaksMbi(JSON.stringify(report)), "a validation report is PHI-free");
-      const good = submission("claim", "CCN-0002");
+      const good = sub("claim", "CCN-0002");
       const goodReport = ok(await h.transport.validateOnly(ctxFor(), good), "validateOnly(good)");
       check(goodReport.valid, "a well-formed payload validates");
       const status = ok(
@@ -221,38 +279,31 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
   },
   {
     id: "C03-notice-kind-routing",
+    requires: ["submit"],
     stage: "3 NOE / 14 NOTR",
     title:
       "submitNotice accepts noe and notr and refuses a claim or an adjustment; submitClaim refuses a notice",
     async run(h) {
-      const noe = ok(
-        await h.transport.submitNotice(ctxFor(), submission("noe", "NOE-0003")),
-        "noe",
-      );
-      const notr = ok(
-        await h.transport.submitNotice(ctxFor(), submission("notr", "NTR-0003")),
-        "notr",
-      );
+      const sub = submissionFor(h);
+      const noe = ok(await h.transport.submitNotice(ctxFor(), sub("noe", "NOE-0003")), "noe");
+      const notr = ok(await h.transport.submitNotice(ctxFor(), sub("notr", "NTR-0003")), "notr");
       check(
         noe.clearinghouseSubmissionId !== notr.clearinghouseSubmissionId,
         "distinct submissions",
       );
-      const noticeAsClaim = await h.transport.submitNotice(
-        ctxFor(),
-        submission("claim", "CCN-0003"),
-      );
+      const noticeAsClaim = await h.transport.submitNotice(ctxFor(), sub("claim", "CCN-0003"));
       check(
         degradedCode(noticeAsClaim, "submitNotice(claim)") === CH.INVALID_REQUEST,
         "submitNotice refuses kind=claim",
       );
-      const claimAsNotice = await h.transport.submitClaim(ctxFor(), submission("noe", "NOE-0003b"));
+      const claimAsNotice = await h.transport.submitClaim(ctxFor(), sub("noe", "NOE-0003b"));
       check(
         degradedCode(claimAsNotice, "submitClaim(noe)") === CH.INVALID_REQUEST,
         "submitClaim refuses kind=noe",
       );
       const adjustedNotice = await h.transport.submitNotice(
         ctxFor(),
-        submission("noe", "NOE-0003c", {
+        sub("noe", "NOE-0003c", {
           adjustment: { kind: "void", originalControlNumber: "NOE-0003" },
         }),
       );
@@ -264,11 +315,13 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
   },
   {
     id: "C04-idempotent-submission",
+    requires: ["submit"],
     stage: "4 claim",
     title:
       "the same key + payload replays the receipt; the same key + a different payload conflicts",
     async run(h) {
-      const s = submission("claim", "CCN-0004");
+      const sub = submissionFor(h);
+      const s = sub("claim", "CCN-0004");
       const first = ok(await h.transport.submitClaim(ctxFor(), s), "first");
       const second = ok(await h.transport.submitClaim(ctxFor(), s), "second");
       check(!first.replayed && second.replayed, "second send is flagged as a replay");
@@ -276,8 +329,8 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
         first.clearinghouseSubmissionId === second.clearinghouseSubmissionId,
         "a replay returns the original submission id",
       );
-      const changed = submission("claim", "CCN-0004", {
-        payload: { format: "x12", x12: "ST*837*CHANGED~SE*1*CHANGED~" },
+      const changed = sub("claim", "CCN-0004", {
+        payload: { format: "x12", x12: (h.payloads ?? DEFAULT_PAYLOADS).x12("claim", "CHANGED") },
       });
       const conflict = await h.transport.submitClaim(ctxFor(), changed);
       check(
@@ -292,6 +345,7 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
   },
   {
     id: "C05-clearinghouse-rejection",
+    requires: ["submit", "receive"],
     stage: "5-6 acknowledgment",
     title:
       "a clearinghouse rejection is a clearinghouse-stage event and the claim never reaches the payer",
@@ -316,6 +370,7 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
   },
   {
     id: "C06-two-stage-acceptance",
+    requires: ["submit", "receive"],
     stage: "5-6 acknowledgment",
     title:
       "clearinghouse-accepted is not payer-accepted; both stages are distinct, uniquely identified events",
@@ -345,6 +400,7 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
   },
   {
     id: "C07-payer-rejection",
+    requires: ["submit", "receive"],
     stage: "6-7 rejection",
     title: "a payer rejection is a payer-stage event with its reason codes",
     async run(h) {
@@ -361,6 +417,7 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
   },
   {
     id: "C08-ack-paging",
+    requires: ["submit", "receive"],
     stage: "5-6 acknowledgment",
     title: "cursor paging neither repeats nor skips events, and a restart from null is stable",
     async run(h) {
@@ -382,11 +439,13 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
   },
   {
     id: "C09-adjustment",
+    requires: ["submit", "adjustment", "receive"],
     stage: "8 replacement / 9 void",
     title:
       "a replacement or void must name an original the clearinghouse has seen, and a refusal burns nothing",
     async run(h) {
-      const unknown = submission("claim", "CCN-0009R", {
+      const sub = submissionFor(h);
+      const unknown = sub("claim", "CCN-0009R", {
         adjustment: { kind: "replacement", originalControlNumber: "CCN-0009" },
       });
       const refused = await h.transport.submitClaim(ctxFor(), unknown);
@@ -400,7 +459,7 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
       const voided = ok(
         await h.transport.submitClaim(
           ctxFor(),
-          submission("claim", "CCN-0009V", {
+          sub("claim", "CCN-0009V", {
             adjustment: { kind: "void", originalControlNumber: "CCN-0009" },
           }),
         ),
@@ -414,6 +473,7 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
   },
   {
     id: "C10-remittance",
+    requires: ["submit", "receive"],
     stage: "10 remittance",
     title: "an 835 is delivered once, with its raw X12 intact, even if the far side repeats it",
     async run(h) {
@@ -441,6 +501,7 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
   },
   {
     id: "C11-push-events",
+    requires: ["submit", "receive"],
     stage: "16 events",
     title:
       "a signed event reduces to references only; a tampered one is refused; duplicates share an id",
@@ -464,17 +525,19 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
   },
   {
     id: "C12-not-enrolled",
+    requires: ["submit", "enrollment", "eligibility", "receive"],
     stage: "all (payer enrollment)",
     title:
       "an un-enrolled provider gets a terminal CH_NOT_ENROLLED on every send, never a throw or a silent success",
     async run(h) {
+      const sub = submissionFor(h);
       await h.script.setEnrollment(false);
-      const claim = await h.transport.submitClaim(ctxFor(), submission("claim", "CCN-0012"));
+      const claim = await h.transport.submitClaim(ctxFor(), sub("claim", "CCN-0012"));
       check(
         degradedCode(claim, "submitClaim") === CH.NOT_ENROLLED,
         "submitClaim -> CH_NOT_ENROLLED",
       );
-      const notice = await h.transport.submitNotice(ctxFor(), submission("noe", "NOE-0012"));
+      const notice = await h.transport.submitNotice(ctxFor(), sub("noe", "NOE-0012"));
       check(
         degradedCode(notice, "submitNotice") === CH.NOT_ENROLLED,
         "submitNotice -> CH_NOT_ENROLLED",
@@ -493,24 +556,26 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
       check(status.state === "not_found", "a refused submission leaves nothing behind");
       const other = await h.transport.submitClaim(
         ctxFor(OTHER_PROVIDER),
-        submission("claim", "CCN-0012o"),
+        sub("claim", "CCN-0012o"),
       );
       ok(other, "another provider that IS enrolled is unaffected");
     },
   },
   {
     id: "C13-outage-fails-closed",
+    requires: ["submit", "validate", "eligibility", "receive"],
     stage: "all (resilience)",
     title:
       "during an outage every method returns a retryable degraded envelope, never throws, records nothing, and recovers",
     async run(h) {
+      const sub = submissionFor(h);
       await h.script.setOutage(true);
       const t = h.transport;
       const results: ReadonlyArray<readonly [string, X12WorkerResult<unknown>]> = [
         ["checkEligibility", await t.checkEligibility(ctxFor(), ELIGIBILITY_REQUEST)],
-        ["validateOnly", await t.validateOnly(ctxFor(), submission("claim", "CCN-0013"))],
-        ["submitNotice", await t.submitNotice(ctxFor(), submission("noe", "NOE-0013"))],
-        ["submitClaim", await t.submitClaim(ctxFor(), submission("claim", "CCN-0013"))],
+        ["validateOnly", await t.validateOnly(ctxFor(), sub("claim", "CCN-0013"))],
+        ["submitNotice", await t.submitNotice(ctxFor(), sub("noe", "NOE-0013"))],
+        ["submitClaim", await t.submitClaim(ctxFor(), sub("claim", "CCN-0013"))],
         ["fetchAcknowledgments", await t.fetchAcknowledgments(ctxFor(), null)],
         ["fetchRemittances", await t.fetchRemittances(ctxFor(), null)],
         ["fetchClaimStatus", await t.fetchClaimStatus(ctxFor(), "CCN-0013")],
@@ -525,7 +590,7 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
       }
       await h.script.setOutage(false);
       const after = ok(
-        await t.submitClaim(ctxFor(), submission("claim", "CCN-0013")),
+        await t.submitClaim(ctxFor(), sub("claim", "CCN-0013")),
         "submitClaim after recovery",
       );
       check(!after.replayed, "nothing was recorded while the vendor was down");
@@ -533,16 +598,18 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
   },
   {
     id: "C14-test-production-isolation",
+    requires: ["submit", "receive"],
     stage: "all (usage)",
     title:
       "test-mode submissions, acknowledgments and remittances are invisible to production, and the reverse",
     async run(h) {
+      const sub = submissionFor(h);
       // The SAME control number and idempotency key are used in both modes: neither table may be shared.
       await submitClaimOk(h, "CCN-0014");
       await h.script.clearinghouseAccepts("CCN-0014");
       await h.script.deliverRemittance("ERA-0014", "ST*835*0014~SE*1*0014~");
       const prodReceipt = ok(
-        await h.transport.submitClaim(ctxFor(PRODUCTION), submission("claim", "CCN-0014")),
+        await h.transport.submitClaim(ctxFor(PRODUCTION), sub("claim", "CCN-0014")),
         "production submit with the same key",
       );
       check(!prodReceipt.replayed, "production must not replay a test-mode receipt");
@@ -582,10 +649,12 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
   },
   {
     id: "C15-tenant-isolation",
+    requires: ["submit", "receive"],
     stage: "all (tenancy)",
     title:
       "one platform credential, many tenants: another org or provider never sees, replays or collides with your state",
     async run(h) {
+      const sub = submissionFor(h);
       await submitClaimOk(h, "CCN-0015");
       await h.script.clearinghouseAccepts("CCN-0015");
       await h.script.deliverRemittance("ERA-0015", "ST*835*0015~SE*1*0015~");
@@ -604,13 +673,13 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
         check(rem.items.length === 0, `${label} must not see remittances`);
         // Same idempotency key + same control number, entirely independent for the other tenant.
         const theirs = ok(
-          await h.transport.submitClaim(ctxFor(scope), submission("claim", "CCN-0015")),
+          await h.transport.submitClaim(ctxFor(scope), sub("claim", "CCN-0015")),
           `submit (${label})`,
         );
         check(!theirs.replayed, `${label} must not replay your receipt`);
       }
       const mine = ok(
-        await h.transport.submitClaim(ctxFor(), submission("claim", "CCN-0015")),
+        await h.transport.submitClaim(ctxFor(), sub("claim", "CCN-0015")),
         "my replay",
       );
       check(mine.replayed, "my own state is intact");
@@ -618,6 +687,7 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
   },
   {
     id: "C16-out-of-order-acks",
+    requires: ["submit", "receive"],
     stage: "5-6 acknowledgment",
     title: "a late clearinghouse ack never regresses a claim the payer already answered",
     async run(h) {
@@ -634,6 +704,7 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
   },
   {
     id: "C17-cursor-validation",
+    requires: ["submit", "receive"],
     stage: "5-6, 10 (polling)",
     title: "a malformed cursor is refused, never treated as the start; a stored cursor resumes",
     async run(h) {
@@ -661,16 +732,18 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
   },
   {
     id: "C18-idempotency-identity",
+    requires: ["submit"],
     stage: "4 claim",
     title:
       "an idempotency key binds the whole submission (kind, control number, adjustment, payload), not just the payload",
     async run(h) {
-      ok(await h.transport.submitClaim(ctxFor(), submission("claim", "CCN-0018")), "first");
-      const otherNumber = submission("claim", "CCN-0018x", { idempotencyKey: "idem-CCN-0018" });
+      const sub = submissionFor(h);
+      ok(await h.transport.submitClaim(ctxFor(), sub("claim", "CCN-0018")), "first");
+      const otherNumber = sub("claim", "CCN-0018x", { idempotencyKey: "idem-CCN-0018" });
       // Same key and the payload text is different only through the control number; make the payload identical.
       const sameBytes = {
         ...otherNumber,
-        payload: submission("claim", "CCN-0018").payload,
+        payload: sub("claim", "CCN-0018").payload,
       };
       check(
         degradedCode(
@@ -679,7 +752,7 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
         ) === CH.IDEMPOTENCY_CONFLICT,
         "the same key with a different control number is a conflict, not a replay",
       );
-      const reusedNumber = submission("claim", "CCN-0018", { idempotencyKey: "idem-new" });
+      const reusedNumber = sub("claim", "CCN-0018", { idempotencyKey: "idem-new" });
       check(
         degradedCode(await h.transport.submitClaim(ctxFor(), reusedNumber), "reused number") ===
           CH.IDEMPOTENCY_CONFLICT,
@@ -687,46 +760,139 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
       );
       const asNotice = await h.transport.submitNotice(
         ctxFor(),
-        submission("noe", "CCN-0018", { idempotencyKey: "idem-CCN-0018" }),
+        sub("noe", "CCN-0018", { idempotencyKey: "idem-CCN-0018" }),
       );
       check(
         degradedCode(asNotice, "same key, other kind") === CH.IDEMPOTENCY_CONFLICT,
         "the same key with a different kind is a conflict",
       );
-      const withAdjustment = submission("claim", "CCN-0018", {
-        adjustment: { kind: "void", originalControlNumber: "CCN-0018" },
-      });
-      check(
-        degradedCode(
-          await h.transport.submitClaim(ctxFor(), withAdjustment),
-          "same key, added adjustment",
-        ) === CH.IDEMPOTENCY_CONFLICT,
-        "the same key with an adjustment added is a conflict",
-      );
-      const doc1 = submission("claim", "CCN-0018j", {
-        payload: { format: "json", document: { a: 1, b: { c: 2, d: 3 } } },
-      });
-      const doc2 = submission("claim", "CCN-0018j", {
-        payload: { format: "json", document: { b: { d: 3, c: 2 }, a: 1 } },
-      });
+      if (supports(h, "adjustment")) {
+        const withAdjustment = sub("claim", "CCN-0018", {
+          adjustment: { kind: "void", originalControlNumber: "CCN-0018" },
+        });
+        check(
+          degradedCode(
+            await h.transport.submitClaim(ctxFor(), withAdjustment),
+            "same key, added adjustment",
+          ) === CH.IDEMPOTENCY_CONFLICT,
+          "the same key with an adjustment added is a conflict",
+        );
+      }
+      const [first, second] = h.payloads?.jsonDocuments?.() ?? [
+        { a: 1, b: { c: 2, d: 3 } },
+        { b: { d: 3, c: 2 }, a: 1 },
+      ];
+      const doc1 = sub("claim", "CCN-0018j", { payload: { format: "json", document: first } });
+      const doc2 = sub("claim", "CCN-0018j", { payload: { format: "json", document: second } });
       ok(await h.transport.submitClaim(ctxFor(), doc1), "json first");
       const replay = ok(await h.transport.submitClaim(ctxFor(), doc2), "json same content");
       check(replay.replayed, "JSON key order does not change a submission's identity");
     },
   },
+  {
+    id: "S01-submit-outage-fails-closed",
+    requires: ["submit"],
+    stage: "4 claim / 3 NOE (resilience)",
+    title:
+      "during an outage submissions return a retryable envelope, never throw, are not remembered as sent, and send once the vendor recovers",
+    async run(h) {
+      const sub = submissionFor(h);
+      await h.script.setOutage(true);
+      for (const [name, r] of [
+        ["submitNotice", await h.transport.submitNotice(ctxFor(), sub("noe", "NOE-S01"))],
+        ["submitClaim", await h.transport.submitClaim(ctxFor(), sub("claim", "CCN-S01"))],
+      ] as const) {
+        const code = degradedCode(r, name);
+        check(
+          code === CH.UNAVAILABLE && RETRYABLE_CODES.has(code),
+          `${name} -> retryable CH_UNAVAILABLE`,
+        );
+      }
+      await h.script.setOutage(false);
+      const after = ok(
+        await h.transport.submitClaim(ctxFor(), sub("claim", "CCN-S01")),
+        "submitClaim after recovery",
+      );
+      check(!after.replayed, "an outage must not leave a submission recorded as sent");
+    },
+  },
+  {
+    id: "S02-submit-tenant-and-mode-isolation",
+    requires: ["submit"],
+    stage: "4 claim (tenancy, usage)",
+    title:
+      "the same key and control number in another org, provider or usage mode never replays or collides, and your own state is intact",
+    async run(h) {
+      const sub = submissionFor(h);
+      ok(await h.transport.submitClaim(ctxFor(), sub("claim", "CCN-S02")), "first");
+      for (const [label, scope] of [
+        ["another org", OTHER_ORG],
+        ["another provider", OTHER_PROVIDER],
+        ["production", PRODUCTION],
+      ] as const) {
+        const theirs = ok(
+          await h.transport.submitClaim(
+            ctxFor(scope),
+            sub("claim", "CCN-S02", {
+              payload: {
+                format: "x12",
+                x12: (h.payloads ?? DEFAULT_PAYLOADS).x12("claim", "CCN-S02", scope.usage),
+              },
+            }),
+          ),
+          `submit (${label})`,
+        );
+        check(!theirs.replayed, `${label} must not replay your receipt`);
+      }
+      const mine = ok(
+        await h.transport.submitClaim(ctxFor(), sub("claim", "CCN-S02")),
+        "my replay",
+      );
+      check(mine.replayed, "my own state is intact");
+    },
+  },
 ];
 
-/** Run every case against a fresh harness each; returns the failures (empty = conformant). */
+export type ConformanceOutcome =
+  | { readonly id: string; readonly status: "passed" }
+  | { readonly id: string; readonly status: "failed"; readonly error: string }
+  | {
+      readonly id: string;
+      readonly status: "skipped";
+      readonly missing: readonly ConformanceCapability[];
+    };
+
+/**
+ * Run every case against a fresh harness each. A case whose required capabilities the harness does not declare is
+ * reported `skipped` with the missing capabilities — visible, never counted as a pass.
+ */
+export async function runConformance(
+  factory: HarnessFactory,
+): Promise<readonly ConformanceOutcome[]> {
+  const out: ConformanceOutcome[] = [];
+  for (const c of CLEARINGHOUSE_CONFORMANCE_CASES) {
+    const harness = await factory();
+    const have = harness.capabilities ?? ALL_CONFORMANCE_CAPABILITIES;
+    const missing = c.requires.filter((cap) => !have.has(cap));
+    if (missing.length > 0) {
+      out.push({ id: c.id, status: "skipped", missing });
+      continue;
+    }
+    try {
+      await c.run(harness);
+      out.push({ id: c.id, status: "passed" });
+    } catch (e) {
+      out.push({ id: c.id, status: "failed", error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return out;
+}
+
+/** The failures only (empty = conformant for every capability the harness declares). */
 export async function runClearinghouseConformance(
   factory: HarnessFactory,
 ): Promise<readonly { readonly id: string; readonly error: string }[]> {
-  const failures: { id: string; error: string }[] = [];
-  for (const c of CLEARINGHOUSE_CONFORMANCE_CASES) {
-    try {
-      await c.run(await factory());
-    } catch (e) {
-      failures.push({ id: c.id, error: e instanceof Error ? e.message : String(e) });
-    }
-  }
-  return failures;
+  return (await runConformance(factory)).flatMap((o) =>
+    o.status === "failed" ? [{ id: o.id, error: o.error }] : [],
+  );
 }

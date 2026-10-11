@@ -188,13 +188,18 @@ export type {
 } from "./clearinghouse/types";
 export {
   CLEARINGHOUSE_CONFORMANCE_CASES,
+  ALL_CONFORMANCE_CAPABILITIES,
   DEFAULT_SCOPE,
   runClearinghouseConformance,
+  runConformance,
   SYNTHETIC_MBI,
 } from "./clearinghouse/conformance";
 export type {
   ClearinghouseHarness,
+  ConformanceCapability,
   ConformanceCase,
+  ConformanceOutcome,
+  ConformancePayloads,
   ConformanceScript,
   HarnessFactory,
 } from "./clearinghouse/conformance";
