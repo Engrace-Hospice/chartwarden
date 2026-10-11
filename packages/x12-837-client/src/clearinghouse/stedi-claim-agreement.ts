@@ -14,6 +14,11 @@ function cents(value: string | undefined): number | null {
 }
 
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+/** Agreement on a list that carries amounts: an unreadable (null) amount is never "equal" to another one. */
+const sameWithAmounts = (
+  a: readonly (readonly unknown[])[],
+  b: readonly (readonly unknown[])[],
+): boolean => !a.concat(b).some((row) => row.includes(null)) && same(a, b);
 
 /** The component values of every HI element carrying `qualifier`, in order. */
 function hiValues(segments: readonly Segment[], qualifier: string, component: string): string[][] {
@@ -42,6 +47,30 @@ export function compareStediClaimJsonToX12(json: StediClaimJson, raw: string): s
     if (!ok) bad.push(field);
   };
 
+  const count = (id: string, q?: string): number =>
+    segments.filter((s) => s[0] === id && (q === undefined || s[1] === q)).length;
+  expect(
+    "claim.structure",
+    count("CLM") === 1 &&
+      count("CL1") === 1 &&
+      count("DTP", "434") === 1 &&
+      count("DTP", "435") === 1,
+  );
+  const isa = first("ISA");
+  expect("envelope.usage", isa[15] === json.usageIndicator);
+  const nm1 = (q: string): Segment => segments.find((s) => s[0] === "NM1" && s[1] === q) ?? [];
+  expect("billingProvider.npi", nm1("85")[9] === json.billing.npi);
+  expect("attendingPhysician.npi", nm1("71")[9] === json.attending.npi);
+  expect("subscriber.mbi", nm1("IL")[9] === json.subscriber.memberId);
+  expect("payer.payerId", nm1("PR")[9] === json.tradingPartnerServiceId);
+  expect(
+    "billingProvider.taxId",
+    segments.find((s) => s[0] === "REF" && s[1] === "EI")?.[2] === json.billing.employerId,
+  );
+  const dmg = first("DMG");
+  expect("subscriber.birthDate", dmg[2] === json.subscriber.dateOfBirth);
+  expect("subscriber.sex", dmg[3] === json.subscriber.gender);
+  expect("claim.facilityType", clm[5]?.split(comp)[0] === info.placeOfServiceCode);
   expect("claim.controlNumber", clm[1] === info.patientControlNumber);
   expect("claim.frequency", clm[5]?.split(comp)[2] === info.claimFrequencyCode);
   const [from, through] = (dtp("434")[3] ?? "").split("-");
@@ -83,7 +112,7 @@ export function compareStediClaimJsonToX12(json: StediClaimJson, raw: string): s
   const rawValues = hiValues(segments, "BE", comp).map((p) => [p[0], cents(p[3])]);
   expect(
     "claim.valueCodes",
-    same(
+    sameWithAmounts(
       rawValues,
       (info.valueInformationList ?? []).flat().map((v) => [v.valueCode, cents(v.valueCodeAmount)]),
     ),

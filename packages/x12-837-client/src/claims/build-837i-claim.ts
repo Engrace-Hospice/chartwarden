@@ -96,6 +96,8 @@ export function build837iClaim(input: Claim837iInput): string {
     if (e instanceof X12BuildError && !(e instanceof Claim837iBuildError)) {
       throw new Claim837iBuildError(e.field);
     }
+    // Untyped input (a missing section, a number where text belongs) must still fail as a build error.
+    if (e instanceof TypeError) throw new Claim837iBuildError("input");
     throw e;
   }
 }

@@ -108,6 +108,39 @@ describe("buildStediClaimJson", () => {
     expect(c.serviceLines[0]?.institutionalService.procedureModifiers).toEqual(["PM"]);
   });
 
+  it("pads decimal value amounts and maps address2 and middle names", () => {
+    const json = buildStediClaimJson({
+      ...CLAIM_INPUT,
+      subscriber: {
+        ...CLAIM_INPUT.subscriber,
+        middleInitial: "q",
+        address: { ...CLAIM_INPUT.subscriber.address, line2: "apt 4" },
+      },
+      attendingPhysician: { ...CLAIM_INPUT.attendingPhysician, middleInitial: "r" },
+      claim: { ...CLAIM_INPUT.claim, valueCodes: [{ code: "FC", amount: "7.5" }] },
+    } as never);
+    expect(json.subscriber.middleName).toBe("Q");
+    expect(json.subscriber.address.address2).toBe("APT 4");
+    expect(json.attending.middleName).toBe("R");
+    expect(json.claimInformation.valueInformationList).toEqual([
+      [{ valueCode: "FC", valueCodeAmount: "7.50" }],
+    ]);
+  });
+
+  it.each([
+    ["null input", null],
+    ["missing claim", { ...CLAIM_INPUT, claim: undefined }],
+    ["missing attendingPhysician", { ...CLAIM_INPUT, attendingPhysician: undefined }],
+    ["missing submitter", { ...CLAIM_INPUT, submitter: undefined }],
+    ["missing envelope", { ...CLAIM_INPUT, envelope: undefined }],
+    [
+      "numeric first name",
+      { ...CLAIM_INPUT, subscriber: { ...CLAIM_INPUT.subscriber, firstName: 7 } },
+    ],
+  ])("fails as a build error, not a TypeError: %s", (_n, input) => {
+    expect(() => buildStediClaimJson(input as never)).toThrow(Claim837iBuildError);
+  });
+
   it("refuses anything the raw builder refuses, with the same field-only error", () => {
     expect(() => buildStediClaimJson(withClaim({ lines: [] }) as never)).toThrow(
       "invalid 837I claim input: claim.lines",
@@ -288,6 +321,82 @@ describe("compareStediClaimJsonToX12 — raw and JSON agree", () => {
       claim(j).serviceLines[0].institutionalService.lineItemChargeAmount = "199.99";
     });
     expect(compareStediClaimJsonToX12(t, raw)).toEqual(expect.arrayContaining(["claim.lines"]));
+  });
+
+  it("flags a JSON total that disagrees with its own lines even when the raw agrees with the total", () => {
+    // Only a line changes: the JSON total still equals the raw total, but no longer its own line sum.
+    const t = tamper((j) => {
+      claim(j).serviceLines[0].institutionalService.lineItemChargeAmount = "199.99";
+    });
+    expect(compareStediClaimJsonToX12(t, raw)).toContain("claim.totalCharge");
+  });
+
+  it("flags a JSON total that matches its lines but not the raw", () => {
+    const t = tamper((j) => {
+      claim(j).serviceLines[0].institutionalService.lineItemChargeAmount = "199.99";
+      claim(j).claimChargeAmount = "1499.99";
+    });
+    expect(compareStediClaimJsonToX12(t, raw)).toContain("claim.totalCharge");
+  });
+
+  it.each([
+    ["envelope.usage", (j: StediClaimJson) => Object.assign(j, { usageIndicator: "P" })],
+    ["billingProvider.npi", (j: StediClaimJson) => Object.assign(j.billing, { npi: "1679576722" })],
+    [
+      "attendingPhysician.npi",
+      (j: StediClaimJson) => Object.assign(j.attending, { npi: "1679576722" }),
+    ],
+    [
+      "subscriber.mbi",
+      (j: StediClaimJson) => Object.assign(j.subscriber, { memberId: "1AA0AA0AA00" }),
+    ],
+    [
+      "subscriber.birthDate",
+      (j: StediClaimJson) => Object.assign(j.subscriber, { dateOfBirth: "19400316" }),
+    ],
+    ["subscriber.sex", (j: StediClaimJson) => Object.assign(j.subscriber, { gender: "M" })],
+    [
+      "billingProvider.taxId",
+      (j: StediClaimJson) => Object.assign(j.billing, { employerId: "000000000" }),
+    ],
+    [
+      "payer.payerId",
+      (j: StediClaimJson) => Object.assign(j, { tradingPartnerServiceId: "OTHER" }),
+    ],
+    [
+      "claim.facilityType",
+      (j: StediClaimJson) => Object.assign(j.claimInformation, { placeOfServiceCode: "82" }),
+    ],
+  ])("flags a tampered %s", (field, fn) => {
+    expect(compareStediClaimJsonToX12(tamper(fn as never), raw)).toContain(field);
+  });
+
+  it("flags a raw interchange with a duplicate claim-level segment", () => {
+    const dup = raw.replace("CL1*", "CL1*1*1*30~CL1*");
+    expect(compareStediClaimJsonToX12(json, dup)).toContain("claim.structure");
+    expect(
+      compareStediClaimJsonToX12(
+        json,
+        raw.replace("DTP*434", "DTP*434*RD8*20260101-20260131~DTP*434"),
+      ),
+    ).toContain("claim.structure");
+  });
+
+  it("never reads an unparseable value amount as agreement", () => {
+    const t = tamper((j) => {
+      claim(j).valueInformationList = [
+        [
+          { valueCode: "61", valueCodeAmount: "x" },
+          { valueCode: "G8", valueCodeAmount: "x" },
+        ],
+      ];
+    });
+    expect(
+      compareStediClaimJsonToX12(
+        t,
+        raw.replace(/BE:61:::38900\*BE:G8:::38900/, "BE:61:::z*BE:G8:::z"),
+      ),
+    ).toContain("claim.valueCodes");
   });
 
   it("returns field names only, never a value", () => {
