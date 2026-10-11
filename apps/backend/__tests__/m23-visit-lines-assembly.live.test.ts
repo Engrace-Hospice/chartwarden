@@ -455,20 +455,43 @@ describe.skipIf(!DB_URL)("M23 hospice claim-line assembly — LIVE Postgres as w
     );
     expect(snapshot?.diagnosisSnapshot).toHaveLength(2);
 
+    // A re-validation re-resolves M40: a different attending, no separate certifying physician. The NPIs, names and
+    // diagnosis sequence are rewritten together while the claim is VALIDATING (or READY).
+    await admin.query("UPDATE claim SET state='VALIDATING' WHERE id=$1", [res.claimId]);
     const changed = await withOrgContext(
       handle.db,
       { organizationId: ORG, userId: USER },
       async (tx) =>
-        new repositories.ClaimRepository(tx as never).refreshPhysicianNpis(res.claimId, {
-          attendingPhysicianNpi: "1245319599",
-          certifyingPhysicianNpi: null,
-        }),
+        new repositories.ClaimRepository(tx as never).refreshSnapshot(
+          res.claimId,
+          { attendingPhysicianNpi: "1245319599", certifyingPhysicianNpi: null },
+          {
+            attendingPhysicianFirstName: "Alan",
+            attendingPhysicianLastName: "Turing",
+            certifyingPhysicianFirstName: null,
+            certifyingPhysicianLastName: null,
+            diagnosisSnapshot: [{ icd10Code: "C787", sequence: 1, qualifier: "ABK" }],
+          },
+        ),
     );
     expect(changed).toBe(true);
     expect(await read()).toMatchObject({
       attending_physician_npi: "1245319599",
       certifying_physician_npi: null,
       version: 0,
+    });
+    expect(
+      (
+        await admin.query(
+          `SELECT attending_physician_last_name AS al, certifying_physician_last_name AS cl, diagnosis_snapshot AS dx
+             FROM claim WHERE id = $1`,
+          [res.claimId],
+        )
+      ).rows[0],
+    ).toEqual({
+      al: "Turing",
+      cl: null,
+      dx: [{ icd10Code: "C787", sequence: 1, qualifier: "ABK" }],
     });
 
     await expect(

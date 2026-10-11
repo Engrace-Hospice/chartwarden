@@ -1,6 +1,8 @@
 // @wardenx/billing — the claim's assembly-time SNAPSHOT of the physicians' names and the diagnosis sequence
 // (migration 1068), so a claim already sent does not change when the physician master data or the problem list
-// does. The NPIs have their own columns (`physician-npis.ts`); the names follow the SAME rule (the certifying
+// does. The snapshot FOLLOWS the NPIs until submission: assembly and every re-validation write NPIs, names and
+// diagnoses together (`ClaimRepository.refreshSnapshot`), so a name never belongs to a different physician than the
+// NPI beside it; from SUBMITTED onward the database freezes it. The NPIs have their own columns (`physician-npis.ts`); the names follow the SAME rule (the certifying
 // physician only when it differs from the attending), and a name is only kept alongside the NPI it belongs to.
 // PURE.
 import type { Icd10Pointer, MdmResolution, PhysicianResolution } from "../rules/types";
@@ -29,8 +31,11 @@ export interface ClaimAssemblySnapshot extends ClaimPhysicianNames {
   readonly diagnosisSnapshot: ClaimDiagnosisSnapshotEntry[];
 }
 
+/** Matches `claim_physician_name_len_chk` (migration 1068); M40 name text is unbounded, so clip rather than fail the claim. */
+const MAX_NAME_LENGTH = 100;
+
 const trimmed = (value: string | undefined): string | null => {
-  const t = value?.trim();
+  const t = value?.trim().slice(0, MAX_NAME_LENGTH).trim();
   return t ? t : null;
 };
 

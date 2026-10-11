@@ -105,8 +105,9 @@ export const claim = pgTable(
     attendingPhysicianNpi: text("attending_physician_npi"),
     certifyingPhysicianNpi: text("certifying_physician_npi"),
     // Migration 1068 — the assembly-time SNAPSHOT of the physicians' names (certifying null exactly when the certifying
-    // NPI is) and of the diagnosis sequence, so a sent claim does not change when M40 / M7 do. Writable only while DRAFT
-    // (trigger `trg_claim_snapshot_immutable`). `diagnosis_snapshot` '[]' = none captured (pre-1068 claims).
+    // NPI is) and of the diagnosis sequence, so a sent claim does not change when M40 / M7 do. It follows the NPIs
+    // (re-derived with them on every re-validation) and is writable only in DRAFT / VALIDATING / READY; frozen from
+    // SUBMITTED onward (trigger `trg_claim_snapshot_immutable`). Scrubbed from the write-audit trail. `diagnosis_snapshot` '[]' = none captured (pre-1068 claims).
     attendingPhysicianFirstName: text("attending_physician_first_name"),
     attendingPhysicianLastName: text("attending_physician_last_name"),
     certifyingPhysicianFirstName: text("certifying_physician_first_name"),

@@ -20,6 +20,14 @@ const mdm = (a: PhysicianResolution | null, h: PhysicianResolution | null): MdmR
 });
 
 describe("claimPhysicianNames", () => {
+  it("clips a name longer than the 100-character column bound instead of failing the claim", () => {
+    const names = claimPhysicianNames(
+      mdm(physician("1234567893", "A".repeat(150), "Lovelace"), null),
+    );
+    expect(names.attendingPhysicianFirstName).toBe("A".repeat(100));
+    expect(names.attendingPhysicianLastName).toBe("Lovelace");
+  });
+
   it("keeps both physicians' names when their NPIs differ", () => {
     expect(
       claimPhysicianNames(
@@ -96,6 +104,17 @@ describe("claimDiagnosisSnapshot", () => {
     ).toBe("ABF");
   });
 
+  it("keeps the input order of entries that share a position (stable sort) and picks the first terminal as ABK", () => {
+    const out = claimDiagnosisSnapshot([
+      { position: 2, code: "J449", relationship: "related" },
+      { position: 1, code: "C787", relationship: "terminal" },
+      { position: 1, code: "C3490", relationship: "terminal" },
+      { position: 2, code: "I10", relationship: "unrelated" },
+    ]);
+    expect(out.map((d) => d.icd10Code)).toEqual(["C787", "C3490", "J449", "I10"]);
+    expect(out.map((d) => d.qualifier)).toEqual(["ABK", "ABF", "ABF", "ABF"]);
+  });
+
   it("does not mutate its input and is empty for an empty sequence", () => {
     const copy = JSON.stringify(seq);
     claimDiagnosisSnapshot(seq);
@@ -111,5 +130,20 @@ describe("buildClaimSnapshot", () => {
     ]);
     expect(s.attendingPhysicianLastName).toBe("Lovelace");
     expect(s.diagnosisSnapshot).toHaveLength(1);
+  });
+
+  it("moves the name with the NPI: a changed M40 resolution yields the new physician's name, certifying null with its NPI", () => {
+    const before = buildClaimSnapshot(
+      mdm(physician("1234567893", "Ada", "Lovelace"), physician("1982736455", "Grace", "Hopper")),
+      [],
+    );
+    const after = buildClaimSnapshot(
+      mdm(physician("1245319599", "Alan", "Turing"), physician("1245319599", "Alan", "Turing")),
+      [],
+    );
+    expect(before.certifyingPhysicianLastName).toBe("Hopper");
+    expect(after.attendingPhysicianLastName).toBe("Turing");
+    expect(after.certifyingPhysicianFirstName).toBeNull();
+    expect(after.certifyingPhysicianLastName).toBeNull();
   });
 });
