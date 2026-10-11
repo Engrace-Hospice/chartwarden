@@ -26,6 +26,23 @@ export interface AttachmentInput {
   readonly byteSize: number;
 }
 
+export type MessageReferenceKind = "staff" | "patient";
+
+/** UTF-16 code-unit offsets, matching the browser textarea selection model. */
+export interface MessageReferenceInput {
+  readonly kind: MessageReferenceKind;
+  readonly entityId: string;
+  readonly start: number;
+  readonly end: number;
+}
+
+export interface ResolvedMessageReference extends MessageReferenceInput {
+  /** Server-authoritative label; never accepted from the client. */
+  readonly displayLabel: string;
+  /** False when current authorization no longer permits navigation to the entity. */
+  readonly navigable: boolean;
+}
+
 /** A message as returned to an entitled reader (§3.4) — body decrypted for users who may see it. */
 export interface ResolvedMessage {
   readonly messageId: string;
@@ -36,6 +53,7 @@ export interface ResolvedMessage {
   readonly bodyKind: MessageBodyKind;
   readonly createdAt: string; // ISO-8601
   readonly parentMessageId: string | null;
+  readonly references: readonly ResolvedMessageReference[];
 }
 
 /**
@@ -63,6 +81,7 @@ export interface MessagingProvider {
       quotedMessageId?: string;
       attachments?: readonly AttachmentInput[];
       correlationId?: string;
+      references?: readonly MessageReferenceInput[];
     },
   ): Promise<{ messageId: string; createdAt: string }>;
 

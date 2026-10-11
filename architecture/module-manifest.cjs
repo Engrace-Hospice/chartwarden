@@ -228,6 +228,7 @@ exports.MODULES = [
       "channel_member",
       "delivery_endpoint",
       "message",
+      "message_entity_reference",
       "message_attachment",
       "message_receipt",
       "notification_delivery",

@@ -13198,6 +13198,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/mention-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search staff and the linked patient eligible for a structured reference */
+        get: operations["getApiV1MessagingChannelsByIdMentioncandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/channels/{id}/messages": {
         parameters: {
             query?: never;
@@ -61086,6 +61103,7 @@ export interface operations {
                             subjectId: string | null;
                             archivedAt: string | null;
                             unreadCount: number;
+                            mentionCount: number;
                             participantRoles: string[];
                             lastActivityAt: string;
                             lastMessage: {
@@ -61126,6 +61144,7 @@ export interface operations {
                         subjectId: string | null;
                         archivedAt: string | null;
                         unreadCount: number;
+                        mentionCount: number;
                         participantRoles: string[];
                         lastActivityAt: string;
                         lastMessage: {
@@ -61199,12 +61218,46 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingChannelsByIdMentioncandidates: {
+        parameters: {
+            query?: {
+                q?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        candidates: {
+                            kind: "staff" | "patient";
+                            entityId: string;
+                            displayName: string;
+                            detail: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1MessagingChannelsByIdMessages: {
         parameters: {
             query?: {
                 cursor?: string;
                 limit?: number;
                 direction?: "forward" | "backward";
+                anchorMessageId?: string;
             };
             header?: never;
             path: {
@@ -61230,6 +61283,14 @@ export interface operations {
                             bodyKind: "plain" | "markdown" | "system";
                             createdAt: string;
                             parentMessageId: string | null;
+                            references: {
+                                kind: "staff" | "patient";
+                                entityId: string;
+                                start: number;
+                                end: number;
+                                displayLabel: string;
+                                navigable: boolean;
+                            }[];
                         }[];
                         nextCursor?: string;
                         patientId: string | null;
@@ -61261,6 +61322,12 @@ export interface operations {
                         fileName: string;
                         contentType: string;
                         byteSize: number;
+                    }[];
+                    references?: {
+                        kind: "staff" | "patient";
+                        entityId: string;
+                        start: number;
+                        end: number;
                     }[];
                 };
             };
@@ -61379,6 +61446,12 @@ export interface operations {
             content: {
                 "application/json": {
                     body: string;
+                    references?: {
+                        kind: "staff" | "patient";
+                        entityId: string;
+                        start: number;
+                        end: number;
+                    }[];
                 };
             };
         };

@@ -42,6 +42,7 @@ import {
   EndpointParamsSchema,
   ListMessagesQuerySchema,
   MemberParamsSchema,
+  MentionCandidateQuerySchema,
   MessageParamsSchema,
   OpenDmBodySchema,
   PatientConversationParamsSchema,
@@ -207,7 +208,38 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
         cursor: q.cursor,
         limit: q.limit,
         direction: q.direction,
+        anchorMessageId: q.anchorMessageId,
       });
+    },
+  );
+
+  // Structured autocomplete is scoped to a channel whose effective visibility has already been
+  // revalidated. Patient results are intentionally limited by the service to the linked care-team
+  // patient; this route never acts as a general patient directory.
+  app.get(
+    "/api/v1/messaging/channels/:id/mention-candidates",
+    {
+      preHandler: [READ, VIEW_CHANNEL],
+      config: {
+        auditRead: {
+          resourceKind: "message_mention_candidate",
+          resourceIdParam: "id",
+          fields: ["minimum_necessary_identity"],
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(ChannelParamsSchema, request.params);
+      const { q } = parse(MentionCandidateQuerySchema, request.query);
+      return {
+        candidates: await service.searchMentionCandidates(
+          organizationId,
+          userId,
+          id,
+          q?.trim() ?? "",
+        ),
+      };
     },
   );
 
@@ -228,6 +260,7 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
         quotedMessageId: body.quotedMessageId,
         attachments: body.attachments,
         correlationId: request.context.correlationId,
+        references: body.references,
       });
       return reply.code(201).send(result);
     },
@@ -238,7 +271,12 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     const { organizationId, userId } = actorOf(request);
     const { id } = parse(MessageParamsSchema, request.params);
     const body = parse(EditMessageBodySchema, request.body);
-    return service.editMessage(organizationId, { userId, messageId: id, body: body.body });
+    return service.editMessage(organizationId, {
+      userId,
+      messageId: id,
+      body: body.body,
+      references: body.references,
+    });
   });
 
   // --- soft-delete a message (author check in the service) -----------------------------------

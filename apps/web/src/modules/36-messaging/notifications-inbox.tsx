@@ -80,7 +80,10 @@ export function NotificationsInbox(): JSX.Element {
 
   const filteredAlerts = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return (alerts ?? []).filter((alert) => {
+    const scoped = (alerts ?? []).filter(
+      (alert) => tab !== "mentions" || alert.eventType === "m36.message.mentioned",
+    );
+    return scoped.filter((alert) => {
       const matchesSearch =
         q.length === 0 ||
         alert.summary.toLowerCase().includes(q) ||
@@ -97,7 +100,7 @@ export function NotificationsInbox(): JSX.Element {
         (readFilter === "read" && alert.readAt !== null);
       return matchesSearch && matchesSeverity && matchesDelivery && matchesRead;
     });
-  }, [alerts, deliveryFilter, readFilter, searchQuery, severityFilter]);
+  }, [alerts, deliveryFilter, readFilter, searchQuery, severityFilter, tab]);
 
   const total = alerts?.length ?? 0;
   const unreadTotal = alerts?.filter((alert) => alert.readAt === null).length ?? 0;
@@ -172,7 +175,7 @@ export function NotificationsInbox(): JSX.Element {
               />
             </div>
 
-            {tab === "notifications" ? (
+            {tab !== "tasks" ? (
               <div style={controlGroupStyle}>
                 <label className="wx-search-field">
                   <Glyph name="search" size={16} />
@@ -250,15 +253,11 @@ export function NotificationsInbox(): JSX.Element {
         </div>
       }
       table={
-        tab !== "notifications" ? (
+        tab === "tasks" ? (
           <div style={{ padding: "2rem 1.5rem" }}>
             <EmptyState
-              title={tab === "tasks" ? "Tasks" : "Mentions"}
-              description={
-                tab === "tasks"
-                  ? "Your task worklist arrives with the Tasks module."
-                  : "@-mentions arrive with the messaging worklist."
-              }
+              title="Tasks"
+              description="Your task worklist arrives with the Tasks module."
             />
           </div>
         ) : alerts === null && !loadFailed ? (
@@ -275,11 +274,19 @@ export function NotificationsInbox(): JSX.Element {
         ) : filteredAlerts.length === 0 ? (
           <div style={{ padding: "2rem 1.5rem" }}>
             <EmptyState
-              title={hasActiveFilters ? "No matching notifications" : "All clear"}
+              title={
+                hasActiveFilters
+                  ? `No matching ${tab === "mentions" ? "mentions" : "notifications"}`
+                  : tab === "mentions"
+                    ? "No mentions"
+                    : "All clear"
+              }
               description={
                 hasActiveFilters
                   ? "Try adjusting the notification filters."
-                  : "You have no notifications."
+                  : tab === "mentions"
+                    ? "You have not been mentioned in a secure conversation."
+                    : "You have no notifications."
               }
               action={
                 hasActiveFilters ? (
@@ -347,9 +354,7 @@ export function NotificationsInbox(): JSX.Element {
                         </div>
                       </td>
                       <td style={tdStyle}>
-                        <span style={sourceChipStyle}>
-                          {humanizeIdentifier(alert.category)}
-                        </span>
+                        <span style={sourceChipStyle}>{humanizeIdentifier(alert.category)}</span>
                       </td>
                       <td style={tdStyle}>
                         <StatusPill

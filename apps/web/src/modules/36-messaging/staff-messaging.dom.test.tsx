@@ -40,6 +40,83 @@ const channel = (channelId: string, title: string, overrides: Record<string, unk
 });
 
 describe("M36 messaging organization switching", () => {
+  it("creates a structured staff mention with keyboard autocomplete", async () => {
+    const api = {
+      GET: vi.fn((path: string) => {
+        if (path === "/api/v1/messaging/channels") {
+          return Promise.resolve({
+            data: { channels: [channel("dm-1", "Nurse Two")] },
+            error: undefined,
+          });
+        }
+        if (path === "/api/v1/messaging/channels/{id}/mention-candidates") {
+          return Promise.resolve({
+            data: {
+              candidates: [
+                {
+                  kind: "staff",
+                  entityId: "22222222-2222-4222-8222-222222222222",
+                  displayName: "Nurse Two",
+                  detail: "Registered Nurse",
+                },
+              ],
+            },
+            error: undefined,
+          });
+        }
+        return Promise.resolve({ data: { messages: [] }, error: undefined });
+      }),
+      POST: vi.fn(() =>
+        Promise.resolve({
+          data: {
+            messageId: "message-1",
+            channelId: "dm-1",
+            createdAt: "2026-10-10T10:00:00.000Z",
+          },
+          error: undefined,
+        }),
+      ),
+    } as unknown as ApiClient;
+
+    render(
+      <MemoryRouter>
+        <ApiClientProvider client={api}>
+          <SessionProvider session={ORG_ONE}>
+            <StaffMessaging />
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+
+    const composer = (await screen.findByRole("textbox", {
+      name: "Message",
+    })) as HTMLTextAreaElement;
+    fireEvent.change(composer, { target: { value: "@Nur", selectionStart: 4 } });
+    await screen.findByRole("option", { name: /Nurse Two/ });
+    fireEvent.keyDown(composer, { key: "Enter" });
+    expect(composer.value).toBe("@Nurse Two");
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(api.POST).toHaveBeenCalledWith(
+        "/api/v1/messaging/channels/{id}/messages",
+        expect.objectContaining({
+          body: {
+            body: "@Nurse Two",
+            references: [
+              {
+                kind: "staff",
+                entityId: "22222222-2222-4222-8222-222222222222",
+                start: 0,
+                end: 10,
+              },
+            ],
+          },
+        }),
+      ),
+    );
+  });
+
   it("clears selection, history, draft, and stale staff results when the organization changes", async () => {
     const oldMessages = deferred<unknown>();
     const oldStaff = deferred<unknown>();

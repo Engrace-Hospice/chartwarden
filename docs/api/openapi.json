@@ -156046,6 +156046,7 @@
                           "subjectId",
                           "archivedAt",
                           "unreadCount",
+                          "mentionCount",
                           "participantRoles",
                           "lastActivityAt",
                           "lastMessage"
@@ -156117,6 +156118,9 @@
                             ]
                           },
                           "unreadCount": {
+                            "type": "integer"
+                          },
+                          "mentionCount": {
                             "type": "integer"
                           },
                           "participantRoles": {
@@ -156213,6 +156217,7 @@
                     "subjectId",
                     "archivedAt",
                     "unreadCount",
+                    "mentionCount",
                     "participantRoles",
                     "lastActivityAt",
                     "lastMessage",
@@ -156286,6 +156291,9 @@
                       ]
                     },
                     "unreadCount": {
+                      "type": "integer"
+                    },
+                    "mentionCount": {
                       "type": "integer"
                     },
                     "participantRoles": {
@@ -156514,6 +156522,99 @@
         }
       }
     },
+    "/api/v1/messaging/channels/{id}/mention-candidates": {
+      "get": {
+        "operationId": "getApiV1MessagingChannelsByIdMentioncandidates",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Search staff and the linked patient eligible for a structured reference",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "candidates"
+                  ],
+                  "properties": {
+                    "candidates": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "entityId",
+                          "displayName",
+                          "detail"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "const": "staff",
+                                "type": "string"
+                              },
+                              {
+                                "const": "patient",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "entityId": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "detail": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/channels/{id}/messages": {
       "get": {
         "operationId": "getApiV1MessagingChannelsByIdMessages",
@@ -156564,6 +156665,16 @@
                 }
               ]
             }
+          },
+          {
+            "name": "anchorMessageId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 64,
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -156590,7 +156701,8 @@
                           "body",
                           "bodyKind",
                           "createdAt",
-                          "parentMessageId"
+                          "parentMessageId",
+                          "references"
                         ],
                         "properties": {
                           "messageId": {
@@ -156650,6 +156762,49 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "references": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "kind",
+                                "entityId",
+                                "start",
+                                "end",
+                                "displayLabel",
+                                "navigable"
+                              ],
+                              "properties": {
+                                "kind": {
+                                  "anyOf": [
+                                    {
+                                      "const": "staff",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "patient",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "entityId": {
+                                  "type": "string"
+                                },
+                                "start": {
+                                  "type": "integer"
+                                },
+                                "end": {
+                                  "type": "integer"
+                                },
+                                "displayLabel": {
+                                  "type": "string"
+                                },
+                                "navigable": {
+                                  "type": "boolean"
+                                }
+                              }
+                            }
                           }
                         }
                       }
@@ -156795,6 +156950,48 @@
                         "byteSize": {
                           "minimum": 0,
                           "maximum": 25000000,
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  },
+                  "references": {
+                    "maxItems": 25,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "entityId",
+                        "start",
+                        "end"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "anyOf": [
+                            {
+                              "const": "staff",
+                              "type": "string"
+                            },
+                            {
+                              "const": "patient",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "entityId": {
+                          "minLength": 1,
+                          "maxLength": 64,
+                          "type": "string"
+                        },
+                        "start": {
+                          "minimum": 0,
+                          "maximum": 8000,
+                          "type": "integer"
+                        },
+                        "end": {
+                          "minimum": 1,
+                          "maximum": 8001,
                           "type": "integer"
                         }
                       }
@@ -157026,6 +157223,48 @@
                     "minLength": 1,
                     "maxLength": 8000,
                     "type": "string"
+                  },
+                  "references": {
+                    "maxItems": 25,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "entityId",
+                        "start",
+                        "end"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "anyOf": [
+                            {
+                              "const": "staff",
+                              "type": "string"
+                            },
+                            {
+                              "const": "patient",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "entityId": {
+                          "minLength": 1,
+                          "maxLength": 64,
+                          "type": "string"
+                        },
+                        "start": {
+                          "minimum": 0,
+                          "maximum": 8000,
+                          "type": "integer"
+                        },
+                        "end": {
+                          "minimum": 1,
+                          "maximum": 8001,
+                          "type": "integer"
+                        }
+                      }
+                    }
                   }
                 }
               }

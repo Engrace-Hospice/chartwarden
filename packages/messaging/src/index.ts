@@ -120,6 +120,9 @@ export type {
   MessagingProvider,
   AttachmentInput,
   ResolvedMessage,
+  MessageReferenceInput,
+  MessageReferenceKind,
+  ResolvedMessageReference,
 } from "./interfaces/provider";
 export type { AlertEmitter, RecipientResolver } from "./interfaces/alert-emitter";
 
@@ -138,6 +141,7 @@ export type {
   DeliveryEndpointInput,
   DmEligibleStaffMember,
   CareTeamConversation,
+  MentionCandidate,
   AlertInboxItem,
 } from "./interfaces/route-service";
 export {

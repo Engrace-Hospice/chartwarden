@@ -107,8 +107,8 @@ export * from "./terminology/terminology-update-log";
 export * from "./terminology/concept-common-systems";
 export * from "./terminology/concept-staging";
 export * from "./terminology/terminology-license-attestation";
-// M36-T02 — Secure Messaging & Alerts schema (M36 spec §3.3–3.6, §3.11, §3.13). M36 owns 15
-// tables. Most are org-scoped (channel, channel_member, message, message_receipt, alert,
+// M36-T02 — Secure Messaging & Alerts schema (M36 spec §3.3–3.6, §3.11, §3.13).
+// Most tables are org-scoped (channel, channel_member, message, message_receipt, alert,
 // alert_rule, user_notification_preferences, tenant_alert_routing_override, notification_template,
 // tenant_notification_template_overlay — standard app.org_id RLS lands in M36-T03). Five carry
 // no organization_id by design and sit on the check-tenancy NON_ORG_SCOPED allowlist: presence
@@ -121,6 +121,7 @@ export * from "./terminology/terminology-license-attestation";
 export * from "./messaging/channels";
 export * from "./messaging/channel-members";
 export * from "./messaging/messages";
+export * from "./messaging/message-entity-references";
 export * from "./messaging/message-attachments";
 export * from "./messaging/message-receipts";
 export * from "./messaging/presence";

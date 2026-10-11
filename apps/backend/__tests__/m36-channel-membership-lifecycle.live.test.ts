@@ -14,7 +14,9 @@
 import { randomBytes } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { type DbClient, createDbClient } from "@wardenx/db";
+import { type DbClient, createDbClient, schema } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
+import { eq } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { registerSeam } from "../src/bootstrap/index";
@@ -327,6 +329,86 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
         (channel) => channel.channelId === dm.channelId,
       )?.unreadCount,
     ).toBe(0);
+  });
+
+  it("commits structured mentions with the outbox atomically and enforces reference RLS", async () => {
+    const dmService = createDbMessagingRouteService(handle.db, { kek: KEK });
+    const dm = await dmService.openDm(orgA, concurrentA, concurrentB);
+    const label = "G104 concurrent-b";
+    const body = `Ping @${label}`;
+    const emitted: Record<string, unknown>[] = [];
+    const service = createDbMessagingRouteService(handle.db, {
+      kek: KEK,
+      outbox: {
+        async publish(_tx, emission) {
+          emitted.push(emission);
+        },
+      },
+    });
+    const sent = await service.sendMessage(orgA, {
+      channelId: dm.channelId,
+      authorUserId: concurrentA,
+      body,
+      references: [
+        {
+          kind: "staff",
+          entityId: concurrentB,
+          start: 5,
+          end: body.length,
+        },
+      ],
+    });
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0]).toMatchObject({
+      eventName: "m36.message.mentioned",
+      aggregateId: sent.messageId,
+      payload: { mentionedUserId: concurrentB, channelId: dm.channelId },
+    });
+    const history = await service.listMessages(orgA, {
+      channelId: dm.channelId,
+      userId: concurrentB,
+      direction: "backward",
+    });
+    expect(history.messages.at(-1)?.references).toEqual([
+      expect.objectContaining({
+        kind: "staff",
+        entityId: concurrentB,
+        displayLabel: label,
+      }),
+    ]);
+
+    const foreignRows = await withOrgContext(
+      handle.db,
+      { organizationId: orgB, userId: dualMember },
+      (tx) =>
+        tx
+          .select({ id: schema.messageEntityReferences.id })
+          .from(schema.messageEntityReferences)
+          .where(eq(schema.messageEntityReferences.messageId, sent.messageId)),
+    );
+    expect(foreignRows).toEqual([]);
+
+    const before = await admin.query(
+      `SELECT count(*)::int AS count FROM message WHERE organization_id=$1 AND channel_id=$2`,
+      [orgA, dm.channelId],
+    );
+    const failing = createDbMessagingRouteService(handle.db, {
+      kek: KEK,
+      outbox: { publish: async () => Promise.reject(new Error("relay unavailable")) },
+    });
+    await expect(
+      failing.sendMessage(orgA, {
+        channelId: dm.channelId,
+        authorUserId: concurrentA,
+        body,
+        references: [{ kind: "staff", entityId: concurrentB, start: 5, end: body.length }],
+      }),
+    ).rejects.toThrow("relay unavailable");
+    const after = await admin.query(
+      `SELECT count(*)::int AS count FROM message WHERE organization_id=$1 AND channel_id=$2`,
+      [orgA, dm.channelId],
+    );
+    expect(after.rows[0].count).toBe(before.rows[0].count);
   });
 
   it("opens patient care-team channels idempotently and collapses concurrent creation", async () => {

@@ -75,7 +75,10 @@ export {
 // surface live (channel list / detail / thread envelope decrypt / alert inbox / preferences / alert
 // rules + send / edit / delete / receipts / DM / member admin / announce / preference + endpoint /
 // alert-rule override). The staff-messaging + notifications-inbox screens read/write live through these.
-export { createDbMessagingRouteService } from "./messaging-route-service-db";
+export {
+  createDbMessagingRouteService,
+  type MessagingOutboxPort,
+} from "./messaging-route-service-db";
 export {
   ADMIN_PLATFORM_PREDICATE as M36_ADMIN_PLATFORM_PREDICATE,
   type AdminAlertDeliveriesDeps,
@@ -139,6 +142,7 @@ import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import type { EndpointVerificationSender } from "./delivery/transport-binding";
 import { createDbMessagingRouteService as _createDbMessagingRouteService } from "./messaging-route-service-db";
+import type { MessagingOutboxPort } from "./messaging-route-service-db";
 import {
   buildAdminAlertDeliveriesDeps as _buildAdminAlertDeliveriesDeps,
   registerAdminAlertDeliveriesRoutes as _registerAdminAlertDeliveriesRoutes,
@@ -160,10 +164,14 @@ import {
 export function mountMessagingRoutes(
   app: FastifyInstance,
   db: DbClient,
-  opts: { sendEndpointVerificationCode?: EndpointVerificationSender } = {},
+  opts: {
+    sendEndpointVerificationCode?: EndpointVerificationSender;
+    outbox?: MessagingOutboxPort;
+  } = {},
 ): void {
   // GAP-063 — the §4.2 OTP sender; with none bound, sms/email endpoint registration answers 503.
   const service = _createDbMessagingRouteService(db, {
+    ...(opts.outbox ? { outbox: opts.outbox } : {}),
     ...(opts.sendEndpointVerificationCode
       ? { sendEndpointVerificationCode: opts.sendEndpointVerificationCode }
       : {}),

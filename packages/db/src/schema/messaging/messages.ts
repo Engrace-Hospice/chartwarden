@@ -17,6 +17,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uuid,
 } from "drizzle-orm/pg-core";
 import { messageAuthorKind, messageBodyKind, messageStatus } from "../../enums";
@@ -59,6 +60,7 @@ export const messages = pgTable(
       .on(t.authorUserId)
       .where(sql`author_user_id IS NOT NULL`),
     byOrgIdx: index("message_org_idx").on(t.organizationId),
+    orgIdIdUnique: unique("message_org_id_id_unique").on(t.organizationId, t.id),
     byParentIdx: index("message_parent_idx")
       .on(t.parentMessageId)
       .where(sql`parent_message_id IS NOT NULL`),

@@ -1373,6 +1373,7 @@ import {
   buildIdgCarryForwardComplianceConsumer,
   buildM36BreakGlassAlertConsumer,
   buildM36ClinicalAlertConsumer,
+  createDbMessagingRouteService,
   createDbMessagingProvider,
   createDrizzleAlertEmitter,
   createDrizzleDeliveryDispatchStore,
@@ -1400,6 +1401,7 @@ import { buildM36FeedHealthAlertConsumer } from "./modules/36-messaging/outbox-c
 import { buildM36FieldSafetyAlertConsumer } from "./modules/36-messaging/outbox-consumers/field-safety-alerts";
 import { buildM36IpuAlertConsumer } from "./modules/36-messaging/outbox-consumers/ipu-alerts";
 import { buildM36IpuIvAlertConsumer } from "./modules/36-messaging/outbox-consumers/ipu-iv-alerts";
+import { buildM36MessageMentionConsumer } from "./modules/36-messaging/outbox-consumers/message-mentions";
 import { buildM36ConsentRevokedConsumer } from "./modules/36-messaging/outbox-consumers/m39-consent-revoked";
 import { buildM36OncallAlertConsumer } from "./modules/36-messaging/outbox-consumers/oncall-alerts";
 import { buildM36QualityAlertConsumer } from "./modules/36-messaging/outbox-consumers/quality-alerts";
@@ -4435,6 +4437,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           mountMessagingRoutes(app, dbHandle.db, {
             // GAP-063 — delivers the sms/email endpoint OTP; unbound => registration answers 503.
             sendEndpointVerificationCode: outOfBandBinding.sendEndpointVerificationCode,
+            outbox: m36OutboxPublisher,
           }); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05)
           // GAP-101 — the §4.9 inbound vendor webhooks (Twilio sms/voice status, Postmark event): signature-authenticated
           // (replay window + HMAC / IP allowlist + bearer), reconciling `notification_delivery`. FAIL-CLOSED: a vendor
@@ -9192,6 +9195,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             admissionSitingForPatient: activeAdmissionSitingForPatientForOrg,
           }),
           buildM36ClinicalAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
+          buildM36MessageMentionConsumer({
+            alerts: getSeam("AlertEmitter") as AlertEmitter,
+            messaging: createDbMessagingRouteService(dbHandle.db),
+          }),
           // GAP-039/040 — M13's missed-dose / PRN-reassessment-overdue / reconciliation / kit-return alerts
           // (M13 spec §4.9): previously unconsumed (M36 sat on the seam-consumer list).
           buildM36EmarAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),

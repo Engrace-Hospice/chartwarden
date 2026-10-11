@@ -1252,6 +1252,8 @@ import {
   DeliveryEndpointResponseSchema as M36DeliveryEndpointResponseSchema,
   DmStaffSearchQuerySchema as M36DmStaffSearchQuerySchema,
   DmStaffSearchResponseSchema as M36DmStaffSearchResponseSchema,
+  MentionCandidateQuerySchema as M36MentionCandidateQuerySchema,
+  MentionCandidateResponseSchema as M36MentionCandidateResponseSchema,
   EditMessageBodySchema as M36EditMessageBodySchema,
   EditMessageResponseSchema as M36EditMessageResponseSchema,
   ListMessagesQuerySchema as M36ListMessagesQuerySchema,
@@ -8874,6 +8876,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Paginated message history (bodies decrypted for entitled readers)",
     query: M36ListMessagesQuerySchema,
     response: M36MessageListResponseSchema,
+  },
+  "GET /api/v1/messaging/channels/:id/mention-candidates": {
+    summary: "Search staff and the linked patient eligible for a structured reference",
+    query: M36MentionCandidateQuerySchema,
+    response: M36MentionCandidateResponseSchema,
   },
   "POST /api/v1/messaging/channels/:id/messages": {
     summary: "Post a message (201; CHANNEL_ARCHIVED 410)",

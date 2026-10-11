@@ -40,6 +40,7 @@ function normalizeChannel(
     subjectId: channel.subjectId ?? null,
     archivedAt: channel.archivedAt ?? null,
     unreadCount: channel.unreadCount ?? 0,
+    mentionCount: channel.mentionCount ?? 0,
     participantRoles: channel.participantRoles ?? [],
     lastActivityAt:
       channel.lastActivityAt ??
@@ -61,7 +62,8 @@ export function StaffMessaging(): JSX.Element {
     "messagingChannelId" in location.state &&
     typeof location.state.messagingChannelId === "string"
       ? location.state.messagingChannelId
-      : null;
+      : new URLSearchParams(location.search).get("channelId");
+  const requestedMessageId = new URLSearchParams(location.search).get("messageId");
   return (
     <OrganizationStaffMessaging
       key={`${organizationId}:${userId}`}
@@ -70,6 +72,7 @@ export function StaffMessaging(): JSX.Element {
       userId={userId}
       userDisplayName={session?.displayName ?? "You"}
       requestedChannelId={requestedChannelId}
+      requestedMessageId={requestedMessageId}
     />
   );
 }
@@ -83,12 +86,14 @@ function OrganizationStaffMessaging({
   userId,
   userDisplayName,
   requestedChannelId,
+  requestedMessageId,
 }: {
   organizationId: string;
   organizationName: string;
   userId: string;
   userDisplayName: string;
   requestedChannelId: string | null;
+  requestedMessageId: string | null;
 }): JSX.Element {
   const client = useApiClient();
   const narrow = useNarrowMessagingLayout();
@@ -217,7 +222,9 @@ function OrganizationStaffMessaging({
     setChannels((current) => {
       const next =
         current?.map((channel) =>
-          channel.channelId === channelId ? { ...channel, unreadCount: 0 } : channel,
+          channel.channelId === channelId
+            ? { ...channel, unreadCount: 0, mentionCount: 0 }
+            : channel,
         ) ?? null;
       channelsRef.current = next;
       return next;
@@ -239,6 +246,7 @@ function OrganizationStaffMessaging({
       const matchesFilter =
         filter === "all" ||
         (filter === "unread" && channel.unreadCount > 0) ||
+        (filter === "mentions" && channel.mentionCount > 0) ||
         (filter === "dm" && channel.kind === "dm" && channel.archivedAt === null) ||
         (filter === "care_team" && channel.kind === "care_team" && channel.archivedAt === null) ||
         (filter === "archived" && channel.archivedAt !== null);
@@ -297,6 +305,9 @@ function OrganizationStaffMessaging({
               onReadConfirmed={onReadConfirmed}
               onMessageSent={() => void loadChannels(true)}
               onAccessRevoked={onAccessRevoked}
+              anchorMessageId={
+                activeChannel.channelId === requestedChannelId ? requestedMessageId : null
+              }
             />
           ) : (
             <div className="wx-messaging-no-selection">

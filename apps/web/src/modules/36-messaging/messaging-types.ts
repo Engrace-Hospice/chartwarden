@@ -21,6 +21,7 @@ export interface ChannelSummary {
   subjectId: string | null;
   archivedAt: string | null;
   unreadCount: number;
+  mentionCount: number;
   participantRoles: string[];
   lastActivityAt: string;
   lastMessage: ChannelLastMessage | null;
@@ -35,6 +36,31 @@ export interface Message {
   bodyKind: "plain" | "markdown" | "system";
   createdAt: string;
   parentMessageId: string | null;
+  references: MessageReference[];
+}
+
+export interface MessageReference {
+  kind: "staff" | "patient";
+  entityId: string;
+  start: number;
+  end: number;
+  displayLabel: string;
+  navigable: boolean;
+}
+
+export interface MessageReferenceInput {
+  kind: "staff" | "patient";
+  entityId: string;
+  start: number;
+  end: number;
+  displayLabel: string;
+}
+
+export interface MentionCandidate {
+  kind: "staff" | "patient";
+  entityId: string;
+  displayName: string;
+  detail: string | null;
 }
 
 export interface DmStaffMember {
@@ -56,5 +82,5 @@ export interface PatientHeaderInfo {
   lastName: string;
 }
 
-export type ConversationFilter = "all" | "unread" | "dm" | "care_team" | "archived";
+export type ConversationFilter = "all" | "unread" | "mentions" | "dm" | "care_team" | "archived";
 export type ConversationType = "direct" | "patient";
