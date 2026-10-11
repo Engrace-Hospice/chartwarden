@@ -23,7 +23,7 @@ import {
   loadPlatformKekRing,
 } from "../../apps/backend/src/bootstrap/tenant-kek";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
-import { SEED_CREDENTIALS_PATH, writeSeedCredentials } from "./lib/credentials";
+import { SEED_CREDENTIALS_PATH, seedUsername, writeSeedCredentials } from "./lib/credentials";
 import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
@@ -110,7 +110,7 @@ async function signUp(email: string, password: string, name: string): Promise<st
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, name }),
+      body: JSON.stringify({ email, password, name, username: seedUsername(email) }),
     },
     `sign-up for ${email}`,
   );
@@ -518,16 +518,16 @@ async function main(): Promise<void> {
     "",
     "## Accounts",
     "",
-    "| Role | Email | Password | Permissions |",
-    "|---|---|---|---|",
+    "| Role | Email | Password | Permissions | Username |",
+    "|---|---|---|---|---|",
     ...creds.map(
       (c) =>
-        `| ${c.user.roleName} | \`${c.user.email}\` | \`${c.password}\` | ${c.perms} keys (${c.user.permCats.join("+")}) |`,
+        `| ${c.user.roleName} | \`${c.user.email}\` | \`${c.password}\` | ${c.perms} keys (${c.user.permCats.join("+")}) | \`${seedUsername(c.user.email)}\` |`,
     ),
     "",
     "## Notes",
     "",
-    "- Sign in with email + password, then pick the organization above (the session's active org).",
+    "- Sign in with username (or email) + password, then pick the organization above (the session's active org).",
     "- 2FA is not enrolled on these accounts; enroll via `/security` if you want to exercise the MFA flow.",
     "- Reset everything: `bun run db:reset` (`docker compose down -v`, re-migrates, re-seeds).",
     "",

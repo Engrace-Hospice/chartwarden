@@ -16,3 +16,13 @@ export function writeSeedCredentials(contents: string): void {
   // `mode` only applies when creating a file. Tighten an existing file left by an older seed too.
   chmodSync(SEED_CREDENTIALS_PATH, 0o600);
 }
+
+/** `admin` is a reserved username (RESERVED_USERNAMES), so the seeded Administrator gets `sysadmin`. */
+const SEED_USERNAME_OVERRIDES: Readonly<Record<string, string>> = {
+  "admin@wardenx.local": "sysadmin",
+};
+
+/** Seeded accounts sign in by username as well as email; the username is the email local part. */
+export function seedUsername(email: string): string {
+  return SEED_USERNAME_OVERRIDES[email] ?? email.split("@")[0] ?? email;
+}

@@ -22,7 +22,7 @@ import { readFileSync } from "node:fs";
 import { allPermissionMirrorRows } from "@wardenx/auth";
 import { Client } from "pg";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
-import { SEED_CREDENTIALS_PATH, writeSeedCredentials } from "./lib/credentials";
+import { SEED_CREDENTIALS_PATH, seedUsername, writeSeedCredentials } from "./lib/credentials";
 import { grantPlatformRole } from "./lib/platform-role";
 import { firstRow } from "./lib/query-rows";
 
@@ -49,7 +49,7 @@ async function signUp(email: string, password: string, name: string): Promise<st
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, name }),
+      body: JSON.stringify({ email, password, name, username: seedUsername(email) }),
     },
     `sign-up for ${email}`,
   );
@@ -198,9 +198,9 @@ async function main(): Promise<void> {
     '> `hasRole(ctx,"org_admin")` predicates check) — distinct from the CoP-418.100 `administrator`',
     "> role the original 4 accounts above carry.",
     "",
-    "| Persona | Email | Password | Role key(s) |",
-    "|---|---|---|---|",
-    `| Organization Administrator | \`${USER.email}\` | \`${password}\` | ${USER.roleKey}, platform_ops |`,
+    "| Persona | Email | Password | Role key(s) | Username |",
+    "|---|---|---|---|---|",
+    `| Organization Administrator | \`${USER.email}\` | \`${password}\` | ${USER.roleKey}, platform_ops | \`${seedUsername(USER.email)}\` |`,
     "",
     "> This account also carries `platform_ops` — the ABAC role the admin console (apps/admin,",
     "> `:5175`) requires. It's the only local account that can sign into it.",
