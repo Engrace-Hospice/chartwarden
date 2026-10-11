@@ -21,10 +21,10 @@ function fixture(overrides: Partial<CredentialLifecycleStore> = {}) {
   const lifecycle: CredentialLifecycleStore = {
     organizationName: vi.fn(async () => "Hospice"),
     validateLocations: vi.fn(async () => true),
-    state: vi.fn(async () => ({ state: "password_change_required", reason: "admin_reset", version: 4 })),
+    state: vi.fn(async () => ({ state: "password_change_required" as const, reason: "admin_reset", version: 4 })),
     requirePasswordChange: vi.fn(async () => 4),
     completePasswordChange: vi.fn(async () => true),
-    tenantResetEligibility: vi.fn(async () => "eligible"),
+    tenantResetEligibility: vi.fn(async () => "eligible" as const),
     ...overrides,
   };
   const credentials = {
@@ -98,7 +98,7 @@ describe("direct user provisioning and credential lifecycle", () => {
   });
 
   it("rejects a tenant reset for a shared global identity without mutating its password", async () => {
-    const f = fixture({ tenantResetEligibility: vi.fn(async () => "shared_identity") });
+    const f = fixture({ tenantResetEligibility: vi.fn(async () => "shared_identity" as const) });
     await expect(
       f.service.resetPassword({
         organizationId: ORG,

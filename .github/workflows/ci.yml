@@ -379,7 +379,7 @@ jobs:
           # detector) + `m20.coverage-gap-watchdog.cron`. Live because the per-row `FOR UPDATE` decision,
           # the overdue/escalated stamp CHECKs and the real catalog-validating outbox publish are Postgres.
           - { name: "M20 Overdue detector", scripts: "test:m20:overdue-detector:live" }
-          # M1 FoundationSiteReader.allLocationsOpenInOrg (M2 provisioning location check): RLS + status + tenant, as wardenx_app.
+          # M1 FoundationSiteReader.allLocationsOpenInOrg (M2 provisioning location check) + the lifecycle store org-name read, as wardenx_app.
           - { name: "Foundation site reader", scripts: "test:foundation-site-reader:live" }
           # GAP-136: the §4.1 route plugins over the Drizzle READ + WRITE services end to end (check-ins,
           # SOS spine, incidents + OSHA sign-off, policy/subscriptions/areas, board, consent) as the

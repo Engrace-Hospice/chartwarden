@@ -2,8 +2,9 @@
  * M1 `FoundationSiteReader.allLocationsOpenInOrg` — the location check M2's user provisioning used to run
  * against M1's tables directly (scripts/check-table-ownership.ts moved it behind the owner's reader).
  *
- * Proven as the real NOBYPASSRLS `wardenx_app` role inside `withOrgContext`: an open location of the org
- * passes; a closed one, another tenant's, and an unknown id fail; an empty list and duplicate ids behave.
+ * Run as the real NOBYPASSRLS `wardenx_app` role inside `withOrgContext`: an open location of the org
+ * passes; a closed one, another tenant's (excluded by the reader's own org filter, as well as RLS), and an
+ * unknown id fail; an empty list and duplicate ids behave.
  *
  *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:foundation-site-reader:live
  * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
@@ -48,22 +49,13 @@ describe.skipIf(!DB_URL)("FoundationSiteReader.allLocationsOpenInOrg — LIVE Po
   }
 
   async function seedLocation(org: string, name: string, status: string): Promise<string> {
-    const pe = (
+    const providerEntityId = (
       await admin.query(
         `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
-         VALUES ($1,$2,$3,$4,'enc','12-31') ON CONFLICT DO NOTHING RETURNING id`,
-        [
-          org,
-          `CCN-FA51-${org.slice(0, 4)}`,
-          `FA51 ${org.slice(0, 4)}`,
-          `NPI-FA51-${org.slice(0, 4)}`,
-        ],
+         VALUES ($1,$2,$3,$4,'enc','12-31') RETURNING id`,
+        [org, `CCN-FA51-${name}`, `FA51 ${name}`, `NPI-FA51-${name}`],
       )
-    ).rows[0]?.id as string | undefined;
-    const providerEntityId =
-      pe ??
-      ((await admin.query("SELECT id FROM provider_entity WHERE organization_id=$1", [org])).rows[0]
-        .id as string);
+    ).rows[0].id as string;
     const { rows } = await admin.query(
       `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone, status)
        VALUES ($1,$2,'1 St','Town','OR','97000','America/Los_Angeles',$3) RETURNING id`,
