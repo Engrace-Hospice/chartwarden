@@ -151,9 +151,13 @@ export type {
 // ─── 999 / 277CA payer dates (STC02, GS04, ISA09) — the NOE/NOTR payer status date, ADR-0037 TypeScript ──────
 export { read277caStatusDates, read999EnvelopeDates } from "./acks/ack-dates";
 export type { Ack999EnvelopeDates, ClaimStatusDate } from "./acks/ack-dates";
+export { parse999 } from "./acks/parse-999";
+export type { Ack999TransactionSet, Parsed999Detail } from "./acks/parse-999";
 
 // ─── ClearinghouseTransport port and conformance cases (ADR-0053; the in-memory reference is in ./testing) ─────────
 export { CH, CLEARINGHOUSE_EVENT_KINDS, RETRYABLE_CODES } from "./clearinghouse/types";
+export { checkStediEdits } from "./clearinghouse/stedi-edit-rules";
+export type { StediEditFinding, StediEditRule } from "./clearinghouse/stedi-edit-rules";
 export type {
   AckDisposition,
   AckEvent,

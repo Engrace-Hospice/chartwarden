@@ -1,0 +1,153 @@
+// @wardenx/x12-837-client — a 999 implementation acknowledgment (005010X231A1), read in TypeScript (ADR-0037,
+// ADR-0053 D9). The clearinghouse's answer to "was the file structurally valid?" — NOT the payer's answer; only a
+// 277CA/payer-stage event satisfies NOE timeliness (ADR-0052 D4).
+//
+// Codes and control numbers only. IK4-04 / AK4-04 echo the offending element value (can be PHI) and are never read.
+import { X12FormatError, tokenizeInterchange, x12DateToIso } from "../eligibility/x12-envelope";
+import type { AckError, AckOutcome, Parsed999 } from "../types";
+
+export interface Ack999TransactionSet {
+  /** AK202 — the ST02 of the acknowledged transaction set. */
+  readonly controlNumber: string;
+  /** AK5/IK5-01: A accepted, E accepted with errors, M/R/W/X rejected, P partially accepted. */
+  readonly status: string;
+}
+
+export interface Parsed999Detail extends Parsed999 {
+  /** AK1-02 — the GS06 of OUR functional group that this 999 answers (the correlation key). */
+  readonly acknowledgedGroupControlNumber: string;
+  readonly transactionSets: readonly Ack999TransactionSet[];
+}
+
+const UNKNOWN_CODE = "Unrecognized code";
+
+const SEGMENT_ERRORS: Readonly<Record<string, string>> = {
+  "1": "Unrecognized segment ID",
+  "2": "Unexpected segment",
+  "3": "Required segment missing",
+  "4": "Loop occurs over maximum times",
+  "5": "Segment exceeds maximum use",
+  "6": "Segment not in defined transaction set",
+  "7": "Segment not in proper sequence",
+  "8": "Segment has data element errors",
+};
+
+const ELEMENT_ERRORS: Readonly<Record<string, string>> = {
+  "1": "Required data element missing",
+  "2": "Conditional required data element missing",
+  "3": "Too many data elements",
+  "4": "Data element too short",
+  "5": "Data element too long",
+  "6": "Invalid character in data element",
+  "7": "Invalid code value",
+  "8": "Invalid date",
+  "9": "Invalid time",
+  "10": "Exclusion condition violated",
+  "12": "Too many repetitions",
+  "13": "Too many components",
+};
+
+const TRANSACTION_ERRORS: Readonly<Record<string, string>> = {
+  "1": "Transaction set not supported",
+  "2": "Transaction set trailer missing",
+  "3": "Transaction set control number in header and trailer do not match",
+  "4": "Number of included segments does not match actual count",
+  "5": "One or more segments in error",
+  "6": "Missing or invalid transaction set identifier",
+  "7": "Missing or invalid transaction set control number",
+  "23": "Transaction set control number not unique within the functional group",
+};
+
+const GROUP_ERRORS: Readonly<Record<string, string>> = {
+  "1": "Functional group not supported",
+  "2": "Functional group version not supported",
+  "3": "Functional group trailer missing",
+  "4": "Group control number in header and trailer do not match",
+  "5": "Number of included transaction sets does not match actual count",
+  "6": "Group control number violates syntax",
+};
+
+const OUTCOME_BY_AK9: Readonly<Record<string, AckOutcome>> = {
+  A: "accepted",
+  E: "partial",
+  P: "partial",
+  R: "rejected",
+  M: "rejected",
+  W: "rejected",
+  X: "rejected",
+};
+
+const describe = (table: Readonly<Record<string, string>>, code: string): string =>
+  table[code] ?? UNKNOWN_CODE;
+
+/** Error-code elements from `from` on, skipping empties (AK5-02..06, AK9-05..09). */
+const codesFrom = (seg: readonly string[], from: number): string[] =>
+  seg.slice(from).filter((c) => c.length > 0);
+
+/**
+ * Parse a 999. Throws {@link X12FormatError} (content-free) when the payload is not a 999 or has no AK9 — a
+ * caller must never read a missing verdict as acceptance.
+ */
+export function parse999(raw: string): Parsed999Detail {
+  const { segments } = tokenizeInterchange(raw);
+  const isa = segments.find((s) => s[0] === "ISA");
+  const gs = segments.find((s) => s[0] === "GS");
+  const st = segments.find((s) => s[0] === "ST");
+  if (st?.[1] !== "999") throw new X12FormatError("interchange is not a 999 acknowledgment");
+
+  const ak1 = segments.find((s) => s[0] === "AK1");
+  const ak9 = segments.find((s) => s[0] === "AK9");
+  const outcome = ak9 ? OUTCOME_BY_AK9[(ak9[1] ?? "").trim()] : undefined;
+  if (!ak1?.[2] || !outcome) throw new X12FormatError("999 has no usable AK1/AK9 verdict");
+
+  const errors: AckError[] = [];
+  const transactionSets: Ack999TransactionSet[] = [];
+  let setControl = "";
+  let segmentId = "";
+  for (const seg of segments) {
+    switch (seg[0]) {
+      case "AK2":
+        setControl = seg[2] ?? "";
+        break;
+      case "IK3":
+      case "AK3": {
+        segmentId = seg[1] ?? "";
+        const code = seg[4] ?? "";
+        errors.push({ segment: segmentId, code, description: describe(SEGMENT_ERRORS, code) });
+        break;
+      }
+      case "IK4":
+      case "AK4": {
+        const code = seg[3] ?? "";
+        const position = (seg[1] ?? "").padStart(2, "0");
+        errors.push({
+          segment: `${segmentId}${position}`,
+          code,
+          description: describe(ELEMENT_ERRORS, code),
+        });
+        break;
+      }
+      case "IK5":
+      case "AK5":
+        transactionSets.push({ controlNumber: setControl, status: seg[1] ?? "" });
+        for (const code of codesFrom(seg, 2)) {
+          errors.push({ segment: "IK5", code, description: describe(TRANSACTION_ERRORS, code) });
+        }
+        break;
+      default:
+    }
+  }
+  for (const code of ak9 ? codesFrom(ak9, 5) : []) {
+    errors.push({ segment: "AK9", code, description: describe(GROUP_ERRORS, code) });
+  }
+
+  return {
+    outcome,
+    interchangeControlNumber: (isa?.[13] ?? "").trim(),
+    acknowledgedGroupControlNumber: ak1[2],
+    functionalGroupDate: x12DateToIso(gs?.[4]?.trim()),
+    interchangeDate: x12DateToIso(`20${(isa?.[9] ?? "").trim()}`),
+    errors,
+    transactionSets,
+  };
+}
