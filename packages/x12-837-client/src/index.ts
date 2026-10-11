@@ -231,7 +231,21 @@ export type {
   ClearinghouseTransportFactory,
 } from "./clearinghouse/transport-registry";
 export { InMemoryAttemptStore } from "./clearinghouse/attempt-store";
-export type { SubmissionAttempt, SubmissionAttemptStore } from "./clearinghouse/attempt-store";
+export type {
+  AttemptStatus,
+  ReserveResult,
+  SubmissionAttempt,
+  SubmissionAttemptStore,
+} from "./clearinghouse/attempt-store";
+export {
+  ATTEMPT_STORE_CONTRACT,
+  IN_MEMORY_CONTRACT_IDS,
+  reservation as attemptReservationFixture,
+} from "./clearinghouse/attempt-store-contract";
+export type {
+  AttemptStoreContractCase,
+  AttemptStoreContractIds,
+} from "./clearinghouse/attempt-store-contract";
 export {
   STEDI_API_KEY_ENV,
   StediTransport,

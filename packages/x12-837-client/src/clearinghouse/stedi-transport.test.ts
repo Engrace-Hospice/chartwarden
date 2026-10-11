@@ -41,8 +41,14 @@ function harness(
     return respond(call, calls.length);
   }) as typeof fetch;
   const attempts = new InMemoryAttemptStore();
-  const transport = new StediTransport({ apiKey: KEY, fetch: fetchImpl, attempts });
-  return { calls, transport, attempts };
+  const clock = { now: new Date("2026-10-11T10:00:00.000Z") };
+  const transport = new StediTransport({
+    apiKey: KEY,
+    fetch: fetchImpl,
+    attempts,
+    now: () => clock.now,
+  });
+  return { calls, transport, attempts, clock };
 }
 
 function claim(overrides: Partial<ClearinghouseSubmission> = {}): ClearinghouseSubmission {
@@ -289,16 +295,37 @@ describe("StediTransport HTTP failure mapping", () => {
     if (expected === CH.UNAVAILABLE) expect(RETRYABLE_CODES.has(code(r) ?? "")).toBe(true);
   });
 
-  it("records nothing on a failure, so the same submission can be retried and sent again", async () => {
+  it("releases the reservation on a definitive rejection, so the same submission can be retried", async () => {
     let n = 0;
     const { calls, transport } = harness(() =>
       ++n === 1
-        ? new Response("{}", { status: 503 })
+        ? new Response("{}", { status: 429 })
         : Response.json({ claimReference: { correlationId: "later" } }),
     );
     expect(code(await transport.submitClaim(CTX, claim()))).toBe(CH.UNAVAILABLE);
     const retry = await transport.submitClaim(CTX, claim());
     expect(retry.ok && !retry.data.replayed).toBe(true);
+    expect(new Headers(calls[1]?.init.headers).get("idempotency-key")).toBe(
+      new Headers(calls[0]?.init.headers).get("idempotency-key"),
+    );
+  });
+
+  it("keeps the reservation after an ambiguous failure: a prompt retry is held, a later one retakes it", async () => {
+    let n = 0;
+    const { calls, transport, clock } = harness(() =>
+      ++n === 1
+        ? new Response("{}", { status: 503 })
+        : Response.json({ claimReference: { correlationId: "later" } }),
+    );
+    expect(code(await transport.submitClaim(CTX, claim()))).toBe(CH.UNAVAILABLE);
+    // The first send may have reached Stedi: nothing is sent again while it could still be in flight.
+    expect(code(await transport.submitClaim(CTX, claim()))).toBe(CH.UNAVAILABLE);
+    expect(calls).toHaveLength(1);
+    clock.now = new Date(clock.now.getTime() + 16 * 60_000);
+    const retry = await transport.submitClaim(CTX, claim());
+    expect(retry.ok && retry.data.clearinghouseSubmissionId).toBe("later");
+    expect(calls).toHaveLength(2);
+    // Same wire key, so Stedi replays the first send if it had in fact been filed.
     expect(new Headers(calls[1]?.init.headers).get("idempotency-key")).toBe(
       new Headers(calls[0]?.init.headers).get("idempotency-key"),
     );
@@ -318,68 +345,144 @@ describe("StediTransport HTTP failure mapping", () => {
   });
 });
 
-describe("StediTransport recording and races", () => {
-  const stored = (over: Partial<SubmissionAttempt> = {}): SubmissionAttempt => ({
+describe("StediTransport reservation, completion and races", () => {
+  const reserved = (over: Partial<SubmissionAttempt> = {}): SubmissionAttempt => ({
+    organizationId: CTX.organizationId,
+    providerEntityId: CTX.providerEntityId,
     scope: scopeKey(CTX),
     idempotencyKey: "idem-1",
     controlNumber: "CCN-1",
     kind: "claim",
-    identity: "someone-else",
-    clearinghouseSubmissionId: "winner",
-    receivedAt: "2026-10-11T00:00:00.000Z",
+    identity: identityOf(claim()),
+    status: "reserved",
+    clearinghouseSubmissionId: null,
+    reservedAt: "2026-10-11T10:00:00.000Z",
+    receivedAt: null,
     ...over,
   });
-  const racing = (winner: SubmissionAttempt): SubmissionAttemptStore => ({
-    findByKey: () => Promise.resolve(null),
-    findByControlNumber: () => Promise.resolve(null),
-    putIfAbsent: () => Promise.resolve({ attempt: winner, inserted: false }),
-  });
-  const withStore = (attempts: SubmissionAttemptStore, anomalies: StediAnomaly[] = []) =>
-    new StediTransport({
+  const NOW = new Date("2026-10-11T10:05:00.000Z");
+  const withStore = (attempts: SubmissionAttemptStore, anomalies: StediAnomaly[] = []) => {
+    const calls: string[] = [];
+    const transport = new StediTransport({
       apiKey: KEY,
       attempts,
-      fetch: (async () =>
-        Response.json({ claimReference: { correlationId: "mine" } })) as typeof fetch,
+      fetch: (async (url: string | URL | Request) => {
+        calls.push(String(url));
+        return Response.json({ claimReference: { correlationId: "mine" } });
+      }) as typeof fetch,
       onAnomaly: (a) => anomalies.push(a),
+      now: () => NOW,
     });
+    return { transport, calls };
+  };
+  const seeded = async (row: SubmissionAttempt) => {
+    const store = new InMemoryAttemptStore();
+    await store.reserve(row);
+    if (row.status === "sent") {
+      await store.complete(
+        row.organizationId,
+        row.scope,
+        row.idempotencyKey,
+        row.clearinghouseSubmissionId ?? "",
+        row.receivedAt ?? row.reservedAt,
+      );
+    }
+    return store;
+  };
 
-  it("does not hand back someone else's receipt when a concurrent call won with another identity", async () => {
-    const t = withStore(racing(stored()));
-    expect(code(await t.submitClaim(CTX, claim()))).toBe(CH.IDEMPOTENCY_CONFLICT);
+  it("sends once when two callers submit the same thing at the same time", async () => {
+    const { calls, transport } = harness();
+    const [a, b] = await Promise.all([
+      transport.submitClaim(CTX, claim()),
+      transport.submitClaim(CTX, claim()),
+    ]);
+    expect(calls).toHaveLength(1);
+    expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
+    const loser = a.ok ? b : a;
+    expect(code(loser)).toBe(CH.UNAVAILABLE);
   });
 
-  it("flags a duplicate control number sent under another key", async () => {
-    const anomalies: StediAnomaly[] = [];
-    const t = withStore(racing(stored({ idempotencyKey: "other-key" })), anomalies);
-    expect(code(await t.submitClaim(CTX, claim()))).toBe(CH.IDEMPOTENCY_CONFLICT);
-    expect(anomalies).toEqual([{ type: "duplicate_control_number_sent", controlNumber: "CCN-1" }]);
+  it("holds a submission another caller reserved moments ago", async () => {
+    const { transport, calls } = withStore(await seeded(reserved()));
+    expect(code(await transport.submitClaim(CTX, claim()))).toBe(CH.UNAVAILABLE);
+    expect(calls).toHaveLength(0);
   });
 
-  it("reports a replay when a concurrent call won with the same key and identity", async () => {
-    const identity = identityOf(claim());
-    const t = withStore(racing(stored({ identity })));
-    const r = await t.submitClaim(CTX, claim());
+  it("conflicts, with no send, on a control number reserved under another key", async () => {
+    const { transport, calls } = withStore(await seeded(reserved({ idempotencyKey: "other" })));
+    expect(code(await transport.submitClaim(CTX, claim()))).toBe(CH.IDEMPOTENCY_CONFLICT);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("conflicts, with no send, on a key reserved for a different submission", async () => {
+    const { transport, calls } = withStore(await seeded(reserved({ identity: "someone-else" })));
+    expect(code(await transport.submitClaim(CTX, claim()))).toBe(CH.IDEMPOTENCY_CONFLICT);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("replays a submission that is already sent", async () => {
+    const store = await seeded(
+      reserved({
+        status: "sent",
+        clearinghouseSubmissionId: "winner",
+        receivedAt: "2026-10-11T10:01:00.000Z",
+      }),
+    );
+    const { transport, calls } = withStore(store);
+    const r = await transport.submitClaim(CTX, claim());
     expect(r.ok && r.data.replayed && r.data.clearinghouseSubmissionId).toBe("winner");
+    expect(calls).toHaveLength(0);
   });
 
-  it("retries the record, then reports an unrecorded send without losing the id", async () => {
-    let puts = 0;
+  it("retakes a reservation abandoned past the in-flight window and sends under the same key", async () => {
+    const store = await seeded(reserved({ reservedAt: "2026-10-11T09:30:00.000Z" }));
+    const { transport, calls } = withStore(store);
+    const r = await transport.submitClaim(CTX, claim());
+    expect(r.ok && !r.data.replayed && r.data.clearinghouseSubmissionId).toBe("mine");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("refuses to resend a reservation older than Stedi's key window, and says so", async () => {
+    const anomalies: StediAnomaly[] = [];
+    const store = await seeded(reserved({ reservedAt: "2026-10-10T09:00:00.000Z" }));
+    const { transport, calls } = withStore(store, anomalies);
+    expect(code(await transport.submitClaim(CTX, claim()))).toBe(CH.UNAVAILABLE);
+    expect(calls).toHaveLength(0);
+    expect(anomalies).toEqual([{ type: "stale_reservation", idempotencyKey: "idem-1" }]);
+  });
+
+  it("answers unavailable, sending nothing, when the reservation cannot be made", async () => {
+    const dead: SubmissionAttemptStore = {
+      reserve: () => Promise.reject(new Error("db down")),
+      complete: () => Promise.reject(new Error("db down")),
+      release: () => Promise.reject(new Error("db down")),
+      retake: () => Promise.reject(new Error("db down")),
+    };
+    const { transport, calls } = withStore(dead);
+    expect(code(await transport.submitClaim(CTX, claim()))).toBe(CH.UNAVAILABLE);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("retries completing the record, then reports an unrecorded send without losing the id", async () => {
+    let completes = 0;
     const anomalies: StediAnomaly[] = [];
     const base = new InMemoryAttemptStore();
     const flaky: SubmissionAttemptStore = {
-      findByKey: (s, k) => base.findByKey(s, k),
-      findByControlNumber: (s, c) => base.findByControlNumber(s, c),
-      putIfAbsent: (a) => (++puts < 2 ? Promise.reject(new Error("db down")) : base.putIfAbsent(a)),
+      reserve: (a) => base.reserve(a),
+      release: (o, s, k) => base.release(o, s, k),
+      retake: (o, s, k, e, n) => base.retake(o, s, k, e, n),
+      complete: (o, s, k, id, at) =>
+        ++completes < 2 ? Promise.reject(new Error("db down")) : base.complete(o, s, k, id, at),
     };
-    const ok = await withStore(flaky, anomalies).submitClaim(CTX, claim());
+    const ok = await withStore(flaky, anomalies).transport.submitClaim(CTX, claim());
     expect(ok.ok && ok.data.replayed).toBe(false);
     expect(anomalies).toEqual([]);
 
     const dead: SubmissionAttemptStore = {
       ...flaky,
-      putIfAbsent: () => Promise.reject(new Error("db down")),
+      complete: () => Promise.reject(new Error("db down")),
     };
-    const lost = await withStore(dead, anomalies).submitClaim(
+    const lost = await withStore(dead, anomalies).transport.submitClaim(
       CTX,
       claim({ idempotencyKey: "k2", controlNumber: "CCN-2" }),
     );
@@ -388,7 +491,28 @@ describe("StediTransport recording and races", () => {
       { type: "sent_but_unrecorded", idempotencyKey: "k2", clearinghouseSubmissionId: "mine" },
     ]);
   });
+
+  it("reports an unrecorded send when the reservation vanished before completion", async () => {
+    const anomalies: StediAnomaly[] = [];
+    const base = new InMemoryAttemptStore();
+    const vanishing: SubmissionAttemptStore = {
+      ...bind(base),
+      complete: () => Promise.resolve(null),
+    };
+    const r = await withStore(vanishing, anomalies).transport.submitClaim(CTX, claim());
+    expect(code(r)).toBe(CH.UNAVAILABLE);
+    expect(anomalies.map((a) => a.type)).toEqual(["sent_but_unrecorded"]);
+  });
 });
+
+function bind(s: SubmissionAttemptStore): SubmissionAttemptStore {
+  return {
+    reserve: (a) => s.reserve(a),
+    complete: (o, sc, k, id, at) => s.complete(o, sc, k, id, at),
+    release: (o, sc, k) => s.release(o, sc, k),
+    retake: (o, sc, k, e, n) => s.retake(o, sc, k, e, n),
+  };
+}
 
 describe("StediTransport not-yet-implemented methods", () => {
   it("fail closed with CH_NOT_WIRED, never send, never throw", async () => {

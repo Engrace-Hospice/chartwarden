@@ -131,6 +131,7 @@
     "test:m20:sos-sla-watchdog:live": "vitest run apps/backend/__tests__/m20-sos-sla-watchdog.live.test.ts",
     "test:m20:overdue-detector:live": "vitest run apps/backend/__tests__/m20-overdue-detector.live.test.ts",
     "test:m20:routes:live": "vitest run apps/backend/__tests__/m20-routes.live.test.ts",
+    "test:m23:clearinghouse-attempts:live": "vitest run apps/backend/__tests__/m23-clearinghouse-attempts.live.test.ts",
     "test:foundation-site-reader:live": "vitest run apps/backend/__tests__/foundation-site-reader.live.test.ts",
     "test:m40:psap-jurisdiction:live": "vitest run apps/backend/__tests__/m40-psap-jurisdiction.live.test.ts",
     "test:f073:idempotency-bodiless:live": "vitest run apps/backend/__tests__/f-073-idempotency-bodiless-response.live.test.ts",

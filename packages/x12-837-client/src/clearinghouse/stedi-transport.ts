@@ -56,6 +56,8 @@ export interface StediTransportOptions {
   readonly fetch?: typeof fetch;
   /** PHI-free signals that need a human or a reconciler (see {@link StediAnomaly}). */
   readonly onAnomaly?: (anomaly: StediAnomaly) => void;
+  /** Injected clock, for the reservation windows. Defaults to the system clock. */
+  readonly now?: () => Date;
 }
 
 /** Things that cannot be expressed in a result but must not pass silently. No payload, no response body. */
@@ -65,10 +67,19 @@ export type StediAnomaly =
       readonly idempotencyKey: string;
       readonly clearinghouseSubmissionId: string;
     }
-  | { readonly type: "duplicate_control_number_sent"; readonly controlNumber: string }
+  | { readonly type: "stale_reservation"; readonly idempotencyKey: string }
   | { readonly type: "derived_submission_id"; readonly idempotencyKey: string };
 
 const RECORD_ATTEMPTS = 3;
+/** A reservation younger than this may still be mid-send: nothing else sends it. */
+const IN_FLIGHT_MS = 15 * 60_000;
+/** Stedi replays a repeated Idempotency-Key for 24 h; past that a re-send could file a duplicate. */
+const KEY_WINDOW_MS = 24 * 60 * 60_000;
+
+/** The outcome of one POST: taken (with Stedi's id), or not. `ambiguous` = the request may still have been filed. */
+type SendResult =
+  | { readonly ok: true; readonly id: string }
+  | { readonly ok: false; readonly result: X12WorkerResult<never>; readonly ambiguous: boolean };
 
 /** The key Stedi sees: unique per (org, provider, usage, caller key), well under the 255-character limit. */
 function wireIdempotencyKey(scope: string, idempotencyKey: string): string {
@@ -79,10 +90,11 @@ function wireIdempotencyKey(scope: string, idempotencyKey: string): string {
 export function createStediTransportFromEnv(
   env: EnvMap,
   attempts: SubmissionAttemptStore,
+  extras: Pick<StediTransportOptions, "onAnomaly" | "now"> = {},
 ): StediTransport {
   const apiKey = env[STEDI_API_KEY_ENV]?.trim();
   if (!apiKey) throw new Error(`${STEDI_API_KEY_ENV} is required for CLEARINGHOUSE_VENDOR=stedi`);
-  return new StediTransport({ apiKey, attempts });
+  return new StediTransport({ apiKey, attempts, ...extras });
 }
 
 const notImplemented = <T>(what: string): Promise<X12WorkerResult<T>> =>
@@ -179,13 +191,19 @@ function submissionIdOf(body: Record<string, unknown> | null, idempotencyKey: st
 
 const derivedSubmissionId = (idempotencyKey: string): string => `stedi:${idempotencyKey}`;
 
-const receiptOf = (a: SubmissionAttempt, replayed: boolean): SubmissionReceipt => ({
-  clearinghouseSubmissionId: a.clearinghouseSubmissionId,
-  idempotencyKey: a.idempotencyKey,
-  controlNumber: a.controlNumber,
-  receivedAt: a.receivedAt,
-  replayed,
-});
+/** A sent attempt always carries the vendor id and the receipt time; anything else is not a receipt. */
+function receiptOf(a: SubmissionAttempt, replayed: boolean): SubmissionReceipt | null {
+  if (a.status !== "sent" || a.clearinghouseSubmissionId === null || a.receivedAt === null) {
+    return null;
+  }
+  return {
+    clearinghouseSubmissionId: a.clearinghouseSubmissionId,
+    idempotencyKey: a.idempotencyKey,
+    controlNumber: a.controlNumber,
+    receivedAt: a.receivedAt,
+    replayed,
+  };
+}
 
 export class StediTransport implements ClearinghouseTransport {
   readonly vendor = "stedi" as const;
@@ -193,12 +211,14 @@ export class StediTransport implements ClearinghouseTransport {
   private readonly attempts: SubmissionAttemptStore;
   private readonly fetchImpl: typeof fetch;
   private readonly onAnomaly: (anomaly: StediAnomaly) => void;
+  private readonly now: () => Date;
 
   constructor(options: StediTransportOptions) {
     this.apiKey = options.apiKey;
     this.attempts = options.attempts;
     this.fetchImpl = options.fetch ?? fetch;
     this.onAnomaly = options.onAnomaly ?? (() => {});
+    this.now = options.now ?? (() => new Date());
   }
 
   submitClaim(
@@ -244,74 +264,135 @@ export class StediTransport implements ClearinghouseTransport {
     if (problem) return refuse(problem);
     const scope = scopeKey(ctx);
     const identity = identityOf(submission);
-    try {
-      const prior = await this.attempts.findByKey(scope, submission.idempotencyKey);
-      if (prior) {
-        return prior.identity === identity
-          ? { ok: true, data: receiptOf(prior, true) }
-          : degraded(
-              CH.IDEMPOTENCY_CONFLICT,
-              "the idempotency key was used for a different submission",
-            );
-      }
-      if (await this.attempts.findByControlNumber(scope, submission.controlNumber)) {
-        return degraded(
-          CH.IDEMPOTENCY_CONFLICT,
-          "the control number was already submitted under another key",
-        );
-      }
-    } catch {
-      return degraded(CH.UNAVAILABLE, "the submission record could not be read");
-    }
-
-    const sent = await this.send(scope, submission);
-    if (!sent.ok) return sent;
-    return this.record({
+    const reservedAt = this.now().toISOString();
+    const held = await this.reserve(ctx, submission, {
+      organizationId: ctx.organizationId,
+      providerEntityId: ctx.providerEntityId,
       scope,
       idempotencyKey: submission.idempotencyKey,
       controlNumber: submission.controlNumber,
       kind: submission.kind,
       identity,
-      clearinghouseSubmissionId: sent.data,
-      receivedAt: new Date().toISOString(),
+      status: "reserved",
+      clearinghouseSubmissionId: null,
+      reservedAt,
+      receivedAt: null,
     });
+    if (held) return held;
+
+    const sent = await this.send(scope, submission);
+    if (!sent.ok) {
+      // Only a definitive refusal frees the key; an ambiguous failure may have been filed, so the reservation
+      // stays and a later retry re-sends under the same wire key once the in-flight window has passed.
+      if (!sent.ambiguous) await this.releaseQuietly(ctx.organizationId, scope, submission);
+      return sent.result;
+    }
+    return this.complete(ctx, scope, submission, sent.id);
   }
 
   /**
-   * Stedi has taken the submission; make our record of it. Retried a few times, because losing it means a later
+   * Reserves the submission. Returns the result to hand back when this call must NOT send (replay, conflict, held),
+   * or null when it owns the reservation and should send.
+   */
+  private async reserve(
+    ctx: ClearinghouseContext,
+    submission: ClearinghouseSubmission,
+    attempt: SubmissionAttempt,
+  ): Promise<X12WorkerResult<SubmissionReceipt> | null> {
+    try {
+      const { attempt: existing, reserved } = await this.attempts.reserve(attempt);
+      if (reserved) return null;
+      if (existing.idempotencyKey !== attempt.idempotencyKey) {
+        return degraded(
+          CH.IDEMPOTENCY_CONFLICT,
+          "the control number was already submitted under another key",
+        );
+      }
+      if (existing.identity !== attempt.identity) {
+        return degraded(
+          CH.IDEMPOTENCY_CONFLICT,
+          "the idempotency key was used for a different submission",
+        );
+      }
+      if (existing.status === "sent") {
+        const receipt = receiptOf(existing, true);
+        return receipt
+          ? { ok: true, data: receipt }
+          : degraded(CH.UNAVAILABLE, "the earlier attempt's record is incomplete");
+      }
+
+      const age = this.now().getTime() - Date.parse(existing.reservedAt);
+      if (!(age >= IN_FLIGHT_MS)) {
+        return degraded(
+          CH.UNAVAILABLE,
+          "an earlier attempt at this submission may still be in flight",
+        );
+      }
+      if (age >= KEY_WINDOW_MS) {
+        this.onAnomaly({ type: "stale_reservation", idempotencyKey: attempt.idempotencyKey });
+        return degraded(
+          CH.UNAVAILABLE,
+          "an earlier attempt is past the vendor's key window and needs reconciliation before a re-send",
+        );
+      }
+      const won = await this.attempts.retake(
+        ctx.organizationId,
+        attempt.scope,
+        submission.idempotencyKey,
+        existing.reservedAt,
+        attempt.reservedAt,
+      );
+      return won
+        ? null
+        : degraded(CH.UNAVAILABLE, "an earlier attempt at this submission may still be in flight");
+    } catch {
+      return degraded(CH.UNAVAILABLE, "the submission record could not be reserved");
+    }
+  }
+
+  private async releaseQuietly(
+    organizationId: string,
+    scope: string,
+    submission: ClearinghouseSubmission,
+  ): Promise<void> {
+    try {
+      await this.attempts.release(organizationId, scope, submission.idempotencyKey);
+    } catch {
+      // The reservation ages out and is retaken; nothing was filed.
+    }
+  }
+
+  /**
+   * Stedi has taken the submission; mark our record sent. Retried a few times, because losing it means a later
    * retry (after Stedi's 24 h key window, or under a new key) could file a duplicate. If the record cannot be made
    * the caller gets a retryable result and the reconciler gets a PHI-free anomaly.
    */
-  private async record(attempt: SubmissionAttempt): Promise<X12WorkerResult<SubmissionReceipt>> {
+  private async complete(
+    ctx: ClearinghouseContext,
+    scope: string,
+    submission: ClearinghouseSubmission,
+    clearinghouseSubmissionId: string,
+  ): Promise<X12WorkerResult<SubmissionReceipt>> {
     for (let i = 0; i < RECORD_ATTEMPTS; i++) {
       try {
-        const { attempt: stored, inserted } = await this.attempts.putIfAbsent(attempt);
-        if (inserted) return { ok: true, data: receiptOf(stored, false) };
-        // Lost a race to a concurrent submission: report what actually happened, never someone else's receipt.
-        if (stored.idempotencyKey !== attempt.idempotencyKey) {
-          this.onAnomaly({
-            type: "duplicate_control_number_sent",
-            controlNumber: attempt.controlNumber,
-          });
-          return degraded(
-            CH.IDEMPOTENCY_CONFLICT,
-            "the control number was submitted concurrently under another key",
-          );
-        }
-        return stored.identity === attempt.identity
-          ? { ok: true, data: receiptOf(stored, true) }
-          : degraded(
-              CH.IDEMPOTENCY_CONFLICT,
-              "the idempotency key was used concurrently for a different submission",
-            );
+        const stored = await this.attempts.complete(
+          ctx.organizationId,
+          scope,
+          submission.idempotencyKey,
+          clearinghouseSubmissionId,
+          this.now().toISOString(),
+        );
+        const receipt = stored === null ? null : receiptOf(stored, false);
+        if (receipt === null) break; // the reservation is gone; retrying cannot recreate it
+        return { ok: true, data: receipt };
       } catch {
         // retry
       }
     }
     this.onAnomaly({
       type: "sent_but_unrecorded",
-      idempotencyKey: attempt.idempotencyKey,
-      clearinghouseSubmissionId: attempt.clearinghouseSubmissionId,
+      idempotencyKey: submission.idempotencyKey,
+      clearinghouseSubmissionId,
     });
     return degraded(
       CH.UNAVAILABLE,
@@ -319,11 +400,8 @@ export class StediTransport implements ClearinghouseTransport {
     );
   }
 
-  /** One POST. Returns the vendor's submission id, or a degraded envelope. Throws only into `submit`'s catch. */
-  private async send(
-    scope: string,
-    submission: ClearinghouseSubmission,
-  ): Promise<X12WorkerResult<string>> {
+  /** One POST. Never throws. */
+  private async send(scope: string, submission: ClearinghouseSubmission): Promise<SendResult> {
     const { payload } = submission;
     const url = `${BASE_URL}/${payload.format === "x12" ? "raw-x12-submission" : "submission"}`;
     const body = payload.format === "x12" ? { x12: payload.x12 } : payload.document;
@@ -342,15 +420,21 @@ export class StediTransport implements ClearinghouseTransport {
         redirect: "error",
       });
     } catch {
-      return degraded(CH.UNAVAILABLE, "Stedi could not be reached");
+      return {
+        ok: false,
+        result: degraded(CH.UNAVAILABLE, "Stedi could not be reached"),
+        ambiguous: true,
+      };
     }
     const parsed = await readJson(res);
-    if (!res.ok) return failure(res.status, parsed);
+    if (!res.ok) {
+      return { ok: false, result: failure(res.status, parsed), ambiguous: res.status >= 500 };
+    }
     const id = submissionIdOf(parsed, submission.idempotencyKey);
     if (id === derivedSubmissionId(submission.idempotencyKey)) {
       this.onAnomaly({ type: "derived_submission_id", idempotencyKey: submission.idempotencyKey });
     }
-    return { ok: true, data: id };
+    return { ok: true, id };
   }
 
   validateOnly(
