@@ -7,6 +7,7 @@
 // CH is an open question for the Stedi call), CLM02 `0`, CL102 `1`, one `SV2*0650*HC:Q5009` line whose
 // description is the notice kind. Passing the edits is not payer acceptance.
 import { MBI_PATTERN } from "../eligibility/build-270";
+import { type Parties837i, partySegments } from "../x12/parties";
 import {
   NAME_LIMIT,
   ORG_NAME_LIMIT,
@@ -57,30 +58,8 @@ export type NoticeDocument =
       readonly terminationDate: string;
     };
 
-export interface Notice837iInput {
+export interface Notice837iInput extends Parties837i {
   readonly envelope: X12Envelope;
-  readonly submitter: {
-    readonly name: string;
-    readonly id: string;
-    readonly contactName: string;
-    readonly contactPhone: string;
-  };
-  readonly receiver: { readonly name: string; readonly id: string };
-  readonly billingProvider: {
-    readonly organizationName: string;
-    readonly npi: string;
-    /** EIN, 9 digits. */
-    readonly taxId: string;
-    readonly address: X12Address;
-  };
-  /** The beneficiary — the subscriber IS the patient on a notice. */
-  readonly subscriber: X12PersonName & {
-    readonly mbi: string;
-    readonly address: X12Address;
-    readonly birthDate: string;
-    readonly sex: "M" | "F";
-  };
-  readonly payer: { readonly name: string; readonly payerId: string };
   readonly notice: NoticeDocument;
   /** ICD-10-CM, with or without the dot. */
   readonly principalDiagnosis: string;
@@ -116,93 +95,13 @@ function buildNotice(input: Notice837iInput): string {
     notice.kind === "NOTR" ? d8(notice.terminationDate, "notice.terminationDate") : admission;
   if (through < admission) throw new Notice837iBuildError("notice.terminationDate");
 
-  const s = input.subscriber;
-  const mbi = s.mbi.trim().toUpperCase();
-  if (!MBI_PATTERN.test(mbi)) throw new Notice837iBuildError("subscriber.mbi");
-  if (s.sex !== "M" && s.sex !== "F") throw new Notice837iBuildError("subscriber.sex");
-  const dob = d8(s.birthDate, "subscriber.birthDate");
-  if (dob > admission) throw new Notice837iBuildError("subscriber.birthDate");
   const dx = input.principalDiagnosis.replace(".", "").trim().toUpperCase();
   if (!/^[A-Z][0-9][0-9A-Z]{1,5}$/.test(dx)) throw new Notice837iBuildError("principalDiagnosis");
-  if (!/^\d{9}$/.test(input.billingProvider.taxId)) {
-    throw new Notice837iBuildError("billingProvider.taxId");
-  }
   const env = prepareEnvelope(input.envelope);
-  if (!/^\d{10}$/.test(input.submitter.contactPhone)) {
-    throw new Notice837iBuildError("submitter.contactPhone");
-  }
   const { ccyymmdd, hhmm } = env.stamp;
-  const edi = (role: "41" | "40", party: { name: string; id: string }, field: string): string[] => [
-    "NM1",
-    role,
-    "2",
-    text(party.name, `${field}.name`, ORG_NAME_LIMIT),
-    "",
-    "",
-    "",
-    "",
-    "46",
-    text(party.id, `${field}.id`, 80),
-  ];
-
   const body: string[][] = [
     ["BHT", "0019", "00", notice.controlNumber, ccyymmdd, hhmm, "RP"],
-    edi("41", input.submitter, "submitter"),
-    [
-      "PER",
-      "IC",
-      text(input.submitter.contactName, "submitter.contactName", NAME_LIMIT),
-      "TE",
-      input.submitter.contactPhone,
-    ],
-    edi("40", input.receiver, "receiver"),
-    ["HL", "1", "", "20", "1"],
-    [
-      "NM1",
-      "85",
-      "2",
-      text(
-        input.billingProvider.organizationName,
-        "billingProvider.organizationName",
-        ORG_NAME_LIMIT,
-      ),
-      "",
-      "",
-      "",
-      "",
-      "XX",
-      npi(input.billingProvider.npi, "billingProvider.npi"),
-    ],
-    ...addressSegments(input.billingProvider.address, "billingProvider.address"),
-    ["REF", "EI", input.billingProvider.taxId],
-    ["HL", "2", "1", "22", "0"],
-    ["SBR", "P", "18", "", "", "", "", "", "", "MA"],
-    [
-      "NM1",
-      "IL",
-      "1",
-      text(s.lastName, "subscriber.lastName", NAME_LIMIT),
-      text(s.firstName, "subscriber.firstName", 35),
-      optionalText(s.middleInitial, "subscriber.middleInitial", 1),
-      "",
-      "",
-      "MI",
-      mbi,
-    ],
-    ...addressSegments(s.address, "subscriber.address"),
-    ["DMG", "D8", dob, s.sex],
-    [
-      "NM1",
-      "PR",
-      "2",
-      text(input.payer.name, "payer.name", ORG_NAME_LIMIT),
-      "",
-      "",
-      "",
-      "",
-      "PI",
-      text(input.payer.payerId, "payer.payerId", 80),
-    ],
+    ...partySegments(input, admission),
     ["CLM", notice.controlNumber, "0", "", "", `81:A:${kind.frequency}`, "", "A", "Y", "Y"],
     ["DTP", "434", "RD8", `${admission}-${through}`],
     ["DTP", "435", "D8", admission],

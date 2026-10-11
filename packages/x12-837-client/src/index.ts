@@ -203,3 +203,10 @@ export {
   type NoticeDocument,
   type NoticeKind,
 } from "./notices/build-837i-notice";
+export {
+  Claim837iBuildError,
+  build837iClaim,
+  type Claim837iInput,
+  type ClaimDocument,
+  type ClaimLine,
+} from "./claims/build-837i-claim";
