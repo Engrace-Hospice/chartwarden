@@ -94,6 +94,14 @@
       "app": "web",
       "module": "02-identity",
       "moduleId": 2,
+      "id": "identity.required-password-change",
+      "path": "/login/change-password",
+      "permission": "(none)"
+    },
+    {
+      "app": "web",
+      "module": "02-identity",
+      "moduleId": 2,
       "id": "identity.step-up",
       "path": "/step-up",
       "permission": "(none)"
