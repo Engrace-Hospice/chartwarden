@@ -515,6 +515,10 @@ export interface EligibilitySubscriberIdentity {
   readonly dateOfBirth: string;
 }
 
+/** Why an MBI was unlocked (a closed set: the purpose is audited, so it is never free text). */
+export const MBI_DISCLOSURE_PURPOSES = ["claim_837i_submission", "hets_270_eligibility"] as const;
+export type MbiDisclosurePurpose = (typeof MBI_DISCLOSURE_PURPOSES)[number];
+
 /**
  * M5-published, M23-ONLY seam (M23 §4.4 / §8.7): unlock the patient's Medicare (FFS) MBI for one HETS
  * 270 build. Resolves the `medicare_ffs` coverage in force on `onDate` (highest rank first), else the
@@ -528,6 +532,34 @@ export interface MbiUnlockReader {
     readonly patientId: string;
     /** ISO yyyy-mm-dd — the eligibility as-of service date. */
     readonly onDate: string;
+    /**
+     * Select exactly this `patient_payer` row (scoped to the patient + org) instead of choosing by date/rank. When it
+     * is not one of the patient's `medicare_ffs` coverages with an MBI on file, nothing is returned. Optional only
+     * because the HETS 270 path has no claim-bound coverage to name.
+     */
+    readonly expectedPatientPayerId?: string;
+    /**
+     * REQUIRED: every unlock is a PHI DISCLOSURE for `purpose`. The reader writes the access audit in the SAME
+     * transaction as the read (ids and purpose only, never a value); if that audit cannot be written nothing is
+     * returned. The reader throws, before any read, when `subjectId` (or a given `correlationId` / `actorUserId`)
+     * is not a uuid, or `purpose` is outside {@link MBI_DISCLOSURE_PURPOSES}.
+     *
+     * The audit commits in the READER's own transaction, not the caller's: if the caller later fails or retries
+     * (e.g. the 270 errors after the unlock), `subjectId` may name a business record (an `eligibility_check` id)
+     * that was never persisted. That over-audit is expected and deliberate; the disclosure audit is never deferred.
+     */
+    readonly disclosure: {
+      readonly purpose: MbiDisclosurePurpose;
+      /**
+       * The business record the disclosure serves (a uuid: the claim id, the eligibility check id). It is the id the
+       * caller INTENDS to persist; it is not proof the record exists (see the over-audit note above).
+       */
+      readonly subjectId: string;
+      /** A uuid when given (checked before any read); minted by the reader when absent. */
+      readonly correlationId?: string;
+      /** The user who triggered the release, when there is one (a user-initiated release records who); else system. */
+      readonly actorUserId?: string;
+    };
   }): Promise<EligibilitySubscriberIdentity | null>;
 }
 

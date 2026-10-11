@@ -57,6 +57,13 @@ describe("M4-T10 action catalog — consolidation + validity (§4.6)", () => {
     expect(isRegisteredAction("audit.elevated_access")).toBe(true);
     expect(isRegisteredAction("m99.bogus.action")).toBe(false);
   });
+
+  it("registers the MBI-disclosure action as compliance and a registered (boot-validated) entry", () => {
+    expect(isRegisteredAction("patient_payer.mbi_disclosed")).toBe(true);
+    const row = actionCatalogRows().find((r) => r.action === "patient_payer.mbi_disclosed");
+    expect(row?.defaultRetentionClass).toBe("compliance");
+    expect(validateActionCatalog()).toEqual([]);
+  });
 });
 
 describe("M4-T10 action catalog — boot gate fails closed (§4.6.7 #1/#2)", () => {

@@ -90,6 +90,18 @@ describe("field helpers", () => {
     },
   );
 
+  it.each(["A\nB", "A\rB", "A\u0000B", "A\tB", "A\\B", "JOS\u00c9", "M\u00fcller", "A\u2028B"])(
+    "refuses control and non-basic-charset text %j by field name only",
+    (value) => {
+      expect(() => text(value, "subscriber.lastName", 20)).toThrow(X12BuildError);
+      try {
+        text(value, "subscriber.lastName", 20);
+      } catch (e) {
+        expect((e as X12BuildError).field).toBe("subscriber.lastName");
+      }
+    },
+  );
+
   it("treats a blank optional as empty but still validates a present one", () => {
     expect(optionalText(null, "f", 5)).toBe("");
     expect(optionalText("  ", "f", 5)).toBe("");
