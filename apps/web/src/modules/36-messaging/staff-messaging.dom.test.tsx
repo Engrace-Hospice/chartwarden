@@ -95,6 +95,11 @@ describe("M36 messaging organization switching", () => {
     await screen.findByRole("option", { name: /Nurse Two/ });
     fireEvent.keyDown(composer, { key: "Enter" });
     expect(composer.value).toBe("@Nurse Two");
+    fireEvent.change(composer, {
+      target: { value: "@Nurse Two hello", selectionStart: 16 },
+    });
+    expect(composer.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("Searching…")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     await waitFor(() =>
@@ -102,7 +107,7 @@ describe("M36 messaging organization switching", () => {
         "/api/v1/messaging/channels/{id}/messages",
         expect.objectContaining({
           body: {
-            body: "@Nurse Two",
+            body: "@Nurse Two hello",
             references: [
               {
                 kind: "staff",
@@ -400,7 +405,7 @@ describe("M36 messaging organization switching", () => {
 describe("M36 patient care-team conversations", () => {
   it("switches modes, searches by patient, supports keyboard selection, and opens the returned channel", async () => {
     const careChannel = {
-      ...channel("care-channel-1", "Care team"),
+      ...channel("care-channel-1", "Ada Lovelace · Care Team"),
       kind: "care_team",
       subjectId: "patient-1",
     };
@@ -480,6 +485,7 @@ describe("M36 patient care-team conversations", () => {
       ),
     );
     await screen.findByText("Ada Lovelace · Care Team");
+    expect(screen.getByRole("button", { name: "Ada Lovelace · Care Team" })).toBeTruthy();
     expect(screen.queryByRole("dialog", { name: "New conversation" })).toBeNull();
   });
 
