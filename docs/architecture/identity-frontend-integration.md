@@ -54,8 +54,10 @@ Plaintext credentials are never written to browser storage or URLs.
    a factor against the current session without minting or switching sessions.
 2. The roster contract does not expose `passwordChangedAt`, so the Security panel omits last password
    rotation rather than fabricating it.
-3. New tenant permission keys are honored exactly as returned by `/api/v1/auth/context`. If no tenant
-   role grants `user.create` or `user.password.reset`, those actions correctly remain unavailable.
+3. New tenant permission keys are honored exactly as returned by `/api/v1/auth/context`. Migration
+   `1066_m3_identity_admin_default_grants.sql` additively grants `user.create` and
+   `user.password.reset` to existing `org_admin` and `administrator` roles; fresh tenants already
+   receive both through full-catalog role materialization. Other roles remain tenant-configurable.
 4. A tenant reset of a shared global identity is rejected with
    `SHARED_IDENTITY_RESET_RESTRICTED`. The UI gives a non-enumerating platform-administrator message
    and does not expose other organization details.
