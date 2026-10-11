@@ -265,7 +265,7 @@ export interface ClearinghouseTransport {
     submission: ClearinghouseSubmission,
   ): Promise<X12WorkerResult<SubmissionReceipt>>;
 
-  /** Claim (stage 4), replacement (8) and void (9) when `submission.adjustment` is set. `kind` must be `claim`. */
+  /** Claim (stage 4), replacement (7) and void (8) when `submission.adjustment` is set. `kind` must be `claim`. */
   submitClaim(
     ctx: ClearinghouseContext,
     submission: ClearinghouseSubmission,

@@ -8,6 +8,7 @@
 import {
   Claim837iBuildError,
   type Claim837iInput,
+  type ClaimLine,
   build837iClaim,
   diagnosis,
   dollars,
@@ -84,7 +85,7 @@ export interface StediClaimJson {
       readonly qualifierCode: "ABF";
     }>;
     readonly claimCodeInformation: {
-      readonly admissionTypeCode: "1";
+      readonly admissionTypeCode: string;
       readonly admissionSourceCode: string;
       readonly patientStatusCode: string;
     };
@@ -99,12 +100,18 @@ export interface StediClaimJson {
       readonly occurrenceSpanCode: string;
       readonly occurrenceSpanCodeDate: string;
     }>;
+    /** HI*BI spans. Field names are UNVERIFIED against Stedi (modelled on the BH list); date is `CCYYMMDD-CCYYMMDD`. */
+    readonly occurrenceSpanInformationList?: HiList<{
+      readonly occurrenceSpanCode: string;
+      readonly occurrenceSpanCodeDate: string;
+    }>;
     readonly valueInformationList?: HiList<{
       readonly valueCode: string;
       readonly valueCodeAmount: string;
     }>;
     readonly conditionCodesList?: HiList<{ readonly conditionCode: string }>;
     readonly serviceLines: readonly {
+      /** `CCYYMMDD`, or `CCYYMMDD-CCYYMMDD` for a from-through range (field shape UNVERIFIED against Stedi). */
       readonly serviceDate: string;
       readonly institutionalService: {
         readonly serviceLineRevenueCode: string;
@@ -114,6 +121,8 @@ export interface StediClaimJson {
         readonly lineItemChargeAmount: string;
         readonly measurementUnit: "UN";
         readonly serviceUnitCount: string;
+        /** SV207; omitted when zero. Field name UNVERIFIED against Stedi. */
+        readonly nonCoveredChargeAmount?: string;
       };
     }[];
   };
@@ -136,6 +145,13 @@ const address = (a: Claim837iInput["billingProvider"]["address"], field: string)
     state: n4?.[2] ?? "",
     postalCode: n4?.[3] ?? "",
   };
+};
+
+/** `CCYYMMDD`, or `CCYYMMDD-CCYYMMDD` when the line spans days (mirrors DTP*472 D8 / RD8). */
+const serviceDate = (l: ClaimLine): string => {
+  const start = d8(l.serviceDate, "claim.lines");
+  const end = l.serviceThroughDate === undefined ? start : d8(l.serviceThroughDate, "claim.lines");
+  return start === end ? start : `${start}-${end}`;
 };
 
 /** Decimal string with exactly two places ("38900" → "38900.00"); the input was validated by the raw builder. */
@@ -173,6 +189,12 @@ export function buildStediClaimJson(input: Claim837iInput): StediClaimJson {
     c.occurrenceCodes.map((o) => ({
       occurrenceSpanCode: o.code,
       occurrenceSpanCodeDate: d8(o.date, "claim.occurrenceCodes"),
+    })),
+  );
+  const spans = hiList(
+    (c.occurrenceSpans ?? []).map((o) => ({
+      occurrenceSpanCode: o.code,
+      occurrenceSpanCodeDate: `${d8(o.fromDate, "claim.occurrenceSpans")}-${d8(o.throughDate, "claim.occurrenceSpans")}`,
     })),
   );
   const values = hiList(
@@ -233,24 +255,25 @@ export function buildStediClaimJson(input: Claim837iInput): StediClaimJson {
       },
       ...(otherDiagnoses ? { otherDiagnosisInformationList: otherDiagnoses } : {}),
       claimCodeInformation: {
-        admissionTypeCode: "1",
+        admissionTypeCode: c.admissionTypeCode,
         admissionSourceCode: c.admissionSource,
         patientStatusCode: c.patientStatus,
       },
       claimDateInformation: {
         statementBeginDate: d8(c.statementFromDate, "claim.statementFromDate"),
         statementEndDate: d8(c.statementThroughDate, "claim.statementThroughDate"),
-        admissionDateAndHour: d8(c.admissionDate, "claim.admissionDate"),
+        admissionDateAndHour: `${d8(c.admissionDate, "claim.admissionDate")}${c.admissionHour ?? ""}`,
         ...(c.dischargeHour === undefined ? {} : { dischargeHour: c.dischargeHour }),
       },
       ...(pccn === undefined || pccn === null
         ? {}
         : { claimSupplementalInformation: { claimControlNumber: pccn } }),
       ...(occurrences ? { occurrenceInformationList: occurrences } : {}),
+      ...(spans ? { occurrenceSpanInformationList: spans } : {}),
       ...(values ? { valueInformationList: values } : {}),
       ...(conditions ? { conditionCodesList: conditions } : {}),
       serviceLines: c.lines.map((l) => ({
-        serviceDate: d8(l.serviceDate, "claim.lines"),
+        serviceDate: serviceDate(l),
         institutionalService: {
           serviceLineRevenueCode: l.revenueCode,
           procedureIdentifier: "HC" as const,
@@ -261,6 +284,7 @@ export function buildStediClaimJson(input: Claim837iInput): StediClaimJson {
           lineItemChargeAmount: dollars(l.chargeCents),
           measurementUnit: "UN" as const,
           serviceUnitCount: String(l.units),
+          ...(l.noncoveredCents ? { nonCoveredChargeAmount: dollars(l.noncoveredCents) } : {}),
         },
       })),
     },

@@ -78,6 +78,7 @@ export function compareStediClaimJsonToX12(json: StediClaimJson, raw: string): s
   expect("claim.statementThroughDate", through === info.claimDateInformation.statementEndDate);
   expect("claim.admissionDate", dtp("435")[3] === info.claimDateInformation.admissionDateAndHour);
   expect("claim.dischargeHour", dtp("096")[3] === info.claimDateInformation.dischargeHour);
+  expect("claim.admissionTypeCode", cl1[1] === info.claimCodeInformation.admissionTypeCode);
   expect("claim.admissionSource", cl1[2] === info.claimCodeInformation.admissionSourceCode);
   expect("claim.patientStatus", cl1[3] === info.claimCodeInformation.patientStatusCode);
   const refF8 = segments.find((s) => s[0] === "REF" && s[1] === "F8")?.[2];
@@ -109,6 +110,16 @@ export function compareStediClaimJsonToX12(json: StediClaimJson, raw: string): s
         .map((o) => [o.occurrenceSpanCode, o.occurrenceSpanCodeDate]),
     ),
   );
+  const rawSpans = hiValues(segments, "BI", comp).map((p) => [p[0], p[2]]);
+  expect(
+    "claim.occurrenceSpans",
+    same(
+      rawSpans,
+      (info.occurrenceSpanInformationList ?? [])
+        .flat()
+        .map((o) => [o.occurrenceSpanCode, o.occurrenceSpanCodeDate]),
+    ),
+  );
   const rawValues = hiValues(segments, "BE", comp).map((p) => [p[0], cents(p[3])]);
   expect(
     "claim.valueCodes",
@@ -134,6 +145,7 @@ export function compareStediClaimJsonToX12(json: StediClaimJson, raw: string): s
             proc: (s[2] ?? "").split(comp),
             charge: cents(s[3]),
             units: s[5],
+            noncovered: s[7] === undefined ? 0 : cents(s[7]),
             date:
               segments[i + 1]?.[0] === "DTP" && segments[i + 1]?.[1] === "472"
                 ? segments[i + 1]?.[3]
@@ -151,6 +163,7 @@ export function compareStediClaimJsonToX12(json: StediClaimJson, raw: string): s
     ],
     charge: cents(l.institutionalService.lineItemChargeAmount),
     units: l.institutionalService.serviceUnitCount,
+    noncovered: cents(l.institutionalService.nonCoveredChargeAmount ?? "0"),
     date: l.serviceDate,
   }));
   expect("claim.lines", same(rawLines, jsonLines));
