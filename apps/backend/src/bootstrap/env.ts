@@ -427,7 +427,7 @@ export function collectEnvProblems(env: EnvLike): EnvProblem[] {
   if (clearinghouseVendor && !PRODUCTION_CLEARINGHOUSE_VENDORS.includes(clearinghouseVendor)) {
     problems.push({
       key: CLEARINGHOUSE_VENDOR_ENV,
-      problem: `must be one of ${PRODUCTION_CLEARINGHOUSE_VENDORS.join(", ")} (or unset); in_memory is a test double`,
+      problem: `must be one of ${PRODUCTION_CLEARINGHOUSE_VENDORS.join(", ")} (or unset)`,
     });
   }
   for (const { key, rule, when } of REQUIREMENTS) {

@@ -221,6 +221,7 @@ export { compareStediClaimJsonToX12 } from "./clearinghouse/stedi-claim-agreemen
 export {
   CLEARINGHOUSE_VENDOR_ENV,
   NOT_WIRED_TRANSPORT,
+  PRODUCTION_CLEARINGHOUSE_VENDORS,
   bindClearinghouseTransport,
   parseClearinghouseVendor,
 } from "./clearinghouse/transport-registry";

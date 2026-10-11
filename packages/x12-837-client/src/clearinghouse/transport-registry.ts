@@ -13,6 +13,10 @@ import { CH, type ClearinghouseTransport, type ClearinghouseVendor } from "./typ
 export const CLEARINGHOUSE_VENDOR_ENV = "CLEARINGHOUSE_VENDOR";
 
 const VENDORS: readonly ClearinghouseVendor[] = ["in_memory", "direct_mac", "stedi"];
+/** The vendors configurable in production (everything but the in_memory test double). */
+export const PRODUCTION_CLEARINGHOUSE_VENDORS: readonly ClearinghouseVendor[] = VENDORS.filter(
+  (v) => v !== "in_memory",
+);
 
 type EnvMap = Readonly<Record<string, string | undefined>>;
 
@@ -53,8 +57,7 @@ const notWired = <T>(): Promise<X12WorkerResult<T>> =>
 
 /** The unbound transport: fails closed on every operation, so no caller can reach a vendor by accident. */
 export const NOT_WIRED_TRANSPORT: ClearinghouseTransport = {
-  // The port requires a vendor literal; an unbound transport reports the inert test one.
-  vendor: "in_memory",
+  vendor: "not_wired",
   checkEligibility: notWired,
   validateOnly: notWired,
   submitNotice: notWired,

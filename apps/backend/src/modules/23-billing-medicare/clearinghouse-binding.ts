@@ -2,6 +2,9 @@
 // (ADR-0053 D3). Platform configuration: `CLEARINGHOUSE_VENDOR` unset | `stedi` | `direct_mac` (`in_memory` is a
 // test double, refused in production). No adapter is registered yet, so naming a vendor throws at boot until its
 // adapter lands — a deployment never silently behaves as "unset" while believing it is bound.
+// The binding is created and logged at boot but NOT yet injected into any M23/M24/M25 caller; wiring consumers is
+// the Stedi-transport work (B2), which should also assert a consumer receives it. Read `binding.vendor`, not
+// `binding.transport.vendor`, to know whether a clearinghouse is bound.
 import {
   type ClearinghouseBinding,
   type ClearinghouseTransportFactories,
