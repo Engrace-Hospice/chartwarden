@@ -149,6 +149,8 @@ export function ConversationThread({
   const [mentionCandidates, setMentionCandidates] = useState<MentionCandidate[]>([]);
   const [mentionQuery, setMentionQuery] = useState<{ query: string; start: number } | null>(null);
   const [mentionLoading, setMentionLoading] = useState(false);
+  const [mentionError, setMentionError] = useState(false);
+  const [mentionRetry, setMentionRetry] = useState(0);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -248,14 +250,18 @@ export function ConversationThread({
   );
 
   useEffect(() => {
+    // Incrementing this value is the explicit retry signal for the same query.
+    void mentionRetry;
     if (!mentionQuery) {
       mentionGenerationRef.current += 1;
       setMentionCandidates([]);
       setMentionLoading(false);
+      setMentionError(false);
       return;
     }
     const generation = ++mentionGenerationRef.current;
     setMentionLoading(true);
+    setMentionError(false);
     const timer = window.setTimeout(() => {
       void client
         .GET("/api/v1/messaging/channels/{id}/mention-candidates", {
@@ -264,6 +270,7 @@ export function ConversationThread({
         .then(({ data, error }) => {
           if (generation !== mentionGenerationRef.current) return;
           setMentionLoading(false);
+          setMentionError(Boolean(error));
           setMentionCandidates(
             error
               ? []
@@ -275,7 +282,7 @@ export function ConversationThread({
         });
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [channel.channelId, client, meId, mentionQuery]);
+  }, [channel.channelId, client, meId, mentionQuery, mentionRetry]);
 
   const loadOlder = useCallback(async (): Promise<void> => {
     if (!olderCursor || loadingOlder) return;
@@ -314,6 +321,10 @@ export function ConversationThread({
     setDraft("");
     setDraftReferences([]);
     setMentionQuery(null);
+    setMentionCandidates([]);
+    setMentionLoading(false);
+    setMentionError(false);
+    setSending(false);
     setLoadError(null);
     setRefreshError(false);
     setSendError(null);
@@ -448,7 +459,7 @@ export function ConversationThread({
         setMentionQuery(null);
         return;
       }
-      if (event.key === "Enter" && !event.shiftKey) {
+      if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
         event.preventDefault();
         chooseMention(mentionCandidates[mentionIndex]!);
         return;
@@ -720,6 +731,10 @@ export function ConversationThread({
             rows={1}
             placeholder={`Message ${channelLabel(channel)}…`}
             value={draft}
+            disabled={sending}
+            aria-autocomplete="list"
+            aria-expanded={mentionQuery !== null}
+            aria-controls={mentionQuery ? "messaging-mention-suggestions" : undefined}
             onChange={(event) => {
               const next = event.target.value;
               setDraftReferences((current) => reconcileReferences(draft, next, current));
@@ -743,16 +758,32 @@ export function ConversationThread({
             }}
           />
           {mentionQuery ? (
-            <div className="wx-mention-menu" role="listbox" aria-label="Mention suggestions">
+            // biome-ignore lint/a11y/useFocusableInteractive: focus remains in the composer while arrow keys control this ARIA combobox popup
+            <div
+              id="messaging-mention-suggestions"
+              className="wx-mention-menu"
+              // biome-ignore lint/a11y/useSemanticElements: a native select cannot serve as a rich, async composer popup
+              role="listbox"
+              aria-label="Mention suggestions"
+            >
               {mentionLoading ? (
                 <span className="wx-mention-state">Searching…</span>
+              ) : mentionError ? (
+                <span className="wx-mention-state" role="alert">
+                  Suggestions could not be loaded.{" "}
+                  <button type="button" onClick={() => setMentionRetry((value) => value + 1)}>
+                    Retry
+                  </button>
+                </span>
               ) : mentionCandidates.length === 0 ? (
                 <span className="wx-mention-state">No eligible people or patients</span>
               ) : (
                 mentionCandidates.map((candidate, index) => (
                   <button
+                    // biome-ignore lint/a11y/useSemanticElements: a native option cannot render the required staff/patient detail markup
                     type="button"
                     role="option"
+                    tabIndex={-1}
                     aria-selected={index === mentionIndex}
                     className={index === mentionIndex ? "is-active" : undefined}
                     key={`${candidate.kind}:${candidate.entityId}`}

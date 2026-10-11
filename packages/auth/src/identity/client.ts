@@ -10,7 +10,7 @@
 // is not portably nameable across the composite project boundary (TS2742), and the frontend only needs
 // this slice. Extend it as screens grow (signUp, forgetPassword, passkey.*).
 import { passkeyClient } from "@better-auth/passkey/client";
-import { twoFactorClient } from "better-auth/client/plugins";
+import { twoFactorClient, usernameClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 
 export interface AuthResult {
@@ -33,7 +33,8 @@ export interface PasskeyInfo {
 export interface SessionUser {
   /** The user's stable id (Better Auth's user PK) — present on every session user at runtime. */
   readonly id: string;
-  readonly email: string;
+  readonly email: string | null;
+  readonly username?: string | null;
   readonly name?: string | null;
 }
 
@@ -47,6 +48,7 @@ export interface SessionInfo {
 export interface WardenxAuthClient {
   signIn: {
     email(input: { email: string; password: string }): Promise<SignInResult>;
+    username(input: { username: string; password: string }): Promise<SignInResult>;
     passkey(): Promise<AuthResult>;
   };
   /** TASK-030 — the invitee's account-creation step (the invite email is fixed by the invite token,
@@ -92,6 +94,6 @@ export interface WardenxAuthClient {
 export function createWardenxAuthClient(baseURL?: string): WardenxAuthClient {
   return createAuthClient({
     ...(baseURL ? { baseURL } : {}),
-    plugins: [twoFactorClient(), passkeyClient()],
+    plugins: [twoFactorClient(), usernameClient(), passkeyClient()],
   }) as unknown as WardenxAuthClient;
 }

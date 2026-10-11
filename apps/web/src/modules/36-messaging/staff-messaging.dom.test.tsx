@@ -117,6 +117,64 @@ describe("M36 messaging organization switching", () => {
     );
   });
 
+  it("keeps the draft and retries mention discovery after a temporary failure", async () => {
+    let mentionAttempts = 0;
+    const api = {
+      GET: vi.fn((path: string) => {
+        if (path === "/api/v1/messaging/channels") {
+          return Promise.resolve({
+            data: { channels: [channel("dm-1", "Nurse Two")] },
+            error: undefined,
+          });
+        }
+        if (path === "/api/v1/messaging/channels/{id}/mention-candidates") {
+          mentionAttempts += 1;
+          return Promise.resolve(
+            mentionAttempts === 1
+              ? { data: undefined, error: { message: "temporary failure" } }
+              : {
+                  data: {
+                    candidates: [
+                      {
+                        kind: "staff",
+                        entityId: "22222222-2222-4222-8222-222222222222",
+                        displayName: "Nurse Two",
+                        detail: "Registered Nurse",
+                      },
+                    ],
+                  },
+                  error: undefined,
+                },
+          );
+        }
+        return Promise.resolve({ data: { messages: [] }, error: undefined });
+      }),
+      POST: vi.fn(),
+    } as unknown as ApiClient;
+
+    render(
+      <MemoryRouter>
+        <ApiClientProvider client={api}>
+          <SessionProvider session={ORG_ONE}>
+            <StaffMessaging />
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+
+    const composer = (await screen.findByRole("textbox", {
+      name: "Message",
+    })) as HTMLTextAreaElement;
+    fireEvent.change(composer, { target: { value: "@Nur", selectionStart: 4 } });
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Suggestions could not be loaded.",
+    );
+    expect(composer.value).toBe("@Nur");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await screen.findByRole("option", { name: /Nurse Two/ });
+    expect(mentionAttempts).toBe(2);
+  });
+
   it("clears selection, history, draft, and stale staff results when the organization changes", async () => {
     const oldMessages = deferred<unknown>();
     const oldStaff = deferred<unknown>();

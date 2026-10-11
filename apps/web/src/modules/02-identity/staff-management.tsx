@@ -18,20 +18,13 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { Link } from "react-router-dom";
-import { authClient } from "./auth-client";
+import { useSession } from "../../shell/session";
+import { CreateUserDialog } from "./create-user-dialog";
 import { MemberRoleEditor } from "./member-role-editor";
+import { ResetUserPasswordDialog } from "./reset-user-password-dialog";
+import type { LocationOption, MemberView, RoleOption } from "./user-management-api";
 
-interface Member {
-  membershipId: string;
-  userId: string;
-  status: "pending" | "active" | "suspended" | "revoked";
-  isAdmin: boolean;
-  defaultLocationIds: string[];
-  displayName: string | null;
-  email: string | null;
-  lastLoginAt: string | null;
-  accountStatus: "created" | "active" | "suspended" | "deactivated" | null;
-}
+type Member = MemberView;
 
 interface Invitation {
   invitationId: string;
@@ -51,7 +44,6 @@ const INVITE_STATUS_TONE: Record<Invitation["status"], StatusTone> = {
 const STATUS_TONE: Record<Member["status"], StatusTone> = {
   active: "success",
   suspended: "warning",
-  pending: "progress",
   revoked: "neutral",
 };
 
@@ -60,7 +52,8 @@ const STAFF_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 export function StaffManagement(): JSX.Element {
   const client = useApiClient();
   const toast = useToast();
-  const [orgId, setOrgId] = useState<string | null>(null);
+  const session = useSession();
+  const orgId = session?.organizationId ?? null;
   const [members, setMembers] = useState<Member[] | null>(null);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [pendingInvites, setPendingInvites] = useState(0);
@@ -72,13 +65,18 @@ export function StaffManagement(): JSX.Element {
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [resetMember, setResetMember] = useState<Member | null>(null);
+  const [roleCatalog, setRoleCatalog] = useState<RoleOption[]>([]);
+  const [locations, setLocations] = useState<LocationOption[]>([]);
+  const loadVersion = useRef(0);
 
   // Table Filters & Search
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "member">("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "suspended" | "pending">(
-    "all",
-  );
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "active" | "suspended" | "password_change_required"
+  >("all");
   const [activeTab, setActiveTab] = useState<"roster" | "invitations">("roster");
   const [memberPage, setMemberPage] = useState(1);
   const [memberPageSize, setMemberPageSize] = useState(10);
@@ -99,11 +97,18 @@ export function StaffManagement(): JSX.Element {
   const [revokeBusy, setRevokeBusy] = useState(false);
 
   const load = useCallback(
-    async (org: string) => {
+    async (org: string, query = searchQuery) => {
+      const version = ++loadVersion.current;
       const [membersRes, invitationsRes] = await Promise.all([
-        client.GET("/api/v1/orgs/{id}/members", { params: { path: { id: org } } }),
+        client.GET("/api/v1/orgs/{id}/members", {
+          params: {
+            path: { id: org },
+            query: query.trim() ? { q: query.trim() } : {},
+          },
+        }),
         client.GET("/api/v1/orgs/{id}/invitations", { params: { path: { id: org } } }),
       ]);
+      if (version !== loadVersion.current) return;
       if (membersRes.error) {
         setError("Could not load staff. You may not have permission to manage members.");
         setLoadFailed(true);
@@ -117,21 +122,43 @@ export function StaffManagement(): JSX.Element {
         setInvitations((invitationsRes.data?.invitations ?? []) as Invitation[]);
       }
     },
-    [client],
+    [client, searchQuery],
   );
 
   useEffect(() => {
-    void authClient.getSession().then(({ data }) => {
-      const org = data?.session?.activeOrganizationId ?? null;
-      setOrgId(org);
-      if (org) void load(org);
-      else {
-        setError("No active organization is bound to your session.");
-        setLoadFailed(true);
-        setMembers([]);
-      }
+    setSelectedMemberId(null);
+    setCreateModalOpen(false);
+    setInviteModalOpen(false);
+    setResetMember(null);
+    setInviteLink(null);
+    setMemberRoles(new Map());
+    if (!orgId) {
+      setError("No active organization is bound to your session.");
+      setLoadFailed(true);
+      setMembers([]);
+      return;
+    }
+    const timer = window.setTimeout(() => void load(orgId, searchQuery), 250);
+    return () => window.clearTimeout(timer);
+  }, [orgId, searchQuery, load]);
+
+  useEffect(() => {
+    if (!orgId) return;
+    let active = true;
+    void Promise.all([
+      client.GET("/api/v1/roles").catch(() => ({ data: undefined, error: true })),
+      client
+        .GET("/api/v1/locations", { params: { query: { status: "active", limit: 100 } } })
+        .catch(() => ({ data: undefined, error: true })),
+    ]).then(([rolesResult, locationsResult]) => {
+      if (!active) return;
+      setRoleCatalog(rolesResult.error ? [] : (rolesResult.data?.roles ?? []));
+      setLocations(locationsResult.error ? [] : (locationsResult.data?.items ?? []));
     });
-  }, [load]);
+    return () => {
+      active = false;
+    };
+  }, [client, orgId]);
 
   useEffect(() => {
     if (!members || members.length === 0) return;
@@ -304,15 +331,21 @@ export function StaffManagement(): JSX.Element {
   const filteredMembers = (members ?? []).filter((m) => {
     const nameStr = (m.displayName ?? "").toLowerCase();
     const emailStr = (m.email ?? "").toLowerCase();
+    const usernameStr = (m.username ?? "").toLowerCase();
     const q = searchQuery.trim().toLowerCase();
-    const matchesSearch = !q || nameStr.includes(q) || emailStr.includes(q);
+    const matchesSearch =
+      !q || nameStr.includes(q) || usernameStr.includes(q) || emailStr.includes(q);
 
     const matchesRole =
       roleFilter === "all" ||
       (roleFilter === "admin" && m.isAdmin) ||
       (roleFilter === "member" && !m.isAdmin);
 
-    const matchesStatus = statusFilter === "all" || m.status === statusFilter;
+    const matchesStatus =
+      statusFilter === "all" ||
+      (statusFilter === "password_change_required"
+        ? m.credentialState === "password_change_required"
+        : m.status === statusFilter);
 
     return matchesSearch && matchesRole && matchesStatus;
   });
@@ -320,6 +353,16 @@ export function StaffManagement(): JSX.Element {
   const selectedMember = (members ?? []).find((m) => m.membershipId === selectedMemberId) ?? null;
   const pendingInvitationsList = invitations.filter(
     (i) => i.status === "pending" || i.status === "expired",
+  );
+
+  const permissions = session?.permissions ?? [];
+  const canCreateUser = permissions.includes("user.create") && permissions.includes("role.assign");
+  const canInviteUser = permissions.includes("member.invite");
+  const canResetPassword = permissions.includes("user.password.reset");
+  const canManageRoles = permissions.includes("role.assign");
+  const canManageMembership = permissions.includes("member.manage");
+  const assignableRoles = roleCatalog.filter(
+    (role) => role.enabled && role.permissionKeys.every((key) => permissions.includes(key)),
   );
 
   const hasActiveFilters = searchQuery !== "" || roleFilter !== "all" || statusFilter !== "all";
@@ -345,17 +388,31 @@ export function StaffManagement(): JSX.Element {
         <div className="wx-staff-main">
           <header className="wx-page-head">
             <div>
-              <h1 style={{ fontSize: "1.875rem" }}>Administration</h1>
-              <p>Users, roles, organization settings, integrations and audit.</p>
+              <h1 style={{ fontSize: "1.875rem" }}>Users</h1>
+              <p>Manage staff accounts, roles, and organization access.</p>
             </div>
-            <button
-              type="button"
-              className="wx-btn-primary"
-              onClick={() => setInviteModalOpen(true)}
-              disabled={!orgId}
-            >
-              <Glyph name="plus" size={16} /> Add User
-            </button>
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              {canInviteUser ? (
+                <button
+                  type="button"
+                  className="wx-btn-secondary"
+                  onClick={() => setInviteModalOpen(true)}
+                  disabled={!orgId}
+                >
+                  Invite User
+                </button>
+              ) : null}
+              {canCreateUser ? (
+                <button
+                  type="button"
+                  className="wx-btn-primary"
+                  onClick={() => setCreateModalOpen(true)}
+                  disabled={!orgId || assignableRoles.length === 0}
+                >
+                  <Glyph name="plus" size={16} /> Create User
+                </button>
+              ) : null}
+            </div>
           </header>
 
           <nav className="wx-subtabs" aria-label="Administration">
@@ -448,6 +505,24 @@ export function StaffManagement(): JSX.Element {
             </div>
           ) : null}
 
+          <div style={statsGridStyle} aria-label="User summary for loaded organization roster">
+            <StatCard
+              label={searchQuery ? "Active (matching)" : "Active Users"}
+              value={activeCount}
+            />
+            <StatCard
+              label="Pending Setup"
+              value={
+                loadFailed
+                  ? null
+                  : (members?.filter((m) => m.credentialState === "password_change_required")
+                      .length ?? 0)
+              }
+            />
+            <StatCard label="Suspended Users" value={suspendedCount} />
+            <StatCard label="Pending Invitations" value={loadFailed ? null : pendingInvites} />
+          </div>
+
           <div className="wx-staff-toolbar">
             <fieldset className="wx-seg">
               <legend className="wx-sr-only">Roster view</legend>
@@ -483,7 +558,7 @@ export function StaffManagement(): JSX.Element {
                 <Glyph name="search" size={16} />
                 <input
                   type="search"
-                  placeholder="Search by name or email…"
+                  placeholder="Search by name, username or email…"
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
@@ -522,7 +597,7 @@ export function StaffManagement(): JSX.Element {
                   <option value="all">All statuses</option>
                   <option value="active">Active</option>
                   <option value="suspended">Suspended</option>
-                  <option value="pending">Pending</option>
+                  <option value="password_change_required">Password change required</option>
                 </select>
               </label>
               {hasActiveFilters ? (
@@ -583,8 +658,10 @@ export function StaffManagement(): JSX.Element {
                 <caption className="wx-sr-only">Organization users</caption>
                 <thead>
                   <tr>
-                    <th>Name</th>
-                    <th>Role</th>
+                    <th>User</th>
+                    <th>Username</th>
+                    <th>Email</th>
+                    <th>Roles</th>
                     <th>Status</th>
                     <th>Last Login</th>
                     <th>
@@ -606,6 +683,8 @@ export function StaffManagement(): JSX.Element {
                             <MemberAvatarCell member={m} />
                           </button>
                         </td>
+                        <td className="wx-data-md">{m.username ?? "Legacy account"}</td>
+                        <td>{m.email ?? "Not provided"}</td>
                         <td>
                           {roles && roles.length > 0
                             ? roles.join(", ")
@@ -619,7 +698,18 @@ export function StaffManagement(): JSX.Element {
                           ) : null}
                         </td>
                         <td>
-                          <StatusPill label={cap(m.status)} tone={STATUS_TONE[m.status]} />
+                          <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
+                            <StatusPill label={cap(m.status)} tone={STATUS_TONE[m.status]} />
+                            {m.credentialState === "password_change_required" ? (
+                              <StatusPill label="Password Change Required" tone="progress" />
+                            ) : null}
+                            {m.accountStatus === "deactivated" ? (
+                              <StatusPill label="Deactivated" tone="neutral" />
+                            ) : null}
+                            {m.accountStatus === "suspended" ? (
+                              <StatusPill label="Account Suspended" tone="error" />
+                            ) : null}
+                          </div>
                         </td>
                         <td className="wx-nums">{formatLogin(m.lastLoginAt)}</td>
                         <td style={{ textAlign: "right" }}>
@@ -628,6 +718,10 @@ export function StaffManagement(): JSX.Element {
                             onViewDetails={() => setSelectedMemberId(m.membershipId)}
                             onToggleStatus={(status) => setStatus(m, status)}
                             onRemove={() => setConfirmRevoke(m)}
+                            onResetPassword={() => setResetMember(m)}
+                            canResetPassword={canResetPassword}
+                            canManageRoles={canManageRoles}
+                            canManageMembership={canManageMembership}
                           />
                         </td>
                       </tr>
@@ -653,7 +747,7 @@ export function StaffManagement(): JSX.Element {
         {selectedMember ? (
           <RightDetailPanel
             open={selectedMember !== null}
-            title="Staff Profile"
+            title="User Details"
             onClose={() => setSelectedMemberId(null)}
             hideScrollbar
           >
@@ -661,10 +755,36 @@ export function StaffManagement(): JSX.Element {
               member={selectedMember}
               onStatusChange={(status) => setStatus(selectedMember, status)}
               onRemove={() => setConfirmRevoke(selectedMember)}
+              onResetPassword={() => setResetMember(selectedMember)}
+              canResetPassword={canResetPassword}
+              canManageRoles={canManageRoles}
+              canManageMembership={canManageMembership}
+              roles={memberRoles.get(selectedMember.membershipId) ?? []}
             />
           </RightDetailPanel>
         ) : null}
       </div>
+
+      {orgId ? (
+        <CreateUserDialog
+          open={createModalOpen}
+          organizationId={orgId}
+          roles={assignableRoles}
+          locations={locations}
+          onClose={() => setCreateModalOpen(false)}
+          onCreated={() => void load(orgId, searchQuery)}
+        />
+      ) : null}
+
+      {orgId ? (
+        <ResetUserPasswordDialog
+          open={resetMember !== null}
+          organizationId={orgId}
+          member={resetMember}
+          onClose={() => setResetMember(null)}
+          onReset={() => void load(orgId, searchQuery)}
+        />
+      ) : null}
 
       {/* Invite Staff Modal */}
       <Modal
@@ -767,11 +887,19 @@ function StaffActionDropdown({
   onViewDetails,
   onToggleStatus,
   onRemove,
+  onResetPassword,
+  canResetPassword,
+  canManageRoles,
+  canManageMembership,
 }: {
   member: Member;
   onViewDetails: () => void;
   onToggleStatus: (status: "active" | "suspended") => void;
   onRemove: () => void;
+  onResetPassword: () => void;
+  canResetPassword: boolean;
+  canManageRoles: boolean;
+  canManageMembership: boolean;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -836,7 +964,35 @@ function StaffActionDropdown({
             <span>View details</span>
           </button>
 
-          {member.status === "active" ? (
+          {canManageRoles ? (
+            <button
+              type="button"
+              style={dropdownItemStyle(false)}
+              onClick={() => {
+                setOpen(false);
+                onViewDetails();
+              }}
+            >
+              <Glyph name="users" size={14} />
+              <span>Edit roles</span>
+            </button>
+          ) : null}
+
+          {canResetPassword && member.accountStatus !== "deactivated" ? (
+            <button
+              type="button"
+              style={dropdownItemStyle(false)}
+              onClick={() => {
+                setOpen(false);
+                onResetPassword();
+              }}
+            >
+              <Glyph name="lock" size={14} />
+              <span>Reset password</span>
+            </button>
+          ) : null}
+
+          {canManageMembership && member.status === "active" ? (
             <button
               type="button"
               style={dropdownItemStyle(false)}
@@ -848,7 +1004,7 @@ function StaffActionDropdown({
               <Glyph name="block" size={14} />
               <span>Suspend</span>
             </button>
-          ) : member.status === "suspended" ? (
+          ) : canManageMembership && member.status === "suspended" ? (
             <button
               type="button"
               style={dropdownItemStyle(false)}
@@ -862,7 +1018,7 @@ function StaffActionDropdown({
             </button>
           ) : null}
 
-          {member.status !== "revoked" ? (
+          {canManageMembership && member.status !== "revoked" ? (
             <button
               type="button"
               style={dropdownItemStyle(true)}
@@ -882,7 +1038,8 @@ function StaffActionDropdown({
 }
 
 function MemberAvatarCell({ member }: { member: Member }): JSX.Element {
-  const name = member.displayName ?? member.email ?? member.membershipId.slice(0, 8);
+  const name =
+    member.displayName ?? member.username ?? member.email ?? member.membershipId.slice(0, 8);
   const initials = getInitials(name);
   const isLocked = member.accountStatus === "suspended" || member.accountStatus === "deactivated";
 
@@ -911,11 +1068,9 @@ function MemberAvatarCell({ member }: { member: Member }): JSX.Element {
           <span style={{ fontWeight: 600, color: "var(--color-on-surface)" }}>{name}</span>
           {isLocked ? <StatusPill label="Locked" tone="error" glyph="lock" /> : null}
         </div>
-        {member.email ? (
-          <span style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}>
-            {member.email}
-          </span>
-        ) : null}
+        <span style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}>
+          {member.username ? `@${member.username}` : "Legacy email account"}
+        </span>
       </div>
     </div>
   );
@@ -925,13 +1080,24 @@ function StaffDrawerContent({
   member,
   onStatusChange,
   onRemove,
+  onResetPassword,
+  canResetPassword,
+  canManageRoles,
+  canManageMembership,
+  roles,
 }: {
   member: Member;
   onStatusChange: (status: "active" | "suspended") => void;
   onRemove: () => void;
+  onResetPassword: () => void;
+  canResetPassword: boolean;
+  canManageRoles: boolean;
+  canManageMembership: boolean;
+  roles: readonly string[];
 }): JSX.Element {
   const isLocked = member.accountStatus === "suspended" || member.accountStatus === "deactivated";
-  const name = member.displayName ?? member.email ?? member.membershipId.slice(0, 8);
+  const name =
+    member.displayName ?? member.username ?? member.email ?? member.membershipId.slice(0, 8);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem", paddingTop: "0.5rem" }}>
@@ -968,7 +1134,7 @@ function StaffDrawerContent({
             {name}
           </div>
           <div style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
-            {member.email ?? "No email provided"}
+            {member.username ? `@${member.username}` : "Legacy email account"}
           </div>
           <div style={{ display: "flex", gap: "0.375rem", marginTop: "0.25rem" }}>
             <StatusPill label={cap(member.status)} tone={STATUS_TONE[member.status]} />
@@ -977,7 +1143,7 @@ function StaffDrawerContent({
         </div>
       </div>
 
-      {/* Account Details Section */}
+      {/* Profile */}
       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
         <h4
           style={{
@@ -986,13 +1152,27 @@ function StaffDrawerContent({
             color: "var(--color-on-surface-variant)",
           }}
         >
-          Account Details
+          Profile
         </h4>
         <div style={detailGridStyle}>
           <DetailRow label="Membership ID" value={member.membershipId} isCode />
           <DetailRow label="User ID" value={member.userId} isCode />
+          <DetailRow label="Username" value={member.username ?? "Legacy account"} />
+          <DetailRow label="Email" value={member.email ?? "Not provided"} />
           <DetailRow label="Last Login" value={formatDate(member.lastLoginAt)} />
-          <DetailRow label="Account Status" value={member.accountStatus ?? "Active"} />
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        <h4 style={{ margin: 0, fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
+          Organization Access
+        </h4>
+        <div style={detailGridStyle}>
+          <DetailRow label="Membership Status" value={cap(member.status)} />
+          <DetailRow
+            label="Assigned Roles"
+            value={roles.length > 0 ? roles.join(", ") : "No role assigned"}
+          />
           <DetailRow
             label="Assigned Locations"
             value={`${member.defaultLocationIds.length} location(s)`}
@@ -1045,33 +1225,40 @@ function StaffDrawerContent({
               }}
             >
               <Glyph name="check-circle" size={16} />
-              <span>Account is in good security standing.</span>
+              <span>
+                {member.credentialState === "password_change_required"
+                  ? "Password change is required before workspace access."
+                  : "Account credentials are active."}
+              </span>
             </div>
           )}
         </div>
       </div>
 
       {/* Embedded Role Editor */}
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "0.5rem",
-          paddingTop: "0.5rem",
-          borderTop: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-        }}
-      >
-        <h4
+      {canManageRoles ? (
+        <div
           style={{
-            margin: 0,
-            fontSize: "0.8rem",
-            color: "var(--color-on-surface-variant)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.5rem",
+            paddingTop: "0.5rem",
+            borderTop:
+              "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
           }}
         >
-          Assigned Roles
-        </h4>
-        <MemberRoleEditor membershipId={member.membershipId} memberLabel={name} />
-      </div>
+          <h4
+            style={{
+              margin: 0,
+              fontSize: "0.8rem",
+              color: "var(--color-on-surface-variant)",
+            }}
+          >
+            Assigned Roles
+          </h4>
+          <MemberRoleEditor membershipId={member.membershipId} memberLabel={name} />
+        </div>
+      ) : null}
 
       {/* Lifecycle Actions */}
       <div
@@ -1092,18 +1279,23 @@ function StaffDrawerContent({
         >
           Lifecycle Actions
         </h4>
-        <div style={{ display: "flex", gap: "0.5rem" }}>
-          {member.status === "active" ? (
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          {canResetPassword && member.accountStatus !== "deactivated" ? (
+            <Button tone="secondary" size="sm" onClick={onResetPassword}>
+              Reset Password
+            </Button>
+          ) : null}
+          {canManageMembership && member.status === "active" ? (
             <Button tone="secondary" size="sm" onClick={() => onStatusChange("suspended")}>
               Suspend Member
             </Button>
-          ) : member.status === "suspended" ? (
+          ) : canManageMembership && member.status === "suspended" ? (
             <Button tone="primary" size="sm" onClick={() => onStatusChange("active")}>
               Reactivate Member
             </Button>
           ) : null}
 
-          {member.status !== "revoked" ? (
+          {canManageMembership && member.status !== "revoked" ? (
             <Button tone="danger" size="sm" onClick={onRemove}>
               Remove Member
             </Button>
@@ -1236,6 +1428,17 @@ function PendingInvitationsTable({
   );
 }
 
+function StatCard({ label, value }: { label: string; value: number | null }): JSX.Element {
+  return (
+    <div style={statCardStyle}>
+      <span style={{ color: "var(--color-on-surface-variant)", fontSize: "0.76rem" }}>{label}</span>
+      <strong className="wx-nums" style={{ fontSize: "1.35rem" }}>
+        {value ?? "—"}
+      </strong>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Helpers & Utility Styles
 // ---------------------------------------------------------------------------
@@ -1311,4 +1514,20 @@ const detailGridStyle = {
   padding: "0.75rem",
   borderRadius: "var(--radius-md)",
   background: "var(--color-surface-low)",
+};
+
+const statsGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(9rem, 1fr))",
+  gap: "0.75rem",
+};
+
+const statCardStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.25rem",
+  padding: "0.85rem 1rem",
+  border: "1px solid var(--color-outline-variant)",
+  borderRadius: "var(--radius-lg)",
+  background: "var(--color-surface-lowest)",
 };

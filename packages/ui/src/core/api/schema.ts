@@ -3535,6 +3535,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/credential-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the authenticated identity's authoritative password-rotation state */
+        get: operations["getApiV1AuthCredentialstatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/memberships": {
         parameters: {
             query?: never;
@@ -3546,6 +3563,23 @@ export interface paths {
         get: operations["getApiV1AuthMemberships"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/password/complete-required-change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Replace a temporary password, revoke all sessions, and require a fresh sign-in */
+        post: operations["postApiV1AuthPasswordCompleterequiredchange"];
         delete?: never;
         options?: never;
         head?: never;
@@ -14403,6 +14437,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orgs/{orgId}/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Provision a username-capable staff identity, membership, and authorized roles */
+        post: operations["postApiV1OrgsByOrgIdUsers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{orgId}/users/{userId}/password-reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Replace a single-tenant user's password with a temporary credential and revoke sessions */
+        post: operations["postApiV1OrgsByOrgIdUsersByUserIdPasswordreset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patient-matches": {
         parameters: {
             query?: never;
@@ -15962,6 +16030,23 @@ export interface paths {
         put?: never;
         /** Deactivate a user platform-wide, regardless of org (platform_ops/admin/owner + step-up, §4.7) */
         post: operations["postApiV1PlatformUsersByIdDeactivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/users/{userId}/password-reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Platform-authorized global password reset, including shared multi-tenant identities */
+        post: operations["postApiV1PlatformUsersByUserIdPasswordreset"];
         delete?: never;
         options?: never;
         head?: never;
@@ -32642,6 +32727,31 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1AuthCredentialstatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        passwordChangeRequired: boolean;
+                        reason: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1AuthMemberships: {
         parameters: {
             query?: never;
@@ -32668,9 +32778,43 @@ export interface operations {
                             defaultLocationIds: string[];
                             displayName: string | null;
                             email: string | null;
+                            username: string | null;
+                            credentialState: "active" | "password_change_required";
                             lastLoginAt: string | null;
                             accountStatus: ("created" | "active" | "suspended" | "deactivated") | null;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AuthPasswordCompleterequiredchange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    currentPassword: string;
+                    newPassword: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        signInRequired: true;
                     };
                 };
             };
@@ -64860,6 +65004,8 @@ export interface operations {
                             defaultLocationIds: string[];
                             displayName: string | null;
                             email: string | null;
+                            username: string | null;
+                            credentialState: "active" | "password_change_required";
                             lastLoginAt: string | null;
                             accountStatus: ("created" | "active" | "suspended" | "deactivated") | null;
                         }[];
@@ -64933,6 +65079,8 @@ export interface operations {
                         defaultLocationIds: string[];
                         displayName: string | null;
                         email: string | null;
+                        username: string | null;
+                        credentialState: "active" | "password_change_required";
                         lastLoginAt: string | null;
                         accountStatus: ("created" | "active" | "suspended" | "deactivated") | null;
                     };
@@ -65164,6 +65312,91 @@ export interface operations {
                 content: {
                     "application/json": {
                         removed: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OrgsByOrgIdUsers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    username: string;
+                    email?: string | null;
+                    temporaryPassword?: string;
+                    generateTemporaryPassword?: boolean;
+                    roleIds: string[];
+                    defaultLocationIds?: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        userId: string;
+                        membershipId: string;
+                        name: string;
+                        username: string;
+                        email: string | null;
+                        /** @constant */
+                        credentialState: "password_change_required";
+                        roleIds: string[];
+                        defaultLocationIds: string[];
+                        temporaryPassword?: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OrgsByOrgIdUsersByUserIdPasswordreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    temporaryPassword?: string;
+                    generateTemporaryPassword?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        sessionsRevoked: true;
+                        /** @constant */
+                        passwordChangeRequired: true;
+                        temporaryPassword?: string;
                     };
                 };
             };
@@ -69570,6 +69803,43 @@ export interface operations {
                         alreadyDeactivated: boolean;
                         sessionsRevoked: number;
                         membershipsRevoked: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformUsersByUserIdPasswordreset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    temporaryPassword?: string;
+                    generateTemporaryPassword?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        sessionsRevoked: true;
+                        /** @constant */
+                        passwordChangeRequired: true;
+                        temporaryPassword?: string;
                     };
                 };
             };

@@ -14,7 +14,7 @@ import "./index.css"; // Tailwind v4 + the WardenX `wx-*` design-system layer (g
 // (the generated `audit/ui-parity/UI_PARITY.md` is the per-module truth — no count is restated here).
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { ScreenLock, identityScreens } from "./modules/02-identity";
+import { CredentialStateGuard, ScreenLock, identityScreens } from "./modules/02-identity";
 import { authorizationScreens } from "./modules/03-authorization";
 import { auditScreens } from "./modules/04-audit";
 import { patientScreens } from "./modules/05-patient";
@@ -118,6 +118,11 @@ if (!rootEl) throw new Error('Root element "#root" not found');
 createRoot(rootEl).render(
   <StrictMode>
     {/* M2 idle screen-lock overlays the authenticated frame (soft re-auth after 5 min idle). */}
-    <AppShell registry={registry} client={client} chromeOverlay={<ScreenLock />} />
+    <AppShell
+      registry={registry}
+      client={client}
+      chromeOverlay={<ScreenLock />}
+      chromeGuard={CredentialStateGuard}
+    />
   </StrictMode>,
 );

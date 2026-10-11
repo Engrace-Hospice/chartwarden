@@ -129,6 +129,8 @@ const toView = (r: MembershipRecord): MembershipView => ({
   defaultLocationIds: r.defaultLocationIds,
   displayName: r.displayName ?? null,
   email: r.email ?? null,
+  username: r.username ?? null,
+  credentialState: r.credentialState ?? "active",
   lastLoginAt: r.lastLoginAt ?? null,
   accountStatus: r.accountStatus ?? null,
 });

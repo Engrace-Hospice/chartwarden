@@ -525,7 +525,9 @@ export function createAuditorEnrolment(deps: AuditorEnrolmentDeps) {
           .from(schema.users)
           .where(eq(schema.users.id, actor.userId))
           .limit(1);
-        if (!user) return refuse<BeganTotp>("session_invalid");
+        // Auditor enrolment is email-invitation-only. A username-only staff identity never reaches
+        // this session class; fail closed if an invalid/misclassified identity has no email label.
+        if (!user?.email) return refuse<BeganTotp>("session_invalid");
         const enrolment = await createTotpEnrolment(user.email, deps.secrets);
         await replacePendingSecret(tx, actor.userId, enrolment.storedSecret);
         await record(tx, actor, "m2.auditor_enrolment.totp_started", "success", {

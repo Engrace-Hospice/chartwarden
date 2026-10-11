@@ -74,6 +74,27 @@ export const UserDeactivateRequestSchema = Type.Object({
   reason: Type.String({ minLength: 1 }),
 });
 
+/** POST /api/v1/orgs/:orgId/users — direct staff provisioning. */
+export const UserProvisionRequestSchema = Type.Object({
+  name: Type.String({ minLength: 1, maxLength: 200 }),
+  username: Type.String({ minLength: 3, maxLength: 32, pattern: "^[A-Za-z0-9_.-]+$" }),
+  email: Type.Optional(Type.Union([Type.String({ maxLength: 320 }), Type.Null()])),
+  temporaryPassword: Type.Optional(Type.String({ minLength: 12, maxLength: 256 })),
+  generateTemporaryPassword: Type.Optional(Type.Boolean()),
+  roleIds: Type.Array(Type.String({ minLength: 1 }), { minItems: 1, uniqueItems: true }),
+  defaultLocationIds: Type.Optional(Type.Array(Type.String({ minLength: 1 }), { uniqueItems: true })),
+});
+
+export const AdminPasswordResetRequestSchema = Type.Object({
+  temporaryPassword: Type.Optional(Type.String({ minLength: 12, maxLength: 256 })),
+  generateTemporaryPassword: Type.Optional(Type.Boolean()),
+});
+
+export const RequiredPasswordChangeRequestSchema = Type.Object({
+  currentPassword: Type.String({ minLength: 1, maxLength: 256 }),
+  newPassword: Type.String({ minLength: 12, maxLength: 256 }),
+});
+
 /** POST /api/v1/collaborators/invite — mint a per-patient magic-link (§7.6). */
 export const CollaboratorInviteRequestSchema = Type.Object({
   patientId: Type.String({ minLength: 1 }),
@@ -112,6 +133,11 @@ export const MembershipViewSchema = Type.Object({
   defaultLocationIds: Type.Array(Type.String()),
   displayName: Type.Union([Type.String(), Type.Null()]),
   email: Type.Union([Type.String(), Type.Null()]),
+  username: Type.Union([Type.String(), Type.Null()]),
+  credentialState: Type.Union([
+    Type.Literal("active"),
+    Type.Literal("password_change_required"),
+  ]),
   lastLoginAt: Type.Union([Type.String(), Type.Null()]),
   accountStatus: Type.Union([AccountStatusSchema, Type.Null()]),
 });
@@ -254,6 +280,34 @@ export const ElevatedApprovalRevokeRequestSchema = Type.Object({
 /** POST /api/v1/users/:id/deactivate — full-offboard acknowledgement (§7.5). */
 export const UserDeactivatedResponseSchema = Type.Object({
   deactivated: Type.Boolean(),
+});
+
+export const UserProvisionedResponseSchema = Type.Object({
+  userId: Type.String(),
+  membershipId: Type.String(),
+  name: Type.String(),
+  username: Type.String(),
+  email: Type.Union([Type.String(), Type.Null()]),
+  credentialState: Type.Literal("password_change_required"),
+  roleIds: Type.Array(Type.String()),
+  defaultLocationIds: Type.Array(Type.String()),
+  /** Present exactly once only when the server generated the temporary credential. */
+  temporaryPassword: Type.Optional(Type.String()),
+});
+
+export const AdminPasswordResetResponseSchema = Type.Object({
+  sessionsRevoked: Type.Literal(true),
+  passwordChangeRequired: Type.Literal(true),
+  temporaryPassword: Type.Optional(Type.String()),
+});
+
+export const CredentialStatusResponseSchema = Type.Object({
+  passwordChangeRequired: Type.Boolean(),
+  reason: Type.Union([Type.String(), Type.Null()]),
+});
+
+export const RequiredPasswordChangeResponseSchema = Type.Object({
+  signInRequired: Type.Literal(true),
 });
 
 /** POST /api/v1/collaborators/invite (201) — the minted link (token delivered out-of-band, §7.6). */

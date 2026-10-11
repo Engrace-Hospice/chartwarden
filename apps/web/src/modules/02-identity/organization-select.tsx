@@ -32,6 +32,19 @@ export function OrganizationSelect(): JSX.Element {
   useEffect(() => {
     let active = true;
     (async () => {
+      const credential = await client.GET("/api/v1/auth/credential-status");
+      if (!active) return;
+      if (credential.data?.passwordChangeRequired) {
+        window.location.replace("/login/change-password");
+        return;
+      }
+      if (credential.error || !credential.data) {
+        setState({
+          kind: "error",
+          message: "Could not verify your account security state. Please sign in again.",
+        });
+        return;
+      }
       const { data, error } = await client.GET("/api/v1/auth/memberships");
       if (!active) return;
       if (error) {

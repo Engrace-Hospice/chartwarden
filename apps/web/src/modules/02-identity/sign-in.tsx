@@ -1,4 +1,4 @@
-import { CenteredCardLayout, t } from "@wardenx/ui";
+import { CenteredCardLayout, t, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/02-identity — Sign In (M2 Auth, AUTH-T07, ADR-0033 §4).
 // Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "Sign in" (/login). Matched to the P0 Pencil frame
 // (wardenx-P0-foundation.pen `a1dbhD`, "Card Sign in"): a single centered card — gold hearth mark +
@@ -8,13 +8,16 @@ import { CenteredCardLayout, t } from "@wardenx/ui";
 // hand off to organization-select. Imports its own M2 package (codePath) + leaves only.
 import { useState } from "react";
 import type { CSSProperties, FormEvent, JSX } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { authClient } from "./auth-client";
+import { authenticationContinuation, continuationPath } from "./auth-continuation";
 import { BrandLockup } from "./brand-lockup";
 
 export function SignIn(): JSX.Element {
+  const client = useApiClient();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
+  const [searchParams] = useSearchParams();
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -23,29 +26,47 @@ export function SignIn(): JSX.Element {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const { data, error: err } = await authClient.signIn.email({ email, password });
-    setBusy(false);
+    const value = identifier.trim();
+    const { data, error: err } = value.includes("@")
+      ? await authClient.signIn.email({ email: value, password })
+      : await authClient.signIn.username({ username: value, password });
     if (err) {
-      setError("Sign-in failed. Check your email and password.");
+      setBusy(false);
+      setError("Invalid username/email or password.");
       return;
     }
     if (data?.twoFactorRedirect) {
+      setBusy(false);
       navigate("/login/2fa"); // a second factor is required before the session is fully established
       return;
     }
-    navigate("/login/organization"); // bind the org for this session
+    const continuation = await authenticationContinuation(client);
+    setBusy(false);
+    const path = continuationPath(continuation);
+    if (path) navigate(path);
+    else
+      setError(
+        continuation.kind === "error" ? continuation.message : "Sign-in could not continue.",
+      );
   }
 
   async function signInWithPasskey(): Promise<void> {
     setBusy(true);
     setError(null);
     const { error: err } = await authClient.signIn.passkey();
-    setBusy(false);
     if (err) {
+      setBusy(false);
       setError("Passkey sign-in failed or was cancelled.");
       return;
     }
-    navigate("/login/organization");
+    const continuation = await authenticationContinuation(client);
+    setBusy(false);
+    const path = continuationPath(continuation);
+    if (path) navigate(path);
+    else
+      setError(
+        continuation.kind === "error" ? continuation.message : "Sign-in could not continue.",
+      );
   }
 
   return (
@@ -57,19 +78,25 @@ export function SignIn(): JSX.Element {
           <p style={subStyle}>Welcome back. Sign in to continue.</p>
         </div>
 
+        {searchParams.get("passwordChanged") === "1" ? (
+          <output style={successStyle}>
+            Your password was changed. Sign in with your new password to continue.
+          </output>
+        ) : null}
+
         <form
           onSubmit={submit}
           style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}
         >
           <label style={fieldWrap}>
-            <span style={labelStyle}>Email</span>
+            <span style={labelStyle}>Username or Email</span>
             <input
-              type="email"
+              type="text"
               autoComplete="username"
-              placeholder="you@agency.org"
+              placeholder="Enter your username or email"
               required
-              value={email}
-              onChange={(ev) => setEmail(ev.target.value)}
+              value={identifier}
+              onChange={(ev) => setIdentifier(ev.target.value)}
               style={inputStyle}
             />
           </label>
@@ -85,8 +112,16 @@ export function SignIn(): JSX.Element {
               style={inputStyle}
             />
           </label>
-          {error ? <p style={errorStyle}>{error}</p> : null}
-          <button type="submit" disabled={busy || !email || !password} style={primaryBtn}>
+          {error ? (
+            <p role="alert" style={errorStyle}>
+              {error}
+            </p>
+          ) : null}
+          <button
+            type="submit"
+            disabled={busy || !identifier.trim() || !password}
+            style={primaryBtn}
+          >
             {busy ? "Signing in…" : "Sign in"}
           </button>
         </form>
@@ -132,6 +167,14 @@ const inputStyle: CSSProperties = {
   color: t.onSurface,
 };
 const errorStyle: CSSProperties = { color: t.error, margin: 0, fontSize: "0.85rem" };
+const successStyle: CSSProperties = {
+  color: "var(--color-success)",
+  background: "color-mix(in srgb, var(--color-success) 10%, transparent)",
+  borderRadius: t.radiusMd,
+  padding: "0.65rem 0.75rem",
+  margin: 0,
+  fontSize: "0.82rem",
+};
 const primaryBtn: CSSProperties = {
   padding: "0.7rem 1rem",
   border: "none",

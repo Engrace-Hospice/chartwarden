@@ -46,6 +46,10 @@ export function ForgotPassword(): JSX.Element {
           <p style={{ margin: 0, color: "var(--color-on-surface-variant)", fontSize: "0.85rem" }}>
             Enter your email and we’ll send you a link to set a new password.
           </p>
+          <p style={{ margin: 0, color: "var(--color-on-surface-variant)", fontSize: "0.78rem" }}>
+            If your account does not have an email address, contact your organization administrator
+            for assistance.
+          </p>
           <label
             style={{
               display: "flex",

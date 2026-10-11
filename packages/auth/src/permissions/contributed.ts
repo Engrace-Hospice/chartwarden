@@ -38,6 +38,15 @@ export const CONTRIBUTED_PERMISSIONS = {
   "member.invite": { resource: "member", action: "invite", category: "admin", abac: "none" },
   // Suspend/reinstate/revoke a membership + default-scope edits (org_admin).
   "member.manage": { resource: "member", action: "manage", category: "admin", abac: "none" },
+  // Direct staff provisioning. Role assignment remains independently bounded by role.assign + ceiling.
+  "user.create": { resource: "user", action: "create", category: "admin", abac: "none" },
+  // Global credential mutation; tenant routes additionally reject shared identities and require step-up.
+  "user.password.reset": {
+    resource: "user_password",
+    action: "reset",
+    category: "admin",
+    abac: "none",
+  },
   // Full offboard — disable credentials everywhere (org_admin own-org / platform_ops any).
   "user.deactivate": { resource: "user", action: "deactivate", category: "admin", abac: "none" },
   // GAP-115 — `POST/GET /orgs/:id/step-up-overrides` (+ DELETE): per-operation tenant step-up TIGHTENING

@@ -26,6 +26,12 @@ export const locationStatus = pgEnum("location_status", [
 
 export const userStatus = pgEnum("user_status", ["created", "active", "suspended", "deactivated"]);
 
+/** Global password lifecycle state; deliberately independent from account and membership status. */
+export const credentialState = pgEnum("credential_state", [
+  "active",
+  "password_change_required",
+]);
+
 /** M1 §3.10 — an idempotency record is either claimed-and-running or finished-with-a-cached-response. */
 export const idempotencyState = pgEnum("idempotency_state", ["pending", "complete"]);
 

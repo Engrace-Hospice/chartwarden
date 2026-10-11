@@ -20,6 +20,7 @@ import {
   createDbSessionContextStore,
   createDbSessionTimeoutEnforcer,
   createIdentityAuth,
+  createIdentityCredentialAdmin,
   createInMemoryFailedLoginStore,
   createLinkSessionMinter,
   getIdentitySession,
@@ -276,6 +277,7 @@ import {
   M3_PLATFORM_JOB_ID,
   createDbAuditorAccessGrantor,
   createDbOrgRoleLookup,
+  createDbProvisioningRoleResolver,
   createDbProposedRoleAttacher,
   createMembershipsHoldingPermissionReader,
   createMembershipsHoldingRoleKeyReader,
@@ -4108,6 +4110,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               effectivePermissions: proposedRoleResolver,
               audit: createTenantAuditExecutor(dbHandle.db),
             }),
+            credentialAdmin: createIdentityCredentialAdmin(auth!),
+            provisioningRoles: createDbProvisioningRoleResolver(dbHandle.db),
             // #138/F-060/F-116 — the day-one dashboard seed, bound the same way as roleAttacher just
             // above and for the identical import-boundary reason (M33's implementation; M2 cannot
             // import it).

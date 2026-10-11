@@ -118,6 +118,72 @@ describe.skipIf(!DB_URL)(
       expect(s.rowCount).toBeGreaterThanOrEqual(1);
     });
 
+    it("provisions and authenticates a username-only identity through the production Better Auth extension", async () => {
+      const { createIdentityCredentialAdmin } = await import("@wardenx/auth");
+      const credentials = createIdentityCredentialAdmin(auth);
+      const username = `user.${Date.now()}`;
+      const temporaryPassword = `Wx9$${crypto.randomUUID()}Qz!`;
+      const replacementPassword = `Vr7#${crypto.randomUUID()}Lp!`;
+      const provisioned = await credentials.provision({
+        name: "Username Only",
+        username: username.toUpperCase(),
+        email: null,
+        password: temporaryPassword,
+      });
+
+      const user = await admin.query(
+        'SELECT email, username, credential_state FROM "user" WHERE id = $1',
+        [provisioned.userId],
+      );
+      expect(user.rows[0]).toEqual({
+        email: null,
+        username,
+        credential_state: "password_change_required",
+      });
+      const account = await admin.query(
+        "SELECT password_hash FROM account WHERE user_id=$1 AND provider_id='credential'",
+        [provisioned.userId],
+      );
+      expect(account.rows[0].password_hash).toMatch(/^\$argon2id\$/);
+
+      const signIn = (await auth.api.signInUsername({
+        body: { username: username.toUpperCase(), password: temporaryPassword },
+        asResponse: true,
+      })) as Response;
+      expect(signIn.status).toBe(200);
+      const payload = (await signIn.json()) as { token: string; user: { id: string } };
+      expect(payload.user.id).toBe(provisioned.userId);
+      expect(
+        await admin.query("SELECT id FROM session WHERE token=$1 AND user_id=$2", [
+          payload.token,
+          provisioned.userId,
+        ]),
+      ).toMatchObject({ rowCount: 1 });
+
+      await credentials.replacePassword(provisioned.userId, replacementPassword);
+      await expect(
+        auth.api.signInUsername({ body: { username, password: temporaryPassword } }),
+      ).rejects.toThrow();
+      expect(
+        (
+          (await auth.api.signInUsername({
+            body: { username, password: replacementPassword },
+            asResponse: true,
+          })) as Response
+        ).status,
+      ).toBe(200);
+
+      // A SERVER_ONLY endpoint remains absent from the mounted Better Auth router.
+      const hidden = await auth.handler(
+        new Request("http://localhost:3000/api/auth/_wardenx-internal/replace-identity-password", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ userId: provisioned.userId, password: replacementPassword }),
+        }),
+      );
+      expect(hidden.status).toBe(404);
+    });
+
     it("password reset issues a token, sets a new password, and rotates the credential (AUTH polish)", async () => {
       // The token-capturing override gives the single-use token directly (Better Auth puts it in the
       // reset-URL path, not a ?token= query — so the callback arg, not URL parsing, is the reliable source).

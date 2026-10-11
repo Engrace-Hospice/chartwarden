@@ -7,7 +7,7 @@ import { Modal } from "@wardenx/ui";
 // module-free), so it covers only the authenticated frame — the chromeless /login flow is never locked.
 //
 // The idle interval is the platform floor SESSION_POLICY.screenLockSec (one source of truth, §11 D1).
-// Unlock soft-re-auths the SAME user (authClient.signIn.email with the session's email), which the
+// Unlock soft-re-auths the SAME user (email when present, otherwise the session username), which the
 // server is the authoritative enforcer of. The screen-lock pgEnum/lifecycle is server-tracked; this is
 // the client surface. The lock applies only to the classes in SESSION_POLICY.screenLockClasses
 // (staff/auditor — §2.2.4 screenLockApplies); external-collaborator / funeral-home magic-link windows
@@ -30,7 +30,11 @@ export function ScreenLock(): JSX.Element | null {
   // `applies` is undefined until the session resolves; null-render until then (don't arm prematurely).
   const [applies, setApplies] = useState<boolean | undefined>(undefined);
   const [locked, setLocked] = useState(false);
-  const [email, setEmail] = useState<string | null>(null);
+  const [identity, setIdentity] = useState<{
+    kind: "email" | "username";
+    value: string;
+    userId: string;
+  } | null>(null);
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -43,12 +47,17 @@ export function ScreenLock(): JSX.Element | null {
     let alive = true;
     void authClient.getSession().then(({ data }) => {
       if (!alive) return;
-      if (!data?.user?.email) {
+      const resolved = data?.user?.email
+        ? { kind: "email" as const, value: data.user.email, userId: data.user.id }
+        : data?.user?.username
+          ? { kind: "username" as const, value: data.user.username, userId: data.user.id }
+          : null;
+      if (!resolved) {
         setApplies(false);
         return;
       }
-      setEmail(data.user.email);
-      setApplies(screenLockApplies(data.session?.sessionClass));
+      setIdentity(resolved);
+      setApplies(screenLockApplies(data?.session?.sessionClass));
     });
     return () => {
       alive = false;
@@ -74,14 +83,31 @@ export function ScreenLock(): JSX.Element | null {
 
   async function unlock(e: FormEvent): Promise<void> {
     e.preventDefault();
-    if (!email) return;
+    if (!identity) return;
     setBusy(true);
     setError(null);
-    const { error: err } = await authClient.signIn.email({ email, password });
-    setBusy(false);
+    const { data, error: err } =
+      identity.kind === "email"
+        ? await authClient.signIn.email({ email: identity.value, password })
+        : await authClient.signIn.username({ username: identity.value, password });
     if (err) {
+      setBusy(false);
       setError("That password didn’t match. Try again.");
       setPassword("");
+      return;
+    }
+    if (data?.twoFactorRedirect) {
+      setBusy(false);
+      setError("Two-factor verification is required. Sign out and complete a full sign-in.");
+      setPassword("");
+      return;
+    }
+    const refreshed = await authClient.getSession();
+    setBusy(false);
+    if (refreshed.data?.user.id !== identity.userId) {
+      await authClient.signOut().catch(() => undefined);
+      clearAllDrafts();
+      window.location.assign("/login");
       return;
     }
     setPassword("");
@@ -100,9 +126,9 @@ export function ScreenLock(): JSX.Element | null {
         <h1 style={{ margin: 0, fontSize: "1.05rem" }}>Locked</h1>
         <p style={{ margin: 0, color: "var(--color-on-surface-variant)", fontSize: "0.85rem" }}>
           Your screen locked after inactivity.{" "}
-          {email ? (
+          {identity ? (
             <>
-              Enter your password to continue as <strong>{email}</strong>.
+              Enter your password to continue as <strong>{identity.value}</strong>.
             </>
           ) : (
             "Confirm your password to continue."

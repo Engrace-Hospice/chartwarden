@@ -69,6 +69,37 @@ export type OrgRoleLookup = (
   roleKeys: readonly string[],
 ) => Promise<readonly ProposableRole[]>;
 
+/** M02 provisioning port: turn tenant-scoped role ids into keys without allowing foreign ids. */
+export interface ProvisioningRoleResolver {
+  resolveKeys(organizationId: string, roleIds: readonly string[]): Promise<readonly string[]>;
+}
+
+export function createDbProvisioningRoleResolver(db: DbClient): ProvisioningRoleResolver {
+  return {
+    async resolveKeys(organizationId, roleIds) {
+      const wanted = [...new Set(roleIds)];
+      if (wanted.length === 0) return [];
+      const rows = await withOrgContext(db, { organizationId, userId: "" }, (tx) =>
+        tx
+          .select({ id: schema.roles.id, key: schema.roles.key })
+          .from(schema.roles)
+          .where(
+            and(
+              eq(schema.roles.organizationId, organizationId),
+              inArray(schema.roles.id, wanted),
+              eq(schema.roles.enabled, true),
+            ),
+          ),
+      );
+      // One generic result prevents a foreign role id from becoming a cross-tenant existence oracle.
+      if (rows.length !== wanted.length)
+        throw new WardenXError("INVALID_ROLE", "one or more roles are unavailable", 422);
+      const byId = new Map(rows.map((row) => [row.id, row.key]));
+      return wanted.map((id) => byId.get(id)!);
+    },
+  };
+}
+
 /** Org-scoped (RLS + explicit predicate) lookup over `role` + `role_permission`. */
 export function createDbOrgRoleLookup(db: DbClient): OrgRoleLookup {
   return async (organizationId, roleKeys) => {

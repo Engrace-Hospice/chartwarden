@@ -152,6 +152,10 @@ export interface MembershipRecord {
   displayName?: string | null;
   /** The user's email (M1 `user.email`); null only in slice seeds that omit it. */
   email?: string | null;
+  /** Canonical global username; null for legacy email-only identities. */
+  username?: string | null;
+  /** Safe password lifecycle projection (never credential material). */
+  credentialState?: "active" | "password_change_required";
   /** ISO timestamp of the user's most recent session start (M1 `session`), or null if never seen. */
   lastLoginAt?: string | null;
   /** The user's account-level status (M1 `user.status`) — drives the "locked accounts" KPI. */
@@ -171,6 +175,8 @@ export interface MembershipView {
   /** The wrapped user's display name, email, last-login and account status (FB-T12). */
   readonly displayName: string | null;
   readonly email: string | null;
+  readonly username: string | null;
+  readonly credentialState: "active" | "password_change_required";
   readonly lastLoginAt: string | null;
   readonly accountStatus: AccountStatus | null;
 }
@@ -221,6 +227,8 @@ export interface MembershipRepository {
     organizationName: string;
     defaultLocationIds: string[];
   }): Promise<MembershipRecord> | MembershipRecord;
+  /** Hard-delete only a just-created membership while compensating failed provisioning. */
+  removeProvisioned(membershipId: string): Promise<void> | void;
   /** Count of `active` memberships carrying `org_admin` (last-admin lockout guard). */
   activeAdminCount(organizationId: string): Promise<number> | number;
 }
@@ -742,7 +750,8 @@ export function createInMemoryMembershipRepository(seed: MembershipRecord[] = []
         !needle ||
         r.userId.toLowerCase().includes(needle) ||
         (r.displayName?.toLowerCase().includes(needle) ?? false) ||
-        (r.email?.toLowerCase().includes(needle) ?? false);
+        (r.email?.toLowerCase().includes(needle) ?? false) ||
+        (r.username?.toLowerCase().includes(needle) ?? false);
       return [...rows.values()].filter((r) => r.organizationId === organizationId && matches(r));
     },
     get: (membershipId) => rows.get(membershipId) ?? null,
@@ -770,6 +779,9 @@ export function createInMemoryMembershipRepository(seed: MembershipRecord[] = []
       };
       rows.set(row.membershipId, row);
       return row;
+    },
+    removeProvisioned: (membershipId) => {
+      rows.delete(membershipId);
     },
     activeAdminCount: (organizationId) =>
       [...rows.values()].filter(

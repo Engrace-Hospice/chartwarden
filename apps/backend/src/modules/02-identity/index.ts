@@ -276,6 +276,15 @@ export {
   auditUserInvited,
 } from "./audit/identity-audit";
 export { registerIdentityRoutes } from "./routes/identity-routes";
+export {
+  createDbCredentialLifecycleStore,
+  createUserProvisioningService,
+  generateTemporaryPassword,
+  type CredentialLifecycleStore,
+  type ProvisioningRoleResolver,
+  type UserProvisioningService,
+} from "./credential-lifecycle";
+export { registerCredentialRoutes, type CredentialRouteDeps } from "./routes/credential-routes";
 export { registerLinkRoutes } from "./routes/link-routes";
 export {
   type DbCollaboratorLinkStoreDeps,
@@ -334,6 +343,10 @@ import type { FastifyInstance } from "fastify";
 import type Redis from "ioredis";
 import { registerM2AbacPredicates as _registerM2AbacPredicates } from "./abac-predicates";
 import { createDbCollaboratorLinkStore as _dbCollaboratorLinks } from "./collaborator-link-store-db";
+import {
+  createDbCredentialLifecycleStore as _dbCredentialLifecycle,
+  createUserProvisioningService as _userProvisioningService,
+} from "./credential-lifecycle";
 import type {
   DeviceAttestationChallenge as _DeviceAttestationChallenge,
   DeviceAttestationChallengeStore as _DeviceAttestationChallengeStore,
@@ -363,6 +376,7 @@ import {
   createDrizzleOrganizationLifecycleWriter as _organizationLifecycleWriter,
 } from "./organization-lifecycle";
 import { registerDeviceAttestationRoutes as _registerDeviceAttestationRoutes } from "./routes/device-attestation";
+import { registerCredentialRoutes as _registerCredentialRoutes } from "./routes/credential-routes";
 import { registerIdentityRoutes as _registerIdentityRoutes } from "./routes/identity-routes";
 import {
   type TaxIdCipherPort,
@@ -468,12 +482,20 @@ export function mountIdentityRoutes(
     funeralCases?: IdentityRouteDeps["funeralCases"];
     /** GAP-005 - the MFA matrix gate `select-organization` consults before binding an organization. */
     mfaGate?: IdentityRouteDeps["mfaGate"];
+    /** Better Auth credential lifecycle port (server-only extension). */
+    credentialAdmin?: import("@wardenx/auth").IdentityCredentialAdmin;
+    /** M3 role-id resolver; M2 keeps the structural port to preserve module boundaries. */
+    provisioningRoles?: import("./credential-lifecycle").ProvisioningRoleResolver;
   },
 ): void {
+  const actors = _ctxActor();
+  const memberships = _dbMemberships(db, admin);
+  const sessions = _dbSessionWriter(db);
+  const audit = _orgScopedAuditExecutor(db);
   const deps: IdentityRouteDeps = {
-    actors: _ctxActor(),
-    memberships: _dbMemberships(db, admin),
-    sessions: _dbSessionWriter(db),
+    actors,
+    memberships,
+    sessions,
     invitations: _dbInvitations(db),
     collaborators: invite?.linkPatientSite
       ? _dbCollaboratorLinks(db, { site: invite.linkPatientSite })
@@ -481,7 +503,7 @@ export function mountIdentityRoutes(
     users: _dbUserDirectory(db),
     // #205 — fixes a real RLS bug found while wiring the outbox: `audit: db` (bare, no org context)
     // could never satisfy `audit_event_org_append`'s WITH CHECK. See createOrgScopedAuditExecutor's doc.
-    audit: _orgScopedAuditExecutor(db),
+    audit,
     // GAP-043 — the §3.7 named-approval-authority write surface over the real table. This is what makes
     // M27's approver predicate reachable: the seam READS `membership_elevated_approval`, these routes are
     // the only thing that ever puts a row in it.
@@ -506,6 +528,29 @@ export function mountIdentityRoutes(
     organizations: { getStatus: _organizationLifecycleWriter(db).getStatus },
   };
   _registerIdentityRoutes(app, deps);
+  if (
+    invite?.credentialAdmin &&
+    invite.provisioningRoles &&
+    invite.roleAttacher &&
+    invite.proposedRoleGuard
+  ) {
+    const lifecycle = _dbCredentialLifecycle(db);
+    _registerCredentialRoutes(app, {
+      actors,
+      audit,
+      lifecycle,
+      service: _userProvisioningService({
+        credentials: invite.credentialAdmin,
+        lifecycle,
+        memberships,
+        sessions,
+        roles: invite.provisioningRoles,
+        roleGuard: invite.proposedRoleGuard,
+        roleAttacher: invite.roleAttacher,
+        audit,
+      }),
+    });
+  }
   // §4.7 `user.deactivate` "platform_ops (any)" — the cross-org offboard the org-bounded tenant route
   // (GAP-001) no longer serves. Its ABAC predicate is registered here too (idempotent) so the route never
   // depends on `mountOrganizationLifecycleRoutes` having run first.
