@@ -6,7 +6,8 @@ acks → 835 → posting → denials → NOTR).
 | Document | What it is |
 |---|---|
 | [`ADAPTER_EXPANSION_PLAN_20261011.md`](./ADAPTER_EXPANSION_PLAN_20261011.md) | Plan: `ClearinghouseTransport` port, conformance suite, Stedi first, further clearinghouses after. |
-| [`STEDI_QUESTIONS_20261008.md`](./STEDI_QUESTIONS_20261008.md) | Questions sent to Stedi, their answers (2026-10-09) and sandbox follow-ups Q14–Q19. |
+| [`STEDI_QUESTIONS_20261008.md`](./STEDI_QUESTIONS_20261008.md) | Questions sent to Stedi, their answers (2026-10-09) and sandbox follow-ups Q14–Q19, build follow-ups Q20–Q31. |
+| [`STEDI_WRITTEN_MESSAGE_20261011.md`](./STEDI_WRITTEN_MESSAGE_20261011.md) | Send-ready written message to Stedi (blocking items first). Draft, not yet sent. |
 | [`STEDI_SANDBOX_FINDINGS_20261009.md`](./STEDI_SANDBOX_FINDINGS_20261009.md) | Sandbox probe results (edit rules, payer records, error shapes), D/O/U-labelled answers. |
 | [`STEDI_TRANSPORT_CONTRACT_20261011.md`](./STEDI_TRANSPORT_CONTRACT_20261011.md) | What the `StediTransport` adapter may rely on, by source, and what is still unverified. |
 | [`STEDI_CALL_AGENDA_20261009.md`](./STEDI_CALL_AGENDA_20261009.md) | 30-minute technical-call agenda. |
