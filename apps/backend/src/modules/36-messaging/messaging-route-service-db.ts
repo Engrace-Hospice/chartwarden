@@ -209,6 +209,41 @@ async function effectivelyVisibleChannels<T extends EffectiveChannelAccessCandid
   });
 }
 
+async function careTeamTitlesForAuthorizedChannels(
+  orgId: string,
+  channels: readonly EffectiveChannelAccessCandidate[],
+): Promise<ReadonlyMap<string, string>> {
+  const patientIds = [
+    ...new Set(
+      channels.flatMap((channel) =>
+        channel.kind === "care_team" && channel.subjectId ? [channel.subjectId] : [],
+      ),
+    ),
+  ];
+  const titles = new Map<string, string>();
+  let nextPatient = 0;
+  const workers = Array.from({ length: Math.min(8, patientIds.length) }, async () => {
+    while (nextPatient < patientIds.length) {
+      const patientId = patientIds[nextPatient++];
+      if (!patientId) continue;
+      try {
+        const patient = await getSeam("PatientReader").findById({
+          organizationId: orgId,
+          id: patientId,
+        });
+        if (!patient || patient.organizationId !== orgId) continue;
+        const displayName = `${patient.firstName} ${patient.lastName}`.trim();
+        if (displayName) titles.set(patientId, `${displayName} · Care Team`);
+      } catch {
+        // Patient identity is PHI: an unavailable ownership seam degrades to the generic,
+        // already-authorized title instead of exposing stale or guessed metadata.
+      }
+    }
+  });
+  await Promise.all(workers);
+  return titles;
+}
+
 function dmParticipantKey(userId: string, peerUserId: string): string {
   return [userId, peerUserId].sort().join(":");
 }
@@ -652,6 +687,10 @@ export function createDbMessagingRouteService(
       });
       const rows = await effectivelyVisibleChannels(orgId, userId, candidates, part2Gate);
       if (rows.length === 0) return [];
+      // Resolve minimum-necessary patient identity only after stale memberships and clinical access
+      // have been rejected. Calls stay outside the M36 transaction because M5 owns this data and its
+      // seam may use the same connection pool.
+      const careTeamTitles = await careTeamTitlesForAuthorizedChannels(orgId, rows);
 
       return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
         const channelIds = rows.map((row) => row.channelId);
@@ -793,7 +832,9 @@ export function createDbMessagingRouteService(
               title:
                 r.kind === "dm"
                   ? peerByChannel.get(r.channelId)?.displayName?.trim() || "Direct message"
-                  : r.title,
+                  : r.kind === "care_team" && r.subjectId
+                    ? (careTeamTitles.get(r.subjectId) ?? r.title ?? "Care Team")
+                    : r.title,
               subjectId: r.subjectId,
               archivedAt: r.isArchived ? (iso(r.archivesAt) ?? iso(r.updatedAt)) : null,
               unreadCount: unread.get(r.channelId) ?? 0,

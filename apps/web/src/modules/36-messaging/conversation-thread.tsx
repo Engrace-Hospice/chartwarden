@@ -88,6 +88,24 @@ function referenceInput(reference: MessageReferenceInput) {
   };
 }
 
+function activeMentionQuery(
+  value: string,
+  cursor: number,
+  references: readonly MessageReferenceInput[],
+): { query: string; start: number } | null {
+  const before = value.slice(0, cursor);
+  const match = before.match(/(?:^|\s)@([\p{L}\p{N} .'-]{0,60})$/u);
+  if (!match) return null;
+  const query = match[1] ?? "";
+  const start = cursor - query.length - 1;
+  // A selected token ends mention discovery. Text after its separating space is ordinary prose;
+  // without this guard the regex treated the token and every following word as one long search.
+  if (references.some((reference) => reference.start === start && cursor >= reference.end)) {
+    return null;
+  }
+  return { query, start };
+}
+
 function MessageText({ message }: { message: Message }): JSX.Element {
   const references = [...(message.references ?? [])]
     .filter(
@@ -166,6 +184,21 @@ export function ConversationThread({
   const composingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mentionGenerationRef = useRef(0);
+
+  useLayoutEffect(() => {
+    // Recalculate after every controlled-value change, including selection and send/reset.
+    void draft;
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    const maximum = Number.parseFloat(window.getComputedStyle(textarea).maxHeight);
+    const nextHeight = Number.isFinite(maximum)
+      ? Math.min(textarea.scrollHeight, maximum)
+      : textarea.scrollHeight;
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY =
+      Number.isFinite(maximum) && textarea.scrollHeight > maximum ? "auto" : "hidden";
+  }, [draft]);
 
   const markReadBoundary = useCallback(
     async (candidateMessages: readonly Message[]): Promise<void> => {
@@ -737,16 +770,11 @@ export function ConversationThread({
             aria-controls={mentionQuery ? "messaging-mention-suggestions" : undefined}
             onChange={(event) => {
               const next = event.target.value;
-              setDraftReferences((current) => reconcileReferences(draft, next, current));
+              const nextReferences = reconcileReferences(draft, next, draftReferences);
+              setDraftReferences(nextReferences);
               setDraft(next);
               const cursor = event.target.selectionStart ?? next.length;
-              const before = next.slice(0, cursor);
-              const match = before.match(/(?:^|\s)@([\p{L}\p{N} .'-]{0,60})$/u);
-              setMentionQuery(
-                match
-                  ? { query: match[1] ?? "", start: cursor - (match[1]?.length ?? 0) - 1 }
-                  : null,
-              );
+              setMentionQuery(activeMentionQuery(next, cursor, nextReferences));
               if (sendError) setSendError(null);
             }}
             onKeyDown={handleComposerKey}

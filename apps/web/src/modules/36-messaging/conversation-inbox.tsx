@@ -164,9 +164,13 @@ export function ConversationInbox({
                     </span>
                   ) : null}
                   {channel.mentionCount > 0 ? (
-                    <span className="sr-only">
-                      {channel.mentionCount} unread{" "}
-                      {channel.mentionCount === 1 ? "mention" : "mentions"}
+                    <span
+                      className="wx-messaging-mention"
+                      aria-label={`${channel.mentionCount} unread ${
+                        channel.mentionCount === 1 ? "mention" : "mentions"
+                      }`}
+                    >
+                      @{channel.mentionCount > 9 ? "9+" : channel.mentionCount}
                     </span>
                   ) : null}
                 </button>

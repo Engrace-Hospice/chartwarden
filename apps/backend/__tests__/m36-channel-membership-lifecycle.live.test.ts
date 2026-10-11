@@ -442,9 +442,9 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
   it("an unassigned clinician is denied immediately (no portal activity), the consumer then soft-removes them", async () => {
     const service = createDbMessagingRouteService(handle.db);
     expect(await service.canViewChannel(orgA, msw, channelId)).toBe(true);
-    expect((await service.listChannels(orgA, msw)).map((channel) => channel.channelId)).toContain(
-      channelId,
-    );
+    expect(
+      (await service.listChannels(orgA, msw)).find((channel) => channel.channelId === channelId),
+    ).toMatchObject({ title: "Care Team · Care Team" });
 
     await admin.query(
       `UPDATE patient_assignment SET unassigned_at = CURRENT_DATE
