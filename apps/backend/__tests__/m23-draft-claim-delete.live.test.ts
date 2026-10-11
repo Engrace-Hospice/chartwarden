@@ -14,7 +14,9 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { repositories } from "@wardenx/billing";
 import { type DbClient, createDbClient } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { M23WriteActor } from "../src/modules/23-billing-medicare/routes/actor";
@@ -753,6 +755,140 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
       );
       expect(rows).toHaveLength(7);
       for (const r of rows) expect(r.proconfig).toContain("search_path=pg_catalog, pg_temp");
+    });
+  });
+  // ───────────────────────────────────────────────────────────────────────────────────────────────
+  // Migration 1068 — the physician-name + diagnosis snapshot is writable only while the claim is DRAFT.
+  // ───────────────────────────────────────────────────────────────────────────────────────────────
+  describe("physician / diagnosis snapshot (migration 1068)", () => {
+    const SNAP_A = {
+      attendingPhysicianFirstName: "Ada",
+      attendingPhysicianLastName: "Lovelace",
+      certifyingPhysicianFirstName: null,
+      certifyingPhysicianLastName: null,
+      diagnosisSnapshot: [{ icd10Code: "C3490", sequence: 1, qualifier: "ABK" as const }],
+    };
+    const SNAP_B = {
+      attendingPhysicianFirstName: "Grace",
+      attendingPhysicianLastName: "Hopper",
+      certifyingPhysicianFirstName: "Ada",
+      certifyingPhysicianLastName: "Lovelace",
+      diagnosisSnapshot: [
+        { icd10Code: "C787", sequence: 1, qualifier: "ABK" as const },
+        { icd10Code: "J449", sequence: 2, qualifier: "ABF" as const },
+      ],
+    };
+    const inCtx = <T>(
+      org: string,
+      user: string,
+      fn: (r: repositories.ClaimRepository) => Promise<T>,
+    ) =>
+      withOrgContext(handle.db, { organizationId: org, userId: user }, (tx) =>
+        fn(new repositories.ClaimRepository(tx as never)),
+      );
+    const snapshotRow = async (claimId: string) =>
+      (
+        await admin.query(
+          `SELECT attending_physician_last_name AS al, diagnosis_snapshot AS dx FROM claim WHERE id=$1`,
+          [claimId],
+        )
+      ).rows[0];
+
+    it("a new claim defaults to an empty snapshot; a DRAFT's snapshot is replaced and read back", async () => {
+      const { claimId } = await seedClaim(ORG_A, "DRAFT");
+      expect(await inCtx(ORG_A, USER_A, (r) => r.snapshotFor(claimId))).toMatchObject({
+        attendingPhysicianLastName: null,
+        diagnosisSnapshot: [],
+      });
+      expect(await inCtx(ORG_A, USER_A, (r) => r.replaceDraftSnapshot(claimId, SNAP_A))).toBe(true);
+      expect(await inCtx(ORG_A, USER_A, (r) => r.snapshotFor(claimId))).toEqual(SNAP_A);
+      // Re-assembly replaces, it does not append.
+      await inCtx(ORG_A, USER_A, (r) => r.replaceDraftSnapshot(claimId, SNAP_B));
+      expect(await inCtx(ORG_A, USER_A, (r) => r.snapshotFor(claimId))).toEqual(SNAP_B);
+    });
+
+    it("every non-DRAFT state refuses a snapshot replacement (service guard and database trigger)", async () => {
+      for (const state of ["VALIDATING", "READY", "SUBMITTED", "ACK_ACCEPTED", "PAID", "VOIDED"]) {
+        const { claimId } = await seedClaim(ORG_A, "DRAFT");
+        await inCtx(ORG_A, USER_A, (r) => r.replaceDraftSnapshot(claimId, SNAP_A));
+        await admin.query("UPDATE claim SET state=$2 WHERE id=$1", [claimId, state]);
+        await expect(
+          inCtx(ORG_A, USER_A, (r) => r.replaceDraftSnapshot(claimId, SNAP_B)),
+        ).rejects.toMatchObject({ code: "CLAIM_SNAPSHOT_IMMUTABLE" });
+        // The trigger holds even for a raw statement as the app role (the service guard is not the only guard).
+        await asApp(ORG_A, async (c) => {
+          await expect(
+            c.query("UPDATE claim SET diagnosis_snapshot='[]'::jsonb WHERE id=$1", [claimId]),
+          ).rejects.toThrow(/M23_CLAIM_SNAPSHOT_IMMUTABLE/);
+        });
+        await asApp(ORG_A, async (c) => {
+          await expect(
+            c.query(
+              "UPDATE claim SET attending_physician_first_name='X', attending_physician_last_name='Y' WHERE id=$1",
+              [claimId],
+            ),
+          ).rejects.toThrow(/M23_CLAIM_SNAPSHOT_IMMUTABLE/);
+        });
+        expect((await snapshotRow(claimId)).dx).toEqual(SNAP_A.diagnosisSnapshot);
+      }
+    });
+
+    it("leaving DRAFT with the snapshot unchanged is fine, but not while rewriting it", async () => {
+      const { claimId } = await seedClaim(ORG_A, "DRAFT");
+      await inCtx(ORG_A, USER_A, (r) => r.replaceDraftSnapshot(claimId, SNAP_A));
+      await asApp(ORG_A, async (c) => {
+        await expect(
+          c.query(
+            "UPDATE claim SET state='VALIDATING', diagnosis_snapshot='[]'::jsonb WHERE id=$1",
+            [claimId],
+          ),
+        ).rejects.toThrow(/M23_CLAIM_SNAPSHOT_IMMUTABLE/);
+      });
+      await asApp(ORG_A, async (c) => {
+        const r = await c.query("UPDATE claim SET state='VALIDATING' WHERE id=$1", [claimId]);
+        expect(r.rowCount).toBe(1);
+      });
+    });
+
+    it("is tenant-isolated: org B can neither read nor replace org A's snapshot", async () => {
+      const { claimId } = await seedClaim(ORG_A, "DRAFT");
+      await inCtx(ORG_A, USER_A, (r) => r.replaceDraftSnapshot(claimId, SNAP_A));
+      expect(await inCtx(ORG_B, USER_B, (r) => r.snapshotFor(claimId))).toBeNull();
+      expect(await inCtx(ORG_B, USER_B, (r) => r.replaceDraftSnapshot(claimId, SNAP_B))).toBe(
+        false,
+      );
+      await asApp(ORG_B, async (c) => {
+        const r = await c.query("UPDATE claim SET diagnosis_snapshot='[]'::jsonb WHERE id=$1", [
+          claimId,
+        ]);
+        expect(r.rowCount).toBe(0);
+      });
+      expect((await snapshotRow(claimId)).dx).toEqual(SNAP_A.diagnosisSnapshot);
+    });
+
+    it("rejects half a name and a non-array / oversized diagnosis snapshot", async () => {
+      const { claimId } = await seedClaim(ORG_A, "DRAFT");
+      await expect(
+        admin.query("UPDATE claim SET certifying_physician_first_name='Ada' WHERE id=$1", [
+          claimId,
+        ]),
+      ).rejects.toThrow(/claim_certifying_physician_name_chk/);
+      await expect(
+        admin.query("UPDATE claim SET diagnosis_snapshot='{}'::jsonb WHERE id=$1", [claimId]),
+      ).rejects.toThrow(/claim_diagnosis_snapshot_shape_chk/);
+      await expect(
+        admin.query(
+          "UPDATE claim SET diagnosis_snapshot=(SELECT jsonb_agg(i) FROM generate_series(1,26) i) WHERE id=$1",
+          [claimId],
+        ),
+      ).rejects.toThrow(/claim_diagnosis_snapshot_shape_chk/);
+    });
+
+    it("a DRAFT claim with a snapshot is still deletable (the snapshot lives on the claim row)", async () => {
+      const { claimId } = await seedClaim(ORG_A, "DRAFT");
+      await inCtx(ORG_A, USER_A, (r) => r.replaceDraftSnapshot(claimId, SNAP_A));
+      await svc().deleteDraftClaim(actorA, claimId);
+      expect(await count("claim", "id=$1", [claimId])).toBe(0);
     });
   });
 });

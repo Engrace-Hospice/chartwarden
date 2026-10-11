@@ -13,7 +13,9 @@
 //
 // No PHI / no MBI is ever read or written here (D13 / §3.6 / §8.7).
 import * as schema from "@wardenx/db/schema";
+import { WardenXError } from "@wardenx/types";
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import type { ClaimAssemblySnapshot } from "../claim-lines/claim-snapshot";
 import type { ClaimState, TypeOfBill } from "../contracts";
 import {
   type BillingDb,
@@ -387,6 +389,54 @@ export class ClaimRepository {
       )
       .returning({ id: C.id });
     return rows.length > 0;
+  }
+
+  /**
+   * The claim's assembly-time snapshot (migration 1068): the physicians' names and the diagnosis sequence as they
+   * stood when it was assembled, or `null` when the claim does not exist. Never re-derived from M40 / M7.
+   */
+  async snapshotFor(id: string): Promise<ClaimAssemblySnapshot | null> {
+    const [row] = await this.db
+      .select({
+        attendingPhysicianFirstName: C.attendingPhysicianFirstName,
+        attendingPhysicianLastName: C.attendingPhysicianLastName,
+        certifyingPhysicianFirstName: C.certifyingPhysicianFirstName,
+        certifyingPhysicianLastName: C.certifyingPhysicianLastName,
+        diagnosisSnapshot: C.diagnosisSnapshot,
+      })
+      .from(C)
+      .where(eq(C.id, id))
+      .limit(1);
+    return row ?? null;
+  }
+
+  /**
+   * Replace the snapshot of a claim that is still DRAFT (re-assembly). Guarded in the statement (`state = 'DRAFT'`)
+   * and again by the `trg_claim_snapshot_immutable` trigger; a claim in any other state is left untouched and the
+   * call throws `CLAIM_SNAPSHOT_IMMUTABLE` (409). No version bump: like the other derived projections, it is not a
+   * user edit. Returns `false` when the claim does not exist.
+   */
+  async replaceDraftSnapshot(id: string, snapshot: ClaimAssemblySnapshot): Promise<boolean> {
+    const rows = await this.db
+      .update(C)
+      .set({
+        attendingPhysicianFirstName: snapshot.attendingPhysicianFirstName,
+        attendingPhysicianLastName: snapshot.attendingPhysicianLastName,
+        certifyingPhysicianFirstName: snapshot.certifyingPhysicianFirstName,
+        certifyingPhysicianLastName: snapshot.certifyingPhysicianLastName,
+        diagnosisSnapshot: snapshot.diagnosisSnapshot.map((d) => ({ ...d })),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(C.id, id), eq(C.state, claimStateCodec.toDb("draft"))))
+      .returning({ id: C.id });
+    if (rows.length > 0) return true;
+    const current = await this.findById(id);
+    if (current === null) return false;
+    throw new WardenXError(
+      "CLAIM_SNAPSHOT_IMMUTABLE",
+      `the snapshot of a claim in state '${current.state}' cannot be replaced; only a DRAFT claim's can`,
+      409,
+    );
   }
 
   /**

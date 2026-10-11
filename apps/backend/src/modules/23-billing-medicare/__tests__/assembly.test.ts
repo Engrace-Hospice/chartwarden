@@ -1505,3 +1505,81 @@ describe("claim_total_matches_lines — the assembled claim always balances (SIA
     expect(res.initialValidationOutcome).toBe("all_pass");
   });
 });
+
+describe("claim assembly — physician name + diagnosis snapshot (migration 1068)", () => {
+  const physician = (npi: string, firstName: string, lastName: string) => ({
+    npi,
+    firstName,
+    lastName,
+    status: "active" as const,
+    licenseUnexpiredOnServiceDates: true,
+  });
+  const dx = (
+    position: number,
+    code: string,
+    relationship: "terminal" | "related" | "unrelated",
+  ) => ({
+    position,
+    code,
+    relationship,
+  });
+
+  const seamsWith = (
+    attending: ReturnType<typeof physician> | null,
+    hospicePhysician: ReturnType<typeof physician> | null,
+    sequence: ReturnType<typeof dx>[] = [],
+  ) =>
+    buildSeams({
+      diagnoses: { forRange: async () => NO_WITHHOLD(sequence) },
+      mdm: {
+        ...buildSeams().mdm,
+        resolveClinicalParticipants: async () => ({
+          attending,
+          hospicePhysician,
+          placeOfService: "home",
+        }),
+      },
+    });
+
+  it("persists both physicians' names and the ordered diagnosis snapshot on the claim", async () => {
+    const svc = buildClaimAssemblyService(
+      makeFakeDb() as never,
+      seamsWith(
+        physician("1234567893", "Ada", "Lovelace"),
+        physician("1982736455", "Grace", "Hopper"),
+        [dx(2, "J449", "related"), dx(1, "C3490", "terminal")],
+      ),
+    );
+    await svc.assemble(ACTOR, REQUEST);
+    const claim = [...store.claims.values()][0];
+    expect(claim).toMatchObject({
+      attendingPhysicianFirstName: "Ada",
+      attendingPhysicianLastName: "Lovelace",
+      certifyingPhysicianFirstName: "Grace",
+      certifyingPhysicianLastName: "Hopper",
+      diagnosisSnapshot: [
+        { icd10Code: "C3490", sequence: 1, qualifier: "ABK" },
+        { icd10Code: "J449", sequence: 2, qualifier: "ABF" },
+      ],
+    });
+  });
+
+  it("leaves the certifying name null when the certifying physician is the attending", async () => {
+    const same = physician("1234567893", "Ada", "Lovelace");
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seamsWith(same, same));
+    await svc.assemble(ACTOR, REQUEST);
+    const claim = [...store.claims.values()][0];
+    expect(claim.attendingPhysicianLastName).toBe("Lovelace");
+    expect(claim.certifyingPhysicianNpi).toBeNull();
+    expect(claim.certifyingPhysicianFirstName).toBeNull();
+    expect(claim.certifyingPhysicianLastName).toBeNull();
+  });
+
+  it("writes an empty snapshot and no names when nothing was resolved", async () => {
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seamsWith(null, null));
+    await svc.assemble(ACTOR, REQUEST);
+    const claim = [...store.claims.values()][0];
+    expect(claim.attendingPhysicianFirstName).toBeNull();
+    expect(claim.diagnosisSnapshot).toEqual([]);
+  });
+});

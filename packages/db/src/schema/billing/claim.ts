@@ -101,9 +101,20 @@ export const claim = pgTable(
 
     // Physician NPIs for UB-04 FL 76 / FL 78 (migration 1054): provider identifiers resolved from M40 at assembly
     // and refreshed on every re-validation. The certifying NPI is only set when it differs from the attending.
-    // Names are resolved at generation time, never stored.
+    // (The names are snapshotted too, below.)
     attendingPhysicianNpi: text("attending_physician_npi"),
     certifyingPhysicianNpi: text("certifying_physician_npi"),
+    // Migration 1068 — the assembly-time SNAPSHOT of the physicians' names (certifying null exactly when the certifying
+    // NPI is) and of the diagnosis sequence, so a sent claim does not change when M40 / M7 do. Writable only while DRAFT
+    // (trigger `trg_claim_snapshot_immutable`). `diagnosis_snapshot` '[]' = none captured (pre-1068 claims).
+    attendingPhysicianFirstName: text("attending_physician_first_name"),
+    attendingPhysicianLastName: text("attending_physician_last_name"),
+    certifyingPhysicianFirstName: text("certifying_physician_first_name"),
+    certifyingPhysicianLastName: text("certifying_physician_last_name"),
+    diagnosisSnapshot: jsonb("diagnosis_snapshot")
+      .$type<{ icd10Code: string; sequence: number; qualifier: "ABK" | "ABF" }[]>()
+      .notNull()
+      .default([]),
     // Migration 1057 — the snapshot of the admission's UB-04 Type of Admission (FL 14 / 837I CL101) and Point of Origin
     // (FL 15 / CL102), taken at assembly and refreshed on every re-validation. NULL = not recorded on the admission.
     admissionTypeCode: text("admission_type_code"),

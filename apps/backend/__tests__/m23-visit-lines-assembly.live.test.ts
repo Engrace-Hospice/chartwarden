@@ -56,8 +56,9 @@ const RATE_TABLE = {
   gipLaborShare: "0.6400",
 } as const;
 
-const physician = (npi: string) => ({
+const physician = (npi: string, firstName?: string, lastName?: string) => ({
   npi,
+  ...(firstName !== undefined && lastName !== undefined ? { firstName, lastName } : {}),
   status: "active" as const,
   licenseUnexpiredOnServiceDates: true,
 });
@@ -395,9 +396,19 @@ describe.skipIf(!DB_URL)("M23 hospice claim-line assembly — LIVE Postgres as w
             cbsaCode: null,
           }),
           resolveClinicalParticipants: async () => ({
-            attending: physician("1234567893"),
-            hospicePhysician: physician("1982736455"),
+            attending: physician("1234567893", "Ada", "Lovelace"),
+            hospicePhysician: physician("1982736455", "Grace", "Hopper"),
             placeOfService: "home",
+          }),
+        },
+        diagnoses: {
+          forRange: async () => ({
+            sequence: [
+              { position: 2, code: "J449", relationship: "related" as const },
+              { position: 1, code: "C3490", relationship: "terminal" as const },
+            ],
+            withheldForConsentCount: 0,
+            terminalWithheldForConsent: false,
           }),
         },
       }),
@@ -416,6 +427,33 @@ describe.skipIf(!DB_URL)("M23 hospice claim-line assembly — LIVE Postgres as w
       certifying_physician_npi: "1982736455",
       version: 0,
     });
+
+    // Migration 1068 — the names and the diagnosis sequence are snapshotted on the same row, in the same transaction.
+    expect(
+      (
+        await admin.query(
+          `SELECT attending_physician_first_name AS af, attending_physician_last_name AS al,
+                  certifying_physician_first_name AS cf, certifying_physician_last_name AS cl, diagnosis_snapshot AS dx
+             FROM claim WHERE id = $1`,
+          [res.claimId],
+        )
+      ).rows[0],
+    ).toEqual({
+      af: "Ada",
+      al: "Lovelace",
+      cf: "Grace",
+      cl: "Hopper",
+      dx: [
+        { icd10Code: "C3490", sequence: 1, qualifier: "ABK" },
+        { icd10Code: "J449", sequence: 2, qualifier: "ABF" },
+      ],
+    });
+    const snapshot = await withOrgContext(
+      handle.db,
+      { organizationId: ORG, userId: USER },
+      async (tx) => new repositories.ClaimRepository(tx as never).snapshotFor(res.claimId),
+    );
+    expect(snapshot?.diagnosisSnapshot).toHaveLength(2);
 
     const changed = await withOrgContext(
       handle.db,
