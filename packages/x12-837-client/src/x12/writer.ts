@@ -151,7 +151,11 @@ export function prepareEnvelope(envelope: X12Envelope): PreparedEnvelope {
   if (!Number.isInteger(n) || n < 1 || n > MAX_CONTROL_NUMBER) {
     throw new X12BuildError("envelope.interchangeControlNumber");
   }
+  if (envelope.usage !== "P" && envelope.usage !== "T") throw new X12BuildError("envelope.usage");
   const d = envelope.createdAt;
+  if (!(d instanceof Date) || Number.isNaN(d.getTime())) {
+    throw new X12BuildError("envelope.createdAt");
+  }
   return {
     sender,
     receiver,
