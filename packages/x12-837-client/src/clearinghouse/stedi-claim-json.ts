@@ -262,6 +262,7 @@ export function buildStediClaimJson(input: Claim837iInput): StediClaimJson {
       claimDateInformation: {
         statementBeginDate: d8(c.statementFromDate, "claim.statementFromDate"),
         statementEndDate: d8(c.statementThroughDate, "claim.statementThroughDate"),
+        // UNVERIFIED against Stedi: the hour is appended to the date (CCYYMMDDHHMM); Stedi may expect a separate field.
         admissionDateAndHour: `${d8(c.admissionDate, "claim.admissionDate")}${c.admissionHour ?? ""}`,
         ...(c.dischargeHour === undefined ? {} : { dischargeHour: c.dischargeHour }),
       },
