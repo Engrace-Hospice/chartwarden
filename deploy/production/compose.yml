@@ -324,6 +324,42 @@ services:
       retries: 8
       start_period: 10s
 
+  # Demo reseed (reseed-demo.sh, driven by .github/workflows/reseed-production.yml). Both services sit
+  # behind the `seed` profile, so `up -d` never starts them. The seeds create users through Better
+  # Auth's email sign-up, which production closes (invite-only); `seed-api` is a throwaway copy of the
+  # api with sign-up open and NO published port, and `seed-runner` shares its network namespace so the
+  # seed scripts reach it as http://localhost:3000. reseed-demo.sh removes both when it finishes.
+  seed-api:
+    profiles: ["seed"]
+    extends:
+      service: api
+    container_name: wardenx-seed-api
+    restart: "no"
+    ports: !reset []
+    environment:
+      WARDENX_SIGNUP_REQUIRES_INVITE: "false"
+      BETTER_AUTH_URL: http://localhost:3000
+
+  seed-runner:
+    profiles: ["seed"]
+    image: ${WARDENX_IMAGE:?set immutable GHCR image in .env.production}
+    pull_policy: always
+    env_file: .env.production
+    network_mode: "service:seed-api"
+    command: ["bun", "run", "db:seed:all"]
+    environment:
+      BETTER_AUTH_URL: http://localhost:3000
+      DATABASE_ADMIN_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/wardenx
+      DATABASE_URL: postgresql://wardenx_app:${WARDENX_APP_PASSWORD}@postgres:5432/wardenx
+      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${WARDENX_PLATFORM_PASSWORD}@postgres:5432/wardenx
+      REDIS_URL: redis://valkey:6379
+      WARDENX_SEED_CREDENTIALS_FILE: /tmp/CREDENTIALS.production.md
+      WARDENX_SEED_ALLOW_PRODUCTION: "yes-reseed-demo"
+    depends_on:
+      seed-api:
+        condition: service_healthy
+    restart: "no"
+
 volumes:
   postgres-data:
   valkey-data:

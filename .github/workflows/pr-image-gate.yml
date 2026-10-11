@@ -33,7 +33,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Shell syntax
         run: |
-          for f in deploy/production/deploy.sh deploy/production/smoke.sh deploy/production/bootstrap-vps.sh; do
+          for f in deploy/production/deploy.sh deploy/production/smoke.sh deploy/production/bootstrap-vps.sh deploy/production/reseed-demo.sh; do
             bash -n "$f"
           done
       # `compose.yml` reads `.env.production` (env_file) and interpolates the template's variables; the
