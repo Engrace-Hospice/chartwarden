@@ -1003,7 +1003,8 @@ Maintained in `infra/secrets/inventory.yaml` (encrypted via SOPS):
 | `M34_TENANT_KEK` (platform KEK wrapping every tenant DEK) | Backend, workers | Annual — **rotatable**, see §8.3.3 | | |
 | `M34_TENANT_KEK_RETIRED` (prior KEKs, unwrap-only) | Backend, workers | Pruned only after re-wrap, §8.3.3 | | |
 | `TWO_FACTOR_ENCRYPTION_KEY` (TOTP secrets + backup codes) | Backend | **Not rotatable today**, §8.3.3 | | |
-| `M24_CREDENTIAL_ENCRYPTION_KEY` (Medicaid trading-partner secrets) | Backend | **Not rotatable today**, §8.3.3 | | |
+| `M24_CREDENTIAL_ENCRYPTION_KEY` (Medicaid trading-partner secrets AND M23 MAC-portal client secrets) | Backend | **Not rotatable today**, §8.3.3. Required in production (boot refuses without it); unset elsewhere, `POST /api/v1/billing/mac-credentials` and M24 credential writes answer 503 `SEAM_UNBOUND` and store nothing | | |
+| `CLEARINGHOUSE_VENDOR` + the vendor's own credential (clearinghouse binding, ADR-0053 D3) | Backend | Per vendor contract. Not a secret itself; unset = unbound (`CH_NOT_WIRED`). A vendor named with no adapter in the build refuses to boot | | |
 | `MESSAGING_ENCRYPTION_KEY` (message bodies) | Backend, workers | **Not rotatable today**, §8.3.3 | | |
 | `SOPS_AGE_KEY` (decryption key for secrets-in-Git) | Each VM at startup | Annual (with operator presence) | | |
 | `PGBACKREST_REPO1_CIPHER_PASS` | Backups | Annual | | |

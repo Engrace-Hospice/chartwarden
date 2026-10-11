@@ -24,6 +24,9 @@ import type {
 /** The implementations that exist or are planned. A new vendor adds its literal here (and a conformance runner). */
 export type ClearinghouseVendor = "in_memory" | "direct_mac" | "stedi";
 
+/** What a transport reports: a vendor, or `not_wired` for the unbound fail-closed transport (never configurable). */
+export type ClearinghouseTransportVendor = ClearinghouseVendor | "not_wired";
+
 /** Machine codes for the degraded envelope. Stable: callers branch on them. */
 export const CH = {
   /** The transport is not wired/configured (fail closed). */
@@ -233,7 +236,7 @@ export interface RawWebhook {
 // ─── The port ───────────────────────────────────────────────────────────────────────────────────
 
 export interface ClearinghouseTransport {
-  readonly vendor: ClearinghouseVendor;
+  readonly vendor: ClearinghouseTransportVendor;
 
   /** 270/271 (stage 1). Result carries the outcome and as-of date only. */
   checkEligibility(

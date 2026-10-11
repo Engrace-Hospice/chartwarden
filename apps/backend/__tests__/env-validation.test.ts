@@ -444,3 +444,26 @@ describe("M36 transactional email (Postmark) credentials", () => {
     expect(keysFor({ POSTMARK_FROM_ADDRESS: "a@example.com" })).toEqual(["POSTMARK_FROM_ADDRESS"]);
   });
 });
+
+describe("CLEARINGHOUSE_VENDOR (ADR-0053 D3)", () => {
+  const keysFor = (override: Record<string, string>) =>
+    collectEnvProblems({ ...GOOD, ...override }).map((p) => p.key);
+
+  it("is optional: unset or blank is the unbound state", () => {
+    expect(keysFor({})).toEqual([]);
+    expect(keysFor({ CLEARINGHOUSE_VENDOR: "  " })).toEqual([]);
+  });
+  it("accepts a real vendor name", () => {
+    expect(keysFor({ CLEARINGHOUSE_VENDOR: "stedi" })).toEqual([]);
+    expect(keysFor({ CLEARINGHOUSE_VENDOR: "direct_mac" })).toEqual([]);
+  });
+  it("refuses the in_memory test double and an unknown vendor in production", () => {
+    expect(keysFor({ CLEARINGHOUSE_VENDOR: "in_memory" })).toEqual(["CLEARINGHOUSE_VENDOR"]);
+    expect(keysFor({ CLEARINGHOUSE_VENDOR: "acme" })).toEqual(["CLEARINGHOUSE_VENDOR"]);
+  });
+  it("is not validated outside production", () => {
+    expect(collectEnvProblems({ NODE_ENV: "development", CLEARINGHOUSE_VENDOR: "acme" })).toEqual(
+      [],
+    );
+  });
+});

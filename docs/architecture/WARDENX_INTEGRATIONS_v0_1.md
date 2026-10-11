@@ -346,6 +346,12 @@ Each section follows the same shape: **Purpose · Direction & protocol · Endpoi
   `M23_HETS_SUBMITTER_ID`, `M23_HETS_AUTH_TOKEN` or `M23_HETS_CLIENT_CERT_FILE` + `M23_HETS_CLIENT_KEY_FILE`,
   `M23_HETS_USAGE`, `M23_HETS_TIMEOUT_MS`. The `sandbox` transport answers with synthetic 271 fixtures and is
   refused when `NODE_ENV=production`.
+- **Clearinghouse binding (ADR-0053 D3):** the platform selects ONE `ClearinghouseTransport` (created and logged at boot; not yet injected into any
+  consumer, which is the Stedi-transport work) through the
+  `CLEARINGHOUSE_VENDOR` env var (`stedi` | `direct_mac`; `in_memory` is a test double refused in production).
+  Unset = unbound: every call answers `CH_NOT_WIRED`. A vendor with no adapter registered in the build throws at
+  boot, and `check:boot:platform` asserts the `Clearinghouse binding:` log line. The vendor credential lives in the
+  platform environment, never per tenant or per ProviderEntity.
 - **Request (CG §7.3, Appendix A):** MBI + last name + first name + DOB in 2100C (no middle name/gender —
   those draw a 999), 2100B = the hospice NPI, `DTP*291` service date(s) within 4 years back / 4 months
   ahead, `EQ*30^45` (STC 45 is what makes HETS return the hospice section).
