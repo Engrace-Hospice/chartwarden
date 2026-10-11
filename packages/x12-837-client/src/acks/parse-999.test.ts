@@ -174,4 +174,10 @@ describe("parse999", () => {
     expect(JSON.stringify(r)).not.toMatch(/Jane|Doe|John|Smith/);
     expect(r.errors[1]).toMatchObject({ segment: "CLM00", code: "UNKNOWN" });
   });
+
+  it("never returns a non-string description for an inherited-property code", () => {
+    const r = parse999(ack(["AK1*HC*106~", "AK2*837*0106~", "IK5*R*toString~", "AK9*R*1*1*0~"]));
+    expect(r.errors.every((e) => typeof e.description === "string")).toBe(true);
+    expect(r.errors[0]?.description).toBe("Unrecognized code");
+  });
 });

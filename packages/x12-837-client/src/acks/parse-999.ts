@@ -80,7 +80,7 @@ const OUTCOME_BY_AK9: Readonly<Record<string, AckOutcome>> = {
 const SEVERITY: Readonly<Record<AckOutcome, number>> = { accepted: 0, partial: 1, rejected: 2 };
 
 const describe = (table: Readonly<Record<string, string>>, code: string): string =>
-  table[code] ?? UNKNOWN_CODE;
+  Object.hasOwn(table, code) ? (table[code] ?? UNKNOWN_CODE) : UNKNOWN_CODE;
 
 /** A segment id or status echoed from the sender is trusted only if it looks like one (never free text). */
 const safeToken = (value: string | undefined): string =>
