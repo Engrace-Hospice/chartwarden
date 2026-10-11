@@ -108,14 +108,14 @@ const check = (ok: boolean, field: string): void => {
   if (!ok) fail(field);
 };
 
-const diagnosis = (value: string, field: string): string => {
+export const diagnosis = (value: string, field: string): string => {
   check(typeof value === "string", field);
   const dx = value.replace(".", "").trim().toUpperCase();
   check(matches(/^[A-Z][0-9][0-9A-Z]{1,5}$/, dx), field);
   return dx;
 };
 
-const dollars = (cents: number): string =>
+export const dollars = (cents: number): string =>
   `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, "0")}`;
 
 function lineSegments(

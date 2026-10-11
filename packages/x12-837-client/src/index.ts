@@ -210,3 +210,9 @@ export {
   type ClaimDocument,
   type ClaimLine,
 } from "./claims/build-837i-claim";
+export {
+  buildStediClaimJson,
+  type StediAddress,
+  type StediClaimJson,
+} from "./clearinghouse/stedi-claim-json";
+export { compareStediClaimJsonToX12 } from "./clearinghouse/stedi-claim-agreement";
