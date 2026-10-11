@@ -55,19 +55,19 @@ WardenX already has substantial billing workflow infrastructure:
 - An 835 remittance mapper
 - Denial and remittance worklists
 
-The validation registry currently contains 22 rules in [`packages/billing/src/rules/index.ts`](../../packages/billing/src/rules/index.ts).
+The validation registry currently contains 22 rules in [`packages/billing/src/rules/index.ts`](../../../packages/billing/src/rules/index.ts).
 
 ### MBI Access
 
 The previous MBI blocker has been addressed.
 
-The [`MBI unlock reader`](../../apps/backend/src/modules/05-patient/mbi-unlock-reader.ts) decrypts the MBI under request context. The [`eligibility job`](../../apps/backend/src/modules/23-billing-medicare/jobs/hets-eligibility.ts) uses it to construct an eligibility request.
+The [`MBI unlock reader`](../../../apps/backend/src/modules/05-patient/mbi-unlock-reader.ts) decrypts the MBI under request context. The [`eligibility job`](../../../apps/backend/src/modules/23-billing-medicare/jobs/hets-eligibility.ts) uses it to construct an eligibility request.
 
 Eligibility still fails closed when no transport is configured, but MBI access itself is no longer a missing implementation.
 
 ### Existing Transmission Abstraction
 
-A configurable HTTP [`launch gateway`](../../apps/backend/src/modules/23-billing-medicare/jobs/launch-gateway.ts) already supports operations such as:
+A configurable HTTP [`launch gateway`](../../../apps/backend/src/modules/23-billing-medicare/jobs/launch-gateway.ts) already supports operations such as:
 
 - Generate 837I
 - Generate NOE
@@ -87,7 +87,7 @@ The missing pieces are:
 
 ### Missing Hospice Visit Lines
 
-Current [`claim assembly`](../../packages/billing/src/claim-lines/) creates hospice level-of-care lines using:
+Current [`claim assembly`](../../../packages/billing/src/claim-lines/) creates hospice level-of-care lines using:
 
 - `0651`
 - `0652`
@@ -117,7 +117,7 @@ CMS documents the current hospice visit, CHC, SIA, NOE, NOTR, and value-code req
 
 ### Incomplete Institutional Claim Document
 
-The outbound [`claim document`](../../apps/backend/src/modules/23-billing-medicare/jobs/m23-jobs.ts) currently contains only a small subset of the information needed for an 837I.
+The outbound [`claim document`](../../../apps/backend/src/modules/23-billing-medicare/jobs/m23-jobs.ts) currently contains only a small subset of the information needed for an 837I.
 
 A production claim document will also need:
 
@@ -146,7 +146,7 @@ A production claim document will also need:
 - Payer identifiers
 - Claim frequency and adjustment information
 
-The [`claim schema`](../../packages/db/src/schema/billing/claim.ts) now includes patient status, condition codes, occurrence codes, and occurrence spans. Nevertheless, diagnoses, physician references, value codes, and complete service-line information remain missing or disconnected from the outbound document.
+The [`claim schema`](../../../packages/db/src/schema/billing/claim.ts) now includes patient status, condition codes, occurrence codes, and occurrence spans. Nevertheless, diagnoses, physician references, value codes, and complete service-line information remain missing or disconnected from the outbound document.
 
 ### Internal HIPPS Placeholder
 
@@ -162,7 +162,7 @@ These values are not currently sent to the gateway, so this is not an immediate 
 
 The original assessment does not identify the absence of a complete DDE work queue.
 
-The UI specification mentions manual DDE submission and receipt recording in [`WARDENX_UI_NOE_NOTR_CLAIM_OPS.md`](../design/screens/revenue/WARDENX_UI_NOE_NOTR_CLAIM_OPS.md), but no complete persistence model, API, or operational workflow exists.
+The UI specification mentions manual DDE submission and receipt recording in [`WARDENX_UI_NOE_NOTR_CLAIM_OPS.md`](../../design/screens/revenue/WARDENX_UI_NOE_NOTR_CLAIM_OPS.md), but no complete persistence model, API, or operational workflow exists.
 
 A production DDE queue should support the following capabilities.
 
