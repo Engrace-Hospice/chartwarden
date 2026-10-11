@@ -185795,30 +185795,12 @@
             }
           },
           {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 32,
-              "type": "string"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 64,
-              "type": "string"
-            }
-          },
-          {
             "name": "limit",
             "in": "query",
             "required": false,
             "schema": {
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 25,
               "type": "integer"
             }
           }

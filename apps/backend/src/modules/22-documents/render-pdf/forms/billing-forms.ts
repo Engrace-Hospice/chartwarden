@@ -37,6 +37,7 @@ export const BILLING_TEXT = {
 export const BILLING_FORM_VERSION = "1.0.0";
 
 const STAGE_LABELS: Readonly<Record<string, string>> = {
+  clearinghouse: "Clearinghouse edit check (before the payer)",
   "999": "999 implementation acknowledgment (file level)",
   "277ca": "277CA claim acknowledgment (claim level)",
 };

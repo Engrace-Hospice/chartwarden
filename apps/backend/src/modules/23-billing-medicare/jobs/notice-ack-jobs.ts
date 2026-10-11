@@ -91,6 +91,12 @@ export interface NoticeSubmission {
 export interface NoticeAck {
   readonly organizationId: string;
   readonly kind: "ack_999" | "ack_277ca";
+  /**
+   * Who answered (ADR-0053 D2). Omitted = derived from `kind` (a 999 is the clearinghouse / front-end's answer, a 277CA
+   * the payer's), which is what the pre-clearinghouse crons send. A clearinghouse stage must ride `ack_999`: only a
+   * payer-stage answer may reach `ack_accepted`.
+   */
+  readonly stage?: "clearinghouse" | "payer";
   /** 999: accepted / rejected. 277CA: accepted / rejected / partial (a notice has no lines: partial = rejected). */
   readonly outcome: "accepted" | "rejected" | "partial";
   readonly payerControlNumber: string | null;
@@ -184,6 +190,12 @@ export async function applyNoticeAck(
   if (!notice) return null;
 
   const outcome = ack.outcome === "accepted" ? "accepted" : "rejected";
+  const stage = ack.stage ?? (ack.kind === "ack_999" ? "clearinghouse" : "payer");
+  if (stage === "clearinghouse" && ack.kind !== "ack_999") {
+    throw new Error(
+      "notice ack: a clearinghouse-stage answer must be an ack_999 (it cannot reach ack_accepted)",
+    );
+  }
   const reasonCodes = sanitizeAckReasonCodes(ack.reasonCodes);
   const payerDate = resolvePayerStatusDate({
     kind: ack.kind,
@@ -196,6 +208,7 @@ export async function applyNoticeAck(
     submissionId: submission.id,
     claimId: null,
     kind: ack.kind,
+    stage,
     macJurisdiction: ack.macJurisdiction as never,
     ackFileUri: ack.ackFileUri,
     ackReceivedAt: ack.receivedAt,
@@ -215,6 +228,9 @@ export async function applyNoticeAck(
   const applied = await applyRecorded(tx, ports, spec, submission.kind, notice, {
     acknowledgmentId: recorded.id,
     kind: ack.kind,
+    stage,
+    rejectionStage:
+      ack.stage === "clearinghouse" ? "clearinghouse" : ack.kind === "ack_999" ? "999" : "277ca",
     outcome,
     payerControlNumber: ack.payerControlNumber,
     reasonCodes,
@@ -237,6 +253,8 @@ export async function applyNoticeAck(
   const caughtUp = await applyRecorded(tx, ports, spec, submission.kind, applied, {
     acknowledgmentId: early.id,
     kind: "ack_277ca",
+    stage: "payer",
+    rejectionStage: "277ca",
     outcome: early.outcomeStatus === "accepted" ? "accepted" : "rejected",
     payerControlNumber: payload.payerControlNumber ?? null,
     reasonCodes: sanitizeAckReasonCodes(payload.reasonCodes ?? []),
@@ -255,6 +273,9 @@ export async function applyNoticeAck(
 interface RecordedNoticeAck {
   readonly acknowledgmentId: string;
   readonly kind: "ack_999" | "ack_277ca";
+  readonly stage: "clearinghouse" | "payer";
+  /** Which acknowledgment rejected it. `clearinghouse` only when the caller named that stage explicitly. */
+  readonly rejectionStage: "999" | "277ca" | "clearinghouse";
   readonly outcome: "accepted" | "rejected";
   readonly payerControlNumber: string | null;
   readonly reasonCodes: readonly string[];
@@ -278,9 +299,11 @@ async function applyRecorded(
     ack.kind === "ack_999" ? `ack_999_${ack.outcome}` : `ack_277ca_${ack.outcome}`;
   if (!spec.canTransition(notice.state, event)) return null;
   const next = spec.reduce(notice.state, event);
-  const rejectionStage = ack.kind === "ack_999" ? "999" : "277ca";
+  const rejectionStage = ack.rejectionStage;
   const patch: Record<string, unknown> = { latestAcknowledgmentId: ack.acknowledgmentId };
-  if (event === "ack_277ca_accepted") {
+  if (event === "ack_999_accepted") {
+    patch.clearinghouseAcceptedAt = ack.receivedAt;
+  } else if (event === "ack_277ca_accepted") {
     patch.acceptedAt = ack.receivedAt;
     patch.payerStatusDate = ack.payerDate.date;
     patch.payerStatusDateSource = ack.payerDate.source;

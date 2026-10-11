@@ -37,6 +37,8 @@ export async function dispatchM25UpstreamEvent(
   const p = event.payload;
   switch (event.topic) {
     case "m23.claim.rejected": {
+      // A clearinghouse-stage rejection is not a payer denial (ADR-0053 D2): nothing to seed.
+      if (p.rejectionStage === "clearinghouse") return { handled: true, denialOpened: null };
       const emission = await handleClaimRejected(
         ports.seedStore,
         {

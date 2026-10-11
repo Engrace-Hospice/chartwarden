@@ -56,6 +56,7 @@ export const claim = pgTable(
     // Identifiers:
     claimControlNumber: text("claim_control_number").notNull(), // deterministic per D4
     payerClaimControlNumber: text("payer_claim_control_number"), // returned by MAC at 277CA
+    clearinghouseAcceptedAt: timestamp("clearinghouse_accepted_at", { withTimezone: true }), // clearinghouse-stage accept (ADR-0053 D2); never advances state past ack_pending
     macJurisdiction: m23MacJurisdiction("mac_jurisdiction").notNull(),
 
     // Aggregates (snapshot at assembly):

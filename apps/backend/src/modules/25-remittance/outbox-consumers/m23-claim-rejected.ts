@@ -69,7 +69,11 @@ export interface M23ClaimRejectedConsumerDeps {
   ) => Promise<string | null>;
 }
 
-function payloadOf(payload: unknown): { claimId: string; rejectionCodes: string[] } {
+function payloadOf(payload: unknown): {
+  claimId: string;
+  rejectionCodes: string[];
+  rejectionStage: string | null;
+} {
   const p = (payload ?? {}) as Record<string, unknown>;
   const claimId = p.claimId;
   if (typeof claimId !== "string" || claimId.length === 0) {
@@ -78,7 +82,11 @@ function payloadOf(payload: unknown): { claimId: string; rejectionCodes: string[
   const rejectionCodes = Array.isArray(p.rejectionCodes)
     ? p.rejectionCodes.filter((c): c is string => typeof c === "string")
     : [];
-  return { claimId, rejectionCodes };
+  return {
+    claimId,
+    rejectionCodes,
+    rejectionStage: typeof p.rejectionStage === "string" ? p.rejectionStage : null,
+  };
 }
 
 /** Default `resolveProviderEntityForClaim` — reads M23's `claim` row directly (see file header for why a
@@ -109,7 +117,10 @@ export function buildM23ClaimRejectedConsumer(
     consumerModule: "m25" as const,
     eventTypes: [M23_CLAIM_REJECTED_CONSUMER.eventName] as const,
     async handle(event) {
-      const { claimId, rejectionCodes } = payloadOf(event.payload);
+      const { claimId, rejectionCodes, rejectionStage } = payloadOf(event.payload);
+      // A clearinghouse-stage rejection is an edit failure before the payer saw the claim (ADR-0053 D2), not a payer
+      // denial: it stays on the claim and seeds nothing here.
+      if (rejectionStage === "clearinghouse") return;
       const organizationId = event.organizationId;
 
       const providerEntityId = await resolveProviderEntity(organizationId, claimId);

@@ -726,6 +726,87 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     expect(result.passed).toBe(true);
   });
 
+  // ── ack stage split (ADR-0053 D2, migration 1063): a clearinghouse answers before the payer ─────────────────
+  it("a clearinghouse-stage accept stays ACK_PENDING (clearinghouse_accepted_at, no accepted_at); the payer 277CA then reaches ACK_ACCEPTED", async () => {
+    const { noeId, submissionId, controlNumber } = await submittedNoe(ORG_A);
+    alerts.length = 0;
+    const at = new Date("2026-10-06T15:30:00.000Z");
+    const deps = { ...workerDeps, now: () => at };
+
+    parsed999 = [
+      {
+        organizationId: ORG_A,
+        claimId: "",
+        submissionId,
+        claimControlNumber: controlNumber,
+        accepted: true,
+        reasonCodes: [],
+        stage: "clearinghouse",
+        ackFileUri: `s3://acks/ch/${noeId}-ok.json`,
+      },
+    ];
+    await runAckPull999(deps);
+
+    const pending = await admin.query(
+      "SELECT state, accepted_at, clearinghouse_accepted_at, payer_status_date FROM noe_record WHERE id=$1",
+      [noeId],
+    );
+    expect(pending.rows[0]).toMatchObject({
+      state: "ACK_PENDING",
+      accepted_at: null,
+      clearinghouse_accepted_at: at,
+      payer_status_date: null,
+    });
+    const stages = await admin.query(
+      "SELECT stage FROM claim_acknowledgment WHERE submission_id=$1",
+      [submissionId],
+    );
+    expect(stages.rows).toEqual([{ stage: "clearinghouse" }]);
+    expect(await eventRows("m23.noe.accepted", "noeId", noeId)).toHaveLength(0);
+
+    parsed277 = [
+      {
+        organizationId: ORG_A,
+        claimId: "",
+        submissionId,
+        outcome: "accepted",
+        payerClaimControlNumber: "PAYER-901",
+        reasonCodes: [],
+        ackFileUri: `s3://acks/277/${noeId}-payer.json`,
+      },
+    ];
+    await runAckPull277ca(deps);
+    expect(await noeAckState(noeId)).toMatchObject({ state: "ACK_ACCEPTED", accepted_at: at });
+    expect(await eventRows("m23.noe.accepted", "noeId", noeId)).toHaveLength(1);
+  });
+
+  it("a clearinghouse-stage rejection is ACK_REJECTED with rejection_stage 'clearinghouse', through the real catalog", async () => {
+    const { noeId, submissionId, controlNumber } = await submittedNoe(ORG_A);
+    alerts.length = 0;
+    parsed999 = [
+      {
+        organizationId: ORG_A,
+        claimId: "",
+        submissionId,
+        claimControlNumber: controlNumber,
+        accepted: false,
+        reasonCodes: ["CL103"],
+        stage: "clearinghouse",
+        ackFileUri: `s3://acks/ch/${noeId}-rej.json`,
+      },
+    ];
+    await runAckPull999(workerDeps);
+
+    expect(await noeAckState(noeId)).toMatchObject({
+      state: "ACK_REJECTED",
+      rejection_stage: "clearinghouse",
+      rejection_codes: ["CL103"],
+    });
+    const rejected = await eventRows("m23.noe.rejected", "noeId", noeId);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.payload).toMatchObject({ rejectionStage: "clearinghouse" });
+  });
+
   // ── a corrected NOE after a rejection (ch. 11 §20.1.1; M23 §2.2 "corrected NOE is its own row") ───────────────
 
   const REASON = "The 277CA rejected the NOE (A7:21): MBI updated from HETS, refiling the notice.";

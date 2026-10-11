@@ -423,7 +423,11 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       noeId: id,
       acknowledgmentId: id,
-      rejectionStage: Type.Union([Type.Literal("999"), Type.Literal("277ca")]),
+      rejectionStage: Type.Union([
+        Type.Literal("999"),
+        Type.Literal("277ca"),
+        Type.Literal("clearinghouse"),
+      ]),
       rejectionCodes: Type.Array(str),
       rejectedAt: isoInstant,
       payerStatusDate: isoInstant,
@@ -442,7 +446,12 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       noeId: id,
       correctsNoeId: id,
       admissionId: id,
-      rejectionStage: Type.Union([Type.Literal("999"), Type.Literal("277ca"), Type.Null()]),
+      rejectionStage: Type.Union([
+        Type.Literal("999"),
+        Type.Literal("277ca"),
+        Type.Literal("clearinghouse"),
+        Type.Null(),
+      ]),
       dateCorrected: Type.Boolean(),
       windowTargetAt: isoInstant,
     }),
@@ -545,7 +554,11 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       notrId: id,
       acknowledgmentId: id,
-      rejectionStage: Type.Union([Type.Literal("999"), Type.Literal("277ca")]),
+      rejectionStage: Type.Union([
+        Type.Literal("999"),
+        Type.Literal("277ca"),
+        Type.Literal("clearinghouse"),
+      ]),
       rejectionCodes: Type.Array(str),
       rejectedAt: isoInstant,
       payerStatusDate: isoInstant,
@@ -564,7 +577,12 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       notrId: id,
       correctsNotrId: id,
       admissionId: id,
-      rejectionStage: Type.Union([Type.Literal("999"), Type.Literal("277ca"), Type.Null()]),
+      rejectionStage: Type.Union([
+        Type.Literal("999"),
+        Type.Literal("277ca"),
+        Type.Literal("clearinghouse"),
+        Type.Null(),
+      ]),
       dateCorrected: Type.Boolean(),
       windowTargetAt: isoInstant,
     }),
