@@ -17,7 +17,7 @@ import {
   type SubmissionAttempt,
   type SubmissionAttemptStore,
 } from "@wardenx/x12-837-client";
-import { and, eq, ne, or, sql } from "drizzle-orm";
+import { and, eq, lte, ne, or, sql } from "drizzle-orm";
 
 const T = schema.clearinghouseSubmissionAttempts;
 
@@ -92,16 +92,23 @@ export function createDrizzleAttemptStore(db: DbClient): SubmissionAttemptStore 
             .where(
               and(
                 eq(T.organizationId, attempt.organizationId),
-                eq(T.scope, attempt.scope),
                 ne(T.status, "released"),
                 or(
-                  eq(T.idempotencyKey, attempt.idempotencyKey),
-                  eq(T.controlNumber, attempt.controlNumber),
+                  // The key is unique per scope and stays held when voided.
+                  and(eq(T.scope, attempt.scope), eq(T.idempotencyKey, attempt.idempotencyKey)),
+                  // A control number is unique per usage mode (any scope of this tenant) until released or voided.
+                  and(
+                    eq(T.usage, attempt.usage),
+                    eq(T.controlNumber, attempt.controlNumber),
+                    ne(T.status, "voided"),
+                  ),
                 ),
               ),
             );
           const holder =
-            holders.find((h) => h.idempotencyKey === attempt.idempotencyKey) ?? holders[0];
+            holders.find(
+              (h) => h.scope === attempt.scope && h.idempotencyKey === attempt.idempotencyKey,
+            ) ?? holders[0];
           if (holder) return { attempt: toAttempt(holder), reserved: false };
         }
         throw new PlatformControlNumberTaken();
@@ -120,9 +127,21 @@ export function createDrizzleAttemptStore(db: DbClient): SubmissionAttemptStore 
     },
 
     async allocateControlNumber(usage) {
-      const res = (await db.execute(
-        sql`SELECT nextval('${CONTROL_NUMBER_SEQUENCE[usage]}'::regclass)::text AS n`,
-      )) as unknown as { rows: { n: string }[] };
+      let res: { rows: { n: string }[] };
+      try {
+        res = (await db.execute(
+          sql`SELECT nextval('${CONTROL_NUMBER_SEQUENCE[usage]}'::regclass)::text AS n`,
+        )) as unknown as { rows: { n: string }[] };
+      } catch (e) {
+        // 55000: the 9-digit space is used up. Say so plainly instead of surfacing a raw driver error.
+        if (
+          (e as { cause?: { code?: string }; code?: string }).cause?.code === "55000" ||
+          (e as { code?: string }).code === "55000"
+        ) {
+          throw new Error(`clearinghouse control numbers are exhausted for ${usage} usage`);
+        }
+        throw e;
+      }
       const n = res.rows[0]?.n;
       if (!n) throw new Error("clearinghouse control number allocation returned nothing");
       return n.padStart(9, "0");
@@ -145,7 +164,7 @@ export function createDrizzleAttemptStore(db: DbClient): SubmissionAttemptStore 
       });
     },
 
-    resolve(organizationId, scope, idempotencyKey, outcome, actorUserId) {
+    resolve(organizationId, scope, idempotencyKey, outcome, actorUserId, guard) {
       // The operator's id is the acting user for this transaction, so the audit trigger records who decided.
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (raw) => {
         const tx = raw as unknown as DbClient;
@@ -158,9 +177,17 @@ export function createDrizzleAttemptStore(db: DbClient): SubmissionAttemptStore 
                   clearinghouseSubmissionId: outcome.clearinghouseSubmissionId,
                   receivedAt: new Date(outcome.receivedAt),
                 }
-              : { status: "released" },
+              : { status: "voided" },
           )
-          .where(and(keyMatch(organizationId, scope, idempotencyKey), eq(T.status, "reserved")))
+          .where(
+            and(
+              keyMatch(organizationId, scope, idempotencyKey),
+              eq(T.status, "reserved"),
+              // Re-checked at the write: a sender that retook the row since the operator read it wins.
+              lte(T.createdAt, new Date(guard.firstReservedBefore)),
+              lte(T.reservedAt, new Date(guard.reservedBefore)),
+            ),
+          )
           .returning();
         return row ? toAttempt(row) : null;
       });

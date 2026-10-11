@@ -234,46 +234,88 @@ export const ATTEMPT_STORE_CONTRACT: readonly AttemptStoreContractCase[] = [
   },
   {
     id: "AS-12",
-    title: "resolve settles a reservation as sent or released, and only a reservation",
+    title:
+      "resolve settles a reservation as sent or voided (control number freed, key burned), only when the guard still holds, only for its own tenant",
     async run(make, ids) {
       const store = await make();
       const scope = `scope-${ids.orgA}`;
+      const OPEN = {
+        firstReservedBefore: "2999-01-01T00:00:00.000Z",
+        reservedBefore: "2999-01-01T00:00:00.000Z",
+      };
+      const TOO_RECENT = {
+        firstReservedBefore: "2000-01-01T00:00:00.000Z",
+        reservedBefore: "2999-01-01T00:00:00.000Z",
+      };
       await store.reserve(reservation(ids));
+      assert(
+        (await store.resolve(
+          ids.orgA,
+          scope,
+          "idem-1",
+          { kind: "voided" },
+          OPERATOR,
+          TOO_RECENT,
+        )) === null,
+        "a reservation newer than the guard is left to the sender",
+      );
       const sent = await store.resolve(
         ids.orgA,
         scope,
         "idem-1",
         { kind: "sent", clearinghouseSubmissionId: "ch-op", receivedAt: T1 },
         OPERATOR,
+        OPEN,
       );
       assert(
         sent?.status === "sent" && sent.clearinghouseSubmissionId === "ch-op",
         "resolved as sent",
       );
       assert(
-        (await store.resolve(ids.orgA, scope, "idem-1", { kind: "released" }, OPERATOR)) === null,
+        (await store.resolve(ids.orgA, scope, "idem-1", { kind: "voided" }, OPERATOR, OPEN)) ===
+          null,
         "a sent row cannot be resolved again",
       );
       await store.reserve(reservation(ids, { idempotencyKey: "idem-2", controlNumber: "CCN-2" }));
-      const released = await store.resolve(
+      const voided = await store.resolve(
         ids.orgA,
         scope,
         "idem-2",
-        { kind: "released" },
+        { kind: "voided" },
         OPERATOR,
+        OPEN,
       );
-      assert(released?.status === "released", "resolved as released");
+      assert(voided?.status === "voided", "resolved as voided");
+      const sameKey = await store.reserve(
+        reservation(ids, { idempotencyKey: "idem-2", controlNumber: "CCN-3" }),
+      );
+      assert(!sameKey.reserved && sameKey.attempt.status === "voided", "a voided key stays burned");
       assert(
         (
           await store.reserve(
             reservation(ids, { idempotencyKey: "idem-3", controlNumber: "CCN-2" }),
           )
         ).reserved,
-        "a released number is free again",
+        "a voided control number is free again",
+      );
+      const scopeB = `scope-${ids.orgB}`;
+      await store.reserve(
+        reservation(ids, {
+          organizationId: ids.orgB,
+          providerEntityId: ids.providerEntityB,
+          scope: scopeB,
+          idempotencyKey: "idem-b",
+          controlNumber: "CCN-B",
+        }),
       );
       assert(
-        (await store.resolve(ids.orgB, scope, "idem-3", { kind: "released" }, OPERATOR)) === null,
-        "another tenant resolves nothing",
+        (await store.resolve(ids.orgA, scopeB, "idem-b", { kind: "voided" }, OPERATOR, OPEN)) ===
+          null,
+        "another tenant's attempt cannot be resolved",
+      );
+      assert(
+        (await store.find(ids.orgB, scopeB, "idem-b"))?.status === "reserved",
+        "and it is untouched",
       );
     },
   },

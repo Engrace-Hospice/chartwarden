@@ -5,27 +5,28 @@
 import { type Static, Type } from "@sinclair/typebox";
 
 const USAGE = Type.Union([Type.Literal("test"), Type.Literal("production")]);
+const COMMON = {
+  providerEntityId: Type.String({ format: "uuid" }),
+  usage: USAGE,
+  idempotencyKey: Type.String({ pattern: "^[A-Za-z0-9_.:-]{1,128}$" }),
+  // The operator's attestation that they checked the vendor's own records. It is a required literal so a request
+  // cannot be sent by accident; the decision itself is audited with the operator's id.
+  confirmedAtVendor: Type.Literal(true),
+};
 
 export const ResolveStaleAttemptBodySchema = Type.Union([
   Type.Object({
-    providerEntityId: Type.String({ format: "uuid" }),
-    usage: USAGE,
-    idempotencyKey: Type.String({ pattern: "^[A-Za-z0-9_.:-]{1,128}$" }),
+    ...COMMON,
     outcome: Type.Literal("sent"),
-    clearinghouseSubmissionId: Type.String({ minLength: 1, maxLength: 200 }),
+    clearinghouseSubmissionId: Type.String({ pattern: "^[A-Za-z0-9_.:-]{1,200}$" }),
   }),
-  Type.Object({
-    providerEntityId: Type.String({ format: "uuid" }),
-    usage: USAGE,
-    idempotencyKey: Type.String({ pattern: "^[A-Za-z0-9_.:-]{1,128}$" }),
-    outcome: Type.Literal("released"),
-  }),
+  Type.Object({ ...COMMON, outcome: Type.Literal("not_filed") }),
 ]);
 export type ResolveStaleAttemptBody = Static<typeof ResolveStaleAttemptBodySchema>;
 
 export const ResolvedAttemptSchema = Type.Object({
   idempotencyKey: Type.String(),
   controlNumber: Type.String(),
-  status: Type.Union([Type.Literal("sent"), Type.Literal("released")]),
+  status: Type.Union([Type.Literal("sent"), Type.Literal("voided")]),
   clearinghouseSubmissionId: Type.Union([Type.String(), Type.Null()]),
 });

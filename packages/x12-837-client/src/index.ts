@@ -238,6 +238,7 @@ export type {
 export { InMemoryAttemptStore, PlatformControlNumberTaken } from "./clearinghouse/attempt-store";
 export type {
   AttemptResolution,
+  SettleGuard,
   AttemptStatus,
   AttemptUsage,
   ReserveResult,
@@ -256,6 +257,7 @@ export type {
 } from "./clearinghouse/attempt-store-contract";
 export {
   pastKeyWindow,
+  settleGuard,
   STEDI_API_KEY_ENV,
   StediTransport,
   createStediTransportFromEnv,

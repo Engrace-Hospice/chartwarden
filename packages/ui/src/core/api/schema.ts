@@ -35733,6 +35733,8 @@ export interface operations {
                     usage: "test" | "production";
                     idempotencyKey: string;
                     /** @constant */
+                    confirmedAtVendor: true;
+                    /** @constant */
                     outcome: "sent";
                     clearinghouseSubmissionId: string;
                 } | {
@@ -35741,7 +35743,9 @@ export interface operations {
                     usage: "test" | "production";
                     idempotencyKey: string;
                     /** @constant */
-                    outcome: "released";
+                    confirmedAtVendor: true;
+                    /** @constant */
+                    outcome: "not_filed";
                 };
             };
         };
@@ -35755,7 +35759,7 @@ export interface operations {
                     "application/json": {
                         idempotencyKey: string;
                         controlNumber: string;
-                        status: "sent" | "released";
+                        status: "sent" | "voided";
                         clearinghouseSubmissionId: string | null;
                     };
                 };

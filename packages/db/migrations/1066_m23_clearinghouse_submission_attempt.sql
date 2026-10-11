@@ -8,6 +8,15 @@
 --   * ORG-SCOPED (organization_id + provider_entity_id), FORCEd RLS on app.org_id. No PHI: the key and control
 --     number are ours, `identity` is a SHA-256 of the submission, `clearinghouse_submission_id` is the vendor's
 --     opaque id. No payload is stored.
+--   * STATUSES: reserved -> sent | released | voided. `released` = the vendor definitively refused (the key and number are
+--     free to retry). `voided` = an operator confirmed at the vendor that a stuck attempt was never filed: the control
+--     number is free again but the KEY STAYS BURNED (still in the key index), because the vendor's replay window has
+--     passed and re-sending under the same key would file the claim as new. A voided key must be replaced.
+--   * This migration is not on main. A database that ran an EARLIER draft of it keeps the old table (IF NOT EXISTS) and
+--     lacks `usage`: drop that table (and the two sequences) and re-run; do not patch it in place.
+--   * The sequences start at 1. Numbers a previous generator may already have sent to the vendor are not accounted for
+--     (none is known to exist), and a point-in-time restore rewinds a sequence: after a restore, setval each sequence
+--     past the highest control_number sent.
 --   * Live (non-released) keys and control numbers are unique per scope, so a key or number can be reused only
 --     after a release. Rows are never deleted by the app role (billing history); only the destruction role erases.
 --   * BEFORE UPDATE guard: identity columns and created_at (the first reservation, which the vendor's key window runs
@@ -35,7 +44,7 @@ CREATE TABLE IF NOT EXISTS "clearinghouse_submission_attempt" (
 		FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE restrict,
 	CONSTRAINT "clearinghouse_submission_attempt_usage_chk" CHECK ("usage" IN ('test', 'production')),
 	CONSTRAINT "clearinghouse_submission_attempt_kind_chk" CHECK ("kind" IN ('claim', 'noe', 'notr')),
-	CONSTRAINT "clearinghouse_submission_attempt_status_chk" CHECK ("status" IN ('reserved', 'sent', 'released')),
+	CONSTRAINT "clearinghouse_submission_attempt_status_chk" CHECK ("status" IN ('reserved', 'sent', 'released', 'voided')),
 	CONSTRAINT "clearinghouse_submission_attempt_identity_chk" CHECK ("identity" ~ '^[0-9a-f]{64}$'),
 	CONSTRAINT "clearinghouse_submission_attempt_key_len_chk" CHECK (char_length("idempotency_key") BETWEEN 1 AND 200),
 	CONSTRAINT "clearinghouse_submission_attempt_control_len_chk" CHECK (char_length("control_number") BETWEEN 1 AND 64),
@@ -51,12 +60,12 @@ CREATE TABLE IF NOT EXISTS "clearinghouse_submission_attempt" (
 CREATE UNIQUE INDEX IF NOT EXISTS "clearinghouse_submission_attempt_key_live_uq"
 	ON "clearinghouse_submission_attempt" ("organization_id", "scope", "idempotency_key") WHERE "status" <> 'released';--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "clearinghouse_submission_attempt_control_live_uq"
-	ON "clearinghouse_submission_attempt" ("organization_id", "scope", "control_number") WHERE "status" <> 'released';--> statement-breakpoint
+	ON "clearinghouse_submission_attempt" ("organization_id", "scope", "control_number") WHERE "status" NOT IN ('released', 'voided');--> statement-breakpoint
 -- The vendor sender (ISA06) is the platform's, so the vendor dedupes on (sender, control number) across EVERY tenant:
 -- a live control number is unique per usage mode platform-wide. A unique index is enforced regardless of RLS, so the
 -- app role learns of a foreign holder through the conflict without being able to read the row.
 CREATE UNIQUE INDEX IF NOT EXISTS "clearinghouse_submission_attempt_platform_control_live_uq"
-	ON "clearinghouse_submission_attempt" ("usage", "control_number") WHERE "status" <> 'released';--> statement-breakpoint
+	ON "clearinghouse_submission_attempt" ("usage", "control_number") WHERE "status" NOT IN ('released', 'voided');--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "clearinghouse_submission_attempt_reserved_idx"
 	ON "clearinghouse_submission_attempt" ("organization_id", "reserved_at") WHERE "status" = 'reserved';--> statement-breakpoint
 

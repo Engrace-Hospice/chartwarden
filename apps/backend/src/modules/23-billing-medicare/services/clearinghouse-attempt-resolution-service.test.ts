@@ -28,30 +28,43 @@ describe("clearinghouse attempt resolution", () => {
     expect((await attempts.find("org-a", scope, "idem-1"))?.status).toBe("sent");
   });
 
-  it("settles it as released, freeing the control number", async () => {
+  it("voids it when not filed: the control number is freed but the key stays burned", async () => {
     const { service, attempts } = await setup("2026-10-13T10:00:00.000Z");
-    await service.resolveStale(ACTOR, { ...input, outcome: "released" });
-    const again = await attempts.reserve(
+    const r = await service.resolveStale(ACTOR, { ...input, outcome: "not_filed" });
+    expect(r.status).toBe("voided");
+    const sameKey = await attempts.reserve(attemptReservationFixture(IDS, { scope }));
+    expect(sameKey.reserved).toBe(false);
+    expect(sameKey.attempt.status).toBe("voided");
+    const newKey = await attempts.reserve(
       attemptReservationFixture(IDS, { scope, idempotencyKey: "idem-2" }),
     );
-    expect(again.reserved).toBe(true);
+    expect(newKey.reserved).toBe(true);
+  });
+
+  it("refuses to settle a reservation the sender retook after the window check", async () => {
+    const { service, attempts } = await setup("2026-10-13T10:00:00.000Z");
+    // The sender retook it a minute ago: inside the in-flight window, so the write-time guard refuses.
+    await attempts.retake("org-a", scope, "idem-1", FIRST, "2026-10-13T09:59:00.000Z");
+    await expect(service.resolveStale(ACTOR, { ...input, outcome: "not_filed" })).rejects.toThrow(
+      ConflictError,
+    );
   });
 
   it("refuses an attempt still inside the window: the transport owns it", async () => {
     const { service } = await setup("2026-10-11T11:00:00.000Z");
-    await expect(service.resolveStale(ACTOR, { ...input, outcome: "released" })).rejects.toThrow(
+    await expect(service.resolveStale(ACTOR, { ...input, outcome: "not_filed" })).rejects.toThrow(
       ConflictError,
     );
   });
 
   it("refuses an attempt that is already settled, and one that does not exist", async () => {
     const { service } = await setup("2026-10-13T10:00:00.000Z");
-    await service.resolveStale(ACTOR, { ...input, outcome: "released" });
-    await expect(service.resolveStale(ACTOR, { ...input, outcome: "released" })).rejects.toThrow(
-      NotFoundError,
+    await service.resolveStale(ACTOR, { ...input, outcome: "not_filed" });
+    await expect(service.resolveStale(ACTOR, { ...input, outcome: "not_filed" })).rejects.toThrow(
+      ConflictError,
     );
     await expect(
-      service.resolveStale(ACTOR, { ...input, idempotencyKey: "nope", outcome: "released" }),
+      service.resolveStale(ACTOR, { ...input, idempotencyKey: "nope", outcome: "not_filed" }),
     ).rejects.toThrow(NotFoundError);
   });
 
@@ -60,7 +73,7 @@ describe("clearinghouse attempt resolution", () => {
     await expect(
       service.resolveStale(
         { organizationId: "org-b", userId: "u" },
-        { ...input, outcome: "released" },
+        { ...input, outcome: "not_filed" },
       ),
     ).rejects.toThrow(NotFoundError);
   });

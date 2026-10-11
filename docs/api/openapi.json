@@ -57140,7 +57140,7 @@
                           "type": "string"
                         },
                         {
-                          "const": "released",
+                          "const": "voided",
                           "type": "string"
                         }
                       ]
@@ -57179,6 +57179,7 @@
                       "providerEntityId",
                       "usage",
                       "idempotencyKey",
+                      "confirmedAtVendor",
                       "outcome",
                       "clearinghouseSubmissionId"
                     ],
@@ -57203,13 +57204,16 @@
                         "pattern": "^[A-Za-z0-9_.:-]{1,128}$",
                         "type": "string"
                       },
+                      "confirmedAtVendor": {
+                        "const": true,
+                        "type": "boolean"
+                      },
                       "outcome": {
                         "const": "sent",
                         "type": "string"
                       },
                       "clearinghouseSubmissionId": {
-                        "minLength": 1,
-                        "maxLength": 200,
+                        "pattern": "^[A-Za-z0-9_.:-]{1,200}$",
                         "type": "string"
                       }
                     }
@@ -57220,6 +57224,7 @@
                       "providerEntityId",
                       "usage",
                       "idempotencyKey",
+                      "confirmedAtVendor",
                       "outcome"
                     ],
                     "properties": {
@@ -57243,8 +57248,12 @@
                         "pattern": "^[A-Za-z0-9_.:-]{1,128}$",
                         "type": "string"
                       },
+                      "confirmedAtVendor": {
+                        "const": true,
+                        "type": "boolean"
+                      },
                       "outcome": {
-                        "const": "released",
+                        "const": "not_filed",
                         "type": "string"
                       }
                     }

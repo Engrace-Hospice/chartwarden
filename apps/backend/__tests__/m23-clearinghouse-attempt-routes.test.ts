@@ -71,7 +71,7 @@ function makeServer() {
       return {
         idempotencyKey: input.idempotencyKey,
         controlNumber: "000000001",
-        status: input.outcome,
+        status: input.outcome === "sent" ? "sent" : "voided",
         clearinghouseSubmissionId:
           input.outcome === "sent" ? input.clearinghouseSubmissionId : null,
       };
@@ -115,7 +115,8 @@ const RELEASE = {
   providerEntityId: PE_IN,
   usage: "test",
   idempotencyKey: "idem-1",
-  outcome: "released",
+  outcome: "not_filed",
+  confirmedAtVendor: true,
 };
 
 beforeEach(() => {
@@ -192,6 +193,8 @@ describe("M23 clearinghouse attempt resolution route (ADR-0053)", () => {
       { ...RELEASE, idempotencyKey: "has space" },
       { ...RELEASE, usage: "staging" },
       { ...RELEASE, outcome: "other" },
+      { ...RELEASE, confirmedAtVendor: false },
+      { ...RELEASE, outcome: "sent", clearinghouseSubmissionId: "has space" },
     ]) {
       const res = await app.inject({
         method: "POST",

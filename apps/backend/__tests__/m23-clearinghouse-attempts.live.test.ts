@@ -187,8 +187,12 @@ describe.skipIf(!DB_URL)("M23 durable clearinghouse attempt store — LIVE Postg
       IDS.orgA,
       `scope-${IDS.orgA}`,
       "idem-1",
-      { kind: "released" },
+      { kind: "voided" },
       CONTRACT_OPERATOR_ID,
+      {
+        firstReservedBefore: "2999-01-01T00:00:00.000Z",
+        reservedBefore: "2999-01-01T00:00:00.000Z",
+      },
     );
     const { rows } = await admin.query(
       "SELECT actor_user_id FROM audit_event WHERE resource_kind='clearinghouse_submission_attempt' AND event_type='clearinghouse_submission_attempt.update' ORDER BY created_at DESC LIMIT 1",

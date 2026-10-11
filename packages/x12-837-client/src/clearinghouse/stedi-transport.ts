@@ -91,6 +91,15 @@ const SETTLE_MS = 60_000;
  * True once a re-send under the same wire key could no longer be replayed by Stedi (or would land too close to the
  * end of its window). Past this the transport refuses and an operator settles the attempt.
  */
+export function settleGuard(now: Date): { firstReservedBefore: string; reservedBefore: string } {
+  return {
+    firstReservedBefore: new Date(
+      now.getTime() - (KEY_WINDOW_MS - KEY_WINDOW_MARGIN_MS),
+    ).toISOString(),
+    reservedBefore: new Date(now.getTime() - IN_FLIGHT_MS).toISOString(),
+  };
+}
+
 export function pastKeyWindow(firstReservedAt: string, now: Date): boolean {
   return now.getTime() - Date.parse(firstReservedAt) >= KEY_WINDOW_MS - KEY_WINDOW_MARGIN_MS;
 }
@@ -377,7 +386,7 @@ export class StediTransport implements ClearinghouseTransport {
     try {
       const { attempt: existing, reserved } = await this.attempts.reserve(attempt);
       if (reserved) return null;
-      if (existing.idempotencyKey !== attempt.idempotencyKey) {
+      if (existing.scope !== attempt.scope || existing.idempotencyKey !== attempt.idempotencyKey) {
         return degraded(
           CH.IDEMPOTENCY_CONFLICT,
           "the control number was already submitted under another key",
@@ -387,6 +396,12 @@ export class StediTransport implements ClearinghouseTransport {
         return degraded(
           CH.IDEMPOTENCY_CONFLICT,
           "the idempotency key was used for a different submission",
+        );
+      }
+      if (existing.status === "voided") {
+        return degraded(
+          CH.IDEMPOTENCY_CONFLICT,
+          "an operator voided this key after a stuck attempt; use a new idempotency key and control number",
         );
       }
       if (existing.status === "sent") {

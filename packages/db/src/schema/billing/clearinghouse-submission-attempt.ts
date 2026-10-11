@@ -11,7 +11,12 @@ import { sql } from "drizzle-orm";
 import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 
-export const CLEARINGHOUSE_ATTEMPT_STATUS_VALUES = ["reserved", "sent", "released"] as const;
+export const CLEARINGHOUSE_ATTEMPT_STATUS_VALUES = [
+  "reserved",
+  "sent",
+  "released",
+  "voided",
+] as const;
 export type ClearinghouseAttemptStatusValue = (typeof CLEARINGHOUSE_ATTEMPT_STATUS_VALUES)[number];
 
 export const CLEARINGHOUSE_ATTEMPT_USAGE_VALUES = ["test", "production"] as const;
@@ -47,10 +52,10 @@ export const clearinghouseSubmissionAttempts = pgTable(
       .where(sql`${t.status} <> 'released'`),
     uniqueIndex("clearinghouse_submission_attempt_control_live_uq")
       .on(t.organizationId, t.scope, t.controlNumber)
-      .where(sql`${t.status} <> 'released'`),
+      .where(sql`${t.status} not in ('released', 'voided')`),
     uniqueIndex("clearinghouse_submission_attempt_platform_control_live_uq")
       .on(t.usage, t.controlNumber)
-      .where(sql`${t.status} <> 'released'`),
+      .where(sql`${t.status} not in ('released', 'voided')`),
     index("clearinghouse_submission_attempt_reserved_idx")
       .on(t.organizationId, t.reservedAt)
       .where(sql`${t.status} = 'reserved'`),

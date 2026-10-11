@@ -23,7 +23,7 @@ export class PlatformControlNumberTaken extends Error {
   }
 }
 
-export type AttemptStatus = "reserved" | "sent" | "released";
+export type AttemptStatus = "reserved" | "sent" | "released" | "voided";
 
 export interface SubmissionAttempt {
   readonly organizationId: string;
@@ -53,7 +53,17 @@ export type AttemptResolution =
       readonly clearinghouseSubmissionId: string;
       readonly receivedAt: string;
     }
-  | { readonly kind: "released" };
+  | { readonly kind: "voided" };
+
+/**
+ * Conditions a settlement must still satisfy AT the write, so a sender that retook the row after the operator read it
+ * cannot be overridden: the first reservation is older than `firstReservedBefore` and the current one older than
+ * `reservedBefore` (ISO-8601).
+ */
+export interface SettleGuard {
+  readonly firstReservedBefore: string;
+  readonly reservedBefore: string;
+}
 
 export interface ReserveResult {
   /** The row written by this call, or the earlier live row (reserved or sent) that holds the key or number. */
@@ -93,8 +103,9 @@ export interface SubmissionAttemptStore {
   ): Promise<SubmissionAttempt | null>;
   /**
    * An operator's decision on a reservation the transport can no longer settle itself (it is past the vendor's key
-   * window, so a re-send could file twice): `sent` records the vendor id the operator found, `released` frees the
-   * key and number. Acts only on a still-reserved row; null when there is none. `actorUserId` is recorded in the
+   * window, so a re-send could file twice): `sent` records the vendor id the operator found; `voided` records that
+   * the operator confirmed it was never filed — the control number is freed but the KEY stays burned, since the vendor
+   * can no longer replay it and a re-send under it would file a duplicate. Acts only on a still-reserved row; null when there is none. `actorUserId` is recorded in the
    * audit trail.
    */
   resolve(
@@ -103,6 +114,7 @@ export interface SubmissionAttemptStore {
     idempotencyKey: string,
     outcome: AttemptResolution,
     actorUserId: string,
+    guard: SettleGuard,
   ): Promise<SubmissionAttempt | null>;
   /** reserved -> released: the vendor definitively did not take it, so the key and number are free again. */
   release(organizationId: string, scope: string, idempotencyKey: string): Promise<void>;
@@ -156,18 +168,21 @@ export class InMemoryAttemptStore implements SubmissionAttemptStore {
   }
 
   reserve(attempt: SubmissionAttempt): Promise<ReserveResult> {
+    const live = this.live(attempt.organizationId, attempt.scope);
+    const byKey = live.find((r) => r.idempotencyKey === attempt.idempotencyKey);
+    if (byKey) return Promise.resolve({ attempt: byKey, reserved: false });
     const foreign = this.rows.some(
       (r) =>
         r.status !== "released" &&
+        r.status !== "voided" &&
         r.usage === attempt.usage &&
         r.controlNumber === attempt.controlNumber &&
         (r.organizationId !== attempt.organizationId || r.scope !== attempt.scope),
     );
     if (foreign) return Promise.reject(new PlatformControlNumberTaken());
-    const live = this.live(attempt.organizationId, attempt.scope);
-    const held =
-      live.find((r) => r.idempotencyKey === attempt.idempotencyKey) ??
-      live.find((r) => r.controlNumber === attempt.controlNumber);
+    const held = live.find(
+      (r) => r.controlNumber === attempt.controlNumber && r.status !== "voided",
+    );
     if (held) return Promise.resolve({ attempt: held, reserved: false });
     const row: SubmissionAttempt = {
       ...attempt,
@@ -205,10 +220,15 @@ export class InMemoryAttemptStore implements SubmissionAttemptStore {
     scope: string,
     idempotencyKey: string,
     outcome: AttemptResolution,
+    _actorUserId: string,
+    guard: SettleGuard,
   ): Promise<SubmissionAttempt | null> {
     const i = this.indexOf(organizationId, scope, idempotencyKey);
     const row = this.rows[i];
     if (!row || row.status !== "reserved") return Promise.resolve(null);
+    if (row.firstReservedAt > guard.firstReservedBefore || row.reservedAt > guard.reservedBefore) {
+      return Promise.resolve(null);
+    }
     const next: SubmissionAttempt =
       outcome.kind === "sent"
         ? {
@@ -217,7 +237,7 @@ export class InMemoryAttemptStore implements SubmissionAttemptStore {
             clearinghouseSubmissionId: outcome.clearinghouseSubmissionId,
             receivedAt: outcome.receivedAt,
           }
-        : { ...row, status: "released" };
+        : { ...row, status: "voided" };
     this.rows[i] = next;
     return Promise.resolve(next);
   }

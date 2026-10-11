@@ -6,7 +6,12 @@ import {
   type SubmissionAttempt,
   type SubmissionAttemptStore,
 } from "./attempt-store";
-import { type StediAnomaly, StediTransport, createStediTransportFromEnv } from "./stedi-transport";
+import {
+  type StediAnomaly,
+  StediTransport,
+  createStediTransportFromEnv,
+  settleGuard,
+} from "./stedi-transport";
 import { identityOf, scopeKey } from "./submission-identity";
 import { CH, RETRYABLE_CODES } from "./types";
 import type { ClearinghouseContext, ClearinghouseSubmission } from "./types";
@@ -324,6 +329,28 @@ describe("StediTransport billing provider binding", () => {
     );
     expect(code(bad)).toBe(CH.INVALID_REQUEST);
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe("StediTransport after an operator voids an attempt", () => {
+  it("refuses the burned key, with no send, but accepts a new key and control number", async () => {
+    const { calls, transport, attempts, clock } = harness(
+      () => new Response("{}", { status: 503 }),
+    );
+    await transport.submitClaim(CTX, claim());
+    clock.now = new Date(clock.now.getTime() + 25 * 60 * 60_000);
+    await attempts.resolve(
+      CTX.organizationId,
+      scopeKey(CTX),
+      "idem-1",
+      { kind: "voided" },
+      "op",
+      settleGuard(clock.now),
+    );
+    const sends = calls.length;
+    const again = await transport.submitClaim(CTX, claim());
+    expect(code(again)).toBe(CH.IDEMPOTENCY_CONFLICT);
+    expect(calls).toHaveLength(sends);
   });
 });
 
@@ -650,7 +677,7 @@ function bind(s: SubmissionAttemptStore): SubmissionAttemptStore {
     retake: (o, sc, k, e, n) => s.retake(o, sc, k, e, n),
     find: (o, sc, k) => s.find(o, sc, k),
     allocateControlNumber: (u) => s.allocateControlNumber(u),
-    resolve: (o, sc, k, out, who) => s.resolve(o, sc, k, out, who),
+    resolve: (o, sc, k, out, who, g) => s.resolve(o, sc, k, out, who, g),
   };
 }
 

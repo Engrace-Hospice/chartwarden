@@ -5,6 +5,8 @@
 // transport under the same wire key while the vendor's idempotency window lasts. Past the window a re-send could
 // file the claim twice, so the transport refuses and the control number stays held. This is the way out: the
 // operator checks the vendor's records and records either "it was filed" (with the vendor's id) or "it was not".
+// "Not filed" frees the control number but burns the KEY (status `voided`): the vendor can no longer replay it, so a
+// re-send under it would file the claim as new; the caller must use a new key and control number.
 // Only a still-reserved attempt that is past the window can be settled here; anything inside the window belongs to
 // the transport. The decision and who made it land in the audit trail (the table's M04 trigger).
 import { ConflictError, NotFoundError } from "@wardenx/types";
@@ -13,6 +15,7 @@ import {
   type SubmissionAttemptStore,
   pastKeyWindow,
   scopeKey,
+  settleGuard,
 } from "@wardenx/x12-837-client";
 
 export type ResolveStaleAttemptInput = {
@@ -21,13 +24,13 @@ export type ResolveStaleAttemptInput = {
   readonly idempotencyKey: string;
 } & (
   | { readonly outcome: "sent"; readonly clearinghouseSubmissionId: string }
-  | { readonly outcome: "released" }
+  | { readonly outcome: "not_filed" }
 );
 
 export interface ResolvedAttempt {
   readonly idempotencyKey: string;
   readonly controlNumber: string;
-  readonly status: "sent" | "released";
+  readonly status: "sent" | "voided";
   readonly clearinghouseSubmissionId: string | null;
 }
 
@@ -70,12 +73,13 @@ export function buildClearinghouseAttemptResolutionService(
               clearinghouseSubmissionId: input.clearinghouseSubmissionId,
               receivedAt: at,
             }
-          : { kind: "released" },
+          : { kind: "voided" },
         actor.userId,
+        settleGuard(now()),
       );
-      // Settled by someone else between the read and the write.
-      if (!settled || settled.status === "reserved") {
-        throw new ConflictError("the attempt was settled by someone else");
+      // Settled by someone else, or retaken by the sender, between the read and the write.
+      if (!settled || (settled.status !== "sent" && settled.status !== "voided")) {
+        throw new ConflictError("the attempt changed while it was being settled; read it again");
       }
       return {
         idempotencyKey: settled.idempotencyKey,
