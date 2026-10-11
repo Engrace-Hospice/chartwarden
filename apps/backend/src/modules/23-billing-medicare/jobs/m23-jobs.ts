@@ -230,6 +230,11 @@ export interface Parsed999 {
   readonly functionalGroupDate?: string | null;
   /** The 999's ISA09 interchange date (ISO), the fallback when GS04 is absent. */
   readonly interchangeDate?: string | null;
+  /**
+   * Set by a clearinghouse adapter (`routeAckEvent`, ADR-0053 D2): the answer is the clearinghouse's, not the MAC's. It
+   * rides the 999 edge, so it can reach `ack_pending` but never `ack_accepted`, and is recorded as such.
+   */
+  readonly stage?: "clearinghouse";
 }
 
 /** A parsed 277CA result (PHI-free: claim-level accept/reject/partial + payer control number + reason codes). */
@@ -1445,6 +1450,8 @@ type AckedSubmission = NonNullable<
 interface RoutedAck {
   readonly organizationId: string;
   readonly kind: "ack_999" | "ack_277ca";
+  /** Omitted = derived from `kind` (999 = clearinghouse, 277CA = payer). */
+  readonly stage?: "clearinghouse" | "payer";
   readonly outcome: "accepted" | "rejected" | "partial";
   readonly payerControlNumber: string | null;
   readonly reasonCodes: readonly string[];
@@ -1506,6 +1513,7 @@ async function applyClaimAck(
     submissionId: submission.id,
     claimId,
     kind: ack.kind,
+    stage: ack.stage ?? (ack.kind === "ack_999" ? "clearinghouse" : "payer"),
     macJurisdiction: ack.macJurisdiction as NewClaimAck["macJurisdiction"],
     ackFileUri: ack.ackFileUri,
     ackReceivedAt: ack.receivedAt,
@@ -1529,7 +1537,12 @@ async function applyClaimAck(
           ? "ack_277ca_partial"
           : "ack_277ca_rejected";
   if (!canClaimTransition(claim.state, event)) return;
-  await claims.transitionToState(claimId, claim.version, nextClaimState(claim.state, event));
+  await claims.transitionToState(
+    claimId,
+    claim.version,
+    nextClaimState(claim.state, event),
+    event === "ack_999_accepted" ? { clearinghouseAcceptedAt: ack.receivedAt } : {},
+  );
   const emit = (eventName: string, payload: Record<string, unknown>) =>
     outboxOf(deps).publish(tx, {
       eventName,
@@ -1541,7 +1554,12 @@ async function applyClaimAck(
   // Payloads match the catalog (`events-by-m23.ts`) — the catalog-validating publisher refuses anything else.
   if (event === "ack_999_rejected" || event === "ack_277ca_rejected") {
     await emit("m23.claim.rejected", {
-      rejectionStage: event === "ack_999_rejected" ? "999" : "277ca",
+      rejectionStage:
+        event === "ack_277ca_rejected"
+          ? "277ca"
+          : ack.stage === "clearinghouse"
+            ? "clearinghouse"
+            : "999",
       rejectionCodes: reasonCodes,
     });
   } else if (event === "ack_277ca_accepted") {
@@ -1599,6 +1617,7 @@ export async function runAckPull999(deps: M23WorkerDeps): Promise<void> {
           ack: {
             organizationId: result.organizationId,
             kind: "ack_999",
+            ...(result.stage ? { stage: result.stage } : {}),
             outcome: result.accepted ? "accepted" : "rejected",
             payerControlNumber: null,
             reasonCodes: result.reasonCodes,

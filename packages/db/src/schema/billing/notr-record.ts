@@ -54,8 +54,9 @@ export const notrRecord = pgTable(
     // The MAC's answer (migration 0377): the 277CA acceptance date, or the 999 / 277CA rejection with its PHI-free
     // reason codes. The raw acknowledgment is never stored here (it stays behind `claim_acknowledgment.ack_file_uri`).
     acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    clearinghouseAcceptedAt: timestamp("clearinghouse_accepted_at", { withTimezone: true }),
     rejectedAt: timestamp("rejected_at", { withTimezone: true }),
-    rejectionStage: text("rejection_stage").$type<"999" | "277ca">(),
+    rejectionStage: text("rejection_stage").$type<"999" | "277ca" | "clearinghouse">(),
     rejectionCodes: text("rejection_codes").array(),
     // Migration 0378 — the MAC's own date for that answer (277CA STC02; a 999's GS04, else ISA09; else our
     // receipt date) and which of those it is. Timeliness is judged on it, not on `accepted_at` (our receipt time).

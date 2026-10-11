@@ -116,8 +116,10 @@ interface NoticeRecord {
   payerNotrControlNumber?: string | null;
   // The MAC's answer: the 277CA acceptance date, or the 999 / 277CA rejection with its PHI-free reason codes.
   acceptedAt?: string | null;
+  // When the clearinghouse (not Medicare) accepted the file; never the NOE timeliness date.
+  clearinghouseAcceptedAt?: string | null;
   rejectedAt?: string | null;
-  rejectionStage?: "999" | "277ca" | null;
+  rejectionStage?: "999" | "277ca" | "clearinghouse" | null;
   rejectionCodes?: string[];
   // Medicare's own date for that answer (277CA STC02 / 999 GS04 / ISA09, else our receipt date) + its source.
   payerStatusDate?: string | null;
@@ -859,7 +861,8 @@ function NoticeActions({
 
 // ── small shared building blocks ──────────────────────────────────────────────────────────────────────
 // The MAC's answer: when the 277CA accepted the notice, or when and at which stage it was rejected and why.
-const REJECTION_STAGE_LABEL: Record<"999" | "277ca", string> = {
+const REJECTION_STAGE_LABEL: Record<"999" | "277ca" | "clearinghouse", string> = {
+  clearinghouse: "Clearinghouse edits (before Medicare)",
   "999": "999 (file syntax)",
   "277ca": "277CA (claim content)",
 };
@@ -876,7 +879,9 @@ function NoticeAckOutcome({
     return (
       <>
         <InlineAlert tone="error">
-          {`Medicare rejected this ${config.acronym}: it was not filed. Correct it and file a new ${config.acronym}.`}
+          {record.rejectionStage === "clearinghouse"
+            ? `The clearinghouse rejected this ${config.acronym} before it reached Medicare: it was not filed. Correct it and file a new ${config.acronym}.`
+            : `Medicare rejected this ${config.acronym}: it was not filed. Correct it and file a new ${config.acronym}.`}
         </InlineAlert>
         <Field
           label="Rejected"
@@ -905,6 +910,14 @@ function NoticeAckOutcome({
         <Field label="Accepted by Medicare" value={new Date(record.acceptedAt).toLocaleString()} />
         {payerDate ? <Field label="Medicare's acceptance date" value={payerDate} /> : null}
       </>
+    );
+  }
+  if (record.clearinghouseAcceptedAt) {
+    return (
+      <Field
+        label="Accepted by clearinghouse (awaiting Medicare)"
+        value={new Date(record.clearinghouseAcceptedAt).toLocaleString()}
+      />
     );
   }
   return null;

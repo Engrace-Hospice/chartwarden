@@ -175,7 +175,8 @@ export function MeetingDetail(): JSX.Element {
     setBusy(true);
     setNotice(null);
     try {
-      const res = kind === "build" ? await buildPackets(client, id) : await startMeeting(client, id);
+      const res =
+        kind === "build" ? await buildPackets(client, id) : await startMeeting(client, id);
       setNotice(
         res.ok
           ? kind === "build"
@@ -383,7 +384,8 @@ export function MeetingDetail(): JSX.Element {
                 Start meeting
               </button>
             ) : null}
-            {canSchedule && (meeting.status === "scheduled" || meeting.status === "packets_ready") ? (
+            {canSchedule &&
+            (meeting.status === "scheduled" || meeting.status === "packets_ready") ? (
               <>
                 <button
                   type="button"
@@ -425,7 +427,9 @@ export function MeetingDetail(): JSX.Element {
         />
 
         {notice ? (
-          <output aria-live="polite" style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant }}>{notice}</output>
+          <output aria-live="polite" style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant }}>
+            {notice}
+          </output>
         ) : null}
 
         <div className="wx-stat-grid" aria-label="Meeting summary">
@@ -696,7 +700,9 @@ export function MeetingDetail(): JSX.Element {
                 label: "Status",
                 value: (
                   <StatusPill
-                    label={meeting.status === "adjourned" ? "Finalized" : stateLabel(meeting.status)}
+                    label={
+                      meeting.status === "adjourned" ? "Finalized" : stateLabel(meeting.status)
+                    }
                     tone={MEETING_TONE[meeting.status] ?? "neutral"}
                   />
                 ),

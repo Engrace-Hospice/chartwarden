@@ -329,8 +329,10 @@ export interface ValidationOverrideAuditFilter {
 export interface NoticeAckOutcomeView {
   /** When the 277CA accepted the notice (the NOE timeliness / occurrence-span-77 acceptance date). */
   readonly acceptedAt: string | null;
+  /** When the clearinghouse (not the MAC) accepted the file (ADR-0053 D2). Never the NOE timeliness date. */
+  readonly clearinghouseAcceptedAt: string | null;
   readonly rejectedAt: string | null;
-  readonly rejectionStage: "999" | "277ca" | null;
+  readonly rejectionStage: "999" | "277ca" | "clearinghouse" | null;
   readonly rejectionCodes: readonly string[];
   /** Medicare's own date for the answer (migration 0378): 277CA STC02, a 999's GS04 / ISA09, else our receipt. */
   readonly payerStatusDate: string | null;

@@ -152,6 +152,8 @@ export type {
 export { read277caStatusDates, read999EnvelopeDates } from "./acks/ack-dates";
 export type { Ack999EnvelopeDates, ClaimStatusDate } from "./acks/ack-dates";
 export { parse999 } from "./acks/parse-999";
+export { routeAckEvent } from "./acks/route-ack-event";
+export type { RoutedAckEvent } from "./acks/route-ack-event";
 export type { Ack999TransactionSet, Parsed999Detail } from "./acks/parse-999";
 
 // ─── ClearinghouseTransport port and conformance cases (ADR-0053; the in-memory reference is in ./testing) ─────────

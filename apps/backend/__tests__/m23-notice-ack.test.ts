@@ -81,6 +81,7 @@ import {
   runAckPull277ca,
   runAckPull999,
 } from "../src/modules/23-billing-medicare/jobs/m23-jobs";
+import { applyNoticeAck } from "../src/modules/23-billing-medicare/jobs/notice-ack-jobs";
 
 const ORG = "00000000-0000-4000-8000-0000000000a1";
 const PE = "00000000-0000-4000-8000-0000000000e1";
@@ -529,6 +530,44 @@ describe("routing", () => {
     expect(catalogAccepts(h.published[0] as Published)).toBe(true);
   });
 
+  it("a clearinghouse-stage claim accept stays ack_pending, stamps clearinghouse_accepted_at and emits nothing", async () => {
+    fakes.claims.set("claim-1", { id: "claim-1", state: "submitted", version: 2 });
+    fakes.submissions.set("sub-claim", {
+      id: "sub-claim",
+      organizationId: ORG,
+      kind: "claim_837i",
+      claimId: "claim-1",
+    });
+    const h = harness();
+    h.set999([ack999("sub-claim", true, { claimId: "claim-1", stage: "clearinghouse" })]);
+
+    await runAckPull999(h.deps);
+
+    expect(fakes.claims.get("claim-1")).toMatchObject({
+      state: "ack_pending",
+      clearinghouseAcceptedAt: RECEIVED,
+    });
+    expect(fakes.acks[0]).toMatchObject({ stage: "clearinghouse", outcomeStatus: "accepted" });
+    expect(h.published).toEqual([]);
+  });
+
+  it("a clearinghouse-stage claim rejection says so in the catalog-valid event", async () => {
+    fakes.claims.set("claim-1", { id: "claim-1", state: "submitted", version: 2 });
+    fakes.submissions.set("sub-claim", {
+      id: "sub-claim",
+      organizationId: ORG,
+      kind: "claim_837i",
+      claimId: "claim-1",
+    });
+    const h = harness();
+    h.set999([ack999("sub-claim", false, { claimId: "claim-1", stage: "clearinghouse" })]);
+
+    await runAckPull999(h.deps);
+
+    expect(h.published[0]?.payload).toMatchObject({ rejectionStage: "clearinghouse" });
+    expect(catalogAccepts(h.published[0] as Published)).toBe(true);
+  });
+
   it.each([
     ["accepted", "ack_accepted", "m23.claim.acknowledged"],
     ["rejected", "ack_rejected", "m23.claim.rejected"],
@@ -658,5 +697,121 @@ describe.each(KINDS)("$kind payer status date", ({ kind, table, pointer, idKey }
       payerStatusDate: "2026-10-02",
       payerStatusDateSource: "277ca_stc02",
     });
+  });
+});
+
+// ── Ack stage (ADR-0053 D2): a clearinghouse answers before the payer and must never look like payer acceptance ──
+describe.each(KINDS)("$kind ack stage", ({ kind, table, pointer }) => {
+  const NOTICE = `stage-${kind}`;
+  const SUB = `stage-sub-${kind}`;
+  const published: Published[] = [];
+  const alerts: Alert[] = [];
+  const ports = {
+    outbox: {
+      publish: async (_tx: unknown, input: Published) => {
+        published.push(input);
+      },
+    },
+    alerts: {
+      dispatch: async (a: Alert) => {
+        alerts.push(a);
+      },
+    },
+  } as never;
+  const submission = {
+    id: SUB,
+    kind,
+    noeId: kind === "noe" ? NOTICE : null,
+    notrId: kind === "notr" ? NOTICE : null,
+  };
+  const seed = (state: string) => {
+    published.length = 0;
+    alerts.length = 0;
+    table().set(NOTICE, {
+      id: NOTICE,
+      organizationId: ORG,
+      providerEntityId: PE,
+      admissionId: ADMISSION,
+      state,
+      version: 1,
+      latestSubmissionId: SUB,
+      latestAcknowledgmentId: null,
+    });
+    fakes.submissions.set(SUB, {
+      id: SUB,
+      organizationId: ORG,
+      kind,
+      claimId: null,
+      [pointer]: NOTICE,
+    });
+  };
+  const ack = (over: Record<string, unknown>) => ({
+    organizationId: ORG,
+    kind: "ack_999" as const,
+    outcome: "accepted" as const,
+    payerControlNumber: null,
+    reasonCodes: [] as string[],
+    macJurisdiction: MAC,
+    ackFileUri: `s3://acks/${kind}-${Math.random()}.json`,
+    receivedAt: RECEIVED,
+    ...over,
+  });
+  const row = () => table().get(NOTICE) as Row;
+
+  it("a clearinghouse-stage accept records the stage and stamps clearinghouse_accepted_at, never ack_accepted or a payer date", async () => {
+    seed("submitted");
+    await applyNoticeAck({} as never, ports, submission, ack({ stage: "clearinghouse" }));
+
+    expect(row()).toMatchObject({ state: "ack_pending", clearinghouseAcceptedAt: RECEIVED });
+    expect(row().acceptedAt ?? null).toBeNull();
+    expect(row().payerStatusDate ?? null).toBeNull();
+    expect(fakes.acks.at(-1)).toMatchObject({ stage: "clearinghouse", outcomeStatus: "accepted" });
+    expect(published).toEqual([]);
+  });
+
+  it("a payer-stage accept after it is the only thing that reaches ack_accepted, and keeps the clearinghouse stamp", async () => {
+    seed("submitted");
+    await applyNoticeAck({} as never, ports, submission, ack({ stage: "clearinghouse" }));
+    await applyNoticeAck(
+      {} as never,
+      ports,
+      submission,
+      ack({ kind: "ack_277ca", stage: "payer", payerControlNumber: "PAYER-1" }),
+    );
+
+    expect(row()).toMatchObject({
+      state: "ack_accepted",
+      clearinghouseAcceptedAt: RECEIVED,
+      acceptedAt: RECEIVED,
+    });
+    expect(fakes.acks.at(-1)).toMatchObject({ stage: "payer" });
+  });
+
+  it("a clearinghouse-stage rejection is stamped rejection_stage 'clearinghouse' and the event says so (catalog-valid)", async () => {
+    seed("submitted");
+    await applyNoticeAck(
+      {} as never,
+      ports,
+      submission,
+      ack({ stage: "clearinghouse", outcome: "rejected", reasonCodes: ["CL103"] }),
+    );
+
+    expect(row()).toMatchObject({
+      state: "ack_rejected",
+      rejectionStage: "clearinghouse",
+      rejectionCodes: ["CL103"],
+    });
+    expect(published).toHaveLength(1);
+    expect(published[0]?.payload.rejectionStage).toBe("clearinghouse");
+    expect(catalogAccepts(published[0] as Published)).toBe(true);
+    expect(alerts).toHaveLength(1);
+  });
+
+  it("without a stage the kind decides it (999 = clearinghouse, 277CA = payer), as the pre-clearinghouse crons send", async () => {
+    seed("submitted");
+    await applyNoticeAck({} as never, ports, submission, ack({}));
+    expect(fakes.acks.at(-1)).toMatchObject({ stage: "clearinghouse" });
+    await applyNoticeAck({} as never, ports, submission, ack({ kind: "ack_277ca" }));
+    expect(fakes.acks.at(-1)).toMatchObject({ stage: "payer" });
   });
 });

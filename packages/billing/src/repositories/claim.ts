@@ -58,6 +58,7 @@ export type ClaimTransitionPatch = Partial<
   Pick<
     schema.NewClaim,
     | "payerClaimControlNumber"
+    | "clearinghouseAcceptedAt"
     | "latestValidationRunId"
     | "latestSubmissionId"
     | "replacesClaimId"

@@ -57,6 +57,7 @@ export type NoeTransitionPatch = Partial<
     | "confirmationDocumentId"
     | "windowBreachedAt"
     | "acceptedAt"
+    | "clearinghouseAcceptedAt"
     | "rejectedAt"
     | "rejectionStage"
     | "rejectionCodes"

@@ -38,11 +38,12 @@ export interface CorrectableNotice extends CorrectionLinkFields {
   id: string;
   /** The notice's current value of the correctable date. */
   correctableDate: string | null;
-  rejectionStage?: "999" | "277ca" | null;
+  rejectionStage?: "999" | "277ca" | "clearinghouse" | null;
   rejectionCodes?: string[];
 }
 
-const STAGE: Record<"999" | "277ca", string> = {
+const STAGE: Record<"999" | "277ca" | "clearinghouse", string> = {
+  clearinghouse: "Clearinghouse edits (before Medicare)",
   "999": "999 (file syntax)",
   "277ca": "277CA (claim content)",
 };

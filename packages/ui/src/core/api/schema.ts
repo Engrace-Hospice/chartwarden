@@ -67827,8 +67827,6 @@ export interface operations {
         parameters: {
             query?: {
                 q?: string;
-                status?: string;
-                cursor?: string;
                 limit?: number;
             };
             header?: never;

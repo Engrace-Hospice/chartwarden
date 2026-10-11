@@ -8,8 +8,9 @@ import type { NoticeAckOutcomeView, NoticeCorrectionLinkView } from "./read-serv
 
 interface NoticeAckColumns {
   readonly acceptedAt: Date | null;
+  readonly clearinghouseAcceptedAt: Date | null;
   readonly rejectedAt: Date | null;
-  readonly rejectionStage: "999" | "277ca" | null;
+  readonly rejectionStage: "999" | "277ca" | "clearinghouse" | null;
   readonly rejectionCodes: string[] | null;
   readonly payerStatusDate: string | null;
   readonly payerStatusDateSource: PayerStatusDateSource | null;
@@ -18,6 +19,7 @@ interface NoticeAckColumns {
 export function noticeAckOutcomeView(row: NoticeAckColumns): NoticeAckOutcomeView {
   return {
     acceptedAt: row.acceptedAt?.toISOString() ?? null,
+    clearinghouseAcceptedAt: row.clearinghouseAcceptedAt?.toISOString() ?? null,
     rejectedAt: row.rejectedAt?.toISOString() ?? null,
     rejectionStage: row.rejectionStage ?? null,
     rejectionCodes: row.rejectionCodes ?? [],
