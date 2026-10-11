@@ -16,6 +16,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import {
   ATTEMPT_STORE_CONTRACT,
   type AttemptStoreContractIds,
+  CONTRACT_OPERATOR_ID,
   attemptReservationFixture,
 } from "@wardenx/x12-837-client";
 import { sql } from "drizzle-orm";
@@ -78,6 +79,9 @@ describe.skipIf(!DB_URL)("M23 durable clearinghouse attempt store — LIVE Postg
       "INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES ($1,'ca7e-a','A','A','active'),($2,'ca7e-b','B','B','active')",
       [IDS.orgA, IDS.orgB],
     );
+    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'op@ca7e.test')`, [
+      CONTRACT_OPERATOR_ID,
+    ]);
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
   });
@@ -174,5 +178,21 @@ describe.skipIf(!DB_URL)("M23 durable clearinghouse attempt store — LIVE Postg
     } finally {
       await admin.query("ROLLBACK");
     }
+  });
+
+  it("records who resolved an attempt in the audit trail", async () => {
+    const store = createDrizzleAttemptStore(handle.db);
+    await store.reserve(attemptReservationFixture(IDS));
+    await store.resolve(
+      IDS.orgA,
+      `scope-${IDS.orgA}`,
+      "idem-1",
+      { kind: "released" },
+      CONTRACT_OPERATOR_ID,
+    );
+    const { rows } = await admin.query(
+      "SELECT actor_user_id FROM audit_event WHERE resource_kind='clearinghouse_submission_attempt' AND event_type='clearinghouse_submission_attempt.update' ORDER BY created_at DESC LIMIT 1",
+    );
+    expect(rows[0]?.actor_user_id).toBe(CONTRACT_OPERATOR_ID);
   });
 });

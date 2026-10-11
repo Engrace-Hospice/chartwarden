@@ -178,7 +178,10 @@ describe("StediTransport.submitClaim", () => {
   it("scopes the wire idempotency key per tenant and usage, but keeps it stable for a retry", async () => {
     const { calls, transport } = harness();
     await transport.submitClaim(CTX, claim());
-    await transport.submitClaim({ ...CTX, organizationId: "org-2" }, claim({ controlNumber: "CCN-2" }));
+    await transport.submitClaim(
+      { ...CTX, organizationId: "org-2" },
+      claim({ controlNumber: "CCN-2" }),
+    );
     const keys = calls.map((c) => new Headers(c.init.headers).get("idempotency-key"));
     expect(keys[0]).not.toBe(keys[1]);
     expect(keys[0]).not.toBe("idem-1");
@@ -313,7 +316,11 @@ describe("StediTransport billing provider binding", () => {
     expect(ok.ok).toBe(true);
     const bad = await transport.submitClaim(
       { ...CTX, billingNpi: "1000000004" },
-      claim({ controlNumber: "CCN-2", idempotencyKey: "idem-2", payload: { format: "json", document } }),
+      claim({
+        controlNumber: "CCN-2",
+        idempotencyKey: "idem-2",
+        payload: { format: "json", document },
+      }),
     );
     expect(code(bad)).toBe(CH.INVALID_REQUEST);
     expect(calls).toHaveLength(1);
@@ -469,6 +476,7 @@ describe("StediTransport reservation, completion and races", () => {
     organizationId: CTX.organizationId,
     providerEntityId: CTX.providerEntityId,
     scope: scopeKey(CTX),
+    usage: CTX.usage,
     idempotencyKey: "idem-1",
     controlNumber: "CCN-1",
     kind: "claim",
@@ -583,6 +591,7 @@ describe("StediTransport reservation, completion and races", () => {
 
   it("answers unavailable, sending nothing, when the reservation cannot be made", async () => {
     const dead: SubmissionAttemptStore = {
+      ...bind(new InMemoryAttemptStore()),
       reserve: () => Promise.reject(new Error("db down")),
       complete: () => Promise.reject(new Error("db down")),
       release: () => Promise.reject(new Error("db down")),
@@ -598,9 +607,7 @@ describe("StediTransport reservation, completion and races", () => {
     const anomalies: StediAnomaly[] = [];
     const base = new InMemoryAttemptStore();
     const flaky: SubmissionAttemptStore = {
-      reserve: (a) => base.reserve(a),
-      release: (o, s, k) => base.release(o, s, k),
-      retake: (o, s, k, e, n) => base.retake(o, s, k, e, n),
+      ...bind(base),
       complete: (o, s, k, id, at) =>
         ++completes < 2 ? Promise.reject(new Error("db down")) : base.complete(o, s, k, id, at),
     };
@@ -641,6 +648,9 @@ function bind(s: SubmissionAttemptStore): SubmissionAttemptStore {
     complete: (o, sc, k, id, at) => s.complete(o, sc, k, id, at),
     release: (o, sc, k) => s.release(o, sc, k),
     retake: (o, sc, k, e, n) => s.retake(o, sc, k, e, n),
+    find: (o, sc, k) => s.find(o, sc, k),
+    allocateControlNumber: (u) => s.allocateControlNumber(u),
+    resolve: (o, sc, k, out, who) => s.resolve(o, sc, k, out, who),
   };
 }
 

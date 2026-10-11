@@ -961,6 +961,7 @@ import {
   composeFacilitySpans,
   toFacilitySpans,
 } from "./modules/23-billing-medicare/services/claim-cbsa";
+import { buildClearinghouseAttemptResolutionService } from "./modules/23-billing-medicare/services/clearinghouse-attempt-resolution-service";
 import { resolveInpatientCapDifferential } from "./modules/23-billing-medicare/services/inpatient-cap-differential";
 // M24 (Billing — Medicaid) boot surface — the §4.11 outbox catalog, the §4.8 ABAC resolvers
 // (provider_entity_medicaid_billing_scope / medicaid_claim_in_billing_manager_caseload /
@@ -4835,6 +4836,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             // §20.1.3–§20.1.4). Submission rides the same outbox → BullMQ bridge + launch gateway as the NOE;
             // M6's org-explicit transfer-in read refreshes our admission date + physicians before filing.
             // ADR-0052 — the DDE work queue (human work tracking; no DDE integration or credential).
+            attemptResolutionService: buildClearinghouseAttemptResolutionService(
+              createDrizzleAttemptStore(dbHandle.db),
+            ),
             ddeQueueService: buildDdeQueueService(dbHandle.db, {
               outbox: m23OutboxPublisher,
               // Assignable only to an active member whose role grants billing.dde.work (M3's holder reader).

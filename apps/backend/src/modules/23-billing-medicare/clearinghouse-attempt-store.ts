@@ -145,6 +145,27 @@ export function createDrizzleAttemptStore(db: DbClient): SubmissionAttemptStore 
       });
     },
 
+    resolve(organizationId, scope, idempotencyKey, outcome, actorUserId) {
+      // The operator's id is the acting user for this transaction, so the audit trigger records who decided.
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (raw) => {
+        const tx = raw as unknown as DbClient;
+        const [row] = await tx
+          .update(T)
+          .set(
+            outcome.kind === "sent"
+              ? {
+                  status: "sent",
+                  clearinghouseSubmissionId: outcome.clearinghouseSubmissionId,
+                  receivedAt: new Date(outcome.receivedAt),
+                }
+              : { status: "released" },
+          )
+          .where(and(keyMatch(organizationId, scope, idempotencyKey), eq(T.status, "reserved")))
+          .returning();
+        return row ? toAttempt(row) : null;
+      });
+    },
+
     async release(organizationId, scope, idempotencyKey) {
       await inOrg(organizationId, (tx) =>
         tx

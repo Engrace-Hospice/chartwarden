@@ -87,6 +87,14 @@ const KEY_WINDOW_MARGIN_MS = 5 * 60_000;
  */
 const SETTLE_MS = 60_000;
 
+/**
+ * True once a re-send under the same wire key could no longer be replayed by Stedi (or would land too close to the
+ * end of its window). Past this the transport refuses and an operator settles the attempt.
+ */
+export function pastKeyWindow(firstReservedAt: string, now: Date): boolean {
+  return now.getTime() - Date.parse(firstReservedAt) >= KEY_WINDOW_MS - KEY_WINDOW_MARGIN_MS;
+}
+
 /** The outcome of one POST: taken (with Stedi's id), or not. `ambiguous` = the request may still have been filed. */
 type SendResult =
   | { readonly ok: true; readonly id: string }
@@ -114,11 +122,7 @@ const notImplemented = <T>(what: string): Promise<X12WorkerResult<T>> =>
 const refuse = <T>(reason: string): X12WorkerResult<T> => degraded<T>(CH.INVALID_REQUEST, reason);
 
 /** Reason a payload must not be sent, or null. PHI-free: positions and rule names only. */
-function x12Problem(
-  x12: string,
-  ctx: ClearinghouseContext,
-  controlNumber: string,
-): string | null {
+function x12Problem(x12: string, ctx: ClearinghouseContext, controlNumber: string): string | null {
   const { usage } = ctx;
   try {
     const { segments } = tokenizeInterchange(x12);
@@ -130,7 +134,8 @@ function x12Problem(
       return `ISA15 does not match usage ${usage}`;
     }
     const billingNpi = segments.find((s) => s[0] === "NM1" && s[1] === "85")?.[9];
-    if (ctx.billingNpi !== undefined && billingNpi !== ctx.billingNpi) return "the billing provider NPI does not match the context";
+    if (ctx.billingNpi !== undefined && billingNpi !== ctx.billingNpi)
+      return "the billing provider NPI does not match the context";
     const findings = checkStediEdits(x12);
     if (findings.length > 0) {
       return `fails Stedi edit checks: ${[...new Set(findings.map((f) => f.rule))].join(", ")}`;
@@ -149,7 +154,8 @@ function jsonProblem(document: unknown, ctx: ClearinghouseContext): string | nul
   }
   // U: the field name follows Stedi's institutional JSON (billing.npi); unverified against a 2xx. Fails closed.
   const npi = (document as { billing?: { npi?: unknown } }).billing?.npi;
-  if (ctx.billingNpi !== undefined && npi !== ctx.billingNpi) return "the billing provider NPI does not match the context";
+  if (ctx.billingNpi !== undefined && npi !== ctx.billingNpi)
+    return "the billing provider NPI does not match the context";
   const indicator = (document as { usageIndicator?: unknown }).usageIndicator;
   return indicator === (usage === "test" ? "T" : "P")
     ? null
@@ -391,8 +397,7 @@ export class StediTransport implements ClearinghouseTransport {
       }
 
       const age = this.now().getTime() - Date.parse(existing.reservedAt);
-      const sinceFirst = this.now().getTime() - Date.parse(existing.firstReservedAt);
-      if (sinceFirst >= KEY_WINDOW_MS - KEY_WINDOW_MARGIN_MS) {
+      if (pastKeyWindow(existing.firstReservedAt, this.now())) {
         this.onAnomaly({ type: "stale_reservation", idempotencyKey: attempt.idempotencyKey });
         return degraded(
           CH.UNAVAILABLE,

@@ -842,7 +842,8 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
       ] as const) {
         // The vendor sender is the platform's, so a control number is unique across tenants within one usage mode;
         // only the other usage mode may reuse it. The idempotency KEY is what must never cross a boundary.
-        const number = scope.usage === DEFAULT_SCOPE.usage ? `CCN-S02-${label.split(" ")[1]}` : "CCN-S02";
+        const number =
+          scope.usage === DEFAULT_SCOPE.usage ? `CCN-S02-${label.split(" ")[1]}` : "CCN-S02";
         const theirs = ok(
           await h.transport.submitClaim(
             ctxFor(scope),

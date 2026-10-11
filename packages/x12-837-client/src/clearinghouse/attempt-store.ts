@@ -47,6 +47,14 @@ export interface SubmissionAttempt {
   readonly receivedAt: string | null;
 }
 
+export type AttemptResolution =
+  | {
+      readonly kind: "sent";
+      readonly clearinghouseSubmissionId: string;
+      readonly receivedAt: string;
+    }
+  | { readonly kind: "released" };
+
 export interface ReserveResult {
   /** The row written by this call, or the earlier live row (reserved or sent) that holds the key or number. */
   readonly attempt: SubmissionAttempt;
@@ -62,7 +70,11 @@ export interface SubmissionAttemptStore {
    */
   reserve(attempt: SubmissionAttempt): Promise<ReserveResult>;
   /** The live (reserved or sent) attempt for a key, or null. Tenant-scoped. */
-  find(organizationId: string, scope: string, idempotencyKey: string): Promise<SubmissionAttempt | null>;
+  find(
+    organizationId: string,
+    scope: string,
+    idempotencyKey: string,
+  ): Promise<SubmissionAttempt | null>;
   /**
    * The next platform-wide control number for a usage mode: 9 digits (ISA13), increasing, never reused. Callers build
    * the interchange with it. Rejects when the 9-digit space is exhausted rather than wrapping.
@@ -78,6 +90,19 @@ export interface SubmissionAttemptStore {
     idempotencyKey: string,
     clearinghouseSubmissionId: string,
     receivedAt: string,
+  ): Promise<SubmissionAttempt | null>;
+  /**
+   * An operator's decision on a reservation the transport can no longer settle itself (it is past the vendor's key
+   * window, so a re-send could file twice): `sent` records the vendor id the operator found, `released` frees the
+   * key and number. Acts only on a still-reserved row; null when there is none. `actorUserId` is recorded in the
+   * audit trail.
+   */
+  resolve(
+    organizationId: string,
+    scope: string,
+    idempotencyKey: string,
+    outcome: AttemptResolution,
+    actorUserId: string,
   ): Promise<SubmissionAttempt | null>;
   /** reserved -> released: the vendor definitively did not take it, so the key and number are free again. */
   release(organizationId: string, scope: string, idempotencyKey: string): Promise<void>;
@@ -115,12 +140,17 @@ export class InMemoryAttemptStore implements SubmissionAttemptStore {
     );
   }
 
-  find(organizationId: string, scope: string, idempotencyKey: string): Promise<SubmissionAttempt | null> {
+  find(
+    organizationId: string,
+    scope: string,
+    idempotencyKey: string,
+  ): Promise<SubmissionAttempt | null> {
     return Promise.resolve(this.rows[this.indexOf(organizationId, scope, idempotencyKey)] ?? null);
   }
 
   allocateControlNumber(usage: AttemptUsage): Promise<string> {
-    if (this.counters[usage] >= 999_999_999) return Promise.reject(new Error("control numbers exhausted"));
+    if (this.counters[usage] >= 999_999_999)
+      return Promise.reject(new Error("control numbers exhausted"));
     this.counters[usage] += 1;
     return Promise.resolve(String(this.counters[usage]).padStart(9, "0"));
   }
@@ -168,6 +198,28 @@ export class InMemoryAttemptStore implements SubmissionAttemptStore {
     };
     this.rows[i] = sent;
     return Promise.resolve(sent);
+  }
+
+  resolve(
+    organizationId: string,
+    scope: string,
+    idempotencyKey: string,
+    outcome: AttemptResolution,
+  ): Promise<SubmissionAttempt | null> {
+    const i = this.indexOf(organizationId, scope, idempotencyKey);
+    const row = this.rows[i];
+    if (!row || row.status !== "reserved") return Promise.resolve(null);
+    const next: SubmissionAttempt =
+      outcome.kind === "sent"
+        ? {
+            ...row,
+            status: "sent",
+            clearinghouseSubmissionId: outcome.clearinghouseSubmissionId,
+            receivedAt: outcome.receivedAt,
+          }
+        : { ...row, status: "released" };
+    this.rows[i] = next;
+    return Promise.resolve(next);
   }
 
   release(organizationId: string, scope: string, idempotencyKey: string): Promise<void> {

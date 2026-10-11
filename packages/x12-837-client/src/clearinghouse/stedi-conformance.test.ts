@@ -4,10 +4,10 @@ import { describe, expect, it } from "vitest";
 import { InMemoryAttemptStore } from "./attempt-store";
 import {
   CLEARINGHOUSE_CONFORMANCE_CASES,
-  DEFAULT_SCOPE,
   type ClearinghouseHarness,
   type ConformanceCapability,
   type ConformanceScript,
+  DEFAULT_SCOPE,
   runConformance,
 } from "./conformance";
 import { StediTransport } from "./stedi-transport";

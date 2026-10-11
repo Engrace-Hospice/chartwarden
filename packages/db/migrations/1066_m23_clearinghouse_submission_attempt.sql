@@ -65,6 +65,18 @@ CREATE SEQUENCE IF NOT EXISTS "clearinghouse_control_number_test_seq" AS bigint 
 CREATE SEQUENCE IF NOT EXISTS "clearinghouse_control_number_production_seq" AS bigint MINVALUE 1 MAXVALUE 999999999 NO CYCLE;--> statement-breakpoint
 GRANT USAGE ON SEQUENCE "clearinghouse_control_number_test_seq", "clearinghouse_control_number_production_seq" TO wardenx_app;--> statement-breakpoint
 
+-- Permission catalog mirror row + admin-role grants (1060's pattern): the operator command that settles an attempt
+-- past the vendor's key window.
+INSERT INTO "permission" ("key", "resource", "action", "category", "default_abac", "description") VALUES
+  ('billing.clearinghouse.resolve_attempt', 'billing_clearinghouse_attempt', 'resolve', 'billing', 'provider_entity_billing_scope', '')
+ON CONFLICT ("key") DO NOTHING;--> statement-breakpoint
+INSERT INTO "role_permission" ("organization_id", "role_id", "permission_key")
+SELECT r."organization_id", r."id", 'billing.clearinghouse.resolve_attempt'
+  FROM "role" r
+ WHERE r."key" IN ('administrator', 'org_admin')
+   AND r."organization_id" IS NOT NULL
+ON CONFLICT ("role_id", "permission_key") DO NOTHING;--> statement-breakpoint
+
 ALTER TABLE "clearinghouse_submission_attempt" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "clearinghouse_submission_attempt" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 DO $$ BEGIN

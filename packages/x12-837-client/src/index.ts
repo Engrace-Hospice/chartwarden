@@ -237,6 +237,7 @@ export type {
 } from "./clearinghouse/transport-registry";
 export { InMemoryAttemptStore, PlatformControlNumberTaken } from "./clearinghouse/attempt-store";
 export type {
+  AttemptResolution,
   AttemptStatus,
   AttemptUsage,
   ReserveResult,
@@ -245,6 +246,7 @@ export type {
 } from "./clearinghouse/attempt-store";
 export {
   ATTEMPT_STORE_CONTRACT,
+  CONTRACT_OPERATOR_ID,
   IN_MEMORY_CONTRACT_IDS,
   reservation as attemptReservationFixture,
 } from "./clearinghouse/attempt-store-contract";
@@ -253,8 +255,10 @@ export type {
   AttemptStoreContractIds,
 } from "./clearinghouse/attempt-store-contract";
 export {
+  pastKeyWindow,
   STEDI_API_KEY_ENV,
   StediTransport,
   createStediTransportFromEnv,
 } from "./clearinghouse/stedi-transport";
 export type { StediAnomaly, StediTransportOptions } from "./clearinghouse/stedi-transport";
+export { scopeKey } from "./clearinghouse/submission-identity";

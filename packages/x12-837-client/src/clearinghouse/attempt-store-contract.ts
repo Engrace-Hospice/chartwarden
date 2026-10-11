@@ -32,6 +32,9 @@ export const IN_MEMORY_CONTRACT_IDS: AttemptStoreContractIds = {
 const T0 = "2026-10-11T10:00:00.000Z";
 const T1 = "2026-10-11T10:20:00.000Z";
 const IDENTITY = "a".repeat(64);
+/** A user id; the Postgres store stamps it into the audit trail, where it is a uuid. */
+export const CONTRACT_OPERATOR_ID = "00000000-0000-4000-8000-0000000000a1";
+const OPERATOR = CONTRACT_OPERATOR_ID;
 const OTHER_IDENTITY = "b".repeat(64);
 
 function assert(condition: boolean, message: string): asserts condition {
@@ -92,7 +95,9 @@ export const ATTEMPT_STORE_CONTRACT: readonly AttemptStoreContractCase[] = [
     async run(make, ids) {
       const store = await make();
       await store.reserve(reservation(ids));
-      const otherScope = await store.reserve(reservation(ids, { scope: "scope-live", usage: "production" }));
+      const otherScope = await store.reserve(
+        reservation(ids, { scope: "scope-live", usage: "production" }),
+      );
       assert(otherScope.reserved, "another scope (usage) is independent");
       const otherOrg = await store.reserve(
         reservation(ids, {
@@ -225,6 +230,51 @@ export const ATTEMPT_STORE_CONTRACT: readonly AttemptStoreContractCase[] = [
         Array.from({ length: 20 }, () => store.allocateControlNumber("test")),
       );
       assert(new Set([a, b, ...many]).size === many.length + 2, "concurrent callers never collide");
+    },
+  },
+  {
+    id: "AS-12",
+    title: "resolve settles a reservation as sent or released, and only a reservation",
+    async run(make, ids) {
+      const store = await make();
+      const scope = `scope-${ids.orgA}`;
+      await store.reserve(reservation(ids));
+      const sent = await store.resolve(
+        ids.orgA,
+        scope,
+        "idem-1",
+        { kind: "sent", clearinghouseSubmissionId: "ch-op", receivedAt: T1 },
+        OPERATOR,
+      );
+      assert(
+        sent?.status === "sent" && sent.clearinghouseSubmissionId === "ch-op",
+        "resolved as sent",
+      );
+      assert(
+        (await store.resolve(ids.orgA, scope, "idem-1", { kind: "released" }, OPERATOR)) === null,
+        "a sent row cannot be resolved again",
+      );
+      await store.reserve(reservation(ids, { idempotencyKey: "idem-2", controlNumber: "CCN-2" }));
+      const released = await store.resolve(
+        ids.orgA,
+        scope,
+        "idem-2",
+        { kind: "released" },
+        OPERATOR,
+      );
+      assert(released?.status === "released", "resolved as released");
+      assert(
+        (
+          await store.reserve(
+            reservation(ids, { idempotencyKey: "idem-3", controlNumber: "CCN-2" }),
+          )
+        ).reserved,
+        "a released number is free again",
+      );
+      assert(
+        (await store.resolve(ids.orgB, scope, "idem-3", { kind: "released" }, OPERATOR)) === null,
+        "another tenant resolves nothing",
+      );
     },
   },
   {

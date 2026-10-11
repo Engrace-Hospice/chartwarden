@@ -61,6 +61,8 @@ export const M23_PERMISSIONS = [
   "billing.dde.work",
   "billing.dde.mark_submitted",
   "billing.dde.admin",
+  // ADR-0053: settle a clearinghouse attempt the transport can no longer settle (past the vendor's key window).
+  "billing.clearinghouse.resolve_attempt",
 ] as const;
 
 export type M23PermissionKey = (typeof M23_PERMISSIONS)[number];
