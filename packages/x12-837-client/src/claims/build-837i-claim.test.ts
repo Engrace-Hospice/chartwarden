@@ -133,6 +133,58 @@ describe("build837iClaim — fail closed, field names only", () => {
     ],
   ])("refuses %#", (input, field) => bad(input, field));
 
+  it.each([
+    [claimWith({ controlNumber: undefined }), "claim.controlNumber"],
+    [claimWith({ controlNumber: null }), "claim.controlNumber"],
+    [claimWith({ controlNumber: ["AB"] }), "claim.controlNumber"],
+    [claimWith({ frequency: "7", payerClaimControlNumber: null }), "claim.payerClaimControlNumber"],
+    [claimWith({ lines: undefined }), "claim.lines"],
+    [claimWith({ lines: [null] }), "claim.lines"],
+    [claimWith({ lines: [{ ...line, modifiers: "PM" }] }), "claim.lines"],
+    [claimWith({ lines: [{ ...line, modifiers: ["A1", "B2", "C3", "D4", "E5"] }] }), "claim.lines"],
+    [claimWith({ lines: [{ ...line, units: 1_000_000 }] }), "claim.lines"],
+    [claimWith({ lines: [{ ...line, chargeCents: 10_000_000_000 }] }), "claim.lines"],
+    [claimWith({ principalDiagnosis: 123 }), "claim.principalDiagnosis"],
+    [claimWith({ otherDiagnoses: undefined }), "claim.otherDiagnoses"],
+    [claimWith({ otherDiagnoses: Array(13).fill("I10") }), "claim.otherDiagnoses"],
+    [claimWith({ occurrenceCodes: [null] }), "claim.occurrenceCodes"],
+    [claimWith({ valueCodes: [{ code: "61", amount: "1234567890" }] }), "claim.valueCodes"],
+    [claimWith({ controlNumber: "A".repeat(39) }), "claim.controlNumber"],
+    [claimWith({ admissionDate: "2026-03-01" }), "claim.admissionDate"],
+    [{ ...CLAIM_INPUT, subscriber: { ...CLAIM_INPUT.subscriber, mbi: null } }, "subscriber.mbi"],
+    [
+      { ...CLAIM_INPUT, billingProvider: { ...CLAIM_INPUT.billingProvider, taxId: undefined } },
+      "billingProvider.taxId",
+    ],
+  ])("refuses untyped or boundary input %#", (input, field) => bad(input, field));
+
+  it("accepts the boundaries: 38-char control number, 12 other diagnoses, 4 modifiers, lines on the statement edges", () => {
+    const edge = [
+      { ...line, serviceDate: "2026-01-01" },
+      { ...line, serviceDate: "2026-01-31", modifiers: ["A1", "B2", "C3", "D4"], units: 999_999 },
+    ];
+    expect(() =>
+      build837iClaim(
+        claimWith({
+          controlNumber: "A".repeat(38),
+          otherDiagnoses: Array(12).fill("I10"),
+          lines: edge,
+        }) as never,
+      ),
+    ).not.toThrow();
+  });
+
+  it("emits DTP*096 before the statement dates (Loop 2300 order)", () => {
+    const segs = lines(
+      build837iClaim(
+        claimWith({ frequency: "1", patientStatus: "40", dischargeHour: "1430" }) as never,
+      ),
+    );
+    const at = (p: string): number => segs.findIndex((x) => x.startsWith(p));
+    expect(at("DTP*096")).toBeGreaterThan(at("CLM*"));
+    expect(at("DTP*096")).toBeLessThan(at("DTP*434"));
+  });
+
   it("never echoes the offending value", () => {
     const input = { ...CLAIM_INPUT, subscriber: { ...CLAIM_INPUT.subscriber, mbi: "SECRETVALUE" } };
     expect(() => build837iClaim(input)).toThrow(/^((?!SECRETVALUE).)*$/s);

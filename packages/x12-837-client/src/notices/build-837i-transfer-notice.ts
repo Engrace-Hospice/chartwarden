@@ -31,6 +31,7 @@ import {
   d8,
   hi,
   isValidNpi,
+  matches,
   npi,
   optionalText,
   physicianName,
@@ -109,7 +110,7 @@ export function build837iTransferNotice(input: TransferNotice837iInput): string 
 
 function buildTransferNotice(input: TransferNotice837iInput): string {
   const doc = input.document;
-  if (!/^8[12][CD]$/.test(doc.tob) || doc.tob.charAt(2) !== doc.frequencyCode) {
+  if (!matches(/^8[12][CD]$/, doc.tob) || doc.tob.charAt(2) !== doc.frequencyCode) {
     throw new TransferNotice837iBuildError("document.tob");
   }
   if ((doc.frequencyCode === "D") !== (doc.action === "void")) {
@@ -121,14 +122,15 @@ function buildTransferNotice(input: TransferNotice837iInput): string {
   if (hasD0 !== has56 || has56 !== (doc.action === "correction")) {
     throw new TransferNotice837iBuildError("document.correctionCodes");
   }
-  if (!/^[A-Za-z0-9-]{1,38}$/.test(doc.controlNumber)) {
+  if (!matches(/^[A-Za-z0-9-]{1,38}$/, doc.controlNumber)) {
     throw new TransferNotice837iBuildError("document.controlNumber");
   }
   for (const c of doc.conditionCodes) {
-    if (!/^[0-9A-Z]{2}$/.test(c)) throw new TransferNotice837iBuildError("document.conditionCodes");
+    if (!matches(/^[0-9A-Z]{2}$/, c))
+      throw new TransferNotice837iBuildError("document.conditionCodes");
   }
   for (const o of doc.occurrenceCodes) {
-    if (!/^[0-9A-Z]{2}$/.test(o.code)) {
+    if (!matches(/^[0-9A-Z]{2}$/, o.code)) {
       throw new TransferNotice837iBuildError("document.occurrenceCodes");
     }
   }
@@ -145,14 +147,14 @@ function buildTransferNotice(input: TransferNotice837iInput): string {
   const dob = d8(s.birthDate, "subscriber.birthDate");
   if (dob > from) throw new TransferNotice837iBuildError("subscriber.birthDate");
   const dx = input.principalDiagnosis.replace(".", "").trim().toUpperCase();
-  if (!/^[A-Z][0-9][0-9A-Z]{1,5}$/.test(dx)) {
+  if (!matches(/^[A-Z][0-9][0-9A-Z]{1,5}$/, dx)) {
     throw new TransferNotice837iBuildError("principalDiagnosis");
   }
-  if (!/^\d{9}$/.test(input.billingProvider.taxId)) {
+  if (!matches(/^\d{9}$/, input.billingProvider.taxId)) {
     throw new TransferNotice837iBuildError("billingProvider.taxId");
   }
   const env = prepareEnvelope(input.envelope);
-  if (!/^\d{10}$/.test(input.submitter.contactPhone)) {
+  if (!matches(/^\d{10}$/, input.submitter.contactPhone)) {
     throw new TransferNotice837iBuildError("submitter.contactPhone");
   }
 

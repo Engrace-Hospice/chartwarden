@@ -19,6 +19,7 @@ import {
   addressSegments,
   d8,
   hi,
+  matches,
   npi,
   optionalText,
   physicianName,
@@ -83,7 +84,7 @@ function buildNotice(input: Notice837iInput): string {
   const { notice } = input;
   if (!Object.hasOwn(KINDS, notice.kind)) throw new Notice837iBuildError("notice.kind");
   const kind = KINDS[notice.kind];
-  if (!/^[A-Za-z0-9-]{1,38}$/.test(notice.controlNumber)) {
+  if (!matches(/^[A-Za-z0-9-]{1,38}$/, notice.controlNumber)) {
     throw new Notice837iBuildError("notice.controlNumber");
   }
   const admission = d8(notice.admissionDate, "notice.admissionDate");
@@ -96,7 +97,8 @@ function buildNotice(input: Notice837iInput): string {
   if (through < admission) throw new Notice837iBuildError("notice.terminationDate");
 
   const dx = input.principalDiagnosis.replace(".", "").trim().toUpperCase();
-  if (!/^[A-Z][0-9][0-9A-Z]{1,5}$/.test(dx)) throw new Notice837iBuildError("principalDiagnosis");
+  if (!matches(/^[A-Z][0-9][0-9A-Z]{1,5}$/, dx))
+    throw new Notice837iBuildError("principalDiagnosis");
   const env = prepareEnvelope(input.envelope);
   const { ccyymmdd, hhmm } = env.stamp;
   const body: string[][] = [

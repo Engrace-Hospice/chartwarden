@@ -10,6 +10,7 @@ import {
   type X12PersonName,
   addressSegments,
   d8,
+  matches,
   npi,
   optionalText,
   text,
@@ -63,13 +64,16 @@ const submitterOrReceiver = (
  */
 export function partySegments(p: Parties837i, onOrAfterBirth: string): string[][] {
   const s = p.subscriber;
+  if (typeof s.mbi !== "string") throw new X12BuildError("subscriber.mbi");
   const mbi = s.mbi.trim().toUpperCase();
   if (!MBI_PATTERN.test(mbi)) throw new X12BuildError("subscriber.mbi");
   if (s.sex !== "M" && s.sex !== "F") throw new X12BuildError("subscriber.sex");
   const dob = d8(s.birthDate, "subscriber.birthDate");
   if (dob > onOrAfterBirth) throw new X12BuildError("subscriber.birthDate");
-  if (!/^\d{9}$/.test(p.billingProvider.taxId)) throw new X12BuildError("billingProvider.taxId");
-  if (!/^\d{10}$/.test(p.submitter.contactPhone)) throw new X12BuildError("submitter.contactPhone");
+  if (!matches(/^\d{9}$/, p.billingProvider.taxId))
+    throw new X12BuildError("billingProvider.taxId");
+  if (!matches(/^\d{10}$/, p.submitter.contactPhone))
+    throw new X12BuildError("submitter.contactPhone");
   return [
     submitterOrReceiver("41", p.submitter, "submitter"),
     [

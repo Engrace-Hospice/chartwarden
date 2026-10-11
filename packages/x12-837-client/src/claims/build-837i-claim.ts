@@ -16,6 +16,7 @@ import {
   type X12Physician,
   d8,
   hi,
+  matches,
   physicianName,
   prepareEnvelope,
   wrapTransaction,
@@ -108,8 +109,9 @@ const check = (ok: boolean, field: string): void => {
 };
 
 const diagnosis = (value: string, field: string): string => {
+  check(typeof value === "string", field);
   const dx = value.replace(".", "").trim().toUpperCase();
-  check(/^[A-Z][0-9][0-9A-Z]{1,5}$/.test(dx), field);
+  check(matches(/^[A-Z][0-9][0-9A-Z]{1,5}$/, dx), field);
   return dx;
 };
 
@@ -121,13 +123,18 @@ function lineSegments(
   from: string,
   through: string,
 ): { segments: string[][]; totalCents: number } {
-  check(lines.length > 0, "claim.lines");
+  check(Array.isArray(lines) && lines.length > 0, "claim.lines");
   let totalCents = 0;
   const segments = lines.flatMap((l, i) => {
+    check(typeof l === "object" && l !== null, "claim.lines");
     const modifiers = l.modifiers ?? [];
-    check(/^\d{4}$/.test(l.revenueCode), "claim.lines");
-    check(/^[A-Z0-9]{5}$/.test(l.hcpcs), "claim.lines");
-    check(modifiers.length <= 4 && modifiers.every((m) => /^[A-Z0-9]{2}$/.test(m)), "claim.lines");
+    check(Array.isArray(modifiers), "claim.lines");
+    check(matches(/^\d{4}$/, l.revenueCode), "claim.lines");
+    check(matches(/^[A-Z0-9]{5}$/, l.hcpcs), "claim.lines");
+    check(
+      modifiers.length <= 4 && modifiers.every((m) => matches(/^[A-Z0-9]{2}$/, m)),
+      "claim.lines",
+    );
     check(Number.isSafeInteger(l.chargeCents) && l.chargeCents > 0, "claim.lines");
     check(Number.isSafeInteger(l.units) && l.units > 0 && l.units <= 999_999, "claim.lines");
     const date = d8(l.serviceDate, "claim.lines");
@@ -152,26 +159,42 @@ function lineSegments(
 
 function buildClaim(input: Claim837iInput): string {
   const c = input.claim;
-  check(/^[A-Za-z0-9-]{1,38}$/.test(c.controlNumber), "claim.controlNumber");
+  check(matches(/^[A-Za-z0-9-]{1,38}$/, c.controlNumber), "claim.controlNumber");
   check(Object.hasOwn(FREQUENCIES, c.frequency), "claim.frequency");
   const mustBeStillPatient = FREQUENCIES[c.frequency];
-  check(/^[0-9A-Z]{2}$/.test(c.patientStatus), "claim.patientStatus");
+  check(matches(/^[0-9A-Z]{2}$/, c.patientStatus), "claim.patientStatus");
   check(
     mustBeStillPatient === null || mustBeStillPatient === (c.patientStatus === STILL_PATIENT),
     "claim.patientStatus",
   );
-  check(/^[0-9A-Z]$/.test(c.admissionSource), "claim.admissionSource");
+  check(matches(/^[0-9A-Z]$/, c.admissionSource), "claim.admissionSource");
+  for (const [list, field] of [
+    [c.otherDiagnoses, "claim.otherDiagnoses"],
+    [c.conditionCodes, "claim.conditionCodes"],
+    [c.occurrenceCodes, "claim.occurrenceCodes"],
+    [c.valueCodes, "claim.valueCodes"],
+  ] as const) {
+    check(Array.isArray(list), field);
+  }
+  check(
+    [...c.occurrenceCodes, ...c.valueCodes].every((x) => typeof x === "object" && x !== null),
+    "claim.occurrenceCodes",
+  );
   const replacing = c.frequency === "7" || c.frequency === "8";
-  const pccn = c.payerClaimControlNumber;
+  const pccn = c.payerClaimControlNumber ?? undefined;
   check(replacing === (pccn !== undefined), "claim.payerClaimControlNumber");
-  check(pccn === undefined || /^[A-Za-z0-9]{1,50}$/.test(pccn), "claim.payerClaimControlNumber");
+  check(
+    pccn === undefined || matches(/^[A-Za-z0-9]{1,50}$/, pccn),
+    "claim.payerClaimControlNumber",
+  );
 
   const from = d8(c.statementFromDate, "claim.statementFromDate");
   const through = d8(c.statementThroughDate, "claim.statementThroughDate");
   check(through >= from, "claim.statementThroughDate");
   const admission = d8(c.admissionDate, "claim.admissionDate");
+  check(admission <= through, "claim.admissionDate");
   check(
-    c.dischargeHour === undefined || /^([01]\d|2[0-3])[0-5]\d$/.test(c.dischargeHour),
+    c.dischargeHour === undefined || matches(/^([01]\d|2[0-3])[0-5]\d$/, c.dischargeHour),
     "claim.dischargeHour",
   );
 
@@ -180,18 +203,18 @@ function buildClaim(input: Claim837iInput): string {
   const others = c.otherDiagnoses.map((d) => diagnosis(d, "claim.otherDiagnoses"));
   check(c.conditionCodes.length <= MAX_HI_VALUES, "claim.conditionCodes");
   check(
-    c.conditionCodes.every((x) => /^[0-9A-Z]{2}$/.test(x)),
+    c.conditionCodes.every((x) => matches(/^[0-9A-Z]{2}$/, x)),
     "claim.conditionCodes",
   );
   check(c.occurrenceCodes.length <= MAX_HI_VALUES, "claim.occurrenceCodes");
   const occurrences = c.occurrenceCodes.map((o) => {
-    check(/^[0-9A-Z]{2}$/.test(o.code), "claim.occurrenceCodes");
+    check(matches(/^[0-9A-Z]{2}$/, o.code), "claim.occurrenceCodes");
     return `${o.code}:D8:${d8(o.date, "claim.occurrenceCodes")}`;
   });
   check(c.valueCodes.length <= MAX_HI_VALUES, "claim.valueCodes");
   const values = c.valueCodes.map((v) => {
-    check(/^[0-9A-Z]{2}$/.test(v.code), "claim.valueCodes");
-    check(/^\d{1,9}(\.\d{1,2})?$/.test(v.amount), "claim.valueCodes");
+    check(matches(/^[0-9A-Z]{2}$/, v.code), "claim.valueCodes");
+    check(matches(/^\d{1,9}(\.\d{1,2})?$/, v.amount), "claim.valueCodes");
     return `${v.code}:::${v.amount}`;
   });
 
@@ -203,9 +226,9 @@ function buildClaim(input: Claim837iInput): string {
     ["BHT", "0019", "00", c.controlNumber, ccyymmdd, hhmm, "CH"],
     ...partySegments(input, from < admission ? from : admission),
     ["CLM", c.controlNumber, dollars(totalCents), "", "", `81:A:${c.frequency}`, "", "A", "Y", "Y"],
+    ...(c.dischargeHour === undefined ? [] : [["DTP", "096", "TM", c.dischargeHour]]),
     ["DTP", "434", "RD8", `${from}-${through}`],
     ["DTP", "435", "D8", admission],
-    ...(c.dischargeHour === undefined ? [] : [["DTP", "096", "TM", c.dischargeHour]]),
     ["CL1", "1", c.admissionSource, c.patientStatus],
     ...(pccn === undefined ? [] : [["REF", "F8", pccn]]),
     ["HI", `ABK:${principal}`],
