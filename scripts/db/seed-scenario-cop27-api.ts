@@ -47,26 +47,38 @@
  *   WARDENX_SEED_BASE_URL=https://host WARDENX_SEED_ADMIN_PASSWORD=… bun run db:seed:scenario-cop27-api
  *   … -- --apply                                   # write (default is a dry run)
  *   … -- --apply --i-understand-this-is-production # required too when the host is not localhost
+ *   … -- --apply --local-credentials               # localhost only; reads CREDENTIALS.local.md
  * Optional env: WARDENX_SEED_ADMIN_EMAIL (default admin@wardenx.local), WARDENX_SEED_ORG_ID,
  * WARDENX_SEED_PROVIDER_ENTITY_ID, WARDENX_SEED_PHYSICIAN_EMAIL + WARDENX_SEED_PHYSICIAN_PASSWORD (an EXISTING
  * account holding medical_director / hospice_physician, used only for physician signatures).
  */
+import { readFileSync } from "node:fs";
+import { group } from "../lib/strict";
 import { type SeedContext, describeContext, discoverContext } from "./cop27/context";
 import { seedCalendar } from "./cop27/dates";
 import { type Session, signIn } from "./cop27/http";
 import { RunReport } from "./cop27/report";
 import { SCENARIOS } from "./cop27/scenarios";
+import { SEED_CREDENTIALS_PATH } from "./lib/credentials";
 
 interface Options {
   readonly apply: boolean;
   readonly productionAck: boolean;
+  readonly localCredentials: boolean;
+  readonly strict: boolean;
   readonly only: readonly string[] | null;
 }
 
 function parseArgs(rawArgv: readonly string[]): Options {
   // `bun run <script> -- --apply` may forward the separator itself.
   const argv = rawArgv.filter((a) => a !== "--");
-  const known = new Set(["--dry-run", "--apply", "--i-understand-this-is-production"]);
+  const known = new Set([
+    "--dry-run",
+    "--apply",
+    "--i-understand-this-is-production",
+    "--local-credentials",
+    "--strict",
+  ]);
   let only: string[] | null = null;
   for (const a of argv) {
     if (a.startsWith("--only=")) {
@@ -81,6 +93,8 @@ function parseArgs(rawArgv: readonly string[]): Options {
   return {
     apply: argv.includes("--apply"),
     productionAck: argv.includes("--i-understand-this-is-production"),
+    localCredentials: argv.includes("--local-credentials"),
+    strict: argv.includes("--strict"),
     only,
   };
 }
@@ -95,27 +109,59 @@ function isLocalHost(baseUrl: URL): boolean {
   return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(baseUrl.hostname);
 }
 
-async function optionalPhysicianSession(baseUrl: string, orgId?: string): Promise<Session | null> {
-  const email = process.env.WARDENX_SEED_PHYSICIAN_EMAIL?.trim();
-  const password = process.env.WARDENX_SEED_PHYSICIAN_PASSWORD;
+function localPassword(email: string): string {
+  const md = readFileSync(SEED_CREDENTIALS_PATH, "utf8");
+  const needle = `\`${email}\``;
+  for (const line of md
+    .split("\n")
+    .filter((value) => value.includes(needle))
+    .reverse()) {
+    const match = line.match(/`([^`]+)`\s*\|\s*`([^`]+)`/);
+    if (match) return group(match, 2, "CREDENTIALS.local.md password cell");
+  }
+  throw new Error(`could not read password for ${email} from ${SEED_CREDENTIALS_PATH}`);
+}
+
+async function optionalPhysicianSession(
+  baseUrl: string,
+  orgId: string | undefined,
+  useLocalCredentials: boolean,
+): Promise<Session | null> {
+  const email =
+    process.env.WARDENX_SEED_PHYSICIAN_EMAIL?.trim() ||
+    (useLocalCredentials ? "drharris@wardenx.local" : undefined);
+  const password =
+    process.env.WARDENX_SEED_PHYSICIAN_PASSWORD ??
+    (useLocalCredentials && email ? localPassword(email) : undefined);
   if (!email || !password) return null;
   return signIn({ baseUrl, email, password, ...(orgId ? { organizationId: orgId } : {}) });
 }
 
 async function main(): Promise<void> {
   const opts = parseArgs(process.argv.slice(2));
-  const baseUrlText = requireEnv("WARDENX_SEED_BASE_URL").replace(/\/+$/, "");
+  const configuredBaseUrl = process.env.WARDENX_SEED_BASE_URL?.trim();
+  const baseUrlText = (
+    configuredBaseUrl ||
+    (opts.localCredentials
+      ? (process.env.BETTER_AUTH_URL ?? "http://localhost:3000")
+      : requireEnv("WARDENX_SEED_BASE_URL"))
+  ).replace(/\/+$/, "");
   const baseUrl = new URL(baseUrlText);
   const email = process.env.WARDENX_SEED_ADMIN_EMAIL?.trim() || "admin@wardenx.local";
-  const password = requireEnv("WARDENX_SEED_ADMIN_PASSWORD");
   const orgId = process.env.WARDENX_SEED_ORG_ID?.trim() || undefined;
   const local = isLocalHost(baseUrl);
 
+  if (opts.localCredentials && !local) {
+    throw new Error("--local-credentials is restricted to localhost");
+  }
   if (opts.apply && !local && !opts.productionAck) {
     throw new Error(
       `${baseUrl.host} is not localhost: writing to it needs --apply --i-understand-this-is-production`,
     );
   }
+  const password =
+    process.env.WARDENX_SEED_ADMIN_PASSWORD ??
+    (opts.localCredentials ? localPassword(email) : requireEnv("WARDENX_SEED_ADMIN_PASSWORD"));
   console.log(
     `COP27 demo seed → ${baseUrl.origin} — ${opts.apply ? "APPLY (writes enabled)" : "DRY RUN (no writes; pass --apply to write)"}`,
   );
@@ -126,7 +172,11 @@ async function main(): Promise<void> {
     password,
     ...(orgId ? { organizationId: orgId } : {}),
   });
-  const physicianSession = await optionalPhysicianSession(baseUrlText, admin.organizationId);
+  const physicianSession = await optionalPhysicianSession(
+    baseUrlText,
+    admin.organizationId,
+    opts.localCredentials,
+  );
   const ctx: SeedContext = await discoverContext({
     admin,
     physicianSession,
@@ -147,8 +197,12 @@ async function main(): Promise<void> {
   report.printSummary();
 
   const failed = report.failedScenarios();
+  const skipped = report.skips();
   if (failed.length > 0) {
     console.error(`\n${failed.length} scenario(s) failed: ${failed.join(", ")}`);
+    process.exitCode = 1;
+  } else if (opts.strict && skipped.length > 0) {
+    console.error(`\nstrict mode: ${skipped.length} scenario step(s) were skipped`);
     process.exitCode = 1;
   } else if (!opts.apply) {
     console.log("\nDry run complete — nothing was written. Re-run with --apply to write.");

@@ -104,6 +104,10 @@ services:
       BETTER_AUTH_URL: http://localhost:3000
       BETTER_AUTH_SECRET: wardenx-local-compose-dev-secret-not-for-production-use
       TRUSTED_ORIGINS: http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:5175
+      # Local-only KEK for the synthetic tenant's envelope-encrypted PHI. Production supplies its
+      # own key from .env.production; this default exists so the documented Compose demo can finalize
+      # encounters and seed DocLens/consent data instead of failing closed halfway through.
+      M34_TENANT_KEK: ${M34_TENANT_KEK:-kek-local:Y2ktdGVuYW50LWtlay10ZXN0LTAxMjM0NTY3ODlhYmM=}
       # F-236 (ADR-0048) — DocLens stage 2. A worker-specific dev placeholder secret, not INTERNAL_SERVICE_TOKEN.
       DOCLING_WORKER_URL: http://docling-worker:8000
       DOCLING_WORKER_TOKEN: wardenx-local-docling-dev-token-not-for-production
@@ -160,6 +164,7 @@ services:
       BETTER_AUTH_URL: http://localhost:3000
       BETTER_AUTH_SECRET: wardenx-local-compose-dev-secret-not-for-production-use
       TRUSTED_ORIGINS: http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:5175
+      M34_TENANT_KEK: ${M34_TENANT_KEK:-kek-local:Y2ktdGVuYW50LWtlay10ZXN0LTAxMjM0NTY3ODlhYmM=}
       DOCLING_WORKER_URL: http://docling-worker:8000
       DOCLING_WORKER_TOKEN: wardenx-local-docling-dev-token-not-for-production
     ports:

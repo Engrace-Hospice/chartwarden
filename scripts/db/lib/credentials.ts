@@ -1,4 +1,5 @@
 /** Location shared by every demo seed that produces or consumes generated login credentials. */
+import { chmodSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
@@ -8,3 +9,10 @@ import { join } from "node:path";
  */
 export const SEED_CREDENTIALS_PATH =
   process.env.WARDENX_SEED_CREDENTIALS_FILE ?? join(process.cwd(), "CREDENTIALS.local.md");
+
+/** Write local plaintext credentials with owner-only permissions, including over an existing file. */
+export function writeSeedCredentials(contents: string): void {
+  writeFileSync(SEED_CREDENTIALS_PATH, contents, { mode: 0o600 });
+  // `mode` only applies when creating a file. Tighten an existing file left by an older seed too.
+  chmodSync(SEED_CREDENTIALS_PATH, 0o600);
+}

@@ -32,7 +32,7 @@
  * Prints:  the batch id and the candidate ids by field path, for driving the review routes.
  */
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { allPermissionMirrorRows } from "@wardenx/auth";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
@@ -46,7 +46,7 @@ import {
   registerLiveM34Seams,
 } from "../../apps/backend/src/modules/34-saas-tenant-platform/index";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
-import { SEED_CREDENTIALS_PATH } from "./lib/credentials";
+import { SEED_CREDENTIALS_PATH, writeSeedCredentials } from "./lib/credentials";
 import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL;
@@ -112,10 +112,7 @@ function writeCredentials(password: string): void {
     `| DocLens reviewer (RN) | \`${REVIEWER_EMAIL}\` | \`${password}\` | ${ROLE_KEY} |`,
     "",
   ].join("\n");
-  writeFileSync(
-    SEED_CREDENTIALS_PATH,
-    `${(before ?? "").replace(/\n+$/, "\n")}\n${section}${rest}`,
-  );
+  writeSeedCredentials(`${(before ?? "").replace(/\n+$/, "\n")}\n${section}${rest}`);
 }
 
 async function main(): Promise<void> {

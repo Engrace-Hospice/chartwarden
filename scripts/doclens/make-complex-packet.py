@@ -132,7 +132,7 @@ DOCS: list[Doc] = [
     Doc("cover", "transfer_record", "Fax cover sheet", "Riverside General - Case Management", "10/02/2026",
         ["RIVERSIDE GENERAL HOSPITAL - CASE MANAGEMENT", "FACSIMILE TRANSMITTAL"],
         [
-            f"Date: {FAX_DATE}", "To: WardenX Demo Hospice - Intake   Fax: (503) 555-0100",
+            f"Date: {FAX_DATE}", "To: Engrace Hospice - Intake   Fax: (503) 555-0100",
             "From: Dana Whitfield, RN, Case Manager   Phone: (503) 555-0198",
             "Pages (including cover): see page count on header", "",
             f"RE: HOSPICE REFERRAL - {PATIENT}, DOB {DOB}", "",

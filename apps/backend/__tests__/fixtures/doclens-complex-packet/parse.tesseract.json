@@ -13,7 +13,7 @@
         { "text": "Date:", "bbox": [44.0, 113.33, 66.0, 120.67], "label": "text" },
         { "text": "10/02/2026", "bbox": [71.0, 113.33, 118.33, 120.67], "label": "text" },
         {
-          "text": "To: WardenX Demo Hospice - Intake Fax: (503) 555-0100",
+          "text": "To: Engrace Hospice - Intake Fax: (503) 555-0100",
           "bbox": [43.67, 127.67, 301.33, 136.67],
           "label": "text"
         },

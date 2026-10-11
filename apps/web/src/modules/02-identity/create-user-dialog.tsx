@@ -419,7 +419,6 @@ const eyebrowStyle = {
   color: "var(--color-primary)",
   fontSize: "0.72rem",
   fontWeight: 700,
-  textTransform: "uppercase" as const,
   letterSpacing: "0.08em",
 };
 const titleStyle = { margin: "0.2rem 0 0", fontSize: "1.35rem" };

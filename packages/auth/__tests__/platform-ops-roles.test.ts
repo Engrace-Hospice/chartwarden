@@ -55,9 +55,11 @@ describe("ADMIN-T02 `billing_admin.*` → role bindings (no orphan key)", () => 
     }
   });
 
-  it("the union of all platform-ops grants is the seventeen `billing_admin.*` keys plus user lifecycle", () => {
+  it("the union of all platform-ops grants is the `billing_admin.*` keys plus user lifecycle", () => {
     const granted = new Set(Object.values(PLATFORM_OPS_ROLE_GRANTS).flat());
-    expect([...granted].sort()).toEqual([...BILLING_ADMIN_KEYS, "user.deactivate"].sort());
+    expect([...granted].sort()).toEqual(
+      [...BILLING_ADMIN_KEYS, "user.deactivate", "user.password.reset"].sort(),
+    );
   });
 
   it("GAP-001: `user.deactivate` binds to platform_ops/admin/owner — the platform deactivate route's roles", () => {
@@ -100,7 +102,10 @@ describe("ADMIN-T02 `billing_admin.*` → role bindings (no orphan key)", () => 
 
   it("`platform_sales` and `platform_ops` carry no default `billing_admin.*` grant this wave", () => {
     expect(PLATFORM_OPS_ROLE_GRANTS.platform_sales).toEqual([]);
-    expect(PLATFORM_OPS_ROLE_GRANTS.platform_ops).toEqual(["user.deactivate"]);
+    expect(PLATFORM_OPS_ROLE_GRANTS.platform_ops).toEqual([
+      "user.deactivate",
+      "user.password.reset",
+    ]);
   });
 });
 
@@ -111,7 +116,9 @@ describe("ADMIN-T02 platform-ops grant seed", () => {
     expect(rows.length).toBe(expected);
     for (const row of rows) {
       expect(PLATFORM_OPS_ROLE_KEYS).toContain(row.roleKey);
-      expect([...BILLING_ADMIN_KEYS, "user.deactivate"]).toContain(row.permissionKey);
+      expect([...BILLING_ADMIN_KEYS, "user.deactivate", "user.password.reset"]).toContain(
+        row.permissionKey,
+      );
     }
   });
 });

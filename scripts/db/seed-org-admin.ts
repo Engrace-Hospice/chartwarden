@@ -18,11 +18,11 @@
  * Prereqs: backend running (bun run dev:backend) + DB migrated. Run: bun run db:seed:org-admin
  */
 import { randomBytes } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { allPermissionMirrorRows } from "@wardenx/auth";
 import { Client } from "pg";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
-import { SEED_CREDENTIALS_PATH } from "./lib/credentials";
+import { SEED_CREDENTIALS_PATH, writeSeedCredentials } from "./lib/credentials";
 import { grantPlatformRole } from "./lib/platform-role";
 import { firstRow } from "./lib/query-rows";
 
@@ -82,6 +82,17 @@ async function main(): Promise<void> {
   ]);
   if (prior.rowCount) {
     const ids = prior.rows.map((r) => r.id);
+    const externalMembership = await db.query<{ organization_id: string }>(
+      `SELECT DISTINCT organization_id
+         FROM membership
+        WHERE user_id = ANY($1) AND organization_id <> $2`,
+      [ids, orgId],
+    );
+    if (externalMembership.rowCount) {
+      throw new Error(
+        `${USER.email} belongs to another organization; refusing to delete its global identity`,
+      );
+    }
     const mem = await db.query<{ id: string }>(
       "SELECT id FROM membership WHERE user_id = ANY($1) AND organization_id = $2",
       [ids, orgId],
@@ -169,7 +180,16 @@ async function main(): Promise<void> {
   const credsPath = SEED_CREDENTIALS_PATH;
   const existing = readFileSync(credsPath, "utf8");
   const marker = "\n## Organization Administrator (bun run db:seed:org-admin)\n";
-  const withoutOldBlock = (existing.split(marker)[0] ?? existing).replace(/\n+$/, "\n");
+  const [beforeOldBlock = existing, afterOldBlock = ""] = existing.split(marker);
+  const nextSectionAt = afterOldBlock.indexOf("\n## ");
+  const preservedLaterSections = nextSectionAt >= 0 ? afterOldBlock.slice(nextSectionAt) : "";
+  const withoutOldBlock = beforeOldBlock
+    .split("\n")
+    // `db:seed` creates the same account first, but this script drops and recreates it with a new
+    // password. Remove that now-stale table row so the credential file presents exactly one answer.
+    .filter((line) => !(line.startsWith("|") && line.includes(`| \`${USER.email}\` |`)))
+    .join("\n")
+    .replace(/\n+$/, "\n");
   const lines = [
     withoutOldBlock,
     marker.trimStart(),
@@ -186,11 +206,10 @@ async function main(): Promise<void> {
     "> `:5175`) requires. It's the only local account that can sign into it.",
     "",
   ];
-  writeFileSync(credsPath, lines.join("\n"));
+  writeSeedCredentials(`${lines.join("\n")}${preservedLaterSections}`);
 
   console.log("\n✓ org_admin user created");
   console.log(`  email:    ${USER.email}`);
-  console.log(`  password: ${password}`);
   console.log(`  role:     ${USER.roleKey} (${keys.length} perms, full catalog) + platform_ops`);
   console.log(
     `  admin@wardenx.local bound to org_admin: ${bound.rowCount ? "yes" : "already bound"}`,

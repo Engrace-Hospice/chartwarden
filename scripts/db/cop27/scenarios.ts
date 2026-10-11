@@ -433,7 +433,7 @@ export const SCENARIOS: readonly Scenario[] = [
           cal.rel(-50),
           3,
         );
-        run.skip(
+        run.note(
           "F2F attested by linking a signed visit note",
           "signing an M8 visit note needs a fresh MFA step-up, which a password-only script cannot perform; attested by narrative instead",
         );

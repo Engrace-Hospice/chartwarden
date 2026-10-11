@@ -59,6 +59,8 @@ describe("M3-T10 contributed permission keys (M1/M2 back-fill)", () => {
         "org.manage",
         "member.invite",
         "member.manage",
+        "user.create",
+        "user.password.reset",
         "user.deactivate",
         "collaborator.invite",
         // GAP-115
@@ -72,7 +74,7 @@ describe("M3-T10 contributed permission keys (M1/M2 back-fill)", () => {
 
   it("keys are `resource.action` namespaced and reconstruct from resource/action", () => {
     for (const [key, def] of Object.entries(CONTRIBUTED_PERMISSIONS)) {
-      expect(key).toMatch(/^[a-z_]+\.[a-z_]+$/);
+      expect(key).toMatch(/^[a-z_]+(?:\.[a-z_]+)+$/);
       expect(key).toBe(`${def.resource}.${def.action}`);
     }
   });

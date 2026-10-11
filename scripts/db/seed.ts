@@ -15,7 +15,6 @@
  * Run:     bun run db:seed
  */
 import { randomBytes } from "node:crypto";
-import { writeFileSync } from "node:fs";
 import { allPermissionMirrorRows } from "@wardenx/auth";
 import { Client } from "pg";
 import {
@@ -24,7 +23,7 @@ import {
   loadPlatformKekRing,
 } from "../../apps/backend/src/bootstrap/tenant-kek";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
-import { SEED_CREDENTIALS_PATH } from "./lib/credentials";
+import { SEED_CREDENTIALS_PATH, writeSeedCredentials } from "./lib/credentials";
 import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
@@ -32,8 +31,8 @@ const AUTH_URL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
 
 const ORG = {
   slug: "wardenx-demo",
-  legal: "WardenX Demo Hospice, Inc.",
-  display: "WardenX Demo Hospice",
+  legal: "Engrace Hospice, Inc.",
+  display: "Engrace Hospice",
 };
 
 type Cat = "admin" | "clinical" | "compliance" | "platform";
@@ -238,9 +237,9 @@ async function provisionTenantSpine(db: Client, orgId: string): Promise<void> {
  * rows (`ON CONFLICT (id) DO NOTHING`) stayed bound to the dead org and 404'd under RLS, unique slots
  * stayed taken (500 on re-create), and admin-connection workers picked orphaned units up.
  *
- * Rows whose org no longer exists at all are swept too, so a database polluted by earlier runs heals on
- * the next seed. NULL `organization_id` (platform-level rows) is never matched. Each table runs under
- * its own savepoint so one refusal cannot abort the surrounding cleanup transaction.
+ * Cleanup is deliberately scoped to the demo org id. NULL `organization_id` (platform-level rows) and
+ * rows owned by any other tenant are never matched. Each table runs under its own savepoint so one
+ * refusal cannot abort the surrounding cleanup transaction.
  */
 async function purgeOrgOwnedRows(db: Client, orgId: string): Promise<void> {
   const tables = await db.query<{ schema: string; name: string }>(
@@ -258,10 +257,7 @@ async function purgeOrgOwnedRows(db: Client, orgId: string): Promise<void> {
     await db.query("SAVEPOINT purge_org_table");
     try {
       const r = await db.query(
-        `DELETE FROM "${schema}"."${name}"
-          WHERE organization_id::text = $1
-             OR (organization_id IS NOT NULL
-                 AND organization_id::text NOT IN (SELECT id::text FROM organization))`,
+        `DELETE FROM "${schema}"."${name}" WHERE organization_id::text = $1`,
         [orgId],
       );
       purged += r.rowCount ?? 0;
@@ -279,12 +275,21 @@ async function purgeOrgOwnedRows(db: Client, orgId: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  // Dev/demo only: this deletes the demo org and (purgeOrgOwnedRows) every row of any org that no longer
-  // exists, across all tables. A production database may legitimately hold such rows, so refuse outright.
+  // Dev/demo only: this deletes and rebuilds the demo org across all org-owned tables.
   if (process.env.NODE_ENV === "production") {
     throw new Error("db:seed is a local dev seed and refuses to run with NODE_ENV=production");
   }
   if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
+  const dbHost = new URL(ADMIN_URL).hostname;
+  const LOCAL_DB_HOSTS = ["localhost", "127.0.0.1", "::1", "[::1]", "postgres"];
+  if (
+    !LOCAL_DB_HOSTS.includes(dbHost) &&
+    !process.argv.includes("--i-understand-this-is-production")
+  ) {
+    throw new Error(
+      `db:seed deletes and recreates the demo org; ${dbHost} is not local. Pass --i-understand-this-is-production to proceed.`,
+    );
+  }
   const db = new Client({ connectionString: ADMIN_URL });
   await db.connect();
   // Seed as a replication session: suppress the M4 write-audit triggers (seeding is not an audited
@@ -311,11 +316,57 @@ async function main(): Promise<void> {
 
   // --- Idempotent cleanup: drop prior demo org + demo users (+ Better Auth child rows) ---
   await db.query("BEGIN");
+  const soleTenantUserIds = new Set<string>();
   const prior = await db.query<{ id: string }>("SELECT id FROM organization WHERE slug = $1", [
     ORG.slug,
   ]);
+  const priorOrgId = prior.rowCount
+    ? firstRow(prior, "seed: existing organization lookup").id
+    : null;
+  // Seed emails are global Better Auth identities. If one has been attached to another tenant, abort
+  // before deleting any tenant/user data instead of orphaning that tenant under replication mode.
+  const crossTenantSeedUsers = priorOrgId
+    ? await db.query<{ email: string }>(
+        `SELECT DISTINCT u.email
+           FROM "user" u
+           JOIN membership m ON m.user_id = u.id
+          WHERE u.email = ANY($1) AND m.organization_id <> $2`,
+        [emails, priorOrgId],
+      )
+    : await db.query<{ email: string }>(
+        `SELECT DISTINCT u.email
+           FROM "user" u
+           JOIN membership m ON m.user_id = u.id
+          WHERE u.email = ANY($1)`,
+        [emails],
+      );
+  if (crossTenantSeedUsers.rowCount) {
+    throw new Error(
+      `refusing to reset demo identities shared with another organization: ${crossTenantSeedUsers.rows
+        .map((row) => row.email)
+        .sort()
+        .join(", ")}`,
+    );
+  }
   if (prior.rowCount) {
-    const orgId = firstRow(prior, "seed: existing organization lookup").id;
+    const orgId = priorOrgId as string;
+    // A user identity is cross-org, so deleting the tenant must not delete an identity that still
+    // belongs to another organization. Capture only users whose complete membership set is this
+    // demo tenant before purgeOrgOwnedRows removes the membership rows. This also catches persona,
+    // reviewer and legacy test accounts that older seed versions created but the current USERS list
+    // no longer knows by email.
+    const soleTenantUsers = await db.query<{ id: string }>(
+      `SELECT m.user_id AS id
+         FROM membership m
+        WHERE m.organization_id = $1
+        GROUP BY m.user_id
+       HAVING NOT EXISTS (
+         SELECT 1 FROM membership other
+          WHERE other.user_id = m.user_id AND other.organization_id <> $1
+       )`,
+      [orgId],
+    );
+    for (const row of soleTenantUsers.rows) soleTenantUserIds.add(row.id);
     await purgeOrgOwnedRows(db, orgId);
     await db.query("DELETE FROM membership_role WHERE organization_id = $1", [orgId]);
     await db.query("DELETE FROM role_permission WHERE organization_id = $1", [orgId]);
@@ -349,15 +400,26 @@ async function main(): Promise<void> {
     await db.query("DELETE FROM organization WHERE id = $1", [orgId]);
   }
   // Better Auth child rows (FKs vary) then the user rows.
-  const uids = await db.query<{ id: string }>('SELECT id FROM "user" WHERE email = ANY($1)', [
-    emails,
-  ]);
-  const ids = uids.rows.map((r) => r.id);
+  const uids = await db.query<{ id: string }>(
+    `SELECT u.id
+       FROM "user" u
+      WHERE u.email = ANY($1)
+        AND NOT EXISTS (
+          SELECT 1 FROM membership m
+           WHERE m.user_id = u.id
+             AND ($2::uuid IS NULL OR m.organization_id <> $2::uuid)
+        )`,
+    [emails, priorOrgId],
+  );
+  const ids = [...new Set([...soleTenantUserIds, ...uids.rows.map((r) => r.id)])];
   if (ids.length) {
     for (const t of ["session", "account", "two_factor", "passkey"]) {
       await db.query(`DELETE FROM ${t} WHERE user_id = ANY($1)`, [ids]).catch(() => {});
     }
     await db.query('DELETE FROM "user" WHERE id = ANY($1)', [ids]);
+  }
+  if (soleTenantUserIds.size > 0) {
+    console.log(`prior demo org: removed ${soleTenantUserIds.size} sole-tenant user identities`);
   }
   await db.query("COMMIT");
 
@@ -471,7 +533,7 @@ async function main(): Promise<void> {
     "",
   ];
   const out = SEED_CREDENTIALS_PATH;
-  writeFileSync(out, lines.join("\n"));
+  writeSeedCredentials(lines.join("\n"));
   console.log(`\n✓ seed complete — credentials written to ${out}`);
 }
 

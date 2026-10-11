@@ -288,7 +288,6 @@ export async function ensureDirectPatient(
             dob: spec.dob,
             administrativeSex: spec.sex,
             primaryAddress: demoAddress(ctx),
-            bypassMatchReview: true,
           },
         }),
       );
@@ -302,11 +301,17 @@ export async function ensureDirectPatient(
   return patient;
 }
 
-function demoAddress(ctx: SeedContext): { line1: string; city: string; postalCode: string } {
+function demoAddress(ctx: SeedContext): {
+  line1: string;
+  city: string;
+  state: string;
+  postalCode: string;
+} {
   const loc = ctx.location?.address;
   return {
     line1: "1 Demo Data Way (fictional)",
     city: loc?.city ?? "Asheville",
+    state: loc?.state ?? "NC",
     postalCode: loc?.postalCode ?? "28801",
   };
 }

@@ -44,7 +44,7 @@ async function main(): Promise<void> {
     `INSERT INTO provider_entity
        (id, organization_id, ccn, legal_name, doing_business_as, fiscal_intermediary, npi,
         tax_id_encrypted, fiscal_year_end, addresses, iqies_facility_id, status, created_at, updated_at)
-     VALUES ($1,$2,'381588','WardenX Demo Hospice, Inc.','WardenX Demo Hospice','CGS Administrators',
+     VALUES ($1,$2,'381588','Engrace Hospice, Inc.','Engrace Hospice','CGS Administrators',
              '1234567890','enc:demo-tax-id-not-real','1231',
              -- Demo provider fixture: CCN 381588, Pendleton, Oregon (ZIP 97801, Umatilla County). Never a default.
              '[{"line1":"100 Hospice Way","city":"Pendleton","state":"OR","postalCode":"97801"}]'::jsonb,
@@ -58,7 +58,7 @@ async function main(): Promise<void> {
     `INSERT INTO location
        (id, provider_entity_id, name, address_line1, city, state, postal_code, phone, timezone,
         service_area, status, created_at, updated_at)
-     VALUES ($1,$2,'WardenX Demo Hospice — Main Office','100 Hospice Way','Asheville','NC','28801',
+     VALUES ($1,$2,'Engrace Hospice — Main Office','100 Hospice Way','Asheville','NC','28801',
              '+18285550100','America/New_York',
              '["28801","28803","28804","28805","28792","28711"]'::jsonb,'active', now(), now())
      ON CONFLICT (id) DO NOTHING`,
@@ -71,36 +71,38 @@ async function main(): Promise<void> {
     `INSERT INTO location
        (id, provider_entity_id, name, address_line1, city, state, postal_code, phone, timezone,
         service_area, status, created_at, updated_at)
-     VALUES ($1,$2,'WardenX Demo Hospice — Inpatient Unit','12 Serenity Blvd','Durham','NC','27704',
+     VALUES ($1,$2,'Engrace Hospice — Inpatient Unit','12 Serenity Blvd','Durham','NC','27704',
              '+19195550200','America/New_York','[]'::jsonb,'active', now(), now())
      ON CONFLICT (id) DO NOTHING`,
     [LOCATION_IPU_ID, PROVIDER_ENTITY_ID],
   );
 
   // The tenant-admin demo logins (`db:seed` admin@ + `db:seed:org-admin` orgadmin@) are created BEFORE any
-  // location exists, so their membership carries `default_location_ids = []` — and an empty scope array can
-  // never contain a target's id, so every location-scoped ABAC predicate (M14 `idg_meeting_scope`, ...) denied
-  // the primary admin login on every meeting screen. Assign them the two demo locations now that they exist.
+  // location exists, so their membership carries no provider-entity scope and `default_location_ids = []` —
+  // and empty scope can never contain a target's id, so provider/location-scoped ABAC predicates deny the
+  // primary admin login. Assign the demo provider entity and both locations now that they exist.
   // Additive and idempotent: only ever UNIONS in the two ids (never removes an existing assignment), and only
   // touches these two accounts' memberships in the demo org. (The clinical personas from `db:seed:staff` are
   // already scoped to the main office by that script.)
   const assigned = await db.query(
     `UPDATE membership m
-        SET default_location_ids = (
+        SET default_provider_entity_id = $2,
+            default_location_ids = (
               SELECT COALESCE(jsonb_agg(DISTINCT v ORDER BY v), '[]'::jsonb)
-                FROM jsonb_array_elements_text(m.default_location_ids || $2::jsonb) AS t(v)
+                FROM jsonb_array_elements_text(m.default_location_ids || $3::jsonb) AS t(v)
             )
        FROM "user" u
       WHERE u.id = m.user_id
         AND m.organization_id = $1
         AND u.email IN ('admin@wardenx.local', 'orgadmin@wardenx.local')
-        AND NOT (m.default_location_ids @> $2::jsonb)`,
-    [orgId, JSON.stringify([LOCATION_MAIN_ID, LOCATION_IPU_ID])],
+        AND (m.default_provider_entity_id IS DISTINCT FROM $2
+             OR NOT (m.default_location_ids @> $3::jsonb))`,
+    [orgId, PROVIDER_ENTITY_ID, JSON.stringify([LOCATION_MAIN_ID, LOCATION_IPU_ID])],
   );
 
   await db.end();
   console.log(
-    `✓ org structure seed: ${assigned.rowCount ?? 0} admin membership(s) assigned to both demo locations.`,
+    `✓ org structure seed: ${assigned.rowCount ?? 0} admin membership(s) assigned to the demo provider entity and both locations.`,
   );
   console.log(
     `✓ org structure seed: provider_entity ${PROVIDER_ENTITY_ID} (CCN 341234), ` +

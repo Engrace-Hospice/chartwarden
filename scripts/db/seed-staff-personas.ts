@@ -32,7 +32,7 @@
  * Run:     bun run db:seed:staff
  */
 import { randomBytes } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import {
   ADMITTING_CLINICIAN_DEFAULT_GRANTS,
   INTAKE_DEFAULT_GRANTS,
@@ -45,7 +45,7 @@ import { Client } from "pg";
 import { group } from "../lib/strict";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
 import { anchorCareTeamSeats } from "./lib/care-team-seats";
-import { SEED_CREDENTIALS_PATH } from "./lib/credentials";
+import { SEED_CREDENTIALS_PATH, writeSeedCredentials } from "./lib/credentials";
 import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
@@ -529,7 +529,7 @@ async function main(): Promise<void> {
     ),
     "",
   ];
-  writeFileSync(credsPath, lines.join("\n"));
+  writeSeedCredentials(lines.join("\n"));
   console.log(`\n✓ staff persona seed: ${creds.length} accounts created.`);
 }
 

@@ -42,8 +42,8 @@ export const CONTRIBUTED_PERMISSIONS = {
   "user.create": { resource: "user", action: "create", category: "admin", abac: "none" },
   // Global credential mutation; tenant routes additionally reject shared identities and require step-up.
   "user.password.reset": {
-    resource: "user_password",
-    action: "reset",
+    resource: "user",
+    action: "password.reset",
     category: "admin",
     abac: "none",
   },
