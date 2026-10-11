@@ -188,6 +188,14 @@ describe("build837iTransferNotice — errors from the shared writer keep this bu
       },
     ],
     ["subscriber.birthDate", { ...I, subscriber: { ...I.subscriber, birthDate: "1940-13-45" } }],
+    [
+      "document.occurrenceCodes",
+      { ...I, document: { ...I.document, occurrenceCodes: [{ code: "27", date: "2026-02-30" }] } },
+    ],
+    [
+      "otherPhysician.npi",
+      { ...I, otherPhysician: { ...I.attendingPhysician, npi: "1234567890" } },
+    ],
     ["envelope.senderId", { ...I, envelope: { ...I.envelope, senderId: "" } }],
     [
       "envelope.interchangeControlNumber",
@@ -203,5 +211,10 @@ describe("build837iTransferNotice — errors from the shared writer keep this bu
     expect(caught).toBeInstanceOf(TransferNotice837iBuildError);
     expect((caught as Error).name).toBe("TransferNotice837iBuildError");
     expect((caught as Error).message).toBe(`invalid transfer-notice 837I input: ${field}`);
+  });
+
+  it("rethrows an error that is not a build error unchanged", () => {
+    const broken = { ...I, billingProvider: { ...I.billingProvider, address: undefined } };
+    expect(() => build837iTransferNotice(broken as never)).toThrow(TypeError);
   });
 });
