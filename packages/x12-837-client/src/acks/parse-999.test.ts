@@ -90,4 +90,64 @@ describe("parse999", () => {
     const notAck = [ISA, "GS*HC*A*B*20261009*1500*1*X*005010X223A2~", "ST*837*0001~", "SE*1*0001~"];
     expect(() => parse999(notAck.join("\n"))).toThrow(X12FormatError);
   });
+
+  it("does not read accepted when a set was not accepted", () => {
+    const r = parse999(ack(["AK1*HC*106~", "AK2*837*0106~", "IK5*R*5~", "AK9*A*1*1*1~"]));
+    expect(r.outcome).toBe("partial");
+  });
+
+  it("does not read accepted when fewer sets were accepted than received", () => {
+    expect(parse999(ack(["AK1*HC*106~", "AK9*A*2*2*1~"])).outcome).toBe("partial");
+  });
+
+  it("takes the worst verdict across several groups", () => {
+    const r = parse999(ack(["AK1*HC*106~", "AK9*A*1*1*1~", "AK1*HC*107~", "AK9*R*1*1*0~"]));
+    expect(r.outcome).toBe("rejected");
+  });
+
+  it("reads the 004010 AK3/AK4/AK5 names", () => {
+    const r = parse999(
+      ack([
+        "AK1*HC*106~",
+        "AK2*837*0106~",
+        "AK3*CLM*19**8~",
+        "AK4*2*782*7*X~",
+        "AK5*R*5~",
+        "AK9*R*1*1*0~",
+      ]),
+    );
+    expect(r.errors.map((e) => e.segment)).toEqual(["CLM", "CLM02", "AK5"]);
+  });
+
+  it("reads several acknowledged sets, each with its own status", () => {
+    const r = parse999(
+      ack(["AK1*HC*106~", "AK2*837*0001~", "IK5*A~", "AK2*837*0002~", "IK5*R*5~", "AK9*P*2*2*1~"]),
+    );
+    expect(r.transactionSets).toEqual([
+      { controlNumber: "0001", status: "A" },
+      { controlNumber: "0002", status: "R" },
+    ]);
+  });
+
+  it("keeps only the position of a composite IK4-01", () => {
+    const r = parse999(ack(["AK1*HC*106~", "IK3*CLM*19**8~", "IK4*2:1*782*7~", "AK9*R*1*1*0~"]));
+    expect(r.errors[1]?.segment).toBe("CLM02");
+  });
+
+  it("never echoes free text sent in a segment-id or status position", () => {
+    const r = parse999(
+      ack([
+        "AK1*HC*106~",
+        "AK2*837*0106~",
+        "IK3*Jane Doe 1EG4*19**1~",
+        "IK5*Jane Doe~",
+        "AK9*R*1*1*0~",
+      ]),
+    );
+    expect(JSON.stringify(r)).not.toMatch(/Jane|Doe|1EG4/);
+  });
+
+  it("fails closed on an empty AK1-02", () => {
+    expect(() => parse999(ack(["AK1*HC~", "AK9*A*1*1*1~"]))).toThrow(X12FormatError);
+  });
 });

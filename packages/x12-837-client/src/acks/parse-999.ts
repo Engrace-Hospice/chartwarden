@@ -9,7 +9,7 @@ import type { AckError, AckOutcome, Parsed999 } from "../types";
 export interface Ack999TransactionSet {
   /** AK202 — the ST02 of the acknowledged transaction set. */
   readonly controlNumber: string;
-  /** AK5/IK5-01: A accepted, E accepted with errors, M/R/W/X rejected, P partially accepted. */
+  /** AK5/IK5-01: A accepted, E accepted with errors (reported as `partial`, not success), M/R/W/X rejected, P partially accepted. */
   readonly status: string;
 }
 
@@ -77,8 +77,14 @@ const OUTCOME_BY_AK9: Readonly<Record<string, AckOutcome>> = {
   X: "rejected",
 };
 
+const SEVERITY: Readonly<Record<AckOutcome, number>> = { accepted: 0, partial: 1, rejected: 2 };
+
 const describe = (table: Readonly<Record<string, string>>, code: string): string =>
   table[code] ?? UNKNOWN_CODE;
+
+/** A segment id or status echoed from the sender is trusted only if it looks like one (never free text). */
+const safeToken = (value: string | undefined): string =>
+  value !== undefined && /^[A-Z0-9]{1,3}$/.test(value) ? value : "UNKNOWN";
 
 /** Error-code elements from `from` on, skipping empties (AK5-02..06, AK9-05..09). */
 const codesFrom = (seg: readonly string[], from: number): string[] =>
@@ -89,16 +95,19 @@ const codesFrom = (seg: readonly string[], from: number): string[] =>
  * caller must never read a missing verdict as acceptance.
  */
 export function parse999(raw: string): Parsed999Detail {
-  const { segments } = tokenizeInterchange(raw);
+  const { segments, delimiters } = tokenizeInterchange(raw);
+  const component = delimiters.component;
   const isa = segments.find((s) => s[0] === "ISA");
   const gs = segments.find((s) => s[0] === "GS");
   const st = segments.find((s) => s[0] === "ST");
   if (st?.[1] !== "999") throw new X12FormatError("interchange is not a 999 acknowledgment");
 
   const ak1 = segments.find((s) => s[0] === "AK1");
-  const ak9 = segments.find((s) => s[0] === "AK9");
-  const outcome = ak9 ? OUTCOME_BY_AK9[(ak9[1] ?? "").trim()] : undefined;
-  if (!ak1?.[2] || !outcome) throw new X12FormatError("999 has no usable AK1/AK9 verdict");
+  const ak9s = segments.filter((s) => s[0] === "AK9");
+  const verdicts = ak9s.map((s) => OUTCOME_BY_AK9[(s[1] ?? "").trim()]);
+  if (!ak1?.[2] || verdicts.length === 0 || verdicts.some((v) => v === undefined)) {
+    throw new X12FormatError("999 has no usable AK1/AK9 verdict");
+  }
 
   const errors: AckError[] = [];
   const transactionSets: Ack999TransactionSet[] = [];
@@ -111,7 +120,7 @@ export function parse999(raw: string): Parsed999Detail {
         break;
       case "IK3":
       case "AK3": {
-        segmentId = seg[1] ?? "";
+        segmentId = safeToken(seg[1]);
         const code = seg[4] ?? "";
         errors.push({ segment: segmentId, code, description: describe(SEGMENT_ERRORS, code) });
         break;
@@ -119,7 +128,7 @@ export function parse999(raw: string): Parsed999Detail {
       case "IK4":
       case "AK4": {
         const code = seg[3] ?? "";
-        const position = (seg[1] ?? "").padStart(2, "0");
+        const position = (seg[1] ?? "").split(component)[0]?.padStart(2, "0") ?? "";
         errors.push({
           segment: `${segmentId}${position}`,
           code,
@@ -129,17 +138,32 @@ export function parse999(raw: string): Parsed999Detail {
       }
       case "IK5":
       case "AK5":
-        transactionSets.push({ controlNumber: setControl, status: seg[1] ?? "" });
+        transactionSets.push({ controlNumber: setControl, status: safeToken(seg[1]) });
         for (const code of codesFrom(seg, 2)) {
-          errors.push({ segment: "IK5", code, description: describe(TRANSACTION_ERRORS, code) });
+          errors.push({
+            segment: seg[0] ?? "IK5",
+            code,
+            description: describe(TRANSACTION_ERRORS, code),
+          });
         }
         break;
       default:
     }
   }
-  for (const code of ak9 ? codesFrom(ak9, 5) : []) {
+  for (const code of ak9s.flatMap((s) => codesFrom(s, 5))) {
     errors.push({ segment: "AK9", code, description: describe(GROUP_ERRORS, code) });
   }
+
+  // Fail closed: the worst group verdict wins, and an AK9 "accepted" never outranks a set that was not accepted
+  // or a count that says fewer sets were accepted than received.
+  const countsShort = ak9s.some((s) => Number(s[4] ?? "0") < Number(s[2] ?? "0"));
+  const setsNotAccepted = transactionSets.some((t) => t.status !== "A");
+  const worst = verdicts.reduce<AckOutcome>(
+    (a, v) => (v && SEVERITY[v] > SEVERITY[a] ? v : a),
+    "accepted",
+  );
+  const outcome: AckOutcome =
+    worst === "accepted" && (countsShort || setsNotAccepted) ? "partial" : worst;
 
   return {
     outcome,

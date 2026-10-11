@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { X12FormatError } from "../eligibility/x12-envelope";
 import { checkStediEdits } from "./stedi-edit-rules";
 
 // Synthetic payloads the Stedi sandbox accepted past its edit engine (2026-10-09). "Passed edits" only.
@@ -85,9 +86,52 @@ describe("checkStediEdits: each sandbox rejection is reproduced", () => {
   });
 });
 
+describe("checkStediEdits: fails closed", () => {
+  const claim = fixture("claim");
+
+  it.each([
+    ["a thousands separator", "CLM*WXHOSP0001*1500.00", "CLM*WXHOSP0001*1,500.00"],
+    ["a negative total", "CLM*WXHOSP0001*1500.00", "CLM*WXHOSP0001*-5.00"],
+    ["an empty total", "CLM*WXHOSP0001*1500.00", "CLM*WXHOSP0001*"],
+    ["three decimals", "CLM*WXHOSP0001*1500.00", "CLM*WXHOSP0001*1500.005"],
+    ["a line with no charge", "SV2*0651*HC:Q5001*200.00", "SV2*0651*HC:Q5001*"],
+  ])("flags %s instead of passing", (_n, from, to) => {
+    expect(rules(claim.replace(from, to))).toEqual(["amount-unreadable"]);
+  });
+
+  it("refuses an interchange with no claim", () => {
+    const noClaim = claim
+      .split("\n")
+      .filter((l) => !/^(CLM|SV2|LX|DTP\*472)/.test(l))
+      .join("\n");
+    expect(() => checkStediEdits(noClaim)).toThrow(X12FormatError);
+  });
+
+  it("checks each claim against its own lines", () => {
+    const one = (id: string, amount: string): string =>
+      `CLM*${id}*${amount}***81:A:3**A*Y*Y~\nCL1*1*1*30~\nSV2*0651*HC:Q5001*${amount}*UN*1~`;
+    const two = (a: string, b: string): string =>
+      claim
+        .replace(/CLM\*[\s\S]*?(?=SE\*)/, `${one("A1", a)}\n${one("B2", b)}\n`)
+        .replace("SE*35*", "SE*10*");
+    expect(checkStediEdits(two("100.00", "50.00"))).toEqual([]);
+    const bad = checkStediEdits(two("100.00", "50.00").replace("*50.00***", "*60.00***"));
+    expect(bad.map((f) => f.rule)).toEqual(["total-matches-lines"]);
+  });
+
+  it("frequency 8 without REF*F8", () => {
+    const noF8 = fixture("cancel_818").replace(/REF\*F8\*[^~]*~\n/, "");
+    expect(rules(noF8)).toEqual(["payer-claim-number-required"]);
+  });
+});
+
 describe("checkStediEdits: findings never carry payload content", () => {
-  it("names the rule and the segment, not values", () => {
-    const f = checkStediEdits(fixture("claim").replace("CL1*1*1*30", "CL1*1**30"));
-    expect(JSON.stringify(f)).not.toMatch(/DOE|JANE|1EG4TE5MK73|SMITH/);
+  it("does not echo a distinctive value placed in a failing field", () => {
+    const raw = fixture("claim")
+      .replace("CLM*WXHOSP0001*1500.00", "CLM*WXHOSP0001*ZQ-UNIQUE-PHI")
+      .replace("CL1*1*1*30", "CL1*1**30");
+    const f = checkStediEdits(raw);
+    expect(f.length).toBeGreaterThan(0);
+    expect(JSON.stringify(f)).not.toMatch(/ZQ-UNIQUE-PHI|WXHOSP0001|DOE|JANE|SMITH/);
   });
 });
