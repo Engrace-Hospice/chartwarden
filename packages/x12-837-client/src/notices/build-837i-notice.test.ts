@@ -88,14 +88,46 @@ describe("build837iNotice — input validation names the field, never the value"
     [{ subscriber: { ...NOE_INPUT.subscriber, birthDate: "2030-01-01" } }, "subscriber.birthDate"],
   ])("refuses %#", (patch, field) => bad(patch, field));
 
+  it.each([
+    [{ notice: { ...NOE_INPUT.notice, kind: "toString" } as never }, "notice.kind"],
+    [{ notice: { ...NOE_INPUT.notice, kind: "FOO" } as never }, "notice.kind"],
+    [{ subscriber: { ...NOE_INPUT.subscriber, sex: "F*X" as never } }, "subscriber.sex"],
+    [{ envelope: { ...NOE_INPUT.envelope, createdAt: new Date("x") } }, "envelope.createdAt"],
+    [{ envelope: { ...NOE_INPUT.envelope, usage: "Q" as never } }, "envelope.usage"],
+    [
+      { attendingPhysician: { ...NOE_INPUT.attendingPhysician, npi: "123" } },
+      "attendingPhysician.npi",
+    ],
+    [{ billingProvider: { ...NOE_INPUT.billingProvider, npi: "123" } }, "billingProvider.npi"],
+    [{ notice: { ...NOE_INPUT.notice, admissionDate: "2026-02-30" } }, "notice.admissionDate"],
+    [
+      { envelope: { ...NOE_INPUT.envelope, interchangeControlNumber: 0 } },
+      "envelope.interchangeControlNumber",
+    ],
+  ])("refuses untyped input %#", (patch, field) => bad(patch, field));
+
+  it("refuses a NOTR without a termination date, naming the field", () => {
+    const notice = { kind: "NOTR", controlNumber: "X1", admissionDate: "2026-01-01" } as never;
+    expect(() => build837iNotice({ ...NOTR_INPUT, notice })).toThrow(
+      "invalid 837I notice input: notice.terminationDate",
+    );
+  });
+
+  it("accepts a same-day termination and a birth date equal to the admission date", () => {
+    const notice = { ...NOTR_INPUT.notice, terminationDate: "2026-01-01" } as never;
+    expect(() => build837iNotice({ ...NOTR_INPUT, notice })).not.toThrow();
+    const subscriber = { ...NOE_INPUT.subscriber, birthDate: "2026-01-01" };
+    expect(() => build837iNotice({ ...NOE_INPUT, subscriber })).not.toThrow();
+  });
+
+  it("keeps the admit date and OC 27 on the admission date for a NOTR", () => {
+    const segs = lines(build837iNotice(NOTR_INPUT));
+    expect(segs).toContain("DTP*435*D8*20260101");
+    expect(segs).toContain("HI*BH:27:D8:20260101");
+  });
+
   it("never echoes the offending value", () => {
-    try {
-      build837iNotice({
-        ...NOE_INPUT,
-        subscriber: { ...NOE_INPUT.subscriber, mbi: "SECRETVALUE" },
-      });
-    } catch (e) {
-      expect((e as Error).message).not.toContain("SECRETVALUE");
-    }
+    const subscriber = { ...NOE_INPUT.subscriber, mbi: "SECRETVALUE" };
+    expect(() => build837iNotice({ ...NOE_INPUT, subscriber })).toThrow(/^((?!SECRETVALUE).)*$/s);
   });
 });

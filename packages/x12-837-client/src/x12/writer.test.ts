@@ -121,3 +121,22 @@ describe("field helpers", () => {
     ).toThrow("a.state");
   });
 });
+
+describe("prepareEnvelope — untyped envelope fields", () => {
+  const base = {
+    senderId: "A",
+    receiverId: "B",
+    applicationReceiverCode: "B",
+    interchangeControlNumber: 1,
+    usage: "T" as const,
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+  };
+  it.each([
+    [{ usage: "Q" }, "envelope.usage"],
+    [{ createdAt: new Date("x") }, "envelope.createdAt"],
+  ])("rejects %j naming the field", (patch, field) => {
+    expect(() => prepareEnvelope({ ...base, ...patch } as never)).toThrow(
+      expect.objectContaining({ field }),
+    );
+  });
+});

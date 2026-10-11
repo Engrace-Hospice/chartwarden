@@ -102,6 +102,7 @@ export function build837iNotice(input: Notice837iInput): string {
 
 function buildNotice(input: Notice837iInput): string {
   const { notice } = input;
+  if (!Object.hasOwn(KINDS, notice.kind)) throw new Notice837iBuildError("notice.kind");
   const kind = KINDS[notice.kind];
   if (!/^[A-Za-z0-9-]{1,38}$/.test(notice.controlNumber)) {
     throw new Notice837iBuildError("notice.controlNumber");
@@ -118,6 +119,7 @@ function buildNotice(input: Notice837iInput): string {
   const s = input.subscriber;
   const mbi = s.mbi.trim().toUpperCase();
   if (!MBI_PATTERN.test(mbi)) throw new Notice837iBuildError("subscriber.mbi");
+  if (s.sex !== "M" && s.sex !== "F") throw new Notice837iBuildError("subscriber.sex");
   const dob = d8(s.birthDate, "subscriber.birthDate");
   if (dob > admission) throw new Notice837iBuildError("subscriber.birthDate");
   const dx = input.principalDiagnosis.replace(".", "").trim().toUpperCase();
