@@ -88,6 +88,12 @@ describe("build837iNotice — input validation names the field, never the value"
     [{ subscriber: { ...NOE_INPUT.subscriber, birthDate: "2030-01-01" } }, "subscriber.birthDate"],
   ])("refuses %#", (patch, field) => bad(patch, field));
 
+  it("refuses a missing or null control number rather than coercing it", () => {
+    for (const controlNumber of [undefined, null]) {
+      bad({ notice: { ...NOE_INPUT.notice, controlNumber } as never }, "notice.controlNumber");
+    }
+  });
+
   it.each([
     [{ notice: { ...NOE_INPUT.notice, kind: "toString" } as never }, "notice.kind"],
     [{ notice: { ...NOE_INPUT.notice, kind: "FOO" } as never }, "notice.kind"],

@@ -52,6 +52,11 @@ const FORBIDDEN = /[*~:^|]/;
 const IMPLEMENTATION_GUIDE = "005010X223A2";
 const MAX_CONTROL_NUMBER = 999_999_999;
 
+/** True only for a string that matches `re`: a regex `.test` alone would coerce null/undefined/arrays. */
+export function matches(re: RegExp, value: unknown): boolean {
+  return typeof value === "string" && re.test(value);
+}
+
 export function text(value: string | null | undefined, field: string, max: number): string {
   const v = (value ?? "").trim().toUpperCase();
   if (v.length === 0 || v.length > max || FORBIDDEN.test(v)) throw new X12BuildError(field);
