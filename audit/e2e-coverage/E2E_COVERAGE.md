@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 173 statically-routable `web` screen(s) — 19/173 E2E-reached, 166/173 axe-reached.
+**Coverage:** 174 statically-routable `web` screen(s) — 19/174 E2E-reached, 166/174 axe-reached.
 
 ## Zero E2E coverage
 
@@ -80,6 +80,7 @@
 | `ipu.census` | 37-ipu | `/ipu/census` | m37.census.read |
 | `ipu.equipment` | 37-ipu | `/ipu/equipment` | m37.equipment.read |
 | `identity.mfa-challenge` | 02-identity | `/login/2fa` | (none) |
+| `identity.required-password-change` | 02-identity | `/login/change-password` | (none) |
 | `identity.organization-select` | 02-identity | `/login/organization` | (none) |
 | `mdm.console` | 40-mdm | `/mdm` | mdm.physician.read |
 | `ai.my-preferences` | 32-ai-platform | `/me/ai-preferences` | ai.clinician_opt_out.read |
@@ -172,6 +173,7 @@
 | `scheduling.calendar` | 17-scheduling | `/calendar` | (none) |
 | `identity.forgot-password` | 02-identity | `/forgot` | (none) |
 | `identity.mfa-challenge` | 02-identity | `/login/2fa` | (none) |
+| `identity.required-password-change` | 02-identity | `/login/change-password` | (none) |
 | `messaging.notifications` | 36-messaging | `/notifications` | (none) |
 | `identity.reset-password` | 02-identity | `/reset-password` | (none) |
 

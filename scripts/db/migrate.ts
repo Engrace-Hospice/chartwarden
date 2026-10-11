@@ -72,6 +72,9 @@ const HISTORICAL_FILENAME_RENAMES: ReadonlyMap<string, string> = new Map([
   ["0243_alert_receipts.sql", "0237_alert_receipts.sql"],
   ["0244_cti_f2f_alert_deadlines.sql", "0238_cti_f2f_alert_deadlines.sql"],
   ["0245_verbal_order_readback_effective_at.sql", "0239_verbal_order_readback_effective_at.sql"],
+  // Two branches both took ordinal 1063 (M23 ack-stage split, M36 structured message references). The M23 file was
+  // already applied in production, so the M36 file moved to the next free ordinal; its bytes are unchanged.
+  ["1065_m36_structured_message_references.sql", "1063_m36_structured_message_references.sql"],
 ]);
 
 export interface ApplyMigrationsOptions {

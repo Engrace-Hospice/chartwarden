@@ -109,7 +109,7 @@ function spikeProvisioningPlugin() {
             username: ctx.body.username,
             displayUsername: ctx.body.username,
             // Deliberately absent. No placeholder and no empty string.
-            email: undefined,
+            email: undefined as unknown as string,
             emailVerified: false,
           });
           await ctx.context.internalAdapter.linkAccount({
@@ -125,9 +125,29 @@ function spikeProvisioningPlugin() {
   } as const;
 }
 
+function buildSpikeAuth(db: ReturnType<typeof drizzle<typeof schema>>) {
+  return betterAuth({
+    secret: "username-spike-secret-at-least-32-characters",
+    baseURL: "http://localhost:3000",
+    advanced: { database: { generateId: () => crypto.randomUUID() } },
+    database: drizzleAdapter(db, { provider: "pg", schema }),
+    emailAndPassword: {
+      enabled: true,
+      minPasswordLength: 12,
+      maxPasswordLength: 256,
+      password: {
+        hash: argon2idHash,
+        verify: ({ hash, password }) => argon2idVerify(hash, password),
+      },
+    },
+    plugins: [username(), spikeProvisioningPlugin()],
+  });
+}
+type SpikeAuth = ReturnType<typeof buildSpikeAuth>;
+
 describe.skipIf(!DATABASE_URL)("PR0 username-only Better Auth feasibility", () => {
   let pool: Pool;
-  let auth: ReturnType<typeof betterAuth>;
+  let auth: SpikeAuth;
 
   beforeAll(async () => {
     pool = new Pool({ connectionString: DATABASE_URL });
@@ -182,22 +202,7 @@ describe.skipIf(!DATABASE_URL)("PR0 username-only Better Auth feasibility", () =
       );
     `);
     const db = drizzle(pool, { schema });
-    auth = betterAuth({
-      secret: "username-spike-secret-at-least-32-characters",
-      baseURL: "http://localhost:3000",
-      advanced: { database: { generateId: () => crypto.randomUUID() } },
-      database: drizzleAdapter(db, { provider: "pg", schema }),
-      emailAndPassword: {
-        enabled: true,
-        minPasswordLength: 12,
-        maxPasswordLength: 256,
-        password: {
-          hash: argon2idHash,
-          verify: ({ hash, password }) => argon2idVerify(hash, password),
-        },
-      },
-      plugins: [username(), spikeProvisioningPlugin()],
-    });
+    auth = buildSpikeAuth(db);
   });
 
   afterAll(async () => {

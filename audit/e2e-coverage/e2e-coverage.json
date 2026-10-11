@@ -1,6 +1,6 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 173,
+  "totalStaticWebScreens": 174,
   "e2eReachedCount": 19,
   "axeReachedCount": 166,
   "zeroE2eCoverage": [
@@ -576,6 +576,14 @@
       "id": "identity.mfa-challenge",
       "module": "02-identity",
       "path": "/login/2fa",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
+      "id": "identity.required-password-change",
+      "module": "02-identity",
+      "path": "/login/change-password",
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false
@@ -1279,6 +1287,14 @@
       "axeReached": false
     },
     {
+      "id": "identity.required-password-change",
+      "module": "02-identity",
+      "path": "/login/change-password",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
       "id": "messaging.notifications",
       "module": "36-messaging",
       "path": "/notifications",
@@ -1940,6 +1956,14 @@
       "id": "identity.mfa-challenge",
       "module": "02-identity",
       "path": "/login/2fa",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
+      "id": "identity.required-password-change",
+      "module": "02-identity",
+      "path": "/login/change-password",
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": false

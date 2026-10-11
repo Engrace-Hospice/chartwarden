@@ -277,8 +277,8 @@ import {
   M3_PLATFORM_JOB_ID,
   createDbAuditorAccessGrantor,
   createDbOrgRoleLookup,
-  createDbProvisioningRoleResolver,
   createDbProposedRoleAttacher,
+  createDbProvisioningRoleResolver,
   createMembershipsHoldingPermissionReader,
   createMembershipsHoldingRoleKeyReader,
   createProposedRoleGuard,
@@ -1375,8 +1375,8 @@ import {
   buildIdgCarryForwardComplianceConsumer,
   buildM36BreakGlassAlertConsumer,
   buildM36ClinicalAlertConsumer,
-  createDbMessagingRouteService,
   createDbMessagingProvider,
+  createDbMessagingRouteService,
   createDrizzleAlertEmitter,
   createDrizzleDeliveryDispatchStore,
   createDrizzleIdgAttendeeLookup,
@@ -1403,8 +1403,8 @@ import { buildM36FeedHealthAlertConsumer } from "./modules/36-messaging/outbox-c
 import { buildM36FieldSafetyAlertConsumer } from "./modules/36-messaging/outbox-consumers/field-safety-alerts";
 import { buildM36IpuAlertConsumer } from "./modules/36-messaging/outbox-consumers/ipu-alerts";
 import { buildM36IpuIvAlertConsumer } from "./modules/36-messaging/outbox-consumers/ipu-iv-alerts";
-import { buildM36MessageMentionConsumer } from "./modules/36-messaging/outbox-consumers/message-mentions";
 import { buildM36ConsentRevokedConsumer } from "./modules/36-messaging/outbox-consumers/m39-consent-revoked";
+import { buildM36MessageMentionConsumer } from "./modules/36-messaging/outbox-consumers/message-mentions";
 import { buildM36OncallAlertConsumer } from "./modules/36-messaging/outbox-consumers/oncall-alerts";
 import { buildM36QualityAlertConsumer } from "./modules/36-messaging/outbox-consumers/quality-alerts";
 import { bindTransactionalEmail } from "./modules/36-messaging/transactional-email-binding";
@@ -4112,6 +4112,14 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             }),
             credentialAdmin: createIdentityCredentialAdmin(auth!),
             provisioningRoles: createDbProvisioningRoleResolver(dbHandle.db),
+            validateLocations: (organizationId, locationIds) =>
+              withOrgContext(dbHandle.db, { organizationId, userId: "" }, (tx) =>
+                buildFoundationSiteReader().allLocationsOpenInOrg(
+                  tx as unknown as DbClient,
+                  organizationId,
+                  locationIds,
+                ),
+              ),
             // #138/F-060/F-116 — the day-one dashboard seed, bound the same way as roleAttacher just
             // above and for the identical import-boundary reason (M33's implementation; M2 cannot
             // import it).

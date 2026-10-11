@@ -6,7 +6,7 @@ import type { DbClient } from "@wardenx/db";
 import { schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import type {
   MembershipRepository,
   ProposedRoleAttacher,
@@ -105,37 +105,28 @@ function asPasswordPolicyError(error: unknown): WardenXError | null {
   return null;
 }
 
-export function createDbCredentialLifecycleStore(db: DbClient): CredentialLifecycleStore {
+/**
+ * `validateLocations` is M1's published site read, injected by the composition root: M2 does not read M1's
+ * `location` / `provider_entity` tables (scripts/check-table-ownership.ts).
+ */
+export function createDbCredentialLifecycleStore(
+  db: DbClient,
+  validateLocations: CredentialLifecycleStore["validateLocations"],
+): CredentialLifecycleStore {
   return {
     async organizationName(organizationId) {
-      const [row] = await db
-        .select({ name: schema.organizations.displayName })
-        .from(schema.organizations)
-        .where(eq(schema.organizations.id, organizationId))
-        .limit(1);
+      // `organization` is RLS-scoped: a bare `db` read has no `app.org_id` and sees no row, so every
+      // provisioning answered 404 "organization not found" (found hitting the route on the Docker stack).
+      const [row] = await withOrgContext(db, { organizationId, userId: "" }, (tx) =>
+        tx
+          .select({ name: schema.organizations.displayName })
+          .from(schema.organizations)
+          .where(eq(schema.organizations.id, organizationId))
+          .limit(1),
+      );
       return row?.name ?? null;
     },
-    async validateLocations(organizationId, locationIds) {
-      const wanted = [...new Set(locationIds)];
-      if (wanted.length === 0) return true;
-      const rows = await withOrgContext(db, { organizationId, userId: "" }, (tx) =>
-        tx
-          .select({ id: schema.locations.id })
-          .from(schema.locations)
-          .innerJoin(
-            schema.providerEntities,
-            eq(schema.providerEntities.id, schema.locations.providerEntityId),
-          )
-          .where(
-            and(
-              eq(schema.providerEntities.organizationId, organizationId),
-              inArray(schema.locations.id, wanted),
-              ne(schema.locations.status, "closed"),
-            ),
-          ),
-      );
-      return rows.length === wanted.length;
-    },
+    validateLocations,
     async state(userId) {
       const [row] = await db
         .select({
@@ -191,9 +182,10 @@ export function createDbCredentialLifecycleStore(db: DbClient): CredentialLifecy
       const result = await db.execute(
         sql`SELECT organization_id, status FROM m2_list_own_memberships(${userId}::uuid)`,
       );
-      const live = (
-        result as unknown as { rows?: { organization_id: string; status: string }[] }
-      ).rows?.filter((row) => row.status !== "revoked") ?? [];
+      const live =
+        (
+          result as unknown as { rows?: { organization_id: string; status: string }[] }
+        ).rows?.filter((row) => row.status !== "revoked") ?? [];
       if (!live.some((row) => row.organization_id === organizationId)) return "not_member";
       if (live.some((row) => row.organization_id !== organizationId)) return "shared_identity";
       return "eligible";
@@ -346,7 +338,11 @@ export function createUserProvisioningService(deps: {
     async completeRequiredChange(input) {
       const current = await deps.lifecycle.state(input.userId);
       if (!current || current.state !== "password_change_required")
-        throw new WardenXError("CREDENTIAL_ALREADY_ROTATED", "password change is not required", 409);
+        throw new WardenXError(
+          "CREDENTIAL_ALREADY_ROTATED",
+          "password change is not required",
+          409,
+        );
       try {
         await deps.credentials.changeOwnPassword({
           currentPassword: input.currentPassword,

@@ -375,8 +375,8 @@ import {
   type OrganizationLifecycleOutboxPort,
   createDrizzleOrganizationLifecycleWriter as _organizationLifecycleWriter,
 } from "./organization-lifecycle";
-import { registerDeviceAttestationRoutes as _registerDeviceAttestationRoutes } from "./routes/device-attestation";
 import { registerCredentialRoutes as _registerCredentialRoutes } from "./routes/credential-routes";
+import { registerDeviceAttestationRoutes as _registerDeviceAttestationRoutes } from "./routes/device-attestation";
 import { registerIdentityRoutes as _registerIdentityRoutes } from "./routes/identity-routes";
 import {
   type TaxIdCipherPort,
@@ -456,6 +456,11 @@ export function mountIdentityRoutes(
     roleAttacher?: IdentityRouteDeps["roleAttacher"];
     /** GAP-008 — M3's invite-creation anti-escalation guard (same import-boundary reason). */
     proposedRoleGuard?: IdentityRouteDeps["proposedRoleGuard"];
+    /** M1's `FoundationSiteReader.allLocationsOpenInOrg`, org-explicit (M2 reads no M1 table). */
+    validateLocations?: (
+      organizationId: string,
+      locationIds: readonly string[],
+    ) => Promise<boolean>;
     /** #138/F-060/F-116 — threaded the same way as `roleAttacher`, for the same import-boundary reason
      *  (M33's implementation, M2 is `dependsOn: [1]`). Omitted → accept seeds no dashboards. */
     dashboardSeeder?: IdentityRouteDeps["dashboardSeeder"];
@@ -532,9 +537,10 @@ export function mountIdentityRoutes(
     invite?.credentialAdmin &&
     invite.provisioningRoles &&
     invite.roleAttacher &&
-    invite.proposedRoleGuard
+    invite.proposedRoleGuard &&
+    invite.validateLocations
   ) {
-    const lifecycle = _dbCredentialLifecycle(db);
+    const lifecycle = _dbCredentialLifecycle(db, invite.validateLocations);
     _registerCredentialRoutes(app, {
       actors,
       audit,
