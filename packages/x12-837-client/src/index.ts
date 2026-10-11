@@ -235,9 +235,10 @@ export type {
   ClearinghouseTransportFactories,
   ClearinghouseTransportFactory,
 } from "./clearinghouse/transport-registry";
-export { InMemoryAttemptStore } from "./clearinghouse/attempt-store";
+export { InMemoryAttemptStore, PlatformControlNumberTaken } from "./clearinghouse/attempt-store";
 export type {
   AttemptStatus,
+  AttemptUsage,
   ReserveResult,
   SubmissionAttempt,
   SubmissionAttemptStore,

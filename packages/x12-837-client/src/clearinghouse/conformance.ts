@@ -28,6 +28,8 @@ export const DEFAULT_SCOPE: ClearinghouseScope = {
   organizationId: "org-conf",
   providerEntityId: "pe-conf",
   usage: "test",
+  // A synthetic, Luhn-valid NPI; a transport that reads the billing provider out of the payload checks it against this.
+  billingNpi: "1234567893",
 };
 
 /**
@@ -829,7 +831,7 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
     requires: ["submit"],
     stage: "4 claim (tenancy, usage)",
     title:
-      "the same key and control number in another org, provider or usage mode never replays or collides, and your own state is intact",
+      "the same key in another org, provider or usage mode never replays or collides (a control number is platform-unique per mode), and your own state is intact",
     async run(h) {
       const sub = submissionFor(h);
       ok(await h.transport.submitClaim(ctxFor(), sub("claim", "CCN-S02")), "first");
@@ -838,13 +840,17 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
         ["another provider", OTHER_PROVIDER],
         ["production", PRODUCTION],
       ] as const) {
+        // The vendor sender is the platform's, so a control number is unique across tenants within one usage mode;
+        // only the other usage mode may reuse it. The idempotency KEY is what must never cross a boundary.
+        const number = scope.usage === DEFAULT_SCOPE.usage ? `CCN-S02-${label.split(" ")[1]}` : "CCN-S02";
         const theirs = ok(
           await h.transport.submitClaim(
             ctxFor(scope),
-            sub("claim", "CCN-S02", {
+            sub("claim", number, {
+              idempotencyKey: "idem-CCN-S02",
               payload: {
                 format: "x12",
-                x12: (h.payloads ?? DEFAULT_PAYLOADS).x12("claim", "CCN-S02", scope.usage),
+                x12: (h.payloads ?? DEFAULT_PAYLOADS).x12("claim", number, scope.usage),
               },
             }),
           ),

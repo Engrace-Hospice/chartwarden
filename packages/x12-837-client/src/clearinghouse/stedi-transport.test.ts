@@ -159,15 +159,26 @@ describe("StediTransport.submitClaim", () => {
   it("keeps tenants and usage modes apart", async () => {
     const { calls, transport } = harness();
     await transport.submitClaim(CTX, claim());
-    const other = await transport.submitClaim({ ...CTX, organizationId: "org-2" }, claim());
+    const other = await transport.submitClaim(
+      { ...CTX, organizationId: "org-2" },
+      claim({ controlNumber: "CCN-2" }),
+    );
     expect(other.ok && !other.data.replayed).toBe(true);
     expect(calls).toHaveLength(2);
+  });
+
+  it("refuses another tenant's use of a live control number: the sender is the platform's", async () => {
+    const { calls, transport } = harness();
+    await transport.submitClaim(CTX, claim());
+    const other = await transport.submitClaim({ ...CTX, organizationId: "org-2" }, claim());
+    expect(code(other)).toBe(CH.IDEMPOTENCY_CONFLICT);
+    expect(calls).toHaveLength(1);
   });
 
   it("scopes the wire idempotency key per tenant and usage, but keeps it stable for a retry", async () => {
     const { calls, transport } = harness();
     await transport.submitClaim(CTX, claim());
-    await transport.submitClaim({ ...CTX, organizationId: "org-2" }, claim());
+    await transport.submitClaim({ ...CTX, organizationId: "org-2" }, claim({ controlNumber: "CCN-2" }));
     const keys = calls.map((c) => new Headers(c.init.headers).get("idempotency-key"));
     expect(keys[0]).not.toBe(keys[1]);
     expect(keys[0]).not.toBe("idem-1");
@@ -264,6 +275,48 @@ describe("StediTransport.submitNotice", () => {
     );
     expect(code(r)).toBe(CH.INVALID_REQUEST);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("StediTransport billing provider binding", () => {
+  it("sends when the payload's billing NPI is the context's", async () => {
+    const { calls, transport } = harness();
+    const r = await transport.submitClaim({ ...CTX, billingNpi: "1234567893" }, claim());
+    expect(r.ok).toBe(true);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("refuses a payload that bills under another NPI, with no send", async () => {
+    const { calls, transport } = harness();
+    const r = await transport.submitClaim({ ...CTX, billingNpi: "1000000004" }, claim());
+    expect(code(r)).toBe(CH.INVALID_REQUEST);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("requires the NPI in production, but not in test", async () => {
+    const { calls, transport } = harness();
+    const production = { ...CTX, usage: "production" as const };
+    const x12 = withIsa13(CLAIM_X12, "CCN-1").replace(/\*T\*:~/, "*P*:~");
+    const r = await transport.submitClaim(production, claim({ payload: { format: "x12", x12 } }));
+    expect(code(r)).toBe(CH.INVALID_REQUEST);
+    if (!r.ok) expect(r.degraded.reason).toMatch(/billingNpi is required/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("checks a JSON claim's billing NPI the same way", async () => {
+    const { calls, transport } = harness();
+    const document = { usageIndicator: "T", billing: { npi: "1234567893" } };
+    const ok = await transport.submitClaim(
+      { ...CTX, billingNpi: "1234567893" },
+      claim({ payload: { format: "json", document } }),
+    );
+    expect(ok.ok).toBe(true);
+    const bad = await transport.submitClaim(
+      { ...CTX, billingNpi: "1000000004" },
+      claim({ controlNumber: "CCN-2", idempotencyKey: "idem-2", payload: { format: "json", document } }),
+    );
+    expect(code(bad)).toBe(CH.INVALID_REQUEST);
+    expect(calls).toHaveLength(1);
   });
 });
 

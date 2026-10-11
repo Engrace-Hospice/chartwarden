@@ -14,6 +14,9 @@ import { organizations } from "../organizations";
 export const CLEARINGHOUSE_ATTEMPT_STATUS_VALUES = ["reserved", "sent", "released"] as const;
 export type ClearinghouseAttemptStatusValue = (typeof CLEARINGHOUSE_ATTEMPT_STATUS_VALUES)[number];
 
+export const CLEARINGHOUSE_ATTEMPT_USAGE_VALUES = ["test", "production"] as const;
+export type ClearinghouseAttemptUsageValue = (typeof CLEARINGHOUSE_ATTEMPT_USAGE_VALUES)[number];
+
 export const CLEARINGHOUSE_ATTEMPT_KIND_VALUES = ["claim", "noe", "notr"] as const;
 export type ClearinghouseAttemptKindValue = (typeof CLEARINGHOUSE_ATTEMPT_KIND_VALUES)[number];
 
@@ -26,6 +29,7 @@ export const clearinghouseSubmissionAttempts = pgTable(
       .references(() => organizations.id, { onDelete: "restrict" }),
     providerEntityId: uuid("provider_entity_id").notNull(),
     scope: text("scope").notNull(),
+    usage: text("usage").$type<ClearinghouseAttemptUsageValue>().notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
     controlNumber: text("control_number").notNull(),
     kind: text("kind").$type<ClearinghouseAttemptKindValue>().notNull(),
@@ -43,6 +47,9 @@ export const clearinghouseSubmissionAttempts = pgTable(
       .where(sql`${t.status} <> 'released'`),
     uniqueIndex("clearinghouse_submission_attempt_control_live_uq")
       .on(t.organizationId, t.scope, t.controlNumber)
+      .where(sql`${t.status} <> 'released'`),
+    uniqueIndex("clearinghouse_submission_attempt_platform_control_live_uq")
+      .on(t.usage, t.controlNumber)
       .where(sql`${t.status} <> 'released'`),
     index("clearinghouse_submission_attempt_reserved_idx")
       .on(t.organizationId, t.reservedAt)

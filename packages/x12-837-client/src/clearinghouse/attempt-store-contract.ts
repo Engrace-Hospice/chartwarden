@@ -2,7 +2,11 @@
 // fails by throwing, so the same list runs against the in-memory store (attempt-store.test.ts) and against the
 // durable Postgres store (the backend's live suite, as the NOBYPASSRLS app role). A store is "durable" only when
 // every case passes against it.
-import type { SubmissionAttempt, SubmissionAttemptStore } from "./attempt-store";
+import {
+  PlatformControlNumberTaken,
+  type SubmissionAttempt,
+  type SubmissionAttemptStore,
+} from "./attempt-store";
 
 export interface AttemptStoreContractCase {
   readonly id: string;
@@ -42,6 +46,7 @@ export function reservation(
     organizationId: ids.orgA,
     providerEntityId: ids.providerEntityA,
     scope: `scope-${ids.orgA}`,
+    usage: "test",
     idempotencyKey: "idem-1",
     controlNumber: "CCN-1",
     kind: "claim",
@@ -87,13 +92,14 @@ export const ATTEMPT_STORE_CONTRACT: readonly AttemptStoreContractCase[] = [
     async run(make, ids) {
       const store = await make();
       await store.reserve(reservation(ids));
-      const otherScope = await store.reserve(reservation(ids, { scope: "scope-live" }));
+      const otherScope = await store.reserve(reservation(ids, { scope: "scope-live", usage: "production" }));
       assert(otherScope.reserved, "another scope (usage) is independent");
       const otherOrg = await store.reserve(
         reservation(ids, {
           organizationId: ids.orgB,
           providerEntityId: ids.providerEntityB,
           scope: `scope-${ids.orgB}`,
+          controlNumber: "CCN-B",
         }),
       );
       assert(otherOrg.reserved, "another tenant is independent");
@@ -173,6 +179,65 @@ export const ATTEMPT_STORE_CONTRACT: readonly AttemptStoreContractCase[] = [
         results.every((r) => r.attempt.idempotencyKey === "idem-1"),
         "every caller sees the same submission",
       );
+    },
+  },
+  {
+    id: "AS-09",
+    title:
+      "a control number is unique across tenants within one usage mode (the sender is shared), and free again once released",
+    async run(make, ids) {
+      const store = await make();
+      await store.reserve(reservation(ids));
+      const theirs = reservation(ids, {
+        organizationId: ids.orgB,
+        providerEntityId: ids.providerEntityB,
+        scope: `scope-${ids.orgB}`,
+        idempotencyKey: "idem-b",
+      });
+      let taken = false;
+      try {
+        await store.reserve(theirs);
+      } catch (e) {
+        taken = e instanceof PlatformControlNumberTaken;
+      }
+      assert(taken, "another tenant cannot reserve a live control number");
+      const production = await store.reserve({
+        ...theirs,
+        usage: "production",
+        scope: `scope-live-${ids.orgB}`,
+      });
+      assert(production.reserved, "the other usage mode has its own number space");
+      await store.release(ids.orgA, `scope-${ids.orgA}`, "idem-1");
+      assert((await store.reserve(theirs)).reserved, "a released number can be reused");
+    },
+  },
+  {
+    id: "AS-10",
+    title: "allocated control numbers are 9 digits, increasing and never repeated, per usage mode",
+    async run(make) {
+      const store = await make();
+      const a = await store.allocateControlNumber("test");
+      const b = await store.allocateControlNumber("test");
+      const c = await store.allocateControlNumber("production");
+      for (const n of [a, b, c]) assert(/^[0-9]{9}$/.test(n), "a control number is 9 digits");
+      assert(Number(b) > Number(a), "numbers increase");
+      const many = await Promise.all(
+        Array.from({ length: 20 }, () => store.allocateControlNumber("test")),
+      );
+      assert(new Set([a, b, ...many]).size === many.length + 2, "concurrent callers never collide");
+    },
+  },
+  {
+    id: "AS-11",
+    title: "find returns the live attempt for a key, and null for none or for another tenant",
+    async run(make, ids) {
+      const store = await make();
+      const scope = `scope-${ids.orgA}`;
+      assert((await store.find(ids.orgA, scope, "idem-1")) === null, "nothing yet");
+      await store.reserve(reservation(ids));
+      const found = await store.find(ids.orgA, scope, "idem-1");
+      assert(found?.status === "reserved" && found.usage === "test", "the live row is found");
+      assert((await store.find(ids.orgB, scope, "idem-1")) === null, "another tenant sees none");
     },
   },
 ];

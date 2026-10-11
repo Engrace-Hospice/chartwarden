@@ -8,7 +8,20 @@
 // A submission is RESERVED before it is sent and COMPLETED once the vendor has taken it, so two concurrent
 // submissions cannot both reach the vendor. A reservation the sender never completed (a crash mid-send) is not lost
 // work: the transport re-sends under the same wire idempotency key, which the vendor replays inside its window.
-import type { SubmissionKind } from "./types";
+import type { ClearinghouseContext, SubmissionKind } from "./types";
+
+export type AttemptUsage = ClearinghouseContext["usage"];
+
+/**
+ * Another tenant (or this one, under another key) holds the control number in this usage mode. The sender is the
+ * platform's, so the vendor dedupes on (sender, control number) across every tenant.
+ */
+export class PlatformControlNumberTaken extends Error {
+  constructor() {
+    super("the control number is already in use on this platform");
+    this.name = "PlatformControlNumberTaken";
+  }
+}
 
 export type AttemptStatus = "reserved" | "sent" | "released";
 
@@ -17,6 +30,8 @@ export interface SubmissionAttempt {
   readonly providerEntityId: string;
   /** `scopeKey(ctx)`: (organizationId, providerEntityId, usage). */
   readonly scope: string;
+  /** The vendor mode; control numbers are unique per mode across the whole platform. */
+  readonly usage: AttemptUsage;
   readonly idempotencyKey: string;
   readonly controlNumber: string;
   readonly kind: SubmissionKind;
@@ -43,8 +58,16 @@ export interface SubmissionAttemptStore {
   /**
    * Atomic insert-if-absent of a `reserved` row on (scope, idempotencyKey) AND (scope, controlNumber), among live
    * (not released) rows. When either is taken it returns that row, preferring the key match. It never overwrites.
+   * Throws `PlatformControlNumberTaken` when the control number is live under another tenant in the same usage mode.
    */
   reserve(attempt: SubmissionAttempt): Promise<ReserveResult>;
+  /** The live (reserved or sent) attempt for a key, or null. Tenant-scoped. */
+  find(organizationId: string, scope: string, idempotencyKey: string): Promise<SubmissionAttempt | null>;
+  /**
+   * The next platform-wide control number for a usage mode: 9 digits (ISA13), increasing, never reused. Callers build
+   * the interchange with it. Rejects when the 9-digit space is exhausted rather than wrapping.
+   */
+  allocateControlNumber(usage: AttemptUsage): Promise<string>;
   /**
    * reserved -> sent, recording the vendor's id. Idempotent: a row that is already sent is returned unchanged.
    * Null when no such row exists.
@@ -74,6 +97,7 @@ export interface SubmissionAttemptStore {
 /** Process-local store. TEST SUPPORT: it does not survive a restart, so it must not back a production binding. */
 export class InMemoryAttemptStore implements SubmissionAttemptStore {
   private readonly rows: SubmissionAttempt[] = [];
+  private readonly counters: Record<AttemptUsage, number> = { test: 0, production: 0 };
 
   private live(organizationId: string, scope: string): SubmissionAttempt[] {
     return this.rows.filter(
@@ -91,7 +115,25 @@ export class InMemoryAttemptStore implements SubmissionAttemptStore {
     );
   }
 
+  find(organizationId: string, scope: string, idempotencyKey: string): Promise<SubmissionAttempt | null> {
+    return Promise.resolve(this.rows[this.indexOf(organizationId, scope, idempotencyKey)] ?? null);
+  }
+
+  allocateControlNumber(usage: AttemptUsage): Promise<string> {
+    if (this.counters[usage] >= 999_999_999) return Promise.reject(new Error("control numbers exhausted"));
+    this.counters[usage] += 1;
+    return Promise.resolve(String(this.counters[usage]).padStart(9, "0"));
+  }
+
   reserve(attempt: SubmissionAttempt): Promise<ReserveResult> {
+    const foreign = this.rows.some(
+      (r) =>
+        r.status !== "released" &&
+        r.usage === attempt.usage &&
+        r.controlNumber === attempt.controlNumber &&
+        (r.organizationId !== attempt.organizationId || r.scope !== attempt.scope),
+    );
+    if (foreign) return Promise.reject(new PlatformControlNumberTaken());
     const live = this.live(attempt.organizationId, attempt.scope);
     const held =
       live.find((r) => r.idempotencyKey === attempt.idempotencyKey) ??

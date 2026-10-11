@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS "clearinghouse_submission_attempt" (
 	"organization_id" uuid NOT NULL,
 	"provider_entity_id" uuid NOT NULL,
 	"scope" text NOT NULL,
+	"usage" text NOT NULL,
 	"idempotency_key" text NOT NULL,
 	"control_number" text NOT NULL,
 	"kind" text NOT NULL,
@@ -32,6 +33,7 @@ CREATE TABLE IF NOT EXISTS "clearinghouse_submission_attempt" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "clearinghouse_submission_attempt_organization_id_organization_id_fk"
 		FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE restrict,
+	CONSTRAINT "clearinghouse_submission_attempt_usage_chk" CHECK ("usage" IN ('test', 'production')),
 	CONSTRAINT "clearinghouse_submission_attempt_kind_chk" CHECK ("kind" IN ('claim', 'noe', 'notr')),
 	CONSTRAINT "clearinghouse_submission_attempt_status_chk" CHECK ("status" IN ('reserved', 'sent', 'released')),
 	CONSTRAINT "clearinghouse_submission_attempt_identity_chk" CHECK ("identity" ~ '^[0-9a-f]{64}$'),
@@ -50,8 +52,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS "clearinghouse_submission_attempt_key_live_uq"
 	ON "clearinghouse_submission_attempt" ("organization_id", "scope", "idempotency_key") WHERE "status" <> 'released';--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "clearinghouse_submission_attempt_control_live_uq"
 	ON "clearinghouse_submission_attempt" ("organization_id", "scope", "control_number") WHERE "status" <> 'released';--> statement-breakpoint
+-- The vendor sender (ISA06) is the platform's, so the vendor dedupes on (sender, control number) across EVERY tenant:
+-- a live control number is unique per usage mode platform-wide. A unique index is enforced regardless of RLS, so the
+-- app role learns of a foreign holder through the conflict without being able to read the row.
+CREATE UNIQUE INDEX IF NOT EXISTS "clearinghouse_submission_attempt_platform_control_live_uq"
+	ON "clearinghouse_submission_attempt" ("usage", "control_number") WHERE "status" <> 'released';--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "clearinghouse_submission_attempt_reserved_idx"
 	ON "clearinghouse_submission_attempt" ("organization_id", "reserved_at") WHERE "status" = 'reserved';--> statement-breakpoint
+
+-- Platform-wide ISA13 allocators, one per usage mode: 9 digits, never reused, and they refuse (no CYCLE) rather than wrap.
+CREATE SEQUENCE IF NOT EXISTS "clearinghouse_control_number_test_seq" AS bigint MINVALUE 1 MAXVALUE 999999999 NO CYCLE;--> statement-breakpoint
+CREATE SEQUENCE IF NOT EXISTS "clearinghouse_control_number_production_seq" AS bigint MINVALUE 1 MAXVALUE 999999999 NO CYCLE;--> statement-breakpoint
+GRANT USAGE ON SEQUENCE "clearinghouse_control_number_test_seq", "clearinghouse_control_number_production_seq" TO wardenx_app;--> statement-breakpoint
 
 ALTER TABLE "clearinghouse_submission_attempt" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "clearinghouse_submission_attempt" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
@@ -80,6 +92,7 @@ BEGIN
   IF NEW.organization_id IS DISTINCT FROM OLD.organization_id
      OR NEW.provider_entity_id IS DISTINCT FROM OLD.provider_entity_id
      OR NEW.scope IS DISTINCT FROM OLD.scope
+     OR NEW.usage IS DISTINCT FROM OLD.usage
      OR NEW.idempotency_key IS DISTINCT FROM OLD.idempotency_key
      OR NEW.control_number IS DISTINCT FROM OLD.control_number
      OR NEW.kind IS DISTINCT FROM OLD.kind

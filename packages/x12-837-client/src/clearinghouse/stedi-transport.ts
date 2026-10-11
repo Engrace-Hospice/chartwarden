@@ -19,7 +19,11 @@ import { createHash } from "node:crypto";
 //   - no method throws.
 import { X12FormatError, tokenizeInterchange } from "../eligibility/x12-envelope";
 import { type X12WorkerResult, degraded } from "../types";
-import type { SubmissionAttempt, SubmissionAttemptStore } from "./attempt-store";
+import {
+  PlatformControlNumberTaken,
+  type SubmissionAttempt,
+  type SubmissionAttemptStore,
+} from "./attempt-store";
 import { checkStediEdits } from "./stedi-edit-rules";
 import { identityOf, scopeKey } from "./submission-identity";
 import {
@@ -112,9 +116,10 @@ const refuse = <T>(reason: string): X12WorkerResult<T> => degraded<T>(CH.INVALID
 /** Reason a payload must not be sent, or null. PHI-free: positions and rule names only. */
 function x12Problem(
   x12: string,
-  usage: ClearinghouseContext["usage"],
+  ctx: ClearinghouseContext,
   controlNumber: string,
 ): string | null {
+  const { usage } = ctx;
   try {
     const { segments } = tokenizeInterchange(x12);
     const isa = segments.find((s) => s[0] === "ISA");
@@ -124,6 +129,8 @@ function x12Problem(
     if (isa15 !== (usage === "test" ? "T" : "P")) {
       return `ISA15 does not match usage ${usage}`;
     }
+    const billingNpi = segments.find((s) => s[0] === "NM1" && s[1] === "85")?.[9];
+    if (ctx.billingNpi !== undefined && billingNpi !== ctx.billingNpi) return "the billing provider NPI does not match the context";
     const findings = checkStediEdits(x12);
     if (findings.length > 0) {
       return `fails Stedi edit checks: ${[...new Set(findings.map((f) => f.rule))].join(", ")}`;
@@ -135,10 +142,14 @@ function x12Problem(
   }
 }
 
-function jsonProblem(document: unknown, usage: ClearinghouseContext["usage"]): string | null {
+function jsonProblem(document: unknown, ctx: ClearinghouseContext): string | null {
+  const { usage } = ctx;
   if (document === null || typeof document !== "object" || Array.isArray(document)) {
     return "JSON document must be an object";
   }
+  // U: the field name follows Stedi's institutional JSON (billing.npi); unverified against a 2xx. Fails closed.
+  const npi = (document as { billing?: { npi?: unknown } }).billing?.npi;
+  if (ctx.billingNpi !== undefined && npi !== ctx.billingNpi) return "the billing provider NPI does not match the context";
   const indicator = (document as { usageIndicator?: unknown }).usageIndicator;
   return indicator === (usage === "test" ? "T" : "P")
     ? null
@@ -293,6 +304,9 @@ export class StediTransport implements ClearinghouseTransport {
     submission: ClearinghouseSubmission,
   ): Promise<X12WorkerResult<SubmissionReceipt>> {
     const { payload } = submission;
+    if (ctx.usage === "production" && !ctx.billingNpi) {
+      return refuse("billingNpi is required for production usage");
+    }
     if (!KEY_SHAPE.test(submission.idempotencyKey)) {
       return refuse("idempotencyKey must be 1-128 characters of A-Z a-z 0-9 _ . : -");
     }
@@ -301,8 +315,8 @@ export class StediTransport implements ClearinghouseTransport {
     }
     const problem =
       payload.format === "x12"
-        ? x12Problem(payload.x12, ctx.usage, submission.controlNumber)
-        : jsonProblem(payload.document, ctx.usage);
+        ? x12Problem(payload.x12, ctx, submission.controlNumber)
+        : jsonProblem(payload.document, ctx);
     if (problem) return refuse(problem);
     let scope: string;
     let identity: string;
@@ -317,6 +331,7 @@ export class StediTransport implements ClearinghouseTransport {
       organizationId: ctx.organizationId,
       providerEntityId: ctx.providerEntityId,
       scope,
+      usage: ctx.usage,
       idempotencyKey: submission.idempotencyKey,
       controlNumber: submission.controlNumber,
       kind: submission.kind,
@@ -400,7 +415,13 @@ export class StediTransport implements ClearinghouseTransport {
       return won
         ? null
         : degraded(CH.UNAVAILABLE, "an earlier attempt at this submission may still be in flight");
-    } catch {
+    } catch (e) {
+      if (e instanceof PlatformControlNumberTaken) {
+        return degraded(
+          CH.IDEMPOTENCY_CONFLICT,
+          "the control number is already in use on this platform; allocate a new one",
+        );
+      }
       return degraded(CH.UNAVAILABLE, "the submission record could not be reserved");
     }
   }

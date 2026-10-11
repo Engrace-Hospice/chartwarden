@@ -162,6 +162,7 @@ describe.skipIf(!DB_URL)("M23 durable clearinghouse attempt store — LIVE Postg
         organizationId: IDS.orgB,
         providerEntityId: IDS.providerEntityB,
         scope: `scope-${IDS.orgB}`,
+        controlNumber: "CCN-B",
       }),
     );
     await admin.query("BEGIN");

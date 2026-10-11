@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { InMemoryAttemptStore } from "./attempt-store";
 import {
   CLEARINGHOUSE_CONFORMANCE_CASES,
+  DEFAULT_SCOPE,
   type ClearinghouseHarness,
   type ConformanceCapability,
   type ConformanceScript,
@@ -76,8 +77,8 @@ function createStediHarness(): ClearinghouseHarness {
     payloads: {
       x12: stediX12,
       jsonDocuments: () => [
-        { usageIndicator: "T", x: { c: 2, d: 3 }, y: 1 },
-        { y: 1, x: { d: 3, c: 2 }, usageIndicator: "T" },
+        { usageIndicator: "T", billing: { npi: "1234567893" }, x: { c: 2, d: 3 }, y: 1 },
+        { y: 1, x: { d: 3, c: 2 }, billing: { npi: "1234567893" }, usageIndicator: "T" },
       ],
     },
   };
@@ -88,26 +89,31 @@ describe("StediTransport against the shared conformance suite (submit side)", ()
     const outcomes = await runConformance(async () => createStediHarness());
     expect(outcomes.filter((o) => o.status === "failed")).toEqual([]);
     const passed = outcomes.filter((o) => o.status === "passed").map((o) => o.id);
-    // Guards against a harness that quietly runs nothing.
-    expect(passed).toEqual(
-      expect.arrayContaining([
-        "C03-notice-kind-routing",
-        "C04-idempotent-submission",
-        "C18-idempotency-identity",
-        "S01-submit-outage-fails-closed",
-        "S02-submit-tenant-and-mode-isolation",
-      ]),
-    );
+    // Pinned exactly: a capability tag that drifts moves a case between these lists and fails here.
+    expect(passed).toEqual([
+      "C03-notice-kind-routing",
+      "C04-idempotent-submission",
+      "C18-idempotency-identity",
+      "S01-submit-outage-fails-closed",
+      "S02-submit-tenant-and-mode-isolation",
+    ]);
     const skipped = outcomes.filter((o) => o.status === "skipped").map((o) => o.id);
-    expect(skipped.length + passed.length).toBe(CLEARINGHOUSE_CONFORMANCE_CASES.length);
     expect(skipped).toEqual(
-      expect.arrayContaining([
-        "C01-eligibility-outcome-only",
-        "C02-validate-only-has-no-side-effects",
-        "C05-clearinghouse-rejection",
-        "C10-remittance",
-        "C11-push-events",
-      ]),
+      CLEARINGHOUSE_CONFORMANCE_CASES.map((c) => c.id).filter((id) => !passed.includes(id)),
     );
+    expect(skipped).toHaveLength(15);
+  });
+
+  it("answers every unimplemented method with a degraded envelope during an outage, never a throw", async () => {
+    const h = createStediHarness();
+    await h.script.setOutage(true);
+    const ctx = { ...DEFAULT_SCOPE, payerId: "payer", correlationId: "corr" };
+    const results = await Promise.all([
+      h.transport.fetchAcknowledgments(ctx, null),
+      h.transport.fetchRemittances(ctx, null),
+      h.transport.fetchClaimStatus(ctx, "CCN-1"),
+      h.transport.verifyAndParseEvent({ headers: {}, body: "{}" } as never),
+    ]);
+    for (const r of results) expect(r.ok).toBe(false);
   });
 });
