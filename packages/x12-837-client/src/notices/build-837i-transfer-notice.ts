@@ -19,33 +19,35 @@
 // The X12 TR3 itself is licensed; segment order and element positions below follow the public payer
 // crosswalks already cited in `@wardenx/billing` `claim-codes/x12-segments.ts`.
 import { MBI_PATTERN } from "../eligibility/build-270";
-import { isoToX12Date } from "../eligibility/x12-envelope";
+import {
+  NAME_LIMIT,
+  ORG_NAME_LIMIT,
+  type X12Address,
+  X12BuildError,
+  type X12Envelope,
+  type X12PersonName,
+  type X12Physician,
+  addressSegments,
+  d8,
+  hi,
+  isValidNpi,
+  npi,
+  optionalText,
+  physicianName,
+  prepareEnvelope,
+  text,
+  wrapTransaction,
+} from "../x12/writer";
+
+export type { X12Address, X12PersonName, X12Physician };
+export { isValidNpi };
 
 /** Thrown for an input the 837I cannot carry. Names the FIELD only, never its value (PHI). */
-export class TransferNotice837iBuildError extends Error {
+export class TransferNotice837iBuildError extends X12BuildError {
   public override readonly name = "TransferNotice837iBuildError";
-  constructor(public readonly field: string) {
-    super(`invalid transfer-notice 837I input: ${field}`);
+  constructor(field: string) {
+    super(field, `invalid transfer-notice 837I input: ${field}`);
   }
-}
-
-export interface X12Address {
-  readonly line1: string;
-  readonly line2?: string | null;
-  readonly city: string;
-  readonly state: string;
-  /** 5 or 9 digits (a hyphen is stripped). */
-  readonly postalCode: string;
-}
-
-export interface X12PersonName {
-  readonly lastName: string;
-  readonly firstName: string;
-  readonly middleInitial?: string | null;
-}
-
-export interface X12Physician extends X12PersonName {
-  readonly npi: string;
 }
 
 /** The facts half — structurally the `TransferNoticeDocument837i` `@wardenx/billing` hands the gateway. */
@@ -61,16 +63,7 @@ export interface TransferNoticeDocumentInput {
 }
 
 export interface TransferNotice837iInput {
-  readonly envelope: {
-    readonly senderId: string;
-    readonly receiverId: string;
-    /** GS03 — the MAC's application receiver code. */
-    readonly applicationReceiverCode: string;
-    /** ISA13 / GS06 / ST02 seed: 1..999 999 999. */
-    readonly interchangeControlNumber: number;
-    readonly usage: "P" | "T";
-    readonly createdAt: Date;
-  };
+  readonly envelope: X12Envelope;
   readonly submitter: {
     readonly name: string;
     readonly id: string;
@@ -101,95 +94,20 @@ export interface TransferNotice837iInput {
   readonly otherPhysician: X12Physician | null;
 }
 
-const NAME_LIMIT = 60;
-const ORG_NAME_LIMIT = 60;
-const FORBIDDEN = /[*~:^|]/;
-
-function text(value: string | null | undefined, field: string, max: number): string {
-  const v = (value ?? "").trim().toUpperCase();
-  if (v.length === 0 || v.length > max || FORBIDDEN.test(v))
-    throw new TransferNotice837iBuildError(field);
-  return v;
-}
-
-function optionalText(value: string | null | undefined, field: string, max: number): string {
-  if (value === null || value === undefined || value.trim() === "") return "";
-  return text(value, field, max);
-}
-
-/** The NPI check digit: Luhn mod 10 over the "80840" card-issuer prefix + the first nine digits. */
-export function isValidNpi(value: string): boolean {
-  if (!/^\d{10}$/.test(value)) return false;
-  const digits = `80840${value.slice(0, 9)}`;
-  let sum = 0;
-  for (let i = 0; i < digits.length; i += 1) {
-    let d = Number(digits.charAt(digits.length - 1 - i));
-    if (i % 2 === 0) {
-      d *= 2;
-      if (d > 9) d -= 9;
-    }
-    sum += d;
-  }
-  return (10 - (sum % 10)) % 10 === Number(value.charAt(9));
-}
-
-/** "National Provider Identifiers will be validated against the NPI algorithm" (NOE companion guide). */
-function npi(value: string, field: string): string {
-  if (!isValidNpi(value)) throw new TransferNotice837iBuildError(field);
-  return value;
-}
-
-function d8(iso: string, field: string): string {
-  try {
-    return isoToX12Date(iso);
-  } catch {
-    throw new TransferNotice837iBuildError(field);
-  }
-}
-
-function two(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-function pad(value: string, width: number): string {
-  return value.padEnd(width, " ").slice(0, width);
-}
-
-function addressSegments(a: X12Address, field: string): string[][] {
-  const zip = a.postalCode.replace("-", "");
-  if (!/^\d{5}(\d{4})?$/.test(zip)) throw new TransferNotice837iBuildError(`${field}.postalCode`);
-  if (!/^[A-Z]{2}$/.test(a.state.trim().toUpperCase())) {
-    throw new TransferNotice837iBuildError(`${field}.state`);
-  }
-  const line2 = optionalText(a.line2, `${field}.line2`, 55);
-  return [
-    ["N3", text(a.line1, `${field}.line1`, 55), ...(line2 ? [line2] : [])],
-    ["N4", text(a.city, `${field}.city`, 30), a.state.trim().toUpperCase(), zip],
-  ];
-}
-
-function physicianName(p: X12Physician, qualifier: "71" | "DN", field: string): string[] {
-  return [
-    "NM1",
-    qualifier,
-    "1",
-    text(p.lastName, `${field}.lastName`, NAME_LIMIT),
-    text(p.firstName, `${field}.firstName`, 35),
-    optionalText(p.middleInitial, `${field}.middleInitial`, 1),
-    "",
-    "",
-    "XX",
-    npi(p.npi, `${field}.npi`),
-  ];
-}
-
-function hi(qualifier: string, values: readonly string[]): string[][] {
-  // The HI segment holds 12 composites; a transfer notice carries at most two of each kind.
-  return values.length === 0 ? [] : [["HI", ...values.map((v) => `${qualifier}:${v}`)]];
-}
-
 /** Build the 837I interchange for one transfer notice (ISA … IEA, one ST-SE). */
 export function build837iTransferNotice(input: TransferNotice837iInput): string {
+  try {
+    return buildTransferNotice(input);
+  } catch (e) {
+    // The shared writer's helpers throw the base error; callers of this builder catch its own type.
+    if (e instanceof X12BuildError && !(e instanceof TransferNotice837iBuildError)) {
+      throw new TransferNotice837iBuildError(e.field);
+    }
+    throw e;
+  }
+}
+
+function buildTransferNotice(input: TransferNotice837iInput): string {
   const doc = input.document;
   if (!/^8[12][CD]$/.test(doc.tob) || doc.tob.charAt(2) !== doc.frequencyCode) {
     throw new TransferNotice837iBuildError("document.tob");
@@ -233,29 +151,14 @@ export function build837iTransferNotice(input: TransferNotice837iInput): string 
   if (!/^\d{9}$/.test(input.billingProvider.taxId)) {
     throw new TransferNotice837iBuildError("billingProvider.taxId");
   }
-  const sender = text(input.envelope.senderId, "envelope.senderId", 15);
-  const receiver = text(input.envelope.receiverId, "envelope.receiverId", 15);
-  const appReceiver = text(
-    input.envelope.applicationReceiverCode,
-    "envelope.applicationReceiverCode",
-    15,
-  );
-  const icn = input.envelope.interchangeControlNumber;
-  if (!Number.isInteger(icn) || icn < 1 || icn > 999_999_999) {
-    throw new TransferNotice837iBuildError("envelope.interchangeControlNumber");
-  }
+  const env = prepareEnvelope(input.envelope);
   if (!/^\d{10}$/.test(input.submitter.contactPhone)) {
     throw new TransferNotice837iBuildError("submitter.contactPhone");
   }
 
-  const n = input.envelope.createdAt;
-  const ccyymmdd = `${n.getUTCFullYear()}${two(n.getUTCMonth() + 1)}${two(n.getUTCDate())}`;
-  const hhmm = `${two(n.getUTCHours())}${two(n.getUTCMinutes())}`;
-  const control = String(icn).padStart(9, "0");
-  const st02 = String(icn).padStart(4, "0");
+  const { ccyymmdd, hhmm } = env.stamp;
 
   const body: string[][] = [
-    ["ST", "837", st02, "005010X223A2"],
     // BHT02 must be "00" (original); BHT06 "CH" chargeable.
     ["BHT", "0019", "00", doc.controlNumber, ccyymmdd, hhmm, "CH"],
     // Loop 1000A submitter / 1000B receiver.
@@ -373,31 +276,5 @@ export function build837iTransferNotice(input: TransferNotice837iInput): string 
     ["SV2", "0650", "HC:Q5009:::::NOE", "0", "UN", "1"],
     ["DTP", "472", "D8", from],
   ];
-  const segments: string[][] = [
-    [
-      "ISA",
-      "00",
-      pad("", 10),
-      "00",
-      pad("", 10),
-      "ZZ",
-      pad(sender, 15),
-      "ZZ",
-      pad(receiver, 15),
-      ccyymmdd.slice(2),
-      hhmm,
-      "^",
-      "00501",
-      control,
-      "1",
-      input.envelope.usage,
-      ":",
-    ],
-    ["GS", "HC", sender, appReceiver, ccyymmdd, hhmm, String(icn), "X", "005010X223A2"],
-    ...body,
-    ["SE", String(body.length + 1), st02],
-    ["GE", "1", String(icn)],
-    ["IEA", "1", control],
-  ];
-  return segments.map((seg) => `${seg.join("*")}~`).join("");
+  return wrapTransaction(env, { transactionSet: "837", body });
 }
