@@ -106,6 +106,8 @@ export interface ConformancePayloads {
     kind: ClearinghouseSubmission["kind"],
     variant: string,
     usage?: ClearinghouseScope["usage"],
+    /** The submission's control number; a transport that binds it to the interchange (ISA13) needs it. Defaults to `variant`. */
+    controlNumber?: string,
   ): string;
   /** Two key-order permutations of one JSON claim document that the transport accepts. */
   jsonDocuments?(): readonly [Record<string, unknown>, Record<string, unknown>];
@@ -330,7 +332,10 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
         "a replay returns the original submission id",
       );
       const changed = sub("claim", "CCN-0004", {
-        payload: { format: "x12", x12: (h.payloads ?? DEFAULT_PAYLOADS).x12("claim", "CHANGED") },
+        payload: {
+          format: "x12",
+          x12: (h.payloads ?? DEFAULT_PAYLOADS).x12("claim", "CHANGED", "test", "CCN-0004"),
+        },
       });
       const conflict = await h.transport.submitClaim(ctxFor(), changed);
       check(
@@ -745,12 +750,15 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
         ...otherNumber,
         payload: sub("claim", "CCN-0018").payload,
       };
+      // A transport that binds the control number to the interchange may refuse the mismatch outright; either way it
+      // must never answer with the first receipt.
+      const otherCode = degradedCode(
+        await h.transport.submitClaim(ctxFor(), sameBytes),
+        "same key, other number",
+      );
       check(
-        degradedCode(
-          await h.transport.submitClaim(ctxFor(), sameBytes),
-          "same key, other number",
-        ) === CH.IDEMPOTENCY_CONFLICT,
-        "the same key with a different control number is a conflict, not a replay",
+        otherCode === CH.IDEMPOTENCY_CONFLICT || otherCode === CH.INVALID_REQUEST,
+        "the same key with a different control number is a conflict or a refusal, never a replay",
       );
       const reusedNumber = sub("claim", "CCN-0018", { idempotencyKey: "idem-new" });
       check(

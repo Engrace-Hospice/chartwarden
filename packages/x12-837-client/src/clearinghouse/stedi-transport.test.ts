@@ -51,12 +51,16 @@ function harness(
   return { calls, transport, attempts, clock };
 }
 
+/** Rewrites ISA13 so the fixture interchange carries the control number the submission declares. */
+const withIsa13 = (x12: string, controlNumber: string): string =>
+  x12.replace(/^(ISA(?:\*[^*]*){12}\*)[^*]*/, `$1${controlNumber}`);
+
 function claim(overrides: Partial<ClearinghouseSubmission> = {}): ClearinghouseSubmission {
   return {
     kind: "claim",
     controlNumber: "CCN-1",
     idempotencyKey: "idem-1",
-    payload: { format: "x12", x12: CLAIM_X12 },
+    payload: { format: "x12", x12: withIsa13(CLAIM_X12, overrides.controlNumber ?? "CCN-1") },
     ...overrides,
   };
 }
@@ -64,7 +68,7 @@ const notice = (overrides: Partial<ClearinghouseSubmission> = {}): Clearinghouse
   kind: "noe",
   controlNumber: "NOE-1",
   idempotencyKey: "idem-noe-1",
-  payload: { format: "x12", x12: NOE_X12 },
+  payload: { format: "x12", x12: withIsa13(NOE_X12, overrides.controlNumber ?? "NOE-1") },
   ...overrides,
 });
 const code = (r: { ok: boolean; degraded?: { code: string } }): string | undefined =>
@@ -83,7 +87,7 @@ describe("StediTransport.submitClaim", () => {
     expect(headers.get("authorization")).toBe(KEY);
     expect(headers.get("idempotency-key")).toMatch(/^[0-9a-f]{64}$/);
     expect(headers.get("content-type")).toBe("application/json");
-    expect(JSON.parse(String(calls[0]?.init.body))).toEqual({ x12: CLAIM_X12 });
+    expect(JSON.parse(String(calls[0]?.init.body))).toEqual({ x12: withIsa13(CLAIM_X12, "CCN-1") });
     if (r.ok) {
       expect(r.data).toMatchObject({
         clearinghouseSubmissionId: "corr-abc",
@@ -123,7 +127,7 @@ describe("StediTransport.submitClaim", () => {
       code(
         await transport.submitClaim(
           CTX,
-          claim({ payload: { format: "x12", x12: `${CLAIM_X12} ` } }),
+          claim({ payload: { format: "x12", x12: `${withIsa13(CLAIM_X12, "CCN-1")} ` } }),
         ),
       ),
     ).toBe(CH.IDEMPOTENCY_CONFLICT);
@@ -208,7 +212,7 @@ describe("StediTransport.submitClaim", () => {
 
   it("refuses a payload that fails the local Stedi edit checks, with rule names only", async () => {
     const { calls, transport } = harness();
-    const bad = CLAIM_X12.replace(/CLM\*([^*]*)\*[0-9.]+/, "CLM*$1*1");
+    const bad = withIsa13(CLAIM_X12, "CCN-1").replace(/CLM\*([^*]*)\*[0-9.]+/, "CLM*$1*1");
     const r = await transport.submitClaim(CTX, claim({ payload: { format: "x12", x12: bad } }));
     expect(code(r)).toBe(CH.INVALID_REQUEST);
     if (!r.ok) expect(r.degraded.reason).toMatch(/total-matches-lines/);
@@ -263,6 +267,46 @@ describe("StediTransport.submitNotice", () => {
   });
 });
 
+describe("StediTransport input binding and ambiguous refusals", () => {
+  it("keeps the reservation on a 409, so a new key cannot re-file the same control number", async () => {
+    const { calls, transport } = harness(() => new Response("{}", { status: 409 }));
+    expect(code(await transport.submitClaim(CTX, claim()))).toBe(CH.IDEMPOTENCY_CONFLICT);
+    const other = await transport.submitClaim(CTX, claim({ idempotencyKey: "idem-other" }));
+    expect(code(other)).toBe(CH.IDEMPOTENCY_CONFLICT);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("refuses a control number that is not the interchange's ISA13, with no send", async () => {
+    const { calls, transport } = harness();
+    const r = await transport.submitClaim(
+      CTX,
+      claim({ payload: { format: "x12", x12: withIsa13(CLAIM_X12, "OTHER-9") } }),
+    );
+    expect(code(r)).toBe(CH.INVALID_REQUEST);
+    expect(calls).toHaveLength(0);
+  });
+
+  it.each([
+    ["key with a space", { idempotencyKey: "has space" }],
+    ["key over 128 characters", { idempotencyKey: "k".repeat(129) }],
+    ["control number over 64 characters", { controlNumber: "9".repeat(65) }],
+  ])("refuses %s as invalid, not retryable", async (_n, overrides) => {
+    const { calls, transport } = harness();
+    const r = await transport.submitClaim(CTX, claim(overrides));
+    expect(code(r)).toBe(CH.INVALID_REQUEST);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("returns a degraded result for a payload that cannot be fingerprinted", async () => {
+    const { calls, transport } = harness();
+    const document: Record<string, unknown> = { usageIndicator: "T" };
+    document.self = document;
+    const r = await transport.submitClaim(CTX, claim({ payload: { format: "json", document } }));
+    expect(code(r)).toBe(CH.INVALID_REQUEST);
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe("StediTransport HTTP failure mapping", () => {
   const fail = (status: number, body: unknown) => () =>
     status === 0
@@ -310,14 +354,18 @@ describe("StediTransport HTTP failure mapping", () => {
     );
   });
 
-  it("after an ambiguous failure the next attempt re-sends at once under the same wire key", async () => {
+  it("after an ambiguous failure the next attempt re-sends after a settle delay under the same wire key", async () => {
     let n = 0;
-    const { calls, transport } = harness(() =>
+    const { calls, transport, clock } = harness(() =>
       ++n === 1
         ? new Response("{}", { status: 503 })
         : Response.json({ claimReference: { correlationId: "later" } }),
     );
     expect(code(await transport.submitClaim(CTX, claim()))).toBe(CH.UNAVAILABLE);
+    // The first request may still be processing at Stedi: not re-sent inside the settle delay.
+    expect(code(await transport.submitClaim(CTX, claim()))).toBe(CH.UNAVAILABLE);
+    expect(calls).toHaveLength(1);
+    clock.now = new Date(clock.now.getTime() + 61_000);
     const retry = await transport.submitClaim(CTX, claim());
     expect(retry.ok && retry.data.clearinghouseSubmissionId).toBe("later");
     expect(calls).toHaveLength(2);

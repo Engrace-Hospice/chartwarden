@@ -662,7 +662,16 @@ export function createDrizzleBillingEraseStore(
             .where(eq(schema.tenantWageIndex.organizationId, organizationId))
             .returning({ id: schema.tenantWageIndex.id })
         ).length;
+        // Migration 1066 — the clearinghouse send record (keys, control numbers, hashes; no PHI). Its FK to
+        // `organization` is RESTRICT, so the rows must go before the org does (destruction role: SELECT+DELETE).
+        const clearinghouseSubmissionAttempts = (
+          await tx
+            .delete(schema.clearinghouseSubmissionAttempts)
+            .where(eq(schema.clearinghouseSubmissionAttempts.organizationId, organizationId))
+            .returning({ id: schema.clearinghouseSubmissionAttempts.id })
+        ).length;
         return {
+          clearinghouse_submission_attempt: clearinghouseSubmissionAttempts,
           tenant_wage_index: tenantWageIndexes,
           hospice_rate_table: hospiceRateTables,
           hospice_visit_charge_schedule: hospiceVisitChargeSchedules,

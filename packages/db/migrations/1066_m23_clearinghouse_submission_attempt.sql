@@ -10,8 +10,9 @@
 --     opaque id. No payload is stored.
 --   * Live (non-released) keys and control numbers are unique per scope, so a key or number can be reused only
 --     after a release. Rows are never deleted by the app role (billing history); only the destruction role erases.
---   * BEFORE UPDATE guard: identity columns and created_at (the first reservation, which the vendor's key window runs from) are immutable; status moves only reserved -> sent | released, and a
---     reserved row may have its reserved_at moved (a retake of an abandoned reservation).
+--   * BEFORE UPDATE guard: identity columns and created_at (the first reservation, which the vendor's key window runs
+--     from) are immutable; a sent or released row is final; a reserved row may change status (the status and sent
+--     CHECKs bound where it can go) and have its reserved_at moved (a retake of an abandoned reservation).
 -- Idempotent.
 
 CREATE TABLE IF NOT EXISTS "clearinghouse_submission_attempt" (
@@ -88,6 +89,9 @@ BEGIN
   END IF;
   IF OLD.status <> 'reserved' AND NEW IS DISTINCT FROM OLD THEN
     RAISE EXCEPTION 'a % clearinghouse_submission_attempt is final', OLD.status USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW IS NOT DISTINCT FROM OLD THEN
+    RETURN NEW; -- a no-op write leaves updated_at alone
   END IF;
   NEW.updated_at := now();
   RETURN NEW;

@@ -25,11 +25,13 @@ function stediX12(
   kind: "claim" | "noe" | "notr",
   variant: string,
   usage: "test" | "production" = "test",
+  controlNumber: string = variant,
 ): string {
   const id = variant.replace(/[^A-Za-z0-9]/g, "").slice(0, 30) || "V";
   return BASE_X12[kind]
+    .replace(/^(ISA(?:\*[^*]*){12}\*)[^*]*/, `$1${controlNumber}`)
     .replace(/(BHT\*0019\*00\*)[^*]+/, `$1${id}`)
-    .replace(/(\*00501\*\d+\*\d\*)[TP](\*)/, `$1${usage === "test" ? "T" : "P"}$2`);
+    .replace(/(\*00501\*[^*]+\*\d\*)[TP](\*)/, `$1${usage === "test" ? "T" : "P"}$2`);
 }
 
 function unsupported(name: string): () => Promise<never> {
@@ -38,6 +40,7 @@ function unsupported(name: string): () => Promise<never> {
 
 function createStediHarness(): ClearinghouseHarness {
   let outage = false;
+  let clock = new Date("2026-10-11T10:00:00.000Z");
   let n = 0;
   const fetchImpl = (async () =>
     outage
@@ -48,6 +51,8 @@ function createStediHarness(): ClearinghouseHarness {
         })) as typeof fetch;
   const script: ConformanceScript = {
     setOutage: async (down) => {
+      // Recovery takes longer than the transport's settle delay after an ambiguous failure.
+      if (!down) clock = new Date(clock.getTime() + 120_000);
       outage = down;
     },
     clearinghouseAccepts: unsupported("clearinghouseAccepts"),
@@ -64,6 +69,7 @@ function createStediHarness(): ClearinghouseHarness {
       apiKey: "test_key_do_not_leak",
       attempts: new InMemoryAttemptStore(),
       fetch: fetchImpl,
+      now: () => clock,
     }),
     script,
     capabilities: new Set<ConformanceCapability>(["submit"]),

@@ -135,4 +135,43 @@ describe.skipIf(!DB_URL)("M23 durable clearinghouse attempt store — LIVE Postg
       ),
     ).rejects.toThrow();
   });
+
+  it("a no-op write on a final row leaves updated_at alone", async () => {
+    const store = createDrizzleAttemptStore(handle.db);
+    await store.reserve(attemptReservationFixture(IDS));
+    await store.complete(
+      IDS.orgA,
+      `scope-${IDS.orgA}`,
+      "idem-1",
+      "ch-1",
+      "2026-10-11T10:20:00.000Z",
+    );
+    const read = async () =>
+      (await admin.query("SELECT updated_at FROM clearinghouse_submission_attempt")).rows[0]
+        .updated_at as Date;
+    const before = await read();
+    await admin.query("UPDATE clearinghouse_submission_attempt SET status='sent'");
+    expect((await read()).getTime()).toBe(before.getTime());
+  });
+
+  it("the destruction role erases one org's attempts and only that org's (org erasure unblocks the FK)", async () => {
+    const store = createDrizzleAttemptStore(handle.db);
+    await store.reserve(attemptReservationFixture(IDS));
+    await store.reserve(
+      attemptReservationFixture(IDS, {
+        organizationId: IDS.orgB,
+        providerEntityId: IDS.providerEntityB,
+        scope: `scope-${IDS.orgB}`,
+      }),
+    );
+    await admin.query("BEGIN");
+    try {
+      await admin.query("SET LOCAL ROLE wardenx_destruction");
+      await admin.query("SELECT set_config('app.org_id', $1, true)", [IDS.orgA]);
+      const del = await admin.query("DELETE FROM clearinghouse_submission_attempt");
+      expect(del.rowCount).toBe(1);
+    } finally {
+      await admin.query("ROLLBACK");
+    }
+  });
 });

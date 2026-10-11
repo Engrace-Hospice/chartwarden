@@ -75,6 +75,13 @@ const RECORD_ATTEMPTS = 3;
 const IN_FLIGHT_MS = 15 * 60_000;
 /** Stedi replays a repeated Idempotency-Key for 24 h; past that a re-send could file a duplicate. */
 const KEY_WINDOW_MS = 24 * 60 * 60_000;
+/** Stop re-sending this long before Stedi's key window ends: a send takes up to REQUEST_TIMEOUT_MS to land. */
+const KEY_WINDOW_MARGIN_MS = 5 * 60_000;
+/**
+ * After an ambiguous failure the first request may still be processing at Stedi; wait this long before the retake so
+ * two requests with one wire key are not in flight together.
+ */
+const SETTLE_MS = 60_000;
 
 /** The outcome of one POST: taken (with Stedi's id), or not. `ambiguous` = the request may still have been filed. */
 type SendResult =
@@ -103,10 +110,17 @@ const notImplemented = <T>(what: string): Promise<X12WorkerResult<T>> =>
 const refuse = <T>(reason: string): X12WorkerResult<T> => degraded<T>(CH.INVALID_REQUEST, reason);
 
 /** Reason a payload must not be sent, or null. PHI-free: positions and rule names only. */
-function x12Problem(x12: string, usage: ClearinghouseContext["usage"]): string | null {
+function x12Problem(
+  x12: string,
+  usage: ClearinghouseContext["usage"],
+  controlNumber: string,
+): string | null {
   try {
     const { segments } = tokenizeInterchange(x12);
-    const isa15 = segments.find((s) => s[0] === "ISA")?.[15];
+    const isa = segments.find((s) => s[0] === "ISA");
+    // The control number is what dedupes us and the payer; it must be the interchange's own ISA13, not a free string.
+    if (isa?.[13]?.trim() !== controlNumber) return "controlNumber does not match ISA13";
+    const isa15 = isa?.[15];
     if (isa15 !== (usage === "test" ? "T" : "P")) {
       return `ISA15 does not match usage ${usage}`;
     }
@@ -157,6 +171,18 @@ function errorCodes(body: Record<string, unknown> | null): string[] {
   return [...new Set(out)].slice(0, MAX_REPORTED_CODES);
 }
 
+/**
+ * Statuses that prove Stedi did NOT take the request. Anything else (5xx, 408, 409 "in progress", 3xx, unknown) may
+ * have been filed, so the reservation is kept and the retry re-sends under the same wire key rather than releasing the
+ * control number for a fresh one.
+ */
+const DEFINITIVE_REFUSALS: ReadonlySet<number> = new Set([400, 401, 403, 404, 422, 429]);
+
+/** Caller-supplied ids end up in logs and the audit trail: keep them opaque, short and PHI-shaped-free. */
+const KEY_SHAPE = /^[A-Za-z0-9_.:-]{1,128}$/;
+const CONTROL_NUMBER_SHAPE = /^[A-Za-z0-9-]{1,64}$/;
+const MAX_VENDOR_ID_LENGTH = 200;
+
 function failure<T>(status: number, body: Record<string, unknown> | null): X12WorkerResult<T> {
   const codes = errorCodes(body);
   if (codes.includes("ACCOUNT_NOT_PROVISIONED")) {
@@ -180,11 +206,21 @@ function failure<T>(status: number, body: Record<string, unknown> | null): X12Wo
 
 function submissionIdOf(body: Record<string, unknown> | null, idempotencyKey: string): string {
   const reference = body?.claimReference as { correlationId?: unknown } | undefined;
-  if (typeof reference?.correlationId === "string" && reference.correlationId) {
+  if (
+    typeof reference?.correlationId === "string" &&
+    reference.correlationId &&
+    reference.correlationId.length <= MAX_VENDOR_ID_LENGTH
+  ) {
     return reference.correlationId;
   }
   const meta = body?.meta as { traceId?: unknown } | undefined;
-  if (typeof meta?.traceId === "string" && meta.traceId) return meta.traceId;
+  if (
+    typeof meta?.traceId === "string" &&
+    meta.traceId &&
+    meta.traceId.length <= MAX_VENDOR_ID_LENGTH
+  ) {
+    return meta.traceId;
+  }
   // A 2xx means Stedi took the submission; keep a derived id rather than losing the record (U: no 2xx observed yet).
   return derivedSubmissionId(idempotencyKey);
 }
@@ -257,13 +293,25 @@ export class StediTransport implements ClearinghouseTransport {
     submission: ClearinghouseSubmission,
   ): Promise<X12WorkerResult<SubmissionReceipt>> {
     const { payload } = submission;
+    if (!KEY_SHAPE.test(submission.idempotencyKey)) {
+      return refuse("idempotencyKey must be 1-128 characters of A-Z a-z 0-9 _ . : -");
+    }
+    if (!CONTROL_NUMBER_SHAPE.test(submission.controlNumber)) {
+      return refuse("controlNumber must be 1-64 characters of A-Z a-z 0-9 -");
+    }
     const problem =
       payload.format === "x12"
-        ? x12Problem(payload.x12, ctx.usage)
+        ? x12Problem(payload.x12, ctx.usage, submission.controlNumber)
         : jsonProblem(payload.document, ctx.usage);
     if (problem) return refuse(problem);
-    const scope = scopeKey(ctx);
-    const identity = identityOf(submission);
+    let scope: string;
+    let identity: string;
+    try {
+      scope = scopeKey(ctx);
+      identity = identityOf(submission);
+    } catch {
+      return refuse("submission could not be fingerprinted");
+    }
     const reservedAt = this.now().toISOString();
     const held = await this.reserve(ctx, submission, {
       organizationId: ctx.organizationId,
@@ -286,7 +334,7 @@ export class StediTransport implements ClearinghouseTransport {
       if (sent.ambiguous) {
         // The request may have been filed. Re-sending under the SAME wire key is safe inside Stedi's 24 h window (it
         // replays), so the next attempt must not wait out the in-flight window: backdate the reservation so it is
-        // retaken at once. The window itself keeps running from the first reservation.
+        // retaken after a short settle delay. The window itself keeps running from the first reservation.
         await this.abandonQuietly(ctx.organizationId, scope, submission, reservedAt);
       } else {
         await this.releaseQuietly(ctx.organizationId, scope, submission);
@@ -329,7 +377,7 @@ export class StediTransport implements ClearinghouseTransport {
 
       const age = this.now().getTime() - Date.parse(existing.reservedAt);
       const sinceFirst = this.now().getTime() - Date.parse(existing.firstReservedAt);
-      if (sinceFirst >= KEY_WINDOW_MS) {
+      if (sinceFirst >= KEY_WINDOW_MS - KEY_WINDOW_MARGIN_MS) {
         this.onAnomaly({ type: "stale_reservation", idempotencyKey: attempt.idempotencyKey });
         return degraded(
           CH.UNAVAILABLE,
@@ -364,7 +412,7 @@ export class StediTransport implements ClearinghouseTransport {
     reservedAt: string,
   ): Promise<void> {
     try {
-      const backdated = new Date(Date.parse(reservedAt) - IN_FLIGHT_MS).toISOString();
+      const backdated = new Date(Date.parse(reservedAt) - IN_FLIGHT_MS + SETTLE_MS).toISOString();
       await this.attempts.retake(
         organizationId,
         scope,
@@ -455,7 +503,11 @@ export class StediTransport implements ClearinghouseTransport {
     }
     const parsed = await readJson(res);
     if (!res.ok) {
-      return { ok: false, result: failure(res.status, parsed), ambiguous: res.status >= 500 };
+      return {
+        ok: false,
+        result: failure(res.status, parsed),
+        ambiguous: !DEFINITIVE_REFUSALS.has(res.status),
+      };
     }
     const id = submissionIdOf(parsed, submission.idempotencyKey);
     if (id === derivedSubmissionId(submission.idempotencyKey)) {
