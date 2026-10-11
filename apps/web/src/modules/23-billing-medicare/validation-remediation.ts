@@ -39,7 +39,9 @@ function defectsOf(v: unknown): RemediationDefect[] | undefined {
   });
 }
 
-/** Stored fix actions written before the hipps_* -> per_diem_* rename (migration 1069; history is not rewritten). */
+/** Deliberate defence in depth: the backend already aliases this on read (@wardenx/billing legacy-stored-aliases); the web keeps its
+ *  own copy so a raw stored value can never reach the dispatcher un-mapped, and to avoid pulling the server package into the web bundle.
+ *  Stored fix actions written before the hipps_* -> per_diem_* rename (migration 1069; history is not rewritten). */
 const LEGACY_FIX_ACTIONS: Readonly<Record<string, string>> = {
   recompute_hipps: "recompute_per_diem_class",
 };

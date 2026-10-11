@@ -29,6 +29,8 @@ const RENAME_MIGRATION = "1069_m23_per_diem_rate_rename.sql";
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
+/** Holds BOTH rule keys before 1069: the unique-safety guard must skip it and the verification block must not false-fail. */
+const ORG_C = "44444444-4444-4444-4444-444444444444";
 const M = "00000000-0000-0000-0000-000000000000";
 const NEW_TABLE = "per_diem_rate_calculation";
 const OLD_RULE_KEY = "hipps_coding_correct";
@@ -148,6 +150,12 @@ describe.skipIf(!DB_URL)("M23 migration 1069 — per-diem class rename — LIVE 
     for (const f of sqlFiles().filter((x) => x < RENAME_MIGRATION)) await applyFile(f);
     ({ claim: claimA, row: rowA } = await seedLegacy(ORG_A, 1));
     ({ row: rowB } = await seedLegacy(ORG_B, 2));
+    await seedLegacy(ORG_C, 4);
+    await db.query(
+      `INSERT INTO validation_rule_config (organization_id, rule_key, severity, set_by_membership_id)
+       VALUES ($1,$2,'warn',$3)`,
+      [ORG_C, NEW_RULE_KEY, M],
+    );
     resultsBefore = (
       await db.query("SELECT to_jsonb(v) AS j FROM validation_result v ORDER BY v.id")
     ).rows.map((r) => r.j);
@@ -291,9 +299,10 @@ describe.skipIf(!DB_URL)("M23 migration 1069 — per-diem class rename — LIVE 
       [ORG_A],
     );
     expect(cfg.rows.map((r) => r.rule_key)).toEqual([NEW_RULE_KEY]);
-    const stale = await db.query("SELECT 1 FROM validation_rule_config WHERE rule_key = $1", [
-      OLD_RULE_KEY,
-    ]);
+    const stale = await db.query(
+      "SELECT 1 FROM validation_rule_config WHERE rule_key = $1 AND organization_id <> $2",
+      [OLD_RULE_KEY, ORG_C],
+    );
     expect(stale.rowCount).toBe(0);
     const audit = await db.query<{ before: { rule_key?: string }; after: { rule_key?: string } }>(
       `SELECT before, after FROM audit_event
@@ -304,6 +313,40 @@ describe.skipIf(!DB_URL)("M23 migration 1069 — per-diem class rename — LIVE 
     expect(audit.rows).toHaveLength(1);
     expect(audit.rows[0].before.rule_key).toBe(OLD_RULE_KEY);
     expect(audit.rows[0].after.rule_key).toBe(NEW_RULE_KEY);
+  });
+
+  it("a tenant holding BOTH keys is skipped (rows untouched) and the verification block does not false-fail", async () => {
+    const both = await db.query<{ rule_key: string }>(
+      "SELECT rule_key FROM validation_rule_config WHERE organization_id = $1 ORDER BY rule_key",
+      [ORG_C],
+    );
+    expect(both.rows.map((r) => r.rule_key)).toEqual([NEW_RULE_KEY, OLD_RULE_KEY].sort());
+    // beforeAll applied the whole file (twice) without raising; the verification DO block is part of that file.
+    expect(readFileSync(join(MIGRATIONS_DIR, RENAME_MIGRATION), "utf8")).toContain("$verify$");
+  });
+
+  it("the verification block raises when a legacy row would be left behind (migrator subject to RLS)", async () => {
+    const sql = readFileSync(join(MIGRATIONS_DIR, RENAME_MIGRATION), "utf8");
+    const verify = sql.slice(sql.indexOf("DO $verify$"));
+    await db.query("SET ROLE wardenx_app");
+    try {
+      await expect(db.query(verify)).rejects.toThrow(/superuser \/ BYPASSRLS/);
+    } finally {
+      await db.query("RESET ROLE");
+    }
+    // As the superuser migrator a stray legacy row (org without the new key) is caught.
+    const flip = (from: string, to: string) =>
+      db.query(
+        "UPDATE validation_rule_config SET rule_key = $1 WHERE organization_id = $2 AND rule_key = $3",
+        [to, ORG_B, from],
+      );
+    await flip(NEW_RULE_KEY, OLD_RULE_KEY);
+    try {
+      await expect(db.query(verify)).rejects.toThrow(/still carry rule_key/);
+    } finally {
+      await flip(OLD_RULE_KEY, NEW_RULE_KEY);
+    }
+    await db.query(verify); // clean state passes
   });
 
   it("audit_event rows written before the migration keep the old resource kind text", async () => {
@@ -421,10 +464,10 @@ describe.skipIf(!DB_URL)("M23 migration 1069 — per-diem class rename — LIVE 
     await db.query(
       `ALTER FUNCTION audit_phi_write_${NEW_TABLE}() RENAME TO audit_phi_write_hipps_calculation`,
     );
-    await db.query("UPDATE validation_rule_config SET rule_key = $1 WHERE rule_key = $2", [
-      OLD_RULE_KEY,
-      NEW_RULE_KEY,
-    ]);
+    await db.query(
+      "UPDATE validation_rule_config SET rule_key = $1 WHERE rule_key = $2 AND organization_id <> $3",
+      [OLD_RULE_KEY, NEW_RULE_KEY, ORG_C],
+    );
 
     await applyFile(RENAME_MIGRATION);
     await applyFile(RENAME_MIGRATION);

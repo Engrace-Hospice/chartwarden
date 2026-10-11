@@ -18,6 +18,7 @@
 // `notFoundOnDeny:true` realizes the §2.2 existence-non-leak rule (a denied object-level check returns 404).
 // `inOrg` (M3) and `caseload_or_scope` (M5) are RE-USED base predicates owned + registered by their modules.
 import { requireAbac, requireAnyAbac, requirePermission, requireStepUp } from "@wardenx/auth";
+import { canonicalRuleKey } from "@wardenx/billing";
 import { ForbiddenError } from "@wardenx/types";
 import type { PreHandler } from "./actor";
 
@@ -69,7 +70,7 @@ export const targetRuleConfigId = (request: TargetRequest): TargetMap =>
  *  yet to target by ruleConfigId), so `regulatory_required_rule_protected` targets the key being created. */
 export const targetRuleKeyFromBody = (request: TargetRequest): TargetMap => {
   const body = request.body as { ruleKey?: string } | undefined;
-  return { ruleKey: body?.ruleKey ?? "" };
+  return { ruleKey: canonicalRuleKey(body?.ruleKey ?? "") };
 };
 
 /** Override route: the validation result is `:resultId`, scoped under the claim `:id`. */

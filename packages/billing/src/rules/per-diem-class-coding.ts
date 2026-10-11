@@ -3,9 +3,9 @@
 // ADR-0001 RHC day-60 tier buckets (days_1_60 / days_61_plus) assigned, wage factor a decimal string.
 // ADR-0001 NOTE (outstanding): the ADR strikes the HIPPS construct entirely (hospice claims carry no
 // HIPPS rate code) and replaces this rule with an `rhc_rate_tier_coherence` rule; the snapshot's
-// `per_diem_class_code` is an internal placeholder (surfaced as `perDiemClassCode`) never emitted on the 837 wire, and the full rename
-// (`per_diem_rate_calculation` → per-diem naming, rule-key migration) is tracked in the ADR-compliance
-// backlog. Penny-exact rate-table conformance is gated on a CMS fixture we do not yet hold. PURE.
+// `per_diem_class_code` is an internal placeholder (surfaced as `perDiemClassCode`) never emitted on the 837 wire. The
+// per-diem rename (`per_diem_rate_calculation`, this rule key) is DONE in migration 1069; stored legacy `hipps_*` history
+// is aliased on read (legacy-stored-aliases.ts). Only the `rhc_rate_tier_coherence` replacement is outstanding. Penny-exact rate-table conformance is gated on a CMS fixture we do not yet hold. PURE.
 import type { Rule } from "./types";
 import { fail, pass, skip } from "./types";
 

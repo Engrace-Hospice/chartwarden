@@ -14,6 +14,10 @@ const DB_BILLING_SCHEMA = join(REPO_ROOT, "packages", "db", "src", "schema", "bi
 const X12_837_SRC = join(REPO_ROOT, "packages", "x12-837-client", "src");
 const BACKEND_M23_SRC = join(REPO_ROOT, "apps", "backend", "src", "modules", "23-billing-medicare");
 const WEB_SRC = join(REPO_ROOT, "apps", "web", "src");
+const BACKEND_ROOT_FILES = [
+  join(REPO_ROOT, "apps", "backend", "src", "m23-override-audit.ts"),
+  join(REPO_ROOT, "apps", "backend", "src", "index.ts"),
+];
 
 /** Hand-picked billing builders that shape outbound bytes (kept in addition to the auto-discovered x12 client). */
 const OUTBOUND_FILES = [
@@ -118,8 +122,7 @@ describe("hospice claims never carry a HIPPS / per-diem class code", () => {
 
   it("the `hipps` name no longer appears in billing source, the M23 schema, the backend module or the web app (migration 1069)", () => {
     const roots = [BILLING_SRC, DB_BILLING_SCHEMA, BACKEND_M23_SRC, WEB_SRC];
-    const offenders = roots
-      .flatMap(walk)
+    const offenders = [...roots.flatMap(walk), ...BACKEND_ROOT_FILES]
       .filter((f) => isSource(f) && !isTestFile(f) && !LEGACY_ALIAS_FILES.has(f))
       .filter((f) => HIPPS_NAME.test(code(f)) || HIPPS_NAME.test(f));
     expect(offenders.map(rel)).toEqual([]);

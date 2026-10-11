@@ -59,7 +59,7 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
   let appUrl: string;
 
   /** Seed one claim plus every child a real assembly writes, as the superuser. Returns the ids. */
-  async function seedClaim(org: string, state: string) {
+  async function seedClaim(org: string, state: string, opts: { pricing?: boolean } = {}) {
     const claimId = uuid();
     const runId = uuid();
     const resultId = uuid();
@@ -88,11 +88,13 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
               ($1,$2,2,'0651','Q5001','RHC','2026-09-16','2026-09-30',15,100,1500,$3)`,
       [org, claimId, ANY],
     );
-    await admin.query(
-      `INSERT INTO per_diem_rate_calculation (organization_id, claim_id, per_diem_class_code, per_diem_rate_cents, wage_index_ccn,
-         wage_index_fiscal_year, wage_index_factor, segments) VALUES ($1,$2,'RHC',100,'111111',2026,'1.0','[]')`,
-      [org, claimId],
-    );
+    if (opts.pricing !== false) {
+      await admin.query(
+        `INSERT INTO per_diem_rate_calculation (organization_id, claim_id, per_diem_class_code, per_diem_rate_cents, wage_index_ccn,
+           wage_index_fiscal_year, wage_index_factor, segments) VALUES ($1,$2,'RHC',100,'111111',2026,'1.0','[]')`,
+        [org, claimId],
+      );
+    }
     await admin.query(
       `INSERT INTO sia_calculation (organization_id, claim_id, patient_deceased_date, window_start,
          qualifying_visits, total_qualifying_minutes, sia_add_on_cents) VALUES ($1,$2,'2026-09-30','2026-09-24','[]',30,500)`,
@@ -207,11 +209,9 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
     ).toBeGreaterThanOrEqual(2);
   });
 
-  it("deletes a draft claim that has no children at all", async () => {
-    const { claimId } = await seedClaim(ORG_A, "DRAFT");
-    await admin.query("ALTER TABLE per_diem_rate_calculation DISABLE TRIGGER USER");
-    await admin.query("DELETE FROM per_diem_rate_calculation WHERE claim_id=$1", [claimId]);
-    await admin.query("ALTER TABLE per_diem_rate_calculation ENABLE TRIGGER USER");
+  it("deletes a draft claim that has no pricing row (seeded without one; no trigger is disabled)", async () => {
+    const { claimId } = await seedClaim(ORG_A, "DRAFT", { pricing: false });
+    expect(await count("per_diem_rate_calculation", "claim_id=$1", [claimId])).toBe(0);
     await svc().deleteDraftClaim(actorA, claimId);
     expect(await count("claim", "id=$1", [claimId])).toBe(0);
   });

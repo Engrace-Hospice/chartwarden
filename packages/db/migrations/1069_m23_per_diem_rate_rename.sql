@@ -29,6 +29,15 @@
 -- are only a drizzle-kit convention; the runner executes the file as a single multi-statement query), so a failure
 -- anywhere rolls the entire migration back.
 --
+-- MIGRATOR ROLE: validation_rule_config has FORCEd org RLS, so the rule_key UPDATE below only sees every tenant's rows when the
+-- migrator is a superuser or has BYPASSRLS (the DATABASE_ADMIN_URL role). Under any other role it would silently update 0
+-- rows; the verification block at the end of this file therefore RAISEs (rolling the whole migration back) if the role is
+-- subject to RLS or if any legacy-keyed row that is not a legitimate unique-safety skip remains.
+--
+-- OLD PODS AFTER THE SWAP: with migrate-then-swap, a pod still running the previous image could create a NEW legacy-key
+-- (`hipps_coding_correct`) validation_rule_config row after this migration has run. Such a row is never renamed; it is inert
+-- (the read side aliases the legacy spelling to the current rule, and the write side now rejects creating one).
+--
 -- Idempotent: every step is guarded on the old name still existing / the new state not yet reached, so a re-run (or a run
 -- from a partially migrated state, e.g. table renamed but not its columns) converges on the same end state.
 DO $mig$
@@ -119,3 +128,24 @@ UPDATE validation_rule_config o
  WHERE o.rule_key = 'hipps_coding_correct'
    AND NOT EXISTS (SELECT 1 FROM validation_rule_config n
                     WHERE n.organization_id = o.organization_id AND n.rule_key = 'per_diem_class_coding_correct');
+--> statement-breakpoint
+
+-- Verify the overlay rename: fail loudly (rolling the whole file back) instead of silently leaving legacy rows behind.
+-- Rows skipped by the NOT EXISTS unique-safety guard (the tenant already holds the new key) are legitimate and tolerated.
+DO $verify$
+DECLARE
+  remaining integer;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = current_user AND (rolsuper OR rolbypassrls)) THEN
+    RAISE EXCEPTION 'migration 1069 must run as a superuser / BYPASSRLS role (DATABASE_ADMIN_URL): validation_rule_config has FORCEd RLS, so % could not rename every tenant''s rule_key', current_user;
+  END IF;
+  SELECT count(*) INTO remaining
+    FROM validation_rule_config o
+   WHERE o.rule_key = 'hipps_coding_correct'
+     AND NOT EXISTS (SELECT 1 FROM validation_rule_config n
+                      WHERE n.organization_id = o.organization_id AND n.rule_key = 'per_diem_class_coding_correct');
+  IF remaining > 0 THEN
+    RAISE EXCEPTION 'migration 1069: % validation_rule_config row(s) still carry rule_key hipps_coding_correct', remaining;
+  END IF;
+END
+$verify$;

@@ -954,6 +954,14 @@ export function buildDrizzleM23WriteService(
 
     // ── rule-config CRUD ──
     async createRuleConfig(actor, args: CreateRuleConfigArgs): Promise<RuleConfigView> {
+      // A legacy (pre-1069) spelling can never be created: it would be an inert row the read side aliases away.
+      if (canonicalRuleKey(args.ruleKey) !== args.ruleKey) {
+        throw new WardenXError(
+          "VALIDATION_FAILED",
+          `rule key '${args.ruleKey}' is a legacy spelling; use '${canonicalRuleKey(args.ruleKey)}'`,
+          400,
+        );
+      }
       return inOrgCtx(actor, async (tx) => {
         const row = await new repositories.ValidationRuleConfigRepository(tx).create({
           organizationId: actor.organizationId,
