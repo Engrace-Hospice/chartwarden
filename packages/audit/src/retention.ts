@@ -52,10 +52,20 @@ export function registerM1Retention(): void {
   // system_status.changed, platform.bypass_invoked) is `compliance` — the default.
 }
 
+/**
+ * Seed the retention class of M5's MBI-disclosure event. It is a PHI-disclosure access record (HIPAA §164.528
+ * accounting-of-disclosures), so it is `compliance` (7 years) by an explicit entry, not by falling through the default.
+ */
+export function registerMbiDisclosureRetention(): void {
+  registerRetention("patient_payer.mbi_disclosed", "compliance");
+}
+
 /** Test/boot reset hook — clears overrides, then re-seeds the M1 defaults. */
 export function resetRetentionRegistry(): void {
   registry.clear();
   registerM1Retention();
+  registerMbiDisclosureRetention();
 }
 
 registerM1Retention();
+registerMbiDisclosureRetention();

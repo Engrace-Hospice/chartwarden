@@ -30,7 +30,10 @@ vi.mock("@wardenx/billing", async (importOriginal) => {
     findLatestForPatient = async (_org: string, patientId: string) =>
       fakes.latestByPatient.get(patientId) ?? null;
     append = async (row: Row) => {
-      const stored = { id: "check-new", checkedAt: new Date("2026-10-05T12:00:00.000Z"), ...row };
+      // The row's own id must be honoured, never silently replaced by a fixture id: the worker test below compares it.
+      if (typeof row.id !== "string")
+        throw new Error("fake append: the worker must mint the check id");
+      const stored = { checkedAt: new Date("2026-10-05T12:00:00.000Z"), ...row, id: row.id };
       fakes.appended.push(stored);
       return stored;
     };
@@ -215,6 +218,42 @@ describe("GAP-070 workers", () => {
     expect(fakes.appended).toHaveLength(1);
     expect(published.map((p) => p.eventName)).toEqual(["m23.eligibility.checked"]);
     expect(catalogAccepts(published[0] as Published)).toBe(true);
+  });
+
+  it("eligibility.refresh passes hets.check the same id it appends and publishes as checkId", async () => {
+    const seenIds: unknown[] = [];
+    const { deps, published } = harness({
+      hets: {
+        check: async (input: { eligibilityCheckId: string }) => {
+          seenIds.push(input.eligibilityCheckId);
+          return {
+            outcome: "active_part_a",
+            reason: null,
+            partAEffectiveDate: "2025-01-01",
+            partATerminationDate: null,
+            hospiceElectionOnFile: false,
+            hospice: null,
+            rejectionCodes: [],
+            transport: "sandbox",
+            correlationId: "trace-1",
+            responseFileUri: null,
+            staleAt: new Date("2026-11-04T12:00:00.000Z"),
+          };
+        },
+      },
+    } as Partial<M23WorkerDeps>);
+
+    await runEligibilityRefresh({} as never, deps, {
+      organizationId: ORG,
+      patientId: "p-1",
+      providerEntityId: "pe-1",
+      asOfServiceDate: "2026-10-05",
+    });
+
+    expect(seenIds).toHaveLength(1);
+    expect(seenIds[0]).toMatch(/^[0-9a-f-]{36}$/i);
+    expect((fakes.appended[0] as { id: string }).id).toBe(seenIds[0]);
+    expect(published[0]?.payload.checkId).toBe(seenIds[0]);
   });
 
   it("eligibility.refresh persists the structured hospice history and refuses an MBI-bearing payload", async () => {

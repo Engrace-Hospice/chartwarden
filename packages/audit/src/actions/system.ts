@@ -8,6 +8,17 @@ import type { ModuleActionCatalog } from "./types";
 /** `m0` system actions: audit-of-audit + compliance lifecycle events (§11.1, §4.6.1). */
 export const SYSTEM_ACTION_CATALOG: ModuleActionCatalog = [
   {
+    // Un-prefixed (so `m0`-owned in the catalog) because it names the disclosed RESOURCE, like the table-trigger
+    // events; the writer is M5's MbiUnlockReader. Context is ids + purpose only (patientId, subjectId, purpose).
+    action: "patient_payer.mbi_disclosed",
+    moduleOwner: "m0",
+    defaultRetentionClass: "compliance",
+    description:
+      "A patient's Medicare beneficiary identifier was unlocked for a disclosure purpose (claim 837I submission, HETS 270 eligibility); ids and purpose only, never the MBI.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
     action: "audit.elevated_access",
     moduleOwner: "m0",
     defaultRetentionClass: "compliance",

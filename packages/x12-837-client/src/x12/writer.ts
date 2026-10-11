@@ -48,7 +48,12 @@ export interface X12Envelope {
 
 export const NAME_LIMIT = 60;
 export const ORG_NAME_LIMIT = 60;
-const FORBIDDEN = /[*~:^|]/;
+/**
+ * Anything outside printable ASCII (control characters such as LF/CR/NUL, accented letters) or one of the X12
+ * delimiters / separators (`* ~ : ^ |`) and the escape character `\`. The basic character set cannot carry these, and
+ * a control character could smuggle a segment break into the interchange.
+ */
+const FORBIDDEN = /[^\x20-\x7E]|[*~:^|\\]/;
 const IMPLEMENTATION_GUIDE = "005010X223A2";
 const MAX_CONTROL_NUMBER = 999_999_999;
 

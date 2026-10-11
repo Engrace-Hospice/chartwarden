@@ -30,7 +30,7 @@
 // The actor id a §4.8 worker's `withOrgContext` carries is the empty-string system sentinel (M4 NULLIFs it).
 //
 // AI-BLOCK (D13): no `@wardenx/ai-platform` import anywhere here; a background job has no acting user.
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   type ClaimDocument837i,
   type ClaimState,
@@ -308,6 +308,12 @@ export interface HetsEligibilityPort {
     readonly patientId: string;
     readonly providerEntityId: string;
     readonly asOfServiceDate: string;
+    /**
+     * The id the worker INTENDS to append the `eligibility_check` row under — the MBI-disclosure audit's subject (a
+     * uuid). The disclosure audit commits in the M5 reader's own transaction, so if the worker later fails or the job
+     * retries, that audit may name a row that was never persisted (expected over-audit; the audit is not deferred).
+     */
+    readonly eligibilityCheckId: string;
   }): Promise<HetsEligibilityResult>;
 }
 
@@ -1333,17 +1339,23 @@ export async function runEligibilityRefresh(
   const outbox = outboxOf(deps);
   const checks = new EligibilityCheckRepository(tx);
 
+  // Minted up front so the MBI-disclosure audit written during the check names the row appended below. That audit
+  // commits in the M5 reader's own tx: on a later failure/retry it may name a check that was never persisted
+  // (expected over-audit; the disclosure audit is deliberately not deferred).
+  const eligibilityCheckId = randomUUID();
   const result = await hetsOf(deps).check({
     organizationId: job.organizationId,
     patientId: job.patientId,
     providerEntityId: job.providerEntityId,
     asOfServiceDate: job.asOfServiceDate,
+    eligibilityCheckId,
   });
 
   const parsedPayload = eligibilityParsedPayload(result);
   // Persistence-boundary guard (§8.7): an MBI-shaped token in the payload aborts the write (no row, no event).
   assertNoMbi(parsedPayload);
   const row = await checks.append({
+    id: eligibilityCheckId,
     organizationId: job.organizationId,
     providerEntityId: job.providerEntityId,
     patientId: job.patientId,
