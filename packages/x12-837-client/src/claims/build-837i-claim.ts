@@ -209,10 +209,7 @@ function buildClaim(input: Claim837iInput): string {
     ["CL1", "1", c.admissionSource, c.patientStatus],
     ...(pccn === undefined ? [] : [["REF", "F8", pccn]]),
     ["HI", `ABK:${principal}`],
-    ...hi(
-      "ABF",
-      others.map((o) => o.slice(4)),
-    ),
+    ...hi("ABF", others),
     ...hi("BH", occurrences),
     ...hi("BE", values),
     ...hi("BG", c.conditionCodes),
