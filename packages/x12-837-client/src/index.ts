@@ -151,3 +151,44 @@ export type {
 // ─── 999 / 277CA payer dates (STC02, GS04, ISA09) — the NOE/NOTR payer status date, ADR-0037 TypeScript ──────
 export { read277caStatusDates, read999EnvelopeDates } from "./acks/ack-dates";
 export type { Ack999EnvelopeDates, ClaimStatusDate } from "./acks/ack-dates";
+
+// ─── ClearinghouseTransport port and conformance cases (ADR-0053; the in-memory reference is in ./testing) ─────────
+export { CH, CLEARINGHOUSE_EVENT_KINDS, RETRYABLE_CODES } from "./clearinghouse/types";
+export type {
+  AckDisposition,
+  AckEvent,
+  AckStage,
+  ClaimAdjustment,
+  ClaimStatus,
+  ClearinghouseContext,
+  ClearinghouseEligibilityRequest,
+  ClearinghouseEligibilityResult,
+  ClearinghouseErrorCode,
+  ClearinghouseScope,
+  ClearinghouseEvent,
+  ClearinghouseEventKind,
+  ClearinghouseSubmission,
+  ClearinghouseTransport,
+  ClearinghouseVendor,
+  Page,
+  RawWebhook,
+  RemittanceFile,
+  SubmissionKind,
+  SubmissionPayload,
+  SubmissionReceipt,
+  SubmissionState,
+  ValidationIssue,
+  ValidationReport,
+} from "./clearinghouse/types";
+export {
+  CLEARINGHOUSE_CONFORMANCE_CASES,
+  DEFAULT_SCOPE,
+  runClearinghouseConformance,
+  SYNTHETIC_MBI,
+} from "./clearinghouse/conformance";
+export type {
+  ClearinghouseHarness,
+  ConformanceCase,
+  ConformanceScript,
+  HarnessFactory,
+} from "./clearinghouse/conformance";
