@@ -43,6 +43,7 @@ const CLAIM = {
   statementFromDate: "2026-01-01",
   statementThroughDate: "2026-01-31",
   admissionDate: "2026-01-01",
+  admissionTypeCode: "1",
   admissionSource: "1",
   patientStatus: "30",
   principalDiagnosis: "C34.90",

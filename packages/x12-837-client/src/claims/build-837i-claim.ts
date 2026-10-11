@@ -41,7 +41,12 @@ const FREQUENCIES: Readonly<Record<string, boolean | null>> = {
   "8": null,
 };
 const MAX_HI_VALUES = 12;
+const HHMM = /^([01]\d|2[0-3])[0-5]\d$/;
 const MAX_TOTAL_CENTS = 9_999_999_999;
+// UB-04 FL 14 / CL101 and FL 15 / CL102 values valid on a hospice claim. Mirrors `ADMISSION_TYPE_CODES` and
+// `ADMISSION_SOURCE_CODES` in @wardenx/types; this package is a dependency-free leaf, so the sets are copied.
+const ADMISSION_TYPE_CODES: readonly string[] = ["1", "2", "3", "5", "9"];
+const ADMISSION_SOURCE_CODES: readonly string[] = ["1", "2", "4", "5", "6", "8", "9"];
 
 export interface ClaimLine {
   /** 4-digit revenue code (e.g. 0651). */
@@ -53,7 +58,19 @@ export interface ClaimLine {
   /** Integer cents, > 0. */
   readonly chargeCents: number;
   readonly units: number;
+  /** First (or only) date of service. */
   readonly serviceDate: string;
+  /** Last date of service. Absent or equal to `serviceDate` emits `DTP*472*D8`; later emits `RD8`. */
+  readonly serviceThroughDate?: string;
+  /** Integer cents of the line charge that is not covered (SV207). Absent or 0 emits nothing; at most `chargeCents`. */
+  readonly noncoveredCents?: number;
+}
+
+/** An occurrence span (HI*BI): a code with a from-through date range, e.g. 77 (provider-liable late-NOE days). */
+export interface ClaimOccurrenceSpan {
+  readonly code: string;
+  readonly fromDate: string;
+  readonly throughDate: string;
 }
 
 export interface ClaimDocument {
@@ -63,7 +80,11 @@ export interface ClaimDocument {
   readonly statementFromDate: string;
   readonly statementThroughDate: string;
   readonly admissionDate: string;
-  /** CL102 — required. */
+  /** Optional admission hour, HHMM. Present turns `DTP*435` from `D8` into the `DT` date-time form. */
+  readonly admissionHour?: string;
+  /** CL101 type of admission (UB-04 FL 14) — required, from the admission. */
+  readonly admissionTypeCode: string;
+  /** CL102 point of origin (UB-04 FL 15) — required. */
   readonly admissionSource: string;
   /** CL103, 2 characters (30 = still a patient). */
   readonly patientStatus: string;
@@ -76,6 +97,13 @@ export interface ClaimDocument {
   readonly otherDiagnoses: readonly string[];
   readonly conditionCodes: readonly string[];
   readonly occurrenceCodes: readonly { readonly code: string; readonly date: string }[];
+  /** HI*BI occurrence spans. Absent = none. */
+  readonly occurrenceSpans?: readonly ClaimOccurrenceSpan[];
+  /**
+   * Claim-level total of the non-covered line charges. 5010A2 has no claim-level segment for it (it is the sum of
+   * the SV207s), so this is NOT emitted: when given it must equal the sum of the lines' `noncoveredCents`.
+   */
+  readonly nonCoveredChargeCents?: number;
   /** `amount` is a decimal string (e.g. a CBSA "38900"). */
   readonly valueCodes: readonly { readonly code: string; readonly amount: string }[];
   readonly lines: readonly ClaimLine[];
@@ -120,13 +148,22 @@ export const diagnosis = (value: string, field: string): string => {
 export const dollars = (cents: number): string =>
   `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, "0")}`;
 
+/** `DTP*472`: D8 for one day, RD8 for a from-through range; both ends inside the statement window. */
+function lineDate(l: ClaimLine, from: string, through: string): string[] {
+  const start = d8(l.serviceDate, "claim.lines");
+  const end = l.serviceThroughDate === undefined ? start : d8(l.serviceThroughDate, "claim.lines");
+  check(start >= from && end <= through && start <= end, "claim.lines");
+  return start === end ? ["DTP", "472", "D8", start] : ["DTP", "472", "RD8", `${start}-${end}`];
+}
+
 function lineSegments(
   lines: readonly ClaimLine[],
   from: string,
   through: string,
-): { segments: string[][]; totalCents: number } {
+): { segments: string[][]; totalCents: number; noncoveredCents: number } {
   check(Array.isArray(lines) && lines.length > 0, "claim.lines");
   let totalCents = 0;
+  let noncoveredCents = 0;
   const segments = lines.flatMap((l, i) => {
     check(typeof l === "object" && l !== null, "claim.lines");
     const modifiers = l.modifiers ?? [];
@@ -139,9 +176,14 @@ function lineSegments(
     );
     check(Number.isSafeInteger(l.chargeCents) && l.chargeCents > 0, "claim.lines");
     check(Number.isSafeInteger(l.units) && l.units > 0 && l.units <= 999_999, "claim.lines");
-    const date = d8(l.serviceDate, "claim.lines");
-    check(date >= from && date <= through, "claim.lines");
+    const noncovered = l.noncoveredCents ?? 0;
+    check(
+      Number.isSafeInteger(noncovered) && noncovered >= 0 && noncovered <= l.chargeCents,
+      "claim.lines",
+    );
+    const dateSegment = lineDate(l, from, through);
     totalCents += l.chargeCents;
+    noncoveredCents += noncovered;
     return [
       ["LX", String(i + 1)],
       [
@@ -151,12 +193,14 @@ function lineSegments(
         dollars(l.chargeCents),
         "UN",
         String(l.units),
+        // SV206 (unit rate) is left empty so the non-covered charge lands in SV207.
+        ...(noncovered > 0 ? ["", dollars(noncovered)] : []),
       ],
-      ["DTP", "472", "D8", date],
+      dateSegment,
     ];
   });
   check(totalCents <= MAX_TOTAL_CENTS, "claim.lines");
-  return { segments, totalCents };
+  return { segments, totalCents, noncoveredCents };
 }
 
 function buildClaim(input: Claim837iInput): string {
@@ -169,7 +213,10 @@ function buildClaim(input: Claim837iInput): string {
     mustBeStillPatient === null || mustBeStillPatient === (c.patientStatus === STILL_PATIENT),
     "claim.patientStatus",
   );
-  check(matches(/^[0-9A-Z]$/, c.admissionSource), "claim.admissionSource");
+  check(ADMISSION_TYPE_CODES.includes(c.admissionTypeCode), "claim.admissionTypeCode");
+  check(ADMISSION_SOURCE_CODES.includes(c.admissionSource), "claim.admissionSource");
+  const spanList = c.occurrenceSpans ?? [];
+  check(Array.isArray(spanList), "claim.occurrenceSpans");
   for (const [list, field] of [
     [c.otherDiagnoses, "claim.otherDiagnoses"],
     [c.conditionCodes, "claim.conditionCodes"],
@@ -195,10 +242,8 @@ function buildClaim(input: Claim837iInput): string {
   check(through >= from, "claim.statementThroughDate");
   const admission = d8(c.admissionDate, "claim.admissionDate");
   check(admission <= through, "claim.admissionDate");
-  check(
-    c.dischargeHour === undefined || matches(/^([01]\d|2[0-3])[0-5]\d$/, c.dischargeHour),
-    "claim.dischargeHour",
-  );
+  check(c.dischargeHour === undefined || matches(HHMM, c.dischargeHour), "claim.dischargeHour");
+  check(c.admissionHour === undefined || matches(HHMM, c.admissionHour), "claim.admissionHour");
 
   const principal = diagnosis(c.principalDiagnosis, "claim.principalDiagnosis");
   check(c.otherDiagnoses.length <= MAX_HI_VALUES, "claim.otherDiagnoses");
@@ -213,6 +258,15 @@ function buildClaim(input: Claim837iInput): string {
     check(matches(/^[0-9A-Z]{2}$/, o.code), "claim.occurrenceCodes");
     return `${o.code}:D8:${d8(o.date, "claim.occurrenceCodes")}`;
   });
+  check(spanList.length <= MAX_HI_VALUES, "claim.occurrenceSpans");
+  const spans = spanList.map((o) => {
+    check(typeof o === "object" && o !== null, "claim.occurrenceSpans");
+    check(matches(/^[0-9A-Z]{2}$/, o.code), "claim.occurrenceSpans");
+    const spanFrom = d8(o.fromDate, "claim.occurrenceSpans");
+    const spanThrough = d8(o.throughDate, "claim.occurrenceSpans");
+    check(spanFrom <= spanThrough, "claim.occurrenceSpans");
+    return `${o.code}:RD8:${spanFrom}-${spanThrough}`;
+  });
   check(c.valueCodes.length <= MAX_HI_VALUES, "claim.valueCodes");
   const values = c.valueCodes.map((v) => {
     check(matches(/^[0-9A-Z]{2}$/, v.code), "claim.valueCodes");
@@ -221,7 +275,11 @@ function buildClaim(input: Claim837iInput): string {
   });
 
   const env = prepareEnvelope(input.envelope);
-  const { segments: lineSegs, totalCents } = lineSegments(c.lines, from, through);
+  const { segments: lineSegs, totalCents, noncoveredCents } = lineSegments(c.lines, from, through);
+  check(
+    c.nonCoveredChargeCents === undefined || c.nonCoveredChargeCents === noncoveredCents,
+    "claim.nonCoveredChargeCents",
+  );
   const { ccyymmdd, hhmm } = env.stamp;
 
   const body: string[][] = [
@@ -230,12 +288,15 @@ function buildClaim(input: Claim837iInput): string {
     ["CLM", c.controlNumber, dollars(totalCents), "", "", `81:A:${c.frequency}`, "", "A", "Y", "Y"],
     ...(c.dischargeHour === undefined ? [] : [["DTP", "096", "TM", c.dischargeHour]]),
     ["DTP", "434", "RD8", `${from}-${through}`],
-    ["DTP", "435", "D8", admission],
-    ["CL1", "1", c.admissionSource, c.patientStatus],
+    c.admissionHour === undefined
+      ? ["DTP", "435", "D8", admission]
+      : ["DTP", "435", "DT", `${admission}${c.admissionHour}`],
+    ["CL1", c.admissionTypeCode, c.admissionSource, c.patientStatus],
     ...(pccn === undefined ? [] : [["REF", "F8", pccn]]),
     ["HI", `ABK:${principal}`],
     ...hi("ABF", others),
     ...hi("BH", occurrences),
+    ...hi("BI", spans),
     ...hi("BE", values),
     ...hi("BG", c.conditionCodes),
     physicianName(input.attendingPhysician, "71", "attendingPhysician"),

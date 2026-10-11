@@ -216,6 +216,7 @@ export {
   type Claim837iInput,
   type ClaimDocument,
   type ClaimLine,
+  type ClaimOccurrenceSpan,
 } from "./claims/build-837i-claim";
 export {
   buildStediClaimJson,
