@@ -1,8 +1,11 @@
 import {
   type ArAgingDto,
   type MetricsBucket,
+  canonicalRemediation,
+  canonicalRuleKey,
   claimStateCodec,
   repositories,
+  storedRuleKeySpellings,
 } from "@wardenx/billing";
 // apps/backend/src/modules/23-billing-medicare/routes/read-service-drizzle.ts — the Drizzle-backed
 // M23ReadRouteService (§4.1 GET surface: claim list/detail/lines/state-history/submissions/acks,
@@ -60,7 +63,7 @@ import type {
   ValidationRunDetailView,
   ValidationRunView,
 } from "./read-service";
-import { claimDischargeCodesView, hippsPricingView } from "./read-service";
+import { claimDischargeCodesView, perDiemClassPricingView } from "./read-service";
 
 type BillingDb = repositories.BillingDb;
 
@@ -193,7 +196,7 @@ function mapRuleConfig(row: schema.ValidationRuleConfig): RuleConfigView {
   return {
     ruleConfigId: row.id,
     organizationId: row.organizationId,
-    ruleKey: row.ruleKey,
+    ruleKey: canonicalRuleKey(row.ruleKey),
     ruleVersion: row.ruleVersion,
     isCustom: row.isCustom,
     enabled: row.enabled,
@@ -404,7 +407,9 @@ export function buildDrizzleM23ReadService(
         const latestRun = await new repositories.ValidationRunRepository(tx).findLatestForClaim(
           claimId,
         );
-        const hipps = await new repositories.HippsCalculationRepository(tx).findByClaim(claimId);
+        const perDiemClass = await new repositories.PerDiemRateCalculationRepository(
+          tx,
+        ).findByClaim(claimId);
         const sia = await new repositories.SiaCalculationRepository(tx).findByClaim(claimId);
         return {
           ...mapClaimSummary(row),
@@ -423,7 +428,9 @@ export function buildDrizzleM23ReadService(
           attention: null,
           latestValidation: latestRun ? mapValidationRun(latestRun) : null,
           pricing: {
-            hipps: hipps ? hippsPricingView(hipps, { admissionId: row.admissionId }) : null,
+            perDiemClass: perDiemClass
+              ? perDiemClassPricingView(perDiemClass, { admissionId: row.admissionId })
+              : null,
             sia: sia
               ? {
                   windowStart: sia.windowStart,
@@ -507,11 +514,11 @@ export function buildDrizzleM23ReadService(
           return {
             resultId: r.id,
             validationRunId: r.validationRunId,
-            ruleKey: r.ruleKey,
+            ruleKey: canonicalRuleKey(r.ruleKey),
             ruleVersion: r.ruleVersion,
             severity: r.severity,
             outcome: r.outcome,
-            remediation: json(r.remediation),
+            remediation: canonicalRemediation(json(r.remediation)),
             overridden: override !== null,
             override: override ? mapOverride(override) : null,
             recordedAt: isoReq(r.recordedAt),
@@ -699,7 +706,9 @@ export function buildDrizzleM23ReadService(
             and(
               eq(O.organizationId, actor.organizationId),
               eq(C.providerEntityId, filter.providerEntityId),
-              filter.ruleKey ? eq(R.ruleKey, filter.ruleKey) : undefined,
+              filter.ruleKey
+                ? inArray(R.ruleKey, [...storedRuleKeySpellings(filter.ruleKey)])
+                : undefined,
               filter.overrideMembershipId
                 ? eq(O.overrideMembershipId, filter.overrideMembershipId)
                 : undefined,
@@ -719,7 +728,7 @@ export function buildDrizzleM23ReadService(
           items: kept.map((r) => ({
             ...mapOverride(r.override),
             claimId: r.claimId,
-            ruleKey: r.ruleKey,
+            ruleKey: canonicalRuleKey(r.ruleKey),
             m4AuditEventId: r.m4AuditEventId,
           })),
           nextCursor:

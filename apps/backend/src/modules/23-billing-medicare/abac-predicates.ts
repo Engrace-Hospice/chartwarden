@@ -38,7 +38,12 @@
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards on
 // `abacRegistry.has` (the M27 `registerM27AbacPredicates` precedent). Never fails open.
 import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
-import { type BillingDb, DEFAULT_BILLING_RULES, type OverrideRole } from "@wardenx/billing";
+import {
+  type BillingDb,
+  DEFAULT_BILLING_RULES,
+  type OverrideRole,
+  canonicalRuleKey,
+} from "@wardenx/billing";
 // The Drizzle fact loader + the resolver fact types live in `./abac-resolver-drizzle` (it carries the
 // central-schema import; this file names `context.roles`, so keeping the two apart clears the table-ownership
 // scanner — see that file's header). Re-exported below so consumers still resolve them from this module.
@@ -302,7 +307,8 @@ async function resolveRuleKey(
   target: AbacTarget,
 ): Promise<string | null> {
   const direct = targetStr(target, "ruleKey");
-  if (direct) return direct;
+  // A legacy spelling (pre-1069) is canonicalized so the registry lookup resolves the same rule.
+  if (direct) return canonicalRuleKey(direct);
   const validationResultId = targetStr(target, "validationResultId");
   if (validationResultId) {
     const facts = await resolver.loadValidationResult(readContextOf(context), validationResultId);

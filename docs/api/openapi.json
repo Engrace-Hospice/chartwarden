@@ -54905,7 +54905,7 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Single-claim detail - lines + HIPPS + SIA + latest run + submissions + acks (§4.1 #3)",
+        "summary": "Single-claim detail - lines + per-diem class + SIA + latest run + submissions + acks (§4.1 #3)",
         "parameters": [
           {
             "name": "id",
@@ -55508,17 +55508,17 @@
                     "pricing": {
                       "type": "object",
                       "required": [
-                        "hipps",
+                        "perDiemClass",
                         "sia"
                       ],
                       "properties": {
-                        "hipps": {
+                        "perDiemClass": {
                           "anyOf": [
                             {
                               "type": "object",
                               "required": [
                                 "perDiemClassCode",
-                                "hippsRateCents",
+                                "perDiemRateCents",
                                 "wageIndexCcn",
                                 "wageIndexFiscalYear",
                                 "wageIndexFactor",
@@ -55532,7 +55532,7 @@
                                 "perDiemClassCode": {
                                   "type": "string"
                                 },
-                                "hippsRateCents": {
+                                "perDiemRateCents": {
                                   "type": "integer"
                                 },
                                 "wageIndexCcn": {
@@ -56948,7 +56948,7 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Assemble a server-authoritative DRAFT claim (lines + HIPPS + SIA + initial validation run, §4.1 #1)",
+        "summary": "Assemble a server-authoritative DRAFT claim (lines + per-diem class + SIA + initial validation run, §4.1 #1)",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -56972,7 +56972,7 @@
                     "state",
                     "totalChargeCents",
                     "perDiemClassCode",
-                    "hippsRateCents",
+                    "perDiemRateCents",
                     "lineCount",
                     "initialValidationRunId",
                     "initialValidationOutcome"
@@ -56992,7 +56992,7 @@
                     "perDiemClassCode": {
                       "type": "string"
                     },
-                    "hippsRateCents": {
+                    "perDiemRateCents": {
                       "type": "integer"
                     },
                     "lineCount": {

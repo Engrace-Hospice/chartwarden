@@ -159,7 +159,7 @@ const detail = (over: Record<string, unknown> = {}) => ({
   replacedByClaimId: null,
   replacementReason: null,
   latestValidation: null,
-  pricing: { hipps: null, sia: null },
+  pricing: { perDiemClass: null, sia: null },
   attention: {
     stayEnd: { kind: "revocation", effectiveDate: "2026-03-20" },
     typeOfBill: { stored: "812", derived: "811", changed: true, remedy: "revalidate" },

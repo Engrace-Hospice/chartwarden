@@ -121,7 +121,7 @@ describe.skipIf(!DB_URL)("M23 validation override — LIVE Postgres", () => {
     return app;
   }
 
-  async function seed(state = "READY", outcome = "fail") {
+  async function seed(state = "READY", outcome = "fail", ruleKey = "admission_codes_present") {
     const claimId = uuid();
     const runId = uuid();
     const resultId = uuid();
@@ -140,8 +140,8 @@ describe.skipIf(!DB_URL)("M23 validation override — LIVE Postgres", () => {
     );
     await admin.query(
       `INSERT INTO validation_result (id, organization_id, validation_run_id, rule_key, rule_version, severity, outcome)
-       VALUES ($1,$2,$3,'admission_codes_present',1,'error',$4)`,
-      [resultId, ORG, runId, outcome],
+       VALUES ($1,$2,$3,$5,1,'error',$4)`,
+      [resultId, ORG, runId, outcome, ruleKey],
     );
     return { claimId, runId, resultId };
   }
@@ -377,5 +377,31 @@ describe.skipIf(!DB_URL)("M23 validation override — LIVE Postgres", () => {
     expect(stolen.statusCode).toBe(409);
     expect(stolen.body).not.toContain(first.json().overrideId);
     expect(await written()).toEqual(afterFirst);
+  });
+  it("override-audit list filters a rule by BOTH spellings and projects the canonical key for legacy-keyed result rows", async () => {
+    // validation_result is append-only, so the legacy key is seeded at insert time (as pre-1069 history would be).
+    const legacy = await seed("READY", "fail", "hipps_coding_correct");
+    const current = await seed("READY", "fail", "per_diem_class_coding_correct");
+    for (const r of [legacy.resultId, current.resultId]) {
+      await admin.query(
+        `INSERT INTO validation_override (organization_id, result_id, override_membership_id, override_role_applied,
+           reason, m4_audit_event_id) VALUES ($1,$2,$3,'billing_manager',$4,$5)`,
+        [ORG, r, MEMBERSHIP, REASON, ANY],
+      );
+    }
+    const actor = { organizationId: ORG, userId: USER, roles: ["billing_manager"] };
+    const readService = buildDrizzleM23ReadService(handle.db);
+    const wanted = new Set([legacy.claimId, current.claimId]);
+    for (const filterKey of ["per_diem_class_coding_correct", "hipps_coding_correct"]) {
+      const page = await readService.listValidationOverrides(
+        actor,
+        { providerEntityId: PE, ruleKey: filterKey },
+        undefined,
+        undefined,
+      );
+      const hits = page.items.filter((i) => wanted.has(i.claimId));
+      expect(hits.map((i) => i.claimId).sort()).toEqual([legacy.claimId, current.claimId].sort());
+      expect(hits.every((i) => i.ruleKey === "per_diem_class_coding_correct")).toBe(true);
+    }
   });
 });

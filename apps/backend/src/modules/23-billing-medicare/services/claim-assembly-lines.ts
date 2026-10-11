@@ -6,9 +6,9 @@
 import {
   type BillableEncounterSnapshot,
   type BuildVisitLinesInput,
-  type HippsSegmentResult,
   POS_BY_QCODE,
   POS_LABEL_ALIASES,
+  type PerDiemClassSegmentResult,
   type VisitChargeVersion,
   type VisitLinesResult,
   type VisitReportingSnapshot,
@@ -45,7 +45,7 @@ export function qCodeForPlaceOfService(pos: string | null): NewClaimLineInput["q
 }
 
 /** The units / unit rate / charge of one per-diem segment's line (CHC in 15-minute units, the rest in days). */
-export function perDiemLineAmounts(segment: HippsSegmentResult): {
+export function perDiemLineAmounts(segment: PerDiemClassSegmentResult): {
   readonly unitCount: number;
   readonly unitRateCents: number;
   readonly lineChargeCents: number;

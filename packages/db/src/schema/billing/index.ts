@@ -32,7 +32,7 @@ export * from "./transfer-notice-record";
 export * from "./clearinghouse-submission-attempt";
 export * from "./dde-work-item";
 export * from "./dde-work-event";
-export * from "./hipps-calculation";
+export * from "./per-diem-rate-calculation";
 export * from "./sia-calculation";
 export * from "./validation-rule-config";
 export * from "./validation-run";

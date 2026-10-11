@@ -168,7 +168,7 @@ export const M23_OUTBOX_SUBSCRIPTIONS: Readonly<Record<string, M23TopicSubscript
       effects: [
         {
           kind: "revalidate",
-          note: "A level-of-care change was recorded in M6 — re-validate the affected claim's date range so HIPPS is recomputed (task 53/54).",
+          note: "A level-of-care change was recorded in M6 — re-validate the affected claim's date range so the per-diem class is recomputed (task 53/54).",
         },
       ],
     },

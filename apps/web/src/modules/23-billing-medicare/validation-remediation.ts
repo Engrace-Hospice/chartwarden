@@ -39,6 +39,19 @@ function defectsOf(v: unknown): RemediationDefect[] | undefined {
   });
 }
 
+/** Deliberate defence in depth: the backend already aliases this on read (@wardenx/billing legacy-stored-aliases); the web keeps its
+ *  own copy so a raw stored value can never reach the dispatcher un-mapped, and to avoid pulling the server package into the web bundle.
+ *  Stored fix actions written before the hipps_* -> per_diem_* rename (migration 1069; history is not rewritten). */
+const LEGACY_FIX_ACTIONS: Readonly<Record<string, string>> = {
+  recompute_hipps: "recompute_per_diem_class",
+};
+
+export function canonicalFixAction(stored: string | undefined): string | undefined {
+  return stored !== undefined && Object.hasOwn(LEGACY_FIX_ACTIONS, stored)
+    ? LEGACY_FIX_ACTIONS[stored]
+    : stored;
+}
+
 export function normalizeRemediation(raw: unknown): Remediation | null {
   if (!raw || typeof raw !== "object") return null;
   const outer = raw as Record<string, unknown>;
@@ -52,7 +65,7 @@ export function normalizeRemediation(raw: unknown): Remediation | null {
     summary: str(r.summary),
     blameTarget: str(r.blameTarget),
     blameTargetId: str(r.blameTargetId),
-    fixAction: str(r.fixAction),
+    fixAction: canonicalFixAction(str(r.fixAction)),
     fixDeepLink: str(r.fixDeepLink),
     ...(defects ? { defects } : {}),
   };

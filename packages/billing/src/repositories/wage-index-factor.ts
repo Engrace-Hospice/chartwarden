@@ -1,7 +1,7 @@
 // @wardenx/billing · repositories — `wage_index_factor` (platform-shared per-CCN annual CMS wage-index
 // schedule, §3.3, D12; non-partitioned; retention class `reference`). The ONLY M23 table with NO
 // `organization_id` — PLATFORM-SHARED reference data consumed by the HIPPS/per-diem calculator at claim
-// assembly (snapshotted onto `hipps_calculation` so the math stays reproducible).
+// assembly (snapshotted onto `per_diem_rate_calculation` so the math stays reproducible).
 //
 // PLATFORM-READ-ONLY (D12 / §3.2 Phase D): the migration REVOKEs INSERT on this table from `app_user`; only
 // the `platform_loader` role loads CMS rate files. This repo therefore offers READS ONLY — there is NO

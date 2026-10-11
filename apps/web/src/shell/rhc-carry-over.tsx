@@ -36,7 +36,7 @@ function spanSourceLabel(s: RhcCarryOverSpan): string {
   return `Other hospice (HETS${npi})${s.kind === "election" ? ", unbilled election" : ""}`;
 }
 
-/** The server's carry-over shape (hospice-periods `rhcCarryOver`, claim `pricing.hipps.rhcCarryOver`). */
+/** The server's carry-over shape (hospice-periods `rhcCarryOver`, claim `pricing.perDiemClass.rhcCarryOver`). */
 export interface RhcCarryOver {
   electionDate: string;
   priorDays: number;

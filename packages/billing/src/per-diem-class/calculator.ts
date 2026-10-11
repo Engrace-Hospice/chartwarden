@@ -1,4 +1,4 @@
-// @wardenx/billing — M23 per-diem rate calculator (D7, spec §3.3 `hipps_calculation` row). A PURE
+// @wardenx/billing — M23 per-diem rate calculator (D7, spec §3.3 `per_diem_rate_calculation` row). A PURE
 // function that maps M6's `LevelOfCarePeriod` segments within a claim's from-through range to the CMS
 // hospice per-diem model: each day of the claim is assigned a level of care (RHC / CHC / IRC / GIP)
 // and, for RHC, the **ADR-0001 day-60 two-tier bucket** — RHC-High for election days 1–60, RHC-Low for
@@ -13,13 +13,13 @@
 // `computeRhcCarryOver` (./rhc-carry-over.ts), the same count CWF feeds the Pricer (ch. 11 Pricer input 65-66).
 //
 // Each resolved rate is the wage-index-ADJUSTED CMS base rate; the wage index factor is PASSED IN
-// and SNAPSHOTTED into the result (the Phase-3 service persists it onto the `hipps_calculation` row so
+// and SNAPSHOTTED into the result (the Phase-3 service persists it onto the `per_diem_rate_calculation` row so
 // a later wage-index file reload cannot retroactively change historic math).
 //
 // PAYMENT MATH (F-211, audit M23-F02, ADR-0016 D1/D2):
 //   1. The wage index adjusts ONLY the LABOR SHARE of a rate (CMS publishes a labor share per level of care):
 //        adjusted = base × (laborShare × wageIndex + (1 − laborShare)),   rounded half-up to whole cents once.
-//      The labor shares are carried on the injected `HippsRateTable` (tenant-entered with the rates).
+//      The labor shares are carried on the injected `PerDiemRateTable` (tenant-entered with the rates).
 //   2. CHC is paid HOURLY, not as a per-diem: each CHC day is `adjustedHourlyRate × documented CHC hours` for that
 //      day (the day's hours come from the LOC period's `chcDocumentedHours`). CMS requires at least 8 hours of
 //      predominantly-nursing care in the 24-hour day for CHC; a day is priced on at most 24 hours; hours are
@@ -90,7 +90,7 @@ export function levelOfCareToCode(loc: LevelOfCare): "RHC" | "CHC" | "IRC" | "GI
  * published FY amounts via `POST /billing/rate-tables`; there is no bundled CMS file) — they are NOT
  * hard-coded here. The calculator applies the wage index to them.
  */
-export interface HippsRateTable {
+export interface PerDiemRateTable {
   /** RHC-High per-diem for election days 1-60 (ADR-0001). */
   readonly rhcDays1to60PerDiemCents: Cents;
   /** RHC-Low per-diem for election day 61 and after (ADR-0001). */
@@ -109,7 +109,7 @@ export interface HippsRateTable {
 }
 
 /** One injected level-of-care period (M6 `LevelOfCareReader`), clipped against the claim range below. */
-export interface HippsLocPeriodInput {
+export interface PerDiemClassLocPeriodInput {
   readonly levelOfCare: LevelOfCare;
   readonly from: IsoDate;
   readonly to: IsoDate;
@@ -121,7 +121,7 @@ export interface HippsLocPeriodInput {
 }
 
 /** The pure HIPPS calculator input — all plain data; nothing is read from a seam or clock. */
-export interface HippsCalculationInput {
+export interface PerDiemRateCalculationInput {
   readonly claimServiceFrom: IsoDate;
   readonly claimServiceTo: IsoDate;
   /** The hospice election/admission date — day 1 of the ADR-0001 day-60 tier count (see the header's
@@ -130,8 +130,8 @@ export interface HippsCalculationInput {
   /** Hospice days of earlier stays that carry into this stay's RHC day count (a readmission within 60 days
    *  of a discharge); 0 / absent when the count starts at this admission. */
   readonly priorHospiceDays?: number;
-  readonly levelOfCarePeriods: readonly HippsLocPeriodInput[];
-  readonly rateTable: HippsRateTable;
+  readonly levelOfCarePeriods: readonly PerDiemClassLocPeriodInput[];
+  readonly rateTable: PerDiemRateTable;
   /** Snapshotted into the result for audit reproducibility (D7 / D12). */
   readonly wageIndexCcn: string;
   readonly wageIndexFiscalYear: number;
@@ -146,7 +146,7 @@ export interface HippsCalculationInput {
 }
 
 /** One contiguous (level-of-care, RHC-bucket) segment of the claim, with its wage-adjusted per-diem. */
-export interface HippsSegmentResult {
+export interface PerDiemClassSegmentResult {
   readonly levelOfCare: LevelOfCare;
   readonly levelOfCareCode: "RHC" | "CHC" | "IRC" | "GIP";
   readonly dateFrom: IsoDate;
@@ -165,14 +165,14 @@ export interface HippsSegmentResult {
   readonly chcHours: number | null;
   /** F-211 — CHC only: the wage-index-adjusted HOURLY rate the day was priced at; `null` for other levels of care. */
   readonly chcAdjustedHourlyRateCents: Cents | null;
-  /** 1-based position of this segment in the HIPPS code (mirrors `hipps_calculation.segments`). */
-  readonly hippsCharPosition: number;
+  /** 1-based position of this segment in the HIPPS code (mirrors `per_diem_rate_calculation.segments`). */
+  readonly perDiemClassCharPosition: number;
   /** `ratePerDiemCents × days` — the segment's total charge. */
   readonly segmentTotalCents: Cents;
 }
 
-/** The pure HIPPS calculation result — the caller persists this onto `hipps_calculation`. */
-export interface HippsCalculationResult {
+/** The pure HIPPS calculation result — the caller persists this onto `per_diem_rate_calculation`. */
+export interface PerDiemRateCalculationResult {
   /** INTERNAL per-diem class code (not a Medicare HIPPS code; never emitted on a claim). */
   readonly perDiemClassCode: string;
   /** A representative per-diem (the first segment's wage-adjusted rate; 0 when no billable day). */
@@ -181,7 +181,7 @@ export interface HippsCalculationResult {
   readonly wageIndexFiscalYear: number;
   /** The wage index factor applied, echoed for the row snapshot. */
   readonly wageIndexFactorApplied: string;
-  readonly segments: readonly HippsSegmentResult[];
+  readonly segments: readonly PerDiemClassSegmentResult[];
   readonly rhcDays1to60: number;
   readonly rhcDays61Plus: number;
   /** Sum of every segment total — the claim's HIPPS-derived per-diem charge. */
@@ -192,7 +192,7 @@ export interface HippsCalculationResult {
  * Resolve the CMS base rate for a (level-of-care, RHC-bucket) pair from the injected rate table: a per-diem for
  * RHC/IRC/GIP, the HOURLY rate for CHC (priced separately by hours in the day loop).
  */
-function baseRateFor(rateTable: HippsRateTable, loc: LevelOfCare, bucket: RhcDayBucket): Cents {
+function baseRateFor(rateTable: PerDiemRateTable, loc: LevelOfCare, bucket: RhcDayBucket): Cents {
   switch (loc) {
     case "routine_home_care":
       return bucket === "days_1_60"
@@ -208,7 +208,7 @@ function baseRateFor(rateTable: HippsRateTable, loc: LevelOfCare, bucket: RhcDay
 }
 
 /** The labor share (decimal string) the wage index applies to for a level of care. */
-function laborShareFor(rateTable: HippsRateTable, loc: LevelOfCare): string {
+function laborShareFor(rateTable: PerDiemRateTable, loc: LevelOfCare): string {
   switch (loc) {
     case "routine_home_care":
       return rateTable.rhcLaborShare;
@@ -261,7 +261,7 @@ function assertChcHours(hours: number | null | undefined, iso: IsoDate): number 
  * must never be mapped into an 837I HIPPS field or shown as a claim field. A claim with no billable day
  * yields the all-filler `"00000"`.
  */
-export function derivePerDiemClassCode(segments: readonly HippsSegmentResult[]): string {
+export function derivePerDiemClassCode(segments: readonly PerDiemClassSegmentResult[]): string {
   const first = segments[0];
   if (first === undefined) return "00000";
   const locChar: Record<LevelOfCare, string> = {
@@ -297,12 +297,14 @@ interface DayResolution {
  * share a (level-of-care, RHC-bucket) pair into segments. Pure + deterministic; throws on an inverted
  * claim range (a caller bug).
  */
-export function calculateHipps(input: HippsCalculationInput): HippsCalculationResult {
+export function calculatePerDiemClass(
+  input: PerDiemRateCalculationInput,
+): PerDiemRateCalculationResult {
   const fromDay = toEpochDay(input.claimServiceFrom);
   const toDay = toEpochDay(input.claimServiceTo);
   if (toDay < fromDay) {
     throw new RangeError(
-      `calculateHipps: claimServiceTo (${input.claimServiceTo}) precedes claimServiceFrom (${input.claimServiceFrom})`,
+      `calculatePerDiemClass: claimServiceTo (${input.claimServiceTo}) precedes claimServiceFrom (${input.claimServiceFrom})`,
     );
   }
 
@@ -366,7 +368,7 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
 
   // 2. Coalesce contiguous days sharing (levelOfCare, bucket) into segments. CHC days never coalesce: each day's
   //    charge depends on that day's hours, so a CHC day is its own single-day segment.
-  const segments: HippsSegmentResult[] = [];
+  const segments: PerDiemClassSegmentResult[] = [];
   let position = 0;
   for (const dayRes of days) {
     const open = segments[segments.length - 1];
@@ -376,7 +378,7 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
       open.levelOfCare === dayRes.levelOfCare &&
       open.rhcDayBucket === dayRes.bucket;
     if (sameAsOpen) {
-      const grown: HippsSegmentResult = {
+      const grown: PerDiemClassSegmentResult = {
         ...open,
         dateTo: dayRes.iso,
         days: open.days + 1,
@@ -398,7 +400,7 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
         wageIndexFiscalYear: dayRes.wageIndexFiscalYear,
         chcHours: dayRes.chcHours,
         chcAdjustedHourlyRateCents: dayRes.chcAdjustedHourlyRateCents,
-        hippsCharPosition: position,
+        perDiemClassCharPosition: position,
         segmentTotalCents: perDiemAmountCents(dayRes.ratePerDiemCents, 1),
       });
     }

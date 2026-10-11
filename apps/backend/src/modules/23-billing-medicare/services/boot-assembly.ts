@@ -20,7 +20,7 @@ import { WardenXError } from "@wardenx/types";
 // PARTIALLY bound — `resolveProviderEntity` (#250) and, as of F-127 (#251), the physician-IDENTITY half of
 // `resolveClinicalParticipants`; `placeOfService` is bound only partially (F-213, see below) — so it counts toward neither
 // the bound nor the fully-stub tally cleanly. All four of `referenceData`'s methods are also real:
-// `wageIndexForCcn`, `activeSequestrationPolicy` (#250) and — F-210 — the TENANT-ENTERED `hippsRateTable`/
+// `wageIndexForCcn`, `activeSequestrationPolicy` (#250) and — F-210 — the TENANT-ENTERED `perDiemRateTable`/
 // `chcHourlyRateCents` over the M23-owned `hospice_rate_table` (see the "RATE TABLE" note below).
 // Each is individually live-tested against real rows
 // under RLS (`m23-claim-assembly-seams.live.test.ts`). Binding all this is NOT "the route works end to end"
@@ -29,13 +29,13 @@ import { WardenXError } from "@wardenx/types";
 // EVERY OTHER READER STAYS A DENY-STUB, and per-seam, not as one blanket "not ready yet" — each reason
 // below was checked against the owning module's actual published seam shape, not assumed from this file's
 // prior header:
-//     (referenceData.hippsRateTable / .chcHourlyRateCents were the last two stubs here — see RATE TABLE.)
+//     (referenceData.perDiemRateTable / .chcHourlyRateCents were the last two stubs here — see RATE TABLE.)
 //
 // RATE TABLE (F-210): the CMS per-diem rates are TENANT-ENTERED (no bundled CMS file). A billing administrator
 // keys each fiscal year's national base per-diems per provider entity via `POST /api/v1/billing/rate-tables`
 // (permission `billing.rate_table.admin`), into the M23-owned, effective-dated, append-only `hospice_rate_table`;
 // `buildM23ReferenceDataAdapter` reads the version covering the claim's service-from date and throws the typed
-// `RATE_TABLE_MISSING` (422) when none does. This removed the `SEAM_UNBOUND` wall at `hippsRateTable` — it is NOT
+// `RATE_TABLE_MISSING` (422) when none does. This removed the `SEAM_UNBOUND` wall at `perDiemRateTable` — it is NOT
 // "the route works": see NET EFFECT ON REACHABILITY for what still stops `POST /claims/assemble`.
 //
 // `mdm.resolveClinicalParticipants` (M40) was recorded as ONE "genuinely unbuilt" verdict (#250/#251);
@@ -73,23 +73,23 @@ import { WardenXError } from "@wardenx/types";
 //
 // NET EFFECT ON REACHABILITY, stated precisely rather than implied: `assemble()`'s call order is
 // patientPayer → admission → electionPeriods → certifications/faceToFace/levelOfCare → mdm.
-// resolveProviderEntity → referenceData.wageIndexForCcn → referenceData.hippsRateTable →
+// resolveProviderEntity → referenceData.wageIndexForCcn → referenceData.perDiemRateTable →
 // referenceData.activeSequestrationPolicy → billableEncounters → evvCompliance → mdm.
 // resolveClinicalParticipants → terminology → ... — binding `patientPayer` (#250) moved the boundary from
 // the FIRST read to the SECOND; binding all five M6 seams (#251, F-121) moves it PAST the M6 block
 // entirely, to the FIRST of the remaining stubs the call order actually reaches: `referenceData.
-// hippsRateTable` (`WAGE_INDEX_UNAVAILABLE`/422 fires first when no wage-index factor is loaded for the
-// CCN, so `hippsRateTable`'s `SEAM_UNBOUND`/503 is the live wall only once a factor resolves — both #250
+// perDiemRateTable` (`WAGE_INDEX_UNAVAILABLE`/422 fires first when no wage-index factor is loaded for the
+// CCN, so `perDiemRateTable`'s `SEAM_UNBOUND`/503 is the live wall only once a factor resolves — both #250
 // and this pass's own live test exercise wage-index rows the migration 0080 seed covers). Binding
 // `billableEncounters`/`signedEncounters`/`evvCompliance`/`terminology`/the physician-identity half of
 // `mdm.resolveClinicalParticipants` (F-122/F-123/F-124/F-127, #251) does NOT move that wall at all — all
-// sit LATER in the call order than `hippsRateTable`/`activeSequestrationPolicy`, so they stay unreachable
+// sit LATER in the call order than `perDiemRateTable`/`activeSequestrationPolicy`, so they stay unreachable
 // by a real request until the CMS rate-table gap closes. This is real, individually-verified progress on
 // five more seam steps, not a further unblock of the live boundary — stated precisely rather than implied,
 // the exact discipline the #250/#251 issues themselves established.
 //
 // F-210 UPDATE — the rate-table gap is closed by CODE + TENANT DATA (not by a bundled CMS file): the
-// `SEAM_UNBOUND` wall at `hippsRateTable` is gone, and a tenant that has keyed its rate table reaches every seam
+// `SEAM_UNBOUND` wall at `perDiemRateTable` is gone, and a tenant that has keyed its rate table reaches every seam
 // step above. What can STILL stop `POST /claims/assemble` is now DATA, each with a typed, actionable 4xx (none is
 // `SEAM_UNBOUND`): `WAGE_INDEX_UNAVAILABLE` (`wage_index_factor` is platform-shared and has NO loader — only the
 // five non-authoritative migration-0080 placeholder CCNs exist, FY starting 2026), `RATE_TABLE_MISSING` (the tenant
@@ -148,7 +148,7 @@ function unbound(seam: string): never {
 /**
  * F-209 (#251) — the `diagnoses` seam: the real M7-backed adapter when the composition root injects the
  * port, otherwise a fail-closed `SEAM_UNBOUND` stub. Exported so the port-absent behaviour is unit-testable
- * (the call sits behind `referenceData.hippsRateTable`, which the end-to-end path cannot yet pass).
+ * (the call sits behind `referenceData.perDiemRateTable`, which the end-to-end path cannot yet pass).
  */
 export function buildM23BootDiagnosesSeam(port?: M7ClaimDiagnosesReader): DiagnosisSequenceReader {
   return port
@@ -263,7 +263,7 @@ export function buildM23BootAssemblySeams(
     // throw — the cap rules warn-skip while degraded, never block.
     capProjection: buildM23CapProjectionAdapter(),
     // REAL for all four methods: wageIndexForCcn / activeSequestrationPolicy (#250) and, as of F-210, the
-    // TENANT-ENTERED hippsRateTable / chcHourlyRateCents (M23-owned `hospice_rate_table`, read org-explicitly
+    // TENANT-ENTERED perDiemRateTable / chcHourlyRateCents (M23-owned `hospice_rate_table`, read org-explicitly
     // over `db` — no injected port; `RATE_TABLE_MISSING`/422 when no table covers the service date).
     referenceData: buildM23ReferenceDataAdapter(db),
     ...(ports.m6ElectionAddendum ? { electionAddendum: ports.m6ElectionAddendum } : {}),

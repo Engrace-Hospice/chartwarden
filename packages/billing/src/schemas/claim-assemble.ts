@@ -29,7 +29,7 @@ export const ClaimAssembleResponse = Type.Object({
   totalChargeCents: CentsSchema,
   /** INTERNAL per-diem class code (not a Medicare HIPPS code). */
   perDiemClassCode: Type.String(),
-  hippsRateCents: CentsSchema,
+  perDiemRateCents: CentsSchema,
   lineCount: Count,
   initialValidationRunId: Uuid,
   initialValidationOutcome: Type.Union([

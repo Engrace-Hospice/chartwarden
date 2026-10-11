@@ -223,7 +223,7 @@ describe.skipIf(!DB_URL)("M23 hospice claim-line assembly — LIVE Postgres as w
         }),
       },
       referenceData: {
-        hippsRateTable: async () => RATE_TABLE,
+        perDiemRateTable: async () => RATE_TABLE,
         chcHourlyRateCents: async () => 6_000,
         wageIndexForCcn: async () => ({ factorDecimal: "1.0000", cbsaCode: null }),
         activeSequestrationPolicy: async () => ({

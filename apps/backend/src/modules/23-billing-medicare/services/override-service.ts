@@ -19,7 +19,12 @@
 // The override row + its M4 audit-event id are written in the SAME `withOrgContext` transaction, and the
 // audit-prominent `m23.claim.override_applied` event is emitted on that same tx (D2 outbox-only). At most
 // one override per result (`validation_override_result_uq`; the repo append is idempotent). NO PHI / MBI.
-import { type BillingRuleRegistry, type OverrideRole, repositories } from "@wardenx/billing";
+import {
+  type BillingRuleRegistry,
+  type OverrideRole,
+  canonicalRuleKey,
+  repositories,
+} from "@wardenx/billing";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
 import {
@@ -181,7 +186,7 @@ export function buildOverrideService(
           }
 
           // gate 3 — override_role_eligible (§4.7 / §2.2 / D5).
-          const rule = registry.getRule(result.ruleKey);
+          const rule = registry.getRule(canonicalRuleKey(result.ruleKey));
           if (rule?.regulatoryRequired && !rule.overrideRoleRequired) {
             throw new ForbiddenError(
               "a regulatory-required validation failure with no override path cannot be overridden",
@@ -203,7 +208,7 @@ export function buildOverrideService(
             claimId: claim.id,
             validationRunId: run.id,
             resultId: result.id,
-            ruleKey: result.ruleKey,
+            ruleKey: canonicalRuleKey(result.ruleKey),
             overrideRoleApplied,
             overrideMembershipId: actor.membershipId,
             reason: input.reason,
@@ -229,7 +234,7 @@ export function buildOverrideService(
                 validationRunId: run.id,
                 resultId: result.id,
                 overrideId: override.id,
-                ruleKey: result.ruleKey,
+                ruleKey: canonicalRuleKey(result.ruleKey),
                 overrideRoleApplied,
               },
             });
@@ -238,7 +243,7 @@ export function buildOverrideService(
           return {
             overrideId: override.id,
             resultId: result.id,
-            ruleKey: result.ruleKey,
+            ruleKey: canonicalRuleKey(result.ruleKey),
             overrideRoleApplied,
             overrideMembershipId: override.overrideMembershipId,
             m4AuditEventId: override.m4AuditEventId,

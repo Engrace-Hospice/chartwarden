@@ -89,6 +89,10 @@ for (const f of walk("packages/db/src/schema")) {
 const createTableRe = /create\s+table\s+(?:if\s+not\s+exists\s+)?"?(\w+)"?([^;]*)/gi;
 const RESERVED = new Set(["if", "not", "exists"]);
 const migratedTables = new Set<string>();
+// `ALTER TABLE x RENAME TO y` (e.g. 1069 hipps_calculation -> per_diem_rate_calculation): the table is migrated under
+// its FINAL name, so an old CREATE TABLE must not read as an orphan. Applied after every CREATE has been collected.
+const renameTableRe = /alter\s+table\s+(?:if\s+exists\s+)?"?(\w+)"?\s+rename\s+to\s+"?(\w+)"?/gi;
+const renamedTables: [string, string][] = [];
 for (const f of walk("packages/db/migrations")) {
   if (!f.endsWith(".sql")) continue;
   const src = read(f);
@@ -98,6 +102,12 @@ for (const f of walk("packages/db/migrations")) {
     if (/partition\s+of/i.test(m[2]!)) continue; // partition child belongs to its owned parent
     migratedTables.add(name);
   }
+  for (let m = renameTableRe.exec(src); m; m = renameTableRe.exec(src))
+    renamedTables.push([m[1]!, m[2]!]);
+}
+for (const [from, to] of renamedTables) {
+  if (!migratedTables.delete(from)) continue;
+  migratedTables.add(to);
 }
 
 // spec files: 7 -> docs/modules/WARDENX_MODULE_07_*.md

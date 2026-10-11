@@ -561,7 +561,7 @@ export * from "./quality/index";
 export * from "./cost-report/index";
 
 // M23 Billing (Medicare): 17 owned tables (§3.3) — claim/claim_line/claim_state_history/
-// claim_submission/claim_acknowledgment/noe_record/notr_record/hipps_calculation/sia_calculation/
+// claim_submission/claim_acknowledgment/noe_record/notr_record/per_diem_rate_calculation/sia_calculation/
 // validation_rule_config/validation_run/validation_result/validation_override/sequestration_policy/
 // wage_index_factor/mac_submitter_credential/eligibility_check. Every table is org-scoped
 // (organization_id NOT NULL) EXCEPT wage_index_factor, which is PLATFORM-SHARED (no organization_id,

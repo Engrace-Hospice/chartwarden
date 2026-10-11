@@ -2,13 +2,13 @@
 // (the federal fiscal year changes the rates on Oct 1), instead of pricing the whole claim at the first day's year.
 import {
   type FiscalYearPricing,
-  type HippsRateTable,
-  calculateHippsByFiscalYear,
+  type PerDiemRateTable,
+  calculatePerDiemClassByFiscalYear,
   splitAtFiscalYears,
 } from "@wardenx/billing";
 import { describe, expect, it } from "vitest";
 
-const RATES = (rhc: number): HippsRateTable => ({
+const RATES = (rhc: number): PerDiemRateTable => ({
   rhcDays1to60PerDiemCents: rhc,
   rhcDays61PlusPerDiemCents: rhc,
   chcHourlyRateCents: 6_667,
@@ -55,9 +55,9 @@ describe("splitAtFiscalYears", () => {
   });
 });
 
-describe("calculateHippsByFiscalYear", () => {
+describe("calculatePerDiemClassByFiscalYear", () => {
   it("prices the September days at FY2026 and the October days at FY2027", () => {
-    const result = calculateHippsByFiscalYear(
+    const result = calculatePerDiemClassByFiscalYear(
       { ...base, claimServiceFrom: "2026-09-29", claimServiceTo: "2026-10-02" },
       (fy) => PRICING[fy] as FiscalYearPricing,
     );
@@ -68,7 +68,7 @@ describe("calculateHippsByFiscalYear", () => {
       days: 2,
       ratePerDiemCents: 20_000, // 200 × (0.66 × 1.0 + 0.34)
       wageIndexFactorApplied: "1.0000",
-      hippsCharPosition: 1,
+      perDiemClassCharPosition: 1,
     });
     expect(oct).toMatchObject({
       dateFrom: "2026-10-01",
@@ -76,14 +76,14 @@ describe("calculateHippsByFiscalYear", () => {
       days: 2,
       ratePerDiemCents: 22_386, // 21000 × (0.66 × 1.1 + 0.34)
       wageIndexFactorApplied: "1.1000",
-      hippsCharPosition: 2,
+      perDiemClassCharPosition: 2,
     });
     expect(result.totalCents).toBe(2 * 20_000 + 2 * (oct?.ratePerDiemCents ?? 0));
     expect(result.rhcDays1to60 + result.rhcDays61Plus).toBe(4);
   });
 
   it("is identical to a single calculation when the claim stays inside one fiscal year", () => {
-    const one = calculateHippsByFiscalYear(
+    const one = calculatePerDiemClassByFiscalYear(
       { ...base, claimServiceFrom: "2026-09-01", claimServiceTo: "2026-09-07" },
       (fy) => PRICING[fy] as FiscalYearPricing,
     );
@@ -97,7 +97,7 @@ describe("calculateHippsByFiscalYear", () => {
       2025: { ...PRICING[2025], wageIndexAreaFactors: { residence: "0.9000", facility: null } },
       2026: { ...PRICING[2026], wageIndexAreaFactors: { residence: "1.2000", facility: null } },
     } as Record<number, FiscalYearPricing>;
-    const result = calculateHippsByFiscalYear(
+    const result = calculatePerDiemClassByFiscalYear(
       { ...base, claimServiceFrom: "2026-09-30", claimServiceTo: "2026-10-01" },
       (fy) => withAreas[fy] as FiscalYearPricing,
     );
@@ -110,7 +110,7 @@ describe("calculateHippsByFiscalYear", () => {
       rhcDays1to60PerDiemCents: 20_000,
       rhcDays61PlusPerDiemCents: 16_000,
     };
-    const result = calculateHippsByFiscalYear(
+    const result = calculatePerDiemClassByFiscalYear(
       {
         ...base,
         hospiceAdmissionDate: "2026-08-02", // 2026-09-30 is day 60; 2026-10-01 is day 61

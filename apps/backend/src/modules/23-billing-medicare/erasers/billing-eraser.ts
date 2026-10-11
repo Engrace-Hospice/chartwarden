@@ -1,7 +1,7 @@
 // apps/backend/src/modules/23-billing-medicare/erasers/billing-eraser.ts — the M23 `billing_record` data
 // eraser (M4 destruction registry, §3.7 / §8.4). Unlike M27/M30 (org-only operational rows), the M23
 // billing record IS per-patient PHI: claim / claim_line / claim_state_history / validation_run/result/
-// override / claim_submission / claim_acknowledgment / hipps_calculation / sia_calculation /
+// override / claim_submission / claim_acknowledgment / per_diem_rate_calculation / sia_calculation /
 // eligibility_check / noe_record / notr_record all carry the patient FK. The billing record is
 // COMPLIANCE-class (7 years past final action per CMS 42 CFR §424 / §405 + state override, M4 D1), so the
 // registered eraser is the DESTRUCTION handler the M4 destruction-cert workflow invokes — NOT an
@@ -21,7 +21,7 @@
 //
 // CASCADE ORDER (§3.7, from the package contract): children first so FKs unwind cleanly —
 //   eligibility_check → claim_acknowledgment → claim_submission → claim_state_history →
-//   validation_override → validation_result → validation_run → sia_calculation → hipps_calculation →
+//   validation_override → validation_result → validation_run → sia_calculation → per_diem_rate_calculation →
 //   claim_line → claim → noe_record → notr_record.
 // The append-only tables are deleted in-cascade; the free-text fields in `M23_REDACT_FIELDS` (override
 // reason, replacement reason, patient-id refs) are redacted rather than orphaned. NO MBI is ever a field
@@ -180,7 +180,7 @@ export function createDrizzleBillingEraseStore(
   const VRUN = schema.validationRun;
   const VRES = schema.validationResult;
   const VO = schema.validationOverride;
-  const HIPPS = schema.hippsCalculation;
+  const PER_DIEM_CLASS = schema.perDiemRateCalculation;
   const SIA = schema.siaCalculation;
   const EC = schema.eligibilityCheck;
   const NOE = schema.noeRecord;
@@ -500,7 +500,7 @@ export function createDrizzleBillingEraseStore(
                   .returning({ id: VRUN.id })
               ).length;
 
-        // 8-10. sia_calculation → hipps_calculation → claim_line.
+        // 8-10. sia_calculation → per_diem_rate_calculation → claim_line.
         const siaCalcs =
           claimIds.length === 0
             ? 0
@@ -512,16 +512,19 @@ export function createDrizzleBillingEraseStore(
                   )
                   .returning({ id: SIA.id })
               ).length;
-        const hippsCalcs =
+        const perDiemClassCalcs =
           claimIds.length === 0
             ? 0
             : (
                 await tx
-                  .delete(HIPPS)
+                  .delete(PER_DIEM_CLASS)
                   .where(
-                    and(eq(HIPPS.organizationId, organizationId), inArray(HIPPS.claimId, claimIds)),
+                    and(
+                      eq(PER_DIEM_CLASS.organizationId, organizationId),
+                      inArray(PER_DIEM_CLASS.claimId, claimIds),
+                    ),
                   )
-                  .returning({ id: HIPPS.id })
+                  .returning({ id: PER_DIEM_CLASS.id })
               ).length;
         const claimLines =
           claimIds.length === 0
@@ -602,7 +605,7 @@ export function createDrizzleBillingEraseStore(
           validation_result: results,
           validation_run: runs,
           sia_calculation: siaCalcs,
-          hipps_calculation: hippsCalcs,
+          per_diem_rate_calculation: perDiemClassCalcs,
           claim_line: claimLines,
           claim: claims,
           noe_record: noes,

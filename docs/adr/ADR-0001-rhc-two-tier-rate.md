@@ -62,3 +62,17 @@ and not double-counted with CHC.
   CHC 15-minute hourly units, full 837I wire content). This ADR fixes the **architecture
   baseline** only; M23 remains FAIL until its own re-lock.
 - No downstream module may reference `HippsCalculation` or a hospice HIPPS code.
+
+## Implementation note (migration 1069)
+
+The `HippsCalculation` entity is now `PerDiemRateCalculation` in code: table `hipps_calculation` ->
+`per_diem_rate_calculation` (columns `hipps_code` -> `per_diem_class_code`, `hipps_rate_cents` ->
+`per_diem_rate_cents`), rule key `hipps_coding_correct` -> `per_diem_class_coding_correct`. The stored 5-character
+value is an internal per-diem class placeholder and is never transmitted on a claim
+(`packages/billing/__tests__/no-hipps-on-claim.test.ts` guards this).
+
+API field names follow the rename: the claim-detail `pricing.hipps` block is now `pricing.perDiemClass` and its
+`hippsRateCents` is `perDiemRateCents` (OpenAPI + typed client regenerated). Values persisted before migration 1069
+in append-only history are NOT rewritten (`validation_result.rule_key` `hipps_coding_correct`, remediation `fixAction`
+`recompute_hipps`, `segments[*].hippsCharPosition`); readers map those legacy spellings onto the current ones
+(`packages/billing/src/legacy-stored-aliases.ts`), and the mutable `validation_rule_config.rule_key` is renamed in place.

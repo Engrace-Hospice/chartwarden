@@ -200,26 +200,26 @@ export interface ValidationRulePredicateDsl {
   [key: string]: unknown;
 }
 
-// hipps_calculation.segments — per-period level-of-care breakdown (NOT NULL, no default).
-export interface HippsCalculationSegment {
+// per_diem_rate_calculation.segments — per-period level-of-care breakdown (NOT NULL, no default).
+export interface PerDiemRateCalculationSegment {
   levelOfCare: "RHC" | "CHC" | "IRC" | "GIP";
   dateFrom: string; // ISO date
   dateTo: string; // ISO date
   ratePerDiemCents: number;
-  hippsCharPosition: number;
+  perDiemClassCharPosition: number;
   /** The fiscal year (starting calendar year) and the wage-index factor this segment was priced with - one claim can
    *  span two fiscal years, so the per-claim `wage_index_*` columns alone cannot reproduce the second year's math.
    *  Optional: rows written before this field carry neither. */
   wageIndexFiscalYear?: number;
   wageIndexFactor?: string;
 }
-export type HippsCalculationSegments = HippsCalculationSegment[];
+export type PerDiemRateCalculationSegments = PerDiemRateCalculationSegment[];
 
-// hipps_calculation.rhc_carry_over — the two-tier RHC carry-over the claim was priced with (migration 0376;
+// per_diem_rate_calculation.rhc_carry_over — the two-tier RHC carry-over the claim was priced with (migration 0376;
 // nullable: rows priced before it carry NULL). Shape owned by `@wardenx/billing` `computeRhcCarryOver` +
 // M23's `RhcCarryOverView`; kept structural here (db does not import billing). Dates, counts, NPIs, codes —
 // no PHI / MBI.
-export interface HippsCalculationRhcCarryOver {
+export interface PerDiemRateCalculationRhcCarryOver {
   electionDate: string;
   priorDays: number;
   chainDays: number;

@@ -1,15 +1,15 @@
 import {
   ChcHoursError,
-  type HippsCalculationInput,
-  type HippsRateTable,
-  type HippsSegmentResult,
+  type PerDiemClassSegmentResult,
+  type PerDiemRateCalculationInput,
+  type PerDiemRateTable,
   applyWageIndexFactor,
   applyWageIndexToLaborShare,
-  calculateHipps,
+  calculatePerDiemClass,
   derivePerDiemClassCode,
   levelOfCareToCode,
 } from "@wardenx/billing";
-// @wardenx/billing — M23 HIPPS calculator (D7, spec §1.1 / §3.3 `hipps_calculation`) pure-domain tests.
+// @wardenx/billing — M23 HIPPS calculator (D7, spec §1.1 / §3.3 `per_diem_rate_calculation`) pure-domain tests.
 //
 // The calculator maps M6 level-of-care periods within a claim's from-through range to per-diem segments,
 // buckets RHC days by day-of-stay from the hospice ADMISSION date (days 1-7 vs 8+), applies the wage index
@@ -21,7 +21,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 // TODO(CMS-fixture): replace these representative per-diems with the published FY hospice rate file.
-const RATE_TABLE: HippsRateTable = {
+const RATE_TABLE: PerDiemRateTable = {
   rhcDays1to60PerDiemCents: 20_000,
   rhcDays61PlusPerDiemCents: 16_000,
   chcHourlyRateCents: 6_667, // ~ $160,000-cents / 24h; CHC is priced HOURLY x documented hours (F-211)
@@ -36,7 +36,7 @@ const RATE_TABLE: HippsRateTable = {
 
 const ADMISSION = "2026-01-01"; // day-of-stay anchor; day 1 = 2026-01-01.
 
-function input(over: Partial<HippsCalculationInput>): HippsCalculationInput {
+function input(over: Partial<PerDiemRateCalculationInput>): PerDiemRateCalculationInput {
   return {
     claimServiceFrom: "2026-01-01",
     claimServiceTo: "2026-01-07",
@@ -63,10 +63,10 @@ describe("levelOfCareToCode — full-name → 3-letter code mapping", () => {
     expect(levelOfCareToCode("general_inpatient_care")).toBe("GIP"));
 });
 
-describe("calculateHipps — ADR-0001 RHC day-60 tier boundary (day-of-stay from admission)", () => {
+describe("calculatePerDiemClass — ADR-0001 RHC day-60 tier boundary (day-of-stay from admission)", () => {
   // ADMISSION = 2026-01-01 ⇒ day 60 = 2026-03-01, day 61 = 2026-03-02.
   it("a 7-day claim starting on the admission date is entirely RHC-High (days_1_60)", () => {
-    const r = calculateHipps(
+    const r = calculatePerDiemClass(
       input({ claimServiceFrom: "2026-01-01", claimServiceTo: "2026-01-07" }),
     );
     expect(r.rhcDays1to60).toBe(7);
@@ -80,7 +80,7 @@ describe("calculateHipps — ADR-0001 RHC day-60 tier boundary (day-of-stay from
   });
 
   it("day 8 is STILL RHC-High — the old day-7 boundary was the ADR-0001 defect", () => {
-    const r = calculateHipps(
+    const r = calculatePerDiemClass(
       input({ claimServiceFrom: "2026-01-01", claimServiceTo: "2026-01-08" }),
     );
     expect(r.rhcDays1to60).toBe(8);
@@ -90,7 +90,7 @@ describe("calculateHipps — ADR-0001 RHC day-60 tier boundary (day-of-stay from
   });
 
   it("the exact day-60 / day-61 boundary: a 2-day claim spanning stay-day 60→61 splits into two tiers", () => {
-    const r = calculateHipps(
+    const r = calculatePerDiemClass(
       input({ claimServiceFrom: "2026-03-01", claimServiceTo: "2026-03-02" }),
     );
     expect(r.segments).toHaveLength(2);
@@ -104,7 +104,7 @@ describe("calculateHipps — ADR-0001 RHC day-60 tier boundary (day-of-stay from
 
   it("a mid-stay interim claim past day 60 bills entirely at the RHC-Low (days_61_plus) rate", () => {
     // 2026-04-01 is stay-day 91.
-    const r = calculateHipps(
+    const r = calculatePerDiemClass(
       input({ claimServiceFrom: "2026-04-01", claimServiceTo: "2026-04-05" }),
     );
     expect(r.rhcDays1to60).toBe(0);
@@ -115,7 +115,7 @@ describe("calculateHipps — ADR-0001 RHC day-60 tier boundary (day-of-stay from
   });
 
   it("a single-day claim on the admission date is one days_1_60 day", () => {
-    const r = calculateHipps(
+    const r = calculatePerDiemClass(
       input({ claimServiceFrom: "2026-01-01", claimServiceTo: "2026-01-01" }),
     );
     expect(r.rhcDays1to60).toBe(1);
@@ -124,9 +124,9 @@ describe("calculateHipps — ADR-0001 RHC day-60 tier boundary (day-of-stay from
   });
 });
 
-describe("calculateHipps — non-RHC levels of care (CHC / IRC / GIP)", () => {
+describe("calculatePerDiemClass — non-RHC levels of care (CHC / IRC / GIP)", () => {
   it("prices a CHC-only claim HOURLY (rate x documented hours) with bucket n/a, one segment per day", () => {
-    const r = calculateHipps(
+    const r = calculatePerDiemClass(
       input({
         claimServiceFrom: "2026-03-01",
         claimServiceTo: "2026-03-03",
@@ -156,7 +156,7 @@ describe("calculateHipps — non-RHC levels of care (CHC / IRC / GIP)", () => {
 
   it("CHC day = the labor-share-adjusted HOURLY rate x hours (hand-computed, WI 0.9000, labor 0.68)", () => {
     // adjusted hourly = 6667 x (0.68 x 0.9 + 0.32) = 6667 x 0.932 = 6213.644 -> 6214 (half-up).
-    const r = calculateHipps(
+    const r = calculatePerDiemClass(
       input({
         claimServiceFrom: "2026-03-01",
         claimServiceTo: "2026-03-01",
@@ -178,7 +178,7 @@ describe("calculateHipps — non-RHC levels of care (CHC / IRC / GIP)", () => {
   });
 
   it("CHC quarter-hour hours round half-up on the day's charge (8.25 h x 6214 = 51,265.5 -> 51,266)", () => {
-    const r = calculateHipps(
+    const r = calculatePerDiemClass(
       input({
         claimServiceFrom: "2026-03-01",
         claimServiceTo: "2026-03-01",
@@ -198,7 +198,7 @@ describe("calculateHipps — non-RHC levels of care (CHC / IRC / GIP)", () => {
 
   it("accepts exactly the 8-hour CMS minimum and exactly 24 hours", () => {
     const at = (hours: number) =>
-      calculateHipps(
+      calculatePerDiemClass(
         input({
           claimServiceFrom: "2026-03-01",
           claimServiceTo: "2026-03-01",
@@ -218,7 +218,7 @@ describe("calculateHipps — non-RHC levels of care (CHC / IRC / GIP)", () => {
 
   it("fails closed (ChcHoursError) on an undocumented, sub-8h, >24h or non-quarter-hour CHC day", () => {
     const run = (hours: number | null | undefined) =>
-      calculateHipps(
+      calculatePerDiemClass(
         input({
           claimServiceFrom: "2026-03-01",
           claimServiceTo: "2026-03-01",
@@ -246,7 +246,7 @@ describe("calculateHipps — non-RHC levels of care (CHC / IRC / GIP)", () => {
   });
 
   it("a mixed RHC / CHC / RHC claim keeps RHC coalesced and splits CHC per day", () => {
-    const r = calculateHipps(
+    const r = calculatePerDiemClass(
       input({
         claimServiceFrom: "2026-02-10",
         claimServiceTo: "2026-02-14",
@@ -272,7 +272,7 @@ describe("calculateHipps — non-RHC levels of care (CHC / IRC / GIP)", () => {
   });
 
   it("prices an IRC-only claim at the IRC per-diem", () => {
-    const r = calculateHipps(
+    const r = calculatePerDiemClass(
       input({
         claimServiceFrom: "2026-03-01",
         claimServiceTo: "2026-03-02",
@@ -286,7 +286,7 @@ describe("calculateHipps — non-RHC levels of care (CHC / IRC / GIP)", () => {
   });
 
   it("prices a GIP-only claim at the GIP per-diem", () => {
-    const r = calculateHipps(
+    const r = calculatePerDiemClass(
       input({
         claimServiceFrom: "2026-03-01",
         claimServiceTo: "2026-03-04",
@@ -300,9 +300,9 @@ describe("calculateHipps — non-RHC levels of care (CHC / IRC / GIP)", () => {
   });
 });
 
-describe("calculateHipps — LOC-period mid-claim transitions + segment coalescing", () => {
+describe("calculatePerDiemClass — LOC-period mid-claim transitions + segment coalescing", () => {
   it("coalesces contiguous same-(LOC, bucket) days into a single segment", () => {
-    const r = calculateHipps(
+    const r = calculatePerDiemClass(
       input({ claimServiceFrom: "2026-02-01", claimServiceTo: "2026-02-04" }),
     );
     // All four days are RHC days_61_plus ⇒ one coalesced 4-day segment.
@@ -311,7 +311,7 @@ describe("calculateHipps — LOC-period mid-claim transitions + segment coalesci
   });
 
   it("breaks a segment when the LOC changes mid-claim (RHC → GIP → RHC)", () => {
-    const r = calculateHipps(
+    const r = calculatePerDiemClass(
       input({
         claimServiceFrom: "2026-02-10",
         claimServiceTo: "2026-02-14",
@@ -331,7 +331,7 @@ describe("calculateHipps — LOC-period mid-claim transitions + segment coalesci
 
   it("breaks a segment at the RHC bucket boundary even though the LOC is unchanged", () => {
     // 2026-02-27..2026-03-03 is RHC throughout: stay-days 58,59,60 are days_1_60; 61,62 are days_61_plus.
-    const r = calculateHipps(
+    const r = calculatePerDiemClass(
       input({ claimServiceFrom: "2026-02-27", claimServiceTo: "2026-03-03" }),
     );
     expect(r.segments).toHaveLength(2);
@@ -341,8 +341,8 @@ describe("calculateHipps — LOC-period mid-claim transitions + segment coalesci
     expect(r.segments[1]!.days).toBe(2);
   });
 
-  it("assigns 1-based hipps char positions in segment order", () => {
-    const r = calculateHipps(
+  it("assigns 1-based perDiemClass char positions in segment order", () => {
+    const r = calculatePerDiemClass(
       input({
         claimServiceFrom: "2026-02-10",
         claimServiceTo: "2026-02-12",
@@ -353,11 +353,11 @@ describe("calculateHipps — LOC-period mid-claim transitions + segment coalesci
         ],
       }),
     );
-    expect(r.segments.map((s) => s.hippsCharPosition)).toEqual([1, 2, 3]);
+    expect(r.segments.map((s) => s.perDiemClassCharPosition)).toEqual([1, 2, 3]);
   });
 
   it("each segment's total is rate × days", () => {
-    const r = calculateHipps(
+    const r = calculatePerDiemClass(
       input({ claimServiceFrom: "2026-02-01", claimServiceTo: "2026-02-03" }),
     );
     for (const seg of r.segments) {
@@ -366,9 +366,9 @@ describe("calculateHipps — LOC-period mid-claim transitions + segment coalesci
   });
 });
 
-describe("calculateHipps — gap days (uncovered by any LOC period)", () => {
+describe("calculatePerDiemClass — gap days (uncovered by any LOC period)", () => {
   it("skips a day not covered by any LOC period (no charge, no segment day)", () => {
-    const r = calculateHipps(
+    const r = calculatePerDiemClass(
       input({
         claimServiceFrom: "2026-02-01",
         claimServiceTo: "2026-02-05",
@@ -390,7 +390,7 @@ describe("calculateHipps — gap days (uncovered by any LOC period)", () => {
   });
 
   it("a claim with no covering LOC period at all yields no segments and zero totals", () => {
-    const r = calculateHipps(
+    const r = calculatePerDiemClass(
       input({
         claimServiceFrom: "2026-02-01",
         claimServiceTo: "2026-02-05",
@@ -404,16 +404,16 @@ describe("calculateHipps — gap days (uncovered by any LOC period)", () => {
   });
 });
 
-describe("calculateHipps — wage index application + snapshot (D7 / D12)", () => {
+describe("calculatePerDiemClass — wage index application + snapshot (D7 / D12)", () => {
   it("applies the wage index factor to the base rate per diem (identity at 1.0000)", () => {
-    const r = calculateHipps(input({ wageIndexFactorDecimal: "1.0000" }));
+    const r = calculatePerDiemClass(input({ wageIndexFactorDecimal: "1.0000" }));
     expect(r.segments[0]!.baseRatePerDiemCents).toBe(20_000);
     expect(r.segments[0]!.ratePerDiemCents).toBe(20_000);
   });
 
   it("adjusts ONLY the labor share (F-211): RHC 20,000 x (0.66 x 0.9234 + 0.34) = 18,988.88 -> 18,989", () => {
     // Hand-computed: 0.66 x 0.9234 = 0.609444; + 0.34 = 0.949444; x 20,000 = 18,988.88.
-    const r = calculateHipps(input({ wageIndexFactorDecimal: "0.9234" }));
+    const r = calculatePerDiemClass(input({ wageIndexFactorDecimal: "0.9234" }));
     expect(r.segments[0]!.ratePerDiemCents).toBe(18_989);
     expect(r.segments[0]!.baseRatePerDiemCents).toBe(20_000); // base is pre-wage-index
     expect(r.totalCents).toBe(7 * 18_989);
@@ -423,13 +423,13 @@ describe("calculateHipps — wage index application + snapshot (D7 / D12)", () =
   });
 
   it("adjusts only the labor share for an above-1 wage index: RHC 20,000 x (0.66 x 1.15 + 0.34) = 21,980", () => {
-    const r = calculateHipps(input({ wageIndexFactorDecimal: "1.1500" }));
+    const r = calculatePerDiemClass(input({ wageIndexFactorDecimal: "1.1500" }));
     expect(r.segments[0]!.ratePerDiemCents).toBe(21_980);
   });
 
   it("uses each level of care's OWN labor share (IRC 0.54, GIP 0.64), hand-computed", () => {
     // IRC 50,000 x (0.54 x 1.10 + 0.46) = 50,000 x 1.054 = 52,700.
-    const irc = calculateHipps(
+    const irc = calculatePerDiemClass(
       input({
         claimServiceFrom: "2026-03-01",
         claimServiceTo: "2026-03-01",
@@ -441,7 +441,7 @@ describe("calculateHipps — wage index application + snapshot (D7 / D12)", () =
     );
     expect(irc.totalCents).toBe(52_700);
     // GIP 100,000 x (0.64 x 0.90 + 0.36) = 100,000 x 0.936 = 93,600.
-    const gip = calculateHipps(
+    const gip = calculatePerDiemClass(
       input({
         claimServiceFrom: "2026-03-01",
         claimServiceTo: "2026-03-01",
@@ -464,7 +464,7 @@ describe("calculateHipps — wage index application + snapshot (D7 / D12)", () =
   });
 
   it("snapshots the wage index ccn / fiscal year / factor into the result", () => {
-    const r = calculateHipps(
+    const r = calculatePerDiemClass(
       input({
         wageIndexCcn: "777777",
         wageIndexFiscalYear: 2027,
@@ -477,9 +477,9 @@ describe("calculateHipps — wage index application + snapshot (D7 / D12)", () =
   });
 });
 
-describe("calculateHipps — invariants + invalid input", () => {
+describe("calculatePerDiemClass — invariants + invalid input", () => {
   it("the claim total equals the sum of every segment total", () => {
-    const r = calculateHipps(
+    const r = calculatePerDiemClass(
       input({
         claimServiceFrom: "2026-01-05",
         claimServiceTo: "2026-01-12",
@@ -492,13 +492,15 @@ describe("calculateHipps — invariants + invalid input", () => {
 
   it("throws RangeError on an inverted claim range (service-to before service-from)", () => {
     expect(() =>
-      calculateHipps(input({ claimServiceFrom: "2026-02-05", claimServiceTo: "2026-02-01" })),
+      calculatePerDiemClass(
+        input({ claimServiceFrom: "2026-02-05", claimServiceTo: "2026-02-01" }),
+      ),
     ).toThrow(RangeError);
   });
 });
 
 describe("derivePerDiemClassCode — internal placeholder encoding (not a Medicare HIPPS code)", () => {
-  function seg(over: Partial<HippsSegmentResult>): HippsSegmentResult {
+  function seg(over: Partial<PerDiemClassSegmentResult>): PerDiemClassSegmentResult {
     return {
       levelOfCare: "routine_home_care",
       levelOfCareCode: "RHC",
@@ -512,7 +514,7 @@ describe("derivePerDiemClassCode — internal placeholder encoding (not a Medica
       wageIndexFiscalYear: 2025,
       chcHours: null,
       chcAdjustedHourlyRateCents: null,
-      hippsCharPosition: 1,
+      perDiemClassCharPosition: 1,
       segmentTotalCents: 20_000,
       ...over,
     };
@@ -563,10 +565,10 @@ describe("derivePerDiemClassCode — internal placeholder encoding (not a Medica
   });
 });
 
-describe("calculateHipps — two-tier RHC carry-over across a readmission (Claims Processing Manual ch. 11)", () => {
+describe("calculatePerDiemClass — two-tier RHC carry-over across a readmission (Claims Processing Manual ch. 11)", () => {
   it("a readmission carrying 55 prior hospice days reaches the low rate on its 6th day", () => {
     // Arrange: readmitted 2026-01-01 within 60 days of a 55-day stay → this stay's day 1 is cumulative day 56.
-    const r = calculateHipps(
+    const r = calculatePerDiemClass(
       input({ claimServiceFrom: "2026-01-01", claimServiceTo: "2026-01-10", priorHospiceDays: 55 }),
     );
     // Assert: cumulative days 56–60 high, 61–65 low.
@@ -575,10 +577,10 @@ describe("calculateHipps — two-tier RHC carry-over across a readmission (Claim
   });
 
   it("no carried days (a first stay, or a gap over 60 days) keeps the stay's own count", () => {
-    const withZero = calculateHipps(
+    const withZero = calculatePerDiemClass(
       input({ claimServiceFrom: "2026-01-01", claimServiceTo: "2026-01-10", priorHospiceDays: 0 }),
     );
-    const absent = calculateHipps(
+    const absent = calculatePerDiemClass(
       input({ claimServiceFrom: "2026-01-01", claimServiceTo: "2026-01-10" }),
     );
     expect(withZero.rhcDays1to60).toBe(10);
@@ -586,7 +588,7 @@ describe("calculateHipps — two-tier RHC carry-over across a readmission (Claim
   });
 
   it("60 or more carried days bill the whole readmission at the low rate", () => {
-    const r = calculateHipps(
+    const r = calculatePerDiemClass(
       input({ claimServiceFrom: "2026-01-01", claimServiceTo: "2026-01-03", priorHospiceDays: 60 }),
     );
     expect(r.rhcDays1to60).toBe(0);

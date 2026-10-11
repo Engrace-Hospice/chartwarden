@@ -2913,7 +2913,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   // ── claims core (claims.routes.ts, §4.1 #1–#13) ──
   "POST /api/v1/billing/claims/assemble": {
     summary:
-      "Assemble a server-authoritative DRAFT claim (lines + HIPPS + SIA + initial validation run, §4.1 #1)",
+      "Assemble a server-authoritative DRAFT claim (lines + per-diem class + SIA + initial validation run, §4.1 #1)",
     body: ClaimAssembleRequest,
     response: ClaimAssembleResponse,
     headers: IDEMPOTENCY_KEY_HEADER,
@@ -10229,10 +10229,10 @@ const M23ValidationRunView = Type.Object({
   initiatedByMembershipId: Type.Union([Type.String(), Type.Null()]),
 });
 const M23ClaimPricingView = Type.Object({
-  hipps: Type.Union([
+  perDiemClass: Type.Union([
     Type.Object({
       perDiemClassCode: Type.String(),
-      hippsRateCents: Type.Integer(),
+      perDiemRateCents: Type.Integer(),
       wageIndexCcn: Type.String(),
       wageIndexFiscalYear: Type.Integer(),
       wageIndexFactor: Type.String(),
@@ -10573,7 +10573,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/billing/claims/:id": {
     summary:
-      "Single-claim detail - lines + HIPPS + SIA + latest run + submissions + acks (§4.1 #3)",
+      "Single-claim detail - lines + per-diem class + SIA + latest run + submissions + acks (§4.1 #3)",
     response: M23ClaimDetailResponse,
   },
   "GET /api/v1/billing/claims/:id/acknowledgments": {

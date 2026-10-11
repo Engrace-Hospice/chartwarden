@@ -30,6 +30,7 @@ import { randomUUID } from "node:crypto";
 import {
   type ClaimState,
   type ClaimTransitionEvent,
+  canonicalRuleKey,
   reduce as claimReduce,
   deriveControlNumber,
   noeMachine,
@@ -57,7 +58,7 @@ import type {
   RuleConfigView,
   ValidationOverrideView,
 } from "./read-service";
-import { claimDischargeCodesView, hippsPricingView } from "./read-service";
+import { claimDischargeCodesView, perDiemClassPricingView } from "./read-service";
 import type {
   AssembleClaimArgs,
   AssembledClaimLineInput,
@@ -130,7 +131,7 @@ function mapRuleConfig(row: schema.ValidationRuleConfig): RuleConfigView {
   return {
     ruleConfigId: row.id,
     organizationId: row.organizationId,
-    ruleKey: row.ruleKey,
+    ruleKey: canonicalRuleKey(row.ruleKey),
     ruleVersion: row.ruleVersion,
     isCustom: row.isCustom,
     enabled: row.enabled,
@@ -268,11 +269,11 @@ async function deleteDraftClaimSubtree(
       ),
     );
   await tx
-    .delete(schema.hippsCalculation)
+    .delete(schema.perDiemRateCalculation)
     .where(
       and(
-        eq(schema.hippsCalculation.claimId, claimId),
-        eq(schema.hippsCalculation.organizationId, organizationId),
+        eq(schema.perDiemRateCalculation.claimId, claimId),
+        eq(schema.perDiemRateCalculation.organizationId, organizationId),
       ),
     );
   await tx
@@ -482,7 +483,9 @@ export function buildDrizzleM23WriteService(
     const latestRun = await new repositories.ValidationRunRepository(tx).findLatestForClaim(
       claim.id,
     );
-    const hipps = await new repositories.HippsCalculationRepository(tx).findByClaim(claim.id);
+    const perDiemClass = await new repositories.PerDiemRateCalculationRepository(tx).findByClaim(
+      claim.id,
+    );
     const sia = await new repositories.SiaCalculationRepository(tx).findByClaim(claim.id);
     return {
       ...mapClaimSummary(claim),
@@ -516,7 +519,9 @@ export function buildDrizzleM23WriteService(
           }
         : null,
       pricing: {
-        hipps: hipps ? hippsPricingView(hipps, { admissionId: claim.admissionId }) : null,
+        perDiemClass: perDiemClass
+          ? perDiemClassPricingView(perDiemClass, { admissionId: claim.admissionId })
+          : null,
         sia: sia
           ? {
               windowStart: sia.windowStart,
@@ -912,7 +917,7 @@ export function buildDrizzleM23WriteService(
           claimId: claim.id,
           validationRunId: run.id,
           resultId: result.id,
-          ruleKey: result.ruleKey,
+          ruleKey: canonicalRuleKey(result.ruleKey),
           overrideRole: args.overrideRole,
           actorUserId: actor.userId,
           correlationId,
@@ -939,7 +944,7 @@ export function buildDrizzleM23WriteService(
             validationRunId: run.id,
             resultId: result.id,
             overrideId: override.id,
-            ruleKey: result.ruleKey,
+            ruleKey: canonicalRuleKey(result.ruleKey),
             overrideRoleApplied: args.overrideRole,
           },
         });
@@ -949,6 +954,14 @@ export function buildDrizzleM23WriteService(
 
     // ── rule-config CRUD ──
     async createRuleConfig(actor, args: CreateRuleConfigArgs): Promise<RuleConfigView> {
+      // A legacy (pre-1069) spelling can never be created: it would be an inert row the read side aliases away.
+      if (canonicalRuleKey(args.ruleKey) !== args.ruleKey) {
+        throw new WardenXError(
+          "VALIDATION_FAILED",
+          `rule key '${args.ruleKey}' is a legacy spelling; use '${canonicalRuleKey(args.ruleKey)}'`,
+          400,
+        );
+      }
       return inOrgCtx(actor, async (tx) => {
         const row = await new repositories.ValidationRuleConfigRepository(tx).create({
           organizationId: actor.organizationId,

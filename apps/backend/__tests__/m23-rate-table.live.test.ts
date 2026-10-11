@@ -1,7 +1,7 @@
 /**
  * M23 tenant-entered hospice RATE TABLE — LIVE Postgres proof (F-210).
  *
- * `POST /claims/assemble` stopped at `SEAM_UNBOUND` on `referenceData.hippsRateTable` because no CMS per-diem
+ * `POST /claims/assemble` stopped at `SEAM_UNBOUND` on `referenceData.perDiemRateTable` because no CMS per-diem
  * rate data existed anywhere. Rates are now TENANT-ENTERED into the M23-owned `hospice_rate_table` (migration
  * 0279) through `buildDrizzleRateTableService`, and `buildM23ReferenceDataAdapter` reads the version covering the
  * claim's service date. This proves, against real rows under REAL RLS (every service call runs on the migrated
@@ -492,12 +492,12 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
       serviceFrom,
     });
 
-    it("hippsRateTable returns the per-diems, the CHC HOURLY rate and the four labor shares for the service date", async () => {
+    it("perDiemRateTable returns the per-diems, the CHC HOURLY rate and the four labor shares for the service date", async () => {
       await reset();
       await svc().createRateTable(actorA, rates());
       const adapter = buildM23ReferenceDataAdapter(handle.db);
       expect(
-        await adapter.hippsRateTable("ngs_j6", 2025, scope(ORG_A, PE_A, "2026-02-14")),
+        await adapter.perDiemRateTable("ngs_j6", 2025, scope(ORG_A, PE_A, "2026-02-14")),
       ).toEqual({
         rhcDays1to60PerDiemCents: 21_500,
         rhcDays61PlusPerDiemCents: 17_000,
@@ -532,7 +532,7 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
       );
       const adapter = buildM23ReferenceDataAdapter(handle.db);
       for (const call of [
-        () => adapter.hippsRateTable("ngs_j6", 2025, scope(ORG_A, PE_A, "2026-02-14")),
+        () => adapter.perDiemRateTable("ngs_j6", 2025, scope(ORG_A, PE_A, "2026-02-14")),
         () => adapter.chcHourlyRateCents(2025, "0.9234", scope(ORG_A, PE_A, "2026-02-14")),
       ]) {
         await expect(call()).rejects.toMatchObject({
@@ -588,11 +588,11 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
       );
       const adapter = buildM23ReferenceDataAdapter(handle.db);
       expect(
-        (await adapter.hippsRateTable("ngs_j6", 2025, scope(ORG_A, PE_A, "2026-03-31")))
+        (await adapter.perDiemRateTable("ngs_j6", 2025, scope(ORG_A, PE_A, "2026-03-31")))
           .rhcDays1to60PerDiemCents,
       ).toBe(21_500);
       expect(
-        (await adapter.hippsRateTable("ngs_j6", 2025, scope(ORG_A, PE_A, "2026-04-01")))
+        (await adapter.perDiemRateTable("ngs_j6", 2025, scope(ORG_A, PE_A, "2026-04-01")))
           .rhcDays1to60PerDiemCents,
       ).toBe(22_000);
     });
@@ -601,7 +601,7 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
       await reset();
       const adapter = buildM23ReferenceDataAdapter(handle.db);
       for (const call of [
-        () => adapter.hippsRateTable("ngs_j6", 2025, scope(ORG_A, PE_A, "2026-02-14")),
+        () => adapter.perDiemRateTable("ngs_j6", 2025, scope(ORG_A, PE_A, "2026-02-14")),
         () => adapter.chcHourlyRateCents(2025, "0.9234", scope(ORG_A, PE_A, "2026-02-14")),
       ]) {
         await expect(call()).rejects.toMatchObject({
@@ -622,10 +622,10 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
       await svc().createRateTable(actorA, rates()); // FY2026 for PE_A only
       const adapter = buildM23ReferenceDataAdapter(handle.db);
       await expect(
-        adapter.hippsRateTable("ngs_j6", 2025, scope(ORG_A, PE_B, "2026-02-14")),
+        adapter.perDiemRateTable("ngs_j6", 2025, scope(ORG_A, PE_B, "2026-02-14")),
       ).rejects.toMatchObject({ code: "RATE_TABLE_MISSING" });
       await expect(
-        adapter.hippsRateTable("ngs_j6", 2026, scope(ORG_A, PE_A, "2026-11-01")),
+        adapter.perDiemRateTable("ngs_j6", 2026, scope(ORG_A, PE_A, "2026-11-01")),
       ).rejects.toMatchObject({ code: "RATE_TABLE_MISSING" });
     });
   });

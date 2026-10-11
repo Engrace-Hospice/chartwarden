@@ -36,7 +36,7 @@ type SeedIds = {
   submission: string;
   acknowledgment: string;
   eligibility: string;
-  hipps: string;
+  perDiemClass: string;
   sia: string;
   validationRun: string;
   validationResult: string;
@@ -59,7 +59,7 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "claim_submission", key: "submission" },
   { table: "claim_acknowledgment", key: "acknowledgment" },
   { table: "eligibility_check", key: "eligibility" },
-  { table: "hipps_calculation", key: "hipps" },
+  { table: "per_diem_rate_calculation", key: "perDiemClass" },
   { table: "sia_calculation", key: "sia" },
   { table: "validation_run", key: "validationRun" },
   { table: "validation_result", key: "validationResult" },
@@ -183,10 +183,10 @@ describe.skipIf(!DB_URL)(
        VALUES ($1,$2,$3,$4,'active_part_a','{}'::jsonb, now() + interval '1 day') RETURNING id`,
         [org, pe, patient, from],
       );
-      const hipps = await one(
-        `INSERT INTO hipps_calculation (organization_id, claim_id, hipps_code, hipps_rate_cents,
+      const perDiemClass = await one(
+        `INSERT INTO per_diem_rate_calculation (organization_id, claim_id, per_diem_class_code, per_diem_rate_cents,
          wage_index_ccn, wage_index_fiscal_year, wage_index_factor, segments)
-       VALUES ($1,$2,'HIPPS1',10000,$3,2026,'1.0','[]'::jsonb) RETURNING id`,
+       VALUES ($1,$2,'R1000',10000,$3,2026,'1.0','[]'::jsonb) RETURNING id`,
         [org, claim, ccn],
       );
       const sia = await one(
@@ -247,7 +247,7 @@ describe.skipIf(!DB_URL)(
         submission,
         acknowledgment,
         eligibility,
-        hipps,
+        perDiemClass,
         sia,
         validationRun,
         validationResult,
@@ -348,7 +348,7 @@ describe.skipIf(!DB_URL)(
         "claim",
         "claim_line",
         "claim_state_history",
-        "hipps_calculation",
+        "per_diem_rate_calculation",
         "sia_calculation",
         "validation_override",
         "validation_result",
@@ -410,8 +410,9 @@ describe.skipIf(!DB_URL)(
       // validation result would expose the same claim's money and clinical detail by another door.
       const counts = await withOrg(ORG_B, async () => ({
         lines: (await db.query("SELECT 1 FROM claim_line WHERE claim_id = $1", [a.claim])).rowCount,
-        hipps: (await db.query("SELECT 1 FROM hipps_calculation WHERE claim_id = $1", [a.claim]))
-          .rowCount,
+        perDiemClass: (
+          await db.query("SELECT 1 FROM per_diem_rate_calculation WHERE claim_id = $1", [a.claim])
+        ).rowCount,
         sia: (await db.query("SELECT 1 FROM sia_calculation WHERE claim_id = $1", [a.claim]))
           .rowCount,
         runs: (await db.query("SELECT 1 FROM validation_run WHERE claim_id = $1", [a.claim]))
@@ -420,7 +421,7 @@ describe.skipIf(!DB_URL)(
           await db.query("SELECT 1 FROM claim_state_history WHERE claim_id = $1", [a.claim])
         ).rowCount,
       }));
-      expect(counts).toEqual({ lines: 0, hipps: 0, sia: 0, runs: 0, history: 0 });
+      expect(counts).toEqual({ lines: 0, perDiemClass: 0, sia: 0, runs: 0, history: 0 });
     });
 
     it("a patient's Medicare eligibility response is not readable across tenants", async () => {

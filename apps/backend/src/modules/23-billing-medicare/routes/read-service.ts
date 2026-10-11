@@ -19,6 +19,7 @@ import type {
   NoticeState,
   TypeOfBill,
 } from "@wardenx/billing";
+import { canonicalSegments } from "@wardenx/billing";
 import type { ClaimAttentionFlag, ClaimAttentionView } from "../services/claim-attention";
 import {
   type StoredRhcCarryOverContext,
@@ -87,10 +88,10 @@ export interface ClaimSummaryView {
 }
 
 export interface ClaimPricingView {
-  readonly hipps: {
-    /** INTERNAL per-diem class code (the stored `hipps_code` column); not a Medicare HIPPS code. */
+  readonly perDiemClass: {
+    /** INTERNAL per-diem class code (the stored `per_diem_class_code` column); not a Medicare HIPPS code. */
     readonly perDiemClassCode: string;
-    readonly hippsRateCents: number;
+    readonly perDiemRateCents: number;
     readonly wageIndexCcn: string;
     readonly wageIndexFiscalYear: number;
     readonly wageIndexFactor: string;
@@ -122,13 +123,13 @@ export interface ClaimDischargeCodesView {
   readonly occurrenceCodes: readonly { readonly code: string; readonly date: string }[];
 }
 
-/** Project a persisted `hipps_calculation` row onto the claim detail's `pricing.hipps` (read + write paths). The
+/** Project a persisted `per_diem_rate_calculation` row onto the claim detail's `pricing.perDiemClass` (read + write paths). The
  *  stored carry-over is an append-only snapshot: older span labels are mapped to today's at read time
  *  (`normalizeStoredRhcCarryOver`), never rewritten. */
-export function hippsPricingView(
+export function perDiemClassPricingView(
   row: {
-    readonly hippsCode: string;
-    readonly hippsRateCents: number;
+    readonly perDiemClassCode: string;
+    readonly perDiemRateCents: number;
     readonly wageIndexCcn: string;
     readonly wageIndexFiscalYear: number;
     readonly wageIndexFactor: string;
@@ -139,14 +140,14 @@ export function hippsPricingView(
     readonly rhcCarryOver?: unknown;
   },
   claim: StoredRhcCarryOverContext,
-): NonNullable<ClaimPricingView["hipps"]> {
+): NonNullable<ClaimPricingView["perDiemClass"]> {
   return {
-    perDiemClassCode: row.hippsCode,
-    hippsRateCents: row.hippsRateCents,
+    perDiemClassCode: row.perDiemClassCode,
+    perDiemRateCents: row.perDiemRateCents,
     wageIndexCcn: row.wageIndexCcn,
     wageIndexFiscalYear: row.wageIndexFiscalYear,
     wageIndexFactor: row.wageIndexFactor,
-    segments: row.segments,
+    segments: canonicalSegments(row.segments),
     calculatedAt: row.calculatedAt.toISOString(),
     rhcDays1to60: row.rhcDays1to60,
     rhcDays61Plus: row.rhcDays61Plus,

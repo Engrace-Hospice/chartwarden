@@ -43,9 +43,9 @@ import { authFailureRedirect, clearDraft, loadDraft, saveDraft } from "./write-w
 
 const REPLACEABLE: ReadonlySet<string> = new Set(["ack_accepted", "ack_partial", "paid"]);
 
-interface HippsPricing {
+interface PerDiemClassPricing {
   perDiemClassCode: string;
-  hippsRateCents: number;
+  perDiemRateCents: number;
   wageIndexCcn: string;
   wageIndexFiscalYear: number;
   wageIndexFactor: string;
@@ -94,7 +94,7 @@ interface ClaimDetail {
   replacedByClaimId: string | null;
   replacementReason: string | null;
   latestValidation: ValidationRunSummary | null;
-  pricing: { hipps: HippsPricing | null; sia: SiaPricing | null };
+  pricing: { perDiemClass: PerDiemClassPricing | null; sia: SiaPricing | null };
   /** How the stay ended → missing discharge details / Type of Bill change (server-computed, live M6 facts). */
   attention?: ClaimAttention | null;
 }
@@ -596,23 +596,23 @@ function ClaimSummaryGrid({ claim }: { claim: ClaimDetail }): JSX.Element {
 
 // ── Per-diem (internal class) / SIA pricing cards ─────────────────────────────────────────────────────────────────────────
 function PricingCards({ claim }: { claim: ClaimDetail }): JSX.Element {
-  const { hipps, sia } = claim.pricing;
+  const { perDiemClass, sia } = claim.pricing;
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
       <section style={{ ...cardStyle, minWidth: "16rem", flex: "1 1 16rem" }}>
         <h3 style={cardTitleStyle}>Per-diem pricing</h3>
-        {!hipps ? (
+        {!perDiemClass ? (
           <span style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
             Not priced.
           </span>
         ) : (
           <>
-            <Field label="Per-diem class (internal)" value={hipps.perDiemClassCode} mono />
-            <Field label="Per-diem rate" value={dollars(hipps.hippsRateCents)} />
-            <Field label="Wage-index CCN" value={hipps.wageIndexCcn} mono />
+            <Field label="Per-diem class (internal)" value={perDiemClass.perDiemClassCode} mono />
+            <Field label="Per-diem rate" value={dollars(perDiemClass.perDiemRateCents)} />
+            <Field label="Wage-index CCN" value={perDiemClass.wageIndexCcn} mono />
             <Field
               label="Wage index"
-              value={`${hipps.wageIndexFactor} · FY${hipps.wageIndexFiscalYear}`}
+              value={`${perDiemClass.wageIndexFactor} · FY${perDiemClass.wageIndexFiscalYear}`}
             />
           </>
         )}
@@ -631,14 +631,16 @@ function PricingCards({ claim }: { claim: ClaimDetail }): JSX.Element {
           </>
         )}
       </section>
-      {hipps && hipps.rhcDays1to60 !== undefined && hipps.rhcDays61Plus !== undefined ? (
+      {perDiemClass &&
+      perDiemClass.rhcDays1to60 !== undefined &&
+      perDiemClass.rhcDays61Plus !== undefined ? (
         <section style={{ ...cardStyle, flex: "1 1 100%" }}>
           <h3 style={cardTitleStyle}>RHC day count</h3>
           <RhcDayCount
             pricing={{
-              rhcDays1to60: hipps.rhcDays1to60,
-              rhcDays61Plus: hipps.rhcDays61Plus,
-              rhcCarryOver: hipps.rhcCarryOver ?? null,
+              rhcDays1to60: perDiemClass.rhcDays1to60,
+              rhcDays61Plus: perDiemClass.rhcDays61Plus,
+              rhcCarryOver: perDiemClass.rhcCarryOver ?? null,
             }}
           />
         </section>

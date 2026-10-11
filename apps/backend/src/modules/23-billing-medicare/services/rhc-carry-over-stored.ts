@@ -1,7 +1,7 @@
 // apps/backend/src/modules/23-billing-medicare/services/rhc-carry-over-stored.ts
 //
-// READ-TIME normalization of a persisted `hipps_calculation.rhc_carry_over` (migration 0376). The row is an
-// append-only pricing snapshot — M23 spec §3.6 / D7 and migration 0079's `trg_append_only_hipps_calculation`
+// READ-TIME normalization of a persisted `per_diem_rate_calculation.rhc_carry_over` (migration 0376). The row is an
+// append-only pricing snapshot — M23 spec §3.6 / D7 and migration 0079's `trg_append_only_per_diem_rate_calculation`
 // (BEFORE UPDATE OR DELETE → M23_TABLE_APPEND_ONLY); a correction is a TOB 817 replacement claim with a NEW row —
 // and its INSERT is the audit evidence of what the claim was priced with. So rows written under an older span
 // vocabulary are never relabelled in place: the claim detail maps them to the current display here instead.

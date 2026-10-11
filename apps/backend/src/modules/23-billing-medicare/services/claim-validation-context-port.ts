@@ -5,7 +5,7 @@
 // fail-closed stub, so no validation could ever complete.
 //
 // It reads through the SAME seam readers and the SAME derivations as the assembly (`readAssemblyFacts`,
-// `computeClaimHipps`, `computeClaimSia`, `assembleValidationContext`) — never a parallel copy — and takes the
+// `computeClaimPerDiemClass`, `computeClaimSia`, `assembleValidationContext`) — never a parallel copy — and takes the
 // claim's own persisted lines. A fact that changed since assembly (a level-of-care change, a revoked election,
 // a new rate) therefore shows up as a failing rule instead of being masked by stale persisted numbers. Two
 // facts the assembly deliberately leaves null are real here: the latest resolved HETS eligibility check and the
@@ -17,7 +17,11 @@ import {
   repositories,
 } from "@wardenx/billing";
 import type { ClaimAssemblySeams } from "./claim-assembly";
-import { computeClaimHipps, computeClaimSia, readAssemblyFacts } from "./claim-assembly-facts";
+import {
+  computeClaimPerDiemClass,
+  computeClaimSia,
+  readAssemblyFacts,
+} from "./claim-assembly-facts";
 import type { BillingTx, BillingWriteActor } from "./claim-state-service";
 import type {
   MaterializedValidationInputs,
@@ -71,7 +75,7 @@ export function buildClaimValidationContextPort(
         facts.admission,
         now(),
       );
-      const hipps = computeClaimHipps(
+      const perDiemClass = computeClaimPerDiemClass(
         facts,
         { serviceFrom: claim.serviceFrom, serviceTo: claim.serviceTo },
         rhcCarryOver.priorDays,
@@ -125,7 +129,7 @@ export function buildClaimValidationContextPort(
           priorClaimServiceTo: priorClaim?.serviceTo ?? null,
         },
         lines,
-        hipps,
+        perDiemClass,
         siaQualifyingVisitCount: sia?.qualifyingVisits.length ?? 0,
         siaCents: sia?.siaAddOnCents ?? 0,
         eligibility: latestEligibility

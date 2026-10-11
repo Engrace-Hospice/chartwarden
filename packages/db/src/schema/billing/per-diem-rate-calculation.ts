@@ -1,4 +1,4 @@
-// @wardenx/db — `hipps_calculation` (M23 Billing-Medicare §3.3; append-only, 1:1 with `claim`;
+// @wardenx/db — `per_diem_rate_calculation` (M23 Billing-Medicare §3.3; append-only, 1:1 with `claim`;
 // non-partitioned; retention class `compliance`). Captures the reproducible HIPPS payment math for a
 // claim: the 5-char HIPPS code, the per-diem rate, and the wage-index SNAPSHOT (CCN + fiscal year +
 // factor stored as text, NOT a pointer — the platform-shared `wage_index_factor` file can be re-loaded,
@@ -20,10 +20,10 @@ import {
 } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { claim } from "./claim";
-import type { HippsCalculationRhcCarryOver, HippsCalculationSegments } from "./types";
+import type { PerDiemRateCalculationRhcCarryOver, PerDiemRateCalculationSegments } from "./types";
 
-export const hippsCalculation = pgTable(
-  "hipps_calculation",
+export const perDiemRateCalculation = pgTable(
+  "per_diem_rate_calculation",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     organizationId: uuid("organization_id")
@@ -33,8 +33,8 @@ export const hippsCalculation = pgTable(
       .notNull()
       .references(() => claim.id, { onDelete: "restrict" }),
 
-    hippsCode: text("hipps_code").notNull(), // 5-char INTERNAL per-diem class code e.g. "R1000" (hospice has no Medicare HIPPS code; never emitted on a claim)
-    hippsRateCents: bigint("hipps_rate_cents", { mode: "number" }).notNull(),
+    perDiemClassCode: text("per_diem_class_code").notNull(), // 5-char INTERNAL per-diem class code e.g. "R1000" (hospice has no Medicare HIPPS code; never emitted on a claim)
+    perDiemRateCents: bigint("per_diem_rate_cents", { mode: "number" }).notNull(),
 
     // Wage-index applied at calculation time (snapshot, not pointer — wage-index file is platform-shared
     // but the math must be reproducible):
@@ -43,23 +43,23 @@ export const hippsCalculation = pgTable(
     wageIndexFactor: text("wage_index_factor").notNull(), // decimal as text e.g. "0.9234"
 
     // Period-segment breakdown (typed):
-    segments: jsonb("segments").$type<HippsCalculationSegments>().notNull(), // [{ levelOfCare, dateFrom, dateTo, ratePerDiemCents, hippsCharPosition }]
+    segments: jsonb("segments").$type<PerDiemRateCalculationSegments>().notNull(), // [{ levelOfCare, dateFrom, dateTo, ratePerDiemCents, perDiemClassCharPosition }]
 
     // ADR-0001 RHC day-60 two-tier day counts (RHC-High days 1-60 / RHC-Low day 61+, 80 FR 47142):
     rhcDays1to60: integer("rhc_days_1_to_60").notNull().default(0),
     rhcDays61Plus: integer("rhc_days_61_plus").notNull().default(0),
     // The prior hospice days carried into the RHC day count (ours + other hospices' per HETS), with the chain,
     // basis (internal_only / hets_merged / hets_stale) and warnings — migration 0376; NULL on older rows.
-    rhcCarryOver: jsonb("rhc_carry_over").$type<HippsCalculationRhcCarryOver>(),
+    rhcCarryOver: jsonb("rhc_carry_over").$type<PerDiemRateCalculationRhcCarryOver>(),
 
     calculatedAt: timestamp("calculated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    oneToOne: uniqueIndex("hipps_calculation_claim_uq").on(t.claimId),
-    // §3.4 hipps_calculation_ccn_fy — platform-side reporting / CMS rate-update reconciliation trail:
-    ccnFy: index("hipps_calculation_ccn_fy_idx").on(t.wageIndexCcn, t.wageIndexFiscalYear),
+    oneToOne: uniqueIndex("per_diem_rate_calculation_claim_uq").on(t.claimId),
+    // §3.4 per_diem_rate_calculation_ccn_fy — platform-side reporting / CMS rate-update reconciliation trail:
+    ccnFy: index("per_diem_rate_calculation_ccn_fy_idx").on(t.wageIndexCcn, t.wageIndexFiscalYear),
   }),
 );
 
-export type HippsCalculation = typeof hippsCalculation.$inferSelect;
-export type NewHippsCalculation = typeof hippsCalculation.$inferInsert;
+export type PerDiemRateCalculation = typeof perDiemRateCalculation.$inferSelect;
+export type NewPerDiemRateCalculation = typeof perDiemRateCalculation.$inferInsert;

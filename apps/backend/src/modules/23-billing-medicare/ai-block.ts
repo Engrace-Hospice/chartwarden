@@ -5,7 +5,7 @@
 // already in place elsewhere:
 //   1. BOOT VALIDATOR  — {@link validateAiBlockForBilling} iterates M32's registered prompt-template
 //      registry and FAILS BOOT if any template declares an `outputType` that targets an M23-owned table
-//      family (claim_* / validation_* / noe_* / notr_* / hipps_* / sia_* / eligibility_* /
+//      family (claim_* / validation_* / noe_* / notr_* / per_diem_rate_* / sia_* / eligibility_* /
 //      sequestration_* / mac_* / wage_*). M32 is a Phase-0 placeholder today (no registry), so the
 //      validator is EMPTY-SAFE: with no registry / an empty registry it passes.
 //   2. THE ONLY ADMITTED AI SURFACE — {@link AiAdvisoryReader}: a read-only `validation_ai_advisory`
@@ -42,7 +42,7 @@ export const M23_OWNED_TABLE_FAMILIES = [
   "validation_",
   "noe_",
   "notr_",
-  "hipps_",
+  "per_diem_rate_",
   "sia_",
   "eligibility_",
   "sequestration_",

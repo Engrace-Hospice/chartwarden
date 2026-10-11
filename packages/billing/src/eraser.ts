@@ -36,7 +36,7 @@ export const M23_PATIENT_CASCADE_ORDER = [
   "validation_result",
   "validation_run",
   "sia_calculation",
-  "hipps_calculation",
+  "per_diem_rate_calculation",
   "claim_line",
   "claim",
   "noe_record",

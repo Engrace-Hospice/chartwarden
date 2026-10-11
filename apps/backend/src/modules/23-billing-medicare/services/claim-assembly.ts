@@ -3,7 +3,7 @@
 // SERVER-AUTHORITATIVELY assembles a DRAFT `claim` from clinical artifacts — never trusting any client
 // line. It walks the §4.4 CONSUMED reader seams ONCE to materialize an aggregate, PHI-free snapshot,
 // derives the Type of Bill, runs the pure HIPPS + SIA + sequestration calculators, persists the
-// `claim` + `claim_line[]` + `hipps_calculation` + (0..1) `sia_calculation` rows, runs the initial
+// `claim` + `claim_line[]` + `per_diem_rate_calculation` + (0..1) `sia_calculation` rows, runs the initial
 // §11.A validation pass, and emits the §4.10 `m23.claim.draft_created` outbox event — ALL in ONE
 // `withOrgContext` transaction so Postgres RLS scopes every statement to `app.org_id` (the M27
 // write-service-drizzle precedent).
@@ -20,7 +20,7 @@
 //   * D2 transactional-outbox: the `m23.claim.draft_created` emit commits in the SAME unit of work.
 //   * Enum case never leaks: the repos map UPPER↔lower at the DB boundary; this service speaks the
 //     lowercase domain alphabet (`ClaimState`/`LevelOfCare`) throughout.
-//   * Append-only: hipps/sia/validation_run/validation_result/claim_state_history are written once.
+//   * Append-only: perDiemClass/sia/validation_run/validation_result/claim_state_history are written once.
 //   * claim_line is INTERNAL-WRITE-ONLY: only this service writes lines, as a batch under the parent.
 //   * AI-BLOCK (D13): an `actor_kind='ai_*'` caller is rejected fail-closed before any work.
 //   * NO PHI / NO MBI ever crosses a seam or lands on a row (D13 / §3.6 / §8.7).
@@ -52,7 +52,7 @@ import {
 import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
 import {
-  computeClaimHipps,
+  computeClaimPerDiemClass,
   computeClaimSia,
   hospiceFiscalYearStarting,
   readAssemblyFacts,
@@ -321,45 +321,51 @@ export function buildClaimAssemblyService(
         // ── 3. HIPPS per-diem math (D7) — lines are derived, never client-supplied ───────────────────
         // Two-tier RHC: the prior hospice days this stay continues — our stays merged with the HETS history.
         const rhcCarryOver = await readClaimRhcCarryOver(tx, orgId, patientId, admission, now());
-        const hipps = computeClaimHipps(facts, { serviceFrom, serviceTo }, rhcCarryOver.priorDays);
+        const perDiemClass = computeClaimPerDiemClass(
+          facts,
+          { serviceFrom, serviceTo },
+          rhcCarryOver.priorDays,
+        );
 
         const placeOfService = qCodeForPlaceOfService(mdmResolution.placeOfService);
-        const lineInputs: repositories.NewClaimLineInput[] = hipps.segments.map((seg, idx) => {
-          const owningPeriod = resolvedLoc.find((p) =>
-            isWithinInclusive(seg.dateFrom, p.from, p.to),
-          );
-          if (!owningPeriod) {
-            throw new WardenXError(
-              "ASSEMBLY_VALIDATION_FAILED",
-              `no level-of-care period backs the assembled segment starting ${seg.dateFrom}`,
-              422,
+        const lineInputs: repositories.NewClaimLineInput[] = perDiemClass.segments.map(
+          (seg, idx) => {
+            const owningPeriod = resolvedLoc.find((p) =>
+              isWithinInclusive(seg.dateFrom, p.from, p.to),
             );
-          }
-          const backingEncounterIds = billableEncounters
-            .filter(
-              (e) =>
-                e.billability === "billable" &&
-                isWithinInclusive(e.serviceDate, seg.dateFrom, seg.dateTo),
-            )
-            .map((e) => e.encounterId);
-          return {
-            organizationId: orgId,
-            claimId: "", // filled below once the claim id is minted
-            lineNumber: idx + 1,
-            revenueCode: REVENUE_BY_LOC[seg.levelOfCare],
-            qCode: placeOfService,
-            levelOfCare: seg.levelOfCare,
-            hcpcsCode: null,
-            serviceDateFrom: seg.dateFrom,
-            serviceDateTo: seg.dateTo,
-            // Days for 0651/0655/0656; 15-minute units for a CHC day (ch. 11 §30.3).
-            ...perDiemLineAmounts(seg),
-            levelOfCarePeriodId: owningPeriod.levelOfCarePeriodId,
-            backingEncounterIds,
-            icdPointerPositions: [...icdPointerPositions],
-            modifiers: [],
-          };
-        });
+            if (!owningPeriod) {
+              throw new WardenXError(
+                "ASSEMBLY_VALIDATION_FAILED",
+                `no level-of-care period backs the assembled segment starting ${seg.dateFrom}`,
+                422,
+              );
+            }
+            const backingEncounterIds = billableEncounters
+              .filter(
+                (e) =>
+                  e.billability === "billable" &&
+                  isWithinInclusive(e.serviceDate, seg.dateFrom, seg.dateTo),
+              )
+              .map((e) => e.encounterId);
+            return {
+              organizationId: orgId,
+              claimId: "", // filled below once the claim id is minted
+              lineNumber: idx + 1,
+              revenueCode: REVENUE_BY_LOC[seg.levelOfCare],
+              qCode: placeOfService,
+              levelOfCare: seg.levelOfCare,
+              hcpcsCode: null,
+              serviceDateFrom: seg.dateFrom,
+              serviceDateTo: seg.dateTo,
+              // Days for 0651/0655/0656; 15-minute units for a CHC day (ch. 11 §30.3).
+              ...perDiemLineAmounts(seg),
+              levelOfCarePeriodId: owningPeriod.levelOfCarePeriodId,
+              backingEncounterIds,
+              icdPointerPositions: [...icdPointerPositions],
+              modifiers: [],
+            };
+          },
+        );
 
         // ── 3b. FY2027 CR 14495 — the separately dated G0679 telehealth-F2F lines (rev 0657) ──────────
         const g0679Lines = buildG0679LineInputs({
@@ -427,7 +433,7 @@ export function buildClaimAssemblyService(
         // ── 5. Sequestration (D11) over the gross per-diem + SIA payable ─────────────────────────────
         // EXPECTED PAYMENT keeps the exact per-diem math and the SIA add-on (which the MAC pays from the visit
         // lines); the G0679 line is an administrative expense — never paid — so it stays out of it.
-        const grossCents: Cents = hipps.totalCents + siaCents;
+        const grossCents: Cents = perDiemClass.totalCents + siaCents;
         const sequestration = applySequestrationPolicy(grossCents, {
           percentage: seqPolicy.percentage,
         });
@@ -493,26 +499,26 @@ export function buildClaimAssemblyService(
           allLineInputs.map((l) => ({ ...l, claimId })),
         );
 
-        await new repositories.HippsCalculationRepository(tx).append({
+        await new repositories.PerDiemRateCalculationRepository(tx).append({
           organizationId: orgId,
           claimId,
-          // The stored `hipps_code` column holds the INTERNAL per-diem class code (not a Medicare HIPPS code).
-          hippsCode: hipps.perDiemClassCode,
-          hippsRateCents: hipps.perDiemRateCents,
+          // The stored `per_diem_class_code` column holds the INTERNAL per-diem class code (not a Medicare HIPPS code).
+          perDiemClassCode: perDiemClass.perDiemClassCode,
+          perDiemRateCents: perDiemClass.perDiemRateCents,
           wageIndexCcn: pe.ccn,
           wageIndexFiscalYear: fiscalYearStarting,
           wageIndexFactor: wageIndex.factorDecimal,
-          segments: hipps.segments.map((s) => ({
+          segments: perDiemClass.segments.map((s) => ({
             levelOfCare: s.levelOfCareCode,
             dateFrom: s.dateFrom,
             dateTo: s.dateTo,
             ratePerDiemCents: s.ratePerDiemCents,
-            hippsCharPosition: s.hippsCharPosition,
+            perDiemClassCharPosition: s.perDiemClassCharPosition,
             wageIndexFiscalYear: s.wageIndexFiscalYear,
             wageIndexFactor: s.wageIndexFactorApplied,
           })),
-          rhcDays1to60: hipps.rhcDays1to60,
-          rhcDays61Plus: hipps.rhcDays61Plus,
+          rhcDays1to60: perDiemClass.rhcDays1to60,
+          rhcDays61Plus: perDiemClass.rhcDays61Plus,
           rhcCarryOver,
         });
 
@@ -537,7 +543,7 @@ export function buildClaimAssemblyService(
             priorClaimServiceTo: priorClaim?.serviceTo ?? null,
           },
           lines: insertedLines,
-          hipps,
+          perDiemClass,
           siaQualifyingVisitCount,
           siaCents,
           eligibility: null, // resolved by the HETS refresh worker, not at assembly — the rule skips
@@ -566,7 +572,7 @@ export function buildClaimAssemblyService(
               serviceFrom,
               serviceTo,
               tob,
-              perDiemClassCode: hipps.perDiemClassCode,
+              perDiemClassCode: perDiemClass.perDiemClassCode,
               totalChargeCents,
               lineCount: insertedLines.length,
             }),
@@ -636,8 +642,8 @@ export function buildClaimAssemblyService(
           claimId,
           state: "DRAFT",
           totalChargeCents,
-          perDiemClassCode: hipps.perDiemClassCode,
-          hippsRateCents: hipps.perDiemRateCents,
+          perDiemClassCode: perDiemClass.perDiemClassCode,
+          perDiemRateCents: perDiemClass.perDiemRateCents,
           lineCount: insertedLines.length,
           initialValidationRunId: validationRunId,
           initialValidationOutcome: outcome,

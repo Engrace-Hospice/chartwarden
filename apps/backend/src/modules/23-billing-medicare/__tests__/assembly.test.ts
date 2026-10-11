@@ -4,14 +4,14 @@ import type { Rule } from "@wardenx/billing";
 // apps/backend/src/modules/23-billing-medicare/__tests__/assembly.test.ts — the §10 task-30 CLAIM ASSEMBLY
 // service tests (D10 / D15). The service constructs its repos internally (`new repositories.X(tx)`), so this
 // suite PARTIAL-mocks `@wardenx/billing`: the data ports are swapped for the in-memory `_billing-repo-fakes`
-// store, while ALL pure domain (calculateHipps / calculateSia / sequestration / control-number / TOB / the
+// store, while ALL pure domain (calculatePerDiemClass / calculateSia / sequestration / control-number / TOB / the
 // rule registry) stays REAL — so the assembled claim's money + lines are genuinely computed, not stubbed.
 // `withOrgContext` is exercised against a fake no-op transaction (`makeFakeDb`). Asserted invariants:
 //   • D15 — a non-Medicare-primary window is rejected NON_MEDICARE_PRIMARY_PAYER before any write.
 //   • D10 — an `awaiting_cosignature` encounter is EXCLUDED from the assembled line's backing set (no
 //     retroactive add); only `billable` encounters back a line.
 //   • server-authoritative — the response lines are HIPPS-derived; any client-supplied line data is ignored.
-//   • one logical unit — claim + claim_line[] + hipps_calculation (+ optional sia_calculation) + the initial
+//   • one logical unit — claim + claim_line[] + per_diem_rate_calculation (+ optional sia_calculation) + the initial
 //     validation_run + the creation history row + the `m23.claim.draft_created` outbox emit all land together.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildClaimAssemblyService } from "../services/claim-assembly";
@@ -80,7 +80,7 @@ const VISIT_CHARGES = {
 const trivialPassRule: Rule = {
   key: "test.always_pass",
   version: 1,
-  category: "hipps",
+  category: "perDiemClass",
   title: "always pass",
   description: "test rule",
   severity: "error",
@@ -184,7 +184,7 @@ function buildSeams(overrides: Partial<ClaimAssemblySeams> = {}): ClaimAssemblyS
       }),
     },
     referenceData: {
-      hippsRateTable: async () => RATE_TABLE,
+      perDiemRateTable: async () => RATE_TABLE,
       chcHourlyRateCents: async () => 6_000,
       wageIndexForCcn: async () => ({ factorDecimal: "1.0000", cbsaCode: null }),
       activeSequestrationPolicy: async () => ({
@@ -256,7 +256,7 @@ describe("AI-BLOCK (D13) — no AI principal may assemble a claim", () => {
   });
 });
 
-describe("server-authoritative assembly — produces claim + lines + hipps in one logical unit", () => {
+describe("server-authoritative assembly — produces claim + lines + perDiemClass in one logical unit", () => {
   it("derives the HIPPS lines + penny-exact money and persists the whole aggregate together", async () => {
     const seams = buildSeams();
     const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
@@ -286,9 +286,9 @@ describe("server-authoritative assembly — produces claim + lines + hipps in on
     expect(store.lines[0].unitRateCents).toBe(20_000); // wage-adjusted per-diem, server-derived
     expect(store.lines[0].lineChargeCents).toBe(140_000);
 
-    expect(store.hipps).toHaveLength(1);
-    expect(store.hipps[0].rhcDays1to60).toBe(7);
-    expect(store.hipps[0].rhcDays61Plus).toBe(0);
+    expect(store.perDiemClass).toHaveLength(1);
+    expect(store.perDiemClass[0].rhcDays1to60).toBe(7);
+    expect(store.perDiemClass[0].rhcDays61Plus).toBe(0);
 
     // The initial §11.A validation run executed (the trivial pass rule) + recorded the result.
     expect(store.runs.size).toBe(1);
@@ -410,7 +410,7 @@ describe("SIA add-on across Oct 1 — priced with the fiscal year of the death d
       },
       referenceData: {
         ...base.referenceData,
-        hippsRateTable: async (_mac, fiscalYearStarting) =>
+        perDiemRateTable: async (_mac, fiscalYearStarting) =>
           fiscalYearStarting === 2024
             ? RATE_TABLE
             : { ...RATE_TABLE, rhcDays1to60PerDiemCents: 21_000 },
@@ -575,7 +575,7 @@ describe("SIA add-on across Oct 1 — priced with the fiscal year of the death d
       makeFakeDb() as never,
       crossingSeams("2025-10-03", []),
     ).assemble(ACTOR, CROSSING);
-    const segments = store.hipps[0].segments as {
+    const segments = store.perDiemClass[0].segments as {
       dateFrom: string;
       wageIndexFiscalYear: number;
       wageIndexFactor: string;
@@ -740,7 +740,7 @@ describe("F-212 - no sequestration policy fails CLOSED with an actionable error 
   it("names the service date, the provider entity, the route and the permission, and persists nothing", async () => {
     const seams = buildSeams({
       referenceData: {
-        hippsRateTable: async () => RATE_TABLE,
+        perDiemRateTable: async () => RATE_TABLE,
         chcHourlyRateCents: async () => 6_000,
         wageIndexForCcn: async () => ({ factorDecimal: "1.0000", cbsaCode: null }),
         activeSequestrationPolicy: async () => null,
@@ -805,7 +805,7 @@ describe("two-tier RHC carry-over — our earlier stay + another hospice's days 
     transferOut: null,
   };
 
-  it("prices the claim with the merged count and records the basis + chain on hipps_calculation", async () => {
+  it("prices the claim with the merged count and records the basis + chain on per_diem_rate_calculation", async () => {
     // Arrange: a fresh HETS check shows another hospice 08/01–09/15 (46 days, gap 5 to our stay).
     store.eligibilityChecks.push({
       id: "11111111-1111-4111-8111-111111111111",
@@ -840,9 +840,9 @@ describe("two-tier RHC carry-over — our earlier stay + another hospice's days 
     await svc.assemble(ACTOR, REQUEST);
 
     // Assert: 46 + 11 = 57 prior days → 11/01–11/03 are days 58–60 (high), 11/04–11/07 low.
-    expect(store.hipps[0].rhcDays1to60).toBe(3);
-    expect(store.hipps[0].rhcDays61Plus).toBe(4);
-    expect(store.hipps[0].rhcCarryOver).toMatchObject({
+    expect(store.perDiemClass[0].rhcDays1to60).toBe(3);
+    expect(store.perDiemClass[0].rhcDays61Plus).toBe(4);
+    expect(store.perDiemClass[0].rhcCarryOver).toMatchObject({
       priorDays: 57,
       basis: "hets_merged",
       startsAtDay: 58,
@@ -860,8 +860,11 @@ describe("two-tier RHC carry-over — our earlier stay + another hospice's days 
       buildSeams({ admission: { resolveForRange: async () => readmission } }),
     );
     await svc.assemble(ACTOR, REQUEST);
-    expect(store.hipps[0].rhcCarryOver).toMatchObject({ priorDays: 11, basis: "internal_only" });
-    expect(store.hipps[0].rhcDays1to60).toBe(7);
+    expect(store.perDiemClass[0].rhcCarryOver).toMatchObject({
+      priorDays: 11,
+      basis: "internal_only",
+    });
+    expect(store.perDiemClass[0].rhcDays1to60).toBe(7);
   });
 });
 
@@ -1210,7 +1213,7 @@ describe("837I claim header — physician NPIs (UB-04 FL 76 attending / FL 78 ce
       billableEncounters: { forRange: async () => [] },
       referenceData: {
         ...base.referenceData,
-        hippsRateTable: async (_mac, fiscalYearStarting) =>
+        perDiemRateTable: async (_mac, fiscalYearStarting) =>
           fiscalYearStarting === 2024
             ? RATE_TABLE
             : { ...RATE_TABLE, rhcDays1to60PerDiemCents: 21_000 },
@@ -1327,7 +1330,7 @@ describe("837I claim header — physician NPIs (UB-04 FL 76 attending / FL 78 ce
       referenceData: {
         ...base.referenceData,
         // FY2025 (starting 2024) before Oct 1; FY2026 (starting 2025) from Oct 1 - a higher rate AND a higher index.
-        hippsRateTable: async (_mac, fiscalYearStarting) =>
+        perDiemRateTable: async (_mac, fiscalYearStarting) =>
           fiscalYearStarting === 2024
             ? RATE_TABLE
             : { ...RATE_TABLE, rhcDays1to60PerDiemCents: 21_000 },

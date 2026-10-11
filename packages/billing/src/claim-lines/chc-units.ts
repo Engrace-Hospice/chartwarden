@@ -10,7 +10,7 @@ import { lineChargeCents } from "../domain/money";
 export const CHC_UNITS_PER_HOUR = 4;
 
 export interface ChcSegmentInput {
-  /** The documented hours the day was priced on (`HippsSegmentResult.chcHours`). */
+  /** The documented hours the day was priced on (`PerDiemClassSegmentResult.chcHours`). */
   readonly chcHours: number | null;
   /** The wage-adjusted hourly rate the day was priced at (`chcAdjustedHourlyRateCents`). */
   readonly chcAdjustedHourlyRateCents: Cents | null;

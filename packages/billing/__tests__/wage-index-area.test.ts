@@ -1,10 +1,10 @@
 // @wardenx/billing — the wage index that prices each level of care: the beneficiary's area for home care, the
 // facility's area for inpatient care, never the provider's own unless no geography is bound.
 import {
-  type HippsCalculationInput,
-  type HippsRateTable,
+  type PerDiemRateCalculationInput,
+  type PerDiemRateTable,
   WageIndexAreaError,
-  calculateHipps,
+  calculatePerDiemClass,
   wageIndexFactorForLevelOfCare,
 } from "@wardenx/billing";
 import { describe, expect, it } from "vitest";
@@ -46,7 +46,7 @@ describe("wageIndexFactorForLevelOfCare", () => {
   });
 });
 
-const RATE_TABLE: HippsRateTable = {
+const RATE_TABLE: PerDiemRateTable = {
   rhcDays1to60PerDiemCents: 20_000,
   rhcDays61PlusPerDiemCents: 16_000,
   chcHourlyRateCents: 6_667,
@@ -58,8 +58,8 @@ const RATE_TABLE: HippsRateTable = {
   gipLaborShare: "0.6400",
 };
 
-describe("calculateHipps when the beneficiary's and the provider's areas differ", () => {
-  const input: HippsCalculationInput = {
+describe("calculatePerDiemClass when the beneficiary's and the provider's areas differ", () => {
+  const input: PerDiemRateCalculationInput = {
     claimServiceFrom: "2026-11-02",
     claimServiceTo: "2026-11-03",
     hospiceAdmissionDate: "2026-10-01",
@@ -74,7 +74,7 @@ describe("calculateHipps when the beneficiary's and the provider's areas differ"
   };
 
   it("prices home and inpatient days by their own areas and records the factor per segment", () => {
-    const priced = calculateHipps({ ...input, wageIndexAreaFactors: areas });
+    const priced = calculatePerDiemClass({ ...input, wageIndexAreaFactors: areas });
     const [home, inpatient] = priced.segments;
     // 20000 × (0.66 × 0.8 + 0.34) = 17360;  100000 × (0.64 × 1.2 + 0.36) = 112800
     expect(home?.ratePerDiemCents).toBe(17_360);
@@ -84,7 +84,7 @@ describe("calculateHipps when the beneficiary's and the provider's areas differ"
   });
 
   it("differs from pricing everything at the provider's index (the old behaviour)", () => {
-    const legacy = calculateHipps(input);
+    const legacy = calculatePerDiemClass(input);
     expect(legacy.segments[0]?.ratePerDiemCents).toBe(20_000);
     expect(legacy.segments[1]?.ratePerDiemCents).toBe(100_000);
     expect(legacy.segments[0]?.wageIndexFactorApplied).toBe("1.0000");
@@ -92,7 +92,10 @@ describe("calculateHipps when the beneficiary's and the provider's areas differ"
 
   it("refuses to price a day whose area could not be resolved", () => {
     expect(() =>
-      calculateHipps({ ...input, wageIndexAreaFactors: { residence: null, facility: "1.2" } }),
+      calculatePerDiemClass({
+        ...input,
+        wageIndexAreaFactors: { residence: null, facility: "1.2" },
+      }),
     ).toThrow(WageIndexAreaError);
   });
 });

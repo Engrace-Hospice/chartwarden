@@ -1,6 +1,6 @@
 // apps/web/src/modules/23-billing-medicare — the claim's two-tier RHC day split (days 1–60 high / 61+ low, Claims
 // Processing Manual ch. 11 §30.2) and the earlier hospice days carried into it: our stays plus other hospices' days
-// from the HETS 271 history, with the basis the claim was priced on (`pricing.hipps.rhcCarryOver`, null on claims
+// from the HETS 271 history, with the basis the claim was priced on (`pricing.perDiemClass.rhcCarryOver`, null on claims
 // priced before the carry-over was recorded).
 import type { JSX } from "react";
 import { fmtDate } from "../../shell/patient-context";

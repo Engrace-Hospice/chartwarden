@@ -47,13 +47,13 @@ import {
   f2fTelehealthG0679,
   telehealthF2fDatesRequiringG0679,
 } from "./f2f-telehealth-g0679";
-import { hippsCodingCorrect } from "./hipps-coding";
 import { icd10Sequencing } from "./icd-sequencing";
 import { ipuCapProjection } from "./ipu-cap-projection";
 import { levelOfCareCoherence } from "./loc-coherence";
 import { CMS_HOSPICE_MODIFIER_VALUE_SET, modifierCodesValid } from "./modifier-codes";
 import { noeTimeliness5d } from "./noe-timeliness";
 import { patientEligibilityPartAActive } from "./patient-eligibility-part-a";
+import { perDiemClassCodingCorrect } from "./per-diem-class-coding";
 import { physicianCredentialsActive } from "./physician-credentials";
 import { POS_BY_QCODE, POS_LABEL_ALIASES, placeOfServiceConsistency } from "./place-of-service";
 import { rhcCarryOverHetsFresh } from "./rhc-carry-over-hets";
@@ -80,7 +80,7 @@ export {
   G0679_UNITS_PER_ENCOUNTER,
   G0679_UNIT_CHARGE_CENTS,
   levelOfCareCoherence,
-  hippsCodingCorrect,
+  perDiemClassCodingCorrect,
   siaCalculationCorrect,
   icd10Sequencing,
   physicianCredentialsActive,
@@ -115,7 +115,7 @@ export const DEFAULT_BILLING_RULES: readonly Rule[] = Object.freeze([
   f2fAttestedForRecert,
   f2fTelehealthG0679,
   levelOfCareCoherence,
-  hippsCodingCorrect,
+  perDiemClassCodingCorrect,
   siaCalculationCorrect,
   icd10Sequencing,
   physicianCredentialsActive,

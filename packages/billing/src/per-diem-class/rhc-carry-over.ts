@@ -1,5 +1,5 @@
 // @wardenx/billing — the two-tier RHC day-count CARRY-OVER across hospice stays (ours AND other hospices').
-// PURE: no clock, no I/O. Feeds `calculateHipps`'s `priorHospiceDays`.
+// PURE: no clock, no I/O. Feeds `calculatePerDiemClass`'s `priorHospiceDays`.
 //
 // CMS RULE (Medicare Claims Processing Manual, Pub. 100-04, ch. 11 §30.2; CR 9201 / Transmittal R3326CP):
 //   - "A hospice day billed at the RHC level in the first 60 days of a hospice election is paid at the high RHC

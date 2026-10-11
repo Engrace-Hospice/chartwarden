@@ -87,7 +87,7 @@ Director per rule), reason ≥ 40 chars, audited. **Regulatory-required rules ca
 disabled.**
 
 Representative rules: `patient_eligibility_part_a_active`, `cti_signed_per_period`,
-`f2f_attested_for_recert`, `level_of_care_coherence`, `hipps_coding_correct`,
+`f2f_attested_for_recert`, `level_of_care_coherence`, `per_diem_class_coding_correct`,
 `noe_timeliness_5d`, `evv_bracket_coherence`, `aggregate_cap_projection`.
 
 ---

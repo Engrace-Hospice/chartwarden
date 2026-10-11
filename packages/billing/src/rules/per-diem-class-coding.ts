@@ -1,24 +1,24 @@
-// @wardenx/billing — §4.5 rule `hipps_coding_correct` (hipps, error, regulatory). Verifies the
+// @wardenx/billing — §4.5 rule `per_diem_class_coding_correct` (perDiemClass, error, regulatory). Verifies the
 // STRUCTURAL invariants of the per-diem snapshot the calculator produced: segments present, the
 // ADR-0001 RHC day-60 tier buckets (days_1_60 / days_61_plus) assigned, wage factor a decimal string.
 // ADR-0001 NOTE (outstanding): the ADR strikes the HIPPS construct entirely (hospice claims carry no
 // HIPPS rate code) and replaces this rule with an `rhc_rate_tier_coherence` rule; the snapshot's
-// `hipps_code` is an internal placeholder (surfaced as `perDiemClassCode`) never emitted on the 837 wire, and the full rename
-// (`hipps_calculation` → per-diem naming, rule-key migration) is tracked in the ADR-compliance
-// backlog. Penny-exact rate-table conformance is gated on a CMS fixture we do not yet hold. PURE.
+// `per_diem_class_code` is an internal placeholder (surfaced as `perDiemClassCode`) never emitted on the 837 wire. The
+// per-diem rename (`per_diem_rate_calculation`, this rule key) is DONE in migration 1069; stored legacy `hipps_*` history
+// is aliased on read (legacy-stored-aliases.ts). Only the `rhc_rate_tier_coherence` replacement is outstanding. Penny-exact rate-table conformance is gated on a CMS fixture we do not yet hold. PURE.
 import type { Rule } from "./types";
 import { fail, pass, skip } from "./types";
 
-const KEY = "hipps_coding_correct";
+const KEY = "per_diem_class_coding_correct";
 
 // The internal per-diem class code is a fixed 5-character placeholder (`derivePerDiemClassCode`).
 const PER_DIEM_CLASS_CODE_LENGTH = 5;
 
-export const hippsCodingCorrect: Rule = {
+export const perDiemClassCodingCorrect: Rule = {
   key: KEY,
   version: 1,
-  category: "hipps",
-  title: "HIPPS coding derives correctly",
+  category: "perDiemClass",
+  title: "Per-diem class coding derives correctly",
   description:
     "The per-diem snapshot must derive from the claim's LOC-period segments and the applied wage-index " +
     "factor, with the ADR-0001 RHC day-60 tier split (days 1–60 / 61+) structurally coherent (D7).",
@@ -26,11 +26,16 @@ export const hippsCodingCorrect: Rule = {
   regulatoryRequired: true,
   overrideRoleRequired: "billing_manager",
   check: (ctx) => {
-    if (ctx.hipps === null) {
+    if (ctx.perDiemClass === null) {
       // The calculator has not run / no per-diem applies (e.g. a notice-only claim) — not applicable.
-      return skip(KEY, "error", "not_applicable", "No HIPPS derivation present for this claim.");
+      return skip(
+        KEY,
+        "error",
+        "not_applicable",
+        "No per-diem class derivation present for this claim.",
+      );
     }
-    const { perDiemClassCode, segments, wageIndexFactorApplied } = ctx.hipps;
+    const { perDiemClassCode, segments, wageIndexFactorApplied } = ctx.perDiemClass;
     const defects: string[] = [];
 
     if (perDiemClassCode.length !== PER_DIEM_CLASS_CODE_LENGTH) {
@@ -39,7 +44,7 @@ export const hippsCodingCorrect: Rule = {
       );
     }
     if (segments.length === 0) {
-      defects.push("no LOC-period segments backing the HIPPS derivation");
+      defects.push("no LOC-period segments backing the per-diem class derivation");
     }
     // The wage-index factor must have been applied as a decimal string (never a float; D11/D12).
     if (!/^\d+(\.\d+)?$/.test(wageIndexFactorApplied)) {
@@ -56,7 +61,7 @@ export const hippsCodingCorrect: Rule = {
       }
     }
 
-    // TODO(CMS-fixture): byte-exact HIPPS rate-code conformance (the HIPPS code → per-diem base-rate
+    // TODO(CMS-fixture): byte-exact HIPPS rate-code conformance (the per-diem class code → per-diem base-rate
     // table and the wage-index labor/non-labor split) requires the CMS-published HIPPS rate file + a
     // worked example we do not yet hold; this rule verifies the structural derivation invariants only.
 
@@ -70,13 +75,13 @@ export const hippsCodingCorrect: Rule = {
     return fail(
       KEY,
       "error",
-      `HIPPS derivation has ${defects.length} structural defect(s).`,
+      `per-diem class derivation has ${defects.length} structural defect(s).`,
       {
         summary:
-          "Re-run the HIPPS calculation; the derived code/segments are internally inconsistent.",
+          "Re-run the per-diem class calculation; the derived code/segments are internally inconsistent.",
         blameTarget: "claim",
         blameTargetId: ctx.claim.claimId,
-        fixAction: "recompute_hipps",
+        fixAction: "recompute_per_diem_class",
       },
       { defectCount: defects.length, firstDefect: defects[0] ?? "", perDiemClassCode },
     );

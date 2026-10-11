@@ -8,7 +8,7 @@
 import type { IsoDate } from "../contracts";
 import { toEpochDay } from "../domain/dates";
 import type { Cents } from "../domain/money";
-import type { HippsRateTable } from "../hipps/calculator";
+import type { PerDiemRateTable } from "../per-diem-class/calculator";
 
 export * from "./national-rates";
 
@@ -216,10 +216,10 @@ export function hasLaborShares(r: RateTableRates): boolean {
 }
 
 /**
- * Project a stored rate set onto the `HippsRateTable` the HIPPS calculator injects. THROWS when a labor share is NULL
+ * Project a stored rate set onto the `PerDiemRateTable` the HIPPS calculator injects. THROWS when a labor share is NULL
  * (a pre-0280 version): callers check {@link hasLaborShares} first and fail closed with a typed error.
  */
-export function toHippsRateTable(r: RateTableRates): HippsRateTable {
+export function toPerDiemRateTable(r: RateTableRates): PerDiemRateTable {
   if (
     r.laborShareRhc === null ||
     r.laborShareChc === null ||
@@ -227,7 +227,7 @@ export function toHippsRateTable(r: RateTableRates): HippsRateTable {
     r.laborShareGip === null
   ) {
     throw new RangeError(
-      "toHippsRateTable: the rate table carries no labor shares (entered before migration 0280)",
+      "toPerDiemRateTable: the rate table carries no labor shares (entered before migration 0280)",
     );
   }
   return {

@@ -431,7 +431,7 @@ module.
   active, bereavement-discharge legitimacy, TOB/date continuity, and aggregate/IPU cap projection
   (both explicitly `skip`/`seam_not_bound` until M26's projection provider is bound). Only
   eligibility-check freshness is tenant-disableable — the rest are regulatory floor.
-- **CMS payment math** (pure, penny-exact, integer cents): `calculateHipps` walks each calendar
+- **CMS payment math** (pure, penny-exact, integer cents): `calculatePerDiemClass` walks each calendar
   day against level-of-care periods, buckets RHC days 1–7 vs 8+, applies wage-index-adjusted
   per-diems. `calculateSia` computes the Service Intensity Add-on (qualifying RN/MSW visits in
   the last 7 days of life, capped 240 min/day). `applySequestrationPolicy` applies the CMS

@@ -54,7 +54,7 @@ export type RuleCategory =
   | "cert"
   | "f2f"
   | "loc"
-  | "hipps"
+  | "perDiemClass"
   | "sia"
   | "icd"
   | "physician"
@@ -78,7 +78,7 @@ export const RULE_CATEGORIES: readonly RuleCategory[] = [
   "cert",
   "f2f",
   "loc",
-  "hipps",
+  "perDiemClass",
   "sia",
   "icd",
   "physician",
@@ -373,8 +373,8 @@ export interface MdmResolution {
   readonly placeOfService: string | null;
 }
 
-/** Reproducible HIPPS derivation snapshot (D7) for the `hipps_coding_correct` rule. */
-export interface HippsSegmentSnapshot {
+/** Reproducible HIPPS derivation snapshot (D7) for the `per_diem_class_coding_correct` rule. */
+export interface PerDiemClassSegmentSnapshot {
   readonly levelOfCare: LevelOfCare;
   readonly dateFrom: IsoDate;
   readonly dateTo: IsoDate;
@@ -383,12 +383,12 @@ export interface HippsSegmentSnapshot {
   readonly rhcDayBucket: "days_1_60" | "days_61_plus" | "n/a";
 }
 
-export interface HippsSnapshot {
+export interface PerDiemClassSnapshot {
   /** The INTERNAL per-diem class code (not a Medicare HIPPS code). */
   readonly perDiemClassCode: string;
   readonly perDiemRateCents: Cents;
   readonly wageIndexFactorApplied: string;
-  readonly segments: readonly HippsSegmentSnapshot[];
+  readonly segments: readonly PerDiemClassSegmentSnapshot[];
 }
 
 /** SIA add-on snapshot (D6) for the `sia_calculation_correct` rule; `present` mirrors the 0..1 row. */
@@ -542,7 +542,7 @@ export interface ValidationContext {
   readonly mdm: MdmResolution;
 
   /** `null` until the HIPPS calculator has run (always present by the time rules run in practice). */
-  readonly hipps: HippsSnapshot | null;
+  readonly perDiemClass: PerDiemClassSnapshot | null;
   /** `null` when no SIA applies (patient not in last-7-days-of-life window). */
   readonly sia: SiaSnapshot | null;
   /** `null` under the M26 cap-seam deny-stub (D8). */

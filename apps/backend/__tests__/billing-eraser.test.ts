@@ -14,7 +14,7 @@
 // COMPLIANCE-class (7 years past final action, M4 D1) — so the registered eraser is the DESTRUCTION
 // handler the M4 destruction-cert workflow invokes, NOT an ordinary-offboarding cleanup. These suites
 // drive it with a SYNTHETIC long-stay patient (30 claims + lines + submissions + acks + validation
-// runs/results/overrides + hipps/sia + noe/notr + eligibility) through an in-memory recording store double
+// runs/results/overrides + perDiemClass/sia + noe/notr + eligibility) through an in-memory recording store double
 // (the M33 reporting `eraser.test.ts` template — a `calls[]` trail + a recording fake), and prove the §3.7
 // destruction invariants:
 //   • the cascade walks M23_PATIENT_CASCADE_ORDER children-first so FKs unwind cleanly;
@@ -65,7 +65,7 @@ const LONG_STAY_SEED: BillingEraseTableCounts = {
   validation_result: 96,
   validation_run: 48,
   sia_calculation: 12,
-  hipps_calculation: 30,
+  per_diem_rate_calculation: 30,
   claim_line: 120,
   claim: 30,
   noe_record: 1,
@@ -169,7 +169,7 @@ describe("M23-T79 — billing_record §3.7 cascade order (children-first FK unwi
     // every claim child precedes the claim row itself.
     for (const child of [
       "claim_line",
-      "hipps_calculation",
+      "per_diem_rate_calculation",
       "sia_calculation",
       "claim_state_history",
     ]) {

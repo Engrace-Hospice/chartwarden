@@ -14,12 +14,12 @@ import type {
   ElectionPeriodSnapshot,
   EvvBracketSnapshot,
   FaceToFaceSnapshot,
-  HippsRateTable,
   Icd10Pointer,
   IsoDate,
   LevelOfCare,
   LevelOfCarePeriodSnapshot,
   MdmResolution,
+  PerDiemRateTable,
   SignedEncounterSnapshot,
   TerminologyResolution,
   VisitChargeVersion,
@@ -260,11 +260,11 @@ export interface BillingReferenceDataReader {
    * The per-diem base rate table (PRE-wage-index) in effect on `scope.serviceFrom`, TENANT-ENTERED (F-210). Throws the
    * typed `RATE_TABLE_MISSING` (422) when no table covers the date — never a guess and never `SEAM_UNBOUND`.
    */
-  hippsRateTable(
+  perDiemRateTable(
     macJurisdiction: MacJurisdiction,
     fiscalYearStarting: number,
     scope: RateLookupScope,
-  ): Promise<HippsRateTable>;
+  ): Promise<PerDiemRateTable>;
   /** The wage-index-ADJUSTED CHC hourly rate (whole cents) the SIA add-on is priced at (same `RATE_TABLE_MISSING`). */
   chcHourlyRateCents(
     fiscalYearStarting: number,

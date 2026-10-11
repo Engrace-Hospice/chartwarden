@@ -840,7 +840,7 @@ export const MODULES: ModuleDef[] = [
       "dde_work_event",
       "dde_work_item",
       "eligibility_check",
-      "hipps_calculation",
+      "per_diem_rate_calculation",
       "hospice_rate_table",
       "hospice_visit_charge_schedule",
       "mac_submitter_credential",
