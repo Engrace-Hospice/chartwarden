@@ -20,6 +20,14 @@ const mdm = (a: PhysicianResolution | null, h: PhysicianResolution | null): MdmR
 });
 
 describe("claimPhysicianNames", () => {
+  it("clips a name longer than the 100-character column bound instead of failing the claim", () => {
+    const names = claimPhysicianNames(
+      mdm(physician("1234567893", "A".repeat(150), "Lovelace"), null),
+    );
+    expect(names.attendingPhysicianFirstName).toBe("A".repeat(100));
+    expect(names.attendingPhysicianLastName).toBe("Lovelace");
+  });
+
   it("keeps both physicians' names when their NPIs differ", () => {
     expect(
       claimPhysicianNames(

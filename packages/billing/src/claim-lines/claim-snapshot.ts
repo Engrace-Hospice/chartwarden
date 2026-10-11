@@ -31,8 +31,11 @@ export interface ClaimAssemblySnapshot extends ClaimPhysicianNames {
   readonly diagnosisSnapshot: ClaimDiagnosisSnapshotEntry[];
 }
 
+/** Matches `claim_physician_name_len_chk` (migration 1068); M40 name text is unbounded, so clip rather than fail the claim. */
+const MAX_NAME_LENGTH = 100;
+
 const trimmed = (value: string | undefined): string | null => {
-  const t = value?.trim();
+  const t = value?.trim().slice(0, MAX_NAME_LENGTH).trim();
   return t ? t : null;
 };
 
