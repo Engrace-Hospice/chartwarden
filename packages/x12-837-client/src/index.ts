@@ -230,3 +230,11 @@ export type {
   ClearinghouseTransportFactories,
   ClearinghouseTransportFactory,
 } from "./clearinghouse/transport-registry";
+export { InMemoryAttemptStore } from "./clearinghouse/attempt-store";
+export type { SubmissionAttempt, SubmissionAttemptStore } from "./clearinghouse/attempt-store";
+export {
+  STEDI_API_KEY_ENV,
+  StediTransport,
+  createStediTransportFromEnv,
+} from "./clearinghouse/stedi-transport";
+export type { StediTransportOptions } from "./clearinghouse/stedi-transport";
