@@ -778,6 +778,7 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
         { icd10Code: "J449", sequence: 2, qualifier: "ABF" as const },
       ],
     };
+    const NO_NPIS = { attendingPhysicianNpi: null, certifyingPhysicianNpi: null } as const;
     const inCtx = <T>(
       org: string,
       user: string,
@@ -794,26 +795,28 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
         )
       ).rows[0];
 
-    it("a new claim defaults to an empty snapshot; a DRAFT's snapshot is replaced and read back", async () => {
+    it("a new claim defaults to an empty snapshot; a DRAFT's snapshot is refreshed and read back", async () => {
       const { claimId } = await seedClaim(ORG_A, "DRAFT");
       expect(await inCtx(ORG_A, USER_A, (r) => r.snapshotFor(claimId))).toMatchObject({
         attendingPhysicianLastName: null,
         diagnosisSnapshot: [],
       });
-      expect(await inCtx(ORG_A, USER_A, (r) => r.replaceDraftSnapshot(claimId, SNAP_A))).toBe(true);
+      expect(await inCtx(ORG_A, USER_A, (r) => r.refreshSnapshot(claimId, NO_NPIS, SNAP_A))).toBe(
+        true,
+      );
       expect(await inCtx(ORG_A, USER_A, (r) => r.snapshotFor(claimId))).toEqual(SNAP_A);
       // Re-assembly replaces, it does not append.
-      await inCtx(ORG_A, USER_A, (r) => r.replaceDraftSnapshot(claimId, SNAP_B));
+      await inCtx(ORG_A, USER_A, (r) => r.refreshSnapshot(claimId, NO_NPIS, SNAP_B));
       expect(await inCtx(ORG_A, USER_A, (r) => r.snapshotFor(claimId))).toEqual(SNAP_B);
     });
 
-    it("every non-DRAFT state refuses a snapshot replacement (service guard and database trigger)", async () => {
-      for (const state of ["VALIDATING", "READY", "SUBMITTED", "ACK_ACCEPTED", "PAID", "VOIDED"]) {
+    it("every state from SUBMITTED onward refuses a snapshot change (service guard and database trigger)", async () => {
+      for (const state of ["SUBMITTED", "ACK_ACCEPTED", "PAID", "VOIDED"]) {
         const { claimId } = await seedClaim(ORG_A, "DRAFT");
-        await inCtx(ORG_A, USER_A, (r) => r.replaceDraftSnapshot(claimId, SNAP_A));
+        await inCtx(ORG_A, USER_A, (r) => r.refreshSnapshot(claimId, NO_NPIS, SNAP_A));
         await admin.query("UPDATE claim SET state=$2 WHERE id=$1", [claimId, state]);
         await expect(
-          inCtx(ORG_A, USER_A, (r) => r.replaceDraftSnapshot(claimId, SNAP_B)),
+          inCtx(ORG_A, USER_A, (r) => r.refreshSnapshot(claimId, NO_NPIS, SNAP_B)),
         ).rejects.toMatchObject({ code: "CLAIM_SNAPSHOT_IMMUTABLE" });
         // The trigger holds even for a raw statement as the app role (the service guard is not the only guard).
         await asApp(ORG_A, async (c) => {
@@ -833,28 +836,94 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
       }
     });
 
-    it("leaving DRAFT with the snapshot unchanged is fine, but not while rewriting it", async () => {
+    it("VALIDATING and READY claims still follow the NPIs: NPI, names and diagnoses change together", async () => {
+      for (const state of ["VALIDATING", "READY"]) {
+        const { claimId } = await seedClaim(ORG_A, "DRAFT");
+        await inCtx(ORG_A, USER_A, (r) =>
+          r.refreshSnapshot(
+            claimId,
+            { attendingPhysicianNpi: "1234567893", certifyingPhysicianNpi: null },
+            SNAP_A,
+          ),
+        );
+        await admin.query("UPDATE claim SET state=$2 WHERE id=$1", [claimId, state]);
+        const next = { attendingPhysicianNpi: "1982736455", certifyingPhysicianNpi: "1245319599" };
+        expect(await inCtx(ORG_A, USER_A, (r) => r.refreshSnapshot(claimId, next, SNAP_B))).toBe(
+          true,
+        );
+        const row = (
+          await admin.query(
+            `SELECT attending_physician_npi AS an, attending_physician_last_name AS al,
+                    certifying_physician_npi AS cn, certifying_physician_last_name AS cl, diagnosis_snapshot AS dx
+               FROM claim WHERE id=$1`,
+            [claimId],
+          )
+        ).rows[0];
+        expect(row).toEqual({
+          an: "1982736455",
+          al: "Hopper",
+          cn: "1245319599",
+          cl: "Lovelace",
+          dx: SNAP_B.diagnosisSnapshot,
+        });
+        // Unchanged inputs are a no-op, not an error.
+        expect(await inCtx(ORG_A, USER_A, (r) => r.refreshSnapshot(claimId, next, SNAP_B))).toBe(
+          false,
+        );
+        // As the app role the trigger also allows it in these states.
+        await asApp(ORG_A, async (c) => {
+          const r = await c.query("UPDATE claim SET diagnosis_snapshot='[]'::jsonb WHERE id=$1", [
+            claimId,
+          ]);
+          expect(r.rowCount).toBe(1);
+        });
+      }
+    });
+
+    it("moving to SUBMITTED freezes the snapshot: unchanged is fine, rewriting it in the same hop is not", async () => {
       const { claimId } = await seedClaim(ORG_A, "DRAFT");
-      await inCtx(ORG_A, USER_A, (r) => r.replaceDraftSnapshot(claimId, SNAP_A));
+      await inCtx(ORG_A, USER_A, (r) => r.refreshSnapshot(claimId, NO_NPIS, SNAP_A));
+      await admin.query("UPDATE claim SET state='READY' WHERE id=$1", [claimId]);
       await asApp(ORG_A, async (c) => {
         await expect(
           c.query(
-            "UPDATE claim SET state='VALIDATING', diagnosis_snapshot='[]'::jsonb WHERE id=$1",
+            "UPDATE claim SET state='SUBMITTED', diagnosis_snapshot='[]'::jsonb WHERE id=$1",
             [claimId],
           ),
         ).rejects.toThrow(/M23_CLAIM_SNAPSHOT_IMMUTABLE/);
       });
       await asApp(ORG_A, async (c) => {
-        const r = await c.query("UPDATE claim SET state='VALIDATING' WHERE id=$1", [claimId]);
+        const r = await c.query("UPDATE claim SET state='SUBMITTED' WHERE id=$1", [claimId]);
         expect(r.rowCount).toBe(1);
       });
+      expect((await snapshotRow(claimId)).dx).toEqual(SNAP_A.diagnosisSnapshot);
+    });
+
+    it("keeps the diagnosis codes and physician names out of the write-audit trail", async () => {
+      const { claimId } = await seedClaim(ORG_A, "DRAFT");
+      await inCtx(ORG_A, USER_A, (r) => r.refreshSnapshot(claimId, NO_NPIS, SNAP_A));
+      const events = (
+        await admin.query(
+          `SELECT before::text AS b, after::text AS a FROM audit_event
+            WHERE resource_kind='claim' AND resource_id=$1 AND event_type IN ('claim.insert','claim.update')`,
+          [claimId],
+        )
+      ).rows;
+      expect(events.length).toBeGreaterThan(0);
+      for (const e of events) {
+        for (const text of [e.b, e.a].filter((t): t is string => typeof t === "string")) {
+          expect(text).not.toContain("C3490");
+          expect(text).not.toContain("Lovelace");
+          expect(text).toContain("<changed>");
+        }
+      }
     });
 
     it("is tenant-isolated: org B can neither read nor replace org A's snapshot", async () => {
       const { claimId } = await seedClaim(ORG_A, "DRAFT");
-      await inCtx(ORG_A, USER_A, (r) => r.replaceDraftSnapshot(claimId, SNAP_A));
+      await inCtx(ORG_A, USER_A, (r) => r.refreshSnapshot(claimId, NO_NPIS, SNAP_A));
       expect(await inCtx(ORG_B, USER_B, (r) => r.snapshotFor(claimId))).toBeNull();
-      expect(await inCtx(ORG_B, USER_B, (r) => r.replaceDraftSnapshot(claimId, SNAP_B))).toBe(
+      expect(await inCtx(ORG_B, USER_B, (r) => r.refreshSnapshot(claimId, NO_NPIS, SNAP_B))).toBe(
         false,
       );
       await asApp(ORG_B, async (c) => {
@@ -886,7 +955,7 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
 
     it("a DRAFT claim with a snapshot is still deletable (the snapshot lives on the claim row)", async () => {
       const { claimId } = await seedClaim(ORG_A, "DRAFT");
-      await inCtx(ORG_A, USER_A, (r) => r.replaceDraftSnapshot(claimId, SNAP_A));
+      await inCtx(ORG_A, USER_A, (r) => r.refreshSnapshot(claimId, NO_NPIS, SNAP_A));
       await svc().deleteDraftClaim(actorA, claimId);
       expect(await count("claim", "id=$1", [claimId])).toBe(0);
     });

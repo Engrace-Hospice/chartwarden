@@ -92,6 +92,7 @@ function constantContextPort(): ValidationContextPort {
       context: {
         claimId: claim.id,
         claim: {
+          icd10Sequence: [],
           dischargeClaimCodes: {
             patientStatus: "30",
             conditionCodes: [],
@@ -276,6 +277,7 @@ describe("Type of Bill refresh on re-validation (812/813 â†’ 811/814 once the st
         context: {
           claimId: claim.id,
           claim: {
+            icd10Sequence: [],
             tob: claim.tob,
             dischargeDate,
             dischargeReason: reason,
@@ -371,6 +373,7 @@ describe("late-NOE occurrence span 77 on re-validation (CMS Pub. 100-04 ch. 11 Â
         context: {
           claimId: claim.id,
           claim: {
+            icd10Sequence: [],
             serviceFrom: "2026-03-01",
             serviceTo: "2026-03-31",
             dischargeClaimCodes: {
@@ -420,8 +423,10 @@ describe("late-NOE occurrence span 77 on re-validation (CMS Pub. 100-04 ch. 11 Â
 });
 
 describe("physician NPIs on re-validation (UB-04 FL 76 / FL 78)", () => {
-  const physician = (npi: string) => ({
+  const physician = (npi: string, firstName?: string, lastName?: string) => ({
     npi,
+    ...(firstName !== undefined ? { firstName } : {}),
+    ...(lastName !== undefined ? { lastName } : {}),
     status: "active",
     licenseUnexpiredOnServiceDates: true,
   });
@@ -434,6 +439,7 @@ describe("physician NPIs on re-validation (UB-04 FL 76 / FL 78)", () => {
         context: {
           claimId: claim.id,
           claim: {
+            icd10Sequence: [],
             dischargeClaimCodes: {
               patientStatus: "30",
               conditionCodes: [],
@@ -484,6 +490,64 @@ describe("physician NPIs on re-validation (UB-04 FL 76 / FL 78)", () => {
     expect(claim.admissionTypeCode).toBe("3");
     expect(claim.admissionSourceCode).toBe("1");
     expect(claim.version).toBe(0); // a derived projection, not a user edit
+  });
+
+  it("re-derives the names and diagnosis snapshot WITH the NPIs, so an NPI and its name never drift apart", async () => {
+    seedValidatingClaim();
+    const withDx = (port: ValidationContextPort, codes: string[]): ValidationContextPort => ({
+      build: async (...args) => {
+        const built = await port.build(...args);
+        const ctx = built.context as unknown as { claim: Record<string, unknown> };
+        const icd10Sequence = codes.map((code, i) => ({
+          position: i + 1,
+          code,
+          relationship: i === 0 ? "terminal" : "related",
+        }));
+        return {
+          ...built,
+          context: { ...built.context, claim: { ...ctx.claim, icd10Sequence } },
+        } as never;
+      },
+    });
+    await makeService([passRule], {
+      contextPort: withDx(
+        contextWithPhysicians(
+          physician("1234567893", "Ada", "Lovelace"),
+          physician("1982736455", "Grace", "Hopper"),
+        ),
+        ["C3490"],
+      ),
+    }).validateClaim(ACTOR, { claimId: "claim-1", trigger: "manual_re_run" });
+    let claim = store.claims.get("claim-1");
+    expect(claim.attendingPhysicianLastName).toBe("Lovelace");
+    expect(claim.certifyingPhysicianLastName).toBe("Hopper");
+    expect(claim.diagnosisSnapshot).toEqual([
+      { icd10Code: "C3490", sequence: 1, qualifier: "ABK" },
+    ]);
+
+    // M40 now says a DIFFERENT attending, and the certifying physician is the same person (no separate NPI).
+    await makeService([passRule], {
+      contextPort: withDx(
+        contextWithPhysicians(
+          physician("1245319599", "Alan", "Turing"),
+          physician("1245319599", "Alan", "Turing"),
+        ),
+        ["C787", "J449"],
+      ),
+    }).validateClaim(ACTOR, { claimId: "claim-1", trigger: "pre_submission" });
+    claim = store.claims.get("claim-1");
+    expect(claim.attendingPhysicianNpi).toBe("1245319599");
+    expect(claim.attendingPhysicianFirstName).toBe("Alan");
+    expect(claim.attendingPhysicianLastName).toBe("Turing");
+    // certifying name is null exactly when the certifying NPI is
+    expect(claim.certifyingPhysicianNpi).toBeNull();
+    expect(claim.certifyingPhysicianFirstName).toBeNull();
+    expect(claim.certifyingPhysicianLastName).toBeNull();
+    expect(claim.diagnosisSnapshot).toEqual([
+      { icd10Code: "C787", sequence: 1, qualifier: "ABK" },
+      { icd10Code: "J449", sequence: 2, qualifier: "ABF" },
+    ]);
+    expect(claim.version).toBe(0);
   });
 
   it("clears an NPI the run could no longer resolve", async () => {
