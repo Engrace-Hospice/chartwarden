@@ -237,3 +237,44 @@ export async function seedNotr(
   );
   return id;
 }
+
+/**
+ * Seed a claim (default `ACK_PENDING`) and the 837I submission that answers it, directly as the superuser (logical FKs
+ * only, so random ids are fine). Returns the ids the ack cron needs.
+ */
+export async function seedClaimWithSubmission(
+  admin: Client,
+  over: Partial<{ state: string; orgId: string; providerEntityId: string; patientId: string }> = {},
+): Promise<{ claimId: string; submissionId: string; patientId: string }> {
+  const claimId = randomUUID();
+  const submissionId = randomUUID();
+  const patientId = over.patientId ?? randomUUID();
+  const org = over.orgId ?? ORG_A;
+  const pe = over.providerEntityId ?? PE_A;
+  const ccn = `CCN${claimId.slice(0, 12)}`;
+  await admin.query(
+    `INSERT INTO claim (id, organization_id, provider_entity_id, patient_id, admission_id, election_period_id_from,
+       election_period_id_to, patient_payer_id, tob, service_from, service_to, state, claim_control_number,
+       mac_jurisdiction, sequestration_applied_pct, sequestration_policy_id, created_by_membership_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$6,$7,'811','2026-01-01','2026-01-31',$8,$9,'ngs_j6','2.00',$10,$11)`,
+    [
+      claimId,
+      org,
+      pe,
+      patientId,
+      randomUUID(),
+      randomUUID(),
+      randomUUID(),
+      over.state ?? "ACK_PENDING",
+      ccn,
+      randomUUID(),
+      MEMBERSHIP_A,
+    ],
+  );
+  await admin.query(
+    `INSERT INTO claim_submission (id, organization_id, provider_entity_id, kind, claim_id, claim_control_number, attempt_index)
+     VALUES ($1,$2,$3,'claim_837i',$4,$5,0)`,
+    [submissionId, org, pe, claimId, ccn],
+  );
+  return { claimId, submissionId, patientId };
+}

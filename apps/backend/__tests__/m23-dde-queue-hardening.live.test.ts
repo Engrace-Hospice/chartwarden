@@ -653,6 +653,7 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
             if (notice.noticeId === poison) throw new Error("poison");
             return real.ensureNoticeItem(tx, notice);
           },
+          ensureClaimRtpItem: real.ensureClaimRtpItem,
         },
         logger: { error: (fields) => void logged.push(fields) },
       });
@@ -682,6 +683,7 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
           ensureNoticeItem: async () => {
             throw new Error("down");
           },
+          ensureClaimRtpItem: async () => ({ created: false }),
         },
       });
       const err = (await runNoeWindowWatch(deps).then(
@@ -701,6 +703,7 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
           ensureNoticeItem: async () => {
             throw new Error("dde watchdog down");
           },
+          ensureClaimRtpItem: async () => ({ created: false }),
         },
       });
       const failed = (await runNoeWindowWatch(failing).then(
