@@ -1,6 +1,6 @@
 # Stedi sandbox findings (2026-10-09)
 
-Test-mode key only, synthetic data only, no key in any file. Scripts: `submit.sh`, `gen.py`. Raw redacted responses: `responses/`. Payloads: `payloads/`.
+Test-mode key only, synthetic data only, no key in any file. Scripts (`submit.sh`, `gen.py`), raw redacted responses and the `FINAL_*` payloads were kept in a local scratch folder and are intentionally not in the repo; the synthetic X12 fixtures derived from them live in `packages/x12-837-client/src/clearinghouse/__fixtures__/`.
 Source docs for the OpenAPI shapes: github.com/Stedi/openApi (healthcare.json, event-destinations.json).
 
 ## Headline
