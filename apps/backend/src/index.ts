@@ -877,6 +877,7 @@ import {
   validateDocumentsAIBlock,
 } from "./modules/22-documents/index";
 import { buildM22ConsentRevokedConsumer } from "./modules/22-documents/outbox-consumers/m39-consent-revoked";
+import { createDrizzleAttemptStore } from "./modules/23-billing-medicare/clearinghouse-attempt-store";
 import {
   bindPlatformClearinghouse,
   describeClearinghouseBinding,
@@ -960,6 +961,7 @@ import {
   composeFacilitySpans,
   toFacilitySpans,
 } from "./modules/23-billing-medicare/services/claim-cbsa";
+import { buildClearinghouseAttemptResolutionService } from "./modules/23-billing-medicare/services/clearinghouse-attempt-resolution-service";
 import { resolveInpatientCapDifferential } from "./modules/23-billing-medicare/services/inpatient-cap-differential";
 // M24 (Billing — Medicaid) boot surface — the §4.11 outbox catalog, the §4.8 ABAC resolvers
 // (provider_entity_medicaid_billing_scope / medicaid_claim_in_billing_manager_caseload /
@@ -3183,7 +3185,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   const m23HetsConfig = m23HetsConfigFromEnv(process.env);
   // ADR-0053 D3 - the platform's clearinghouse binding. Unset keeps every transport call at CH_NOT_WIRED; a vendor
   // named with no adapter in this build throws here, so a misconfigured deploy refuses to boot.
-  const clearinghouseBinding = bindPlatformClearinghouse(process.env);
+  const clearinghouseBinding = bindPlatformClearinghouse(process.env, {
+    attempts: dbHandle ? createDrizzleAttemptStore(dbHandle.db) : null,
+    onAnomaly: (anomaly) => app.log.warn({ anomaly }, "Clearinghouse anomaly"),
+  });
   // WX-PR-012 — the M25 x12-worker sidecar transport, gated the same way (unset in dev/test/CI so
   // nothing calls out by accident; `undefined` falls through to `createX12835Client()`'s fail-closed
   // default). No sidecar is deployed anywhere yet, so this stays undefined in every environment today.
@@ -4831,6 +4836,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             // §20.1.3–§20.1.4). Submission rides the same outbox → BullMQ bridge + launch gateway as the NOE;
             // M6's org-explicit transfer-in read refreshes our admission date + physicians before filing.
             // ADR-0052 — the DDE work queue (human work tracking; no DDE integration or credential).
+            attemptResolutionService: buildClearinghouseAttemptResolutionService(
+              createDrizzleAttemptStore(dbHandle.db),
+            ),
             ddeQueueService: buildDdeQueueService(dbHandle.db, {
               outbox: m23OutboxPublisher,
               // Assignable only to an active member whose role grants billing.dde.work (M3's holder reader).

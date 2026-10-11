@@ -57105,6 +57105,166 @@
         }
       }
     },
+    "/api/v1/billing/clearinghouse-attempts/resolve": {
+      "post": {
+        "operationId": "postApiV1BillingClearinghouseattemptsResolve",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Settle a clearinghouse attempt past the vendor's key window as sent (vendor id) or released; step-up",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "idempotencyKey",
+                    "controlNumber",
+                    "status",
+                    "clearinghouseSubmissionId"
+                  ],
+                  "properties": {
+                    "idempotencyKey": {
+                      "type": "string"
+                    },
+                    "controlNumber": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "sent",
+                          "type": "string"
+                        },
+                        {
+                          "const": "voided",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "clearinghouseSubmissionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "required": [
+                      "providerEntityId",
+                      "usage",
+                      "idempotencyKey",
+                      "confirmedAtVendor",
+                      "outcome",
+                      "clearinghouseSubmissionId"
+                    ],
+                    "properties": {
+                      "providerEntityId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "usage": {
+                        "anyOf": [
+                          {
+                            "const": "test",
+                            "type": "string"
+                          },
+                          {
+                            "const": "production",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "idempotencyKey": {
+                        "pattern": "^[A-Za-z0-9_.:-]{1,128}$",
+                        "type": "string"
+                      },
+                      "confirmedAtVendor": {
+                        "const": true,
+                        "type": "boolean"
+                      },
+                      "outcome": {
+                        "const": "sent",
+                        "type": "string"
+                      },
+                      "clearinghouseSubmissionId": {
+                        "pattern": "^[A-Za-z0-9_.:-]{1,200}$",
+                        "type": "string"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "providerEntityId",
+                      "usage",
+                      "idempotencyKey",
+                      "confirmedAtVendor",
+                      "outcome"
+                    ],
+                    "properties": {
+                      "providerEntityId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "usage": {
+                        "anyOf": [
+                          {
+                            "const": "test",
+                            "type": "string"
+                          },
+                          {
+                            "const": "production",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "idempotencyKey": {
+                        "pattern": "^[A-Za-z0-9_.:-]{1,128}$",
+                        "type": "string"
+                      },
+                      "confirmedAtVendor": {
+                        "const": true,
+                        "type": "boolean"
+                      },
+                      "outcome": {
+                        "const": "not_filed",
+                        "type": "string"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/billing/dde-items": {
       "get": {
         "operationId": "getApiV1BillingDdeitems",

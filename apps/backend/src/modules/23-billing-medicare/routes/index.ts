@@ -1,4 +1,5 @@
 import type { ClaimAssemblyService } from "../services/claim-assembly";
+import type { ClearinghouseAttemptResolutionService } from "../services/clearinghouse-attempt-resolution-service";
 import type { DdeQueueService } from "../services/dde-queue-service";
 import type { TransferNoticeService } from "../services/transfer-notice-service";
 import type { PlatformAdminRouteService } from "./platform-admin-service";
@@ -104,6 +105,8 @@ export interface M23RouteServices {
   readonly transferNoticeService?: TransferNoticeService;
   /** ADR-0052 — the DDE work-queue service (absent ⇒ /billing/dde-items is not mounted). */
   readonly ddeQueueService?: DdeQueueService;
+  /** ADR-0053 — settles a clearinghouse attempt past the vendor's window (absent ⇒ /billing/clearinghouse-attempts is not mounted). */
+  readonly attemptResolutionService?: ClearinghouseAttemptResolutionService;
 }
 
 export {

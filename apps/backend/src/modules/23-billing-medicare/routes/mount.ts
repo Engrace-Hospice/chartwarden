@@ -16,6 +16,7 @@
 import type { FastifyInstance } from "fastify";
 
 import { registerClaimsRoutes } from "./claims.routes";
+import { registerClearinghouseAttemptRoutes } from "./clearinghouse-attempt.routes";
 import { registerDdeQueueRoutes } from "./dde-queue.routes";
 import { registerEligibilityRoutes } from "./eligibility.routes";
 import type { M23RouteServices } from "./index";
@@ -38,6 +39,10 @@ export { registerValidationRoutes, type ValidationRouteDeps } from "./validation
 export { registerRuleConfigRoutes, type RuleConfigRouteDeps } from "./rule-config.routes";
 export { registerNoeRoutes, type NoeRouteDeps } from "./noe.routes";
 export { registerDdeQueueRoutes, type DdeQueueRouteDeps } from "./dde-queue.routes";
+export {
+  registerClearinghouseAttemptRoutes,
+  type ClearinghouseAttemptRouteDeps,
+} from "./clearinghouse-attempt.routes";
 export { registerNotrRoutes, type NotrRouteDeps } from "./notr.routes";
 export {
   registerTransferNoticeRoutes,
@@ -91,6 +96,12 @@ export function mountM23Routes(
   // ADR-0052 — the DDE work queue: human work tracking for Medicare Direct Data Entry (absent service => not mounted).
   if (services.ddeQueueService) {
     registerDdeQueueRoutes(app, { ddeQueueService: services.ddeQueueService });
+  }
+  // ADR-0053 — settle a clearinghouse attempt past the vendor's window (absent service => not mounted).
+  if (services.attemptResolutionService) {
+    registerClearinghouseAttemptRoutes(app, {
+      resolutionService: services.attemptResolutionService,
+    });
   }
   // Route group E — eligibility / sequestration-policy / MAC credentials.
   registerEligibilityRoutes(app, { readService, writeService });

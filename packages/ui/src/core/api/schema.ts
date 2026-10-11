@@ -4421,6 +4421,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/clearinghouse-attempts/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Settle a clearinghouse attempt past the vendor's key window as sent (vendor id) or released; step-up */
+        post: operations["postApiV1BillingClearinghouseattemptsResolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/dde-items": {
         parameters: {
             query?: never;
@@ -35694,6 +35711,56 @@ export interface operations {
                         /** Format: uuid */
                         initialValidationRunId: string;
                         initialValidationOutcome: "all_pass" | "failures_present" | "overrides_required";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingClearinghouseattemptsResolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    usage: "test" | "production";
+                    idempotencyKey: string;
+                    /** @constant */
+                    confirmedAtVendor: true;
+                    /** @constant */
+                    outcome: "sent";
+                    clearinghouseSubmissionId: string;
+                } | {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    usage: "test" | "production";
+                    idempotencyKey: string;
+                    /** @constant */
+                    confirmedAtVendor: true;
+                    /** @constant */
+                    outcome: "not_filed";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        idempotencyKey: string;
+                        controlNumber: string;
+                        status: "sent" | "voided";
+                        clearinghouseSubmissionId: string | null;
                     };
                 };
             };

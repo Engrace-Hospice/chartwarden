@@ -188,13 +188,18 @@ export type {
 } from "./clearinghouse/types";
 export {
   CLEARINGHOUSE_CONFORMANCE_CASES,
+  ALL_CONFORMANCE_CAPABILITIES,
   DEFAULT_SCOPE,
   runClearinghouseConformance,
+  runConformance,
   SYNTHETIC_MBI,
 } from "./clearinghouse/conformance";
 export type {
   ClearinghouseHarness,
+  ConformanceCapability,
   ConformanceCase,
+  ConformanceOutcome,
+  ConformancePayloads,
   ConformanceScript,
   HarnessFactory,
 } from "./clearinghouse/conformance";
@@ -230,3 +235,32 @@ export type {
   ClearinghouseTransportFactories,
   ClearinghouseTransportFactory,
 } from "./clearinghouse/transport-registry";
+export { InMemoryAttemptStore, PlatformControlNumberTaken } from "./clearinghouse/attempt-store";
+export type {
+  AttemptResolution,
+  SettleGuard,
+  AttemptStatus,
+  AttemptUsage,
+  ReserveResult,
+  SubmissionAttempt,
+  SubmissionAttemptStore,
+} from "./clearinghouse/attempt-store";
+export {
+  ATTEMPT_STORE_CONTRACT,
+  CONTRACT_OPERATOR_ID,
+  IN_MEMORY_CONTRACT_IDS,
+  reservation as attemptReservationFixture,
+} from "./clearinghouse/attempt-store-contract";
+export type {
+  AttemptStoreContractCase,
+  AttemptStoreContractIds,
+} from "./clearinghouse/attempt-store-contract";
+export {
+  pastKeyWindow,
+  settleGuard,
+  STEDI_API_KEY_ENV,
+  StediTransport,
+  createStediTransportFromEnv,
+} from "./clearinghouse/stedi-transport";
+export type { StediAnomaly, StediTransportOptions } from "./clearinghouse/stedi-transport";
+export { scopeKey } from "./clearinghouse/submission-identity";

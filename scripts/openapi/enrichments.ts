@@ -430,6 +430,10 @@ import {
   ValidationOverrideListQuerySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/billing-typebox";
 import {
+  ResolveStaleAttemptBodySchema,
+  ResolvedAttemptSchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/clearinghouse-attempt-typebox";
+import {
   AssignDdeItemBodySchema,
   CreateDdeItemBodySchema,
   DdeItemDetailViewSchema,
@@ -3156,6 +3160,13 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary:
       "Upsert a MAC credential — clientSecret write-only/encrypted at the boundary; step-up (§4.1 #35)",
     body: UpsertMacCredentialBodySchema,
+  },
+  // ── clearinghouse attempt resolution (clearinghouse-attempt.routes.ts; ADR-0053) ──
+  "POST /api/v1/billing/clearinghouse-attempts/resolve": {
+    summary:
+      "Settle a clearinghouse attempt past the vendor's key window as sent (vendor id) or released; step-up",
+    body: ResolveStaleAttemptBodySchema,
+    response: ResolvedAttemptSchema,
   },
   // ── internal service-to-service seams (internal.routes.ts; system-principal only) ──
   "GET /api/v1/internal/billing/claim-day-projection": {

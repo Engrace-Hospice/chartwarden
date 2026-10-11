@@ -6,9 +6,10 @@
 //
 // All state is partitioned by (organizationId, providerEntityId, usage) — the port's isolation boundary — so one
 // tenant, one provider or the other usage mode can never see, replay or collide with another's (C14, C15).
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { type X12WorkerResult, degraded } from "../types";
 import { type ClearinghouseHarness, type ConformanceScript, DEFAULT_SCOPE } from "./conformance";
+import { identityOf, scopeKey } from "./submission-identity";
 import {
   type AckEvent,
   CH,
@@ -51,36 +52,6 @@ interface Partition {
 
 function emptyPartition(): Partition {
   return { submissions: new Map(), byKey: new Map(), acks: [], remittances: [] };
-}
-
-function scopeKey(s: ClearinghouseScope): string {
-  return JSON.stringify([s.organizationId, s.providerEntityId, s.usage]);
-}
-
-/** JSON with object keys sorted, so key order never changes an identity. */
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .filter(([, v]) => v !== undefined)
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
-}
-
-/** The business identity an idempotency key binds: everything that makes this submission THIS submission. */
-function identityOf(s: ClearinghouseSubmission): string {
-  return createHash("sha256")
-    .update(
-      canonical({
-        kind: s.kind,
-        controlNumber: s.controlNumber,
-        adjustment: s.adjustment ?? null,
-        payload: s.payload,
-      }),
-    )
-    .digest("hex");
 }
 
 function sign(secret: string, body: string): string {

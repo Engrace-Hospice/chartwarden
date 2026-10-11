@@ -3206,6 +3206,12 @@ export const M23_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "provider_entity_billing_scope",
   },
+  "billing.clearinghouse.resolve_attempt": {
+    resource: "billing_clearinghouse_attempt",
+    action: "resolve",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of the M23 contributed permission keys (twenty-eight + the two F-210 rate-table keys). */

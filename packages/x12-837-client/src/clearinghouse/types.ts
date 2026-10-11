@@ -66,6 +66,12 @@ export interface ClearinghouseContext {
   readonly correlationId: string;
   /** `test` MUST reach only vendor test mode (Stedi `usageIndicator: "T"`); `production` real payers. */
   readonly usage: "test" | "production";
+  /**
+   * The NPI of `providerEntityId`, set by the caller from the provider entity (never from a request). A transport that
+   * can read the billing provider out of a payload refuses one that names a different NPI, so a mis-bound context
+   * cannot file under another provider on the shared credential. Required for `production` usage.
+   */
+  readonly billingNpi?: string;
   /** MAC jurisdiction is payer metadata only; it never selects the transport. */
   readonly jurisdiction?: MacJurisdiction;
 }
@@ -78,7 +84,7 @@ export interface ClearinghouseContext {
  */
 export type ClearinghouseScope = Pick<
   ClearinghouseContext,
-  "organizationId" | "providerEntityId" | "usage"
+  "organizationId" | "providerEntityId" | "usage" | "billingNpi"
 >;
 
 // ─── Submission (claims, NOE, NOTR) ─────────────────────────────────────────────────────────────
