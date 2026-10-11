@@ -6,6 +6,7 @@ import { channelKindLabel, channelLabel, initialsOf, relativeTime } from "./mess
 const FILTERS: readonly { value: ConversationFilter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "unread", label: "Unread" },
+  { value: "mentions", label: "Mentions" },
   { value: "dm", label: "Direct" },
   { value: "care_team", label: "Care Teams" },
   { value: "archived", label: "Archived" },
@@ -160,6 +161,12 @@ export function ConversationInbox({
                   {channel.unreadCount > 0 ? (
                     <span className="wx-messaging-unread" aria-hidden="true">
                       {channel.unreadCount > 99 ? "99+" : channel.unreadCount}
+                    </span>
+                  ) : null}
+                  {channel.mentionCount > 0 ? (
+                    <span className="sr-only">
+                      {channel.mentionCount} unread{" "}
+                      {channel.mentionCount === 1 ? "mention" : "mentions"}
                     </span>
                   ) : null}
                 </button>

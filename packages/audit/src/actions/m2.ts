@@ -25,6 +25,12 @@ export const M2_ACTION_CATALOG: ModuleActionCatalog = [
   compliance("m2.membership.updated", "A membership's default scope was edited."),
   compliance("m2.membership.revoked", "A membership was revoked."),
   compliance("m2.user.deactivated", "A user was fully offboarded (credentials disabled)."),
+  compliance("m2.user.provisioned", "An administrator directly provisioned a staff identity."),
+  compliance("m2.user.password_reset", "An administrator reset a global password credential."),
+  compliance(
+    "m2.user.password_change_completed",
+    "A user replaced a temporary password and the mandatory-rotation state was cleared.",
+  ),
   compliance("m2.collaborator.invited", "A per-patient collaborator magic-link was issued."),
   compliance("m2.collaborator.session_started", "A collaborator magic-link session began."),
   compliance(

@@ -596,12 +596,79 @@
 
 .wx-message-composer {
   position: relative;
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.4rem 0.65rem;
   padding: 0.75rem 1rem;
   border-top: 1px solid var(--color-card-border);
   background: var(--color-surface-lowest);
+}
+
+.wx-message-reference {
+  color: inherit;
+  font-weight: 700;
+  text-decoration: none;
+  border-radius: 0.2rem;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  padding-inline: 0.1rem;
+}
+
+a.wx-message-reference:hover {
+  text-decoration: underline;
+}
+
+.wx-message-row[data-highlighted="true"] .wx-message-bubble {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+}
+
+.wx-mention-menu {
+  position: absolute;
+  z-index: 20;
+  inset-inline: 1rem;
+  bottom: calc(100% - 0.25rem);
+  max-height: 18rem;
+  overflow-y: auto;
+  border: 1px solid var(--color-outline-variant);
+  border-radius: 0.75rem;
+  background: var(--color-surface-container-highest);
+  box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 16%);
+  padding: 0.35rem;
+}
+
+.wx-mention-menu button {
+  display: flex;
+  width: 100%;
+  min-height: 2.75rem;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.1rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--color-on-surface);
+  padding: 0.45rem 0.65rem;
+  text-align: left;
+}
+
+.wx-mention-menu button:hover,
+.wx-mention-menu button.is-active,
+.wx-mention-menu button:focus-visible {
+  background: var(--color-surface-container);
+  outline: none;
+}
+
+.wx-mention-menu button span,
+.wx-mention-state {
+  color: var(--color-on-surface-variant);
+  font-size: 0.75rem;
+}
+
+.wx-mention-state {
+  display: block;
+  padding: 0.75rem;
 }
 
 .wx-message-composer textarea {

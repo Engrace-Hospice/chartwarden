@@ -139,6 +139,7 @@ const PLATFORM_APPROVE_ROLES: readonly PlatformOpsRoleKey[] = ["platform_admin",
  * these roles; without the grant a pure platform operator failed the RBAC check first.
  */
 export const PLATFORM_USER_LIFECYCLE_KEY = "user.deactivate" as const;
+export const PLATFORM_PASSWORD_RESET_KEY = "user.password.reset" as const;
 const PLATFORM_USER_LIFECYCLE_ROLES: readonly PlatformOpsRoleKey[] = [
   "platform_ops",
   "platform_admin",
@@ -151,7 +152,8 @@ function platformOpsGrantsFor(role: PlatformOpsRoleKey): readonly string[] {
   if (PLATFORM_READ_ROLES.includes(role)) keys.push(...M35_BILLING_ADMIN_READ_KEYS);
   if (PLATFORM_WRITE_ROLES.includes(role)) keys.push(...M35_BILLING_ADMIN_WRITE_KEYS);
   if (PLATFORM_APPROVE_ROLES.includes(role)) keys.push(M35_REFUND_APPROVE_KEY);
-  if (PLATFORM_USER_LIFECYCLE_ROLES.includes(role)) keys.push(PLATFORM_USER_LIFECYCLE_KEY);
+  if (PLATFORM_USER_LIFECYCLE_ROLES.includes(role))
+    keys.push(PLATFORM_USER_LIFECYCLE_KEY, PLATFORM_PASSWORD_RESET_KEY);
   return keys;
 }
 

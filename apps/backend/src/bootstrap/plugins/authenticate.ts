@@ -23,6 +23,7 @@ export interface SessionSnapshot {
   readonly userId: string;
   /** Server-bound org; null for a pre-org session (authenticated but not yet org-bound). */
   readonly activeOrganizationId: string | null;
+  readonly passwordChangeRequired?: boolean;
 }
 
 /** The shared secret an internal (non-interactive) caller presents to authenticate as a system principal. */
@@ -66,6 +67,25 @@ const MFA_ENROLMENT_ALLOWED_PREFIXES: readonly string[] = ["/api/auth/", "/api/v
 
 /** GAP-002 — a timer poll the user did not cause; checked for timeout but not counted as activity. */
 const BACKGROUND_HEADER = "x-wardenx-background";
+
+/** Exact capabilities of a limited password-rotation session. No business route uses this prefix. */
+const PASSWORD_CHANGE_ALLOWED_ROUTES: ReadonlySet<string> = new Set([
+  "GET /api/auth/get-session",
+  "POST /api/auth/sign-out",
+  "GET /api/v1/auth/credential-status",
+  "POST /api/v1/auth/password/complete-required-change",
+]);
+
+function assertCredentialStateMayCall(request: FastifyRequest, required: boolean | undefined): void {
+  if (!required) return;
+  const path = request.url.split("?")[0] ?? "";
+  if (PASSWORD_CHANGE_ALLOWED_ROUTES.has(`${request.method.toUpperCase()} ${path}`)) return;
+  throw new WardenXError(
+    "PASSWORD_CHANGE_REQUIRED",
+    "change the temporary password before accessing WardenX",
+    403,
+  );
+}
 
 export interface SessionAuthenticateDeps {
   /** Read the session for a request (Better Auth in prod via getIdentitySession; a stub in tests). */
@@ -190,6 +210,9 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
     // check, never at a route, and never off an unverified request header, which would let a caller
     // promote itself past `requireSystemPrincipal()` and read any tenant it names.
     request.context.attributes.actorKind = "user";
+    // Global and backend-enforced: this runs before the pre-org return and before tenant resolution,
+    // so org switching, passkey sessions, refreshes and direct REST calls cannot bypass rotation.
+    assertCredentialStateMayCall(request, snap.passwordChangeRequired);
     if (!snap.activeOrganizationId) return; // pre-org: org-scoped routes gate on the missing org
     const scope: OrgScope = { orgId: snap.activeOrganizationId };
     const actor = await deps.getResolver().resolveActor(scope, snap.sessionId);

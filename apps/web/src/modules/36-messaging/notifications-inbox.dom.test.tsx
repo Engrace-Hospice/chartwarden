@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
@@ -18,6 +18,58 @@ const session: Session = {
 };
 
 describe("Notifications inbox labels", () => {
+  it("shows only structured message alerts in the Mentions tab", async () => {
+    const client = {
+      GET: vi.fn(async () => ({
+        data: {
+          alerts: [
+            {
+              alertId: "mention-1",
+              eventType: "m36.message.mentioned",
+              category: "clinical_routine",
+              severity: "info",
+              summary: "You were mentioned in a secure conversation.",
+              deepLink: "/messaging?channelId=channel-1&messageId=message-1",
+              createdAt: "2026-10-10T08:00:00.000Z",
+              deliveryStatus: "delivered",
+              readAt: null,
+            },
+            {
+              alertId: "other-1",
+              eventType: "m20.safety.coverage_gap_detected",
+              category: "field_safety",
+              severity: "critical",
+              summary: "Other operational alert",
+              deepLink: "/safety",
+              createdAt: "2026-10-10T07:00:00.000Z",
+              deliveryStatus: "delivered",
+              readAt: null,
+            },
+          ],
+        },
+        error: undefined,
+      })),
+      POST: vi.fn(),
+    } as unknown as ApiClient;
+
+    render(
+      <MemoryRouter>
+        <ApiClientProvider client={client}>
+          <SessionProvider session={session}>
+            <AlertInboxProvider>
+              <NotificationsInbox />
+            </AlertInboxProvider>
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("Other operational alert");
+    fireEvent.click(screen.getByRole("tab", { name: "Mentions" }));
+    expect(await screen.findByText("You were mentioned in a secure conversation.")).toBeTruthy();
+    expect(screen.queryByText("Other operational alert")).toBeNull();
+  });
+
   it("shows a readable event label without exposing the internal event enum", async () => {
     const eventType = "m20.safety.coverage_gap_detected";
     const client = {

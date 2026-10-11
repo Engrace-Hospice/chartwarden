@@ -63,6 +63,18 @@ export const ListMessagesQuerySchema = Type.Object({
   cursor: Type.Optional(Type.String()),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
   direction: Type.Optional(Type.Union([Type.Literal("forward"), Type.Literal("backward")])),
+  anchorMessageId: Type.Optional(Id),
+});
+
+export const MentionCandidateQuerySchema = Type.Object({
+  q: Type.Optional(Type.String({ maxLength: 100 })),
+});
+
+const MessageReferenceInputSchema = Type.Object({
+  kind: Type.Union([Type.Literal("staff"), Type.Literal("patient")]),
+  entityId: Id,
+  start: Type.Integer({ minimum: 0, maximum: 8000 }),
+  end: Type.Integer({ minimum: 1, maximum: 8001 }),
 });
 
 const AttachmentSchema = Type.Object({
@@ -78,10 +90,12 @@ export const SendMessageBodySchema = Type.Object({
   parentMessageId: Type.Optional(Id),
   quotedMessageId: Type.Optional(Id),
   attachments: Type.Optional(Type.Array(AttachmentSchema, { maxItems: 10 })),
+  references: Type.Optional(Type.Array(MessageReferenceInputSchema, { maxItems: 25 })),
 });
 
 export const EditMessageBodySchema = Type.Object({
   body: Type.String({ minLength: 1, maxLength: 8000 }),
+  references: Type.Optional(Type.Array(MessageReferenceInputSchema, { maxItems: 25 })),
 });
 
 export const ReadBodySchema = Type.Object({
@@ -202,6 +216,7 @@ export const ChannelSummaryResponseSchema = Type.Object({
   subjectId: NullableString(),
   archivedAt: NullableString(),
   unreadCount: Type.Integer(),
+  mentionCount: Type.Integer(),
   participantRoles: Type.Array(Type.String()),
   lastActivityAt: Type.String(),
   lastMessage: Type.Union([
@@ -229,6 +244,7 @@ export const ChannelDetailResponseSchema = Type.Object({
   subjectId: NullableString(),
   archivedAt: NullableString(),
   unreadCount: Type.Integer(),
+  mentionCount: Type.Integer(),
   participantRoles: Type.Array(Type.String()),
   lastActivityAt: Type.String(),
   lastMessage: Type.Union([
@@ -252,6 +268,16 @@ const ResolvedMessageSchema = Type.Object({
   bodyKind: MessageBodyKindSchema,
   createdAt: Type.String(),
   parentMessageId: NullableString(),
+  references: Type.Array(
+    Type.Object({
+      kind: Type.Union([Type.Literal("staff"), Type.Literal("patient")]),
+      entityId: Type.String(),
+      start: Type.Integer(),
+      end: Type.Integer(),
+      displayLabel: Type.String(),
+      navigable: Type.Boolean(),
+    }),
+  ),
 });
 export const MessageListResponseSchema = Type.Object({
   messages: Type.Array(ResolvedMessageSchema),
@@ -283,6 +309,16 @@ export const DmStaffSearchResponseSchema = Type.Object({
       userId: Id,
       displayName: Type.String(),
       roles: Type.Array(Type.String()),
+    }),
+  ),
+});
+export const MentionCandidateResponseSchema = Type.Object({
+  candidates: Type.Array(
+    Type.Object({
+      kind: Type.Union([Type.Literal("staff"), Type.Literal("patient")]),
+      entityId: Type.String(),
+      displayName: Type.String(),
+      detail: NullableString(),
     }),
   ),
 });

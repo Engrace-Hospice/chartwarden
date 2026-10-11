@@ -1,4 +1,4 @@
-import { CenteredCardLayout, t } from "@wardenx/ui";
+import { CenteredCardLayout, t, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/02-identity — MFA Challenge (M2 Auth, ADR-0034 task 4).
 // Spec: docs/design/screens/core/WARDENX_UI_AUTH.md "MFA challenge" (/login/2fa). Matched to the P0
 // Pencil frame (wardenx-P0-foundation.pen `a1dbhD`, "Card Two-factor verification"): branded card,
@@ -11,11 +11,13 @@ import { useRef, useState } from "react";
 import type { CSSProperties, FormEvent, JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { authClient } from "./auth-client";
+import { authenticationContinuation, continuationPath } from "./auth-continuation";
 import { BrandLockup } from "./brand-lockup";
 
 const OTP_LEN = 6;
 
 export function MfaChallenge(): JSX.Element {
+  const client = useApiClient();
   const navigate = useNavigate();
   const [code, setCode] = useState("");
   const [useBackup, setUseBackup] = useState(false);
@@ -29,8 +31,8 @@ export function MfaChallenge(): JSX.Element {
     const { error: err } = useBackup
       ? await authClient.twoFactor.verifyBackupCode({ code })
       : await authClient.twoFactor.verifyTotp({ code });
-    setBusy(false);
     if (err) {
+      setBusy(false);
       setError(
         useBackup
           ? "Invalid backup code."
@@ -38,7 +40,14 @@ export function MfaChallenge(): JSX.Element {
       );
       return;
     }
-    navigate("/login/organization");
+    const continuation = await authenticationContinuation(client);
+    setBusy(false);
+    const path = continuationPath(continuation);
+    if (path) navigate(path);
+    else
+      setError(
+        continuation.kind === "error" ? continuation.message : "Verification could not continue.",
+      );
   }
 
   return (
@@ -68,7 +77,11 @@ export function MfaChallenge(): JSX.Element {
           ) : (
             <OtpInput value={code} onChange={setCode} />
           )}
-          {error ? <p style={errorStyle}>{error}</p> : null}
+          {error ? (
+            <p role="alert" style={errorStyle}>
+              {error}
+            </p>
+          ) : null}
           <button
             type="submit"
             disabled={busy || (useBackup ? !code : code.length < OTP_LEN)}

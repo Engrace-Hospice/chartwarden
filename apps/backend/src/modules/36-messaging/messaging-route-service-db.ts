@@ -42,6 +42,7 @@ import type {
   DeliveryEndpointChannel,
   DeliveryEndpointVerification,
   MessageBodyKind,
+  MessageReferenceInput,
   MessagingProvider,
   MessagingRouteService,
   NotificationChannel,
@@ -85,6 +86,7 @@ const CH = schema.channels;
 const CM = schema.channelMembers;
 const MSG = schema.messages;
 const MR = schema.messageReceipts;
+const MER = schema.messageEntityReferences;
 const UNP = schema.userNotificationPreferences;
 const DE = schema.deliveryEndpoints;
 const AR = schema.alertRules;
@@ -95,6 +97,44 @@ const MEMBERSHIP = schema.memberships;
 const USER = schema.users;
 const MEMBERSHIP_ROLE = schema.membershipRoles;
 const ROLE = schema.roles;
+
+export interface MessagingOutboxPort {
+  publish(
+    tx: unknown,
+    emission: {
+      readonly eventName: string;
+      readonly payload: Record<string, unknown>;
+      readonly organizationId: string;
+      readonly aggregateKind: string;
+      readonly aggregateId: string;
+    },
+  ): Promise<void>;
+}
+
+function validateReferenceRanges(body: string, references: readonly MessageReferenceInput[]): void {
+  if (references.length > 25) {
+    throw new WardenXError("INVALID_MESSAGE_REFERENCES", "too many message references", 422);
+  }
+  const ordered = [...references].sort((a, b) => a.start - b.start || a.end - b.end);
+  let previousEnd = -1;
+  for (const reference of ordered) {
+    if (
+      !Number.isInteger(reference.start) ||
+      !Number.isInteger(reference.end) ||
+      reference.start < 0 ||
+      reference.end <= reference.start ||
+      reference.end > body.length ||
+      reference.start < previousEnd
+    ) {
+      throw new WardenXError(
+        "INVALID_MESSAGE_REFERENCES",
+        "message reference ranges are invalid or overlap",
+        422,
+      );
+    }
+    previousEnd = reference.end;
+  }
+}
 
 interface EffectiveChannelAccessCandidate {
   readonly kind: ChannelKind;
@@ -430,6 +470,7 @@ export function createDbMessagingRouteService(
      */
     /** GAP-065 — the M39 Part 2 consent gate on care_team visibility (default: seam-backed, fail-closed). */
     part2Gate?: Part2ChannelGate;
+    outbox?: MessagingOutboxPort;
     sendEndpointVerificationCode?: (input: {
       channel: DeliveryEndpointChannel;
       target: string;
@@ -455,6 +496,135 @@ export function createDbMessagingRouteService(
         organizationId,
         patientId,
       ));
+
+  async function mentionCandidates(
+    orgId: string,
+    userId: string,
+    channelId: string,
+    query: string,
+  ) {
+    const channel = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+      await assertActiveMessagingUser(tx, orgId, userId);
+      const [row] = await tx
+        .select({ kind: CH.channelKind, subjectId: CH.subjectId })
+        .from(CH)
+        .where(and(eq(CH.organizationId, orgId), eq(CH.id, channelId)))
+        .limit(1);
+      return row ?? null;
+    });
+    if (
+      !channel ||
+      !(await (async () => {
+        const candidate = await withOrgContext(
+          db,
+          { organizationId: orgId, userId },
+          async (tx) => {
+            const [member] = await tx
+              .select({ source: CM.source })
+              .from(CM)
+              .where(
+                and(
+                  eq(CM.organizationId, orgId),
+                  eq(CM.channelId, channelId),
+                  eq(CM.userId, userId),
+                  isNull(CM.removedAt),
+                ),
+              )
+              .limit(1);
+            return {
+              kind: channel.kind as ChannelKind,
+              subjectId: channel.subjectId,
+              memberSource: (member?.source as ChannelMemberSource | undefined) ?? null,
+            };
+          },
+        );
+        return (
+          (await effectivelyVisibleChannels(orgId, userId, [candidate], part2Gate)).length === 1
+        );
+      })())
+    ) {
+      throw new NotFoundError("channel", channelId);
+    }
+
+    const needle = query.trim().toLowerCase().slice(0, 100);
+    const staffRows = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) =>
+      tx
+        .select({
+          entityId: CM.userId,
+          displayName: USER.name,
+          source: CM.source,
+        })
+        .from(CM)
+        .innerJoin(USER, and(eq(USER.id, CM.userId), eq(USER.status, "active")))
+        .innerJoin(
+          MEMBERSHIP,
+          and(
+            eq(MEMBERSHIP.organizationId, CM.organizationId),
+            eq(MEMBERSHIP.userId, CM.userId),
+            eq(MEMBERSHIP.status, "active"),
+          ),
+        )
+        .where(and(eq(CM.organizationId, orgId), eq(CM.channelId, channelId), isNull(CM.removedAt)))
+        .limit(50),
+    );
+    const staff = [];
+    for (const row of staffRows) {
+      const visible = await effectivelyVisibleChannels(
+        orgId,
+        row.entityId,
+        [
+          {
+            kind: channel.kind as ChannelKind,
+            subjectId: channel.subjectId,
+            memberSource: row.source as ChannelMemberSource,
+          },
+        ],
+        part2Gate,
+      );
+      const displayName = row.displayName?.trim() ?? "";
+      if (
+        visible.length === 1 &&
+        displayName &&
+        (!needle || displayName.toLowerCase().includes(needle))
+      ) {
+        staff.push({
+          kind: "staff" as const,
+          entityId: row.entityId,
+          displayName,
+          detail: "Staff member",
+        });
+      }
+      if (staff.length >= 20) break;
+    }
+
+    const patients = [];
+    if (channel.kind === "care_team" && channel.subjectId) {
+      try {
+        const patient = await getSeam("PatientReader").findById({
+          organizationId: orgId,
+          id: channel.subjectId,
+        });
+        if (patient) {
+          const displayName = `${patient.firstName} ${patient.lastName}`.trim();
+          if (
+            !needle ||
+            displayName.toLowerCase().includes(needle) ||
+            patient.mrn.toLowerCase().includes(needle)
+          ) {
+            patients.push({
+              kind: "patient" as const,
+              entityId: patient.id,
+              displayName,
+              detail: `MRN ${patient.mrn}`,
+            });
+          }
+        }
+      } catch {
+        // M5 identity is an authorization dependency: fail closed for patient candidates.
+      }
+    }
+    return [...staff, ...patients];
+  }
   return {
     // ── channels & messages (§4.2; reads) ─────────────────────────────────────────────────────
     async listChannels(orgId, userId): Promise<ChannelSummary[]> {
@@ -505,6 +675,32 @@ export function createDbMessagingRouteService(
           )
           .groupBy(MSG.channelId);
         const unread = new Map(unreadRows.map((r) => [r.channelId, Number(r.count)]));
+        const mentionRows = await tx
+          .select({ channelId: MSG.channelId, count: sql<number>`count(DISTINCT ${MSG.id})::int` })
+          .from(MER)
+          .innerJoin(
+            MSG,
+            and(eq(MSG.id, MER.messageId), eq(MSG.organizationId, MER.organizationId)),
+          )
+          .innerJoin(
+            MR,
+            and(
+              eq(MR.messageId, MER.messageId),
+              eq(MR.organizationId, MER.organizationId),
+              eq(MR.userId, userId),
+              eq(MR.status, "delivered"),
+            ),
+          )
+          .where(
+            and(
+              eq(MER.organizationId, orgId),
+              eq(MER.referenceKind, "staff"),
+              eq(MER.entityId, userId),
+              inArray(MSG.channelId, channelIds),
+            ),
+          )
+          .groupBy(MSG.channelId);
+        const mentions = new Map(mentionRows.map((row) => [row.channelId, Number(row.count)]));
 
         // One bounded query yields the latest row for every already-authorized channel. Decryption
         // happens only after effective visibility has removed stale clinical memberships.
@@ -601,6 +797,7 @@ export function createDbMessagingRouteService(
               subjectId: r.subjectId,
               archivedAt: r.isArchived ? (iso(r.archivesAt) ?? iso(r.updatedAt)) : null,
               unreadCount: unread.get(r.channelId) ?? 0,
+              mentionCount: mentions.get(r.channelId) ?? 0,
               participantRoles:
                 r.kind === "dm"
                   ? [
@@ -666,6 +863,30 @@ export function createDbMessagingRouteService(
               eq(MSG.channelId, channelId),
             ),
           );
+        const mention = await tx
+          .select({ count: sql<number>`count(DISTINCT ${MER.messageId})::int` })
+          .from(MER)
+          .innerJoin(
+            MR,
+            and(
+              eq(MR.messageId, MER.messageId),
+              eq(MR.organizationId, MER.organizationId),
+              eq(MR.userId, userId),
+              eq(MR.status, "delivered"),
+            ),
+          )
+          .innerJoin(
+            MSG,
+            and(eq(MSG.id, MER.messageId), eq(MSG.organizationId, MER.organizationId)),
+          )
+          .where(
+            and(
+              eq(MER.organizationId, orgId),
+              eq(MER.referenceKind, "staff"),
+              eq(MER.entityId, userId),
+              eq(MSG.channelId, channelId),
+            ),
+          );
         return {
           channelId: ch.channelId,
           kind: ch.kind as ChannelKind,
@@ -674,6 +895,7 @@ export function createDbMessagingRouteService(
           patientId: ch.kind === "care_team" ? ch.subjectId : null,
           archivedAt: ch.isArchived ? (iso(ch.archivesAt) ?? iso(ch.updatedAt)) : null,
           unreadCount: Number(ur[0]?.count ?? 0),
+          mentionCount: Number(mention[0]?.count ?? 0),
           participantRoles: [],
           lastActivityAt: iso(ch.updatedAt)!,
           lastMessage: null,
@@ -696,14 +918,33 @@ export function createDbMessagingRouteService(
         if (!ch[0]) throw new NotFoundError("channel", input.channelId);
         const limit = Math.min(Math.max(input.limit ?? 50, 1), 200);
         const where: SQL[] = [eq(MSG.organizationId, orgId), eq(MSG.channelId, input.channelId)];
-        const cur = input.cursor ? decodeCursor(input.cursor) : null;
-        const backward = input.direction === "backward";
+        let cur = input.cursor ? decodeCursor(input.cursor) : null;
+        const backward = input.anchorMessageId ? true : input.direction === "backward";
+        let includeCursor = false;
+        if (input.anchorMessageId) {
+          const [anchor] = await tx
+            .select({ id: MSG.id, createdAt: MSG.createdAt })
+            .from(MSG)
+            .where(
+              and(
+                eq(MSG.organizationId, orgId),
+                eq(MSG.channelId, input.channelId),
+                eq(MSG.id, input.anchorMessageId),
+              ),
+            )
+            .limit(1);
+          if (!anchor) throw new NotFoundError("message", input.anchorMessageId);
+          cur = { id: anchor.id, createdAt: anchor.createdAt.toISOString() };
+          includeCursor = true;
+        }
         // Stable keyset over (created_at, id). Forward preserves the original contract; backward
         // starts at the newest rows and walks toward older history.
         if (cur) {
           where.push(
             backward
-              ? sql`(${MSG.createdAt}, ${MSG.id}) < (${cur.createdAt}, ${cur.id})`
+              ? includeCursor
+                ? sql`(${MSG.createdAt}, ${MSG.id}) <= (${cur.createdAt}, ${cur.id})`
+                : sql`(${MSG.createdAt}, ${MSG.id}) < (${cur.createdAt}, ${cur.id})`
               : sql`(${MSG.createdAt}, ${MSG.id}) > (${cur.createdAt}, ${cur.id})`,
           );
         }
@@ -730,6 +971,29 @@ export function createDbMessagingRouteService(
         const hasMore = rows.length > limit;
         const pageRows = rows.slice(0, limit);
         const chronologicalRows = backward ? [...pageRows].reverse() : pageRows;
+        const messageIds = chronologicalRows.map((row) => row.id);
+        const referenceRows =
+          messageIds.length === 0
+            ? []
+            : await tx
+                .select({
+                  messageId: MER.messageId,
+                  kind: MER.referenceKind,
+                  entityId: MER.entityId,
+                  start: MER.startOffset,
+                  end: MER.endOffset,
+                  staffName: USER.name,
+                })
+                .from(MER)
+                .leftJoin(USER, and(eq(USER.id, MER.entityId), eq(MER.referenceKind, "staff")))
+                .where(and(eq(MER.organizationId, orgId), inArray(MER.messageId, messageIds)))
+                .orderBy(asc(MER.startOffset));
+        const referencesByMessage = new Map<string, typeof referenceRows>();
+        for (const reference of referenceRows) {
+          const values = referencesByMessage.get(reference.messageId) ?? [];
+          values.push(reference);
+          referencesByMessage.set(reference.messageId, values);
+        }
         // Entitled-reader gate: the channel_visibility ABAC predicate already authorized this read
         // at the route, so decrypt each body under the tenant DEK; a 'deleted' tombstone is empty.
         const page = chronologicalRows.map(
@@ -742,6 +1006,17 @@ export function createDbMessagingRouteService(
             bodyKind: m.bodyKind as MessageBodyKind,
             createdAt: m.createdAt.toISOString(),
             parentMessageId: m.parentMessageId,
+            references: (referencesByMessage.get(m.id) ?? []).map((reference) => ({
+              kind: reference.kind as "staff" | "patient",
+              entityId: reference.entityId,
+              start: reference.start,
+              end: reference.end,
+              displayLabel:
+                reference.kind === "staff"
+                  ? reference.staffName?.trim() || "Staff member"
+                  : "Patient",
+              navigable: reference.kind === "patient" && ch[0]!.kind === "care_team",
+            })),
           }),
         );
         const cursorRow = backward ? chronologicalRows[0] : chronologicalRows.at(-1);
@@ -797,6 +1072,27 @@ export function createDbMessagingRouteService(
 
     // --- post a message: archive gate (410) → DEK-encrypt + insert + receipt fan-out (§3.4) -----
     async sendMessage(orgId, input) {
+      const references = input.references ?? [];
+      validateReferenceRanges(input.body, references);
+      const candidates = references.length
+        ? await mentionCandidates(orgId, input.authorUserId, input.channelId, "")
+        : [];
+      const candidateByKey = new Map(
+        candidates.map((candidate) => [`${candidate.kind}:${candidate.entityId}`, candidate]),
+      );
+      for (const reference of references) {
+        const candidate = candidateByKey.get(`${reference.kind}:${reference.entityId}`);
+        if (
+          !candidate ||
+          input.body.slice(reference.start, reference.end) !== `@${candidate.displayName}`
+        ) {
+          throw new WardenXError(
+            "INVALID_MESSAGE_REFERENCES",
+            "a referenced entity or display label is not valid for this conversation",
+            422,
+          );
+        }
+      }
       return withOrgContext(
         db,
         { organizationId: orgId, userId: input.authorUserId },
@@ -812,6 +1108,40 @@ export function createDbMessagingRouteService(
             parentMessageId: input.parentMessageId,
             quotedMessageId: input.quotedMessageId,
           });
+          if (references.length > 0) {
+            await tx.insert(MER).values(
+              references.map((reference) => ({
+                organizationId: orgId,
+                messageId,
+                referenceKind: reference.kind,
+                entityId: reference.entityId,
+                startOffset: reference.start,
+                endOffset: reference.end,
+              })),
+            );
+            for (const mentionedUserId of new Set(
+              references
+                .filter(
+                  (reference) =>
+                    reference.kind === "staff" && reference.entityId !== input.authorUserId,
+                )
+                .map((reference) => reference.entityId),
+            )) {
+              await opts.outbox?.publish(tx, {
+                eventName: "m36.message.mentioned",
+                organizationId: orgId,
+                aggregateKind: "message",
+                aggregateId: messageId,
+                payload: {
+                  organizationId: orgId,
+                  channelId: input.channelId,
+                  messageId,
+                  mentionedUserId,
+                  actorUserId: input.authorUserId,
+                },
+              });
+            }
+          }
           return { messageId, channelId: input.channelId, createdAt };
         },
       );
@@ -819,6 +1149,40 @@ export function createDbMessagingRouteService(
 
     // --- edit within the window (author only): re-encrypt + re-hash, status='edited' -----------
     async editMessage(orgId, input) {
+      const references = input.references ?? [];
+      validateReferenceRanges(input.body, references);
+      if (references.length > 0) {
+        const channelId = await withOrgContext(
+          db,
+          { organizationId: orgId, userId: input.userId },
+          async (tx) => {
+            const [message] = await tx
+              .select({ channelId: MSG.channelId })
+              .from(MSG)
+              .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, input.messageId)))
+              .limit(1);
+            return message?.channelId ?? null;
+          },
+        );
+        if (!channelId) throw new NotFoundError("message", input.messageId);
+        const candidates = await mentionCandidates(orgId, input.userId, channelId, "");
+        const candidateByKey = new Map(
+          candidates.map((candidate) => [`${candidate.kind}:${candidate.entityId}`, candidate]),
+        );
+        for (const reference of references) {
+          const candidate = candidateByKey.get(`${reference.kind}:${reference.entityId}`);
+          if (
+            !candidate ||
+            input.body.slice(reference.start, reference.end) !== `@${candidate.displayName}`
+          ) {
+            throw new WardenXError(
+              "INVALID_MESSAGE_REFERENCES",
+              "a referenced entity or display label is not valid for this conversation",
+              422,
+            );
+          }
+        }
+      }
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
         const rows = (await tx
           .select({ authorUserId: MSG.authorUserId, status: MSG.status })
@@ -839,6 +1203,23 @@ export function createDbMessagingRouteService(
           .update(MSG)
           .set({ bodyCipher, bodySha256: sha256, status: "edited", editedAt })
           .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, input.messageId)));
+        await tx
+          .delete(MER)
+          .where(and(eq(MER.organizationId, orgId), eq(MER.messageId, input.messageId)));
+        if (references.length > 0) {
+          // Edits never emit new mention alerts: this avoids duplicate/ambiguous clinical notices.
+          // The same structural range validation still prevents stale tokens.
+          await tx.insert(MER).values(
+            references.map((reference) => ({
+              organizationId: orgId,
+              messageId: input.messageId,
+              referenceKind: reference.kind,
+              entityId: reference.entityId,
+              startOffset: reference.start,
+              endOffset: reference.end,
+            })),
+          );
+        }
         return {
           messageId: input.messageId,
           editedAt: editedAt.toISOString(),
@@ -935,6 +1316,10 @@ export function createDbMessagingRouteService(
           roles: roles.get(membership.membershipId)?.sort() ?? [],
         }));
       });
+    },
+
+    async searchMentionCandidates(orgId, userId, channelId, query) {
+      return mentionCandidates(orgId, userId, channelId, query);
     },
 
     // --- open/find a 1:1 DM channel (membership-validated + concurrency-safe) -------------------

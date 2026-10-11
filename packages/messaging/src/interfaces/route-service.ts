@@ -28,7 +28,7 @@ import type {
   DeliveryEndpointVerification,
   MessageBodyKind,
 } from "./kinds";
-import type { AttachmentInput, ResolvedMessage } from "./provider";
+import type { AttachmentInput, MessageReferenceInput, ResolvedMessage } from "./provider";
 
 /** Minimum authorized last-message projection for the conversation inbox. */
 export interface ChannelLastMessage {
@@ -46,6 +46,8 @@ export interface ChannelSummary {
   readonly subjectId: string | null;
   readonly archivedAt: string | null;
   readonly unreadCount: number;
+  /** Unread messages that contain an authoritative staff reference to the actor. */
+  readonly mentionCount: number;
   /** Server-derived peer roles for DMs; empty for other channel kinds. */
   readonly participantRoles: readonly string[];
   /** Message activity, falling back to channel activity for an empty conversation. */
@@ -153,6 +155,13 @@ export interface CareTeamConversation {
   readonly archived: boolean;
 }
 
+export interface MentionCandidate {
+  readonly kind: "staff" | "patient";
+  readonly entityId: string;
+  readonly displayName: string;
+  readonly detail: string | null;
+}
+
 /**
  * The §4.1–4.2 application service the M36 routes compose over. Mutations are idempotent where
  * the spec calls for it (openDm, markRead). Domain failures throw `WardenXError` subclasses the
@@ -176,6 +185,8 @@ export interface MessagingRouteService {
       /** `forward` preserves the original oldest-first contract; `backward` retrieves the latest
        *  page initially and progressively older pages from the returned cursor. */
       direction?: "forward" | "backward";
+      /** Bounded page surrounding a specific authorized message (notification deep links). */
+      anchorMessageId?: string;
     },
   ): Promise<{
     messages: readonly ResolvedMessage[];
@@ -195,12 +206,18 @@ export interface MessagingRouteService {
       quotedMessageId?: string;
       attachments?: readonly AttachmentInput[];
       correlationId?: string;
+      references?: readonly MessageReferenceInput[];
     },
   ): Promise<{ messageId: string; channelId: string; createdAt: string }>;
   /** Edit within the edit window; FORBIDDEN unless the actor authored it (§4.2 PATCH). */
   editMessage(
     orgId: string,
-    input: { userId: string; messageId: string; body: string },
+    input: {
+      userId: string;
+      messageId: string;
+      body: string;
+      references?: readonly MessageReferenceInput[];
+    },
   ): Promise<{ messageId: string; editedAt: string }>;
   /** Soft-delete (tombstone); FORBIDDEN unless the actor authored it (§4.2 DELETE). */
   deleteMessage(orgId: string, input: { userId: string; messageId: string }): Promise<void>;
@@ -228,6 +245,13 @@ export interface MessagingRouteService {
     userId: string,
     query: string,
   ): Promise<readonly DmEligibleStaffMember[]>;
+  /** Channel-scoped, authorization-filtered autocomplete. */
+  searchMentionCandidates(
+    orgId: string,
+    userId: string,
+    channelId: string,
+    query: string,
+  ): Promise<readonly MentionCandidate[]>;
   /** Add a manual member (admin override on auto channels — audited) (§4.2). The service itself
    *  enforces `mayManageChannelMembers` for `input.actor` (FORBIDDEN otherwise) and records the
    *  actor on the write-audit trail. */

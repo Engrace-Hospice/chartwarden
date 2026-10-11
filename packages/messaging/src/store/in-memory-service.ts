@@ -21,7 +21,11 @@ import type {
   MessageBodyKind,
   NotificationChannel,
 } from "../interfaces/kinds";
-import type { AttachmentInput, ResolvedMessage } from "../interfaces/provider";
+import type {
+  AttachmentInput,
+  MessageReferenceInput,
+  ResolvedMessage,
+} from "../interfaces/provider";
 import type {
   AlertInboxItem,
   AlertRulePatch,
@@ -97,6 +101,45 @@ interface MessageRow {
   editedAt: string | null;
   deletedAt: string | null;
   parentMessageId: string | null;
+  references: readonly MessageReferenceInput[];
+}
+
+function validateReferences(
+  body: string,
+  references: readonly MessageReferenceInput[],
+  channel: ChannelRow,
+  eligibleStaff: ReadonlyMap<string, { readonly displayName: string }>,
+): void {
+  if (references.length > 25) {
+    throw new WardenXError("INVALID_MESSAGE_REFERENCES", "too many message references", 422);
+  }
+  let previousEnd = -1;
+  for (const reference of [...references].sort((a, b) => a.start - b.start || a.end - b.end)) {
+    const label =
+      reference.kind === "staff"
+        ? eligibleStaff.get(`${channel.orgId}:${reference.entityId}`)?.displayName
+        : channel.kind === "care_team" && channel.subjectId === reference.entityId
+          ? "Patient"
+          : undefined;
+    if (
+      !Number.isInteger(reference.start) ||
+      !Number.isInteger(reference.end) ||
+      reference.start < 0 ||
+      reference.end <= reference.start ||
+      reference.end > body.length ||
+      reference.start < previousEnd ||
+      !label ||
+      (reference.kind === "staff" && !channel.members.has(reference.entityId)) ||
+      body.slice(reference.start, reference.end) !== `@${label}`
+    ) {
+      throw new WardenXError(
+        "INVALID_MESSAGE_REFERENCES",
+        "a message reference is invalid for this conversation",
+        422,
+      );
+    }
+    previousEnd = reference.end;
+  }
 }
 
 interface EndpointRow {
@@ -267,10 +310,19 @@ export function createInMemoryMessagingService(
   const toSummary = (orgId: string, userId: string, ch: ChannelRow): ChannelSummary => {
     const pointer = readPointers.get(`${orgId}:${userId}:${ch.channelId}`) ?? "";
     let unread = 0;
+    let mentionCount = 0;
     for (const m of messages.values()) {
       if (m.channelId !== ch.channelId || m.deletedAt) continue;
       if (m.authorUserId === userId) continue;
       if (m.createdAt > pointer) unread++;
+      if (
+        m.createdAt > pointer &&
+        m.references.some(
+          (reference) => reference.kind === "staff" && reference.entityId === userId,
+        )
+      ) {
+        mentionCount++;
+      }
     }
     const latest = [...messages.values()]
       .filter((message) => message.orgId === orgId && message.channelId === ch.channelId)
@@ -288,6 +340,7 @@ export function createInMemoryMessagingService(
       subjectId: ch.subjectId,
       archivedAt: ch.archivedAt,
       unreadCount: unread,
+      mentionCount,
       participantRoles: ch.kind === "dm" ? (peerStaff?.roles ?? []) : [],
       lastActivityAt: latest?.createdAt ?? ch.archivedAt ?? "1970-01-01T00:00:00.000Z",
       lastMessage: latest
@@ -372,6 +425,14 @@ export function createInMemoryMessagingService(
         bodyKind: m.bodyKind,
         createdAt: m.createdAt,
         parentMessageId: m.parentMessageId,
+        references: m.references.map((reference) => ({
+          ...reference,
+          displayLabel:
+            reference.kind === "staff"
+              ? (eligibleStaff.get(`${orgId}:${reference.entityId}`)?.displayName ?? "Staff member")
+              : "Patient",
+          navigable: reference.kind === "patient" && channel.kind === "care_team",
+        })),
       }));
       return {
         messages: page,
@@ -388,6 +449,7 @@ export function createInMemoryMessagingService(
       if (ch.archivedAt) {
         throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
       }
+      validateReferences(input.body, input.references ?? [], ch, eligibleStaff);
       const messageId = id("msg");
       const createdAt = iso();
       messages.set(messageId, {
@@ -401,6 +463,7 @@ export function createInMemoryMessagingService(
         editedAt: null,
         deletedAt: null,
         parentMessageId: input.parentMessageId ?? null,
+        references: input.references ?? [],
       });
       return { messageId, channelId: input.channelId, createdAt };
     },
@@ -412,7 +475,14 @@ export function createInMemoryMessagingService(
       if (m.authorUserId !== input.userId) {
         throw new ForbiddenError("only the author may edit a message");
       }
+      validateReferences(
+        input.body,
+        input.references ?? [],
+        channelOr404(orgId, m.channelId),
+        eligibleStaff,
+      );
       m.body = input.body;
+      m.references = input.references ?? [];
       m.editedAt = iso();
       return { messageId: m.messageId, editedAt: m.editedAt };
     },
@@ -450,6 +520,40 @@ export function createInMemoryMessagingService(
         .sort((a, b) => a.displayName.localeCompare(b.displayName))
         .slice(0, 25)
         .map(({ userId: id, displayName, roles }) => ({ userId: id, displayName, roles }));
+    },
+
+    async searchMentionCandidates(orgId, userId, channelId, query) {
+      const channel = channelOr404(orgId, channelId);
+      if (!(await this.canViewChannel(orgId, userId, channelId))) {
+        throw new NotFoundError("channel", channelId);
+      }
+      const needle = query.trim().toLowerCase();
+      const staff = [...channel.members.keys()]
+        .map((memberUserId) => eligibleStaff.get(`${orgId}:${memberUserId}`))
+        .filter((member): member is NonNullable<typeof member> => !!member)
+        .filter(
+          (member) =>
+            (member.status ?? "active") === "active" &&
+            (!needle || member.displayName.toLowerCase().includes(needle)),
+        )
+        .map((member) => ({
+          kind: "staff" as const,
+          entityId: member.userId,
+          displayName: member.displayName,
+          detail: member.roles.join(" · ") || null,
+        }));
+      const patient =
+        channel.kind === "care_team" && channel.subjectId && (!needle || "patient".includes(needle))
+          ? [
+              {
+                kind: "patient" as const,
+                entityId: channel.subjectId,
+                displayName: "Patient",
+                detail: "Care team patient",
+              },
+            ]
+          : [];
+      return [...staff, ...patient];
     },
 
     async openDm(orgId, userId, peerUserId) {
@@ -593,6 +697,7 @@ export function createInMemoryMessagingService(
         editedAt: null,
         deletedAt: null,
         parentMessageId: null,
+        references: [],
       });
       return { messageId, channelId: channel.channelId, createdAt };
     },

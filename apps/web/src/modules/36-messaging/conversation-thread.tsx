@@ -9,7 +9,14 @@ import {
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FormEvent, JSX, KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
-import type { ChannelSummary, Message, PatientHeaderInfo } from "./messaging-types";
+import type {
+  ChannelSummary,
+  MentionCandidate,
+  Message,
+  MessageReference,
+  MessageReferenceInput,
+  PatientHeaderInfo,
+} from "./messaging-types";
 import {
   absoluteTime,
   apiErrorMessage,
@@ -42,6 +49,82 @@ export interface ConversationThreadProps {
   onReadConfirmed: (channelId: string) => void;
   onMessageSent: () => void;
   onAccessRevoked: (channelId: string) => void;
+  anchorMessageId?: string | null;
+}
+
+function reconcileReferences(
+  previous: string,
+  next: string,
+  references: readonly MessageReferenceInput[],
+): MessageReferenceInput[] {
+  let prefix = 0;
+  while (prefix < previous.length && prefix < next.length && previous[prefix] === next[prefix])
+    prefix++;
+  let suffix = 0;
+  while (
+    suffix < previous.length - prefix &&
+    suffix < next.length - prefix &&
+    previous[previous.length - 1 - suffix] === next[next.length - 1 - suffix]
+  )
+    suffix++;
+  const removedEnd = previous.length - suffix;
+  const delta = next.length - previous.length;
+  return references.flatMap((reference) => {
+    if (reference.end <= prefix) return [reference];
+    if (reference.start >= removedEnd) {
+      const shifted = { ...reference, start: reference.start + delta, end: reference.end + delta };
+      return next.slice(shifted.start, shifted.end) === `@${shifted.displayLabel}` ? [shifted] : [];
+    }
+    return [];
+  });
+}
+
+function referenceInput(reference: MessageReferenceInput) {
+  return {
+    kind: reference.kind,
+    entityId: reference.entityId,
+    start: reference.start,
+    end: reference.end,
+  };
+}
+
+function MessageText({ message }: { message: Message }): JSX.Element {
+  const references = [...(message.references ?? [])]
+    .filter(
+      (reference) =>
+        reference.start >= 0 &&
+        reference.end <= message.body.length &&
+        reference.end > reference.start,
+    )
+    .sort((a, b) => a.start - b.start);
+  if (references.length === 0) return <>{message.body || "Message deleted"}</>;
+  const parts: JSX.Element[] = [];
+  let cursor = 0;
+  for (const reference of references) {
+    if (reference.start < cursor) continue;
+    if (reference.start > cursor)
+      parts.push(<span key={`t-${cursor}`}>{message.body.slice(cursor, reference.start)}</span>);
+    const text = message.body.slice(reference.start, reference.end);
+    parts.push(
+      reference.kind === "patient" && reference.navigable ? (
+        <Link
+          key={`r-${reference.start}`}
+          className="wx-message-reference"
+          to={`/patients/${reference.entityId}`}
+        >
+          {text}
+        </Link>
+      ) : (
+        <span key={`r-${reference.start}`} className="wx-message-reference">
+          {text}
+        </span>
+      ),
+    );
+    cursor = reference.end;
+  }
+  if (cursor < message.body.length)
+    parts.push(<span key={`t-${cursor}`}>{message.body.slice(cursor)}</span>);
+  return <>{parts}</>;
 }
 
 export function ConversationThread({
@@ -52,6 +135,7 @@ export function ConversationThread({
   onReadConfirmed,
   onMessageSent,
   onAccessRevoked,
+  anchorMessageId = null,
 }: ConversationThreadProps): JSX.Element {
   const client = useApiClient();
   const [messages, setMessages] = useState<Message[] | null>(null);
@@ -61,6 +145,13 @@ export function ConversationThread({
   const [refreshError, setRefreshError] = useState(false);
   const [newMessageCount, setNewMessageCount] = useState(0);
   const [draft, setDraft] = useState("");
+  const [draftReferences, setDraftReferences] = useState<MessageReferenceInput[]>([]);
+  const [mentionCandidates, setMentionCandidates] = useState<MentionCandidate[]>([]);
+  const [mentionQuery, setMentionQuery] = useState<{ query: string; start: number } | null>(null);
+  const [mentionLoading, setMentionLoading] = useState(false);
+  const [mentionError, setMentionError] = useState(false);
+  const [mentionRetry, setMentionRetry] = useState(0);
+  const [mentionIndex, setMentionIndex] = useState(0);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [patient, setPatient] = useState<PatientHeaderInfo | null>(null);
@@ -73,6 +164,8 @@ export function ConversationThread({
   const initialScrollPending = useRef(false);
   const readBoundaryRef = useRef<string | null>(null);
   const composingRef = useRef(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mentionGenerationRef = useRef(0);
 
   const markReadBoundary = useCallback(
     async (candidateMessages: readonly Message[]): Promise<void> => {
@@ -107,7 +200,11 @@ export function ConversationThread({
         const { data, error } = await client.GET("/api/v1/messaging/channels/{id}/messages", {
           params: {
             path: { id: channel.channelId },
-            query: { limit: MESSAGE_PAGE_SIZE, direction: "backward" },
+            query: {
+              limit: MESSAGE_PAGE_SIZE,
+              direction: "backward",
+              ...(anchorMessageId ? { anchorMessageId } : {}),
+            },
           },
           ...(background ? { headers: BACKGROUND_REQUEST_HEADERS } : {}),
         });
@@ -149,8 +246,43 @@ export function ConversationThread({
         latestInFlight.current = false;
       }
     },
-    [channel.channelId, client, markReadBoundary, onAccessRevoked],
+    [anchorMessageId, channel.channelId, client, markReadBoundary, onAccessRevoked],
   );
+
+  useEffect(() => {
+    // Incrementing this value is the explicit retry signal for the same query.
+    void mentionRetry;
+    if (!mentionQuery) {
+      mentionGenerationRef.current += 1;
+      setMentionCandidates([]);
+      setMentionLoading(false);
+      setMentionError(false);
+      return;
+    }
+    const generation = ++mentionGenerationRef.current;
+    setMentionLoading(true);
+    setMentionError(false);
+    const timer = window.setTimeout(() => {
+      void client
+        .GET("/api/v1/messaging/channels/{id}/mention-candidates", {
+          params: { path: { id: channel.channelId }, query: { q: mentionQuery.query } },
+        })
+        .then(({ data, error }) => {
+          if (generation !== mentionGenerationRef.current) return;
+          setMentionLoading(false);
+          setMentionError(Boolean(error));
+          setMentionCandidates(
+            error
+              ? []
+              : ((data?.candidates ?? []) as MentionCandidate[]).filter(
+                  (candidate) => !(candidate.kind === "staff" && candidate.entityId === meId),
+                ),
+          );
+          setMentionIndex(0);
+        });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [channel.channelId, client, meId, mentionQuery, mentionRetry]);
 
   const loadOlder = useCallback(async (): Promise<void> => {
     if (!olderCursor || loadingOlder) return;
@@ -187,6 +319,12 @@ export function ConversationThread({
     setMessages(null);
     setOlderCursor(null);
     setDraft("");
+    setDraftReferences([]);
+    setMentionQuery(null);
+    setMentionCandidates([]);
+    setMentionLoading(false);
+    setMentionError(false);
+    setSending(false);
     setLoadError(null);
     setRefreshError(false);
     setSendError(null);
@@ -199,6 +337,12 @@ export function ConversationThread({
       generationRef.current += 1;
     };
   }, [loadLatest]);
+
+  useLayoutEffect(() => {
+    if (!anchorMessageId || messages === null) return;
+    const target = document.querySelector(`[data-message-id="${CSS.escape(anchorMessageId)}"]`);
+    target?.scrollIntoView({ block: "center" });
+  }, [anchorMessageId, messages]);
 
   useEffect(() => {
     if (channel.kind !== "care_team" || !channel.subjectId) return;
@@ -251,14 +395,19 @@ export function ConversationThread({
 
   async function send(event?: FormEvent): Promise<void> {
     event?.preventDefault();
-    const submitted = draft.trim();
-    if (!submitted || sending || channel.archivedAt) return;
+    const submitted = draft;
+    if (!submitted.trim() || sending || channel.archivedAt) return;
     const generation = generationRef.current;
     setSending(true);
     setSendError(null);
     const { data, error } = await client.POST("/api/v1/messaging/channels/{id}/messages", {
       params: { path: { id: channel.channelId } },
-      body: { body: submitted },
+      body: {
+        body: submitted,
+        references: draftReferences
+          .filter((reference) => reference.end <= submitted.length)
+          .map(referenceInput),
+      },
     });
     if (generation !== generationRef.current) return;
     setSending(false);
@@ -268,7 +417,9 @@ export function ConversationThread({
       );
       return;
     }
-    setDraft((current) => (current.trim() === submitted ? "" : current));
+    setDraft((current) => (current === submitted ? "" : current));
+    setDraftReferences([]);
+    setMentionQuery(null);
     const withSentMessage = mergeMessages(messagesRef.current ?? [], [
       {
         messageId: data.messageId,
@@ -279,6 +430,7 @@ export function ConversationThread({
         bodyKind: "plain",
         createdAt: data.createdAt,
         parentMessageId: null,
+        references: draftReferences.map((reference) => ({ ...reference, navigable: true })),
       },
     ]);
     messagesRef.current = withSentMessage;
@@ -292,6 +444,27 @@ export function ConversationThread({
   }
 
   function handleComposerKey(event: KeyboardEvent<HTMLTextAreaElement>): void {
+    if (mentionQuery && mentionCandidates.length > 0) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        setMentionIndex((index) =>
+          event.key === "ArrowDown"
+            ? (index + 1) % mentionCandidates.length
+            : (index - 1 + mentionCandidates.length) % mentionCandidates.length,
+        );
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMentionQuery(null);
+        return;
+      }
+      if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
+        event.preventDefault();
+        chooseMention(mentionCandidates[mentionIndex]!);
+        return;
+      }
+    }
     if (
       event.key === "Enter" &&
       !event.shiftKey &&
@@ -301,6 +474,33 @@ export function ConversationThread({
       event.preventDefault();
       void send();
     }
+  }
+
+  function chooseMention(candidate: MentionCandidate): void {
+    if (!mentionQuery) return;
+    const textarea = textareaRef.current;
+    const cursor = textarea?.selectionStart ?? draft.length;
+    const token = `@${candidate.displayName}`;
+    const next = `${draft.slice(0, mentionQuery.start)}${token}${draft.slice(cursor)}`;
+    const end = mentionQuery.start + token.length;
+    setDraft(next);
+    setDraftReferences((current) => [
+      ...current.filter(
+        (reference) => reference.end <= mentionQuery.start || reference.start >= cursor,
+      ),
+      {
+        kind: candidate.kind,
+        entityId: candidate.entityId,
+        start: mentionQuery.start,
+        end,
+        displayLabel: candidate.displayName,
+      },
+    ]);
+    setMentionQuery(null);
+    window.requestAnimationFrame(() => {
+      textarea?.focus();
+      textarea?.setSelectionRange(end, end);
+    });
   }
 
   function showLatest(): void {
@@ -423,6 +623,8 @@ export function ConversationThread({
                       <div className="wx-system-message">{message.body || "Message deleted"}</div>
                     ) : (
                       <article
+                        data-message-id={message.messageId}
+                        data-highlighted={message.messageId === anchorMessageId || undefined}
                         className={`wx-message-row ${mine ? "is-mine" : ""} ${grouped ? "is-grouped" : ""}`}
                       >
                         {!mine && !grouped ? (
@@ -437,7 +639,9 @@ export function ConversationThread({
                             <strong>{message.authorDisplayName || "Staff member"}</strong>
                           ) : null}
                           <div className="wx-message-bubble">
-                            <span>{message.body || "Message deleted"}</span>
+                            <span>
+                              <MessageText message={message} />
+                            </span>
                             <time
                               dateTime={message.createdAt}
                               title={absoluteTime(message.createdAt)}
@@ -521,13 +725,28 @@ export function ConversationThread({
             Message
           </label>
           <textarea
+            ref={textareaRef}
             id="messaging-composer"
             aria-label="Message"
             rows={1}
             placeholder={`Message ${channelLabel(channel)}…`}
             value={draft}
+            disabled={sending}
+            aria-autocomplete="list"
+            aria-expanded={mentionQuery !== null}
+            aria-controls={mentionQuery ? "messaging-mention-suggestions" : undefined}
             onChange={(event) => {
-              setDraft(event.target.value);
+              const next = event.target.value;
+              setDraftReferences((current) => reconcileReferences(draft, next, current));
+              setDraft(next);
+              const cursor = event.target.selectionStart ?? next.length;
+              const before = next.slice(0, cursor);
+              const match = before.match(/(?:^|\s)@([\p{L}\p{N} .'-]{0,60})$/u);
+              setMentionQuery(
+                match
+                  ? { query: match[1] ?? "", start: cursor - (match[1]?.length ?? 0) - 1 }
+                  : null,
+              );
               if (sendError) setSendError(null);
             }}
             onKeyDown={handleComposerKey}
@@ -538,6 +757,49 @@ export function ConversationThread({
               composingRef.current = false;
             }}
           />
+          {mentionQuery ? (
+            // biome-ignore lint/a11y/useFocusableInteractive: focus remains in the composer while arrow keys control this ARIA combobox popup
+            <div
+              id="messaging-mention-suggestions"
+              className="wx-mention-menu"
+              // biome-ignore lint/a11y/useSemanticElements: a native select cannot serve as a rich, async composer popup
+              role="listbox"
+              aria-label="Mention suggestions"
+            >
+              {mentionLoading ? (
+                <span className="wx-mention-state">Searching…</span>
+              ) : mentionError ? (
+                <span className="wx-mention-state" role="alert">
+                  Suggestions could not be loaded.{" "}
+                  <button type="button" onClick={() => setMentionRetry((value) => value + 1)}>
+                    Retry
+                  </button>
+                </span>
+              ) : mentionCandidates.length === 0 ? (
+                <span className="wx-mention-state">No eligible people or patients</span>
+              ) : (
+                mentionCandidates.map((candidate, index) => (
+                  <button
+                    // biome-ignore lint/a11y/useSemanticElements: a native option cannot render the required staff/patient detail markup
+                    type="button"
+                    role="option"
+                    tabIndex={-1}
+                    aria-selected={index === mentionIndex}
+                    className={index === mentionIndex ? "is-active" : undefined}
+                    key={`${candidate.kind}:${candidate.entityId}`}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => chooseMention(candidate)}
+                  >
+                    <strong>{candidate.displayName}</strong>
+                    <span>
+                      {candidate.kind === "patient" ? "Patient" : "Staff"}
+                      {candidate.detail ? ` · ${candidate.detail}` : ""}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          ) : null}
           <Button
             type="submit"
             disabled={sending || !draft.trim()}

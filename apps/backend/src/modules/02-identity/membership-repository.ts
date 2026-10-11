@@ -37,6 +37,8 @@ const MEMBERSHIP_COLUMNS = {
   defaultLocationIds: schema.memberships.defaultLocationIds,
   displayName: schema.users.name,
   email: schema.users.email,
+  username: schema.users.username,
+  credentialState: schema.users.credentialState,
   accountStatus: schema.users.status,
   lastLoginAt: lastLoginExpr,
 } as const;
@@ -49,7 +51,9 @@ interface MembershipDbRow {
   status: MembershipStatus;
   defaultLocationIds: unknown;
   displayName: string | null;
-  email: string;
+  email: string | null;
+  username: string | null;
+  credentialState: "active" | "password_change_required";
   accountStatus: AccountStatus;
   lastLoginAt: Date | string | null;
 }
@@ -73,6 +77,8 @@ function toRecord(row: MembershipDbRow, adminIds: ReadonlySet<string>): Membersh
       : [],
     displayName: row.displayName,
     email: row.email,
+    username: row.username,
+    credentialState: row.credentialState,
     accountStatus: row.accountStatus,
     lastLoginAt: toIso(row.lastLoginAt),
   };
@@ -97,7 +103,8 @@ export function createDbMembershipRepository(
             eq(schema.memberships.organizationId, orgId),
             sql`(${schema.memberships.userId}::text ILIKE ${`%${needle}%`}
               OR ${schema.users.name} ILIKE ${`%${needle}%`}
-              OR ${schema.users.email} ILIKE ${`%${needle}%`})`,
+              OR ${schema.users.email} ILIKE ${`%${needle}%`}
+              OR ${schema.users.username} ILIKE ${`%${needle}%`})`,
           )
         : eq(schema.memberships.organizationId, orgId);
       const rows = (await tx
@@ -168,6 +175,8 @@ export function createDbMembershipRepository(
           .select({
             displayName: schema.users.name,
             email: schema.users.email,
+            username: schema.users.username,
+            credentialState: schema.users.credentialState,
             accountStatus: schema.users.status,
             // Explicitly qualified: in this single-table select Drizzle renders bare column names, and
             // an unqualified "id" inside the subquery would bind to session.id, not the user.
@@ -254,6 +263,14 @@ export function createDbMembershipRepository(
     activeAdminCount: async (organizationId) => {
       const rows = await selectByOrg(organizationId);
       return rows.filter((m) => m.status === "active" && m.isAdmin).length;
+    },
+
+    removeProvisioned: async (membershipId) => {
+      const existing = await oneById(membershipId);
+      if (!existing) return;
+      await withOrgContext(db, ctx(existing.organizationId), (tx) =>
+        tx.delete(schema.memberships).where(eq(schema.memberships.id, membershipId)),
+      );
     },
   };
 }

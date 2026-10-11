@@ -51,6 +51,21 @@ const channel = Type.Union([
 
 export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
   {
+    eventName: "m36.message.mentioned",
+    moduleOwner: "m36",
+    description:
+      "A structured staff reference was committed with a secure message. The PHI-free payload contains ids only; M36 revalidates current channel access before creating one in-app alert.",
+    payloadSchema: Type.Object({
+      organizationId: id,
+      channelId: id,
+      messageId: id,
+      mentionedUserId: id,
+      actorUserId: id,
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m36.notification.delivery_failed",
     moduleOwner: "m36",
     description:

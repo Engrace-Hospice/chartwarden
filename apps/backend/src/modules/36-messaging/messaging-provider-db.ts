@@ -209,6 +209,7 @@ export function createDbMessagingProvider(
             bodyKind: m.bodyKind as MessageBodyKind,
             createdAt: m.createdAt.toISOString(),
             parentMessageId: m.parentMessageId,
+            references: [],
           }),
         );
         return { messages };

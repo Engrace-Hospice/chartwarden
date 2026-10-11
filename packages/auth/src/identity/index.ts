@@ -15,6 +15,17 @@ export {
   type ResetPasswordSender,
 } from "./auth";
 export {
+  RESERVED_USERNAMES,
+  USERNAME_PATTERN,
+  credentialAdminPlugin,
+  createIdentityCredentialAdmin,
+  isAllowedUsername,
+  normalizeUsername,
+  type CredentialAdminCapableAuth,
+  type IdentityCredentialAdmin,
+  type ProvisionIdentityCredentialInput,
+} from "./credential-admin";
+export {
   type EmailMessage,
   type EmailTransport,
   createConsoleEmailTransport,

@@ -21,6 +21,17 @@ export type { PlatformAlertRuleSeed } from "./alert-rule-seed-type";
  * `system_locked` rules are always-on regardless of tenant config (§7.4).
  */
 export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
+  {
+    eventType: "m36.message.mentioned",
+    category: "clinical_routine",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: [], userIdPaths: ["mentionedUserId"] },
+    // Mention notifications are deliberately in-app only: no message/patient context leaves WardenX.
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
   // ── Tier-1: SOS — system_locked, voice in channels (§2.5 voice is SOS-only) ──────────────
   {
     eventType: "field_safety.sos",

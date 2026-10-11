@@ -14,7 +14,7 @@ import type { ApiClient, FeatureFlags, SystemStatusComponent } from "@wardenx/ui
 // react-router router built from the screen registry. The shell reads the registry but never
 // imports a feature module — modules register their screens at composition (apps/web/src/main.tsx).
 import { Suspense, createElement, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
-import type { JSX, ReactNode } from "react";
+import type { ComponentType, JSX, ReactNode } from "react";
 import {
   Navigate,
   Outlet,
@@ -51,6 +51,8 @@ export interface AppShellProps {
    * (ADR-0030). Only mounts over chromed screens; the chromeless auth flow is never overlaid.
    */
   chromeOverlay?: ReactNode;
+  /** Feature-owned access guard injected at composition so the M1 shell remains module-agnostic. */
+  chromeGuard?: ComponentType<{ children: ReactNode }>;
 }
 
 function newCorrelationId(): string {
@@ -141,6 +143,7 @@ export function AppShell({
   systemStatus = [],
   correlationId = newCorrelationId(),
   chromeOverlay,
+  chromeGuard: ChromeGuard,
 }: AppShellProps): JSX.Element {
   const router = useMemo(() => {
     const screens = registry.screens();
@@ -160,7 +163,13 @@ export function AppShell({
             path: "/",
             element: (
               <RequireChrome>
-                <AppLayout screens={chromed} overlay={chromeOverlay} />
+                {ChromeGuard ? (
+                  <ChromeGuard>
+                    <AppLayout screens={chromed} overlay={chromeOverlay} />
+                  </ChromeGuard>
+                ) : (
+                  <AppLayout screens={chromed} overlay={chromeOverlay} />
+                )}
               </RequireChrome>
             ),
             children: [
@@ -175,7 +184,7 @@ export function AppShell({
       },
     ];
     return createBrowserRouter(routes);
-  }, [registry, chromeOverlay]);
+  }, [registry, chromeOverlay, ChromeGuard]);
 
   return (
     <ErrorBoundary correlationId={correlationId}>

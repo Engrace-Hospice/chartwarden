@@ -23,11 +23,12 @@ import { type DbClient, schema } from "@wardenx/db";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
-import { haveIBeenPwned, magicLink, twoFactor } from "better-auth/plugins";
+import { haveIBeenPwned, magicLink, twoFactor, username } from "better-auth/plugins";
 import { eq, sql } from "drizzle-orm";
 import { type AuthAuditEvent, type AuthAuditSink, buildPasswordResetEvent } from "./auth-audit";
 import { type EmailTransport, createNoopEmailTransport } from "./email-transport";
 import { linkSessionPlugin } from "./link-session";
+import { credentialAdminPlugin, isAllowedUsername, normalizeUsername } from "./credential-admin";
 import { argon2idHash, argon2idVerify } from "./password-hash";
 import { SESSION_MAX_ABSOLUTE_SEC, isUserStatusBlocked } from "./session-timeout";
 import { type EncryptableAdapter, withTwoFactorEncryption } from "./two-factor-adapter";
@@ -302,7 +303,30 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
     plugins: [
       // Server-only mint of the session a REDEEMED collaborator / funeral-home link yields (never on the HTTP router).
       linkSessionPlugin(),
-      haveIBeenPwned(), // HIBP k-anonymity breach check (M2 §3.1)
+      credentialAdminPlugin(),
+      username({
+        minUsernameLength: 3,
+        maxUsernameLength: 32,
+        usernameNormalization: normalizeUsername,
+        usernameValidator: isAllowedUsername,
+        validationOrder: { username: "post-normalization" },
+      }),
+      haveIBeenPwned({
+        // Keep Better Auth's defaults and include the two trusted server-only credential writers.
+        // Their endpoint metadata is SERVER_ONLY, so these paths are context labels for the hashing
+        // hook and are never mounted on the HTTP router.
+        paths: [
+          "/sign-up/email",
+          "/change-password",
+          "/reset-password",
+          "/email-otp/reset-password",
+          "/phone-number/reset-password",
+          "/admin/create-user",
+          "/admin/set-user-password",
+          "/_wardenx-internal/provision-identity-credential",
+          "/_wardenx-internal/replace-identity-password",
+        ],
+      }), // HIBP k-anonymity breach check (M2 §3.1)
       // TOTP + backup codes (M2 §3.1). Field-map to M1's at-rest-encrypted columns (the decorator
       // above seals/opens the values); ADR-0034. SMS fallback never qualifies as step-up.
       twoFactor({
@@ -340,6 +364,14 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
         password: "passwordHash",
         accessToken: "accessTokenEncrypted",
         refreshToken: "refreshTokenEncrypted",
+      },
+    },
+    user: {
+      additionalFields: {
+        credentialState: { type: "string", required: false, defaultValue: "active", input: false },
+        credentialStateReason: { type: "string", required: false, input: false },
+        credentialVersion: { type: "number", required: false, defaultValue: 0, input: false },
+        passwordChangedAt: { type: "date", required: false, input: false },
       },
     },
     // GAP-009 — closed registration. Staff accounts are created through an invitation: the web accept page

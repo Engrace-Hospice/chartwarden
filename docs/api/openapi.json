@@ -39791,6 +39791,53 @@
         }
       }
     },
+    "/api/v1/auth/credential-status": {
+      "get": {
+        "operationId": "getApiV1AuthCredentialstatus",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Read the authenticated identity's authoritative password-rotation state",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "passwordChangeRequired",
+                    "reason"
+                  ],
+                  "properties": {
+                    "passwordChangeRequired": {
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/auth/memberships": {
       "get": {
         "operationId": "getApiV1AuthMemberships",
@@ -39824,6 +39871,8 @@
                           "defaultLocationIds",
                           "displayName",
                           "email",
+                          "username",
+                          "credentialState",
                           "lastLoginAt",
                           "accountStatus"
                         ],
@@ -39885,6 +39934,28 @@
                               }
                             ]
                           },
+                          "username": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "credentialState": {
+                            "anyOf": [
+                              {
+                                "const": "active",
+                                "type": "string"
+                              },
+                              {
+                                "const": "password_change_required",
+                                "type": "string"
+                              }
+                            ]
+                          },
                           "lastLoginAt": {
                             "anyOf": [
                               {
@@ -39935,6 +40006,69 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/password/complete-required-change": {
+      "post": {
+        "operationId": "postApiV1AuthPasswordCompleterequiredchange",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Replace a temporary password, revoke all sessions, and require a fresh sign-in",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "signInRequired"
+                  ],
+                  "properties": {
+                    "signInRequired": {
+                      "const": true,
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "currentPassword",
+                  "newPassword"
+                ],
+                "properties": {
+                  "currentPassword": {
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "newPassword": {
+                    "minLength": 12,
+                    "maxLength": 256,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -156046,6 +156180,7 @@
                           "subjectId",
                           "archivedAt",
                           "unreadCount",
+                          "mentionCount",
                           "participantRoles",
                           "lastActivityAt",
                           "lastMessage"
@@ -156117,6 +156252,9 @@
                             ]
                           },
                           "unreadCount": {
+                            "type": "integer"
+                          },
+                          "mentionCount": {
                             "type": "integer"
                           },
                           "participantRoles": {
@@ -156213,6 +156351,7 @@
                     "subjectId",
                     "archivedAt",
                     "unreadCount",
+                    "mentionCount",
                     "participantRoles",
                     "lastActivityAt",
                     "lastMessage",
@@ -156286,6 +156425,9 @@
                       ]
                     },
                     "unreadCount": {
+                      "type": "integer"
+                    },
+                    "mentionCount": {
                       "type": "integer"
                     },
                     "participantRoles": {
@@ -156514,6 +156656,99 @@
         }
       }
     },
+    "/api/v1/messaging/channels/{id}/mention-candidates": {
+      "get": {
+        "operationId": "getApiV1MessagingChannelsByIdMentioncandidates",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Search staff and the linked patient eligible for a structured reference",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "candidates"
+                  ],
+                  "properties": {
+                    "candidates": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "entityId",
+                          "displayName",
+                          "detail"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "const": "staff",
+                                "type": "string"
+                              },
+                              {
+                                "const": "patient",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "entityId": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "detail": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/channels/{id}/messages": {
       "get": {
         "operationId": "getApiV1MessagingChannelsByIdMessages",
@@ -156564,6 +156799,16 @@
                 }
               ]
             }
+          },
+          {
+            "name": "anchorMessageId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 64,
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -156590,7 +156835,8 @@
                           "body",
                           "bodyKind",
                           "createdAt",
-                          "parentMessageId"
+                          "parentMessageId",
+                          "references"
                         ],
                         "properties": {
                           "messageId": {
@@ -156650,6 +156896,49 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "references": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "kind",
+                                "entityId",
+                                "start",
+                                "end",
+                                "displayLabel",
+                                "navigable"
+                              ],
+                              "properties": {
+                                "kind": {
+                                  "anyOf": [
+                                    {
+                                      "const": "staff",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "patient",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "entityId": {
+                                  "type": "string"
+                                },
+                                "start": {
+                                  "type": "integer"
+                                },
+                                "end": {
+                                  "type": "integer"
+                                },
+                                "displayLabel": {
+                                  "type": "string"
+                                },
+                                "navigable": {
+                                  "type": "boolean"
+                                }
+                              }
+                            }
                           }
                         }
                       }
@@ -156795,6 +157084,48 @@
                         "byteSize": {
                           "minimum": 0,
                           "maximum": 25000000,
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  },
+                  "references": {
+                    "maxItems": 25,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "entityId",
+                        "start",
+                        "end"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "anyOf": [
+                            {
+                              "const": "staff",
+                              "type": "string"
+                            },
+                            {
+                              "const": "patient",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "entityId": {
+                          "minLength": 1,
+                          "maxLength": 64,
+                          "type": "string"
+                        },
+                        "start": {
+                          "minimum": 0,
+                          "maximum": 8000,
+                          "type": "integer"
+                        },
+                        "end": {
+                          "minimum": 1,
+                          "maximum": 8001,
                           "type": "integer"
                         }
                       }
@@ -157026,6 +157357,48 @@
                     "minLength": 1,
                     "maxLength": 8000,
                     "type": "string"
+                  },
+                  "references": {
+                    "maxItems": 25,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "entityId",
+                        "start",
+                        "end"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "anyOf": [
+                            {
+                              "const": "staff",
+                              "type": "string"
+                            },
+                            {
+                              "const": "patient",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "entityId": {
+                          "minLength": 1,
+                          "maxLength": 64,
+                          "type": "string"
+                        },
+                        "start": {
+                          "minimum": 0,
+                          "maximum": 8000,
+                          "type": "integer"
+                        },
+                        "end": {
+                          "minimum": 1,
+                          "maximum": 8001,
+                          "type": "integer"
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -173592,6 +173965,8 @@
                           "defaultLocationIds",
                           "displayName",
                           "email",
+                          "username",
+                          "credentialState",
                           "lastLoginAt",
                           "accountStatus"
                         ],
@@ -173650,6 +174025,28 @@
                               },
                               {
                                 "type": "null"
+                              }
+                            ]
+                          },
+                          "username": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "credentialState": {
+                            "anyOf": [
+                              {
+                                "const": "active",
+                                "type": "string"
+                              },
+                              {
+                                "const": "password_change_required",
+                                "type": "string"
                               }
                             ]
                           },
@@ -173803,6 +174200,8 @@
                     "defaultLocationIds",
                     "displayName",
                     "email",
+                    "username",
+                    "credentialState",
                     "lastLoginAt",
                     "accountStatus"
                   ],
@@ -173861,6 +174260,28 @@
                         },
                         {
                           "type": "null"
+                        }
+                      ]
+                    },
+                    "username": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "credentialState": {
+                      "anyOf": [
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "password_change_required",
+                          "type": "string"
                         }
                       ]
                     },
@@ -174592,6 +175013,242 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/orgs/{orgId}/users": {
+      "post": {
+        "operationId": "postApiV1OrgsByOrgIdUsers",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Provision a username-capable staff identity, membership, and authorized roles",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "userId",
+                    "membershipId",
+                    "name",
+                    "username",
+                    "email",
+                    "credentialState",
+                    "roleIds",
+                    "defaultLocationIds"
+                  ],
+                  "properties": {
+                    "userId": {
+                      "type": "string"
+                    },
+                    "membershipId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "credentialState": {
+                      "const": "password_change_required",
+                      "type": "string"
+                    },
+                    "roleIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "defaultLocationIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "temporaryPassword": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "username",
+                  "roleIds"
+                ],
+                "properties": {
+                  "name": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "username": {
+                    "minLength": 3,
+                    "maxLength": 32,
+                    "pattern": "^[A-Za-z0-9_.-]+$",
+                    "type": "string"
+                  },
+                  "email": {
+                    "anyOf": [
+                      {
+                        "maxLength": 320,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "temporaryPassword": {
+                    "minLength": 12,
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "generateTemporaryPassword": {
+                    "type": "boolean"
+                  },
+                  "roleIds": {
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "type": "array",
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "defaultLocationIds": {
+                    "uniqueItems": true,
+                    "type": "array",
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orgs/{orgId}/users/{userId}/password-reset": {
+      "post": {
+        "operationId": "postApiV1OrgsByOrgIdUsersByUserIdPasswordreset",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Replace a single-tenant user's password with a temporary credential and revoke sessions",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "sessionsRevoked",
+                    "passwordChangeRequired"
+                  ],
+                  "properties": {
+                    "sessionsRevoked": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "passwordChangeRequired": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "temporaryPassword": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "temporaryPassword": {
+                    "minLength": 12,
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "generateTemporaryPassword": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -190986,6 +191643,80 @@
                   "reason": {
                     "minLength": 1,
                     "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/users/{userId}/password-reset": {
+      "post": {
+        "operationId": "postApiV1PlatformUsersByUserIdPasswordreset",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Platform-authorized global password reset, including shared multi-tenant identities",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "sessionsRevoked",
+                    "passwordChangeRequired"
+                  ],
+                  "properties": {
+                    "sessionsRevoked": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "passwordChangeRequired": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "temporaryPassword": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "temporaryPassword": {
+                    "minLength": 12,
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "generateTemporaryPassword": {
+                    "type": "boolean"
                   }
                 }
               }

@@ -86,10 +86,12 @@ export {
   type OrgRoleLookup,
   type ProposableRole,
   type ProposedRoleGuard,
+  type ProvisioningRoleResolver,
   type RoleCeilingVerdict,
   ROLE_ASSIGN_PERMISSION,
   checkRoleCeiling,
   createDbOrgRoleLookup,
+  createDbProvisioningRoleResolver,
   createProposedRoleGuard,
 } from "./proposed-role-ceiling";
 export { createDbBreakGlassStore } from "./break-glass-store";

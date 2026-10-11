@@ -52,11 +52,14 @@ import {
   AuditorRedeemResponseSchema as M2AuditorRedeemResponseSchema,
 } from "../../apps/backend/src/modules/02-identity/routes/auditor-redeem";
 import {
+  AdminPasswordResetRequestSchema as M2AdminPasswordResetRequestSchema,
+  AdminPasswordResetResponseSchema as M2AdminPasswordResetResponseSchema,
   AuthContextResponseSchema as M2AuthContextResponseSchema,
   CollaboratorConsumeRequestSchema as M2CollaboratorConsumeRequestSchema,
   CollaboratorConsumeResponseSchema as M2CollaboratorConsumeResponseSchema,
   CollaboratorInviteRequestSchema as M2CollaboratorInviteRequestSchema,
   CollaboratorInviteResponseSchema as M2CollaboratorInviteResponseSchema,
+  CredentialStatusResponseSchema as M2CredentialStatusResponseSchema,
   ElevatedApprovalGrantRequestSchema as M2ElevatedApprovalGrantRequestSchema,
   ElevatedApprovalGrantSchema as M2ElevatedApprovalGrantSchema,
   ElevatedApprovalRevokeRequestSchema as M2ElevatedApprovalRevokeRequestSchema,
@@ -79,6 +82,8 @@ import {
   OrganizationTransitionResponseSchema as M2OrganizationTransitionResponseSchema,
   PlatformUserDeactivateRequestSchema as M2PlatformUserDeactivateRequestSchema,
   PlatformUserDeactivatedResponseSchema as M2PlatformUserDeactivatedResponseSchema,
+  RequiredPasswordChangeRequestSchema as M2RequiredPasswordChangeRequestSchema,
+  RequiredPasswordChangeResponseSchema as M2RequiredPasswordChangeResponseSchema,
   SelectOrganizationRequestSchema as M2SelectOrganizationRequestSchema,
   StepUpInitiateRequestSchema as M2StepUpInitiateRequestSchema,
   StepUpInitiateResponseSchema as M2StepUpInitiateResponseSchema,
@@ -86,6 +91,8 @@ import {
   StepUpVerifyResponseSchema as M2StepUpVerifyResponseSchema,
   UserDeactivateRequestSchema as M2UserDeactivateRequestSchema,
   UserDeactivatedResponseSchema as M2UserDeactivatedResponseSchema,
+  UserProvisionRequestSchema as M2UserProvisionRequestSchema,
+  UserProvisionedResponseSchema as M2UserProvisionedResponseSchema,
 } from "../../apps/backend/src/modules/02-identity/routes/identity-typebox";
 import {
   FuneralCaseResponseSchema as M2FuneralCaseResponseSchema,
@@ -1255,6 +1262,8 @@ import {
   EditMessageBodySchema as M36EditMessageBodySchema,
   EditMessageResponseSchema as M36EditMessageResponseSchema,
   ListMessagesQuerySchema as M36ListMessagesQuerySchema,
+  MentionCandidateQuerySchema as M36MentionCandidateQuerySchema,
+  MentionCandidateResponseSchema as M36MentionCandidateResponseSchema,
   MessageListResponseSchema as M36MessageListResponseSchema,
   NotificationPreferencesResponseSchema as M36NotificationPreferencesResponseSchema,
   OpenCareTeamConversationResponseSchema as M36OpenCareTeamConversationResponseSchema,
@@ -6142,6 +6151,15 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "App-shell identity/role/permission projection (FB-T15)",
     response: M2AuthContextResponseSchema,
   },
+  "GET /api/v1/auth/credential-status": {
+    summary: "Read the authenticated identity's authoritative password-rotation state",
+    response: M2CredentialStatusResponseSchema,
+  },
+  "POST /api/v1/auth/password/complete-required-change": {
+    summary: "Replace a temporary password, revoke all sessions, and require a fresh sign-in",
+    body: M2RequiredPasswordChangeRequestSchema,
+    response: M2RequiredPasswordChangeResponseSchema,
+  },
   "POST /api/v1/auth/select-organization": {
     summary: "Bind the pre-org session to exactly one org (one-time, §7.2)",
     body: M2SelectOrganizationRequestSchema,
@@ -6156,6 +6174,22 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Invite a user to an org (member.invite, §7.1)",
     body: M2OrgInvitationCreateRequestSchema,
     response: M2InvitationCreatedResponseSchema,
+  },
+  "POST /api/v1/orgs/:orgId/users": {
+    summary: "Provision a username-capable staff identity, membership, and authorized roles",
+    body: M2UserProvisionRequestSchema,
+    response: M2UserProvisionedResponseSchema,
+  },
+  "POST /api/v1/orgs/:orgId/users/:userId/password-reset": {
+    summary:
+      "Replace a single-tenant user's password with a temporary credential and revoke sessions",
+    body: M2AdminPasswordResetRequestSchema,
+    response: M2AdminPasswordResetResponseSchema,
+  },
+  "POST /api/v1/platform/users/:userId/password-reset": {
+    summary: "Platform-authorized global password reset, including shared multi-tenant identities",
+    body: M2AdminPasswordResetRequestSchema,
+    response: M2AdminPasswordResetResponseSchema,
   },
   "POST /api/v1/invitations/accept": {
     summary: "Consume an invite token → membership (§7.1)",
@@ -8874,6 +8908,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Paginated message history (bodies decrypted for entitled readers)",
     query: M36ListMessagesQuerySchema,
     response: M36MessageListResponseSchema,
+  },
+  "GET /api/v1/messaging/channels/:id/mention-candidates": {
+    summary: "Search staff and the linked patient eligible for a structured reference",
+    query: M36MentionCandidateQuerySchema,
+    response: M36MentionCandidateResponseSchema,
   },
   "POST /api/v1/messaging/channels/:id/messages": {
     summary: "Post a message (201; CHANNEL_ARCHIVED 410)",

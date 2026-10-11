@@ -338,6 +338,76 @@ describe("M36-T07 messaging route inventory", () => {
       await app.close();
     });
 
+    it("persists only authoritative structured references and rejects forged labels/ranges", async () => {
+      const { app } = makeServer();
+      const opened = await app.inject({
+        method: "POST",
+        url: "/api/v1/messaging/dm",
+        headers: RN1,
+        payload: { userId: "rn_2" },
+      });
+      const channelId = opened.json().channelId as string;
+
+      const candidates = await app.inject({
+        method: "GET",
+        url: `/api/v1/messaging/channels/${channelId}/mention-candidates?q=Nurse`,
+        headers: RN1,
+      });
+      expect(candidates.statusCode).toBe(200);
+      expect(candidates.json().candidates).toContainEqual(
+        expect.objectContaining({ kind: "staff", entityId: "rn_2", displayName: "Nurse Two" }),
+      );
+
+      const valid = await app.inject({
+        method: "POST",
+        url: `/api/v1/messaging/channels/${channelId}/messages`,
+        headers: RN1,
+        payload: {
+          body: "Update @Nurse Two",
+          references: [{ kind: "staff", entityId: "rn_2", start: 7, end: 17 }],
+        },
+      });
+      expect(valid.statusCode).toBe(201);
+      const history = await app.inject({
+        method: "GET",
+        url: `/api/v1/messaging/channels/${channelId}/messages`,
+        headers: RN1,
+      });
+      expect(history.json().messages[0].references).toEqual([
+        expect.objectContaining({
+          kind: "staff",
+          entityId: "rn_2",
+          displayLabel: "Nurse Two",
+        }),
+      ]);
+
+      const forged = await app.inject({
+        method: "POST",
+        url: `/api/v1/messaging/channels/${channelId}/messages`,
+        headers: RN1,
+        payload: {
+          body: "Update @Chief Doctor",
+          references: [{ kind: "staff", entityId: "rn_2", start: 7, end: 20 }],
+        },
+      });
+      expect(forged.statusCode).toBe(422);
+
+      const overlapping = await app.inject({
+        method: "POST",
+        url: `/api/v1/messaging/channels/${channelId}/messages`,
+        headers: RN1,
+        payload: {
+          body: "@Nurse Two",
+          references: [
+            { kind: "staff", entityId: "rn_2", start: 0, end: 10 },
+            { kind: "staff", entityId: "rn_2", start: 1, end: 10 },
+          ],
+        },
+      });
+      expect(overlapping.statusCode).toBe(422);
+      await app.close();
+    });
+
     it("only the author may edit/delete (FORBIDDEN otherwise)", async () => {
       const { app } = makeServer();
       const post = await app.inject({

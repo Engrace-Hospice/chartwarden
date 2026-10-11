@@ -66,6 +66,9 @@ const OrganizationSelect = lazy(() =>
 const ResetPassword = lazy(() =>
   import("./reset-password").then((m) => ({ default: m.ResetPassword })),
 );
+const RequiredPasswordChange = lazy(() =>
+  import("./required-password-change").then((m) => ({ default: m.RequiredPasswordChange })),
+);
 const SecurityPasskeys = lazy(() =>
   import("./security-passkeys").then((m) => ({ default: m.SecurityPasskeys })),
 );
@@ -106,6 +109,13 @@ export const identityScreens: ScreenRegistryModule<ComponentType> = {
       title: "Set a new password",
       chrome: false,
       screen: ResetPassword,
+    },
+    {
+      id: "identity.required-password-change",
+      path: "/login/change-password",
+      title: "Change your password",
+      chrome: false,
+      screen: RequiredPasswordChange,
     },
     {
       id: "identity.step-up",
