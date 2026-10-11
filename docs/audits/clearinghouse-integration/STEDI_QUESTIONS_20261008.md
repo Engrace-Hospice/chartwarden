@@ -86,3 +86,35 @@ with 837I, 835 and eligibility all `ENROLLMENT_REQUIRED`. NGS `MFPWU` (13001) sh
 
 Evidence for the technical call: payloads that pass your edits are in the session scratchpad
 (`FINAL_837I_hospice_*`); synthetic data only.
+
+## Follow-up questions (transport build, 2026-10-11)
+
+These come from building the submit side against your sandbox. Each is something the code now depends on
+an assumption for; we will not build wire behaviour on an unconfirmed answer. **Blocking** items gate
+the receive side.
+
+20. **(blocking)** Is there a documented validate-without-filing mode? We need to check a claim without it
+    being filed or consuming the idempotency key. Does `usageIndicator: T` on a provisioned account
+    never file? Do edits still run on an account that is not provisioned for the payer?
+21. **(blocking)** NOE/NOTR use `BHT06 = RP` in our tests (`CH` with a $0 charge is rejected). Is `RP` the
+    value a Medicare MAC expects for notices, or does it mean "not for adjudication" and risk the MAC
+    ignoring the notice? Is a notice accepted on `CH` with any other shape?
+22. **(blocking)** Webhook signatures: what exact content is signed? Your page words it as `timestamp.body`;
+    the Standard Webhooks form is `id.timestamp.body`. How is the secret encoded (is a `whsec_` prefix
+    stripped and the rest base64-decoded)? Which header names carry the id, timestamp and signature?
+23. Claim routes: is the `Authorization` header the bare key or `Key <key>`? The 837I and 837P pages
+    differ, and we have only seen the bare key work, on payer search and event destinations.
+24. Idempotency: what does a replay return (same body, a marker header)? What does a reused key with a
+    different body return?
+25. Is the initial 277CA returned in the 200 body or delivered later (about 30 minutes)? Which STC codes
+    mean "accepted by Stedi" versus "forwarded to the payer"?
+26. What response shape means "provider not enrolled with this payer"? Payer search shows
+    `ENROLLMENT_REQUIRED` for every Part A payer whether or not we are enrolled.
+27. **(blocking)** On a shared account, how do we attribute an 835 or a 277CA to a tenant? Can polling
+    results be filtered by billing NPI, or does each report carry a per-provider identifier?
+28. If frequency 7/8 is refused for Medicare, how is a **paid** hospice claim adjusted or cancelled?
+    Does your restriction cover TOB 8x7/8x8 at all?
+29. Is claim status inquiry (276/277) available through the API for hospice institutional claims?
+30. Is TOB 82A/82B and 8xC/8xD (transfer) accepted? Not yet exercised in the sandbox.
+31. Why does NGS `MFPWU` show 837I `NOT_SUPPORTED` while Medicare Oregon Part A (`MDCKC`, `12M41`) does not?
+    Which is correct for an Oregon hospice (CCN 381588)?

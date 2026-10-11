@@ -1510,6 +1510,53 @@ async function routeAck(
   await applyClaimAck(tx, deps, submission, ack);
 }
 
+/**
+ * ADR-0052: a claim the MAC rejected at the payer stage (277CA) becomes ONE `rtp_correction` DDE item. Runs in its own
+ * savepoint AFTER the rejection is recorded: a queue failure is logged (ids only) and rolled back alone, so it can never
+ * undo the acknowledgment or the claim transition (which have already been decided and published). A missed item is
+ * recoverable by hand (`POST /dde-items`, type `rtp_correction`). Idempotent: an item already open for the claim, or a
+ * replayed ack (the claim is no longer `ack_pending`, so this is never reached twice), creates nothing.
+ */
+async function queueRtpCorrection(
+  deps: M23WorkerDeps,
+  tx: BillingDb,
+  claim: { readonly providerEntityId: string; readonly patientId: string },
+  organizationId: string,
+  acknowledgmentId: string,
+  rejectionCodes: readonly string[],
+  claimId: string,
+): Promise<void> {
+  const watchdog = deps.ddeWatchdog;
+  if (!watchdog) return;
+  try {
+    await tx.transaction(async (savepoint) => {
+      await watchdog.ensureClaimRtpItem(savepoint as unknown as BillingDb, {
+        organizationId,
+        claimId,
+        providerEntityId: claim.providerEntityId,
+        patientId: claim.patientId,
+        acknowledgmentId,
+        rejectionCodes,
+      });
+    });
+  } catch (err) {
+    // Never log `err.message`: a Postgres error can embed row/key detail (patient or claim ids, an MBI). Ids plus the
+    // error class and SQLSTATE/constraint are enough to find the failure. `logger` is optional on the worker deps; when
+    // absent the failure is deliberately not reported (the rollback and the by-hand `POST /dde-items` path still hold).
+    const pgError = err as { code?: unknown; constraint?: unknown } | null;
+    deps.logger?.error(
+      {
+        organizationId,
+        claimId,
+        errorName: err instanceof Error ? err.name : typeof err,
+        ...(typeof pgError?.code === "string" ? { code: pgError.code } : {}),
+        ...(typeof pgError?.constraint === "string" ? { constraint: pgError.constraint } : {}),
+      },
+      "dde rtp queueing failed",
+    );
+  }
+}
+
 /** The claim twin of {@link applyNoticeAck}: 999 advances ACK staging; 277CA drives ACK_PENDING → accepted/rejected/partial. */
 async function applyClaimAck(
   tx: BillingDb,
@@ -1579,6 +1626,17 @@ async function applyClaimAck(
             : "999",
       rejectionCodes: reasonCodes,
     });
+    if (event === "ack_277ca_rejected") {
+      await queueRtpCorrection(
+        deps,
+        tx,
+        claim,
+        ack.organizationId,
+        recorded.id,
+        reasonCodes,
+        claimId,
+      );
+    }
   } else if (event === "ack_277ca_accepted") {
     await emit("m23.claim.acknowledged", { payerClaimControlNumber: ack.payerControlNumber ?? "" });
   } else if (event === "ack_277ca_partial") {
