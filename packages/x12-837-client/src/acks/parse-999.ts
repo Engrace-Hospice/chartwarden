@@ -168,7 +168,8 @@ export function parse999(raw: string): Parsed999Detail {
   // every set was accepted. Anything else is `partial`, never `accepted`.
   const included = ak9s.map((s) => count(s[2]));
   const sound = ak9s.every((s, i) => {
-    const [inc, received, accepted] = [included[i], count(s[3]), count(s[4])];
+    const inc = included[i] ?? null;
+    const [received, accepted] = [count(s[3]), count(s[4])];
     return inc !== null && inc > 0 && inc === received && inc === accepted;
   });
   const expectedSets = included.reduce<number>((a, c) => a + (c ?? 0), 0);
