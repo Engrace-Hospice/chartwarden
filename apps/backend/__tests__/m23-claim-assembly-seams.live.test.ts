@@ -727,6 +727,9 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
         placeOfDeath: null,
         dischargeEventId: null,
         transferOut: null,
+        // UB-04 FL 14 / FL 15 (f8c294448): this admission was seeded without a type / point of origin.
+        admissionTypeCode: null,
+        admissionSourceCode: null,
         // F-127 (#251) — `activeAdmissionForRange` names M6_MD as the hospice physician.
         hospicePhysicianId: M6_MD,
       });
