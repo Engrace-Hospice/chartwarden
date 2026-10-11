@@ -96,6 +96,18 @@ export interface TransferNotice837iInput {
 
 /** Build the 837I interchange for one transfer notice (ISA … IEA, one ST-SE). */
 export function build837iTransferNotice(input: TransferNotice837iInput): string {
+  try {
+    return buildTransferNotice(input);
+  } catch (e) {
+    // The shared writer's helpers throw the base error; callers of this builder catch its own type.
+    if (e instanceof X12BuildError && !(e instanceof TransferNotice837iBuildError)) {
+      throw new TransferNotice837iBuildError(e.field);
+    }
+    throw e;
+  }
+}
+
+function buildTransferNotice(input: TransferNotice837iInput): string {
   const doc = input.document;
   if (!/^8[12][CD]$/.test(doc.tob) || doc.tob.charAt(2) !== doc.frequencyCode) {
     throw new TransferNotice837iBuildError("document.tob");

@@ -157,3 +157,51 @@ describe("isValidNpi", () => {
     expect(isValidNpi("123456789")).toBe(false);
   });
 });
+
+describe("build837iTransferNotice — errors from the shared writer keep this builder's type", () => {
+  const I = ORIGINAL_8XC_INPUT;
+  it.each([
+    ["subscriber.lastName", { ...I, subscriber: { ...I.subscriber, lastName: "" } }],
+    ["subscriber.firstName", { ...I, subscriber: { ...I.subscriber, firstName: "A*B" } }],
+    [
+      "attendingPhysician.npi",
+      { ...I, attendingPhysician: { ...I.attendingPhysician, npi: "1234567890" } },
+    ],
+    [
+      "billingProvider.address.postalCode",
+      {
+        ...I,
+        billingProvider: {
+          ...I.billingProvider,
+          address: { ...I.billingProvider.address, postalCode: "9" },
+        },
+      },
+    ],
+    [
+      "billingProvider.address.state",
+      {
+        ...I,
+        billingProvider: {
+          ...I.billingProvider,
+          address: { ...I.billingProvider.address, state: "ORE" },
+        },
+      },
+    ],
+    ["subscriber.birthDate", { ...I, subscriber: { ...I.subscriber, birthDate: "1940-13-45" } }],
+    ["envelope.senderId", { ...I, envelope: { ...I.envelope, senderId: "" } }],
+    [
+      "envelope.interchangeControlNumber",
+      { ...I, envelope: { ...I.envelope, interchangeControlNumber: 0 } },
+    ],
+  ])("%s", (field, input) => {
+    let caught: unknown;
+    try {
+      build837iTransferNotice(input);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(TransferNotice837iBuildError);
+    expect((caught as Error).name).toBe("TransferNotice837iBuildError");
+    expect((caught as Error).message).toBe(`invalid transfer-notice 837I input: ${field}`);
+  });
+});

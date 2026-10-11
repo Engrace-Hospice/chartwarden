@@ -51,7 +51,7 @@ describe("prepareEnvelope + wrapTransaction", () => {
     expect(segments[7]).toEqual(["IEA", "1", "000000106"]);
   });
 
-  it("pads ISA06/ISA08 to 15 and is exactly 106 characters before the terminator", () => {
+  it("pads ISA06/ISA08 to 15 and ISA is 105 characters before its terminator (106 with it)", () => {
     const raw = wrapTransaction(prepareEnvelope(ENVELOPE), { transactionSet: "837", body: [] });
     expect(raw.split("~")[0]?.length).toBe(105);
   });
@@ -85,7 +85,7 @@ describe("field helpers", () => {
       } catch (e) {
         expect(e).toBeInstanceOf(X12BuildError);
         expect((e as X12BuildError).field).toBe("subscriber.lastName");
-        expect((e as Error).message).not.toContain(value.trim() || "\u0000");
+        if (value.trim() !== "") expect((e as Error).message).not.toContain(value.trim());
       }
     },
   );
