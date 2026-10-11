@@ -120,6 +120,8 @@ export function buildHetsEligibilityPort(deps: HetsEligibilityPortDeps): HetsEli
           organizationId: input.organizationId,
           patientId: input.patientId,
           onDate: input.asOfServiceDate,
+          // The disclosure audit commits in the reader's own tx: if this check fails later or the job retries,
+          // `subjectId` may name an eligibility_check row that was never persisted (expected over-audit).
           disclosure: { purpose: HETS_DISCLOSURE_PURPOSE, subjectId: input.eligibilityCheckId },
         });
       if (!subscriber) return failed("mbi_invalid", "mbi_not_on_file");

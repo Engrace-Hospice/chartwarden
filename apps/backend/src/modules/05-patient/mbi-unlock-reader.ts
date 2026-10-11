@@ -16,10 +16,10 @@ import { randomUUID } from "node:crypto";
 import { audit } from "@wardenx/audit";
 import { type DbClient, schema } from "@wardenx/db";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
-import type {
-  EligibilitySubscriberIdentity,
-  MbiDisclosurePurpose,
-  MbiUnlockReader,
+import {
+  type EligibilitySubscriberIdentity,
+  MBI_DISCLOSURE_PURPOSES,
+  type MbiUnlockReader,
 } from "@wardenx/types";
 import { and, eq } from "drizzle-orm";
 
@@ -34,10 +34,7 @@ export const MBI_DISCLOSED_EVENT = "patient_payer.mbi_disclosed";
 type MbiUnlockInput = Parameters<MbiUnlockReader["unlockForEligibility"]>[0];
 
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DISCLOSURE_PURPOSES: ReadonlySet<string> = new Set<MbiDisclosurePurpose>([
-  "claim_837i_submission",
-  "hets_270_eligibility",
-]);
+const DISCLOSURE_PURPOSES: ReadonlySet<string> = new Set(MBI_DISCLOSURE_PURPOSES);
 
 /**
  * The audit context is ids-only: a purpose outside the closed set, or a subject/actor that is not uuid-shaped, could
@@ -52,6 +49,9 @@ function assertDisclosureShape(disclosure: MbiUnlockInput["disclosure"]): void {
   }
   if (disclosure.actorUserId !== undefined && !UUID_SHAPE.test(disclosure.actorUserId)) {
     throw new Error("MBI unlock refused: disclosure.actorUserId must be a uuid");
+  }
+  if (disclosure.correlationId !== undefined && !UUID_SHAPE.test(disclosure.correlationId)) {
+    throw new Error("MBI unlock refused: disclosure.correlationId must be a uuid");
   }
 }
 

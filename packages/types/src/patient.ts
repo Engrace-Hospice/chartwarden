@@ -516,7 +516,8 @@ export interface EligibilitySubscriberIdentity {
 }
 
 /** Why an MBI was unlocked (a closed set: the purpose is audited, so it is never free text). */
-export type MbiDisclosurePurpose = "claim_837i_submission" | "hets_270_eligibility";
+export const MBI_DISCLOSURE_PURPOSES = ["claim_837i_submission", "hets_270_eligibility"] as const;
+export type MbiDisclosurePurpose = (typeof MBI_DISCLOSURE_PURPOSES)[number];
 
 /**
  * M5-published, M23-ONLY seam (M23 §4.4 / §8.7): unlock the patient's Medicare (FFS) MBI for one HETS
@@ -540,12 +541,21 @@ export interface MbiUnlockReader {
     /**
      * REQUIRED: every unlock is a PHI DISCLOSURE for `purpose`. The reader writes the access audit in the SAME
      * transaction as the read (ids and purpose only, never a value); if that audit cannot be written nothing is
-     * returned. The reader throws when `subjectId` is not a uuid.
+     * returned. The reader throws, before any read, when `subjectId` (or a given `correlationId` / `actorUserId`)
+     * is not a uuid, or `purpose` is outside {@link MBI_DISCLOSURE_PURPOSES}.
+     *
+     * The audit commits in the READER's own transaction, not the caller's: if the caller later fails or retries
+     * (e.g. the 270 errors after the unlock), `subjectId` may name a business record (an `eligibility_check` id)
+     * that was never persisted. That over-audit is expected and deliberate; the disclosure audit is never deferred.
      */
     readonly disclosure: {
       readonly purpose: MbiDisclosurePurpose;
-      /** The business record the disclosure serves (a uuid: the claim id, the eligibility check id). */
+      /**
+       * The business record the disclosure serves (a uuid: the claim id, the eligibility check id). It is the id the
+       * caller INTENDS to persist; it is not proof the record exists (see the over-audit note above).
+       */
       readonly subjectId: string;
+      /** A uuid when given (checked before any read); minted by the reader when absent. */
       readonly correlationId?: string;
       /** The user who triggered the release, when there is one (a user-initiated release records who); else system. */
       readonly actorUserId?: string;

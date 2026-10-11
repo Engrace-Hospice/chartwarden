@@ -216,7 +216,9 @@ describe.skipIf(!DB_URL)("M23 HETS 270/271 eligibility — LIVE Postgres as ward
     );
     expect(events.rows).toHaveLength(1);
 
-    // SEC-H1: the HETS unlock is a disclosure too — one audit row naming THIS check (the id the row was appended under).
+    // SEC-H1: the HETS unlock is a disclosure too — one audit row naming THIS check's id. The audit commits in
+    // the reader's own tx, so on a failed/retried job it could name a check that was never persisted (expected
+    // over-audit); on this success path the id equals the appended row's.
     const checkId = events.rows[0].payload.checkId as string;
     const disclosed = await admin.query(
       `SELECT actor_kind, resource_kind, context::text AS ctx FROM audit_event
