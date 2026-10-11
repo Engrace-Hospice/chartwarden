@@ -196,3 +196,10 @@ export type {
   ConformanceScript,
   HarnessFactory,
 } from "./clearinghouse/conformance";
+export {
+  Notice837iBuildError,
+  build837iNotice,
+  type Notice837iInput,
+  type NoticeDocument,
+  type NoticeKind,
+} from "./notices/build-837i-notice";
