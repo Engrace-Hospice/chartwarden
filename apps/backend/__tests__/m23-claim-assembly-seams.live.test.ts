@@ -1613,6 +1613,9 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       const resolution = await seam.resolveClinicalParticipants(ORG_A, patientId, range.from);
       expect(resolution.hospicePhysician).toEqual({
         npi: "1122334455",
+        // The M40 canonical names ride along so claim assembly can snapshot them (C2).
+        firstName: "Hospice",
+        lastName: "MD",
         status: "active",
         // Honest, not fabricated — M40 tracks no per-state license expiry date for an external
         // physician (F-127); see `physician-credentials.ts`'s reworded defect message.
@@ -1620,6 +1623,8 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       });
       expect(resolution.attending).toEqual({
         npi: "1234567893",
+        firstName: "Attending",
+        lastName: "MD",
         status: "inactive",
         licenseUnexpiredOnServiceDates: false,
       });
