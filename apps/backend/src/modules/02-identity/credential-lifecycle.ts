@@ -115,11 +115,15 @@ export function createDbCredentialLifecycleStore(
 ): CredentialLifecycleStore {
   return {
     async organizationName(organizationId) {
-      const [row] = await db
-        .select({ name: schema.organizations.displayName })
-        .from(schema.organizations)
-        .where(eq(schema.organizations.id, organizationId))
-        .limit(1);
+      // `organization` is RLS-scoped: a bare `db` read has no `app.org_id` and sees no row, so every
+      // provisioning answered 404 "organization not found" (found hitting the route on the Docker stack).
+      const [row] = await withOrgContext(db, { organizationId, userId: "" }, (tx) =>
+        tx
+          .select({ name: schema.organizations.displayName })
+          .from(schema.organizations)
+          .where(eq(schema.organizations.id, organizationId))
+          .limit(1),
+      );
       return row?.name ?? null;
     },
     validateLocations,

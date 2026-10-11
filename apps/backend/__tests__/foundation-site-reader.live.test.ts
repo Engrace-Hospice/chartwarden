@@ -16,6 +16,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildFoundationSiteReader } from "../src/bootstrap/foundation-site-reader";
+import { createDbCredentialLifecycleStore } from "../src/modules/02-identity/credential-lifecycle";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -123,5 +124,13 @@ describe.skipIf(!DB_URL)("FoundationSiteReader.allLocationsOpenInOrg — LIVE Po
 
   it("is false for an unknown id", async () => {
     expect(await check(ORG_A, [UNKNOWN])).toBe(false);
+  });
+
+  // Found hitting POST /orgs/:orgId/users on the Docker stack: a bare-`db` read of the RLS-scoped
+  // `organization` table sees no row as wardenx_app, so every provisioning answered 404.
+  it("M2's credential lifecycle store reads the organization name under RLS", async () => {
+    const store = createDbCredentialLifecycleStore(handle.db, async () => true);
+    expect(await store.organizationName(ORG_A)).toBe("A");
+    expect(await store.organizationName(UNKNOWN)).toBeNull();
   });
 });
