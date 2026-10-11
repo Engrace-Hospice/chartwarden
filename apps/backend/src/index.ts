@@ -875,6 +875,10 @@ import {
   validateDocumentsAIBlock,
 } from "./modules/22-documents/index";
 import { buildM22ConsentRevokedConsumer } from "./modules/22-documents/outbox-consumers/m39-consent-revoked";
+import {
+  bindPlatformClearinghouse,
+  describeClearinghouseBinding,
+} from "./modules/23-billing-medicare/clearinghouse-binding";
 // M23 (Billing — Medicare) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route
 // mount over the Drizzle read/write services + the boot-time claim-assembly service, the §3.7 `billing_record`
 // eraser (registerEraser INJECTED — M23 cannot import the M1 bootstrap registry), and the §4.8 BullMQ workers
@@ -3173,6 +3177,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   // POST /billing/eligibility/check keeps answering 503: never a fabricated eligibility result. A present but
   // invalid configuration throws here, so a typo fails the boot instead of silently disabling eligibility.
   const m23HetsConfig = m23HetsConfigFromEnv(process.env);
+  // ADR-0053 D3 - the platform's clearinghouse binding. Unset keeps every transport call at CH_NOT_WIRED; a vendor
+  // named with no adapter in this build throws here, so a misconfigured deploy refuses to boot.
+  const clearinghouseBinding = bindPlatformClearinghouse(process.env);
   // WX-PR-012 — the M25 x12-worker sidecar transport, gated the same way (unset in dev/test/CI so
   // nothing calls out by accident; `undefined` falls through to `createX12835Client()`'s fail-closed
   // default). No sidecar is deployed anywhere yet, so this stays undefined in every environment today.
@@ -10385,6 +10392,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       : listenerProcess
         ? Number(process.env.LISTENER_HEALTH_PORT ?? 3002)
         : Number(process.env.PORT ?? 3000);
+  app.log.info(describeClearinghouseBinding(clearinghouseBinding));
   app.listen({ port, host: "0.0.0.0" }).catch((err) => {
     app.log.error(err);
     process.exit(1);

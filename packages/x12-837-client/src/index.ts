@@ -218,3 +218,14 @@ export {
   type StediClaimJson,
 } from "./clearinghouse/stedi-claim-json";
 export { compareStediClaimJsonToX12 } from "./clearinghouse/stedi-claim-agreement";
+export {
+  CLEARINGHOUSE_VENDOR_ENV,
+  NOT_WIRED_TRANSPORT,
+  bindClearinghouseTransport,
+  parseClearinghouseVendor,
+} from "./clearinghouse/transport-registry";
+export type {
+  ClearinghouseBinding,
+  ClearinghouseTransportFactories,
+  ClearinghouseTransportFactory,
+} from "./clearinghouse/transport-registry";

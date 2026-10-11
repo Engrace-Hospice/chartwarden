@@ -12,6 +12,14 @@ import { Buffer } from "node:buffer";
 /** Environment surface this validator reads — `process.env` in production, an injected map in tests. */
 export type EnvLike = Record<string, string | undefined>;
 
+/**
+ * ADR-0053 D3 - the platform's clearinghouse binding. Mirrors `parseClearinghouseVendor` in
+ * `@wardenx/x12-837-client` (this bootstrap file may not import it); `m23-clearinghouse-binding.test.ts` asserts the
+ * two agree. The registry still throws at boot for a vendor with no adapter.
+ */
+export const CLEARINGHOUSE_VENDOR_ENV = "CLEARINGHOUSE_VENDOR";
+export const PRODUCTION_CLEARINGHOUSE_VENDORS: readonly string[] = ["stedi", "direct_mac"];
+
 /** One unmet production requirement. */
 export interface EnvProblem {
   readonly key: string;
@@ -414,6 +422,13 @@ export function collectEnvProblems(env: EnvLike): EnvProblem[] {
     if (value && value !== "true" && value !== "false") {
       problems.push({ key, problem: "must be 'true' or 'false'" });
     }
+  }
+  const clearinghouseVendor = env[CLEARINGHOUSE_VENDOR_ENV]?.trim();
+  if (clearinghouseVendor && !PRODUCTION_CLEARINGHOUSE_VENDORS.includes(clearinghouseVendor)) {
+    problems.push({
+      key: CLEARINGHOUSE_VENDOR_ENV,
+      problem: `must be one of ${PRODUCTION_CLEARINGHOUSE_VENDORS.join(", ")} (or unset); in_memory is a test double`,
+    });
   }
   for (const { key, rule, when } of REQUIREMENTS) {
     if (when && !when(env)) continue;

@@ -35,6 +35,8 @@ const RELAY_LOG = "TASK-006 outbox dispatcher polling";
 // (bound is not computing): the same flag stops the listener paging listener_down, so a silent skip would leave a dead
 // listener unpaged.
 const WATCHER_LOG = "M29 listener health watcher constructed";
+// ADR-0053 D3 - the clearinghouse binding line proves the vendor wiring ran (unbound is a valid, logged state).
+const CLEARINGHOUSE_LOG = "Clearinghouse binding:";
 const WATCHER_REQUESTED = process.env.M29_LISTENER_WATCH_ENABLED === "true";
 
 for (const key of ["DATABASE_URL", "DATABASE_PLATFORM_URL"]) {
@@ -111,6 +113,12 @@ if (!healthy) fail(`the backend did not answer /health within ${BOOT_TIMEOUT_MS}
 if (!output.includes(RELAY_LOG)) {
   fail(
     `the backend booted but the outbox relay never started (no "${RELAY_LOG}" line) — the dispatcher was skipped, so nothing would drain outbox_event`,
+  );
+}
+
+if (!output.includes(CLEARINGHOUSE_LOG)) {
+  fail(
+    `the backend booted but never logged its clearinghouse binding (no "${CLEARINGHOUSE_LOG}" line) - the ADR-0053 vendor binding was skipped`,
   );
 }
 
