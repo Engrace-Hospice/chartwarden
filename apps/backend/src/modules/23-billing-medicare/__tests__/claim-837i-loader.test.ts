@@ -1,3 +1,4 @@
+import { inspect } from "node:util";
 // M23 — the claim-to-837I loader: a persisted claim (+ lines, snapshot columns, M6 admission date, M5 identity via the
 // seams, parties) -> Claim837iInput -> the raw 837I and Stedi JSON. The golden claim reproduces the payload the Stedi
 // sandbox accepted on 2026-10-09 (packages/x12-837-client `stedi-claim.x12`), so a drift in the mapping shows here.
@@ -60,6 +61,8 @@ const PATIENT = "00000000-0000-4000-8000-000000000003";
 const CLAIM_ID = "00000000-0000-4000-8000-000000000010";
 const PRIOR_CLAIM_ID = "00000000-0000-4000-8000-000000000011";
 const MBI = "1EG4TE5MK73";
+const PATIENT_PAYER_ID = "00000000-0000-4000-8000-000000000004";
+const PRIOR_PATIENT = "00000000-0000-4000-8000-000000000099";
 
 const claim = (over: Partial<repositories.ClaimRecord> = {}): repositories.ClaimRecord =>
   ({
@@ -67,7 +70,7 @@ const claim = (over: Partial<repositories.ClaimRecord> = {}): repositories.Claim
     organizationId: ORG,
     providerEntityId: PE,
     patientId: PATIENT,
-    patientPayerId: "00000000-0000-4000-8000-000000000004",
+    patientPayerId: PATIENT_PAYER_ID,
     tob: "813",
     serviceFrom: "2026-01-01",
     serviceTo: "2026-01-31",
@@ -168,6 +171,8 @@ interface Overrides {
   parties?: Awaited<ReturnType<Claim837iPartiesPort["partiesFor"]>>;
   identity?: { mbi: string; lastName: string; firstName: string; dateOfBirth: string } | null;
   sex?: string;
+  dateOfBirth?: string;
+  payerId?: string;
   address?: { state: string | null } | null;
 }
 
@@ -177,7 +182,7 @@ function deps(o: Overrides = {}) {
     o.identity === null
       ? null
       : {
-          patientPayerId: "pp",
+          patientPayerId: o.payerId ?? PATIENT_PAYER_ID,
           ...(o.identity ?? {
             mbi: MBI,
             lastName: "Doe",
@@ -186,7 +191,10 @@ function deps(o: Overrides = {}) {
           }),
         },
   );
-  const findPatient = vi.fn(async () => ({ administrativeSex: o.sex ?? "F" }));
+  const findPatient = vi.fn(async () => ({
+    administrativeSex: o.sex ?? "F",
+    dateOfBirth: o.dateOfBirth ?? "1940-03-15",
+  }));
   const primaryAddress = vi.fn(async () =>
     o.address === null
       ? null
@@ -228,20 +236,28 @@ const args = {
   createdAt: new Date("2026-10-09T15:00:00.000Z"),
 };
 
-const gapsOf = (r: Awaited<ReturnType<typeof loadClaim837iInput>>) =>
-  r.ok ? [] : r.kind === "gaps" ? r.gaps.map((g) => `${g.field}:${g.reason}`) : [r.kind];
+const gapsOf = (r: {
+  readonly ok: boolean;
+  readonly kind?: string;
+  readonly gaps?: readonly { readonly field: string; readonly reason: string }[];
+}): string[] =>
+  r.ok
+    ? []
+    : r.kind === "gaps"
+      ? (r.gaps ?? []).map((g) => `${g.field}:${g.reason}`)
+      : [r.kind ?? "unknown"];
 
 describe("loadClaim837iInput golden claim", () => {
   it("produces the sandbox-accepted raw 837I", async () => {
     const r = await loadAndRender837i(deps().value, args);
-    if (!r.ok) throw new Error(JSON.stringify(r));
-    expect(r.rendered.x12).toBe(GOLDEN_X12);
+    if (!r.ok) throw new Error(`load failed: ${gapsOf(r).join(",")}`);
+    expect(r.rendered.reveal().x12).toBe(GOLDEN_X12);
   });
 
   it("produces the matching Stedi JSON, with charges summing to the lines", async () => {
     const r = await loadAndRender837i(deps().value, args);
-    if (!r.ok) throw new Error(JSON.stringify(r));
-    const json = r.rendered.stediJson;
+    if (!r.ok) throw new Error(`load failed: ${gapsOf(r).join(",")}`);
+    const json = r.rendered.reveal().stediJson;
     expect(json.claimInformation.claimChargeAmount).toBe("1500.00");
     const lines = json.claimInformation.serviceLines.map((l) => l.institutionalService);
     expect(lines.map((l) => l.lineItemChargeAmount)).toEqual(["200.00", "800.00", "500.00"]);
@@ -252,16 +268,16 @@ describe("loadClaim837iInput golden claim", () => {
 
   it("keeps the MBI out of the stored document", async () => {
     const r = await loadClaim837iInput(deps().value, args);
-    if (!r.ok) throw new Error(JSON.stringify(r));
+    if (!r.ok) throw new Error(`load failed: ${gapsOf(r).join(",")}`);
     expect(JSON.stringify(r.document)).not.toContain(MBI);
     expect(JSON.stringify(r.document)).not.toContain("Doe");
-    expect(r.input.subscriber.mbi).toBe(MBI);
+    expect(r.input.reveal().subscriber.mbi).toBe(MBI);
   });
 
   it("states the total as the sum of the line cents", async () => {
     const r = await loadClaim837iInput(deps().value, args);
-    if (!r.ok) throw new Error(JSON.stringify(r));
-    const lineSum = r.input.claim.lines.reduce((s, l) => s + l.chargeCents, 0);
+    if (!r.ok) throw new Error(`load failed: ${gapsOf(r).join(",")}`);
+    const lineSum = r.input.reveal().claim.lines.reduce((s, l) => s + l.chargeCents, 0);
     expect(lineSum).toBe(150_000);
     expect(r.document.totalChargeCents).toBe(lineSum);
   });
@@ -271,8 +287,8 @@ describe("loadClaim837iInput golden claim", () => {
       ...args,
       context: { ...CONTEXT, usage: "production" },
     });
-    if (!r.ok) throw new Error(JSON.stringify(r));
-    expect(r.input.envelope.usage).toBe("P");
+    if (!r.ok) throw new Error(`load failed: ${gapsOf(r).join(",")}`);
+    expect(r.input.reveal().envelope.usage).toBe("P");
   });
 });
 
@@ -304,8 +320,8 @@ describe("loadClaim837iInput hospice fields", () => {
       }).value,
       args,
     );
-    if (!r.ok) throw new Error(JSON.stringify(r));
-    const segs = r.rendered.x12.split("~");
+    if (!r.ok) throw new Error(`load failed: ${gapsOf(r).join(",")}`);
+    const segs = r.rendered.reveal().x12.split("~");
     expect(segs).toContain("HI*BI:77:RD8:20260101-20260102");
     expect(segs).toContain("HI*ABK:C3490");
     expect(segs).toContain("HI*ABF:I509");
@@ -321,9 +337,47 @@ describe("loadClaim837iInput hospice fields", () => {
       }).value,
       args,
     );
-    if (!r.ok) throw new Error(JSON.stringify(r));
-    const segs = r.rendered.x12.split("~");
+    if (!r.ok) throw new Error(`load failed: ${gapsOf(r).join(",")}`);
+    const segs = r.rendered.reveal().x12.split("~");
     expect(segs).toContain("CLM*WXHOSP0001*1500.00***81:A:7**A*Y*Y");
+    expect(segs).toContain("REF*F8*12345678901234");
+  });
+});
+
+describe("loadClaim837iInput predecessor claim", () => {
+  const prior = (over: Partial<repositories.ClaimRecord> = {}) =>
+    claim({ id: PRIOR_CLAIM_ID, payerClaimControlNumber: "12345678901234", ...over });
+  const replacement = (tob: "817" | "818" = "817") =>
+    claim({ tob, replacesClaimId: PRIOR_CLAIM_ID });
+
+  it.each([
+    ["another organization", { organizationId: "other-org" }],
+    ["another provider entity", { providerEntityId: "other-pe" }],
+    ["another patient", { patientId: PRIOR_PATIENT }],
+    ["no payer control number yet", { payerClaimControlNumber: null }],
+  ] as const)(
+    "is a missing payerClaimControlNumber gap for a predecessor of %s",
+    async (_n, over) => {
+      const d = deps({ claims: [replacement(), prior(over as never)] });
+      expect(gapsOf(await loadClaim837iInput(d.value, args))).toEqual([
+        "payerClaimControlNumber:missing",
+      ]);
+      expect(d.unlock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("is a missing payerClaimControlNumber gap when the predecessor does not exist", async () => {
+    const d = deps({ claims: [replacement()] });
+    expect(gapsOf(await loadClaim837iInput(d.value, args))).toEqual([
+      "payerClaimControlNumber:missing",
+    ]);
+  });
+
+  it("renders a void (TOB 818) with frequency 8 and the predecessor's control number", async () => {
+    const r = await loadAndRender837i(deps({ claims: [replacement("818"), prior()] }).value, args);
+    if (!r.ok) throw new Error(`load failed: ${gapsOf(r).join(",")}`);
+    const segs = r.rendered.reveal().x12.split("~");
+    expect(segs).toContain("CLM*WXHOSP0001*1500.00***81:A:8**A*Y*Y");
     expect(segs).toContain("REF*F8*12345678901234");
   });
 });
@@ -398,16 +452,87 @@ describe("loadClaim837iInput gaps", () => {
     ]);
   });
 
-  it("reports a missing sex, address and address state", async () => {
-    expect(gapsOf(await loadClaim837iInput(deps({ sex: "U" }).value, args))).toEqual([
-      "subscriber.sex:missing",
+  it("reports a missing sex, address, address state and date of birth WITHOUT unlocking the MBI", async () => {
+    const cases: readonly [Overrides, string][] = [
+      [{ sex: "U" }, "subscriber.sex:missing"],
+      [{ address: null }, "subscriber.address:missing"],
+      [{ address: { state: null } }, "subscriber.address.state:missing"],
+      [{ dateOfBirth: "" }, "subscriber.dateOfBirth:missing"],
+    ];
+    for (const [over, expected] of cases) {
+      const d = deps(over);
+      expect(gapsOf(await loadClaim837iInput(d.value, args))).toEqual([expected]);
+      expect(d.unlock).not.toHaveBeenCalled();
+    }
+  });
+
+  it("unlocks the MBI exactly once, last, with the claim_837i_submission disclosure", async () => {
+    const d = deps();
+    const r = await loadClaim837iInput(d.value, args);
+    expect(r.ok).toBe(true);
+    expect(d.unlock).toHaveBeenCalledTimes(1);
+    expect(d.unlock).toHaveBeenCalledWith({
+      organizationId: ORG,
+      patientId: PATIENT,
+      onDate: "2026-01-01",
+      disclosure: { purpose: "claim_837i_submission", subjectId: CLAIM_ID },
+    });
+    const unlockOrder = d.unlock.mock.invocationCallOrder[0] as number;
+    expect(d.findPatient.mock.invocationCallOrder[0] as number).toBeLessThan(unlockOrder);
+    expect(d.primaryAddress.mock.invocationCallOrder[0] as number).toBeLessThan(unlockOrder);
+  });
+
+  it("reports an MBI that belongs to a different coverage than the one the claim bills", async () => {
+    const r = await loadClaim837iInput(
+      deps({ payerId: "00000000-0000-4000-8000-0000000000aa" }).value,
+      args,
+    );
+    expect(gapsOf(r)).toEqual(["subscriber.mbi:inconsistent"]);
+    expect(JSON.stringify(r)).not.toContain(MBI);
+  });
+
+  it("combines claim gaps and party gaps in one call without touching the beneficiary", async () => {
+    const d = deps({
+      admissionDate: null,
+      parties: { ...PARTIES, payer: null as never },
+    });
+    expect(gapsOf(await loadClaim837iInput(d.value, args))).toEqual([
+      "admissionDate:missing",
+      "payer:missing",
     ]);
-    expect(gapsOf(await loadClaim837iInput(deps({ address: null }).value, args))).toEqual([
-      "subscriber.address:missing",
-    ]);
-    expect(
-      gapsOf(await loadClaim837iInput(deps({ address: { state: null } }).value, args)),
-    ).toEqual(["subscriber.address.state:missing"]);
+    expect(d.findPatient).not.toHaveBeenCalled();
+    expect(d.unlock).not.toHaveBeenCalled();
+  });
+
+  it("refuses a name outside the X12 basic character set by field, never by value", async () => {
+    for (const lastName of ["Jos\u00e9", "Do\ne", "Do\u0000e"]) {
+      const r = await loadClaim837iInput(
+        deps({
+          identity: { mbi: MBI, lastName, firstName: "Jane", dateOfBirth: "1940-03-15" },
+        }).value,
+        args,
+      );
+      expect(gapsOf(r)).toEqual(["subscriber.lastName:invalid"]);
+      expect(JSON.stringify(r)).not.toContain("Jos");
+    }
+  });
+
+  it("returns the MBI-bearing results opaquely: no serialisation path reveals it", async () => {
+    const input = await loadClaim837iInput(deps().value, args);
+    const rendered = await loadAndRender837i(deps().value, args);
+    if (!input.ok || !rendered.ok) throw new Error("load failed");
+    for (const out of [
+      JSON.stringify(input),
+      JSON.stringify(rendered),
+      inspect(input, { depth: 10 }),
+      inspect(rendered, { depth: 10 }),
+      String(input.input),
+      `${rendered.rendered}`,
+    ]) {
+      expect(out).not.toContain(MBI);
+      expect(out).not.toContain("DOE");
+    }
+    expect(input.input.reveal().subscriber.mbi).toBe(MBI);
   });
 
   it("names the builder's field, never a value, when a builder refuses the input", async () => {

@@ -115,30 +115,42 @@ const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 const strings = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 
+/** The occurrence span code for the late-NOE non-covered days: the only span that yields non-covered cents. */
+const NON_COVERED_SPAN_CODE = "77";
+
+/** Per-diem revenue codes (RHC 0651, respite 0655, GIP 0656): one unit per day. CHC 0652 is 15-minute units. */
+const PER_DIEM_REVENUE_CODES: readonly string[] = ["0651", "0655", "0656"];
+
 /**
- * The part of a line's charge that falls in the occurrence spans (non-covered days). Fully inside → the whole
- * charge; fully outside → 0; partially inside → `unitRate × overlapping days` ONLY for a per-diem line (units =
- * days). Any other partial overlap cannot be apportioned without guessing, so it is reported (`null`).
+ * The part of a line's charge that falls in the non-covered (code 77) occurrence spans. Fully inside → the whole
+ * charge; fully outside → 0; partially inside → `unitRate × overlapping days` ONLY for a per-diem revenue code whose
+ * units equal its days and whose charge equals rate × units. Any other partial overlap cannot be apportioned
+ * without guessing, so it is reported (`null`). Spans with any other code never affect the cents.
  */
 export function noncoveredCentsForLine(
   line: ClaimDocumentLineSource,
-  spans: readonly { readonly from: IsoDate; readonly through: IsoDate }[],
+  spans: readonly { readonly code?: string; readonly from: IsoDate; readonly through: IsoDate }[],
 ): number | null {
   const lineDays = inclusiveDayCount(line.serviceDateFrom, line.serviceDateTo);
   const covered = new Set<number>();
   for (const s of spans) {
+    if (s.code !== NON_COVERED_SPAN_CODE) continue;
     const from = Math.max(toEpochDay(s.from), toEpochDay(line.serviceDateFrom));
     const through = Math.min(toEpochDay(s.through), toEpochDay(line.serviceDateTo));
     for (let d = from; d <= through; d += 1) covered.add(d);
   }
   if (covered.size === 0) return 0;
   if (covered.size === lineDays) return line.lineChargeCents;
-  return line.unitCount === lineDays ? line.unitRateCents * covered.size : null;
+  const perDiem =
+    PER_DIEM_REVENUE_CODES.includes(line.revenueCode) &&
+    line.unitCount === lineDays &&
+    line.unitRateCents * line.unitCount === line.lineChargeCents;
+  return perDiem ? line.unitRateCents * covered.size : null;
 }
 
 function mapLines(
   lines: readonly ClaimDocumentLineSource[],
-  spans: readonly { readonly from: IsoDate; readonly through: IsoDate }[],
+  spans: readonly { readonly code: string; readonly from: IsoDate; readonly through: IsoDate }[],
   gaps: ClaimGap[],
 ): ClaimDocumentLine[] {
   if (lines.length === 0) gaps.push(gap("lines", "missing"));

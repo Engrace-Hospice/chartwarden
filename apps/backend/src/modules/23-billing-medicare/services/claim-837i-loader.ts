@@ -5,9 +5,11 @@
 // Rules:
 //   • Nothing is invented. A field with no source is a typed gap; the loader returns ALL gaps it can find at once.
 //   • The MBI is read ONLY through M5's `MbiUnlockReader` seam (the M23-only unlock), held in the returned in-memory
-//     input and never stored, logged or audited here. The detailed claim document carries no beneficiary identity.
-//   • PHI is not read for a claim that is already unsubmittable: the beneficiary seams are consulted only after the
-//     claim-level and party checks pass.
+//     input (an opaque `SensitiveValue`) and never stored or logged here. The unlock is passed a `disclosure`
+//     (purpose `claim_837i_submission` + the claim id), so M5 writes the PHI-disclosure audit_event (ids and purpose,
+//     never the MBI) in the same transaction as the read. The detailed claim document carries no beneficiary identity.
+//   • PHI is not read for a claim that is already unsubmittable: the claim-level and party checks run first, then the
+//     non-MBI beneficiary fields (sex, address, DOB) are read and checked, and the MBI is unlocked LAST.
 //   • The caller owns the clock and the interchange control number (a port-less, deterministic loader).
 //
 // NOT wired: the submit worker still sends the thin `claimDocumentFor` document to the gateway. Binding this loader
@@ -29,6 +31,10 @@ import {
   render837i,
 } from "./claim-837i-mapper";
 import type { AdmissionContextReader } from "./claim-assembly-types";
+import { SensitiveValue } from "./sensitive-value";
+
+/** The disclosure purpose recorded on the MBI-unlock audit event. */
+export const CLAIM_837I_DISCLOSURE_PURPOSE = "claim_837i_submission";
 
 /** The party records. Each section is `null` when its source cannot supply it (a typed gap, never a default). */
 export interface Claim837iPartiesPort {
@@ -91,8 +97,8 @@ export type LoadClaim837iResult =
       readonly ok: true;
       /** The stored-safe claim document (no beneficiary identity). */
       readonly document: ClaimDocument837iDetail;
-      /** CONTAINS THE MBI: transmit it, never store or log it. */
-      readonly input: Claim837iInput;
+      /** CONTAINS THE MBI (opaque: `reveal()` it at the transmit boundary; never store or log it). */
+      readonly input: SensitiveValue<Claim837iInput>;
     }
   | LoadClaim837iFailure;
 
@@ -127,26 +133,23 @@ function partyGaps(
 }
 
 /**
- * The beneficiary, assembled from the M5 seams for ONE build. Returns gaps (never a partial identity). The MBI
- * unlock is the audited M23-only seam; this function never copies the identity anywhere but its return value.
+ * The beneficiary, assembled from the M5 seams for ONE build. Returns gaps (never a partial identity). The non-MBI
+ * fields are read and checked FIRST so no MBI is unlocked for a claim that cannot be sent; the MBI unlock is last and
+ * carries the disclosure (M5 audits it in the same tx). This function never copies the identity anywhere but its
+ * return value.
  */
 async function loadSubscriber(
   deps: Claim837iLoaderDeps,
   claim: repositories.ClaimRecord,
 ): Promise<{ ok: true; value: TransientSubscriber } | { ok: false; gaps: readonly ClaimGap[] }> {
-  const identity = await deps.mbiUnlock().unlockForEligibility({
-    organizationId: claim.organizationId,
-    patientId: claim.patientId,
-    onDate: claim.serviceFrom,
-  });
-  if (identity === null) return { ok: false, gaps: [gap("subscriber.mbi", "missing")] };
-  const gaps: ClaimGap[] = [];
   const patient = await deps.patients.findById({
     organizationId: claim.organizationId,
     id: claim.patientId,
   });
   const sex = patient?.administrativeSex;
+  const gaps: ClaimGap[] = [];
   if (sex !== "M" && sex !== "F") gaps.push(gap("subscriber.sex", "missing"));
+  if (!patient?.dateOfBirth) gaps.push(gap("subscriber.dateOfBirth", "missing"));
   const address = await deps.addresses.primaryAddress(claim.organizationId, claim.patientId);
   if (address === null) gaps.push(gap("subscriber.address", "missing"));
   else if (address.state === null) gaps.push(gap("subscriber.address.state", "missing"));
@@ -157,6 +160,18 @@ async function loadSubscriber(
     address.state === null
   ) {
     return { ok: false, gaps };
+  }
+
+  const identity = await deps.mbiUnlock().unlockForEligibility({
+    organizationId: claim.organizationId,
+    patientId: claim.patientId,
+    onDate: claim.serviceFrom,
+    disclosure: { purpose: CLAIM_837I_DISCLOSURE_PURPOSE, subjectId: claim.id },
+  });
+  if (identity === null) return { ok: false, gaps: [gap("subscriber.mbi", "missing")] };
+  // The MBI must come from the very coverage this claim bills; a different Medicare row is not this claim's payer.
+  if (identity.patientPayerId !== claim.patientPayerId) {
+    return { ok: false, gaps: [gap("subscriber.mbi", "inconsistent")] };
   }
   return {
     ok: true,
@@ -177,23 +192,39 @@ async function loadSubscriber(
   };
 }
 
-/** The payer control number of the claim this one replaces / voids (null when there is none, or none yet). */
+/**
+ * The payer control number of the claim this one replaces / voids. Null when there is none, none yet, or the
+ * predecessor is not the same organization, provider entity and patient (a cross-patient or cross-tenant
+ * predecessor must never lend its payer control number — it surfaces as a missing `payerClaimControlNumber`).
+ */
 async function predecessorPayerClaimControlNumber(
   deps: Claim837iLoaderDeps,
   claim: repositories.ClaimRecord,
 ): Promise<string | null> {
   if (claim.replacesClaimId === null) return null;
   const predecessor = await deps.persistence.claimById(claim.replacesClaimId);
-  return predecessor?.organizationId === claim.organizationId
-    ? predecessor.payerClaimControlNumber
-    : null;
+  if (
+    predecessor === null ||
+    predecessor.organizationId !== claim.organizationId ||
+    predecessor.providerEntityId !== claim.providerEntityId ||
+    predecessor.patientId !== claim.patientId
+  ) {
+    return null;
+  }
+  return predecessor.payerClaimControlNumber;
 }
 
-/** Load the claim into the 837I builders' input, or report every gap that blocks it. */
-export async function loadClaim837iInput(
+interface LoadedOnce {
+  readonly document: ClaimDocument837iDetail;
+  readonly input: Claim837iInput;
+  readonly rendered: Rendered837i;
+}
+
+/** Load, map and render ONCE (the builders run a single time per load). */
+async function loadOnce(
   deps: Claim837iLoaderDeps,
   args: LoadClaim837iArgs,
-): Promise<LoadClaim837iResult> {
+): Promise<({ readonly ok: true } & LoadedOnce) | LoadClaim837iFailure> {
   const { context } = args;
   const claim = await deps.persistence.claimById(args.claimId);
   if (
@@ -259,12 +290,29 @@ export async function loadClaim837iInput(
     },
   });
   if (!mapped.ok) return fail(mapped.gaps);
+  // A builder refusal is a field-name-only gap, so the caller never holds an unsendable input.
   const rendered = render837i(mapped.value);
   if (!rendered.ok) return fail(rendered.gaps);
-  return { ok: true, document: documentResult.value, input: mapped.value };
+  return {
+    ok: true,
+    document: documentResult.value,
+    input: mapped.value,
+    rendered: rendered.value,
+  };
 }
 
-/** Load and render in one step (the transport hand-off shape). The result carries the MBI inside its payloads. */
+/** Load the claim into the 837I builders' input, or report every gap that blocks it. */
+export async function loadClaim837iInput(
+  deps: Claim837iLoaderDeps,
+  args: LoadClaim837iArgs,
+): Promise<LoadClaim837iResult> {
+  const loaded = await loadOnce(deps, args);
+  return loaded.ok
+    ? { ok: true, document: loaded.document, input: new SensitiveValue(loaded.input) }
+    : loaded;
+}
+
+/** Load and render in one step (the transport hand-off shape). The rendered payloads carry the MBI (opaque). */
 export async function loadAndRender837i(
   deps: Claim837iLoaderDeps,
   args: LoadClaim837iArgs,
@@ -272,14 +320,12 @@ export async function loadAndRender837i(
   | {
       readonly ok: true;
       readonly document: ClaimDocument837iDetail;
-      readonly rendered: Rendered837i;
+      readonly rendered: SensitiveValue<Rendered837i>;
     }
   | LoadClaim837iFailure
 > {
-  const loaded = await loadClaim837iInput(deps, args);
-  if (!loaded.ok) return loaded;
-  const rendered = render837i(loaded.input);
-  return rendered.ok
-    ? { ok: true, document: loaded.document, rendered: rendered.value }
-    : fail(rendered.gaps);
+  const loaded = await loadOnce(deps, args);
+  return loaded.ok
+    ? { ok: true, document: loaded.document, rendered: new SensitiveValue(loaded.rendered) }
+    : loaded;
 }

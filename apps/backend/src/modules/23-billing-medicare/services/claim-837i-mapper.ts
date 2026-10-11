@@ -7,6 +7,7 @@
 import type { ClaimDocument837iDetail, ClaimGap, GapResult } from "@wardenx/billing";
 import { gap } from "@wardenx/billing";
 import {
+  Claim837iBuildError,
   type Claim837iInput,
   type StediClaimJson,
   type X12Address,
@@ -142,14 +143,17 @@ export interface Rendered837i {
   readonly stediJson: StediClaimJson;
 }
 
-/** Run both builders; a refusal becomes a gap naming the builder's field (never a value). */
+/**
+ * Run both builders; a builder REFUSAL becomes a gap naming the builder's field (never a value). Any other error is
+ * a bug, not an input gap, and is rethrown (its message is never composed from field values).
+ */
 export function render837i(input: Claim837iInput): GapResult<Rendered837i> {
   try {
     const x12 = build837iClaim(input);
     return { ok: true, value: { x12, stediJson: buildStediClaimJson(input) } };
   } catch (err) {
-    const field = (err as { field?: unknown } | null)?.field;
-    const gaps: readonly ClaimGap[] = [gap(typeof field === "string" ? field : "input", "invalid")];
+    if (!(err instanceof Claim837iBuildError)) throw err;
+    const gaps: readonly ClaimGap[] = [gap(err.field, "invalid")];
     return { ok: false, gaps };
   }
 }

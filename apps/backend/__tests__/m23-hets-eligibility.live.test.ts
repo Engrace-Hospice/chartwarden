@@ -413,4 +413,55 @@ describe.skipIf(!DB_URL)("M23 HETS 270/271 eligibility — LIVE Postgres as ward
       expect(MBI_SHAPE.test(dump), `${name} carries an MBI-shaped token`).toBe(false);
     }
   });
+  it("H1: an MBI unlock with a disclosure lands a patient_payer.mbi_disclosed audit (ids + purpose, no MBI); one without writes none", async () => {
+    const unlock = buildMbiUnlockReader(handle.db);
+    const claimId = "99999999-9999-9999-9999-999999999999";
+    const before = await admin.query(
+      "SELECT count(*)::int AS n FROM audit_event WHERE event_type='patient_payer.mbi_disclosed'",
+    );
+    await unlock.unlockForEligibility({
+      organizationId: ORG_A,
+      patientId: patient.history as string,
+      onDate: AS_OF,
+    });
+    const afterPlain = await admin.query(
+      "SELECT count(*)::int AS n FROM audit_event WHERE event_type='patient_payer.mbi_disclosed'",
+    );
+    expect(afterPlain.rows[0].n).toBe(before.rows[0].n);
+    const identity = await unlock.unlockForEligibility({
+      organizationId: ORG_A,
+      patientId: patient.history as string,
+      onDate: AS_OF,
+      disclosure: { purpose: "claim_837i_submission", subjectId: claimId },
+    });
+    expect(identity?.mbi).toBe(MBIS.history);
+    const { rows } = await admin.query(
+      `SELECT actor_kind, actor_user_id, resource_kind, resource_id, severity, context::text AS ctx
+         FROM audit_event WHERE event_type='patient_payer.mbi_disclosed'`,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      actor_kind: "system",
+      actor_user_id: null,
+      resource_kind: "patient_payer",
+      resource_id: identity?.patientPayerId,
+      severity: "warn",
+    });
+    const ctx = JSON.parse(rows[0].ctx as string);
+    expect(ctx).toMatchObject({
+      purpose: "claim_837i_submission",
+      subjectId: claimId,
+      patientId: patient.history,
+    });
+    expect(rows[0].ctx).not.toContain(MBIS.history);
+    // Org B cannot unlock (or audit a disclosure of) org A's patient.
+    expect(
+      await unlock.unlockForEligibility({
+        organizationId: ORG_B,
+        patientId: patient.history as string,
+        onDate: AS_OF,
+        disclosure: { purpose: "claim_837i_submission", subjectId: claimId },
+      }),
+    ).toBeNull();
+  });
 });

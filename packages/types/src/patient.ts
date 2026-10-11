@@ -528,6 +528,17 @@ export interface MbiUnlockReader {
     readonly patientId: string;
     /** ISO yyyy-mm-dd — the eligibility as-of service date. */
     readonly onDate: string;
+    /**
+     * When present, the unlock is a PHI DISCLOSURE for `purpose` and the reader writes the access audit in the SAME
+     * transaction as the read (ids and purpose only, never a value); if that audit cannot be written nothing is
+     * returned. Absent = no disclosure audit (the HETS 270 path, which is audited at its own eligibility_check).
+     */
+    readonly disclosure?: {
+      readonly purpose: string;
+      /** The business record the disclosure serves (e.g. the claim id). */
+      readonly subjectId: string;
+      readonly correlationId?: string;
+    };
   }): Promise<EligibilitySubscriberIdentity | null>;
 }
 

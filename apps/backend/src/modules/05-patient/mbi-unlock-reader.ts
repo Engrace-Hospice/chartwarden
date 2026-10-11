@@ -7,10 +7,14 @@
 // force on the as-of date, else the patient's current (open-ended) `medicare_ffs` coverage — HETS itself
 // answers for the requested dates, so a coverage row whose dates were keyed imprecisely still gets checked.
 //
-// This module returns the value and holds nothing: no cache, no log line, no audit capture. Reads run under
-// `withOrgContext` (RLS scopes them to the org the caller names — a seam has no request context).
+// This module returns the value and holds nothing: no cache, no log line. A caller that passes `disclosure` gets a
+// `patient_payer.mbi_disclosed` audit_event (ids + purpose, never the MBI) written in the SAME transaction as the
+// read, so a disclosure that cannot be audited returns nothing. Reads run under `withOrgContext` as the system actor
+// (RLS scopes them to the org the caller names — a seam has no request context).
+import { randomUUID } from "node:crypto";
+import { audit } from "@wardenx/audit";
 import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
+import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import type { EligibilitySubscriberIdentity, MbiUnlockReader } from "@wardenx/types";
 import { and, eq } from "drizzle-orm";
 
@@ -19,13 +23,16 @@ const day = (d: Date | string | null): string | null => {
   return (d instanceof Date ? d.toISOString() : new Date(d).toISOString()).slice(0, 10);
 };
 
+/** The audit event type for an MBI unlock made for a disclosure purpose (see `disclosure` on the seam). */
+export const MBI_DISCLOSED_EVENT = "patient_payer.mbi_disclosed";
+
 export function buildMbiUnlockReader(db: DbClient): MbiUnlockReader {
   const PAYER = schema.patientPayers;
   const PATIENT = schema.patients;
 
   return {
-    async unlockForEligibility({ organizationId, patientId, onDate }) {
-      return withOrgContext(db, { organizationId, userId: "system" }, async (tx) => {
+    async unlockForEligibility({ organizationId, patientId, onDate, disclosure }) {
+      return withOrgContext(db, systemOrgContext(organizationId), async (tx) => {
         const [patient] = await tx
           .select({
             lastName: PATIENT.legalLastName,
@@ -60,6 +67,29 @@ export function buildMbiUnlockReader(db: DbClient): MbiUnlockReader {
           ranked.find((c) => c.from <= onDate && (c.to === null || c.to >= onDate)) ??
           ranked.find((c) => c.to === null);
         if (!chosen) return null;
+        if (disclosure !== undefined) {
+          await audit(
+            tx,
+            {
+              organizationId,
+              userId: null,
+              actorKind: "system",
+              correlationId: disclosure.correlationId ?? randomUUID(),
+            },
+            {
+              eventType: MBI_DISCLOSED_EVENT,
+              resourceKind: "patient_payer",
+              resourceId: chosen.id,
+              outcome: "success",
+              severity: "warn",
+              context: {
+                purpose: disclosure.purpose,
+                subjectId: disclosure.subjectId,
+                patientId,
+              },
+            },
+          );
+        }
         const identity: EligibilitySubscriberIdentity = {
           patientPayerId: chosen.id,
           mbi: chosen.subscriberId.trim().toUpperCase(),

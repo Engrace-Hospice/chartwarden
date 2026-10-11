@@ -263,6 +263,45 @@ describe("buildClaimDocument837iDetail", () => {
     expect(gapsOf(r)).toEqual(["lines[0].noncoveredCents:invalid"]);
   });
 
+  it("does not treat a CHC 15-minute line as per-diem just because its units equal its days", () => {
+    const span = [{ code: "77", from: "2026-01-01", through: "2026-01-02" }];
+    const chc = line(1, {
+      revenueCode: "0652",
+      unitCount: 4,
+      unitRateCents: 2_500,
+      lineChargeCents: 10_000,
+      serviceDateFrom: "2026-01-01",
+      serviceDateTo: "2026-01-04",
+    });
+    expect(noncoveredCentsForLine(chc, span)).toBeNull();
+  });
+
+  it("refuses to apportion a per-diem line whose charge is not rate x units", () => {
+    const span = [{ code: "77", from: "2026-01-01", through: "2026-01-02" }];
+    const perDiem = line(1, {
+      unitCount: 4,
+      unitRateCents: 2_500,
+      lineChargeCents: 12_345,
+      serviceDateFrom: "2026-01-01",
+      serviceDateTo: "2026-01-04",
+    });
+    expect(noncoveredCentsForLine(perDiem, span)).toBeNull();
+  });
+
+  it("lets only occurrence span 77 produce non-covered cents", () => {
+    const perDiem = line(1, {
+      unitCount: 4,
+      unitRateCents: 2_500,
+      lineChargeCents: 10_000,
+      serviceDateFrom: "2026-01-01",
+      serviceDateTo: "2026-01-04",
+    });
+    const other = [{ code: "74", from: "2026-01-01", through: "2026-01-04" }];
+    expect(noncoveredCentsForLine(perDiem, other)).toBe(0);
+    const mixed = [...other, { code: "77", from: "2026-01-01", through: "2026-01-02" }];
+    expect(noncoveredCentsForLine(perDiem, mixed)).toBe(5_000);
+  });
+
   it("reports a zero-charge line", () => {
     const r = buildClaimDocument837iDetail(
       input({
