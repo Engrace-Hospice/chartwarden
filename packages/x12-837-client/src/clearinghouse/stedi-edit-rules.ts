@@ -134,6 +134,9 @@ function claimFindings(
  */
 export function checkStediEdits(raw: string): StediEditFinding[] {
   const { segments, delimiters } = tokenizeInterchange(raw);
+  if (segments.filter((s) => s[0] === "ST").length > 1) {
+    throw new X12FormatError("interchange holds more than one transaction set");
+  }
   const claims = claimChunks(segments);
   if (claims.length === 0) throw new X12FormatError("interchange has no CLM segment");
   const bht06 = segments.find((s) => s[0] === "BHT")?.[6];

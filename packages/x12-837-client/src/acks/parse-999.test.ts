@@ -150,4 +150,28 @@ describe("parse999", () => {
   it("fails closed on an empty AK1-02", () => {
     expect(() => parse999(ack(["AK1*HC~", "AK9*A*1*1*1~"]))).toThrow(X12FormatError);
   });
+
+  it.each([
+    ["no sets present", ["AK1*HC*1~", "AK9*A*1*1*1~"]],
+    ["fewer sets present than included", ["AK1*HC*1~", "AK2*837*0001~", "IK5*A~", "AK9*A*2*2*2~"]],
+    ["zero counts", ["AK1*HC*1~", "AK9*A*0*0*0~"]],
+    ["missing counts", ["AK1*HC*1~", "AK9*A~"]],
+    ["a non-numeric accepted count", ["AK1*HC*1~", "AK2*837*0001~", "IK5*A~", "AK9*A*1*1*abc~"]],
+  ])("never reads accepted with %s", (_n, body) => {
+    expect(parse999(ack(body)).outcome).toBe("partial");
+  });
+
+  it("drops free text from an element position, a code and a control number", () => {
+    const r = parse999(
+      ack([
+        "AK1*HC*106~",
+        "AK2*837*Jane Doe~",
+        "IK3*CLM*19**8~",
+        "IK4*John Smith:1*782*Jane Doe~",
+        "AK9*R*1*1*0~",
+      ]),
+    );
+    expect(JSON.stringify(r)).not.toMatch(/Jane|Doe|John|Smith/);
+    expect(r.errors[1]).toMatchObject({ segment: "CLM00", code: "UNKNOWN" });
+  });
 });

@@ -86,6 +86,14 @@ const describe = (table: Readonly<Record<string, string>>, code: string): string
 const safeToken = (value: string | undefined): string =>
   value !== undefined && /^[A-Z0-9]{1,3}$/.test(value) ? value : "UNKNOWN";
 
+/** A short code or control number echoed from the sender; anything else is dropped to a constant. */
+const safeCode = (value: string | undefined): string =>
+  value !== undefined && /^[A-Za-z0-9]{1,9}$/.test(value) ? value : "UNKNOWN";
+
+/** A strictly numeric AK9 count, or null (a missing or non-numeric count is never read as zero). */
+const count = (value: string | undefined): number | null =>
+  value !== undefined && /^\d{1,6}$/.test(value) ? Number(value) : null;
+
 /** Error-code elements from `from` on, skipping empties (AK5-02..06, AK9-05..09). */
 const codesFrom = (seg: readonly string[], from: number): string[] =>
   seg.slice(from).filter((c) => c.length > 0);
@@ -116,19 +124,20 @@ export function parse999(raw: string): Parsed999Detail {
   for (const seg of segments) {
     switch (seg[0]) {
       case "AK2":
-        setControl = seg[2] ?? "";
+        setControl = safeCode(seg[2]);
         break;
       case "IK3":
       case "AK3": {
         segmentId = safeToken(seg[1]);
-        const code = seg[4] ?? "";
+        const code = safeCode(seg[4]);
         errors.push({ segment: segmentId, code, description: describe(SEGMENT_ERRORS, code) });
         break;
       }
       case "IK4":
       case "AK4": {
-        const code = seg[3] ?? "";
-        const position = (seg[1] ?? "").split(component)[0]?.padStart(2, "0") ?? "";
+        const code = safeCode(seg[3]);
+        const rawPosition = (seg[1] ?? "").split(component)[0] ?? "";
+        const position = /^\d{1,3}$/.test(rawPosition) ? rawPosition.padStart(2, "0") : "00";
         errors.push({
           segment: `${segmentId}${position}`,
           code,
@@ -139,7 +148,7 @@ export function parse999(raw: string): Parsed999Detail {
       case "IK5":
       case "AK5":
         transactionSets.push({ controlNumber: setControl, status: safeToken(seg[1]) });
-        for (const code of codesFrom(seg, 2)) {
+        for (const code of codesFrom(seg, 2).map(safeCode)) {
           errors.push({
             segment: seg[0] ?? "IK5",
             code,
@@ -150,13 +159,20 @@ export function parse999(raw: string): Parsed999Detail {
       default:
     }
   }
-  for (const code of ak9s.flatMap((s) => codesFrom(s, 5))) {
+  for (const code of ak9s.flatMap((s) => codesFrom(s, 5)).map(safeCode)) {
     errors.push({ segment: "AK9", code, description: describe(GROUP_ERRORS, code) });
   }
 
-  // Fail closed: the worst group verdict wins, and an AK9 "accepted" never outranks a set that was not accepted
-  // or a count that says fewer sets were accepted than received.
-  const countsShort = ak9s.some((s) => Number(s[4] ?? "0") < Number(s[2] ?? "0"));
+  // Fail closed: the worst group verdict wins, and an AK9 "accepted" counts only when its numbers add up: the
+  // included, received and accepted counts are numeric, equal and positive, the sets present match them, and
+  // every set was accepted. Anything else is `partial`, never `accepted`.
+  const included = ak9s.map((s) => count(s[2]));
+  const sound = ak9s.every((s, i) => {
+    const [inc, received, accepted] = [included[i], count(s[3]), count(s[4])];
+    return inc !== null && inc > 0 && inc === received && inc === accepted;
+  });
+  const expectedSets = included.reduce<number>((a, c) => a + (c ?? 0), 0);
+  const countsShort = !sound || transactionSets.length !== expectedSets;
   const setsNotAccepted = transactionSets.some((t) => t.status !== "A");
   const worst = verdicts.reduce<AckOutcome>(
     (a, v) => (v && SEVERITY[v] > SEVERITY[a] ? v : a),

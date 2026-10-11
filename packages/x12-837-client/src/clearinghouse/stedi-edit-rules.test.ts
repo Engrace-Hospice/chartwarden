@@ -119,6 +119,12 @@ describe("checkStediEdits: fails closed", () => {
     expect(bad.map((f) => f.rule)).toEqual(["total-matches-lines"]);
   });
 
+  it("refuses an interchange with two transaction sets", () => {
+    const body = claim.split("\n").slice(2, -3).join("\n");
+    const doubled = `${claim.split("\n").slice(0, -3).join("\n")}\n${body}\nGE*1*101~\nIEA*1*000000101~`;
+    expect(() => checkStediEdits(doubled)).toThrow(X12FormatError);
+  });
+
   it("frequency 8 without REF*F8", () => {
     const noF8 = fixture("cancel_818").replace(/REF\*F8\*[^~]*~\n/, "");
     expect(rules(noF8)).toEqual(["payer-claim-number-required"]);
