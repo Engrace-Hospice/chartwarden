@@ -9,7 +9,7 @@
   line "record manual DDE submission + receipt"), which today has no persistence model, API or workflow.
 - **Related:** [ADR-0010](ADR-0010-tenancy-rls-invariants.md) (`app.org_id` is the only tenancy GUC),
   [ADR-0027](ADR-0027-phase-0-toolchain-and-scaffold.md) (manifest is the source of truth for owned tables).
-  Review basis: `docs/audits/DDE_STEDI_REVIEW_20261008.md`.
+  Review basis: `docs/audits/clearinghouse-integration/DDE_STEDI_REVIEW_20261008.md`.
 
 ## Context
 
@@ -36,7 +36,7 @@ admission date; otherwise the gap days are provider-liable and billed with occur
 
 Separately, Stedi's published guidance says Original Medicare institutional claims are resubmitted with
 their original frequency code (not 7/8) and without the payer claim control number. Whether that covers
-adjustments of paid claims is unconfirmed (`docs/audits/STEDI_QUESTIONS_20261008.md`, question 3). Until
+adjustments of paid claims is unconfirmed (`docs/audits/clearinghouse-integration/STEDI_QUESTIONS_20261008.md`, question 3). Until
 answered, adjustments, cancels and RTP corrections should be assumed to be DDE work.
 
 ## Decision
