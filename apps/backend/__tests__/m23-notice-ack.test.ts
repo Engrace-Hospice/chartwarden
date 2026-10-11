@@ -70,7 +70,7 @@ vi.mock("@wardenx/tenancy", () => ({
     _db: unknown,
     _ctx: { organizationId: string; userId: string },
     fn: (tx: unknown) => Promise<unknown>,
-  ) => fn({}),
+  ) => fn({ transaction: async (inner: (sp: unknown) => Promise<unknown>) => inner({}) }),
 }));
 
 import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/events-by-m23";
@@ -813,5 +813,129 @@ describe.each(KINDS)("$kind ack stage", ({ kind, table, pointer }) => {
     expect(fakes.acks.at(-1)).toMatchObject({ stage: "clearinghouse" });
     await applyNoticeAck({} as never, ports, submission, ack({ kind: "ack_277ca" }));
     expect(fakes.acks.at(-1)).toMatchObject({ stage: "payer" });
+  });
+});
+
+// ── ADR-0052: a payer-stage (277CA) claim rejection queues ONE rtp_correction DDE item ──────────────────────────
+describe("claim 277CA rejection queues an RTP correction (ADR-0052)", () => {
+  const seedClaim = (state = "ack_pending") => {
+    fakes.claims.set("claim-1", {
+      id: "claim-1",
+      state,
+      version: 2,
+      providerEntityId: PE,
+      patientId: "patient-1",
+    });
+    fakes.submissions.set("sub-claim", {
+      id: "sub-claim",
+      organizationId: ORG,
+      kind: "claim_837i",
+      claimId: "claim-1",
+    });
+  };
+  const watchdogSpy = () => {
+    const calls: Record<string, unknown>[] = [];
+    return {
+      calls,
+      port: {
+        ensureNoticeItem: async () => ({ created: false }),
+        ensureClaimRtpItem: async (_tx: unknown, claim: Record<string, unknown>) => {
+          calls.push(claim);
+          return { created: true };
+        },
+      },
+    };
+  };
+  const withWatchdog = (h: ReturnType<typeof harness>, port: unknown, logger?: unknown) =>
+    ({ ...h.deps, ddeWatchdog: port, logger }) as unknown as M23WorkerDeps;
+
+  it("queues exactly one item carrying ids and sanitised status codes only", async () => {
+    seedClaim();
+    const spy = watchdogSpy();
+    const h = harness();
+    // an MBI-shaped token and free text are dropped by the existing ack sanitiser before they get anywhere
+    h.set277([
+      ack277("sub-claim", "rejected", {
+        claimId: "claim-1",
+        reasonCodes: ["A7:21", "1EG4TE5MK73", "patient John Smith"],
+      }),
+    ]);
+
+    await runAckPull277ca(withWatchdog(h, spy.port));
+
+    expect(fakes.claims.get("claim-1")?.state).toBe("ack_rejected");
+    expect(spy.calls).toEqual([
+      {
+        organizationId: ORG,
+        claimId: "claim-1",
+        providerEntityId: PE,
+        patientId: "patient-1",
+        acknowledgmentId: "ack-1",
+        rejectionCodes: ["A7:21"],
+      },
+    ]);
+  });
+
+  it("a replay of the same ack does not queue again (the claim already left ack_pending)", async () => {
+    seedClaim();
+    const spy = watchdogSpy();
+    const h = harness();
+    h.set277([ack277("sub-claim", "rejected", { claimId: "claim-1" })]);
+
+    await runAckPull277ca(withWatchdog(h, spy.port));
+    await runAckPull277ca(withWatchdog(h, spy.port));
+
+    expect(spy.calls).toHaveLength(1);
+  });
+
+  it("queues nothing for an accepted or partial 277CA, a 999 rejection or a clearinghouse-stage rejection", async () => {
+    const spy = watchdogSpy();
+    for (const outcome of ["accepted", "partial"] as const) {
+      seedClaim();
+      const h = harness();
+      h.set277([ack277("sub-claim", outcome, { claimId: "claim-1" })]);
+      await runAckPull277ca(withWatchdog(h, spy.port));
+    }
+    for (const stage of [undefined, "clearinghouse"] as const) {
+      seedClaim("submitted");
+      fakes.acks.length = 0;
+      const h = harness();
+      h.set999([ack999("sub-claim", false, { claimId: "claim-1", ...(stage ? { stage } : {}) })]);
+      await runAckPull999(withWatchdog(h, spy.port));
+      expect(fakes.claims.get("claim-1")?.state).toBe("ack_rejected");
+    }
+    expect(spy.calls).toEqual([]);
+  });
+
+  it("a queueing failure is logged and never undoes the recorded rejection or its event", async () => {
+    seedClaim();
+    const errors: Record<string, unknown>[] = [];
+    const boom = {
+      ensureNoticeItem: async () => ({ created: false }),
+      ensureClaimRtpItem: async () => {
+        throw new Error("db down 1EG4TE5MK73");
+      },
+    };
+    const h = harness();
+    h.set277([ack277("sub-claim", "rejected", { claimId: "claim-1" })]);
+
+    await runAckPull277ca(
+      withWatchdog(h, boom, { error: (fields: Record<string, unknown>) => errors.push(fields) }),
+    );
+
+    expect(fakes.claims.get("claim-1")?.state).toBe("ack_rejected");
+    expect(h.published.map((e) => e.eventName)).toContain("m23.claim.rejected");
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ organizationId: ORG, claimId: "claim-1" });
+  });
+
+  it("is a no-op when no DDE watchdog is bound", async () => {
+    seedClaim();
+    const h = harness();
+    h.set277([ack277("sub-claim", "rejected", { claimId: "claim-1" })]);
+
+    await runAckPull277ca(h.deps);
+
+    expect(fakes.claims.get("claim-1")?.state).toBe("ack_rejected");
   });
 });

@@ -144,6 +144,19 @@ Non-partitioned; retention class `compliance`.
   and the manifest (`.ts` and `.cjs`) must be updated with the migration.
 - The NOE/NOTR watchdog crons gain a second duty: create queue items for at-risk notices and RTP
   follow-up.
+  **Built (2026-10): at-risk NOE/NOTR items and RTP auto-queueing.** The claim 277CA acknowledgment cron
+  (`applyClaimAck`, `jobs/m23-jobs.ts`) files exactly one open `rtp_correction` item (`source = watchdog`, subject = the
+  claim, deadline `NULL`, priority 2) when a claim is rejected at the **payer stage** (277CA reject, `ack_pending ->
+  ack_rejected`). It runs in a savepoint after the rejection is recorded, so a queueing failure is logged and never undoes
+  the acknowledgment (a missed item can still be created by hand). Replays and a second rejection while an item is open
+  create nothing (`dde_work_item_open_subject_uq`, via the same `insertIfNoOpen`). The item carries ids only; the
+  sanitised X12 status codes ride in the `create` history detail, **not** in `rtp_reason_code`, because a 277CA status code
+  is not a FISS RTP reason code (the operator keys that from DDE). A 999 or clearinghouse-stage rejection is a front-end
+  syntax or edit failure that never reached the MAC's claim file, so it queues nothing. The 36-month hold is how long FISS
+  keeps a returned claim, not a filing window WardenX tracks, so no deadline is set. A later acceptance of the claim does
+  **not** close the item; closing stays the operator's call.
+  **Not built:** `adr_response` auto-queueing (the codebase has no additional-documentation-request signal; items of that
+  type stay manual), attachments via M22, tenant separation of duties, and any correction of an accepted NOE.
 - The UI spec's NOE Submission Manager is updated when the screen is built (Phase 2).
 - Acceptance dates are operator-attested; the audit trail records who attested what and when.
 

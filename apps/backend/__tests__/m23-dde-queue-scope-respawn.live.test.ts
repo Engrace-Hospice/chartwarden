@@ -19,6 +19,8 @@ import type { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   type M23WorkerDeps,
+  type Parsed277ca,
+  runAckPull277ca,
   runNoeWindowWatch,
   runNotrWindowWatch,
 } from "../src/modules/23-billing-medicare/jobs/m23-jobs";
@@ -33,6 +35,7 @@ import {
   USER_A,
   buildDdeApp,
   connectDdeLiveDb,
+  seedClaimWithSubmission,
   seedNoe,
   seedNotr,
 } from "./_dde-live-harness";
@@ -456,6 +459,172 @@ describe.skipIf(!DB_URL)(
         });
         expect(res.statusCode).toBe(200);
         expect(res.json().items).toEqual([]);
+      });
+    });
+
+    describe("a payer-stage claim rejection files ONE rtp_correction item (ADR-0052)", () => {
+      const MAC = "ngs_j6";
+      let uri = 0;
+      const rtpDeps = (parsed: Parsed277ca[]): M23WorkerDeps =>
+        ({
+          ...depsAt(NOW),
+          x12: { parse277ca: async () => parsed },
+          macPortal: { pullPending277ca: async () => [{ rawFileUri: "s3://acks/277.x12" }] },
+          jurisdictions: { listJurisdictions: async () => [{ macJurisdiction: MAC }] },
+        }) as unknown as M23WorkerDeps;
+      const reject = (
+        claim: { claimId: string; submissionId: string },
+        reasonCodes: string[] = ["A7:21"],
+      ): Parsed277ca => ({
+        organizationId: ORG_A,
+        claimId: claim.claimId,
+        submissionId: claim.submissionId,
+        outcome: "rejected",
+        payerClaimControlNumber: "",
+        reasonCodes,
+        ackFileUri: `s3://acks/277/rtp-${++uri}.json`,
+      });
+      const rtpItems = async (claimId: string) =>
+        (
+          await admin.query(
+            `SELECT id, state, source, item_type, subject_kind, patient_id, provider_entity_id, deadline_at,
+                    rtp_reason_code, dcn, notes, respawned_from_id, priority
+               FROM dde_work_item WHERE subject_id=$1 ORDER BY created_at, id`,
+            [claimId],
+          )
+        ).rows as Record<string, unknown>[];
+
+      it("files an open watchdog rtp_correction linked to the claim, with ids and codes only", async () => {
+        const claim = await seedClaimWithSubmission(admin);
+
+        await runAckPull277ca(rtpDeps([reject(claim, ["A7:21", "1EG4TE5MK73"])]));
+
+        const rows = await rtpItems(claim.claimId);
+        expect(rows).toHaveLength(1);
+        expect(rows[0]).toMatchObject({
+          state: "queued",
+          source: "watchdog",
+          item_type: "rtp_correction",
+          subject_kind: "claim",
+          patient_id: claim.patientId,
+          provider_entity_id: PE_A,
+          deadline_at: null,
+          rtp_reason_code: null,
+          dcn: null,
+          notes: null,
+          respawned_from_id: null,
+        });
+        const state = await admin.query("SELECT state FROM claim WHERE id=$1", [claim.claimId]);
+        expect(state.rows[0].state).toBe("ACK_REJECTED");
+        // history carries the sanitised status codes only (the MBI-shaped token was dropped before it got here)
+        const ev = await admin.query(
+          "SELECT event, actor_kind, detail FROM dde_work_event WHERE work_item_id=$1",
+          [rows[0]?.id],
+        );
+        expect(ev.rows).toEqual([
+          {
+            event: "create",
+            actor_kind: "system",
+            detail: expect.objectContaining({
+              trigger: "claim_rejected_277ca",
+              rejectionCodes: "A7:21",
+            }),
+          },
+        ]);
+        expect(JSON.stringify(ev.rows)).not.toContain("1EG4TE5MK73");
+        // the real catalog-validating publisher accepted m23.dde_item.created for it
+        const out = await admin.query(
+          "SELECT payload FROM outbox_event WHERE event_type='m23.dde_item.created' AND aggregate_id=$1",
+          [rows[0]?.id],
+        );
+        expect(out.rows).toHaveLength(1);
+        expect(out.rows[0].payload).toMatchObject({
+          itemType: "rtp_correction",
+          subjectKind: "claim",
+          subjectId: claim.claimId,
+          source: "watchdog",
+          deadlineAt: null,
+        });
+      });
+
+      it("a replayed ack file queues nothing more", async () => {
+        const claim = await seedClaimWithSubmission(admin);
+        const ack = reject(claim);
+
+        await runAckPull277ca(rtpDeps([ack]));
+        await runAckPull277ca(rtpDeps([ack]));
+
+        expect(await rtpItems(claim.claimId)).toHaveLength(1);
+      });
+
+      it("an item already open for the claim (e.g. keyed by hand) is not duplicated by a rejection", async () => {
+        const claim = await seedClaimWithSubmission(admin);
+        const manual = await post("", hdr(), {
+          itemType: "rtp_correction",
+          subjectId: claim.claimId,
+        });
+        expect(manual.statusCode).toBe(201);
+
+        await runAckPull277ca(rtpDeps([reject(claim)]));
+
+        const rows = await rtpItems(claim.claimId);
+        expect(rows).toHaveLength(1);
+        expect(rows[0]?.source).toBe("manual");
+      });
+
+      it("a rejection after the earlier item was cancelled files a fresh one (the open-item rule only)", async () => {
+        const claim = await seedClaimWithSubmission(admin);
+        await runAckPull277ca(rtpDeps([reject(claim)]));
+        await admin.query("UPDATE dde_work_item SET state='cancelled' WHERE subject_id=$1", [
+          claim.claimId,
+        ]);
+        await admin.query("UPDATE claim SET state='ACK_PENDING' WHERE id=$1", [claim.claimId]);
+
+        await runAckPull277ca(rtpDeps([reject(claim)]));
+
+        const rows = await rtpItems(claim.claimId);
+        expect(rows.map((r) => r.state)).toEqual(["cancelled", "queued"]);
+      });
+
+      it("files nothing for accepted, partial or 999-stage outcomes, and leaves a later acceptance to the operator", async () => {
+        const accepted = await seedClaimWithSubmission(admin);
+        const partial = await seedClaimWithSubmission(admin);
+        await runAckPull277ca(
+          rtpDeps([
+            { ...reject(accepted), outcome: "accepted", reasonCodes: [] },
+            { ...reject(partial), outcome: "partial" },
+          ]),
+        );
+        expect(await rtpItems(accepted.claimId)).toEqual([]);
+        expect(await rtpItems(partial.claimId)).toEqual([]);
+
+        // an open item stays open when the (replacement) claim is later accepted: closing is the operator's call
+        const rejected = await seedClaimWithSubmission(admin);
+        await runAckPull277ca(rtpDeps([reject(rejected)]));
+        await admin.query("UPDATE claim SET state='ACK_ACCEPTED' WHERE id=$1", [rejected.claimId]);
+        expect((await rtpItems(rejected.claimId)).map((r) => r.state)).toEqual(["queued"]);
+      });
+
+      it("a queueing failure rolls back alone: the rejection is still recorded", async () => {
+        const claim = await seedClaimWithSubmission(admin);
+        const errors: Record<string, unknown>[] = [];
+        const deps = {
+          ...rtpDeps([reject(claim)]),
+          ddeWatchdog: {
+            ensureNoticeItem: async () => ({ created: false }),
+            ensureClaimRtpItem: async () => {
+              throw new Error("boom");
+            },
+          },
+          logger: { error: (f: Record<string, unknown>) => errors.push(f) },
+        } as unknown as M23WorkerDeps;
+
+        await runAckPull277ca(deps);
+
+        const state = await admin.query("SELECT state FROM claim WHERE id=$1", [claim.claimId]);
+        expect(state.rows[0].state).toBe("ACK_REJECTED");
+        expect(await rtpItems(claim.claimId)).toEqual([]);
+        expect(errors).toHaveLength(1);
       });
     });
   },
