@@ -8,18 +8,29 @@
 --            hipps_rate_cents                   -> per_diem_rate_cents
 --   every constraint / index / policy / trigger carrying the old name is renamed in place (the table keeps its OID,
 --   its rows, its FORCEd org RLS, its grants, its append-only + audit triggers). The PHI write-audit trigger function is
---   replaced so NEW audit rows say `per_diem_rate_calculation`; audit_event rows already written keep the old text
---   (an audit trail is not rewritten).
+--   re-created in the hardened 1062 form (search_path pinned incl. pg_temp, schema-qualified audit_scrub / audit_event,
+--   SECURITY DEFINER, owned by wardenx_audit_writer) so NEW audit rows say `per_diem_rate_calculation`; audit_event rows
+--   already written keep the old text (an audit trail is not rewritten).
 --
--- STORED VALUES migrated in place (rows exist on populated databases):
---   * per_diem_rate_calculation.segments[*].hippsCharPosition -> perDiemClassCharPosition (jsonb key)
---   * validation_rule_config.rule_key / validation_result.rule_key 'hipps_coding_correct' -> 'per_diem_class_coding_correct'
---     and validation_result.remediation.fixAction 'recompute_hipps' -> 'recompute_per_diem_class'
---     (validation_result is the append-only run history; a stale key would no longer match the rule registry).
---   The append-only / audit triggers are disabled for exactly these three UPDATEs inside one DO block (one statement =
---   one transaction: a failure rolls the disable back too) and re-enabled before it ends.
+-- STORED HISTORY IS NEVER REWRITTEN. validation_result (append-only run history) and
+-- per_diem_rate_calculation.segments (append-only calculation snapshot) keep their legacy values byte for byte:
+--   * validation_result.rule_key 'hipps_coding_correct' / remediation.fixAction 'recompute_hipps'
+--   * per_diem_rate_calculation.segments[*].hippsCharPosition
+-- No trigger is ever disabled by this file. Instead the application READ side maps the legacy spellings onto the new ones
+-- (packages/billing/src/legacy-stored-aliases.ts; applied wherever stored values are projected, resolved or dispatched).
+-- The one mutable table, validation_rule_config (tenant overlay; no append-only trigger), has its rule_key renamed in
+-- place with a plain UPDATE and its audit trigger STILL ENABLED, so the rename is itself on the audit trail.
 --
--- Idempotent: every step is guarded on the old name still existing, so a re-run is a no-op.
+-- DEPLOYMENT: a hard rename needs migrate-then-swap. Between the migration and the end of the rolling deploy, pods still
+-- running the previous image reference `hipps_calculation` / `hipps_code` and fail on claim assemble / validate (reads of
+-- the claim detail pricing block included) until the rollout completes. Run the migration, then roll the new image.
+--
+-- TRANSACTION: scripts/db/migrate.ts wraps the WHOLE file in one BEGIN/COMMIT (the `--> statement-breakpoint` markers
+-- are only a drizzle-kit convention; the runner executes the file as a single multi-statement query), so a failure
+-- anywhere rolls the entire migration back.
+--
+-- Idempotent: every step is guarded on the old name still existing / the new state not yet reached, so a re-run (or a run
+-- from a partially migrated state, e.g. table renamed but not its columns) converges on the same end state.
 DO $mig$
 DECLARE
   r record;
@@ -81,7 +92,7 @@ BEGIN
                    replace(r.tgname, 'hipps_calculation', 'per_diem_rate_calculation'));
   END LOOP;
 
-  -- PHI write-audit trigger function: rename, then redefine so new audit rows carry the new resource kind.
+  -- PHI write-audit trigger function: rename here, then re-created below (hardened 1062 form) so new audit rows carry the new resource kind.
   IF to_regprocedure('public.audit_phi_write_hipps_calculation()') IS NOT NULL THEN
     ALTER FUNCTION audit_phi_write_hipps_calculation() RENAME TO audit_phi_write_per_diem_rate_calculation;
   END IF;
@@ -89,53 +100,22 @@ END
 $mig$;--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION audit_phi_write_per_diem_rate_calculation() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE v_before jsonb; v_after jsonb; v_cols text[] := ARRAY['segments']::text[];
 BEGIN
-  v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN audit_scrub(to_jsonb(OLD), v_cols) ELSE NULL END;
-  v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN audit_scrub(to_jsonb(NEW), v_cols) ELSE NULL END;
-  INSERT INTO audit_event (organization_id, actor_user_id, actor_kind, event_type, resource_kind, resource_id, correlation_id, outcome, severity, before, after, context, retention_class)
+  v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN public.audit_scrub(to_jsonb(OLD), v_cols) ELSE NULL END;
+  v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN public.audit_scrub(to_jsonb(NEW), v_cols) ELSE NULL END;
+  INSERT INTO public.audit_event (organization_id, actor_user_id, actor_kind, event_type, resource_kind, resource_id, correlation_id, outcome, severity, before, after, context, retention_class)
   VALUES (COALESCE(NEW.organization_id, OLD.organization_id), NULLIF(current_setting('app.user_id', true), '')::uuid, 'system', 'per_diem_rate_calculation.' || lower(TG_OP), 'per_diem_rate_calculation', COALESCE(NEW.id, OLD.id), COALESCE(NULLIF(current_setting('app.correlation_id', true), ''), 'system'), 'success', 'info', v_before, v_after, jsonb_build_object('provider_entity_id', NULLIF(current_setting('app.provider_entity_id', true), '')), 'compliance');
   RETURN COALESCE(NEW, OLD);
 END $$;--> statement-breakpoint
 ALTER FUNCTION audit_phi_write_per_diem_rate_calculation() OWNER TO wardenx_audit_writer;--> statement-breakpoint
 
-DO $mig$
-BEGIN
-  IF to_regclass('public.per_diem_rate_calculation') IS NULL THEN
-    RETURN;
-  END IF;
-
-  -- segments[*].hippsCharPosition -> perDiemClassCharPosition (key rename, element order preserved).
-  IF EXISTS (SELECT 1 FROM per_diem_rate_calculation WHERE segments::text LIKE '%hippsCharPosition%') THEN
-    ALTER TABLE per_diem_rate_calculation DISABLE TRIGGER USER;
-    UPDATE per_diem_rate_calculation c
-       SET segments = (
-         SELECT jsonb_agg(
-                  CASE WHEN e ? 'hippsCharPosition'
-                       THEN (e - 'hippsCharPosition') || jsonb_build_object('perDiemClassCharPosition', e -> 'hippsCharPosition')
-                       ELSE e END
-                  ORDER BY ord)
-           FROM jsonb_array_elements(c.segments) WITH ORDINALITY AS t(e, ord))
-     WHERE jsonb_typeof(c.segments) = 'array' AND c.segments::text LIKE '%hippsCharPosition%';
-    ALTER TABLE per_diem_rate_calculation ENABLE TRIGGER USER;
-  END IF;
-
-  -- Persisted rule key.
-  IF EXISTS (SELECT 1 FROM validation_rule_config WHERE rule_key = 'hipps_coding_correct') THEN
-    ALTER TABLE validation_rule_config DISABLE TRIGGER USER;
-    UPDATE validation_rule_config SET rule_key = 'per_diem_class_coding_correct' WHERE rule_key = 'hipps_coding_correct';
-    ALTER TABLE validation_rule_config ENABLE TRIGGER USER;
-  END IF;
-  IF EXISTS (SELECT 1 FROM validation_result
-             WHERE rule_key = 'hipps_coding_correct' OR remediation::text LIKE '%recompute\_hipps%') THEN
-    ALTER TABLE validation_result DISABLE TRIGGER USER;
-    UPDATE validation_result SET rule_key = 'per_diem_class_coding_correct' WHERE rule_key = 'hipps_coding_correct';
-    -- remediation.fixAction 'recompute_hipps' -> 'recompute_per_diem_class'
-    UPDATE validation_result
-       SET remediation = replace(remediation::text, 'recompute_hipps', 'recompute_per_diem_class')::jsonb
-     WHERE remediation::text LIKE '%recompute\_hipps%';
-    ALTER TABLE validation_result ENABLE TRIGGER USER;
-  END IF;
-END
-$mig$;
+-- Tenant rule overlay: rename the persisted rule key in place. validation_rule_config has NO append-only trigger, so a plain
+-- UPDATE works with its audit trigger enabled (the rename is audited). A row is skipped only if the tenant somehow already
+-- holds the new key (cannot happen before this migration; the skip keeps the unique (org, rule_key) constraint safe).
+UPDATE validation_rule_config o
+   SET rule_key = 'per_diem_class_coding_correct'
+ WHERE o.rule_key = 'hipps_coding_correct'
+   AND NOT EXISTS (SELECT 1 FROM validation_rule_config n
+                    WHERE n.organization_id = o.organization_id AND n.rule_key = 'per_diem_class_coding_correct');

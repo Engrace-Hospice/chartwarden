@@ -70,3 +70,9 @@ The `HippsCalculation` entity is now `PerDiemRateCalculation` in code: table `hi
 `per_diem_rate_cents`), rule key `hipps_coding_correct` -> `per_diem_class_coding_correct`. The stored 5-character
 value is an internal per-diem class placeholder and is never transmitted on a claim
 (`packages/billing/__tests__/no-hipps-on-claim.test.ts` guards this).
+
+API field names follow the rename: the claim-detail `pricing.hipps` block is now `pricing.perDiemClass` and its
+`hippsRateCents` is `perDiemRateCents` (OpenAPI + typed client regenerated). Values persisted before migration 1069
+in append-only history are NOT rewritten (`validation_result.rule_key` `hipps_coding_correct`, remediation `fixAction`
+`recompute_hipps`, `segments[*].hippsCharPosition`); readers map those legacy spellings onto the current ones
+(`packages/billing/src/legacy-stored-aliases.ts`), and the mutable `validation_rule_config.rule_key` is renamed in place.

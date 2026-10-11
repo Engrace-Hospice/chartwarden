@@ -27,6 +27,7 @@ import {
   type TypeOfBill,
   type ValidationContext,
   buildClaimSnapshot,
+  canonicalRuleKey,
   claimAdmissionCodes,
   claimLateNoeSpans,
   claimPhysicianNpis,
@@ -160,7 +161,9 @@ export function buildClaimValidationService(
       failures.map((f) => f.id),
     );
     const overriddenResultIds = new Set(overrides.map((o) => o.resultId));
-    return new Set(failures.filter((f) => overriddenResultIds.has(f.id)).map((f) => f.ruleKey));
+    return new Set(
+      failures.filter((f) => overriddenResultIds.has(f.id)).map((f) => canonicalRuleKey(f.ruleKey)),
+    );
   };
 
   /** Roll the per-rule outcome into the `validation_run.outcome` pgEnum (the §2.3 submission-gate signal). */
@@ -273,7 +276,7 @@ export function buildClaimValidationService(
         rulesWarn: existing.rulesWarn,
         rulesInfo: existing.rulesInfo,
         blockingFailures: summary.blockingFailures,
-        failedRuleKeys: priorFailures.map((f) => f.ruleKey),
+        failedRuleKeys: priorFailures.map((f) => canonicalRuleKey(f.ruleKey)),
         claimState: claim.state,
         idempotentReplay: true,
       };

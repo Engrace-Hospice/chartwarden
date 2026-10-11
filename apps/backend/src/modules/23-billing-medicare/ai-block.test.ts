@@ -84,7 +84,7 @@ describe("validateAiBlockForBilling — fails boot on an M23-targeting template"
 
   it("fails boot for EVERY M23-owned table family (one synthetic template per family)", () => {
     for (const family of M23_OWNED_TABLE_FAMILIES) {
-      const outputType = `${family}thing`; // e.g. claim_thing, per_diem_class_thing, wage_thing
+      const outputType = `${family}thing`; // e.g. claim_thing, per_diem_rate_thing, wage_thing
       const templates = [{ key: `m32.target-${family}`, outputType }];
       expect(() => validateAiBlockForBilling(registryOf(templates))).toThrow(AiBlockViolationError);
     }

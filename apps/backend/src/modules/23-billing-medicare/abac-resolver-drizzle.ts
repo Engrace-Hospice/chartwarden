@@ -9,7 +9,7 @@
 // `withOrgContext(db, {organizationId, userId}, tx => …)` (the M1 @wardenx/tenancy helper) so Postgres RLS
 // scopes every statement to `app.org_id` (the M27 resolver precedent). A `null` return is an absent /
 // cross-tenant row → the predicate fails closed. NO MBI / free-text PHI in the facts read (D13 / §8.7).
-import type { BillingDb, ClaimState } from "@wardenx/billing";
+import { type BillingDb, type ClaimState, canonicalRuleKey } from "@wardenx/billing";
 import * as schema from "@wardenx/db/schema";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq } from "drizzle-orm";
@@ -229,7 +229,7 @@ export function buildDrizzleM23AbacResolver(db: BillingDb): ReadingM23AbacResolv
         return {
           validationResultId: row.id,
           organizationId: row.organizationId,
-          ruleKey: row.ruleKey,
+          ruleKey: canonicalRuleKey(row.ruleKey),
         };
       });
     },
@@ -249,7 +249,7 @@ export function buildDrizzleM23AbacResolver(db: BillingDb): ReadingM23AbacResolv
         return {
           ruleConfigId: row.id,
           organizationId: row.organizationId,
-          ruleKey: row.ruleKey,
+          ruleKey: canonicalRuleKey(row.ruleKey),
         };
       });
     },

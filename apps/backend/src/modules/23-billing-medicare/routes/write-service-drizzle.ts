@@ -30,6 +30,7 @@ import { randomUUID } from "node:crypto";
 import {
   type ClaimState,
   type ClaimTransitionEvent,
+  canonicalRuleKey,
   reduce as claimReduce,
   deriveControlNumber,
   noeMachine,
@@ -130,7 +131,7 @@ function mapRuleConfig(row: schema.ValidationRuleConfig): RuleConfigView {
   return {
     ruleConfigId: row.id,
     organizationId: row.organizationId,
-    ruleKey: row.ruleKey,
+    ruleKey: canonicalRuleKey(row.ruleKey),
     ruleVersion: row.ruleVersion,
     isCustom: row.isCustom,
     enabled: row.enabled,
@@ -916,7 +917,7 @@ export function buildDrizzleM23WriteService(
           claimId: claim.id,
           validationRunId: run.id,
           resultId: result.id,
-          ruleKey: result.ruleKey,
+          ruleKey: canonicalRuleKey(result.ruleKey),
           overrideRole: args.overrideRole,
           actorUserId: actor.userId,
           correlationId,
@@ -943,7 +944,7 @@ export function buildDrizzleM23WriteService(
             validationRunId: run.id,
             resultId: result.id,
             overrideId: override.id,
-            ruleKey: result.ruleKey,
+            ruleKey: canonicalRuleKey(result.ruleKey),
             overrideRoleApplied: args.overrideRole,
           },
         });

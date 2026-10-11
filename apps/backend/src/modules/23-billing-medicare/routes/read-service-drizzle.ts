@@ -1,8 +1,11 @@
 import {
   type ArAgingDto,
   type MetricsBucket,
+  canonicalRemediation,
+  canonicalRuleKey,
   claimStateCodec,
   repositories,
+  storedRuleKeySpellings,
 } from "@wardenx/billing";
 // apps/backend/src/modules/23-billing-medicare/routes/read-service-drizzle.ts — the Drizzle-backed
 // M23ReadRouteService (§4.1 GET surface: claim list/detail/lines/state-history/submissions/acks,
@@ -193,7 +196,7 @@ function mapRuleConfig(row: schema.ValidationRuleConfig): RuleConfigView {
   return {
     ruleConfigId: row.id,
     organizationId: row.organizationId,
-    ruleKey: row.ruleKey,
+    ruleKey: canonicalRuleKey(row.ruleKey),
     ruleVersion: row.ruleVersion,
     isCustom: row.isCustom,
     enabled: row.enabled,
@@ -511,11 +514,11 @@ export function buildDrizzleM23ReadService(
           return {
             resultId: r.id,
             validationRunId: r.validationRunId,
-            ruleKey: r.ruleKey,
+            ruleKey: canonicalRuleKey(r.ruleKey),
             ruleVersion: r.ruleVersion,
             severity: r.severity,
             outcome: r.outcome,
-            remediation: json(r.remediation),
+            remediation: canonicalRemediation(json(r.remediation)),
             overridden: override !== null,
             override: override ? mapOverride(override) : null,
             recordedAt: isoReq(r.recordedAt),
@@ -703,7 +706,9 @@ export function buildDrizzleM23ReadService(
             and(
               eq(O.organizationId, actor.organizationId),
               eq(C.providerEntityId, filter.providerEntityId),
-              filter.ruleKey ? eq(R.ruleKey, filter.ruleKey) : undefined,
+              filter.ruleKey
+                ? inArray(R.ruleKey, [...storedRuleKeySpellings(filter.ruleKey)])
+                : undefined,
               filter.overrideMembershipId
                 ? eq(O.overrideMembershipId, filter.overrideMembershipId)
                 : undefined,
@@ -723,7 +728,7 @@ export function buildDrizzleM23ReadService(
           items: kept.map((r) => ({
             ...mapOverride(r.override),
             claimId: r.claimId,
-            ruleKey: r.ruleKey,
+            ruleKey: canonicalRuleKey(r.ruleKey),
             m4AuditEventId: r.m4AuditEventId,
           })),
           nextCursor:

@@ -19,6 +19,7 @@ import type {
   NoticeState,
   TypeOfBill,
 } from "@wardenx/billing";
+import { canonicalSegments } from "@wardenx/billing";
 import type { ClaimAttentionFlag, ClaimAttentionView } from "../services/claim-attention";
 import {
   type StoredRhcCarryOverContext,
@@ -146,7 +147,7 @@ export function perDiemClassPricingView(
     wageIndexCcn: row.wageIndexCcn,
     wageIndexFiscalYear: row.wageIndexFiscalYear,
     wageIndexFactor: row.wageIndexFactor,
-    segments: row.segments,
+    segments: canonicalSegments(row.segments),
     calculatedAt: row.calculatedAt.toISOString(),
     rhcDays1to60: row.rhcDays1to60,
     rhcDays61Plus: row.rhcDays61Plus,
