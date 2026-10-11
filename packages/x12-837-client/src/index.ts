@@ -237,4 +237,4 @@ export {
   StediTransport,
   createStediTransportFromEnv,
 } from "./clearinghouse/stedi-transport";
-export type { StediTransportOptions } from "./clearinghouse/stedi-transport";
+export type { StediAnomaly, StediTransportOptions } from "./clearinghouse/stedi-transport";

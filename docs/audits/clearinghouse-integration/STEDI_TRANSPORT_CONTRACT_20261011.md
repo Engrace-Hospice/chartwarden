@@ -12,7 +12,7 @@ mark it done until a live or documented answer exists. Checked against the publi
 | 837I JSON | `POST …/change/medicalnetwork/institutionalclaims/v1/submission` | D |
 | 837I raw X12 | `POST …/change/medicalnetwork/institutionalclaims/v1/raw-x12-submission`, body `{"x12": "<ISA…>"}` | D, O |
 | Auth | The 837I page shows `Authorization: <api key>`; the 837P page shows `Authorization: Key <api key>`. The bare key was observed working on payer search and event destinations (not on a claim route); `Key <key>` is documented but untried. Which form the claim route requires is **U**: send the bare key and confirm with one real call. | D, O, U |
-| Idempotency | `Idempotency-Key` (≤255 chars) replays safely for 24 h (https://www.stedi.com/docs/healthcare/submit-institutional-claims). The replay response shape, which feeds `replayed: true`, is **U** (never observed). We keep our own permanent attempt record, so the port's guarantee holds beyond that window. | D, U |
+| Idempotency | The adapter sends `Idempotency-Key` = SHA-256 of (org, provider, usage, caller key): Stedi's key space is account-wide, so the raw caller key would collide across tenants. `Idempotency-Key` (≤255 chars) replays safely for 24 h (https://www.stedi.com/docs/healthcare/submit-institutional-claims). The replay response shape, which feeds `replayed: true`, is **U** (never observed). We keep our own permanent attempt record, so the port's guarantee holds beyond that window. | D, U |
 | Usage | Raw X12: ISA15 must be `T` for test (omitted gives 400 with a TA1); JSON: `usageIndicator: "T"`. `ctx.usage` maps to this and `test` must never reach `P`. | D, O |
 | Success body | `status`, `controlNumber`, `tradingPartnerServiceId`, `claimReference{correlationId, patientControlNumber, timeOfResponse, formatVersion, rhClaimNumber, payerId, serviceLines[]}`, `meta.traceId`, `payer{payerName,payerID}`, `x12` (the initial Stedi 277CA), `httpStatusCode` | D |
 | Newer API | The 837P page names `claims.us.stedi.com/2025-03-07/`; the 837I page does not. Stay on `2024-04-01` for 837I. | D |
@@ -25,7 +25,7 @@ mark it done until a live or documented answer exists. Checked against the publi
 | 400 schema errors `{errors:[{code,description,location}]}` or `{code: INVALID_REQUEST_BODY}` | body shape is wrong | `INVALID_REQUEST` |
 | 400 `ACCOUNT_NOT_PROVISIONED` | **configuration error, not a claim rejection** | `NOT_PROVISIONED` |
 | **U:** no response shape observed for "not enrolled" | provider not enrolled with the payer | `NOT_ENROLLED` once the real signal is known (Q15/Q16). Payer search shows `ENROLLMENT_REQUIRED` for every Part A payer whether or not we are enrolled, so it is not that signal; never pre-check it, and never apply `NOT_ENROLLED` to `validateOnly` (the port forbids gating validation on enrollment) |
-| 401 | bad or missing key | `NOT_WIRED` (operator must act; not retryable) |
+| 401 (and 403, **U**) | bad or missing key | `NOT_WIRED` (operator must act; not retryable) |
 | 409 / idempotency mismatch | key reused with a different payload | `IDEMPOTENCY_CONFLICT` |
 | 429, 5xx, timeout, open breaker | | `UNAVAILABLE` (retryable) |
 

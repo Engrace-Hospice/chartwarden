@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 // @wardenx/x12-837-client — the Stedi ClearinghouseTransport, SUBMIT SIDE (ADR-0053; contract:
 // docs/audits/clearinghouse-integration/STEDI_TRANSPORT_CONTRACT_20261011.md).
 //
@@ -7,8 +8,11 @@
 //
 // Rules this file enforces so a caller cannot get them wrong:
 //   - idempotency is kept by OUR attempt store (scoped to org, provider and usage), never trusted to Stedi's 24 h key;
-//   - a payload is checked locally (usage matches the call, Stedi's observed edits pass) BEFORE anything is sent, so
-//     test traffic cannot reach production or the reverse and a known rejection is not filed;
+//   - a raw X12 payload is checked locally (ISA15 matches the usage, Stedi's observed edits pass) BEFORE anything is
+//     sent; a JSON document (built by our mapper) is checked for its usageIndicator only, so test traffic cannot reach
+//     production or the reverse, and a known rejection is not filed;
+//   - the Idempotency-Key sent to Stedi is scoped by (org, provider, usage): Stedi's key space is account-wide and one
+//     platform credential serves every tenant;
 //   - adjustments are refused without a send (Q17 open);
 //   - a failure records nothing, so the same submission can be retried (we resend the same Idempotency-Key);
 //   - no result, reason or log carries the API key, a response body or an edit description (codes and rule names only);
@@ -50,6 +54,25 @@ export interface StediTransportOptions {
   readonly attempts: SubmissionAttemptStore;
   /** Injected so tests (and a future circuit breaker) own the network. Defaults to the global fetch. */
   readonly fetch?: typeof fetch;
+  /** PHI-free signals that need a human or a reconciler (see {@link StediAnomaly}). */
+  readonly onAnomaly?: (anomaly: StediAnomaly) => void;
+}
+
+/** Things that cannot be expressed in a result but must not pass silently. No payload, no response body. */
+export type StediAnomaly =
+  | {
+      readonly type: "sent_but_unrecorded";
+      readonly idempotencyKey: string;
+      readonly clearinghouseSubmissionId: string;
+    }
+  | { readonly type: "duplicate_control_number_sent"; readonly controlNumber: string }
+  | { readonly type: "derived_submission_id"; readonly idempotencyKey: string };
+
+const RECORD_ATTEMPTS = 3;
+
+/** The key Stedi sees: unique per (org, provider, usage, caller key), well under the 255-character limit. */
+function wireIdempotencyKey(scope: string, idempotencyKey: string): string {
+  return createHash("sha256").update(`${scope}\n${idempotencyKey}`).digest("hex");
 }
 
 /** Builds the transport from the platform environment, reading only STEDI_API_KEY. */
@@ -151,8 +174,10 @@ function submissionIdOf(body: Record<string, unknown> | null, idempotencyKey: st
   const meta = body?.meta as { traceId?: unknown } | undefined;
   if (typeof meta?.traceId === "string" && meta.traceId) return meta.traceId;
   // A 2xx means Stedi took the submission; keep a derived id rather than losing the record (U: no 2xx observed yet).
-  return `stedi:${idempotencyKey}`;
+  return derivedSubmissionId(idempotencyKey);
 }
+
+const derivedSubmissionId = (idempotencyKey: string): string => `stedi:${idempotencyKey}`;
 
 const receiptOf = (a: SubmissionAttempt, replayed: boolean): SubmissionReceipt => ({
   clearinghouseSubmissionId: a.clearinghouseSubmissionId,
@@ -167,11 +192,13 @@ export class StediTransport implements ClearinghouseTransport {
   private readonly apiKey: string;
   private readonly attempts: SubmissionAttemptStore;
   private readonly fetchImpl: typeof fetch;
+  private readonly onAnomaly: (anomaly: StediAnomaly) => void;
 
   constructor(options: StediTransportOptions) {
     this.apiKey = options.apiKey;
     this.attempts = options.attempts;
     this.fetchImpl = options.fetch ?? fetch;
+    this.onAnomaly = options.onAnomaly ?? (() => {});
   }
 
   submitClaim(
@@ -215,9 +242,9 @@ export class StediTransport implements ClearinghouseTransport {
         ? x12Problem(payload.x12, ctx.usage)
         : jsonProblem(payload.document, ctx.usage);
     if (problem) return refuse(problem);
+    const scope = scopeKey(ctx);
+    const identity = identityOf(submission);
     try {
-      const scope = scopeKey(ctx);
-      const identity = identityOf(submission);
       const prior = await this.attempts.findByKey(scope, submission.idempotencyKey);
       if (prior) {
         return prior.identity === identity
@@ -233,25 +260,70 @@ export class StediTransport implements ClearinghouseTransport {
           "the control number was already submitted under another key",
         );
       }
-      const sent = await this.send(submission);
-      if (!sent.ok) return sent;
-      const stored = await this.attempts.putIfAbsent({
-        scope,
-        idempotencyKey: submission.idempotencyKey,
-        controlNumber: submission.controlNumber,
-        kind: submission.kind,
-        identity,
-        clearinghouseSubmissionId: sent.data,
-        receivedAt: new Date().toISOString(),
-      });
-      return { ok: true, data: receiptOf(stored, stored.clearinghouseSubmissionId !== sent.data) };
     } catch {
-      return degraded(CH.UNAVAILABLE, "the submission could not be recorded or sent");
+      return degraded(CH.UNAVAILABLE, "the submission record could not be read");
     }
+
+    const sent = await this.send(scope, submission);
+    if (!sent.ok) return sent;
+    return this.record({
+      scope,
+      idempotencyKey: submission.idempotencyKey,
+      controlNumber: submission.controlNumber,
+      kind: submission.kind,
+      identity,
+      clearinghouseSubmissionId: sent.data,
+      receivedAt: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * Stedi has taken the submission; make our record of it. Retried a few times, because losing it means a later
+   * retry (after Stedi's 24 h key window, or under a new key) could file a duplicate. If the record cannot be made
+   * the caller gets a retryable result and the reconciler gets a PHI-free anomaly.
+   */
+  private async record(attempt: SubmissionAttempt): Promise<X12WorkerResult<SubmissionReceipt>> {
+    for (let i = 0; i < RECORD_ATTEMPTS; i++) {
+      try {
+        const { attempt: stored, inserted } = await this.attempts.putIfAbsent(attempt);
+        if (inserted) return { ok: true, data: receiptOf(stored, false) };
+        // Lost a race to a concurrent submission: report what actually happened, never someone else's receipt.
+        if (stored.idempotencyKey !== attempt.idempotencyKey) {
+          this.onAnomaly({
+            type: "duplicate_control_number_sent",
+            controlNumber: attempt.controlNumber,
+          });
+          return degraded(
+            CH.IDEMPOTENCY_CONFLICT,
+            "the control number was submitted concurrently under another key",
+          );
+        }
+        return stored.identity === attempt.identity
+          ? { ok: true, data: receiptOf(stored, true) }
+          : degraded(
+              CH.IDEMPOTENCY_CONFLICT,
+              "the idempotency key was used concurrently for a different submission",
+            );
+      } catch {
+        // retry
+      }
+    }
+    this.onAnomaly({
+      type: "sent_but_unrecorded",
+      idempotencyKey: attempt.idempotencyKey,
+      clearinghouseSubmissionId: attempt.clearinghouseSubmissionId,
+    });
+    return degraded(
+      CH.UNAVAILABLE,
+      "submitted to Stedi but the attempt could not be recorded; retry with the same key and reconcile",
+    );
   }
 
   /** One POST. Returns the vendor's submission id, or a degraded envelope. Throws only into `submit`'s catch. */
-  private async send(submission: ClearinghouseSubmission): Promise<X12WorkerResult<string>> {
+  private async send(
+    scope: string,
+    submission: ClearinghouseSubmission,
+  ): Promise<X12WorkerResult<string>> {
     const { payload } = submission;
     const url = `${BASE_URL}/${payload.format === "x12" ? "raw-x12-submission" : "submission"}`;
     const body = payload.format === "x12" ? { x12: payload.x12 } : payload.document;
@@ -262,17 +334,23 @@ export class StediTransport implements ClearinghouseTransport {
         headers: {
           Authorization: this.apiKey,
           "Content-Type": "application/json",
-          "Idempotency-Key": submission.idempotencyKey,
+          "Idempotency-Key": wireIdempotencyKey(scope, submission.idempotencyKey),
         },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        // A 30x must never silently turn the POST into a GET or follow to another origin.
+        redirect: "error",
       });
     } catch {
       return degraded(CH.UNAVAILABLE, "Stedi could not be reached");
     }
     const parsed = await readJson(res);
     if (!res.ok) return failure(res.status, parsed);
-    return { ok: true, data: submissionIdOf(parsed, submission.idempotencyKey) };
+    const id = submissionIdOf(parsed, submission.idempotencyKey);
+    if (id === derivedSubmissionId(submission.idempotencyKey)) {
+      this.onAnomaly({ type: "derived_submission_id", idempotencyKey: submission.idempotencyKey });
+    }
+    return { ok: true, data: id };
   }
 
   validateOnly(

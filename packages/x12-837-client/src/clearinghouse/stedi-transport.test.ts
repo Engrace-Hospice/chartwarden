@@ -1,8 +1,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { InMemoryAttemptStore } from "./attempt-store";
-import { StediTransport, createStediTransportFromEnv } from "./stedi-transport";
+import {
+  InMemoryAttemptStore,
+  type SubmissionAttempt,
+  type SubmissionAttemptStore,
+} from "./attempt-store";
+import { type StediAnomaly, StediTransport, createStediTransportFromEnv } from "./stedi-transport";
+import { identityOf, scopeKey } from "./submission-identity";
 import { CH, RETRYABLE_CODES } from "./types";
 import type { ClearinghouseContext, ClearinghouseSubmission } from "./types";
 
@@ -70,7 +75,7 @@ describe("StediTransport.submitClaim", () => {
     );
     const headers = new Headers(calls[0]?.init.headers);
     expect(headers.get("authorization")).toBe(KEY);
-    expect(headers.get("idempotency-key")).toBe("idem-1");
+    expect(headers.get("idempotency-key")).toMatch(/^[0-9a-f]{64}$/);
     expect(headers.get("content-type")).toBe("application/json");
     expect(JSON.parse(String(calls[0]?.init.body))).toEqual({ x12: CLAIM_X12 });
     if (r.ok) {
@@ -147,6 +152,25 @@ describe("StediTransport.submitClaim", () => {
     const other = await transport.submitClaim({ ...CTX, organizationId: "org-2" }, claim());
     expect(other.ok && !other.data.replayed).toBe(true);
     expect(calls).toHaveLength(2);
+  });
+
+  it("scopes the wire idempotency key per tenant and usage, but keeps it stable for a retry", async () => {
+    const { calls, transport } = harness();
+    await transport.submitClaim(CTX, claim());
+    await transport.submitClaim({ ...CTX, organizationId: "org-2" }, claim());
+    const keys = calls.map((c) => new Headers(c.init.headers).get("idempotency-key"));
+    expect(keys[0]).not.toBe(keys[1]);
+    expect(keys[0]).not.toBe("idem-1");
+  });
+
+  it("refuses a JSON document whose usageIndicator is production under test usage", async () => {
+    const { calls, transport } = harness();
+    const r = await transport.submitClaim(
+      CTX,
+      claim({ payload: { format: "json", document: { usageIndicator: "P" } } }),
+    );
+    expect(code(r)).toBe(CH.INVALID_REQUEST);
+    expect(calls).toHaveLength(0);
   });
 
   it("refuses an adjustment and sends nothing", async () => {
@@ -262,7 +286,7 @@ describe("StediTransport HTTP failure mapping", () => {
       expect(r.degraded.reason).not.toContain("secret detail");
       expect(r.degraded.reason).not.toContain("1500.00");
     }
-    if (expected === CH.UNAVAILABLE) expect(RETRYABLE_CODES.has(expected)).toBe(true);
+    if (expected === CH.UNAVAILABLE) expect(RETRYABLE_CODES.has(code(r) ?? "")).toBe(true);
   });
 
   it("records nothing on a failure, so the same submission can be retried and sent again", async () => {
@@ -275,7 +299,9 @@ describe("StediTransport HTTP failure mapping", () => {
     expect(code(await transport.submitClaim(CTX, claim()))).toBe(CH.UNAVAILABLE);
     const retry = await transport.submitClaim(CTX, claim());
     expect(retry.ok && !retry.data.replayed).toBe(true);
-    expect(new Headers(calls[1]?.init.headers).get("idempotency-key")).toBe("idem-1");
+    expect(new Headers(calls[1]?.init.headers).get("idempotency-key")).toBe(
+      new Headers(calls[0]?.init.headers).get("idempotency-key"),
+    );
   });
 
   it("treats a 200 with an unreadable body as filed, with a derived submission id", async () => {
@@ -289,6 +315,78 @@ describe("StediTransport HTTP failure mapping", () => {
       throw new Error("sync boom");
     });
     expect(code(await transport.submitClaim(CTX, claim()))).toBe(CH.UNAVAILABLE);
+  });
+});
+
+describe("StediTransport recording and races", () => {
+  const stored = (over: Partial<SubmissionAttempt> = {}): SubmissionAttempt => ({
+    scope: scopeKey(CTX),
+    idempotencyKey: "idem-1",
+    controlNumber: "CCN-1",
+    kind: "claim",
+    identity: "someone-else",
+    clearinghouseSubmissionId: "winner",
+    receivedAt: "2026-10-11T00:00:00.000Z",
+    ...over,
+  });
+  const racing = (winner: SubmissionAttempt): SubmissionAttemptStore => ({
+    findByKey: () => Promise.resolve(null),
+    findByControlNumber: () => Promise.resolve(null),
+    putIfAbsent: () => Promise.resolve({ attempt: winner, inserted: false }),
+  });
+  const withStore = (attempts: SubmissionAttemptStore, anomalies: StediAnomaly[] = []) =>
+    new StediTransport({
+      apiKey: KEY,
+      attempts,
+      fetch: (async () =>
+        Response.json({ claimReference: { correlationId: "mine" } })) as typeof fetch,
+      onAnomaly: (a) => anomalies.push(a),
+    });
+
+  it("does not hand back someone else's receipt when a concurrent call won with another identity", async () => {
+    const t = withStore(racing(stored()));
+    expect(code(await t.submitClaim(CTX, claim()))).toBe(CH.IDEMPOTENCY_CONFLICT);
+  });
+
+  it("flags a duplicate control number sent under another key", async () => {
+    const anomalies: StediAnomaly[] = [];
+    const t = withStore(racing(stored({ idempotencyKey: "other-key" })), anomalies);
+    expect(code(await t.submitClaim(CTX, claim()))).toBe(CH.IDEMPOTENCY_CONFLICT);
+    expect(anomalies).toEqual([{ type: "duplicate_control_number_sent", controlNumber: "CCN-1" }]);
+  });
+
+  it("reports a replay when a concurrent call won with the same key and identity", async () => {
+    const identity = identityOf(claim());
+    const t = withStore(racing(stored({ identity })));
+    const r = await t.submitClaim(CTX, claim());
+    expect(r.ok && r.data.replayed && r.data.clearinghouseSubmissionId).toBe("winner");
+  });
+
+  it("retries the record, then reports an unrecorded send without losing the id", async () => {
+    let puts = 0;
+    const anomalies: StediAnomaly[] = [];
+    const base = new InMemoryAttemptStore();
+    const flaky: SubmissionAttemptStore = {
+      findByKey: (s, k) => base.findByKey(s, k),
+      findByControlNumber: (s, c) => base.findByControlNumber(s, c),
+      putIfAbsent: (a) => (++puts < 2 ? Promise.reject(new Error("db down")) : base.putIfAbsent(a)),
+    };
+    const ok = await withStore(flaky, anomalies).submitClaim(CTX, claim());
+    expect(ok.ok && ok.data.replayed).toBe(false);
+    expect(anomalies).toEqual([]);
+
+    const dead: SubmissionAttemptStore = {
+      ...flaky,
+      putIfAbsent: () => Promise.reject(new Error("db down")),
+    };
+    const lost = await withStore(dead, anomalies).submitClaim(
+      CTX,
+      claim({ idempotencyKey: "k2", controlNumber: "CCN-2" }),
+    );
+    expect(code(lost)).toBe(CH.UNAVAILABLE);
+    expect(anomalies).toEqual([
+      { type: "sent_but_unrecorded", idempotencyKey: "k2", clearinghouseSubmissionId: "mine" },
+    ]);
   });
 });
 
