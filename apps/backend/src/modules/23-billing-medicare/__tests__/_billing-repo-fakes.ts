@@ -128,14 +128,15 @@ export function buildFakeRepositories(): {
       store.claims.set(id, { ...c, occurrenceSpans: [...spans], updatedAt: new Date() });
       return true;
     }
-    /** Mirrors the real repo: refresh the derived physician NPIs (migration 1054) without bumping `version`. */
-    async refreshPhysicianNpis(
+    /** Mirrors the real repo: refresh the derived physician NPIs + name / diagnosis snapshot (migrations 1054 / 1068) without bumping `version`. */
+    async refreshSnapshot(
       id: string,
       npis: { attendingPhysicianNpi: string | null; certifyingPhysicianNpi: string | null },
+      snapshot: Record<string, unknown>,
     ): Promise<boolean> {
       const c = store.claims.get(id);
       if (!c) return false;
-      store.claims.set(id, { ...c, ...npis, updatedAt: new Date() });
+      store.claims.set(id, { ...c, ...npis, ...snapshot, updatedAt: new Date() });
       return true;
     }
     /** Mirrors the real repo: refresh the wage-index value codes (migration 1059) without bumping `version`. */
