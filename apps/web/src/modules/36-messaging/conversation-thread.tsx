@@ -194,6 +194,7 @@ export function ConversationThread({
   const initialScrollPending = useRef(false);
   const readBoundaryRef = useRef<string | null>(null);
   const sendAttemptRef = useRef<SendAttempt | null>(null);
+  const sendInFlightRef = useRef(false);
   const composingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mentionGenerationRef = useRef(0);
@@ -383,6 +384,8 @@ export function ConversationThread({
     setContextOpen(false);
     setNewMessageCount(0);
     readBoundaryRef.current = null;
+    sendAttemptRef.current = null;
+    sendInFlightRef.current = false;
     void loadLatest();
     return () => {
       generationRef.current += 1;
@@ -457,7 +460,8 @@ export function ConversationThread({
   async function send(event?: FormEvent): Promise<void> {
     event?.preventDefault();
     const submitted = draft;
-    if (!submitted.trim() || sending || channel.archivedAt) return;
+    if (!submitted.trim() || sending || sendInFlightRef.current || channel.archivedAt) return;
+    sendInFlightRef.current = true;
     const generation = generationRef.current;
     setSending(true);
     setSendError(null);
@@ -481,8 +485,12 @@ export function ConversationThread({
       },
     );
     if (generation !== generationRef.current) return;
+    sendInFlightRef.current = false;
     setSending(false);
-    if (response?.status === 409) sendAttemptRef.current = rotateIdempotencyKey(attempt);
+    // The idempotency store caches every answered response, errors included, so a retry under the
+    // same key would replay the failure. Keep the key only when no response arrived (lost reply).
+    if (response && response.status >= 400 && sendAttemptRef.current === attempt)
+      sendAttemptRef.current = rotateIdempotencyKey(attempt);
     if (error || !data) {
       setSendError(
         apiErrorMessage(error, "Message could not be sent. Your draft has been preserved."),
