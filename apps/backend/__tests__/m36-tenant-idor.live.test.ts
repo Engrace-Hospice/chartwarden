@@ -1313,6 +1313,60 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         expect(ok.rowCount).toBe(1);
       });
     });
+    it("WP 2.2 / D6: the database itself refuses a parent or quote in another channel (direct INSERT/UPDATE, app role and superuser)", async () => {
+      const insMsg = `INSERT INTO message (channel_id, organization_id, author_user_id, author_kind, body_cipher, body_sha256, parent_message_id, quoted_message_id)
+                      VALUES ($1,$2,$3,'user','\\x00',repeat('b',64),$4,$5) RETURNING id`;
+      const sameChannelFk = /violates foreign key constraint "message_(parent|quoted)_channel_fk"/i;
+      // msgDmA lives in dmA; locA is another channel of the SAME org, dmB belongs to org B.
+      const cases: Array<[string, unknown[], RegExp]> = [
+        ["cross-channel parent", [locA, orgA, u1.userId, msgDmA, null], sameChannelFk],
+        ["cross-channel quote", [locA, orgA, u1.userId, null, msgDmA], sameChannelFk],
+        ["cross-org parent", [dmB, orgB, bUser.userId, msgDmA, null], sameChannelFk],
+        ["cross-org quote", [dmB, orgB, bUser.userId, null, msgDmA], sameChannelFk],
+      ];
+      const asOrg = async <T,>(org: string, fn: (c: Client) => Promise<T>): Promise<T> => {
+        const c = new Client({ connectionString: appUrl });
+        await c.connect();
+        try {
+          await c.query("BEGIN");
+          await c.query("SELECT set_config('app.org_id', $1, true)", [org]);
+          return await fn(c);
+        } finally {
+          await c.query("ROLLBACK").catch(() => undefined);
+          await c.end();
+        }
+      };
+      for (const [label, args, re] of cases) {
+        await asOrg(args[1] as string, async (c) => {
+          await expect(c.query(insMsg, args), `app role: ${label}`).rejects.toThrow(re);
+        });
+        // the superuser bypasses RLS, not constraints
+        await admin.query("BEGIN");
+        try {
+          await expect(admin.query(insMsg, args), `superuser: ${label}`).rejects.toThrow(re);
+        } finally {
+          await admin.query("ROLLBACK");
+        }
+      }
+      // an UPDATE that moves an existing reply's parent to another channel is refused too
+      await asOrg(orgA, async (c) => {
+        const ok = await c.query(insMsg, [dmA, orgA, u1.userId, msgDmA, msgDmA]);
+        expect(ok.rowCount, "positive control: same-channel parent and quote").toBe(1);
+        await expect(
+          c.query("UPDATE message SET parent_message_id = $1 WHERE id = $2", [
+            msgLocA,
+            ok.rows[0].id,
+          ]),
+        ).rejects.toThrow(sameChannelFk);
+      });
+      // and moving the REPLY to another channel while keeping its parent is refused
+      await asOrg(orgA, async (c) => {
+        const ok = await c.query(insMsg, [dmA, orgA, u1.userId, msgDmA, null]);
+        await expect(
+          c.query("UPDATE message SET channel_id = $1 WHERE id = $2", [locA, ok.rows[0].id]),
+        ).rejects.toThrow(sameChannelFk);
+      });
+    });
     it("channel_member.last_read_message_id: a cross-tenant pointer is refused; erasing the message only nulls the pointer", async () => {
       const upd = `UPDATE channel_member SET last_read_message_id = $1
                    WHERE organization_id = $2 AND channel_id = $3 AND user_id = $4`;
