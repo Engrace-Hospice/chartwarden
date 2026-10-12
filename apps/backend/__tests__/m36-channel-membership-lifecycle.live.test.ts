@@ -580,7 +580,7 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     await expect(
       provider.sendMessage(orgA, { channelId, authorUserId: rn, body: "late", bodyKind: "plain" }),
     ).rejects.toMatchObject({ code: "CHANNEL_ARCHIVED" });
-    // an archived channel is read-only: the author can neither edit nor delete their own message
+    // an archived channel is read-only: the author cannot edit their own message (delete stays allowed, below)
     const archivedMessageId = (
       await admin.query(`SELECT id FROM message WHERE channel_id=$1 AND author_user_id=$2`, [
         channelId,
@@ -590,9 +590,6 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     await expect(
       service.editMessage(orgA, { userId: rn, messageId: archivedMessageId, body: "rewrite" }),
     ).rejects.toMatchObject({ statusCode: 410 });
-    await expect(
-      service.deleteMessage(orgA, { userId: rn, messageId: archivedMessageId }),
-    ).rejects.toMatchObject({ statusCode: 410 });
     // ...but reading stays allowed: archived history is still readable by its members
     await expect(
       service.markRead(orgA, { userId: rn, messageId: archivedMessageId }),
@@ -601,6 +598,12 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     const bodies = history.messages.map((m) => m.body);
     expect(bodies).toContain("pre-discharge note");
     expect(bodies).not.toContain("late");
+    // ...and the author can still retract (tombstone) a mistaken message after discharge
+    await expect(
+      service.deleteMessage(orgA, { userId: rn, messageId: archivedMessageId }),
+    ).resolves.not.toThrow();
+    const tomb = await admin.query(`SELECT status FROM message WHERE id=$1`, [archivedMessageId]);
+    expect(tomb.rows[0].status).toBe("deleted");
 
     // a stale assignment that appears after archive cannot add a member to the archived channel
     const late = await seedUser("late");

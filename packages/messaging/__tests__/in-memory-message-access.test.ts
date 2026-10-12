@@ -108,7 +108,7 @@ describe("in-memory service: message access for edit/delete/mark-read", () => {
     ).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  it("returns 410 on edit/delete in an archived channel but still lets a member mark-read", async () => {
+  it("returns 410 on edit in an archived channel but still lets a member mark-read and delete", async () => {
     const service = createInMemoryMessagingService({
       seed: {
         eligibleStaff: [{ orgId: ORG, userId: "member", displayName: "Member", roles: ["RN"] }],
@@ -131,7 +131,7 @@ describe("in-memory service: message access for edit/delete/mark-read", () => {
     await expect(service.editMessage(ORG, { ...input, body: "late" })).rejects.toMatchObject({
       statusCode: 410,
     });
-    await expect(service.deleteMessage(ORG, input)).rejects.toMatchObject({ statusCode: 410 });
     await expect(service.markRead(ORG, input)).resolves.not.toThrow();
+    await expect(service.deleteMessage(ORG, input)).resolves.not.toThrow();
   });
 });

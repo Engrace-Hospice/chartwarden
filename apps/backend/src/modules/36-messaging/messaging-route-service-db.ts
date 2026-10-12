@@ -759,7 +759,8 @@ export function createDbMessagingRouteService(
   /**
    * Edit/delete/mark-read act on an existing message, so the actor must still be allowed into its
    * channel (active user, live membership, Part 2 gate). A miss is a 404, matching canViewChannel's
-   * no-existence-oracle rule; `writable` additionally refuses archived channels with 410.
+   * no-existence-oracle rule; `writable` additionally refuses archived channels with 410. Delete is not
+   * `writable`: a tombstone is the only way an author can retract a mistaken PHI message after discharge.
    */
   async function assertMessageChannelAccess(
     orgId: string,
@@ -1363,7 +1364,7 @@ export function createDbMessagingRouteService(
 
     // --- soft-delete (author only): tombstone — status='deleted', cipher RETAINED (M36-F02) ----
     async deleteMessage(orgId, input) {
-      await assertMessageChannelAccess(orgId, input.userId, input.messageId, true);
+      await assertMessageChannelAccess(orgId, input.userId, input.messageId, false);
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
         await assertLiveMembershipInTx(tx, orgId, input.userId, input.messageId);
         const rows = (await tx

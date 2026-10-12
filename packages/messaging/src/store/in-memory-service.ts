@@ -542,7 +542,7 @@ export function createInMemoryMessagingService(
         orgId,
         input.userId,
         input.messageId,
-        true,
+        false,
       );
       if (m.deletedAt) throw new NotFoundError("message", input.messageId);
       if (m.authorUserId !== input.userId) {
