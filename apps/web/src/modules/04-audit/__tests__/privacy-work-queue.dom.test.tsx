@@ -172,7 +172,7 @@ describe("PrivacyWorkQueue (GAP-012 staff HIPAA §164.526 / §164.528)", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Access report" }));
     fireEvent.change(screen.getByLabelText("Patient"), { target: { value: PATIENT } });
     fireEvent.click(screen.getByRole("button", { name: "Run report" }));
-    const row = (await screen.findByText("phi.read")).closest("tr") as HTMLElement;
+    const row = (await screen.findByText("PHI Read")).closest("tr") as HTMLElement;
     expect(within(row).getByText("Break-glass")).toBeTruthy();
   });
 

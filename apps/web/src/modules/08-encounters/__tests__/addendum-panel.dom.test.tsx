@@ -138,9 +138,8 @@ describe("Addendum panel (GAP-027)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit draft" }));
     fireEvent.click(await screen.findByLabelText("Pain controlled"));
     fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "412 STALE_VERSION: version 3 is stale",
-    );
+    // 77519b66e: the alert is user-facing prose now, not "<status> <CODE>: <message>".
+    expect((await screen.findByRole("alert")).textContent).toBe("version 3 is stale");
   });
 
   it("finalizes a draft and reloads from the server", async () => {
@@ -162,9 +161,7 @@ describe("Addendum panel (GAP-027)", () => {
       POST: vi.fn(async () => ({ error: { error: { code, message } }, response: { status } })),
     });
     fireEvent.click(screen.getByRole("button", { name: "Finalize addendum" }));
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      `${status} ${code}: ${message}`,
-    );
+    expect((await screen.findByRole("alert")).textContent).toBe(message);
     expect(onChanged).not.toHaveBeenCalled();
   });
 
@@ -194,7 +191,7 @@ describe("Addendum panel (GAP-027)", () => {
     fireEvent.click(screen.getByLabelText(/I attest this addendum/));
     fireEvent.click(screen.getByRole("button", { name: "Sign & commit" }));
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("403 STEP_UP_REQUIRED: re-authenticate to sign");
+    expect(alert.textContent).toBe("re-authenticate to signRe-authenticate");
     expect(
       within(alert).getByRole("link", { name: "Re-authenticate" }).getAttribute("href"),
     ).toMatch(/^\/step-up\?returnTo=/);
