@@ -79,7 +79,7 @@ describe.skipIf(!REDIS_URL)("M36 realtime transport — LIVE Valkey, two nodes",
       transports: ["websocket"],
       reconnection: false,
       extraHeaders: {
-        cookie: `better-auth.session_token=${token}; junk=${Math.random()}`, // junk varies per request: must not mint a new throttle bucket
+        cookie: `better-auth.session_token=${token}; junk=${Math.random()}; session_token_x=${Math.random()}`, // junk varies per request: must not mint a new throttle bucket
         ...(origin ? { origin } : {}),
       },
     });

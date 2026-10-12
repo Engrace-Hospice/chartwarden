@@ -21,6 +21,17 @@ describe("realtimeClientKey", () => {
     );
     expect(realtimeClientKey(["10.1.2.3"])(req("10.1.2.3", "198.51.100.7"))).toBe("198.51.100.7");
   });
+  it("walks the chain right to left past every trusted hop (CDN -> LB -> app)", () => {
+    const key = realtimeClientKey(["10.0.0.0/8", "172.16.0.0/12"]);
+    expect(key(req("10.1.2.3", "198.51.100.7, 172.16.0.9"))).toBe("198.51.100.7");
+    expect(key(req("10.1.2.3", "198.51.100.7:4711"))).toBe("198.51.100.7"); // :port suffix
+  });
+  it("buckets an IPv6 caller by its /64 and unwraps IPv4-mapped peers", () => {
+    const key = realtimeClientKey(false);
+    expect(key(req("2001:db8:1:2:aaaa::1"))).toBe(key(req("2001:db8:1:2:bbbb::2")));
+    expect(key(req("2001:db8:1:3::1"))).not.toBe(key(req("2001:db8:1:2::1")));
+    expect(key(req("::ffff:203.0.113.9"))).toBe("203.0.113.9");
+  });
   it("falls back to the peer when a trusted proxy sent no header, and skips keyword entries", () => {
     expect(realtimeClientKey(["10.0.0.0/8"])(req("10.1.2.3"))).toBe("10.1.2.3");
     expect(realtimeClientKey(["loopback"])(req("127.0.0.1", "1.2.3.4"))).toBe("127.0.0.1");

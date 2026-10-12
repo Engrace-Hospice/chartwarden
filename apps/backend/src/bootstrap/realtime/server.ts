@@ -64,7 +64,10 @@ const DEFAULT_HANDSHAKES_PER_SESSION = 20;
 const MAX_HTTP_BUFFER_BYTES = 1024;
 const CONNECT_TIMEOUT_MS = 10_000;
 
-/** Fixed-window counter per key, in memory per node. Pruned on a timer so it cannot grow without bound. */
+// Hard bound on distinct keys per window: past it, new keys are refused instead of growing memory without limit.
+const MAX_LIMITER_KEYS = 100_000;
+
+/** Fixed-window counter per key, in memory per node; the whole table resets each window and is capped in size. */
 function createWindowLimiter(max: number) {
   let windowStart = Date.now();
   let counts = new Map<string, number>();
@@ -75,23 +78,39 @@ function createWindowLimiter(max: number) {
         windowStart = now;
         counts = new Map();
       }
-      const n = (counts.get(key) ?? 0) + 1;
+      const seen = counts.get(key);
+      if (seen === undefined && counts.size >= MAX_LIMITER_KEYS) return false;
+      const n = (seen ?? 0) + 1;
       counts.set(key, n);
       return n <= max;
     },
   };
 }
 
-// Key on the session-token cookie(s) only: hashing the whole header would let a caller mint a fresh bucket per
-// request by varying any unrelated cookie.
-function sessionCookieKey(req: IncomingMessage): string {
-  const tokens = (req.headers.cookie ?? "")
-    .split(";")
-    .map((c) => c.trim())
-    .filter((c) => c.split("=")[0]?.includes("session_token"))
-    .sort()
-    .join(";");
-  return createHash("sha256").update(tokens).digest("base64url");
+// The cookie names Better Auth uses for the session token (the `__Secure-` form in production). The authenticator reads
+// ONE of these, first occurrence; keying on anything looser lets a caller mint a fresh bucket per request (an extra
+// `session_token_x` cookie, a duplicate name) while authentication still resolves the same session.
+const SESSION_COOKIE_NAMES = new Set([
+  "better-auth.session_token",
+  "__Secure-better-auth.session_token",
+]);
+
+/** The first session-token cookie value, or null when the request carries none. */
+function sessionCookieValue(req: IncomingMessage): string | null {
+  for (const part of (req.headers.cookie ?? "").split(";")) {
+    const i = part.indexOf("=");
+    if (i < 0) continue;
+    if (SESSION_COOKIE_NAMES.has(part.slice(0, i).trim())) return part.slice(i + 1).trim();
+  }
+  return null;
+}
+
+/** Bucket key for the per-session limit: the token hash, else the client (a cookieless caller never shares a bucket). */
+function sessionLimitKey(req: IncomingMessage, client: string): string {
+  const token = sessionCookieValue(req);
+  return token === null
+    ? `client:${client}`
+    : `token:${createHash("sha256").update(token).digest("base64url")}`;
 }
 
 export function startRealtimeServer(options: RealtimeOptions): RealtimeHandle {
@@ -125,7 +144,8 @@ export function startRealtimeServer(options: RealtimeOptions): RealtimeHandle {
         return;
       }
       // Cheapest checks first: nothing below touches the database until both counters pass.
-      if (!clientLimiter.allow(clientKey(req)) || !sessionLimiter.allow(sessionCookieKey(req))) {
+      const client = clientKey(req);
+      if (!clientLimiter.allow(client) || !sessionLimiter.allow(sessionLimitKey(req, client))) {
         log("realtime.refused", { reason: "rate_limited" });
         callback("unauthorized", false);
         return;
