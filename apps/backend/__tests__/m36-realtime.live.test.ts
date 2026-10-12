@@ -43,7 +43,7 @@ describe.skipIf(!REDIS_URL)("M36 realtime transport — LIVE Valkey, two nodes",
   };
 
   async function node(
-    options: { max?: number } = {},
+    options: { max?: number; perSession?: number } = {},
   ): Promise<{ url: string; handle: RealtimeHandle; pub: Redis; sub: Redis }> {
     const httpServer = createServer();
     servers.push(httpServer);
@@ -58,6 +58,7 @@ describe.skipIf(!REDIS_URL)("M36 realtime transport — LIVE Valkey, two nodes",
       trustedOrigins: [ORIGIN],
       maxSocketsPerUser: options.max ?? 8,
       recheckIntervalMs: 150,
+      ...(options.perSession ? { handshakesPerSessionPerMinute: options.perSession } : {}),
       authenticate: async (headers) => PRINCIPALS[tokenOf(headers.cookie)] ?? null,
       resolveRooms: async (p) => [`user:${p.userId}`, `org:${p.organizationId}`],
       stillValid: async (p) => aliveSessions.has(p.sessionId),
@@ -135,6 +136,14 @@ describe.skipIf(!REDIS_URL)("M36 realtime transport — LIVE Valkey, two nodes",
     expect(h1).toEqual(HINT);
     expect(h2).toEqual(HINT); // cross-node
     expect(h3).toBeNull(); // another user in the same org
+  });
+
+  it("refuses a flood of handshakes on one session cookie before any authentication work", async () => {
+    const a = await node({ perSession: 3 });
+    const attempts = Array.from({ length: 6 }, () => open(a.url, "tok_u2"));
+    const results = await Promise.allSettled(attempts.map((s) => connected(s)));
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(3);
+    expect(results.filter((r) => r.status === "rejected")).toHaveLength(3);
   });
 
   it("ignores a client trying to choose its own room", async () => {

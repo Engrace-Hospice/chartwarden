@@ -44,6 +44,7 @@ import { createUnboundIqiesAdapter } from "@wardenx/iqies-client";
 import type { AlertEmitter, MessagingProvider } from "@wardenx/messaging";
 import {
   REALTIME_HINT_EVENT,
+  accountRoom,
   computeRoomSet,
   createAlertPayloadRegistry,
   userRoom,
@@ -73,6 +74,7 @@ import { createX12835Client } from "@wardenx/x12-835-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import Redis, { type RedisOptions } from "ioredis";
+import { parseTrustedProxies } from "./bootstrap";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
 import { attachDlqPromotionAlert, buildDlqPromotionSink } from "./bootstrap/dlq-alerts";
 import { buildF2fClinicianRoleReader } from "./bootstrap/f2f-clinician-roles";
@@ -254,6 +256,11 @@ import {
   embedderUnavailable,
   licensedSourceDenyStub,
 } from "@wardenx/terminology-loader";
+import {
+  type RealtimeHandle,
+  createRealtimeEmitter,
+  startRealtimeServer,
+} from "./bootstrap/realtime";
 import { revokeAuditorMagicLinksForEngagement } from "./modules/02-identity/auditor-magic-link-store";
 import {
   M2_OUTBOX_EVENTS,
@@ -1402,16 +1409,10 @@ import {
   wireM36DeliveryTenancy,
 } from "./modules/36-messaging/index";
 import {
-  type RealtimeHandle,
-  createRealtimeEmitter,
-  startRealtimeServer,
-} from "./bootstrap/realtime";
-import {
   channelHintAudience,
   endChannelMembershipsForUser,
   setCareTeamChannelArchived,
 } from "./modules/36-messaging/messaging-provider-db";
-import { buildM36MessageHintConsumer } from "./modules/36-messaging/outbox-consumers/message-hints";
 import {
   buildM36AccessRevocationConsumer,
   buildM36AccessRevocationPlatformConsumer,
@@ -1426,6 +1427,7 @@ import { buildM36FieldSafetyAlertConsumer } from "./modules/36-messaging/outbox-
 import { buildM36IpuAlertConsumer } from "./modules/36-messaging/outbox-consumers/ipu-alerts";
 import { buildM36IpuIvAlertConsumer } from "./modules/36-messaging/outbox-consumers/ipu-iv-alerts";
 import { buildM36ConsentRevokedConsumer } from "./modules/36-messaging/outbox-consumers/m39-consent-revoked";
+import { buildM36MessageHintConsumer } from "./modules/36-messaging/outbox-consumers/message-hints";
 import { buildM36MessageMentionConsumer } from "./modules/36-messaging/outbox-consumers/message-mentions";
 import { buildM36OncallAlertConsumer } from "./modules/36-messaging/outbox-consumers/oncall-alerts";
 import { buildM36QualityAlertConsumer } from "./modules/36-messaging/outbox-consumers/quality-alerts";
@@ -9292,7 +9294,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             endChannelMemberships: (orgId, userId) =>
               endChannelMembershipsForUser(dbHandle.db, orgId, userId),
             ...(realtimeEmitter
-              ? { disconnectUser: (userId) => realtimeEmitter.disconnectRoom(userRoom(userId)) }
+              ? {
+                  disconnectUser: (orgId, userId) =>
+                    realtimeEmitter.disconnectRoom(userRoom(orgId, userId)),
+                }
               : {}),
           }),
           // WP 1.1 — committed message changes become PHI-free realtime hints (`emitToRooms` is added with the
@@ -10419,7 +10424,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           // WP 1.1 — a platform-wide offboarding (`m2.user.deactivated`, no org) has no org to end memberships in.
           buildM36AccessRevocationPlatformConsumer(
             realtimeEmitter
-              ? { disconnectUser: (userId) => realtimeEmitter.disconnectRoom(userRoom(userId)) }
+              ? {
+                  disconnectAccount: (userId) =>
+                    realtimeEmitter.disconnectRoom(accountRoom(userId)),
+                }
               : {},
           ),
         ],
@@ -10508,6 +10516,19 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         pubClient,
         subClient,
         trustedOrigins: resolveTrustedOrigins(),
+        // Behind a trusted proxy the socket address is the proxy: key on the entry the nearest proxy appended.
+        ...(parseTrustedProxies(process.env.TRUSTED_PROXY_CIDRS)
+          ? {
+              clientKey: (req) => {
+                const xff = req.headers["x-forwarded-for"];
+                const last = (Array.isArray(xff) ? xff.join(",") : (xff ?? ""))
+                  .split(",")
+                  .pop()
+                  ?.trim();
+                return last || req.socket.remoteAddress || "unknown";
+              },
+            }
+          : {}),
         log: (event, context) => app.log.info(context, event),
         authenticate: async (headers) => {
           const snap = await getIdentitySession(auth, headers);
@@ -10549,7 +10570,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             })),
           }),
         stillValid: async ({ sessionId, organizationId }) => {
-          if ((await sessionEnforcer.enforce(sessionId, { recordActivity: false })) !== "active") return false;
+          if ((await sessionEnforcer.enforce(sessionId, { recordActivity: false })) !== "active")
+            return false;
           const actor = await getSeam("SessionContextResolver").resolveActor(
             { orgId: organizationId },
             sessionId,

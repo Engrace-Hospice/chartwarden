@@ -23,6 +23,7 @@ export {
 // ── M36-T08 realtime event & room CONTRACT (§4.3) — pure room-set + sanitized event payloads ──
 export {
   // room grammar + connect-time room-set computation
+  accountRoom,
   userRoom,
   careTeamRoom,
   disciplineRoom,

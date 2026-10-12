@@ -8,7 +8,8 @@
 //  * A socket is not session activity (ADR-0054 item 12): the injected `stillValid` re-checks the session with
 //    `recordActivity:false`, on an interval, and a dead session is disconnected.
 //  * This directory is M1 and imports nothing from M36; everything M36-shaped is injected by the composition root.
-import type { IncomingMessage, Server as HttpServer } from "node:http";
+import { createHash } from "node:crypto";
+import type { Server as HttpServer, IncomingMessage } from "node:http";
 import { createAdapter } from "@socket.io/redis-adapter";
 import type { Redis } from "ioredis";
 import { Server } from "socket.io";
@@ -35,6 +36,12 @@ export interface RealtimeOptions {
   readonly trustedOrigins: readonly string[];
   readonly maxSocketsPerUser?: number;
   readonly recheckIntervalMs?: number;
+  /** Handshake attempts per client key per minute (default 60); over it the request is refused BEFORE any DB work. */
+  readonly handshakesPerClientPerMinute?: number;
+  /** Handshake attempts per session cookie per minute (default 20): one valid cookie cannot open a flood. */
+  readonly handshakesPerSessionPerMinute?: number;
+  /** The caller key for the per-client limit. Default: the socket's remote address (a proxy needs its own key). */
+  readonly clientKey?: (req: IncomingMessage) => string;
   readonly log?: RealtimeLog;
 }
 
@@ -49,6 +56,37 @@ export interface RealtimeHandle {
 const DEFAULT_MAX_SOCKETS_PER_USER = 8;
 const DEFAULT_RECHECK_MS = 60_000;
 const MAX_RECHECK_FAILURES = 3;
+const RATE_WINDOW_MS = 60_000;
+const DEFAULT_HANDSHAKES_PER_CLIENT = 60;
+const DEFAULT_HANDSHAKES_PER_SESSION = 20;
+// Clients send nothing (no client->server events), so a tiny frame limit costs nothing; the connect timeout bounds
+// engine sessions that never complete the namespace CONNECT.
+const MAX_HTTP_BUFFER_BYTES = 1024;
+const CONNECT_TIMEOUT_MS = 10_000;
+
+/** Fixed-window counter per key, in memory per node. Pruned on a timer so it cannot grow without bound. */
+function createWindowLimiter(max: number) {
+  let windowStart = Date.now();
+  let counts = new Map<string, number>();
+  return {
+    allow(key: string): boolean {
+      const now = Date.now();
+      if (now - windowStart >= RATE_WINDOW_MS) {
+        windowStart = now;
+        counts = new Map();
+      }
+      const n = (counts.get(key) ?? 0) + 1;
+      counts.set(key, n);
+      return n <= max;
+    },
+  };
+}
+
+function sessionCookieKey(req: IncomingMessage): string {
+  return createHash("sha256")
+    .update(req.headers.cookie ?? "")
+    .digest("base64url");
+}
 
 export function startRealtimeServer(options: RealtimeOptions): RealtimeHandle {
   const log: RealtimeLog = options.log ?? (() => {});
@@ -57,16 +95,33 @@ export function startRealtimeServer(options: RealtimeOptions): RealtimeHandle {
   const principals = new WeakMap<IncomingMessage, RealtimePrincipal>();
   const socketsByUser = new Map<string, Set<string>>();
 
+  const clientLimiter = createWindowLimiter(
+    options.handshakesPerClientPerMinute ?? DEFAULT_HANDSHAKES_PER_CLIENT,
+  );
+  const sessionLimiter = createWindowLimiter(
+    options.handshakesPerSessionPerMinute ?? DEFAULT_HANDSHAKES_PER_SESSION,
+  );
+  const clientKey =
+    options.clientKey ?? ((req: IncomingMessage) => req.socket.remoteAddress ?? "unknown");
+
   const io = new Server(options.httpServer, {
     path: "/socket.io",
     serveClient: false,
+    maxHttpBufferSize: MAX_HTTP_BUFFER_BYTES,
+    connectTimeout: CONNECT_TIMEOUT_MS,
     // websocket first, long-polling allowed as the fallback (D11); polling needs sticky sessions at the ingress.
     transports: ["websocket", "polling"],
     allowRequest: (req, callback) => {
       const origin = req.headers.origin;
       if (origin && !trusted.has(origin)) {
         log("realtime.refused", { reason: "origin" });
-        callback("origin not allowed", false);
+        callback("unauthorized", false);
+        return;
+      }
+      // Cheapest checks first: nothing below touches the database until both counters pass.
+      if (!clientLimiter.allow(clientKey(req)) || !sessionLimiter.allow(sessionCookieKey(req))) {
+        log("realtime.refused", { reason: "rate_limited" });
+        callback("unauthorized", false);
         return;
       }
       options

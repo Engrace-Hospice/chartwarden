@@ -28,7 +28,7 @@ describe("m36.message-hints", () => {
     );
     expect(audience).toHaveBeenCalledWith(ORG, "ch_1"); // tenant from the envelope, not the payload
     const [rooms, hint] = emitToRooms.mock.calls[0]!;
-    expect(rooms).toEqual(["user:u1", "user:u2"]);
+    expect(rooms).toEqual([`user:${ORG}:u1`, `user:${ORG}:u2`]);
     expect(hint).toMatchObject({
       kind: "message.new",
       ids: { channelId: "ch_1", messageId: "msg_1" },

@@ -32,8 +32,13 @@ export const M36_ACCESS_REVOCATION_EVENT_TYPES = [
 export interface AccessRevocationDeps {
   /** Soft-remove every active `channel_member` row for the user in the org (M36 DB adapter). */
   readonly endChannelMemberships: (orgId: string, userId: string) => Promise<unknown>;
-  /** Drop the user's live sockets on every api node (ADR-0054 item 6). Absent while realtime is not wired. */
-  readonly disconnectUser?: (userId: string) => Promise<void>;
+  /** Drop the user's live sockets IN THIS ORG on every api node (ADR-0054 item 6). Absent while realtime is not wired. */
+  readonly disconnectUser?: (orgId: string, userId: string) => Promise<void>;
+}
+
+export interface PlatformAccessRevocationDeps {
+  /** Drop every socket of the person, whatever org it was opened for. */
+  readonly disconnectAccount?: (userId: string) => Promise<void>;
 }
 
 function optionalString(p: Record<string, unknown>, key: string): string | null {
@@ -56,20 +61,20 @@ async function handleEvent(
     case "m2.membership.suspended": {
       const userId = optionalString(p, "userId");
       // Only the suspend arm drops access; the same event name never carries a reinstate (that is its own event).
-      if (userId && p.to === "suspended") await deps.disconnectUser?.(userId);
+      if (userId && p.to === "suspended") await deps.disconnectUser?.(event.organizationId, userId);
       return;
     }
     case "m2.membership.revoked": {
       const userId = optionalString(p, "userId");
       if (!userId) return;
       await deps.endChannelMemberships(event.organizationId, userId);
-      await deps.disconnectUser?.(userId);
+      await deps.disconnectUser?.(event.organizationId, userId);
       return;
     }
     case "m2.user.deactivated": {
       const userId = requireString(p, "userId", event.eventType);
       await deps.endChannelMemberships(event.organizationId, userId);
-      await deps.disconnectUser?.(userId);
+      await deps.disconnectUser?.(event.organizationId, userId);
       return;
     }
     default:
@@ -90,7 +95,7 @@ export function buildM36AccessRevocationConsumer(
 
 /** Platform-wide offboarding (`organization_id IS NULL`): no org to end memberships in, so sockets only. */
 export function buildM36AccessRevocationPlatformConsumer(
-  deps: Pick<AccessRevocationDeps, "disconnectUser">,
+  deps: PlatformAccessRevocationDeps,
 ): PlatformOutboxConsumerBinding {
   return {
     consumerName: M36_ACCESS_REVOCATION_PLATFORM_CONSUMER,
@@ -102,7 +107,7 @@ export function buildM36AccessRevocationPlatformConsumer(
         "userId",
         event.eventType,
       );
-      await deps.disconnectUser?.(userId);
+      await deps.disconnectAccount?.(userId);
     },
   };
 }

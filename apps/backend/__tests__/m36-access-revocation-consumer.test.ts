@@ -37,7 +37,7 @@ describe("m36.access-revocation", () => {
       }),
     );
     expect(t.endChannelMemberships).toHaveBeenCalledWith(ORG, "u1");
-    expect(t.disconnectUser).toHaveBeenCalledWith("u1");
+    expect(t.disconnectUser).toHaveBeenCalledWith(ORG, "u1");
   });
 
   it("suspended: drops sockets but keeps membership rows", async () => {
@@ -45,7 +45,7 @@ describe("m36.access-revocation", () => {
     await t.consumer.handle(
       event("m2.membership.suspended", { userId: "u1", from: "active", to: "suspended" }),
     );
-    expect(t.disconnectUser).toHaveBeenCalledWith("u1");
+    expect(t.disconnectUser).toHaveBeenCalledWith(ORG, "u1");
     expect(t.endChannelMemberships).not.toHaveBeenCalled();
   });
 
@@ -63,7 +63,7 @@ describe("m36.access-revocation", () => {
     const t = setup();
     await t.consumer.handle(event("m2.user.deactivated", { userId: "u2", reason: "left" }));
     expect(t.endChannelMemberships).toHaveBeenCalledWith(ORG, "u2");
-    expect(t.disconnectUser).toHaveBeenCalledWith("u2");
+    expect(t.disconnectUser).toHaveBeenCalledWith(ORG, "u2");
     await expect(t.consumer.handle(event("m2.user.deactivated", { reason: "x" }))).rejects.toThrow(
       /no userId/,
     );
@@ -85,8 +85,8 @@ describe("m36.access-revocation", () => {
   });
 
   it("platform deactivation drops sockets by user, with no org", async () => {
-    const disconnectUser = vi.fn().mockResolvedValue(undefined);
-    const c = buildM36AccessRevocationPlatformConsumer({ disconnectUser });
+    const disconnectAccount = vi.fn().mockResolvedValue(undefined);
+    const c = buildM36AccessRevocationPlatformConsumer({ disconnectAccount });
     await c.handle({
       id: "e",
       eventType: "m2.user.deactivated",
@@ -96,6 +96,6 @@ describe("m36.access-revocation", () => {
       attemptCount: 0,
       createdAt: new Date(),
     });
-    expect(disconnectUser).toHaveBeenCalledWith("u3");
+    expect(disconnectAccount).toHaveBeenCalledWith("u3");
   });
 });
