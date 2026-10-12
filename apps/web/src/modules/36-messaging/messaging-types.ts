@@ -115,4 +115,6 @@ export interface AttachmentChip {
   readonly status: AttachmentChipStatus;
   readonly message: string | null;
   readonly attachmentId: string | null;
+  /** Bytes are uploaded and the server is scanning inline; the chip is still not sendable. Label only. */
+  readonly checking?: boolean;
 }

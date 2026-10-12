@@ -522,7 +522,7 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
   }, [client, patch, stopPolling]);
 
   const chips: readonly AttachmentChip[] = tracked.map(
-    ({ localId, file, fileName, contentType, byteSize, status, message, attachmentId }) => ({
+    ({ localId, file, fileName, contentType, byteSize, status, message, attachmentId, stage }) => ({
       localId,
       file,
       fileName,
@@ -531,6 +531,7 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
       status,
       message,
       attachmentId,
+      checking: status === "uploading" && stage === "complete",
     }),
   );
   return {

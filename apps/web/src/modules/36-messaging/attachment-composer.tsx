@@ -71,9 +71,12 @@ function keyedNotices(notices: readonly string[]): { key: string; text: string }
   });
 }
 
+const statusLabel = (chip: AttachmentChip): string =>
+  chip.checking ? STATUS_LABEL.scanning : STATUS_LABEL[chip.status];
+
 function announcement(chip: AttachmentChip): string {
   const note = chip.message ? `. ${chip.message}` : "";
-  return `${displayFileName(chip.fileName)}: ${STATUS_LABEL[chip.status]}${note}`;
+  return `${displayFileName(chip.fileName)}: ${statusLabel(chip)}${note}`;
 }
 
 /**
@@ -144,7 +147,7 @@ export function AttachmentChips({
                 </span>
                 <span className="wx-attachment-size">{formatBytes(chip.byteSize)}</span>
                 <span className="wx-attachment-state">
-                  {STATUS_LABEL[chip.status]}
+                  {statusLabel(chip)}
                   {chip.message ? (
                     <span className="wx-attachment-note"> {chip.message}</span>
                   ) : null}

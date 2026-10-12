@@ -104,6 +104,21 @@ describe("WP 1.5 request deadlines", () => {
     expect(inList().getByRole("button", { name: "Remove report.pdf" })).toBeTruthy();
   });
 
+  it("labels a chip Scanning while complete is in flight, yet holds Send until the server answers", async () => {
+    mountThread({
+      POST: (path, init) =>
+        path === STORE_PATHS.uploads
+          ? authorizedWith(ATTACHMENT_ID)
+          : path === STORE_PATHS.complete
+            ? hang(init)
+            : undefined,
+    });
+    await attach([pdf()]);
+    await waitFor(() => expect(inList().getByText("Scanning…")).toBeTruthy());
+    expect(inList().queryByText("Uploading…")).toBeNull();
+    expect(sendButton().disabled).toBe(true);
+  });
+
   it("closes the pre-opened tab and shows the unavailable state when the access read never answers", async () => {
     const tab = fakeTab();
     const open = vi.spyOn(window, "open").mockReturnValue(tab as unknown as Window);
