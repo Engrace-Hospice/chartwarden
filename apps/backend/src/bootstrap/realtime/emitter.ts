@@ -13,14 +13,22 @@ export interface RealtimeEmitterPort {
   disconnectRoom(room: string): Promise<void>;
 }
 
+// The emitter library publishes fire-and-forget, so a publish into a down Valkey would queue silently and the
+// outbox row would be acked. Refuse up front instead: the dispatcher then retries (revocation must not be at-most-once).
+function assertReady(client: Redis): void {
+  if (client.status !== "ready") throw new Error(`realtime emitter not ready (${client.status})`);
+}
+
 export function createRealtimeEmitter(client: Redis): RealtimeEmitterPort {
   const emitter = new Emitter(client);
   return {
     async emit(rooms, event, payload) {
       if (rooms.length === 0) return;
+      assertReady(client);
       emitter.to([...rooms]).emit(event, payload);
     },
     async disconnectRoom(room) {
+      assertReady(client);
       emitter.in(room).disconnectSockets(true);
     },
   };

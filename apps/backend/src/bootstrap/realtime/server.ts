@@ -48,6 +48,7 @@ export interface RealtimeHandle {
 
 const DEFAULT_MAX_SOCKETS_PER_USER = 8;
 const DEFAULT_RECHECK_MS = 60_000;
+const MAX_RECHECK_FAILURES = 3;
 
 export function startRealtimeServer(options: RealtimeOptions): RealtimeHandle {
   const log: RealtimeLog = options.log ?? (() => {});
@@ -130,7 +131,9 @@ export function startRealtimeServer(options: RealtimeOptions): RealtimeHandle {
       });
   });
 
-  // Session expiry: one sweep, one check per distinct session per tick.
+  // Session expiry: one sweep, one check per distinct session per tick. A failed check is tolerated (a DB blip must
+  // not mass-disconnect) but only MAX_RECHECK_FAILURES times in a row, so an outage cannot keep a revoked session alive.
+  const failures = new Map<string, number>();
   const timer = setInterval(() => {
     const checked = new Map<string, Promise<boolean>>();
     for (const socket of io.sockets.sockets.values()) {
@@ -138,7 +141,19 @@ export function startRealtimeServer(options: RealtimeOptions): RealtimeHandle {
       if (!principal) continue;
       let alive = checked.get(principal.sessionId);
       if (!alive) {
-        alive = options.stillValid(principal).catch(() => true); // a check failure must not mass-disconnect
+        const sessionId = principal.sessionId;
+        alive = options.stillValid(principal).then(
+          (ok) => {
+            failures.delete(sessionId);
+            return ok;
+          },
+          () => {
+            const n = (failures.get(sessionId) ?? 0) + 1;
+            failures.set(sessionId, n);
+            log("realtime.recheck_failed", { userId: principal.userId, consecutive: n });
+            return n < MAX_RECHECK_FAILURES;
+          },
+        );
         checked.set(principal.sessionId, alive);
       }
       void alive.then((ok) => {

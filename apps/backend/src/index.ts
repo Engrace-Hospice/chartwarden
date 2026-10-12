@@ -3368,7 +3368,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   // WP 1.1 / ADR-0054 — the Socket.IO transport is OPT-IN per environment (the web client keeps polling until the
   // flag is on). `realtimeRef` is late-bound like the dispatcher ref: the readiness probe is built before the
   // server exists. Consumers (worker side) never hold the Server: they reach every api node through the Valkey
-  // emitter (addendum A1), on a dedicated connection that queues offline instead of rejecting during an outage.
+  // emitter (addendum A1), on a dedicated connection; the emitter port refuses to publish unless it is ready, so the dispatcher retries.
   const realtimeEnabled = process.env.REALTIME_ENABLED === "true";
   let realtimeRef: RealtimeHandle | undefined;
   const realtimeEmitterClient =
@@ -10521,6 +10521,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           );
           // Staff only: portal, auditor and external sessions have no realtime channel (addendum A5).
           if (!actor || actor.sessionClass !== "staff") return null;
+          // A suspended/removed membership leaves the session valid but resolves with no membership: refuse it, or the
+          // user reconnects straight after the suspend-time disconnect.
+          if (!actor.membershipId) return null;
           if (mfaGate) {
             const verdict = await mfaGate.forRoles({
               userId: actor.userId,
@@ -10545,8 +10548,14 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               subjectId: c.subjectId,
             })),
           }),
-        stillValid: async ({ sessionId }) =>
-          (await sessionEnforcer.enforce(sessionId, { recordActivity: false })) === "active",
+        stillValid: async ({ sessionId, organizationId }) => {
+          if ((await sessionEnforcer.enforce(sessionId, { recordActivity: false })) !== "active") return false;
+          const actor = await getSeam("SessionContextResolver").resolveActor(
+            { orgId: organizationId },
+            sessionId,
+          );
+          return Boolean(actor?.membershipId);
+        },
       });
       app.addHook("onClose", async () => {
         await realtimeRef?.close();
