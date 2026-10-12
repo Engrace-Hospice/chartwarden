@@ -81,8 +81,8 @@ export type RichBodyResult =
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // C0/C1 controls (newline and tab are kept only where the node allows them), bidi embedding/override/isolate
 // controls (Trojan-Source), BOM, word joiner, zero-width space, line/paragraph separators.
-// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control characters is the point
 const STRIP_COMMON =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control characters is the point
   /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u061C\u200B\u2028\u2029\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/g;
 const STRIP_INLINE = /[\n\t\r]/g;
 
