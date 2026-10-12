@@ -2944,6 +2944,38 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
     });
   });
 
+  describe("hardening: audit trail ignores scan-sweep bookkeeping (D)", () => {
+    it("retry bookkeeping writes no audit_event; completion and the verdict do", async () => {
+      const auditUpdates = (id: string) =>
+        count(
+          `SELECT count(*)::int AS n FROM audit_event WHERE resource_kind='message_attachment' AND resource_id=$1 AND event_type='message_attachment.update'`,
+          [id],
+        );
+      scanner.down = true;
+      const up = await uploaded(u1, dm, pdfBytes("audit-noise"));
+      scanner.down = false;
+      // complete stamped completed_at (audited); the failed inline attempt only bumped scan_attempts (not audited)
+      expect(
+        (await admin.query(`SELECT scan_attempts FROM message_attachment WHERE id=$1`, [up.attachmentId])).rows[0].scan_attempts,
+      ).toBeGreaterThan(0);
+      expect(await auditUpdates(up.attachmentId)).toBe(1);
+      scanner.down = true;
+      pastBackoff();
+      await attachmentScanTick({
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+        service: attachments,
+      });
+      scanner.down = false;
+      expect(await auditUpdates(up.attachmentId)).toBe(1);
+      pastBackoff();
+      await attachmentScanTick({
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+        service: attachments,
+      });
+      expect(await auditUpdates(up.attachmentId)).toBe(2); // the clean verdict is audited
+    });
+  });
+
   describe("hardening: total stored-bytes quota (per user and per org)", () => {
     const quotaService = (quota: { orgBytes: number; userBytes: number }) =>
       createAttachmentService({
