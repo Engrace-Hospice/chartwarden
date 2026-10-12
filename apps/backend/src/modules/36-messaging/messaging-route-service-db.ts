@@ -73,6 +73,7 @@ import {
   generateVerificationCode,
   hashVerificationCode,
 } from "./endpoint-verification";
+import { publishMessageHint } from "./message-hint-events";
 import {
   type MessageBodyCipher,
   channelOr404,
@@ -80,7 +81,6 @@ import {
   insertEncryptedMessage,
   markMessagesRead,
 } from "./messaging-write-core";
-import { publishMessageHint } from "./message-hint-events";
 import { type Part2ChannelGate, createSeamPart2ChannelGate } from "./part2-channel-gate";
 
 const CH = schema.channels;
@@ -88,6 +88,11 @@ const CM = schema.channelMembers;
 const MSG = schema.messages;
 const MR = schema.messageReceipts;
 const MER = schema.messageEntityReferences;
+const MREV = schema.messageRevisions;
+
+// ADR-0055 item 3: the author may edit for this long after the message was created (server clock). Tenant shortening
+// arrives with per-tenant messaging settings; the platform maximum is this value.
+const EDIT_WINDOW_MS = 5 * 60 * 1000;
 const UNP = schema.userNotificationPreferences;
 const DE = schema.deliveryEndpoints;
 const AR = schema.alertRules;
@@ -1326,20 +1331,61 @@ export function createDbMessagingRouteService(
       }
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
         await assertLiveMembershipInTx(tx, orgId, input.userId, input.messageId);
-        const rows = (await tx
-          .select({ authorUserId: MSG.authorUserId, status: MSG.status, channelId: MSG.channelId })
+        // Lock the row so two concurrent edits cannot claim the same revision number.
+        const [m] = await tx
+          .select({
+            authorUserId: MSG.authorUserId,
+            status: MSG.status,
+            channelId: MSG.channelId,
+            bodyCipher: MSG.bodyCipher,
+            bodySha256: MSG.bodySha256,
+            bodyKind: MSG.bodyKind,
+            createdAt: MSG.createdAt,
+            editedAt: MSG.editedAt,
+            ageMs: sql<number>`extract(epoch from (now() - ${MSG.createdAt})) * 1000`,
+          })
           .from(MSG)
           .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, input.messageId)))
-          .limit(1)) as Array<{
-          authorUserId: string | null;
-          status: string;
-          channelId: string;
-        }>;
-        const m = rows[0];
+          .limit(1)
+          .for("update");
         if (!m || m.status === "deleted") throw new NotFoundError("message", input.messageId);
         if (m.authorUserId !== input.userId) {
           throw new ForbiddenError("only the author may edit a message");
         }
+        if (Number(m.ageMs) > EDIT_WINDOW_MS) {
+          throw new WardenXError(
+            "MESSAGE_EDIT_WINDOW_CLOSED",
+            "the edit window has closed; send a new message that quotes this one",
+            409,
+          );
+        }
+        // ADR-0055 item 2: keep the body being replaced (and its mention snapshot) before overwriting the head.
+        const [{ lastNo }] = (await tx
+          .select({ lastNo: sql<number>`coalesce(max(${MREV.revisionNo}), 0)` })
+          .from(MREV)
+          .where(and(eq(MREV.organizationId, orgId), eq(MREV.messageId, input.messageId)))) as [
+          { lastNo: number },
+        ];
+        const previousReferences = await tx
+          .select({
+            kind: MER.referenceKind,
+            entityId: MER.entityId,
+            start: MER.startOffset,
+            end: MER.endOffset,
+          })
+          .from(MER)
+          .where(and(eq(MER.organizationId, orgId), eq(MER.messageId, input.messageId)));
+        await tx.insert(MREV).values({
+          organizationId: orgId,
+          messageId: input.messageId,
+          revisionNo: Number(lastNo) + 1,
+          bodyCipher: m.bodyCipher,
+          bodySha256: m.bodySha256,
+          bodyKind: m.bodyKind,
+          referencesSnapshot: previousReferences,
+          bodyWrittenAt: m.editedAt ?? m.createdAt,
+          editedBy: input.userId,
+        });
         const { cipher: bodyCipher, sha256 } = cipher.seal(orgId, input.body);
         const editedAt = new Date();
         await tx

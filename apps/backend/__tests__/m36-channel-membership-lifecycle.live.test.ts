@@ -32,6 +32,7 @@ import {
   endChannelMembershipsForUser,
   setCareTeamChannelArchived,
 } from "../src/modules/36-messaging/messaging-provider-db";
+import { createMessageBodyCipher } from "../src/modules/36-messaging/messaging-write-core";
 import { buildM36AccessRevocationConsumer } from "../src/modules/36-messaging/outbox-consumers/access-revocation";
 import { buildM36ChannelMembershipSyncConsumer } from "../src/modules/36-messaging/outbox-consumers/channel-membership-sync";
 import { createDbConsentEvaluator } from "../src/modules/39-consent/index";
@@ -590,6 +591,76 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     await consumer.handle(event(orgA, "m2.membership.revoked", leaver));
     await consumer.handle(event(orgA, "m2.user.deactivated", leaver));
     expect((await activeMembers()).sort()).toEqual(others);
+  });
+
+  it("an edit keeps the replaced body in an append-only revision chain, inside a server-clock window (ADR-0055)", async () => {
+    const service = createDbMessagingRouteService(handle.db, { kek: KEK });
+    const cipher = createMessageBodyCipher({ kek: KEK });
+    const sent = await service.sendMessage(orgA, {
+      channelId,
+      authorUserId: rn,
+      body: "original wording",
+      bodyKind: "plain",
+    });
+    await service.editMessage(orgA, { userId: rn, messageId: sent.messageId, body: "second" });
+    await service.editMessage(orgA, { userId: rn, messageId: sent.messageId, body: "third" });
+
+    const revisions = await admin.query(
+      `SELECT revision_no, body_cipher, body_sha256, edited_by FROM message_revision
+       WHERE message_id=$1 ORDER BY revision_no`,
+      [sent.messageId],
+    );
+    expect(revisions.rows.map((r) => r.revision_no)).toEqual([1, 2]);
+    expect(cipher.open(orgA, revisions.rows[0].body_cipher)).toBe("original wording");
+    expect(cipher.open(orgA, revisions.rows[1].body_cipher)).toBe("second");
+    expect(revisions.rows.every((r) => r.edited_by === rn)).toBe(true);
+    // the head still verifies against its own hash, and each revision against the hash of the body it holds
+    const head = await admin.query(`SELECT body_cipher, body_sha256 FROM message WHERE id=$1`, [
+      sent.messageId,
+    ]);
+    expect(cipher.open(orgA, head.rows[0].body_cipher)).toBe("third");
+    expect(head.rows[0].body_sha256).toBe(cipher.seal(orgA, "third").sha256);
+    expect(revisions.rows[0].body_sha256).toBe(cipher.seal(orgA, "original wording").sha256);
+
+    // the app role can append but never rewrite or remove a revision
+    const app = new Client({ connectionString: await appRoleConnectionString(admin, DB_URL as string) });
+    await app.connect();
+    try {
+      await app.query("BEGIN");
+      await app.query("SELECT set_config('app.org_id', $1, true)", [orgA]);
+      await expect(
+        app.query(`UPDATE message_revision SET body_sha256 = repeat('0',64) WHERE message_id=$1`, [
+          sent.messageId,
+        ]),
+      ).rejects.toMatchObject({ code: "42501" });
+      await app.query("ROLLBACK");
+      await app.query("BEGIN");
+      await app.query("SELECT set_config('app.org_id', $1, true)", [orgA]);
+      await expect(
+        app.query(`DELETE FROM message_revision WHERE message_id=$1`, [sent.messageId]),
+      ).rejects.toMatchObject({ code: "42501" });
+      await app.query("ROLLBACK");
+      // another tenant sees nothing
+      await app.query("BEGIN");
+      await app.query("SELECT set_config('app.org_id', $1, true)", [orgB]);
+      expect((await app.query(`SELECT 1 FROM message_revision`)).rowCount).toBe(0);
+      await app.query("ROLLBACK");
+    } finally {
+      await app.end();
+    }
+
+    // past the window the author cannot edit, and no revision is written
+    await admin.query(`UPDATE message SET created_at = now() - interval '6 minutes' WHERE id=$1`, [
+      sent.messageId,
+    ]);
+    await expect(
+      service.editMessage(orgA, { userId: rn, messageId: sent.messageId, body: "too late" }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "MESSAGE_EDIT_WINDOW_CLOSED" });
+    const after = await admin.query(
+      `SELECT count(*)::int AS n FROM message_revision WHERE message_id=$1`,
+      [sent.messageId],
+    );
+    expect(after.rows[0].n).toBe(2);
   });
 
   it("send, edit and delete each publish one PHI-free hint event in the write transaction (ADR-0054 A4)", async () => {
