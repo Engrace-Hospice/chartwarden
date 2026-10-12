@@ -87,8 +87,8 @@
 |---|---|---|---|---|---|---|
 | SG-01 | Tenant & patient access controls | P0 | 1 | GOV | 1.7 | have / prove |
 | SG-02 | Server-side authorization checks | P0 | 1 | GOV | 1.7 | have / prove |
-| SG-03 | Audit logging | P0 | 1 | GOV | 1.8 | have |
-| SG-04 | Encryption in transit & at rest | P0 | 1 | GOV | 1.8 | have (DEK envelope) |
+| SG-03 | Audit logging | P0 | 1 | GOV | 1.8 | have; proven (WP 1.8: every table audited, every content read lands an event) |
+| SG-04 | Encryption in transit & at rest | P0 | 1 | GOV | 1.8 | have (DEK envelope); parity audited (WP 1.8; plaintext endpoint/title exceptions recorded in 03) |
 | SG-05 | Attachment malware scanning | P0 | 1 | GOV | 1.5 | new |
 | SG-06 | Retention & legal hold | P0 | 5 | GOV | 5.6 | part (retention classes; scan scheduled, plan-only; overlay pending) |
 | SG-07 | Workforce offboarding | P0 | 1/5 | GOV | 1.4, 5.9 | new |
