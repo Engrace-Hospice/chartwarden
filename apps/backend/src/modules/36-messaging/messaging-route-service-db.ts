@@ -92,6 +92,7 @@ import {
   withValidMessageContent,
 } from "./messaging-write-core";
 import { type Part2ChannelGate, createSeamPart2ChannelGate } from "./part2-channel-gate";
+import { decodeStoredBody, sameMentionToken, storedBodyFor } from "./rich-body-codec";
 
 const CH = schema.channels;
 const CM = schema.channelMembers;
@@ -897,6 +898,7 @@ export function createDbMessagingRouteService(
             channelId: MSG.channelId,
             messageId: MSG.id,
             bodyCipher: MSG.bodyCipher,
+            bodyKind: MSG.bodyKind,
             status: MSG.status,
             createdAt: MSG.createdAt,
             authorDisplayName: USER.name,
@@ -912,7 +914,13 @@ export function createDbMessagingRouteService(
           if (row.status !== "deleted") {
             previewTextByMessage.set(
               row.messageId,
-              messagePreview(cipher.open(orgId, row.bodyCipher)),
+              // WP 2.1: a rich body previews as its plain-text projection, never as JSON or a link target.
+              messagePreview(
+                decodeStoredBody(
+                  row.bodyKind as MessageBodyKind,
+                  cipher.open(orgId, row.bodyCipher),
+                ).body,
+              ),
             );
           }
         }
@@ -1226,14 +1234,28 @@ export function createDbMessagingRouteService(
         const boundByMessage = new Map(boundRows.map((row) => [row.messageId, Number(row.n)]));
         // Entitled-reader gate: the channel_visibility ABAC predicate already authorized this read
         // at the route, so decrypt each body under the tenant DEK; a 'deleted' tombstone is empty.
-        const page = chronologicalRows.map(
-          (m): ResolvedMessage => ({
+        const page = chronologicalRows.map((m): ResolvedMessage => {
+          const decoded: ReturnType<typeof decodeStoredBody> =
+            m.status === "deleted"
+              ? { body: "" }
+              : decodeStoredBody(m.bodyKind as MessageBodyKind, cipher.open(orgId, m.bodyCipher));
+          // A rich body that no longer parses is not a deleted message: say so, and leave ids (never content).
+          if (decoded.unreadable) {
+            opts.warn?.("rich message body could not be read; showing a placeholder", {
+              organizationId: orgId,
+              messageId: m.id,
+              channelId: m.channelId,
+            });
+          }
+          return {
             messageId: m.id,
             channelId: m.channelId,
             authorUserId: m.authorUserId,
             authorDisplayName: m.authorDisplayName?.trim() || null,
-            body: m.status === "deleted" ? "" : cipher.open(orgId, m.bodyCipher),
+            body: decoded.body,
             bodyKind: m.bodyKind as MessageBodyKind,
+            ...(decoded.bodyDoc ? { bodyDoc: decoded.bodyDoc } : {}),
+            ...(decoded.unreadable ? { bodyUnreadable: true as const } : {}),
             createdAt: m.createdAt.toISOString(),
             parentMessageId: m.parentMessageId,
             attachments: attachmentsByMessage.get(m.id) ?? [],
@@ -1252,8 +1274,8 @@ export function createDbMessagingRouteService(
                   : "Patient",
               navigable: reference.kind === "patient" && ch[0]!.kind === "care_team",
             })),
-          }),
-        );
+          };
+        });
         const cursorRow = backward ? chronologicalRows[0] : chronologicalRows.at(-1);
         const nextCursor =
           hasMore && cursorRow ? encodeCursor(cursorRow.createdAtMicros, cursorRow.id) : undefined;
@@ -1284,7 +1306,7 @@ export function createDbMessagingRouteService(
         const candidate = candidateByKey.get(`${reference.kind}:${reference.entityId}`);
         if (
           !candidate ||
-          input.body.slice(reference.start, reference.end) !== `@${candidate.displayName}`
+          !sameMentionToken(input.body.slice(reference.start, reference.end), candidate.displayName)
         ) {
           throw new WardenXError(
             "INVALID_MESSAGE_REFERENCES",
@@ -1305,6 +1327,7 @@ export function createDbMessagingRouteService(
             authorUserId: input.authorUserId,
             body: input.body,
             bodyKind: input.bodyKind,
+            richBody: input.richBody,
             parentMessageId: input.parentMessageId,
             quotedMessageId: input.quotedMessageId,
             clientMessageId: input.clientMessageId,
@@ -1394,7 +1417,10 @@ export function createDbMessagingRouteService(
           const candidate = candidateByKey.get(`${reference.kind}:${reference.entityId}`);
           if (
             !candidate ||
-            input.body.slice(reference.start, reference.end) !== `@${candidate.displayName}`
+            !sameMentionToken(
+              input.body.slice(reference.start, reference.end),
+              candidate.displayName,
+            )
           ) {
             throw new WardenXError(
               "INVALID_MESSAGE_REFERENCES",
@@ -1470,14 +1496,24 @@ export function createDbMessagingRouteService(
           bodyWrittenAt: m.editedAt ?? m.createdAt,
           editedBy: input.userId,
         });
-        const { cipher: bodyCipher, sha256 } = cipher.seal(
-          orgId,
-          input.body.trim() ? input.body : "",
-        );
+        // WP 2.1: the edit carries its own format. A structured edit stores a rich body; a text edit of a rich
+        // message makes it plain (its plaintext would otherwise be parsed as a document); a legacy kind is kept.
+        const next = storedBodyFor({
+          body: input.body.trim() ? input.body : "",
+          bodyKind: m.bodyKind === "rich" ? "plain" : (m.bodyKind as MessageBodyKind),
+          richBody: input.richBody,
+        });
+        const { cipher: bodyCipher, sha256 } = cipher.seal(orgId, next.plaintext);
         const editedAt = new Date();
         await tx
           .update(MSG)
-          .set({ bodyCipher, bodySha256: sha256, status: "edited", editedAt })
+          .set({
+            bodyCipher,
+            bodySha256: sha256,
+            bodyKind: next.bodyKind,
+            status: "edited",
+            editedAt,
+          })
           .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, input.messageId)));
         await tx
           .delete(MER)

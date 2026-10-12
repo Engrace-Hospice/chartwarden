@@ -1,8 +1,10 @@
+import { memo } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { MessageAttachments } from "./message-attachments";
 import type { Message } from "./messaging-types";
 import { absoluteTime, dayLabel, initialsOf } from "./messaging-utils";
+import { RichBodyView } from "./rich-body-view";
 
 function MessageText({ message }: { message: Message }): JSX.Element {
   // An attachment-only message has no text to show; the attachment list below is its content.
@@ -11,6 +13,19 @@ function MessageText({ message }: { message: Message }): JSX.Element {
     (message.attachments?.length ?? 0) + (message.hiddenAttachmentCount ?? 0) > 0
   )
     return <></>;
+  // WP 2.1: a structured body renders from its document; everything else renders exactly as it always has.
+  if (message.bodyKind === "rich" && message.bodyUnreadable) {
+    return <span className="wx-rich-fallback">Message could not be displayed</span>;
+  }
+  if (message.bodyKind === "rich") {
+    return (
+      <RichBodyView
+        bodyDoc={message.bodyDoc}
+        references={message.references ?? []}
+        fallbackText={message.body || "Message deleted"}
+      />
+    );
+  }
   const references = [...(message.references ?? [])]
     .filter(
       (reference) =>
@@ -59,7 +74,7 @@ interface MessageRowProps {
 }
 
 /** One timeline entry: optional day divider, then a system line or a message bubble. */
-export function MessageRow({
+function MessageRowImpl({
   message,
   previous,
   meId,
@@ -101,9 +116,13 @@ export function MessageRow({
               <strong>{message.authorDisplayName || "Staff member"}</strong>
             ) : null}
             <div className="wx-message-bubble">
-              <span>
+              {message.bodyKind === "rich" ? (
                 <MessageText message={message} />
-              </span>
+              ) : (
+                <span>
+                  <MessageText message={message} />
+                </span>
+              )}
               <MessageAttachments attachments={message.attachments} />
               {message.hiddenAttachmentCount ? (
                 <small className="wx-message-attachment-hidden">
@@ -129,3 +148,6 @@ export function MessageRow({
     </div>
   );
 }
+
+/** Memoised: typing in the composer re-renders the thread, but a row only re-renders when its own message changes. */
+export const MessageRow = memo(MessageRowImpl);

@@ -1,7 +1,9 @@
+import { type RichBody, richBodyMentions, richBodyToPlainText } from "@wardenx/types";
 import { useApiClient } from "@wardenx/ui";
 import { useCallback, useRef, useState } from "react";
 import type { FormEvent, MutableRefObject } from "react";
 import { apiErrorCode, toSentAttachments } from "./attachment-utils";
+import { draftToRichBody } from "./draft-to-rich-body";
 import type { Message, MessageAttachment, MessageReferenceInput } from "./messaging-types";
 import { apiErrorMessage, rotateIdempotencyKey, sendAttemptFor } from "./messaging-utils";
 import type { SendAttempt } from "./messaging-utils";
@@ -25,6 +27,8 @@ export interface SentMessage {
   readonly messageId: string;
   readonly createdAt: string;
   readonly body: string;
+  /** WP 2.1: the structured body that was sent, when the draft had formatting. */
+  readonly bodyDoc?: RichBody;
   readonly references: readonly MessageReferenceInput[];
   readonly attachments: MessageAttachment[];
 }
@@ -84,6 +88,7 @@ export function useMessageSender({
     const references = draftReferences
       .filter((reference) => reference.end <= submitted.length)
       .map(referenceInput);
+    const richBody = draftToRichBody(submitted, draftReferences);
     // WP 1.2: one stable id pair per composed message, reused on retry (see sendAttemptFor).
     const attachmentIds = uploads.sendableIds;
     const sentAttachments = toSentAttachments(uploads.chips);
@@ -104,9 +109,17 @@ export function useMessageSender({
           header: { "Idempotency-Key": attempt.idempotencyKey },
         },
         body: {
-          // An attachment-only message omits the text entirely; the server stores an empty body.
-          ...(submitted.trim() ? { body: submitted } : {}),
-          references,
+          // WP 2.1: a formatted draft goes out as a structured body (its mentions are nodes); an unformatted one
+          // stays plain text with offset references, exactly as before. An attachment-only message omits the text
+          // entirely; the server stores an empty body.
+          ...(richBody
+            ? {
+                bodyDoc: {
+                  schemaVersion: richBody.schemaVersion,
+                  doc: { type: "doc" as const, content: [...richBody.doc.content] },
+                },
+              }
+            : { ...(submitted.trim() ? { body: submitted } : {}), references }),
           clientMessageId: attempt.clientMessageId,
           ...(attachmentIds.length > 0
             ? { attachments: attachmentIds.map((attachmentId) => ({ attachmentId })) }
@@ -146,6 +159,7 @@ export function useMessageSender({
       messageId: data.messageId,
       createdAt: data.createdAt,
       body: submitted,
+      ...(richBody ? { bodyDoc: richBody } : {}),
       references: draftReferences,
       attachments: sentAttachments,
     });
@@ -161,16 +175,28 @@ export function sentMessageRow(
   meId: string,
   meDisplayName: string,
 ): Message {
+  // A structured send shows what the server will return: the projection as `body`, mentions at projection offsets.
+  const rich = sent.bodyDoc;
+  const references: readonly MessageReferenceInput[] = rich
+    ? richBodyMentions(rich).map(({ kind, entityId, label, start, end }) => ({
+        kind,
+        entityId,
+        start,
+        end,
+        displayLabel: label,
+      }))
+    : sent.references;
   return {
     messageId: sent.messageId,
     channelId,
     authorUserId: meId,
     authorDisplayName: meDisplayName,
-    body: sent.body.trim() ? sent.body : "",
-    bodyKind: "plain",
+    body: rich ? richBodyToPlainText(rich) : sent.body.trim() ? sent.body : "",
+    bodyKind: rich ? "rich" : "plain",
+    ...(rich ? { bodyDoc: rich } : {}),
     createdAt: sent.createdAt,
     parentMessageId: null,
-    references: sent.references.map((reference) => ({ ...reference, navigable: true })),
+    references: references.map((reference) => ({ ...reference, navigable: true })),
     attachments: sent.attachments,
   };
 }

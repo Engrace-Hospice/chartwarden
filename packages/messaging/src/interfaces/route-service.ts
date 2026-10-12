@@ -15,6 +15,7 @@
 // is the backstop; the slice default (createInMemoryMessagingService) keeps it all in memory so
 // the route inventory is integration-testable with no live infra.
 
+import type { RichBody } from "@wardenx/types";
 import type { MemberAdminActor } from "../member-admin";
 import type { QuietHoursConfig, RoutingMap } from "../resolution";
 import type {
@@ -202,6 +203,11 @@ export interface MessagingRouteService {
       authorUserId: string;
       body: string;
       bodyKind?: MessageBodyKind;
+      /**
+       * WP 2.1: the structured body, ALREADY sanitised by the route. `body` is then its plain-text projection (the
+       * text reference offsets and the blank-message check apply to) and `bodyKind` is forced to `rich`.
+       */
+      richBody?: RichBody;
       parentMessageId?: string;
       quotedMessageId?: string;
       /** WP 1.2: client-minted, stable across retries; a repeat returns the original message. */
@@ -218,6 +224,8 @@ export interface MessagingRouteService {
       userId: string;
       messageId: string;
       body: string;
+      /** WP 2.1: as on send. An edit that carries no `richBody` makes the message plain/markdown again. */
+      richBody?: RichBody;
       references?: readonly MessageReferenceInput[];
     },
   ): Promise<{ messageId: string; editedAt: string }>;

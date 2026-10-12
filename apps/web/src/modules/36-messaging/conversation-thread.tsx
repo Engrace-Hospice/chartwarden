@@ -11,6 +11,8 @@ import type { JSX, KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
 import { AttachButton, AttachmentChips } from "./attachment-composer";
 import { sendBlockedReason } from "./attachment-utils";
+import { applyTextEdit, detectMac, formatShortcutMarker, toggleWrap } from "./composer-format";
+import { MentionMenu } from "./mention-menu";
 import { activeMentionQuery, reconcileReferences } from "./mention-utils";
 import { MessageRow } from "./message-row";
 import type {
@@ -102,6 +104,7 @@ export function ConversationThread({
   const initialScrollPending = useRef(false);
   const readBoundaryRef = useRef<string | null>(null);
   const composingRef = useRef(false);
+  const [isMac] = useState(detectMac);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mentionGenerationRef = useRef(0);
   // WP 1.5: resets itself on channel switch and unmount (generation-guarded inside the hook).
@@ -434,6 +437,22 @@ export function ConversationThread({
   }, [messages]);
 
   function handleComposerKey(event: KeyboardEvent<HTMLTextAreaElement>): void {
+    // While an IME is composing, every key belongs to the IME (candidate selection, cancel): handle none of ours.
+    if (composingRef.current || event.nativeEvent.isComposing) return;
+    const marker = formatShortcutMarker(event, isMac);
+    if (marker) {
+      // The edit runs through the textarea's own input path (undo stack, onChange, mention query recompute).
+      event.preventDefault();
+      const area = event.currentTarget;
+      // Built from the live value: React state may lag a programmatic change (autofill, an extension).
+      applyTextEdit(area, toggleWrap(area.value, area.selectionStart, area.selectionEnd, marker));
+      return;
+    }
+    if (mentionQuery && event.key === "Escape") {
+      event.preventDefault();
+      setMentionQuery(null);
+      return;
+    }
     if (mentionQuery && mentionCandidates.length > 0) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
@@ -444,26 +463,20 @@ export function ConversationThread({
         );
         return;
       }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setMentionQuery(null);
-        return;
-      }
       if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
         event.preventDefault();
         chooseMention(mentionCandidates[mentionIndex]!);
         return;
       }
     }
-    if (
-      event.key === "Enter" &&
-      !event.shiftKey &&
-      !composingRef.current &&
-      !event.nativeEvent.isComposing
-    ) {
+    if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       void send();
+      return;
     }
+    // Escape in an EMPTY composer hands focus back to the page; with a draft it does nothing (the draft is never
+    // lost to a stray key). Tab is never intercepted outside the mention popup, so there is no keyboard trap.
+    if (event.key === "Escape" && draft === "") event.currentTarget.blur();
   }
 
   function chooseMention(candidate: MentionCandidate): void {
@@ -707,47 +720,14 @@ export function ConversationThread({
           <AttachmentChips uploads={uploads} disabled={sending} attachButtonRef={attachButtonRef} />
           <AttachButton uploads={uploads} disabled={sending} buttonRef={attachButtonRef} />
           {mentionQuery ? (
-            // biome-ignore lint/a11y/useFocusableInteractive: focus remains in the composer while arrow keys control this ARIA combobox popup
-            <div
-              id="messaging-mention-suggestions"
-              className="wx-mention-menu"
-              // biome-ignore lint/a11y/useSemanticElements: a native select cannot serve as a rich, async composer popup
-              role="listbox"
-              aria-label="Mention suggestions"
-            >
-              {mentionLoading ? (
-                <span className="wx-mention-state">Searching…</span>
-              ) : mentionError ? (
-                <span className="wx-mention-state" role="alert">
-                  Suggestions could not be loaded.{" "}
-                  <button type="button" onClick={() => setMentionRetry((value) => value + 1)}>
-                    Retry
-                  </button>
-                </span>
-              ) : mentionCandidates.length === 0 ? (
-                <span className="wx-mention-state">No eligible people or patients</span>
-              ) : (
-                mentionCandidates.map((candidate, index) => (
-                  <button
-                    // biome-ignore lint/a11y/useSemanticElements: a native option cannot render the required staff/patient detail markup
-                    type="button"
-                    role="option"
-                    tabIndex={-1}
-                    aria-selected={index === mentionIndex}
-                    className={index === mentionIndex ? "is-active" : undefined}
-                    key={`${candidate.kind}:${candidate.entityId}`}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => chooseMention(candidate)}
-                  >
-                    <strong>{candidate.displayName}</strong>
-                    <span>
-                      {candidate.kind === "patient" ? "Patient" : "Staff"}
-                      {candidate.detail ? ` · ${candidate.detail}` : ""}
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
+            <MentionMenu
+              loading={mentionLoading}
+              error={mentionError}
+              candidates={mentionCandidates}
+              activeIndex={mentionIndex}
+              onChoose={chooseMention}
+              onRetry={() => setMentionRetry((value) => value + 1)}
+            />
           ) : null}
           <Button
             type="submit"

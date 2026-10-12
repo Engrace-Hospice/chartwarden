@@ -541,6 +541,64 @@
   line-height: 1.45;
 }
 
+/* WP 2.1: the structured body (RichBodyView). Block flow, not pre-wrap: the document owns its line breaks. */
+.wx-rich-body {
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.wx-rich-body > * + * {
+  margin-top: 0.35rem;
+}
+
+.wx-rich-fallback {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.wx-link-destination {
+  opacity: 0.85;
+  font-size: 0.8em;
+}
+
+.wx-rich-p,
+.wx-rich-list {
+  margin: 0;
+}
+
+.wx-rich-list {
+  padding-left: 1.25rem;
+}
+
+.wx-rich-body code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.8125rem;
+  padding: 0 0.2rem;
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.wx-rich-code {
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  overflow-x: auto;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.wx-rich-code code {
+  padding: 0;
+  background: none;
+  white-space: pre;
+}
+
+.wx-rich-body a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
 .wx-message-bubble time {
   align-self: flex-end;
   color: var(--color-muted);

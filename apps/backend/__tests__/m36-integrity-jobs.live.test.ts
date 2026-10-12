@@ -15,9 +15,6 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { type AuditExecutor, audit } from "@wardenx/audit";
 import { type DbClient, createDbClient } from "@wardenx/db";
-import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { activeLegalHoldScopeForOrg } from "../src/modules/04-audit/legal-hold-scope";
 import {
   MESSAGING_JOB_SCHEDULES,
   MESSAGING_QUEUES,
@@ -25,7 +22,11 @@ import {
   eraseTenantMessaging,
 } from "@wardenx/messaging";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import { richBodyToPlainText, sanitizeRichBody } from "@wardenx/types";
 import { Queue } from "bullmq";
+import { Client } from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { activeLegalHoldScopeForOrg } from "../src/modules/04-audit/legal-hold-scope";
 import { createDrizzleMessagingEraseStore } from "../src/modules/36-messaging/erasers/messaging-eraser";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/index";
 import {
@@ -263,6 +264,65 @@ describe.skipIf(!DB_URL)(
       // org B has no messages yet: its run scans nothing, whatever org A holds (RLS as wardenx_app)
       const other = await runHashVerifyForOrg(deps, orgB);
       expect(other.scanned).toBe(0);
+    });
+
+    it("WP 2.1: hash_verify is clean over rich heads and a rich revision, and still catches a tampered rich body", async () => {
+      const richOf = (...words: string[]) => {
+        const checked = sanitizeRichBody({
+          schemaVersion: 1,
+          doc: {
+            type: "doc",
+            content: [
+              {
+                type: "paragraph",
+                content: words.map((text) => ({ type: "text", text, marks: [{ type: "bold" }] })),
+              },
+            ],
+          },
+        });
+        if (!checked.ok) throw new Error(checked.reason);
+        return checked.value;
+      };
+      const first = richOf("rich", "one");
+      const sent = await service().sendMessage(orgA, {
+        channelId: chanAnn,
+        authorUserId: author,
+        body: richBodyToPlainText(first),
+        richBody: first,
+      });
+      // A rich edit of a rich head: the revision keeps the PREVIOUS rich body and its own hash.
+      const second = richOf("rich", "two");
+      await service().editMessage(orgA, {
+        userId: author,
+        messageId: sent.messageId,
+        body: richBodyToPlainText(second),
+        richBody: second,
+      });
+      const stored = (
+        await admin.query(
+          `SELECT m.body_kind AS head_kind, r.body_kind AS rev_kind FROM message m
+           JOIN message_revision r ON r.message_id = m.id WHERE m.id=$1`,
+          [sent.messageId],
+        )
+      ).rows[0];
+      expect(stored).toEqual({ head_kind: "rich", rev_kind: "rich" });
+
+      const clean = await runHashVerifyForOrg(deps, orgA);
+      expect(clean.mismatched).toBe(0);
+
+      const original = (
+        await admin.query(`SELECT body_sha256 FROM message WHERE id=$1`, [sent.messageId])
+      ).rows[0].body_sha256 as string;
+      await admin.query(`UPDATE message SET body_sha256 = repeat('c',64) WHERE id=$1`, [
+        sent.messageId,
+      ]);
+      const tampered = await runHashVerifyForOrg(deps, orgA);
+      expect(tampered.mismatched).toBe(1);
+      await admin.query(`UPDATE message SET body_sha256 = $2 WHERE id=$1`, [
+        sent.messageId,
+        original,
+      ]);
+      expect((await runHashVerifyForOrg(deps, orgA)).mismatched).toBe(0);
     });
 
     it("detects and records a tampered head, a tampered revision and a corrupted cipher", async () => {

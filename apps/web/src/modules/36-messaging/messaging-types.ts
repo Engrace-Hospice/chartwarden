@@ -1,3 +1,5 @@
+import type { RichBody } from "@wardenx/types";
+
 export type ChannelKind =
   | "care_team"
   | "discipline"
@@ -33,7 +35,11 @@ export interface Message {
   authorUserId: string | null;
   authorDisplayName: string | null;
   body: string;
-  bodyKind: "plain" | "markdown" | "system";
+  bodyKind: "plain" | "markdown" | "system" | "rich";
+  /** WP 2.1: for `bodyKind: "rich"`, `body` is the plain-text projection and this is the document. */
+  bodyDoc?: RichBody;
+  /** WP 2.1: a stored rich body that cannot be read back; show a distinct placeholder, not 'deleted'. */
+  bodyUnreadable?: boolean;
   createdAt: string;
   parentMessageId: string | null;
   references: MessageReference[];
