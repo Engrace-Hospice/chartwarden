@@ -84,8 +84,8 @@ import {
 import { publishMessageHint } from "./message-hint-events";
 import {
   type MessageBodyCipher,
-  channelOr404,
   blankMessageError,
+  channelOr404,
   createMessageBodyCipher,
   insertEncryptedMessage,
   markMessagesRead,
@@ -411,9 +411,11 @@ function aggregateDeliveryStatus(statuses: readonly string[]): AlertInboxItem["d
   return "pending";
 }
 
-/** Keyset cursor over (created_at, id) — opaque, never an offset (§4.12). */
-function encodeCursor(createdAt: Date, id: string): string {
-  return Buffer.from(`${createdAt.toISOString()}|${id}`, "utf8").toString("base64url");
+/** Keyset cursor over (created_at, id) — opaque, never an offset (§4.12). `createdAtMicros` is the column read as
+ * text (`created_at::text`): a JS Date keeps milliseconds only, and a cursor rounded down to the millisecond re-serves
+ * the row it points at (duplicate on every page boundary) and can skip a neighbour. */
+function encodeCursor(createdAtMicros: string, id: string): string {
+  return Buffer.from(`${createdAtMicros}|${id}`, "utf8").toString("base64url");
 }
 function decodeCursor(cursor: string): { createdAt: string; id: string } | null {
   try {
@@ -1127,7 +1129,7 @@ export function createDbMessagingRouteService(
         let includeCursor = false;
         if (input.anchorMessageId) {
           const [anchor] = await tx
-            .select({ id: MSG.id, createdAt: MSG.createdAt })
+            .select({ id: MSG.id, createdAtMicros: sql<string>`${MSG.createdAt}::text` })
             .from(MSG)
             .where(
               and(
@@ -1138,7 +1140,7 @@ export function createDbMessagingRouteService(
             )
             .limit(1);
           if (!anchor) throw new NotFoundError("message", input.anchorMessageId);
-          cur = { id: anchor.id, createdAt: anchor.createdAt.toISOString() };
+          cur = { id: anchor.id, createdAt: anchor.createdAtMicros };
           includeCursor = true;
         }
         // Stable keyset over (created_at, id). Forward preserves the original contract; backward
@@ -1162,6 +1164,7 @@ export function createDbMessagingRouteService(
             bodyKind: MSG.bodyKind,
             status: MSG.status,
             createdAt: MSG.createdAt,
+            createdAtMicros: sql<string>`${MSG.createdAt}::text`,
             parentMessageId: MSG.parentMessageId,
           })
           .from(MSG)
@@ -1253,7 +1256,7 @@ export function createDbMessagingRouteService(
         );
         const cursorRow = backward ? chronologicalRows[0] : chronologicalRows.at(-1);
         const nextCursor =
-          hasMore && cursorRow ? encodeCursor(cursorRow.createdAt, cursorRow.id) : undefined;
+          hasMore && cursorRow ? encodeCursor(cursorRow.createdAtMicros, cursorRow.id) : undefined;
         return {
           messages: page,
           nextCursor,

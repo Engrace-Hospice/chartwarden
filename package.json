@@ -21,6 +21,8 @@
     "db:provision-roles": "bun run scripts/db/provision-runtime-roles.ts",
     "db:platform-role": "bun run scripts/db/platform-role.ts",
     "backup:restore-drill": "bun run scripts/db/backup-restore-drill.ts",
+    "m36:restore-drill": "bun run scripts/m36-restore-drill.ts",
+    "m36:restore-drill:detect": "bun run scripts/m36-restore-drill-detect.ts",
     "storage:reconcile-tenants": "bun run scripts/storage/reconcile-tenant-storage.ts",
     "db:seed": "bun run scripts/db/seed.ts",
     "db:seed:org-admin": "bun run scripts/db/seed-org-admin.ts",
