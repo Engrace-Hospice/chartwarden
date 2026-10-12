@@ -1,7 +1,8 @@
 # ADR-0054 — Realtime delivery to clients is Socket.IO with the Valkey adapter: hints only, the database cursor is the truth, access is server-decided and revocable
 
-- **Status:** **Proposed** — D1 (Socket.IO) was decided by the product owner 2026-10-11 and the Phase 0 spike
-  returned GO-WITH-CONDITIONS; this ADR writes the conditions down. Ratified when WP 1.1 passes its live suite.
+- **Status:** **Accepted** — accepted by the product owner 2026-10-12. D1 (Socket.IO) was decided 2026-10-11 and the Phase 0
+  spike returned GO-WITH-CONDITIONS; this ADR writes the conditions down. WP 1.1 must pass its live suite before the transport
+  is enabled for any tenant.
 - **Date:** 2026-10-11
 - **Phase:** Messaging Hub Phase 1 (WP 1.1).
 - **Supersedes (partially):** [ADR-0036](ADR-0036-no-realtime-backbone.md) **Decision items 2 and 3** only

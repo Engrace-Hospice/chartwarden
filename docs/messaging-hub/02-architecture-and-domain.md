@@ -160,7 +160,7 @@ Each new route registers a permission key in M3, gets OpenAPI enrichment, and pa
 
 | Proposed ADR | Decides | Needed before |
 |---|---|---|
-| Realtime transport ([ADR-0054](../adr/ADR-0054-realtime-transport-socketio-valkey.md), Proposed) | Socket.IO vs native WS/SSE; auth handshake; room recompute on `permissions.changed`; reconnect protocol; scale-out via Valkey | Phase 1 |
+| Realtime transport ([ADR-0054](../adr/ADR-0054-realtime-transport-socketio-valkey.md), Accepted) | Socket.IO vs native WS/SSE; auth handshake; room recompute on `permissions.changed`; reconnect protocol; scale-out via Valkey | Phase 1 |
 | Message revisions & redaction ([ADR-0055](../adr/ADR-0055-message-revisions-and-redaction.md), Proposed) | Revision table, who may redact, interaction with retained cipher and legal hold | Phase 1 |
 | Clinical acknowledgment vs receipts ([ADR-0056](../adr/ADR-0056-clinical-acknowledgment-vs-read-receipts.md), Proposed) | New `message_acknowledgment_*` aggregate; fate of `message_receipt.ack` | Phase 4 (draft in Phase 0) |
 | Escalation ownership (M36↔M19) ([ADR-0057](../adr/ADR-0057-escalation-ownership-m19-m36.md), Proposed) | `EscalationRouter` seam; tiers/rosters stay in M19; M36 holds request/ack state | Phase 4 |
