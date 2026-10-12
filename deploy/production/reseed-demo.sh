@@ -52,6 +52,14 @@ creds_out=CREDENTIALS.production.md
 run_name=wardenx-seed-run
 
 cleanup() {
+  status=$?
+  # On failure the api's own output is the only record of why it exited (a boot-time env refusal never
+  # reaches the seed run), and it is deleted below — print the tail first, passwords redacted.
+  if [ "$status" -ne 0 ] && docker inspect wardenx-seed-api > /dev/null 2>&1; then
+    echo "== wardenx-seed-api logs (last 80 lines, exit $status) ==" >&2
+    docker logs --tail 80 wardenx-seed-api 2>&1 \
+      | sed -E -e 's/Wx-[A-Za-z0-9_-]+-Zq9!/[REDACTED]/g' -e 's#://[^:@/ ]+:[^@ ]+@#://[REDACTED]@#g' >&2 || true
+  fi
   # Pull whatever credentials were written (even from a partial run), then tear the sign-up-open api
   # down so registration is never left open.
   if docker inspect "$run_name" > /dev/null 2>&1; then

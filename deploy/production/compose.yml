@@ -337,8 +337,10 @@ services:
     restart: "no"
     ports: !reset []
     environment:
+      # BETTER_AUTH_URL is deliberately NOT overridden: it stays the https origin from .env.production,
+      # because production boot (assertProductionEnv) refuses any other value. Only the seed client
+      # (seed-runner below) addresses this api as http://localhost:3000.
       WARDENX_SIGNUP_REQUIRES_INVITE: "false"
-      BETTER_AUTH_URL: http://localhost:3000
 
   seed-runner:
     profiles: ["seed"]
