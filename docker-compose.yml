@@ -92,6 +92,7 @@ services:
     environment:
       PROCESS_ROLE: api
       NODE_ENV: development
+      MESSAGING_ENCRYPTION_KEY: ${MESSAGING_ENCRYPTION_KEY:-}
       PORT: "3000"
       LOG_LEVEL: info
       DATABASE_URL: postgres://wardenx_app:wardenx-app-dev-password@postgres:5432/wardenx
@@ -152,6 +153,7 @@ services:
     command: ["bun", "run", "apps/backend/src/worker.ts"]
     environment:
       NODE_ENV: development
+      MESSAGING_ENCRYPTION_KEY: ${MESSAGING_ENCRYPTION_KEY:-}
       WORKER_PORT: "3001"
       LOG_LEVEL: info
       DATABASE_URL: postgres://wardenx_app:wardenx-app-dev-password@postgres:5432/wardenx
