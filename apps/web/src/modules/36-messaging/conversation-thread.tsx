@@ -253,9 +253,8 @@ export function ConversationThread({
           return true;
         }
         if (error && view.anchor && response?.status === 404) {
-          // The page a user jump asked for is gone (404). Not an access revocation: say so, go back to the newest
-          // page, and let that read surface a real revocation if there is one. Any other error (503, 429, 403)
-          // keeps the page on screen and takes the ordinary error path below.
+          // A 404 on a user jump's page: the message is gone, not access revoked. Say so, show the newest page, and
+          // let that read surface a real revocation. Other errors keep the page (ordinary path below).
           anchorGone();
           rereadAfterFlight.current = true;
           return false;
@@ -289,7 +288,11 @@ export function ConversationThread({
         messagesRef.current = merged;
         setMessages(merged);
         if (wasInitial) initialScrollPending.current = true;
-        else if (background && added > 0 && !nearBottomRef.current) {
+        else if (replace && !view.anchor) {
+          initialScrollPending.current = true;
+          nearBottomRef.current = true;
+          setNewMessageCount(0);
+        } else if (background && added > 0 && !nearBottomRef.current) {
           setNewMessageCount((count) => count + added);
         } else if (added > 0 && nearBottomRef.current) {
           window.requestAnimationFrame(() => {
@@ -678,6 +681,9 @@ export function ConversationThread({
             meDisplayName={meDisplayName}
             liveHint={liveHint}
             realtimeConnected={realtimeConnected}
+            sendInFlight={panel.sendingRoots.has(panel.rootId)}
+            onSendStart={panel.beginSend}
+            onSendEnd={panel.endSend}
             drafts={panel.draftsRef}
             onClose={panel.closeThread}
             onJumpToMessage={panel.showInConversation}

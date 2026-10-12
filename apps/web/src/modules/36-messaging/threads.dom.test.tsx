@@ -939,7 +939,7 @@ describe("WP 2.2 second review round", () => {
       await screen.findByText("body of reply-a");
       expect(threadCalls(api)).toHaveLength(1);
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(15_500);
+        await vi.advanceTimersByTimeAsync(60_500);
       });
       expect(threadCalls(api).length).toBeGreaterThanOrEqual(2);
       const before = threadCalls(api).length;
@@ -1058,5 +1058,307 @@ describe("WP 2.2 second review round", () => {
       const reads = w.api.GET.mock.calls.filter(([p]) => p === LIST);
       expect(reads.at(-1)?.[1].params.query.anchorMessageId).toBeUndefined();
     });
+  });
+});
+
+// ── final round ─────────────────────────────────────────────────────────────────────────────────────────────────
+describe("WP 2.2 final round: in-flight sends, polling safeguards", () => {
+  /** A world whose reply POST waits on a gate; `posts()` counts the reply POSTs. */
+  function slowSendWorld() {
+    let serverReplies = 2;
+    let finish = () => {};
+    const gate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const hold = { reads: null as Promise<void> | null };
+    const world = threadWorld({
+      GET: (path) => {
+        if (path !== LIST) return undefined;
+        const data = {
+          data: { messages: [message("root-1", { replyCount: serverReplies })] },
+          error: undefined,
+        };
+        return hold.reads ? hold.reads.then(() => data) : data;
+      },
+    });
+    const m = mount({
+      ...world.handlers,
+      POST: (path) =>
+        path !== LIST
+          ? undefined
+          : gate.then(() => {
+              serverReplies += 1;
+              return {
+                data: {
+                  messageId: "late-1",
+                  channelId: "dm-1",
+                  createdAt: "2026-10-10T10:00:00.000Z",
+                },
+                error: undefined,
+                response: { status: 201 },
+              };
+            }),
+    });
+    const posts = () => m.api.POST.mock.calls.filter(([p]) => p === LIST).length;
+    return { ...m, finish: () => act(async () => finish()), hold, posts };
+  }
+  const startSend = async (text: string) => {
+    const box = (await screen.findByLabelText("Reply in thread")) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: text } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Send reply" }));
+    });
+  };
+  const closeThread = async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Close thread" }));
+    await waitFor(() => expect(panel()).toBeNull());
+  };
+
+  it("a reopened thread holds Send while the earlier reply is still in flight (no duplicate POST, empty box)", async () => {
+    const w = slowSendWorld();
+    await openRoot();
+    await startSend("send me once");
+    await closeThread();
+    fireEvent.click(screen.getByRole("button", { name: "Open thread, 2 replies" }));
+    const box = (await screen.findByLabelText("Reply in thread")) as HTMLTextAreaElement;
+    expect(box.value).toBe("");
+    fireEvent.change(box, { target: { value: "send me once" } });
+    expect((screen.getByRole("button", { name: "Send reply" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    fireEvent.keyDown(box, { key: "Enter" });
+    await act(async () => {});
+    expect(w.posts()).toBe(1);
+    expect(screen.getByText("Your previous reply is still being sent.")).toBeTruthy();
+    await w.finish();
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "Send reply" }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+  });
+
+  it("a late success never erases a draft typed after the thread was reopened", async () => {
+    const w = slowSendWorld();
+    await openRoot();
+    await startSend("first");
+    await closeThread();
+    fireEvent.click(screen.getByRole("button", { name: "Open thread, 2 replies" }));
+    const box = (await screen.findByLabelText("Reply in thread")) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "second thought" } });
+    await w.finish();
+    await act(async () => {});
+    expect(box.value).toBe("second thought");
+    await closeThread();
+    fireEvent.click(await screen.findByRole("button", { name: /Open thread, \d+ replies/ }));
+    expect(((await screen.findByLabelText("Reply in thread")) as HTMLTextAreaElement).value).toBe(
+      "second thought",
+    );
+  });
+
+  it("a failed send puts the text back into the draft", async () => {
+    const world = threadWorld();
+    mount({
+      ...world.handlers,
+      POST: (path) =>
+        path === LIST
+          ? { data: undefined, error: { error: { message: "boom" } }, response: { status: 500 } }
+          : undefined,
+    });
+    await openRoot();
+    await startSend("try again");
+    await screen.findByRole("alert");
+    await closeThread();
+    fireEvent.click(await screen.findByRole("button", { name: "Open thread, 2 replies" }));
+    expect(((await screen.findByLabelText("Reply in thread")) as HTMLTextAreaElement).value).toBe(
+      "try again",
+    );
+  });
+
+  it("the timeline count comes from the local patch while the follow-up read has not answered", async () => {
+    const w = slowSendWorld();
+    await openRoot();
+    await startSend("patch me");
+    await closeThread();
+    w.hold.reads = new Promise<void>(() => {}); // the follow-up read never answers
+    await w.finish();
+    expect(await screen.findByRole("button", { name: "Open thread, 3 replies" })).toBeTruthy();
+  });
+
+  describe("polling", () => {
+    const tick = (ms: number) =>
+      act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+
+    it("stops polling a thread that is unavailable, and a hint does not bring it back", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const world = threadWorld();
+        let readable = false;
+        const { api, view, tree } = mount({
+          ...world.handlers,
+          GET: (path, init) =>
+            path !== THREAD || readable
+              ? world.handlers.GET(path, init)
+              : {
+                  data: undefined,
+                  error: { error: { code: "NOT_FOUND" } },
+                  response: { status: 404 },
+                },
+        });
+        await openRoot();
+        await screen.findByText("Thread unavailable");
+        const calls = threadCalls(api).length;
+        readable = true;
+        await tick(10 * 60_000);
+        view.rerender(
+          tree({
+            liveHint: { seq: 1, items: [{ seq: 1, messageId: null, parentMessageId: null }] },
+          }),
+        );
+        await tick(1_000);
+        expect(threadCalls(api)).toHaveLength(calls);
+        expect(screen.getByText("Thread unavailable")).toBeTruthy();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("backs off after failures, and re-reads when the window regains focus", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const { handlers, root, replyA } = threadWorld();
+        let down = false;
+        const { api } = mount({
+          ...handlers,
+          GET: (path, init) =>
+            path === THREAD
+              ? down
+                ? Promise.reject(new Error("down"))
+                : { data: { root, replies: [replyA], patientId: null }, error: undefined }
+              : handlers.GET(path, init),
+        });
+        await openRoot();
+        await screen.findByText("body of reply-a");
+        expect(threadCalls(api)).toHaveLength(1);
+        down = true;
+        await tick(61_000); // first poll fails
+        expect(threadCalls(api)).toHaveLength(2);
+        await tick(61_000); // backed off to 120 s: not yet
+        expect(threadCalls(api)).toHaveLength(2);
+        await tick(61_000);
+        expect(threadCalls(api)).toHaveLength(3);
+        down = false;
+        act(() => {
+          window.dispatchEvent(new Event("focus"));
+        });
+        await waitFor(() => expect(threadCalls(api)).toHaveLength(4));
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("does not restart the countdown when the socket connects", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const { handlers } = threadWorld();
+        const { api, view, tree } = mount(handlers);
+        await openRoot();
+        await screen.findByText("body of reply-a");
+        await tick(50_000);
+        view.rerender(tree({ realtimeConnected: true }));
+        await tick(15_000); // 65 s since open: the poll scheduled at 60 s still fires
+        expect(threadCalls(api)).toHaveLength(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  it("a Retry click is not swallowed by a background read already in flight", async () => {
+    const { handlers, root, replyA } = threadWorld();
+    let phase: "fail" | "slow" | "ok" = "fail";
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { view, tree } = mount({
+      ...handlers,
+      GET: (path, init) => {
+        if (path !== THREAD) return handlers.GET(path, init);
+        if (phase === "fail") return Promise.reject(new Error("down"));
+        const data = { data: { root, replies: [replyA], patientId: null }, error: undefined };
+        return phase === "slow" ? gate.then(() => data) : data;
+      },
+    });
+    await openRoot();
+    const dialog = await screen.findByRole("complementary", { name: "Thread" });
+    await within(dialog).findByText("Thread could not be loaded");
+    phase = "slow";
+    view.rerender(
+      tree({ liveHint: { seq: 1, items: [{ seq: 1, messageId: null, parentMessageId: null }] } }),
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Retry" }));
+    await within(dialog).findByLabelText("Loading thread");
+    await act(async () => release());
+    await within(dialog).findByText("body of reply-a");
+  });
+
+  it("falls back to addListener when the media query has no addEventListener", async () => {
+    const original = window.matchMedia;
+    const listeners = new Set<() => void>();
+    window.matchMedia = (() => ({
+      matches: true,
+      addListener: (fn: () => void) => listeners.add(fn),
+      removeListener: (fn: () => void) => listeners.delete(fn),
+    })) as unknown as typeof window.matchMedia;
+    try {
+      const { handlers } = threadWorld();
+      mount(handlers);
+      await openRoot();
+      await screen.findByText("body of reply-a");
+      expect(document.querySelector(".wx-message-timeline")?.hasAttribute("inert")).toBe(true);
+      expect(listeners.size).toBe(1);
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+
+  it("scrolls to the end and clears the new-message count when a gone anchor falls back to the latest page", async () => {
+    const parent = message("old-parent", {
+      createdAt: "2026-09-01T09:00:00.000Z",
+      body: "ancient",
+    });
+    const reply = message("late-reply", {
+      parentMessageId: "old-parent",
+      createdAt: "2026-10-10T09:00:00.000Z",
+    });
+    let gone = false;
+    const { view, tree } = mount({
+      GET: (path, init) =>
+        path !== LIST
+          ? undefined
+          : init.params.query.anchorMessageId === "old-parent"
+            ? gone
+              ? {
+                  data: undefined,
+                  error: { error: { code: "NOT_FOUND" } },
+                  response: { status: 404 },
+                }
+              : { data: { messages: [parent] }, error: undefined }
+            : { data: { messages: [reply] }, error: undefined },
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Jump to the message this replies to" }),
+    );
+    await screen.findByText("ancient");
+    const timeline = document.querySelector(".wx-message-timeline") as HTMLElement;
+    Object.defineProperty(timeline, "scrollHeight", { configurable: true, value: 777 });
+    timeline.scrollTop = 5;
+    gone = true;
+    view.rerender(tree({ liveToken: 1 }));
+    await screen.findByText("That message is no longer available.");
+    await waitFor(() => expect(timeline.scrollTop).toBe(777));
   });
 });

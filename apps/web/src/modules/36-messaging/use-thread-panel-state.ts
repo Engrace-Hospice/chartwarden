@@ -21,6 +21,21 @@ export function useThreadPanelState({ timelineRef, textareaRef, jumpToMessage }:
   const openerRef = useRef<HTMLElement | null>(null);
   /** Unsent reply text per thread: switching threads never discards a draft. */
   const draftsRef = useRef(new Map<string, string>());
+  /**
+   * Roots with a reply being sent. Lives here, not in the panel, because the panel can be closed and reopened while
+   * the request is still in flight: the reopened panel must hold Send for that root or it would send the text again.
+   */
+  const [sendingRoots, setSendingRoots] = useState<ReadonlySet<string>>(new Set());
+  const beginSend = useCallback((id: string): void => {
+    setSendingRoots((current) => new Set(current).add(id));
+  }, []);
+  const endSend = useCallback((id: string): void => {
+    setSendingRoots((current) => {
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
+  }, []);
 
   const openThread = useCallback((id: string, opener: HTMLElement): void => {
     openerRef.current = opener;
@@ -71,9 +86,12 @@ export function useThreadPanelState({ timelineRef, textareaRef, jumpToMessage }:
       timeline.toggleAttribute("inert", isNarrowScreen());
     };
     apply();
-    query?.addEventListener("change", apply);
+    // Older engines only have addListener/removeListener.
+    if (query?.addEventListener) query.addEventListener("change", apply);
+    else query?.addListener?.(apply);
     return () => {
-      query?.removeEventListener("change", apply);
+      if (query?.removeEventListener) query.removeEventListener("change", apply);
+      else query?.removeListener?.(apply);
       timeline.removeAttribute("inert");
     };
   }, [rootId, timelineRef]);
@@ -85,5 +103,15 @@ export function useThreadPanelState({ timelineRef, textareaRef, jumpToMessage }:
     draftsRef.current.clear();
   }, []);
 
-  return { rootId, openThread, closeThread, showInConversation, draftsRef, reset };
+  return {
+    rootId,
+    openThread,
+    closeThread,
+    showInConversation,
+    draftsRef,
+    sendingRoots,
+    beginSend,
+    endSend,
+    reset,
+  };
 }

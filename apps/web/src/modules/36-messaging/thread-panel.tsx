@@ -26,6 +26,10 @@ export interface ThreadPanelProps {
   meDisplayName: string;
   liveHint: LiveHint | null;
   realtimeConnected: boolean;
+  /** A reply for THIS root is being sent (possibly by an earlier instance of this panel): hold Send. */
+  sendInFlight: boolean;
+  onSendStart: (rootId: string) => void;
+  onSendEnd: (rootId: string) => void;
   /** Unsent reply TEXT per root id (a chosen file is not part of a draft); owned by the caller so it survives a switch.
    *  Unsent reply text per root id, owned by the caller so a draft survives switching threads. */
   drafts: MutableRefObject<Map<string, string>>;
@@ -48,6 +52,9 @@ export function ThreadPanel({
   meDisplayName,
   liveHint,
   realtimeConnected,
+  sendInFlight,
+  onSendStart,
+  onSendEnd,
   drafts,
   onClose,
   onJumpToMessage,
@@ -81,7 +88,8 @@ export function ThreadPanel({
 
   const handleSent = (sent: SentMessage): void => {
     setDraft((current) => (current === sent.body ? "" : current));
-    drafts.current.delete(rootId);
+    // Only the text that was sent: a newer draft typed after a reopen is not ours to erase.
+    if (drafts.current.get(rootId) === sent.body) drafts.current.delete(rootId);
     const inserted = addSent(sentMessageRow(sent, channelId, meId, meDisplayName, rootId));
     if (!inserted) announce("Reply sent. Load more replies to see it.");
     onReplySent(rootId, sent.createdAt);
@@ -95,7 +103,18 @@ export function ThreadPanel({
     uploads,
     generationRef,
     onSent: handleSent,
+    // The text moves into the in-flight record when the request is issued (so a reopened panel starts empty), and
+    // comes back if the request fails and nothing newer has been typed since.
+    onIssued: () => {
+      drafts.current.delete(rootId);
+      onSendStart(rootId);
+    },
+    onSettled: (ok, submitted) => {
+      if (!ok && !drafts.current.has(rootId)) drafts.current.set(rootId, submitted);
+      onSendEnd(rootId);
+    },
   });
+  const held = sending || sendInFlight;
 
   // Announce replies from other people that arrive after the thread was first shown (a polite live region).
   const seenRef = useRef<Set<string> | null>(null);
@@ -158,7 +177,7 @@ export function ThreadPanel({
     if (composingRef.current || event.nativeEvent.isComposing) return;
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      void send();
+      if (!held) void send();
     }
   }
 
@@ -275,7 +294,13 @@ export function ThreadPanel({
           This conversation is archived. Replies are read only.
         </output>
       ) : status === "ready" ? (
-        <form className="wx-message-composer" onSubmit={(event) => void send(event)}>
+        <form
+          className="wx-message-composer"
+          onSubmit={(event) => {
+            if (held) event.preventDefault();
+            else void send(event);
+          }}
+        >
           <label htmlFor="messaging-thread-composer" className="sr-only">
             Reply in thread
           </label>
@@ -304,13 +329,16 @@ export function ThreadPanel({
           <Button
             type="submit"
             disabled={
-              sending || (!draft.trim() && uploads.sendableIds.length === 0) || uploads.blocksSend
+              held || (!draft.trim() && uploads.sendableIds.length === 0) || uploads.blocksSend
             }
             loading={sending}
             aria-label="Send reply"
           >
             <Glyph name="send" size={16} /> <span>Reply</span>
           </Button>
+          {sendInFlight && !sending ? (
+            <div className="wx-send-hint">Your previous reply is still being sent.</div>
+          ) : null}
           {sendHint ? <div className="wx-send-hint">{sendHint}</div> : null}
           {sendError ? (
             <div role="alert" className="wx-composer-error">

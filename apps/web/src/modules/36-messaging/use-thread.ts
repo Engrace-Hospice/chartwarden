@@ -25,9 +25,14 @@ export interface LiveHint {
   readonly items: readonly LiveHintItem[];
 }
 
-/** Safety-net polling of an open thread, the same cadence as the channel's. */
-const POLL_INTERVAL_MS = 15_000;
-const REALTIME_POLL_INTERVAL_MS = 120_000;
+/**
+ * Safety-net polling of an open thread. Every successful read of the thread route is a read-audited PHI read (one
+ * `message.viewed` row per call, the background header only exempts the idle timeout), so the cadence is deliberately
+ * slow: a hint or a user action is what normally refreshes the panel, the poll only covers a dropped hint.
+ */
+const POLL_INTERVAL_MS = 60_000;
+const REALTIME_POLL_INTERVAL_MS = 300_000;
+const MAX_BACKOFF_STEPS = 2;
 
 const LIVE_HINT_QUEUE = 20;
 
@@ -78,7 +83,7 @@ export function useThread(
   realtimeConnected = false,
 ): ThreadState {
   const client = useApiClient();
-  const [status, setStatus] = useState<ThreadStatus>("loading");
+  const [status, setStatusState] = useState<ThreadStatus>("loading");
   const [root, setRoot] = useState<Message | null>(null);
   const [replies, setReplies] = useState<Message[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -89,12 +94,24 @@ export function useThread(
   const pagedBeyondFirstRef = useRef(false);
   const inFlightRef = useRef(false);
   const rereadRef = useRef(false);
+  /** A user-asked read (Retry) that arrived while a background read was in flight: the re-read must be foreground. */
+  const rereadForegroundRef = useRef(false);
+  const statusRef = useRef<ThreadStatus>("loading");
+  const setStatus = useCallback((next: ThreadStatus): void => {
+    statusRef.current = next;
+    setStatusState(next);
+  }, []);
 
+  /** Resolves true when the read succeeded or was not needed; false when it failed (drives the poll's back-off). */
   const read = useCallback(
-    async (background: boolean): Promise<void> => {
+    async (background: boolean): Promise<boolean> => {
+      // An unreadable thread stays unreadable until the user explicitly reloads: no poll or hint may flip it back.
+      if (background && statusRef.current === "unavailable") return true;
+      if (!background && statusRef.current === "failed") setStatus("loading");
       if (inFlightRef.current) {
         rereadRef.current = true;
-        return;
+        if (!background) rereadForegroundRef.current = true;
+        return true;
       }
       inFlightRef.current = true;
       const generation = generationRef.current;
@@ -109,12 +126,12 @@ export function useThread(
             ...(background ? { headers: BACKGROUND_REQUEST_HEADERS } : {}),
           },
         );
-        if (generation !== generationRef.current) return;
+        if (generation !== generationRef.current) return true;
         if (error || !data) {
           if (isUnavailable(response?.status)) setStatus("unavailable");
           else if (background) setRefreshFailed(true);
           else setStatus("failed");
-          return;
+          return false;
         }
         const merged = mergeMessages(repliesRef.current, data.replies as Message[]);
         repliesRef.current = merged;
@@ -125,22 +142,26 @@ export function useThread(
           setCursor((data.nextCursor as string | undefined) ?? null);
         setRefreshFailed(false);
         setStatus("ready");
+        return true;
       } catch {
         // A rejected request (network down): a failed first load offers Retry; a failed refresh keeps what is shown.
-        if (generation !== generationRef.current) return;
+        if (generation !== generationRef.current) return true;
         if (background) setRefreshFailed(true);
         else setStatus("failed");
+        return false;
       } finally {
         if (generation === generationRef.current) {
           inFlightRef.current = false;
           if (rereadRef.current) {
             rereadRef.current = false;
-            void read(true);
+            const foreground = rereadForegroundRef.current;
+            rereadForegroundRef.current = false;
+            void read(!foreground);
           }
         }
       }
     },
-    [channelId, client, rootId],
+    [channelId, client, rootId, setStatus],
   );
 
   // A different thread starts from nothing; the previous thread's late reply is dropped by the generation.
@@ -150,6 +171,7 @@ export function useThread(
     pagedBeyondFirstRef.current = false;
     inFlightRef.current = false;
     rereadRef.current = false;
+    rereadForegroundRef.current = false;
     setStatus("loading");
     setRoot(null);
     setReplies([]);
@@ -160,7 +182,7 @@ export function useThread(
     return () => {
       generationRef.current += 1;
     };
-  }, [read]);
+  }, [read, setStatus]);
 
   // A hint that concerns this thread (a reply to it, or a change to its root), or a reconnect, re-reads it.
   const handledSeq = useRef(liveHint?.seq ?? 0);
@@ -178,16 +200,42 @@ export function useThread(
     if (concernsThread) void read(true);
   }, [liveHint, read, rootId]);
 
-  // Safety net: a dropped hint costs latency, never correctness. Slow while the socket is up, paused while hidden.
+  // Safety net: a dropped hint costs latency, never correctness. Slow while the socket is up (the interval is read
+  // when each tick is scheduled, so the socket coming or going does not restart the countdown), backs off after
+  // failures, pauses while hidden, stops for an unreadable thread, and re-reads when the tab returns.
+  const pollMsRef = useRef(POLL_INTERVAL_MS);
+  useLayoutEffect(() => {
+    pollMsRef.current = realtimeConnected ? REALTIME_POLL_INTERVAL_MS : POLL_INTERVAL_MS;
+  }, [realtimeConnected]);
   useEffect(() => {
-    const timer = window.setInterval(
-      () => {
-        if (!document.hidden) void read(true);
-      },
-      realtimeConnected ? REALTIME_POLL_INTERVAL_MS : POLL_INTERVAL_MS,
-    );
-    return () => window.clearInterval(timer);
-  }, [read, realtimeConnected]);
+    let timer: number | undefined;
+    let failures = 0;
+    let stopped = false;
+    const schedule = (): void => {
+      timer = window.setTimeout(tick, pollMsRef.current * 2 ** failures);
+    };
+    const tick = async (): Promise<void> => {
+      if (stopped || statusRef.current === "unavailable") return;
+      if (document.hidden) {
+        schedule();
+        return;
+      }
+      failures = (await read(true)) ? 0 : Math.min(failures + 1, MAX_BACKOFF_STEPS);
+      schedule();
+    };
+    const refreshWhenVisible = (): void => {
+      if (!document.hidden && statusRef.current !== "unavailable") void read(true);
+    };
+    schedule();
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", refreshWhenVisible);
+    return () => {
+      stopped = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", refreshWhenVisible);
+    };
+  }, [read]);
 
   const loadMore = useCallback((): void => {
     if (!cursor || loadingMore) return;
@@ -246,7 +294,9 @@ export function useThread(
     hasMore: cursor !== null,
     loadingMore,
     refreshFailed,
-    reload: (background = false) => void read(background),
+    reload: (background = false) => {
+      void read(background);
+    },
     loadMore,
     addSent,
   };
