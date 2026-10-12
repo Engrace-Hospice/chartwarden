@@ -659,8 +659,17 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
           expect(real.statusCode, label).toBeGreaterThanOrEqual(400);
           expect(real.statusCode, label).toBeLessThan(500);
           expect(shape(real), label).toBe(shape(ctl));
+          if (who === u1) {
+            const code = field === "parentMessageId" ? "PARENT_MESSAGE_NOT_IN_CHANNEL" : "QUOTED_MESSAGE_NOT_IN_CHANNEL";
+            expect(real.body, label).toContain(code);
+          }
         }
       }
+    });
+    it("positive control: a same-channel parent and quote are accepted", async () => {
+      const route = "POST /api/v1/messaging/channels/:id/messages";
+      const ok = await call(route, u1, { id: dmA }, { body: "ok", parentMessageId: msgDmA, quotedMessageId: msgDmA });
+      expect(ok.statusCode, ok.body).toBe(201);
     });
   });
 
@@ -1044,9 +1053,13 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       ];
       for (const [table, sql, args] of inserts) {
         await asOrgB(async (c) => {
-          await expect(c.query(sql, args()), table).rejects.toThrow(
-            /row-level security|violates|permission denied|not-null|null value/i,
-          );
+          // message_attachment has no organization_id of its own (parent-join policy), so any
+          // rejection is accepted there; every other table must be refused by RLS itself.
+          const reason =
+            table === "message_attachment"
+              ? /row-level security|violates|permission denied|not-null|null value/i
+              : /row-level security/i;
+          await expect(c.query(sql, args()), table).rejects.toThrow(reason);
         });
       }
       expect(
