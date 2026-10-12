@@ -116,20 +116,21 @@ export async function insertEncryptedMessage(
     clientMessageId?: string | null;
   },
 ): Promise<{ messageId: string; createdAt: string; replayed: boolean }> {
-  if (args.parentMessageId) {
-    // Audit F5: a reply's parent must be in the same channel. A missing, cross-org or other-channel parent is
-    // one answer, so the check is not an existence oracle for messages in channels the sender cannot see.
-    const parent = (await tx
+  // Audit F5 / WP 1.7: a reply's parent and a quote's target must be in the same channel. A missing, cross-org or
+  // other-channel id is one answer, so the check is not an existence oracle for messages in channels the sender cannot
+  // see (and a quote is never stored as a dangling cross-tenant reference: the FK check ignores RLS).
+  for (const [id, code, what] of [
+    [args.parentMessageId, "PARENT_MESSAGE_NOT_IN_CHANNEL", "a reply's parent"],
+    [args.quotedMessageId, "QUOTED_MESSAGE_NOT_IN_CHANNEL", "a quoted"],
+  ] as const) {
+    if (!id) continue;
+    const found = (await tx
       .select({ channelId: MSG.channelId })
       .from(MSG)
-      .where(and(eq(MSG.organizationId, args.orgId), eq(MSG.id, args.parentMessageId)))
+      .where(and(eq(MSG.organizationId, args.orgId), eq(MSG.id, id)))
       .limit(1)) as Array<{ channelId: string }>;
-    if (parent[0]?.channelId !== args.channelId) {
-      throw new WardenXError(
-        "PARENT_MESSAGE_NOT_IN_CHANNEL",
-        "a reply's parent message must be in the same channel",
-        422,
-      );
+    if (found[0]?.channelId !== args.channelId) {
+      throw new WardenXError(code, `${what} message must be in the same channel`, 422);
     }
   }
   const { cipher: bodyCipher, sha256 } = cipher.seal(args.orgId, args.body);

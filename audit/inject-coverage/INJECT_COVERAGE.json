@@ -4,7 +4,7 @@
     "covered": 39,
     "routes": 1510,
     "coveredRoutes": 1510,
-    "directRoutesReferenced": 1426
+    "directRoutesReferenced": 1427
   },
   "modules": [
     {
@@ -84,6 +84,7 @@
         "apps/backend/__tests__/m12-vendor-boundary.live.test.ts",
         "apps/backend/__tests__/m2-link-redemption.live.test.ts",
         "apps/backend/__tests__/m28-fhir-gateway.live.test.ts",
+        "apps/backend/__tests__/m36-tenant-idor.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.test.ts",
         "apps/backend/__tests__/m5-lifecycle-routes.test.ts",
@@ -489,13 +490,14 @@
         "apps/backend/__tests__/m36-admin-alert-deliveries.test.ts",
         "apps/backend/__tests__/m36-delivery-sweep-and-webhooks.test.ts",
         "apps/backend/__tests__/m36-idempotent-send.live.test.ts",
+        "apps/backend/__tests__/m36-tenant-idor.live.test.ts",
         "apps/backend/__tests__/m36-transactional-email.live.test.ts",
         "apps/backend/__tests__/messaging-member-admin.test.ts",
         "apps/backend/__tests__/messaging-routes-mount.test.ts",
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 26
+      "directRoutesReferenced": 27
     },
     {
       "module": "37-ipu",
@@ -533,7 +535,8 @@
         "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts",
         "apps/backend/__tests__/gap-079-read-audit-emission.live.test.ts",
         "apps/backend/__tests__/gap-094-m31-portal-telehealth-authz.live.test.ts",
-        "apps/backend/__tests__/m16-routes.live.test.ts"
+        "apps/backend/__tests__/m16-routes.live.test.ts",
+        "apps/backend/__tests__/m36-tenant-idor.live.test.ts"
       ],
       "directRoutesReferenced": 27
     },

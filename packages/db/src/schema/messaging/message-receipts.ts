@@ -4,7 +4,7 @@
 // unread-inbox query path is served by the partial index on (user_id, status) WHERE
 // status = 'delivered'. RLS + the M4 write-audit trigger land in M36-T03.
 import { sql } from "drizzle-orm";
-import { index, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { foreignKey, index, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { messageReceiptStatus } from "../../enums";
 import { organizations } from "../organizations";
 import { users } from "../users";
@@ -17,9 +17,7 @@ export const messageReceipts = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
-    messageId: uuid("message_id")
-      .notNull()
-      .references(() => messages.id, { onDelete: "cascade" }),
+    messageId: uuid("message_id").notNull(), // composite FK (organization_id, message_id) below
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
@@ -29,6 +27,12 @@ export const messageReceipts = pgTable(
     ackedAt: timestamp("acked_at", { withTimezone: true }),
   },
   (t) => ({
+    messageOrgFk: foreignKey({
+      name: "message_receipt_message_org_fk",
+      columns: [t.organizationId, t.messageId],
+      foreignColumns: [messages.organizationId, messages.id],
+    }).onDelete("cascade"),
+    byOrgMessageIdx: index("message_receipt_org_message_idx").on(t.organizationId, t.messageId),
     uniquePerMessageUser: uniqueIndex("message_receipt_unique").on(t.messageId, t.userId),
     byUserReadIdx: index("message_receipt_user_read_idx")
       .on(t.userId, t.status)

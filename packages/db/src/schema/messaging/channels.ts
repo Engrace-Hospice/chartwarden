@@ -14,6 +14,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -42,6 +43,7 @@ export const channels = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
+    orgIdIdUnique: unique("channel_org_id_id_unique").on(t.organizationId, t.id), // 1072: composite-FK target
     orgKindIdx: index("channel_org_kind_idx").on(t.organizationId, t.channelKind),
     subjectIdx: index("channel_subject_idx")
       .on(t.channelKind, t.subjectId)
