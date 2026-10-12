@@ -273,6 +273,17 @@ docker compose --env-file .env.production -f compose.yml run --rm --no-deps prov
 # that is down leaves attachments `pending` (nothing delivered), so it must not roll back an otherwise good release.
 docker compose --env-file .env.production -f compose.yml up -d --no-deps clamav \
   || echo "WARNING: clamav sidecar did not start; message attachments stay pending until it does" >&2
+# clamd.conf is a bind mount: `up -d --no-deps` does not recreate the container for a changed file, so a new config would
+# never reach the running scanner. Restart it (only) when the file's hash differs from the one last applied.
+clamd_conf_hash=$( { sha256sum clamav/clamd.conf 2>/dev/null || shasum -a 256 clamav/clamd.conf 2>/dev/null; } | awk '{print $1}')
+clamd_conf_applied=$(cat .clamd.conf.sha256 2>/dev/null || true)
+if [ -n "$clamd_conf_hash" ] && [ "$clamd_conf_hash" != "$clamd_conf_applied" ]; then
+  if docker compose --env-file .env.production -f compose.yml restart clamav; then
+    echo "$clamd_conf_hash" > .clamd.conf.sha256
+  else
+    echo "WARNING: clamav restart for a changed clamd.conf failed; the scanner keeps its previous config" >&2
+  fi
+fi
 docker compose --env-file .env.production -f compose.yml run --rm --no-deps tenant-buckets \
   || echo "WARNING: tenant bucket backfill failed; uploads create a missing bucket on demand" >&2
 docker compose --env-file .env.production -f compose.yml up -d --no-deps --force-recreate api worker web docling-worker || {
