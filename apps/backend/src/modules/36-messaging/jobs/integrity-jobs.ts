@@ -22,8 +22,18 @@ import {
   runHashVerify,
 } from "@wardenx/messaging";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
-import { and, eq, lt, sql } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 import type { MessageBodyCipher } from "../messaging-write-core";
+import {
+  HASH_VERIFY_RANDOM_SAMPLE_SIZE,
+  HASH_VERIFY_RECENT_OVERLAP_MS,
+  HASH_VERIFY_SAMPLE_LIMIT,
+  type RowMeta,
+  readPreviousRun,
+  sampleRows,
+} from "./integrity-sampling";
+
+export { HASH_VERIFY_SAMPLE_LIMIT };
 
 type Db = DbClient;
 
@@ -39,11 +49,14 @@ export interface M36IntegrityJobDeps {
   readonly holdScopeForOrg: (organizationId: string) => Promise<ActiveHoldScope>;
   readonly now?: () => Date;
   readonly newRunId?: () => string;
+  /** Rotation and recent-pass rows per table per run. Defaults to {@link HASH_VERIFY_SAMPLE_LIMIT}; tests inject small ones. */
+  readonly sampleLimit?: number;
+  /** Random-pass rows per table per run. Defaults to {@link HASH_VERIFY_RANDOM_SAMPLE_SIZE}. */
+  readonly randomSampleSize?: number;
+  /** How far before the previous run's start the recent pass reaches. Defaults to {@link HASH_VERIFY_RECENT_OVERLAP_MS}. */
+  readonly recentOverlapMs?: number;
 }
 
-/** Rows verified per table per org per night; random order so repeated runs cover the whole table over time. */
-// ponytail: random sample, not a cursor; add a (last_verified_at) cursor if full coverage per cycle is required.
-export const HASH_VERIFY_SAMPLE_LIMIT = 5000;
 /** Candidates examined per org per weekly scan. */
 export const RETENTION_SCAN_BATCH_LIMIT = 5000;
 
@@ -55,10 +68,13 @@ export const MESSAGE_RETENTION_YEARS = { care_related: 7, bereavement: 7, operat
 export const DECRYPT_FAILED = "decrypt-failed";
 
 /**
- * Consecutive DECRYPT_FAILED rows in one run after which per-row mismatch rows stop and ONE summary row is written
- * instead: a whole-org key misconfiguration would otherwise write up to 2 * HASH_VERIFY_SAMPLE_LIMIT critical rows.
+ * Consecutive DECRYPT_FAILED rows (counted per table: heads, then revisions) after which per-row mismatch rows stop
+ * and ONE summary row is written instead: a whole-org key misconfiguration would otherwise write thousands of
+ * critical rows. The summary lists the first {@link SUPPRESSED_ID_RECORD_LIMIT} suppressed resource ids.
  */
 export const SYSTEMIC_DECRYPT_FAILURE_THRESHOLD = 20;
+/** Suppressed resource ids kept (ids only) in the systemic-failure summary row. */
+export const SUPPRESSED_ID_RECORD_LIMIT = 50;
 
 /**
  * The hash the §7.8 eraser leaves on a shredded head beside its emptied cipher. `message_sha256_shape` requires a
@@ -69,14 +85,6 @@ export const ERASED_BODY_SHA256 = "0".repeat(64);
 const MSG = schema.messages;
 const REV = schema.messageRevisions;
 const CH = schema.channels;
-
-interface RowMeta {
-  readonly cipherBytes: Buffer;
-  readonly storedHash: string;
-  readonly resourceKind: "message" | "message_revision";
-  readonly resourceId: string;
-  readonly revisionNo?: number;
-}
 
 function jobContext(organizationId: string, runId: string) {
   return {
@@ -103,75 +111,9 @@ function recompute(cipher: MessageBodyCipher, orgId: string, meta: RowMeta): str
   }
 }
 
-/** Sample heads and revisions for one org, inside the org's RLS context. */
-async function sampleRows(
-  tx: Parameters<Parameters<typeof withOrgContext>[2]>[0],
-  orgId: string,
-  limit: number,
-): Promise<{ rows: HashVerifySampleRow[]; meta: WeakMap<HashVerifySampleRow, RowMeta> }> {
-  const db = tx as unknown as Db;
-  const heads = await db
-    .select({
-      id: MSG.id,
-      channelId: MSG.channelId,
-      bodyCipher: MSG.bodyCipher,
-      bodySha256: MSG.bodySha256,
-    })
-    .from(MSG)
-    .where(eq(MSG.organizationId, orgId))
-    .orderBy(sql`random()`)
-    .limit(limit);
-  const revisions = await db
-    .select({
-      id: REV.id,
-      messageId: REV.messageId,
-      revisionNo: REV.revisionNo,
-      channelId: MSG.channelId,
-      bodyCipher: REV.bodyCipher,
-      bodySha256: REV.bodySha256,
-    })
-    .from(REV)
-    .innerJoin(MSG, and(eq(MSG.organizationId, REV.organizationId), eq(MSG.id, REV.messageId)))
-    .where(eq(REV.organizationId, orgId))
-    .orderBy(sql`random()`)
-    .limit(limit);
-
-  const meta = new WeakMap<HashVerifySampleRow, RowMeta>();
-  const rows: HashVerifySampleRow[] = [];
-  // Integrity is checked for held rows too: a hold blocks destruction, it never excuses tampering.
-  for (const h of heads) {
-    const row: HashVerifySampleRow = {
-      messageId: h.id,
-      channelId: h.channelId,
-      organizationId: orgId,
-      storedHash: h.bodySha256,
-      legalHold: false,
-    };
-    meta.set(row, { cipherBytes: h.bodyCipher, storedHash: h.bodySha256, resourceKind: "message", resourceId: h.id });
-    rows.push(row);
-  }
-  for (const r of revisions) {
-    const row: HashVerifySampleRow = {
-      messageId: r.messageId,
-      channelId: r.channelId,
-      organizationId: orgId,
-      storedHash: r.bodySha256,
-      legalHold: false,
-    };
-    meta.set(row, {
-      cipherBytes: r.bodyCipher,
-      storedHash: r.bodySha256,
-      resourceKind: "message_revision",
-      resourceId: r.id,
-      revisionNo: r.revisionNo,
-    });
-    rows.push(row);
-  }
-  return { rows, meta };
-}
-
 /**
- * One org's nightly integrity run: verify a sample of message heads and revisions, record every mismatch
+ * One org's nightly integrity run: verify the rotation page, the recently created rows and a random page of message
+ * heads and revisions (see ./integrity-sampling.ts), record every mismatch
  * (`m36.integrity.hash_mismatch`, severity critical) and one `m36.hash_verify.run` summary row. The caller fails
  * the job when `mismatched > 0` so BullMQ's failed set and the DLQ alert fire (same posture as M4 integrity_sample).
  */
@@ -181,19 +123,31 @@ export async function runHashVerifyForOrg(
 ): Promise<HashVerifyRunResult> {
   const runId = (deps.newRunId ?? randomUUID)();
   const detectedAt = (deps.now ?? (() => new Date()))().toISOString();
+  const previous = await readPreviousRun(deps.db, orgId, new Date(detectedAt));
   return withOrgContext(deps.db, systemOrgContext(orgId), async (tx) => {
     const ctx = jobContext(orgId, runId);
     const exec = tx as unknown as AuditExecutor;
-    const { rows, meta } = await sampleRows(tx, orgId, HASH_VERIFY_SAMPLE_LIMIT);
+    const sampled = await sampleRows(tx as unknown as Db, orgId, previous, {
+      limit: deps.sampleLimit ?? HASH_VERIFY_SAMPLE_LIMIT,
+      randomSize: deps.randomSampleSize ?? HASH_VERIFY_RANDOM_SAMPLE_SIZE,
+      recentOverlapMs: deps.recentOverlapMs ?? HASH_VERIFY_RECENT_OVERLAP_MS,
+    });
+    const { rows, meta } = sampled;
     // runHashVerify emits a mismatch immediately after recomputing the same row, so the row just recomputed
     // is the one the event is about.
     let current: RowMeta | undefined;
     let consecutiveDecryptFailures = 0;
+    let streakKind: RowMeta["resourceKind"] | undefined;
     let suppressedMismatches = 0;
-    let firstSuppressed: RowMeta | undefined;
+    const suppressedIds: string[] = [];
     const result = await runHashVerify(runId, detectedAt, rows, {
       async recomputeHash(row) {
         current = meta.get(row);
+        // The streak is per table: a failing head run must not silence the first revision's own mismatch row.
+        if (current && current.resourceKind !== streakKind) {
+          streakKind = current.resourceKind;
+          consecutiveDecryptFailures = 0;
+        }
         const computed = current ? recompute(deps.cipher, orgId, current) : null;
         // An erased skip (null) neither extends nor breaks the streak; any decrypt that worked resets it.
         if (computed === DECRYPT_FAILED) consecutiveDecryptFailures += 1;
@@ -206,7 +160,9 @@ export async function runHashVerifyForOrg(
           consecutiveDecryptFailures > SYSTEMIC_DECRYPT_FAILURE_THRESHOLD
         ) {
           suppressedMismatches += 1; // still counted in `mismatched`, so the tick still fails
-          firstSuppressed ??= current;
+          if (current && suppressedIds.length < SUPPRESSED_ID_RECORD_LIMIT) {
+            suppressedIds.push(current.resourceId);
+          }
           return;
         }
         await audit(exec, ctx, {
@@ -239,7 +195,8 @@ export async function runHashVerifyForOrg(
           organizationId: orgId,
           threshold: SYSTEMIC_DECRYPT_FAILURE_THRESHOLD,
           suppressedMismatches,
-          firstSuppressedResourceId: firstSuppressed?.resourceId ?? null,
+          firstSuppressedResourceId: suppressedIds[0] ?? null,
+          suppressedResourceIds: suppressedIds,
           detectedAt,
         },
       });
@@ -250,7 +207,17 @@ export async function runHashVerifyForOrg(
       resourceId: runId,
       outcome: result.mismatched > 0 ? "failure" : "success",
       severity: result.mismatched > 0 ? "critical" : "info",
-      context: { ...result },
+      context: {
+        ...result,
+        cursorEnd: sampled.cursorEnd,
+        passCounts: sampled.passCounts,
+        recentSince: sampled.recentSince,
+        recentOverflow: sampled.recentOverflow,
+        ...(previous.cursorReset ? { cursorReset: previous.cursorReset } : {}),
+        ...(previous.ignoredNonSystemRuns > 0
+          ? { ignoredNonSystemRuns: previous.ignoredNonSystemRuns }
+          : {}),
+      },
     });
     return result;
   });

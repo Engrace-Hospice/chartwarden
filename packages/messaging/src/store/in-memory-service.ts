@@ -494,6 +494,17 @@ export function createInMemoryMessagingService(
         throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
       }
       validateReferences(input.body, input.references ?? [], ch, eligibleStaff);
+      // Same rule as the DB service (audit F5): a missing, cross-org or other-channel parent is one answer.
+      if (input.parentMessageId) {
+        const parent = messages.get(input.parentMessageId);
+        if (parent?.orgId !== orgId || parent.channelId !== input.channelId) {
+          throw new WardenXError(
+            "PARENT_MESSAGE_NOT_IN_CHANNEL",
+            "a reply's parent message must be in the same channel",
+            422,
+          );
+        }
+      }
       const messageId = id("msg");
       const createdAt = iso();
       messages.set(messageId, {

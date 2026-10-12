@@ -4,7 +4,11 @@
 // package is their one owner, `arch:queue-names`). Each tick fans out over active orgs; one org failing never
 // stops the others, and the tick then FAILS (AggregateError) so the failure is visible in the failed set / DLQ alert
 // rather than reported green. A hash mismatch is such a failure.
-import { MESSAGING_JOB_SCHEDULES, MESSAGING_QUEUES } from "@wardenx/messaging";
+import {
+  MESSAGING_JOB_SCHEDULES,
+  MESSAGING_QUEUES,
+  MESSAGING_QUEUE_PARAMETERS,
+} from "@wardenx/messaging";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import {
   type M36IntegrityJobDeps,
@@ -63,26 +67,81 @@ export async function retentionScanTick(deps: M36IntegrityWorkerDeps): Promise<n
   });
 }
 
-/** Construct the two Workers (the caller owns lifecycle). */
+/** Construct the two Workers (the caller owns lifecycle). Concurrency comes from the §4.4.1 parameter table. */
 export function registerM36IntegrityWorkers(deps: M36IntegrityWorkerDeps): Worker[] {
-  const options = { connection: deps.connection, concurrency: 1 };
+  const options = (queue: keyof typeof MESSAGING_QUEUE_PARAMETERS) => ({
+    connection: deps.connection,
+    concurrency: MESSAGING_QUEUE_PARAMETERS[queue].concurrency,
+  });
   return [
-    new Worker(MESSAGING_QUEUES.hashVerify, () => hashVerifyTick(deps), options),
-    new Worker(MESSAGING_QUEUES.retentionScan, () => retentionScanTick(deps), options),
+    new Worker(
+      MESSAGING_QUEUES.hashVerify,
+      () => hashVerifyTick(deps),
+      options(MESSAGING_QUEUES.hashVerify),
+    ),
+    new Worker(
+      MESSAGING_QUEUES.retentionScan,
+      () => retentionScanTick(deps),
+      options(MESSAGING_QUEUES.retentionScan),
+    ),
   ];
 }
 
-/** Register the repeatable triggers. Returns the `Queue`s to `close()`. */
+const SCHEDULED_JOB_NAME = "scheduled";
+
+/** The one scheduler id per queue. Anything else registered under the job name is a stale (legacy) trigger. */
+export const integritySchedulerId = (queueName: string): string => `${queueName}.schedule`;
+
+/**
+ * Register the repeatable triggers with `upsertJobScheduler`. Returns the `Queue`s to `close()`.
+ *
+ * Why not `queue.add(..., { repeat })`: BullMQ keeps the first-registered delayed job and its options, so changing
+ * attempts/backoff (or the cron) on an already-registered repeat key has no effect, and the old key keeps firing
+ * (observed against the real BullMQ 5.81 in `m36-integrity-jobs.live.test.ts`). Upserting under a fixed scheduler id
+ * is idempotent and replaces the options. A legacy `add({ repeat })` trigger left in Redis by an earlier deploy
+ * would run beside the scheduler (two runs per tick), so every other trigger under this job name is removed AFTER the
+ * upsert succeeded. During a rolling deploy an old replica that still registers the legacy trigger can re-create it until
+ * a new replica next boots: a transient, harmless double run.
+ *
+ * Attempts/backoff come from the §4.4.1 table (hash_verify is 1 attempt by design: see the table). The DLQ alert keys
+ * on `attemptsMade >= opts.attempts`, so the job option must carry the table value.
+ */
 export async function scheduleM36IntegrityJobs(connection: ConnectionOptions): Promise<Queue[]> {
   const specs = [
     { name: MESSAGING_QUEUES.hashVerify, pattern: MESSAGING_JOB_SCHEDULES.hashVerify },
     { name: MESSAGING_QUEUES.retentionScan, pattern: MESSAGING_JOB_SCHEDULES.retentionScan },
   ];
   const queues: Queue[] = [];
-  for (const { name, pattern } of specs) {
-    const queue = new Queue(name, { connection });
-    await queue.add("scheduled", {}, { repeat: { pattern }, removeOnComplete: true });
-    queues.push(queue);
+  try {
+    for (const { name, pattern } of specs) {
+      const { attempts, backoff } = MESSAGING_QUEUE_PARAMETERS[name];
+      const queue = new Queue(name, { connection });
+      queues.push(queue);
+      const schedulerId = integritySchedulerId(name);
+      // Upsert FIRST: if it fails (Redis blip) the legacy trigger is still there, so the queue is never left with no
+      // schedule. A failed removal afterwards only leaves a harmless double run (read-only, concurrency 1).
+      await queue.upsertJobScheduler(
+        schedulerId,
+        { pattern },
+        {
+          name: SCHEDULED_JOB_NAME,
+          data: {},
+          opts: {
+            removeOnComplete: true,
+            attempts,
+            backoff: { type: backoff.type, delay: backoff.baseMs },
+          },
+        },
+      );
+      for (const stale of await queue.getRepeatableJobs()) {
+        if (stale.name === SCHEDULED_JOB_NAME && stale.key !== schedulerId) {
+          await queue.removeRepeatableByKey(stale.key);
+        }
+      }
+    }
+    return queues;
+  } catch (error) {
+    await Promise.allSettled(queues.map((q) => q.close()));
+    throw error;
   }
-  return queues;
 }

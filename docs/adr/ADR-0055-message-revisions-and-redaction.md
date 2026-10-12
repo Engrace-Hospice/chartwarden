@@ -147,7 +147,7 @@ Verified in the repo today:
 - ~~Single-officer fallback: the length of the countersign period.~~ Decided 2026-10-11 by the product owner: **72 hours**; a redaction not countersigned within it stays non-final.
 - Who are the default holders of `messaging.history.read`, `messaging.redact.request` and `messaging.redact.approve`? Needs
   compliance input.
-- The messaging legal-hold ADR owner and date (the retention scan is not scheduled today, so the risk is latent).
+- The messaging legal-hold ADR owner and date (the retention scan has been scheduled and plan-only since WP 1.9, so nothing is destroyed until this ADR lands).
 
 Resolved (Decided 2026-10-11 by the product owner): edits lock once urgent or ack-requested, correction is a linked amendment (D8);
 four-eyes redaction with distinct requester/approver and a single-officer fallback (D9). The earlier question "no edits after send
@@ -173,14 +173,26 @@ for patient-linked channels" is superseded by D8's narrower lock.
 ## Implementation status (WP 1.9)
 
 - **Revision verification is done.** The nightly `messaging.hash_verify` run (04:00 UTC, `apps/backend/src/modules/36-messaging/jobs/`)
-  samples message heads and `message_revision` rows per tenant, decrypts each under the tenant DEK and compares SHA-256 to the stored
-  hash. A divergence, or a cipher that no longer authenticates, is recorded as `m36.integrity.hash_mismatch` (critical; ids and hashes
+  verifies message heads and `message_revision` rows per tenant in three bounded passes (a guaranteed `(created_at, id)` rotation of
+  `HASH_VERIFY_SAMPLE_LIMIT` rows per table per run, resuming from the previous run row's `cursorEnd` and wrapping; the rows created since
+  the previous run, which includes every edit because an edit adds a revision row; and a random primary-key page), deduplicated. The
+  worst-case latency for an old row tampered just behind the cursor is `ceil(rows / limit)` nights, and for a new row the next run
+  (unless more than the limit arrived or its transaction outlived the one-hour overlap, in which case the rotation and the random page
+  apply). Each row is decrypted under the tenant DEK and its SHA-256 compared to the stored hash. A divergence, or a cipher that no longer authenticates, is recorded as `m36.integrity.hash_mismatch` (critical; ids and hashes
   only, plus `revisionNo` for a revision) and the run as `m36.hash_verify.run`; the tick then fails so the DLQ alert fires. A held
   message is still verified: a hold blocks destruction, it does not excuse tampering. Proven live as `wardenx_app`, with the tamper
-  seeded over the superuser connection (`test:m36:integrity-jobs:live`).
+  seeded over the superuser connection (`test:m36:integrity-jobs:live`). `hash_verify` is one attempt by design (a mismatch is
+  deterministic; a retry would only duplicate the critical rows); a tamper alert to the security officer through the M36 alert emitter
+  is a follow-up. Because `hash_verify` is one attempt, a transient database or Redis error also gets no retry: that tenant stays
+  unverified until the next night (alerted through the failed tick and the DLQ alert, not retried). A malformed or missing cursor restarts
+  the rotation and is recorded on the run row (`cursorReset`); only the newest 50 `m36.hash_verify.run` rows are searched for the system-written cursor row. Migration 1080 supplies the `(organization_id, created_at, id)` indexes.
+  Rolling deploys: an old replica still running the legacy `add({ repeat })` registration can re-create the legacy trigger until a new replica next boots, which causes a transient double run (read-only, harmless). The largest remaining evasion path is the recent-pass overflow: more than `limit` new rows inside one window can bury a tampered new row, which is then covered only by the rotation and the random page (`recentOverflow` is recorded on the run row). Run rows by a non-system actor are ignored and counted (`ignoredNonSystemRuns`), a future-dated previous run is clamped to now, and an impossible calendar date in a cursor takes the `malformed_cursor` reset. Migration 1080 builds its indexes with a plain `CREATE INDEX`, which holds a SHARE lock (blocking writes to `message` and `message_revision`) while it builds. Because `hash_verify` is one attempt, a transient database or Redis error also gets no retry: that tenant stays
 - **The retention scan is scheduled but plan-only.** `messaging.retention_scan` (Sunday 02:00 UTC) selects messages past their channel's
   window, withholds those covered by an active M4 legal hold (conservative reading: org-wide hold, or one naming the channel's patient),
   and records `m36.retention_scan.run` with counts. It deletes nothing and files no certificate: destruction, and the message hold
   overlay of item 9, remain the messaging retention ADR's work. The `operational` window (1 year) is provisional until that ADR.
+  The scan counts from `created_at` and `toDestroy` means "past the age window and not held", not an approved destruction plan; the
+  retention design anchors on the last patient contact, with state overrides, custodian holds and destruction certificates (WP 5.6),
+  and where they differ the architecture wins and the scan changes then.
 - A reply's `parentMessageId` must be in the same channel (422 `PARENT_MESSAGE_NOT_IN_CHANNEL`), checked in the one insert helper both
   the route service and the provider seam use.

@@ -129,12 +129,14 @@ export const MESSAGING_QUEUE_PARAMETERS: { readonly [K in MessagingQueueName]: Q
     dlq: "messaging.endpoint_health.dlq",
     idempotency: "(userId, channel) per daily window",
   },
+  // WP 1.9: the weekly tick is ONE fan-out job over every org, so concurrency is 1 (a second concurrent tick would
+  // only re-plan the same rows). attempts/backoff are applied to the repeatable trigger (scheduleM36IntegrityJobs).
   "messaging.retention_scan": {
     name: "messaging.retention_scan",
     priority: 2,
     attempts: 2,
     backoff: { type: "fixed", baseMs: 300000 },
-    concurrency: 3,
+    concurrency: 1,
     dlq: "messaging.retention_scan.dlq",
     idempotency: "(channelId, retentionClass, windowEnd); legal-hold rows skipped (M36-F10)",
   },
@@ -156,12 +158,18 @@ export const MESSAGING_QUEUE_PARAMETERS: { readonly [K in MessagingQueueName]: Q
     dlq: "messaging.delivery_reconcile.dlq",
     idempotency: "(vendorMessageId, channel) per reconcile window",
   },
+  // WP 1.9: attempts is 1 ON PURPOSE. The tick fails when a hash mismatches, and a mismatch is deterministic: a retry
+  // would find the same rows and double the critical `m36.integrity.hash_mismatch` audit rows. The first failure is
+  // already final, so the DLQ alert (which fires only on the last attempt) fires at once. The backoff is inert at
+  // one attempt and kept for the table's shape. Concurrency 1: two overlapping ticks would race the rotation cursor.
+  // Trade-off: a TRANSIENT failure (database or Redis blip) also gets no retry, so that org stays unverified until the
+  // next night's run. It is alerted (failed tick + DLQ alert on the first failure), not retried.
   "messaging.hash_verify": {
     name: "messaging.hash_verify",
     priority: 2,
-    attempts: 2,
+    attempts: 1,
     backoff: { type: "fixed", baseMs: 300000 },
-    concurrency: 3,
+    concurrency: 1,
     dlq: "messaging.hash_verify.dlq",
     idempotency:
       "(messageId, verifyRunId); destroyed-DEK (offboarded tenant) decode is skipped, not a mismatch",

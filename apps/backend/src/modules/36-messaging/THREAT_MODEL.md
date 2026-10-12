@@ -15,7 +15,7 @@ already lives in code or in a sibling task.
 |---|---|---|---|
 | S-1 | Spoofing | Forged Twilio/Postmark webhook | §4.9 replay window + signature/IP-allowlist — `packages/messaging/src/webhooks` (`assertReplayWindow`, `verifyTwilioSignature`, `verifyPostmarkWebhook`); enforced in `routes/webhook-routes.ts` before any handler logic |
 | S-2 | Spoofing | Cross-tenant DM | `channel` RLS on `app.org_id` (migration 0017) + within-tenant DM validation in the route service |
-| T-1 | Tampering | `body_cipher` replacement | `body_sha256` + `messaging.hash_verify` nightly job (`jobs/runHashVerify`); M4 write-audit trigger on `message` |
+| T-1 | Tampering | `body_cipher` replacement | `body_sha256` + `messaging.hash_verify` nightly job (`jobs/integrity-jobs.ts` `runHashVerifyForOrg`, scheduled by `jobs/integrity-workers.ts`); M4 write-audit trigger on `message` |
 | T-2 | Tampering | `channel_member` tampering | M4 write-audit trigger (compliance-class) on `channel_member`; `canViewChannel` (active-membership check) at read time |
 | T-3 | Tampering | Alert-rule loosening | `enforce_alert_routing_tighten_only` DB trigger (migration 0017); additive-only override columns |
 | R-1 | Repudiation | Author denies send/delete | M4 write-audit trigger on `message` (sent/edited/tombstone); `body_sha256` anchors plaintext |
