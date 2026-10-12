@@ -9,3 +9,4 @@ export {
   type RealtimeOptions,
   type RealtimePrincipal,
 } from "./server";
+export { createRealtimeTelemetry, type RealtimeAuditEvent } from "./telemetry";

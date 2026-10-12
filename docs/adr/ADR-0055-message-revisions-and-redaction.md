@@ -1,6 +1,6 @@
 # ADR-0055 — Message edits keep an append-only revision chain; redaction is a separate audited act that masks, and physical destruction stays on the retention path and honours holds
 
-- **Status:** **Proposed** — drafted in Phase 0 for product-owner acceptance; needed before WP 1.3.
+- **Status:** **Accepted** (2026-10-11, product owner). The single-officer countersign period is **72 hours**. WP 1.3 implements items 1–4 and 6 (revision chain, edit window); items 5 and 7 (history read, redaction) ship with Phase 5.
 - **Date:** 2026-10-11
 - **Phase:** Messaging Hub Phase 1 (WP 1.3); redaction UI and approvals are Phase 5 (WP 5.6).
 - **Extends:** M36 spec §3.4 (message envelope, `body_sha256`, tombstone) and ADR-0004 (clinical retention; the "retain the cipher
@@ -143,8 +143,8 @@ Verified in the repo today:
 
 ## Open questions
 
-- Is the 5-minute window actually enforced in `editMessage` today? (Not found in the function; confirm by test before relying on it.)
-- Single-officer fallback: the **length of the countersign period** is not decided.
+- ~~Is the 5-minute window enforced in `editMessage`?~~ It was not. WP 1.3 enforces it on the database clock and a live test proves it.
+- ~~Single-officer fallback: the length of the countersign period.~~ Decided 2026-10-11 by the product owner: **72 hours**; a redaction not countersigned within it stays non-final.
 - Who are the default holders of `messaging.history.read`, `messaging.redact.request` and `messaging.redact.approve`? Needs
   compliance input.
 - The messaging legal-hold ADR owner and date (the retention scan is not scheduled today, so the risk is latent).
@@ -152,3 +152,20 @@ Verified in the repo today:
 Resolved (Decided 2026-10-11 by the product owner): edits lock once urgent or ack-requested, correction is a linked amendment (D8);
 four-eyes redaction with distinct requester/approver and a single-officer fallback (D9). The earlier question "no edits after send
 for patient-linked channels" is superseded by D8's narrower lock.
+
+## Implementation status (WP 1.3)
+
+- Migration `1070_m36_message_revision.sql`: `message_revision` with the org column, RLS and FORCE, the PHI write-audit trigger (cipher
+  and snapshot scrubbed), a composite cascade FK to `message`, and `wardenx_app` limited to `SELECT, INSERT`. The destruction role has
+  `SELECT, DELETE` so retention and the tenant eraser remove revisions with their message.
+- `editMessage` locks the message row, writes the replaced body and its mention snapshot as the next revision, then overwrites the head
+  (so `body_sha256` verification on `message` is unchanged), inside one transaction. The window is 5 minutes from `created_at`,
+  measured with `clock_timestamp()` in Postgres (so a wait on the row lock counts), and a late edit returns 409 `MESSAGE_EDIT_WINDOW_CLOSED`.
+- Revisions follow the message's retention: an author's soft delete keeps `body_cipher` (M36-F02), so earlier edit bodies stay with it
+  until retention or the tenant eraser removes the message (the foreign-key cascade removes its revisions). Redaction (Phase 5) is the
+  only path that removes a body early.
+- The existing `m36.message.edited` event is kept (it already feeds the hint consumer); a separate `m36.message.revised.v1` was not
+  added because nothing consumes it yet.
+- **Not in WP 1.3:** the edit lock for urgent and acknowledgment-requested messages (the columns arrive with ADR-0056 in Phase 4);
+  tenant shortening of the window (needs per-tenant messaging settings); `messaging.history.read` and the history route (item 5);
+  revision verification in `runHashVerify` (WP 1.9); redaction (Phase 5).

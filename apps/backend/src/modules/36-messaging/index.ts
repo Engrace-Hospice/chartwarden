@@ -75,6 +75,7 @@ export {
 // surface live (channel list / detail / thread envelope decrypt / alert inbox / preferences / alert
 // rules + send / edit / delete / receipts / DM / member admin / announce / preference + endpoint /
 // alert-rule override). The staff-messaging + notifications-inbox screens read/write live through these.
+export { createRealtimeAuditWriter } from "./audit/realtime-audit";
 export {
   createDbMessagingRouteService,
   type MessagingOutboxPort,

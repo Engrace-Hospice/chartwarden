@@ -7,11 +7,13 @@ import { describe, expect, it } from "vitest";
 import { ACTION_CATALOG, M36_ACTION_CATALOG, validateActionCatalog } from "../src/actions";
 
 describe("M36-T08 action catalog (§8.1.2)", () => {
-  it("declares the three §8.1.2 job/integrity events under m36", () => {
+  it("declares the §8.1.2 job/integrity events and the ADR-0054 realtime events under m36", () => {
     expect(M36_ACTION_CATALOG.map((e) => e.action)).toEqual([
       "m36.integrity.hash_mismatch",
       "m36.hash_verify.run",
       "m36.dlq_job",
+      "m36.realtime.connected",
+      "m36.realtime.disconnected",
     ]);
   });
 

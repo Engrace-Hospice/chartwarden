@@ -233,6 +233,7 @@ exports.MODULES = [
       "delivery_endpoint",
       "message",
       "message_entity_reference",
+      "message_revision",
       "message_attachment",
       "message_receipt",
       "notification_delivery",

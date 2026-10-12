@@ -40,4 +40,22 @@ export const M36_ACTION_CATALOG: ModuleActionCatalog = [
     denylistCategories: [],
     isPartTwoEligible: false,
   },
+  {
+    action: "m36.realtime.connected", // ADR-0054 item 12 — a socket joined its rooms
+    moduleOwner: "m36",
+    defaultRetentionClass: "operational",
+    description:
+      "A staff socket completed the realtime handshake and joined its rooms (sessionId; the actor is the user). Ids only; no message content.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
+    action: "m36.realtime.disconnected", // ADR-0054 item 12 — a joined socket ended, forced or not
+    moduleOwner: "m36",
+    defaultRetentionClass: "operational",
+    description:
+      "A joined realtime socket ended (sessionId, reason, forced, durationMs). forced=true when the server ended it: revocation, session end, connection cap or shutdown.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
 ];

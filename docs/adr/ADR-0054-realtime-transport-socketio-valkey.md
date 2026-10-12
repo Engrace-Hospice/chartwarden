@@ -67,7 +67,7 @@
     handshake. No message is lost because the DB is the record. Readiness reports the degradation; it does not fail boot.
 12. **Session lifetime.** A socket does not extend or refresh a session. Socket activity does **not** count as activity for the
     ADR-0004 idle timer (15 min idle, 8 h work-session, 24 h hard absolute), and the socket is disconnected on session expiry or
-    revocation (D11, decided 2026-10-11 by the product owner). Connect, disconnect and forced-disconnect are audited. *Status (WP 1.1): logged only; audit rows are not implemented yet.*
+    revocation (D11, decided 2026-10-11 by the product owner). Connect, disconnect and forced-disconnect are audited. *Status: implemented. `m36.realtime.connected` and `m36.realtime.disconnected` (reason, `forced`, duration; ids only) are written org-scoped; refusals are metrics and logs only so a flood cannot fill the audit table. Accepted ceiling: a valid session can still join and drop at the handshake limit (20 per minute per session, per node), about 40 operational rows a minute; coalescing per session is the upgrade if that is ever abused. Metrics: `wardenx_realtime_connections`, `_degraded`, `_connects_total`, `_disconnects_total{reason}`, `_refused_total{reason}`.*
 13. **Ops ownership.** The realtime component gets an owner in the ops runbook: platform/ops (D11, decided 2026-10-11 by the
     product owner).
 

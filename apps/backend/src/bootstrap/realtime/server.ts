@@ -176,10 +176,19 @@ export function startRealtimeServer(options: RealtimeOptions): RealtimeHandle {
     const principal = socket.data.principal as RealtimePrincipal;
     const mine = socketsByUser.get(principal.userId) ?? new Set<string>();
     socketsByUser.set(principal.userId, mine);
+    // Only a socket that joined its rooms is "connected" for telemetry/audit: a capped or failed one never was.
+    let connectedAt: number | undefined;
     socket.on("disconnect", (reason) => {
       mine.delete(socket.id);
       if (mine.size === 0) socketsByUser.delete(principal.userId);
-      log("realtime.disconnect", { reason, userId: principal.userId });
+      if (connectedAt === undefined) return;
+      log("realtime.disconnect", {
+        reason,
+        userId: principal.userId,
+        organizationId: principal.organizationId,
+        sessionId: principal.sessionId,
+        durationMs: Date.now() - connectedAt,
+      });
     });
     if (mine.size >= maxPerUser) {
       log("realtime.refused", { reason: "connection_cap", userId: principal.userId });
@@ -190,12 +199,15 @@ export function startRealtimeServer(options: RealtimeOptions): RealtimeHandle {
     options
       .resolveRooms(principal)
       .then((rooms) => socket.join([...rooms]))
-      .then(() =>
+      .then(() => {
+        if (!socket.connected) return;
+        connectedAt = Date.now();
         log("realtime.connect", {
           userId: principal.userId,
           organizationId: principal.organizationId,
-        }),
-      )
+          sessionId: principal.sessionId,
+        });
+      })
       .catch(() => {
         log("realtime.refused", { reason: "rooms_error", userId: principal.userId });
         socket.disconnect(true);

@@ -259,6 +259,7 @@ import {
 import {
   type RealtimeHandle,
   createRealtimeEmitter,
+  createRealtimeTelemetry,
   realtimeClientKey,
   startRealtimeServer,
 } from "./bootstrap/realtime";
@@ -1399,6 +1400,7 @@ import {
   createDrizzleMembershipUserLookup,
   createDrizzleMessagingEraseStore,
   createDrizzleRoleSetMembersReader,
+  createRealtimeAuditWriter,
   createSosContactCaller,
   mountMessagingRoutes,
   mountMessagingWebhookRoutes,
@@ -10522,7 +10524,12 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         // Behind a trusted proxy the socket address is the proxy: key on the entry that proxy appended, but only when
         // the TCP peer really is one of TRUSTED_PROXY_CIDRS (otherwise the header is the caller's own).
         clientKey: realtimeClientKey(parseTrustedProxies(process.env.TRUSTED_PROXY_CIDRS)),
-        log: (event, context) => app.log.info(context, event),
+        log: createRealtimeTelemetry(metricsRegistry, {
+          handle: () => realtimeRef,
+          log: (event, context) => app.log.info(context, event),
+          audit: createRealtimeAuditWriter(dbHandle.db),
+          onAuditError: (err) => app.log.error({ err }, "realtime audit write failed"),
+        }),
         authenticate: async (headers) => {
           const snap = await getIdentitySession(auth, headers);
           if (!snap || snap.passwordChangeRequired || !snap.activeOrganizationId) return null;

@@ -5,6 +5,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";
 import { StaffMessaging } from "./staff-messaging";
 
+// ADR-0054: the realtime client is exercised with a fake socket; no test opens a connection.
+const sockets = vi.hoisted(() => ({
+  handlers: new Map<string, (payload?: unknown) => void>(),
+}));
+vi.mock("socket.io-client", () => ({
+  io: () => ({
+    on: (event: string, fn: (payload?: unknown) => void) => sockets.handlers.set(event, fn),
+    off: (event: string) => sockets.handlers.delete(event),
+    close: () => {},
+  }),
+}));
+
 const ORG_ONE: Session = {
   userId: "11111111-1111-4111-8111-111111111111",
   organizationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -352,6 +364,51 @@ describe("M36 messaging organization switching", () => {
     expect(
       ((await screen.findByRole("textbox", { name: "Message" })) as HTMLTextAreaElement).value,
     ).toBe("");
+  });
+
+  it("refreshes the channel list when a realtime hint arrives, once per cursor", async () => {
+    const get = vi.fn((path: string) =>
+      Promise.resolve(
+        path === "/api/v1/messaging/channels"
+          ? { data: { channels: [channel("aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa", "Hinted")] } }
+          : { data: { messages: [] } },
+      ),
+    );
+    const api = { GET: get, POST: vi.fn() } as unknown as ApiClient;
+    render(
+      <MemoryRouter>
+        <ApiClientProvider client={api}>
+          <SessionProvider session={ORG_ONE}>
+            <StaffMessaging />
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    await screen.findAllByText("Hinted");
+    const channelLoads = () =>
+      get.mock.calls.filter(([path]) => path === "/api/v1/messaging/channels").length;
+    const before = channelLoads();
+    const hint = {
+      kind: "message.new",
+      cursor: "c-1",
+      ids: { channelId: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa", messageId: "m1" },
+    };
+    await act(async () => {
+      sockets.handlers.get("hint")?.(hint);
+      sockets.handlers.get("hint")?.(hint);
+    });
+    await waitFor(() => expect(channelLoads()).toBe(before + 1));
+    await act(async () => {}); // settle: a missing dedupe would show up as a second load by now
+    expect(channelLoads()).toBe(before + 1);
+    const threadReads = () =>
+      get.mock.calls.filter(([path]) => path === "/api/v1/messaging/channels/{id}/messages").length;
+    const readsBefore = threadReads();
+    await act(async () => {
+      sockets.handlers.get("hint")?.({ ...hint, cursor: "c-2" });
+    });
+    await waitFor(() => expect(channelLoads()).toBe(before + 2));
+    await act(async () => {});
+    expect(threadReads() - readsBefore).toBe(1); // the open thread re-reads exactly once for a hint on it
   });
 
   it("discards a late tenant A channel error while tenant B is loading", async () => {
