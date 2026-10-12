@@ -589,7 +589,8 @@ describe("#91 — the pre-meeting lifecycle", () => {
   it("presents an adjourned meeting as finalized and removes ordinary edit controls", async () => {
     meetingStatus = "adjourned";
     mountLive();
-    expect(await screen.findByText("Finalized")).toBeTruthy();
+    // The redesign shows "Finalized" in the header pill, the banner and the rail; assert the read-only banner.
+    expect(await screen.findByText("Finalized", { selector: "strong" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Check in" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Add agenda item" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Record decision" })).toBeNull();
@@ -638,7 +639,7 @@ describe("#91 — the minutes are the §418.56(d) evidence", () => {
       ...SESSION,
       permissions: SESSION.permissions.filter((permission) => permission !== "idg.amend_minutes"),
     });
-    expect(await screen.findByText("Final")).toBeTruthy();
+    expect(await screen.findByText(/^Final — this snapshot is immutable/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Request an amendment" })).toBeNull();
   });
 
