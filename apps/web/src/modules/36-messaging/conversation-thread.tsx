@@ -461,10 +461,6 @@ export function ConversationThread({
     event?.preventDefault();
     const submitted = draft;
     if (!submitted.trim() || sending || sendInFlightRef.current || channel.archivedAt) return;
-    sendInFlightRef.current = true;
-    const generation = generationRef.current;
-    setSending(true);
-    setSendError(null);
     const references = draftReferences
       .filter((reference) => reference.end <= submitted.length)
       .map(referenceInput);
@@ -474,6 +470,11 @@ export function ConversationThread({
       JSON.stringify([channel.channelId, submitted, references]),
     );
     sendAttemptRef.current = attempt;
+    // Take the latch only after the attempt exists: sendAttemptFor can throw (crypto.randomUUID).
+    sendInFlightRef.current = true;
+    const generation = generationRef.current;
+    setSending(true);
+    setSendError(null);
     const postMessage = () =>
       client.POST("/api/v1/messaging/channels/{id}/messages", {
         params: {
