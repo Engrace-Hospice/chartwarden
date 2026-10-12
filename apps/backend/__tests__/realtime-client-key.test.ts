@@ -36,6 +36,13 @@ describe("realtimeClientKey", () => {
     const key = realtimeClientKey(["2001:db8:ffff::/48"]);
     expect(key(req("2001:db8:ffff::5", "198.51.100.7, 2001:db8:ffff::9"))).toBe("198.51.100.7");
   });
+  it("ignores a non-IP forwarded entry and strips an IPv6 zone id", () => {
+    const key = realtimeClientKey(["10.0.0.0/8"]);
+    expect(key(req("10.1.2.3", "198.51.100.7, garbage"))).toBe("10.1.2.3");
+    expect(realtimeClientKey(["fd00::/8"])(req("fd00::1%eth0", "198.51.100.7"))).toBe(
+      "198.51.100.7",
+    );
+  });
   it("falls back to the peer when a trusted proxy sent no header, and skips keyword entries", () => {
     expect(realtimeClientKey(["10.0.0.0/8"])(req("10.1.2.3"))).toBe("10.1.2.3");
     expect(realtimeClientKey(["loopback"])(req("127.0.0.1", "1.2.3.4"))).toBe("127.0.0.1");

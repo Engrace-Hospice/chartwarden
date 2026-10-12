@@ -10,6 +10,8 @@ function canonical(raw: string): string {
   const bracket = /^\[([^\]]+)\](?::\d+)?$/.exec(addr);
   if (bracket) addr = bracket[1] ?? addr;
   else if (/^\d+\.\d+\.\d+\.\d+:\d+$/.test(addr)) addr = addr.slice(0, addr.lastIndexOf(":"));
+  const zone = addr.indexOf("%"); // IPv6 zone id (`fe80::1%eth0`): not part of the address
+  if (zone >= 0) addr = addr.slice(0, zone);
   return IPV4_MAPPED.exec(addr)?.[1] ?? addr;
 }
 
@@ -58,6 +60,7 @@ export function realtimeClientKey(
       .filter(Boolean);
     for (let i = chain.length - 1; i >= 0; i--) {
       const hop = canonical(chain[i] ?? "");
+      if (isIP(hop) === 0) break; // a proxy forwarded junk: do not let it name a bucket
       if (!isTrusted(hop)) return bucket(hop);
     }
     return bucket(peer);

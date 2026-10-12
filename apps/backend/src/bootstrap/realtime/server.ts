@@ -8,7 +8,6 @@
 //  * A socket is not session activity (ADR-0054 item 12): the injected `stillValid` re-checks the session with
 //    `recordActivity:false`, on an interval, and a dead session is disconnected.
 //  * This directory is M1 and imports nothing from M36; everything M36-shaped is injected by the composition root.
-import { createHash } from "node:crypto";
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import { createAdapter } from "@socket.io/redis-adapter";
 import type { Redis } from "ioredis";
@@ -91,32 +90,6 @@ function createWindowLimiter(max: number) {
   };
 }
 
-// The cookie names Better Auth uses for the session token (the `__Secure-` form in production). The authenticator reads
-// ONE of these, first occurrence; keying on anything looser lets a caller mint a fresh bucket per request (an extra
-// `session_token_x` cookie, a duplicate name) while authentication still resolves the same session.
-const SESSION_COOKIE_NAMES = new Set([
-  "better-auth.session_token",
-  "__Secure-better-auth.session_token",
-]);
-
-/** The first session-token cookie value, or null when the request carries none. */
-function sessionCookieValue(req: IncomingMessage): string | null {
-  for (const part of (req.headers.cookie ?? "").split(";")) {
-    const i = part.indexOf("=");
-    if (i < 0) continue;
-    if (SESSION_COOKIE_NAMES.has(part.slice(0, i).trim())) return part.slice(i + 1).trim();
-  }
-  return null;
-}
-
-/** Bucket key for the per-session limit: the token hash, else the client (a cookieless caller never shares a bucket). */
-function sessionLimitKey(req: IncomingMessage, client: string): string {
-  const token = sessionCookieValue(req);
-  return token === null
-    ? `client:${client}`
-    : `token:${createHash("sha256").update(token).digest("base64url")}`;
-}
-
 export function startRealtimeServer(options: RealtimeOptions): RealtimeHandle {
   const log: RealtimeLog = options.log ?? (() => {});
   const trusted = new Set(options.trustedOrigins);
@@ -147,10 +120,18 @@ export function startRealtimeServer(options: RealtimeOptions): RealtimeHandle {
         callback("unauthorized", false);
         return;
       }
-      // Cheapest checks first: nothing below touches the database until both counters pass.
-      const client = clientKey(req);
-      if (!clientLimiter.allow(client) || !sessionLimiter.allow(sessionLimitKey(req, client))) {
-        log("realtime.refused", { reason: "rate_limited" });
+      // Cheapest check first: nothing below touches the database once the client budget is spent. The per-session
+      // budget is charged AFTER authentication, on the session id the authenticator resolved: keying on the raw cookie
+      // would have to mirror its parsing (decoding, quoting, which cookie name it reads), and any difference lets a
+      // caller mint a fresh bucket per request. A throw here fails closed.
+      try {
+        if (!clientLimiter.allow(clientKey(req))) {
+          log("realtime.refused", { reason: "rate_limited" });
+          callback("unauthorized", false);
+          return;
+        }
+      } catch {
+        log("realtime.refused", { reason: "throttle_error" });
         callback("unauthorized", false);
         return;
       }
@@ -159,6 +140,11 @@ export function startRealtimeServer(options: RealtimeOptions): RealtimeHandle {
         .then((principal) => {
           if (!principal) {
             log("realtime.refused", { reason: "unauthenticated" });
+            callback("unauthorized", false);
+            return;
+          }
+          if (!sessionLimiter.allow(principal.sessionId)) {
+            log("realtime.refused", { reason: "rate_limited_session", userId: principal.userId });
             callback("unauthorized", false);
             return;
           }
