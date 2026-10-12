@@ -1,0 +1,173 @@
+/* WP 2.2 threads: the side panel, and the reply affordances on a message row. Shares the flat right-pane pattern of
+   `.wx-messaging-patient-context` (staff-messaging.css); tokens come from the app theme. */
+
+.wx-thread-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(24rem, 42%);
+  min-height: 0;
+  border-left: 1px solid var(--color-card-border);
+  background: var(--color-surface-lowest);
+}
+
+.wx-thread-panel:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.wx-thread-panel > header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-card-border);
+}
+
+.wx-thread-panel-title {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.wx-thread-panel-title span {
+  color: var(--color-on-surface-variant);
+  font-size: 0.75rem;
+}
+
+.wx-thread-panel > header button {
+  border: 0;
+  background: transparent;
+  color: var(--color-on-surface-variant);
+  cursor: pointer;
+}
+
+.wx-thread-panel > header .wx-thread-panel-show {
+  color: var(--color-primary);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.wx-thread-panel > header button:focus-visible,
+.wx-thread-count:focus-visible,
+.wx-thread-reply:focus-visible,
+.wx-reply-context:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.wx-thread-panel-body {
+  flex: 1;
+  min-height: 0;
+  padding: 0.5rem 1rem 1rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.wx-thread-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.75rem 0 0.25rem;
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.wx-thread-divider::after {
+  flex: 1;
+  height: 1px;
+  background: var(--color-card-border);
+  content: "";
+}
+
+/* Row affordances (the channel timeline and the panel share MessageRow). */
+.wx-reply-context {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  align-self: flex-start;
+  margin-bottom: 0.15rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-on-surface-variant);
+  font: inherit;
+  font-size: 0.6875rem;
+  cursor: pointer;
+}
+
+.wx-reply-context:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.wx-message-thread-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.2rem;
+}
+
+.wx-thread-count,
+.wx-thread-reply {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary);
+  font: inherit;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wx-thread-count:hover,
+.wx-thread-reply:hover {
+  text-decoration: underline;
+}
+
+/* "Reply" is quiet until the row is hovered or holds focus; it stays in the tab order the whole time. */
+.wx-thread-reply {
+  opacity: 0;
+}
+
+.wx-message-row:hover .wx-thread-reply,
+.wx-message-row:focus-within .wx-thread-reply,
+.wx-thread-reply:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .wx-thread-reply {
+    opacity: 1;
+  }
+}
+
+.wx-message-row:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  /* Narrow screens: the panel slides over the timeline, like the patient-context pane. */
+  .wx-thread-panel {
+    position: absolute;
+    inset: 0 0 0 auto;
+    z-index: 5;
+    width: min(26rem, 100%);
+    box-shadow: var(--shadow-ambient);
+  }
+
+  .wx-thread-reply {
+    opacity: 1;
+  }
+}
+
+.wx-thread-replies {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}

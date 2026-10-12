@@ -1,3 +1,4 @@
+import { Glyph } from "@wardenx/ui";
 import { memo } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
@@ -71,6 +72,18 @@ interface MessageRowProps {
   previous: Message | undefined;
   meId: string;
   anchorMessageId: string | null;
+  /** WP 2.2: open the thread of `rootId`; `opener` is the control to give focus back to when it closes. */
+  onOpenThread?: (rootId: string, opener: HTMLElement) => void;
+  /** WP 2.2: scroll to (loading its page if needed) and focus the message this one replies to. */
+  onJumpToParent?: (parentMessageId: string) => void;
+  /** Who the parent's author is, when the parent is on screen; otherwise the link says "an earlier message". */
+  parentAuthor?: string | null;
+  /** False in an archived channel: replies are read-only there, but an existing thread can still be opened. */
+  canReply?: boolean;
+}
+
+function pluralReplies(count: number): string {
+  return `${count} ${count === 1 ? "reply" : "replies"}`;
 }
 
 /** One timeline entry: optional day divider, then a system line or a message bubble. */
@@ -79,9 +92,18 @@ function MessageRowImpl({
   previous,
   meId,
   anchorMessageId,
+  onOpenThread,
+  onJumpToParent,
+  parentAuthor,
+  canReply = true,
 }: MessageRowProps): JSX.Element {
   const showDay = !previous || dayLabel(previous.createdAt) !== dayLabel(message.createdAt);
   const mine = message.authorUserId === meId;
+  const replyCount = message.replyCount ?? 0;
+  // A tombstone has no body and no files (live attachment-only messages keep a count): nothing to reply to.
+  const deleted =
+    !message.body &&
+    (message.attachments?.length ?? 0) + (message.hiddenAttachmentCount ?? 0) === 0;
   const system = message.authorUserId === null || message.bodyKind === "system";
   const grouped =
     previous &&
@@ -102,6 +124,7 @@ function MessageRowImpl({
         <article
           data-message-id={message.messageId}
           data-highlighted={message.messageId === anchorMessageId || undefined}
+          tabIndex={-1}
           className={`wx-message-row ${mine ? "is-mine" : ""} ${grouped ? "is-grouped" : ""}`}
         >
           {!mine && !grouped ? (
@@ -114,6 +137,16 @@ function MessageRowImpl({
           <div className="wx-message-copy">
             {!mine && !grouped ? (
               <strong>{message.authorDisplayName || "Staff member"}</strong>
+            ) : null}
+            {message.parentMessageId && onJumpToParent ? (
+              <button
+                type="button"
+                className="wx-reply-context"
+                onClick={() => onJumpToParent(message.parentMessageId!)}
+              >
+                <Glyph name="arrow-up" size={12} />
+                {parentAuthor ? `Replying to ${parentAuthor}` : "Replying to an earlier message"}
+              </button>
             ) : null}
             <div className="wx-message-bubble">
               {message.bodyKind === "rich" ? (
@@ -142,6 +175,37 @@ function MessageRowImpl({
                 }).format(new Date(message.createdAt))}
               </time>
             </div>
+            {onOpenThread && (replyCount > 0 || (canReply && !deleted)) ? (
+              <div className="wx-message-thread-actions">
+                {replyCount > 0 ? (
+                  <button
+                    type="button"
+                    className="wx-thread-count"
+                    data-thread-opener={message.messageId}
+                    aria-label={`Open thread, ${pluralReplies(replyCount)}`}
+                    onClick={(event) => onOpenThread(message.messageId, event.currentTarget)}
+                  >
+                    <Glyph name="message-square" size={13} /> {pluralReplies(replyCount)}
+                  </button>
+                ) : null}
+                {canReply && !deleted ? (
+                  <button
+                    type="button"
+                    className="wx-thread-reply"
+                    data-thread-opener={message.parentMessageId ?? message.messageId}
+                    aria-label={`Reply in thread to ${message.authorDisplayName || "staff member"}`}
+                    onClick={(event) =>
+                      onOpenThread(
+                        message.parentMessageId ?? message.messageId,
+                        event.currentTarget,
+                      )
+                    }
+                  >
+                    Reply
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </article>
       )}

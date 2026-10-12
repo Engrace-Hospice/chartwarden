@@ -35,6 +35,8 @@ export interface SentMessage {
 
 interface UseMessageSenderInput {
   channelId: string;
+  /** WP 2.2: the root this message replies to (the thread panel's composer); absent for a channel message. */
+  parentMessageId?: string;
   archived: boolean;
   draft: string;
   draftReferences: readonly MessageReferenceInput[];
@@ -55,6 +57,7 @@ interface UseMessageSenderInput {
  */
 export function useMessageSender({
   channelId,
+  parentMessageId,
   archived,
   draft,
   draftReferences,
@@ -94,7 +97,7 @@ export function useMessageSender({
     const sentAttachments = toSentAttachments(uploads.chips);
     const attempt = sendAttemptFor(
       sendAttemptRef.current,
-      JSON.stringify([channelId, submitted, references, attachmentIds]),
+      JSON.stringify([channelId, parentMessageId ?? null, submitted, references, attachmentIds]),
     );
     sendAttemptRef.current = attempt;
     // Take the latch only after the attempt exists: sendAttemptFor can throw (crypto.randomUUID).
@@ -121,6 +124,7 @@ export function useMessageSender({
               }
             : { ...(submitted.trim() ? { body: submitted } : {}), references }),
           clientMessageId: attempt.clientMessageId,
+          ...(parentMessageId ? { parentMessageId } : {}),
           ...(attachmentIds.length > 0
             ? { attachments: attachmentIds.map((attachmentId) => ({ attachmentId })) }
             : {}),
@@ -174,6 +178,7 @@ export function sentMessageRow(
   channelId: string,
   meId: string,
   meDisplayName: string,
+  parentMessageId: string | null = null,
 ): Message {
   // A structured send shows what the server will return: the projection as `body`, mentions at projection offsets.
   const rich = sent.bodyDoc;
@@ -195,7 +200,7 @@ export function sentMessageRow(
     bodyKind: rich ? "rich" : "plain",
     ...(rich ? { bodyDoc: rich } : {}),
     createdAt: sent.createdAt,
-    parentMessageId: null,
+    parentMessageId,
     references: references.map((reference) => ({ ...reference, navigable: true })),
     attachments: sent.attachments,
   };

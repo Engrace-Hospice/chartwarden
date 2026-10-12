@@ -6,9 +6,8 @@ import {
   LoadingSpinner,
   useApiClient,
 } from "@wardenx/ui";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
-import { Link } from "react-router-dom";
 import { AttachButton, AttachmentChips } from "./attachment-composer";
 import { sendBlockedReason } from "./attachment-utils";
 import { applyTextEdit, detectMac, formatShortcutMarker, toggleWrap } from "./composer-format";
@@ -30,10 +29,14 @@ import {
   initialsOf,
   mergeMessages,
 } from "./messaging-utils";
+import { PatientContextAside, ThreadHeader } from "./thread-header";
+import { ThreadPanel } from "./thread-panel";
 import { useAttachmentUploads } from "./use-attachment-upload";
+import { useJumpToMessage } from "./use-jump-to-message";
 import { sentMessageRow, useMessageSender } from "./use-message-sender";
 import type { SentMessage } from "./use-message-sender";
 import { useScanningRefresh } from "./use-scanning-refresh";
+import type { LiveHint } from "./use-thread";
 
 const MESSAGE_PAGE_SIZE = 50;
 const POLL_INTERVAL_MS = 15_000;
@@ -62,6 +65,8 @@ export interface ConversationThreadProps {
   liveToken?: number;
   /** While the socket is up, polling is only a safety net and runs slowly. */
   realtimeConnected?: boolean;
+  /** WP 2.2: what the latest realtime hint said changed, so an open thread panel refreshes only when it is concerned. */
+  liveHint?: LiveHint | null;
 }
 
 export function ConversationThread({
@@ -75,6 +80,7 @@ export function ConversationThread({
   anchorMessageId = null,
   liveToken = 0,
   realtimeConnected = false,
+  liveHint = null,
 }: ConversationThreadProps): JSX.Element {
   const client = useApiClient();
   const [messages, setMessages] = useState<Message[] | null>(null);
@@ -93,6 +99,9 @@ export function ConversationThread({
   const [mentionIndex, setMentionIndex] = useState(0);
   const [patient, setPatient] = useState<PatientHeaderInfo | null>(null);
   const [contextOpen, setContextOpen] = useState(false);
+  // WP 2.2: the open thread panel (null = closed) and the control to give focus back to when it closes.
+  const [threadRootId, setThreadRootId] = useState<string | null>(null);
+  const threadOpenerRef = useRef<HTMLElement | null>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<Message[] | null>(null);
   const generationRef = useRef(0);
@@ -123,6 +132,22 @@ export function ConversationThread({
     onReadConfirmedRef.current = onReadConfirmed;
     onAccessRevokedRef.current = onAccessRevoked;
   }, [anchorMessageId, meId, onReadConfirmed, onAccessRevoked]);
+
+  // WP 2.2 jump-to-parent (and "Back to latest" after an anchored page): see use-jump-to-message.ts.
+  const jumpAnchorRef = useRef<string | null>(null);
+  const replaceNextRef = useRef(false);
+  const jumpedRef = useRef(false);
+  const jump = useJumpToMessage({
+    timelineRef,
+    messages,
+    routeAnchorRef: anchorRef,
+    initialScrollPending,
+    nearBottomRef,
+    jumpAnchorRef,
+    replaceNextRef,
+    jumpedRef,
+  });
+  const { reset: jumpReset } = jump;
 
   const handleSent = (sent: SentMessage): void => {
     latestPageIdsRef.current = new Set([...latestPageIdsRef.current, sent.messageId]);
@@ -197,7 +222,7 @@ export function ConversationThread({
       if (latestInFlight.current) return true;
       latestInFlight.current = true;
       const generation = generationRef.current;
-      const anchorMessageId = anchorRef.current;
+      const anchorMessageId = jumpAnchorRef.current ?? anchorRef.current;
       try {
         const { data, error } = await client.GET("/api/v1/messaging/channels/{id}/messages", {
           params: {
@@ -223,10 +248,15 @@ export function ConversationThread({
         }
         const incoming = (data?.messages ?? []) as Message[];
         latestPageIdsRef.current = new Set(incoming.map((message) => message.messageId));
-        const currentMessages = messagesRef.current;
-        const wasInitial = currentMessages === null;
+        // WP 2.2: a jump to an unloaded message (or back to latest) shows ONE contiguous page, never a merge of two.
+        const replace = replaceNextRef.current;
+        replaceNextRef.current = false;
+        const currentMessages = replace ? null : messagesRef.current;
+        const wasInitial = messagesRef.current === null;
         const existingIds = new Set(currentMessages?.map((message) => message.messageId) ?? []);
-        const added = incoming.filter((message) => !existingIds.has(message.messageId)).length;
+        const added = replace
+          ? 0
+          : incoming.filter((message) => !existingIds.has(message.messageId)).length;
         setLoadError(null);
         setRefreshError(false);
         setOlderCursor((data?.nextCursor as string | undefined) ?? null);
@@ -340,6 +370,8 @@ export function ConversationThread({
     setRefreshError(false);
     setPatient(null);
     setContextOpen(false);
+    setThreadRootId(null);
+    jumpReset();
     setNewMessageCount(0);
     readBoundaryRef.current = null;
     latestPageIdsRef.current = new Set();
@@ -354,7 +386,7 @@ export function ConversationThread({
       generationRef.current += 1;
     };
     // loadLatest changes identity only with the channel (or client); every other input is read through a ref.
-  }, [loadLatest, resetSender]);
+  }, [loadLatest, resetSender, jumpReset]);
 
   // A new anchor on the same channel re-reads around it without touching the draft, chips or an in-flight send.
   useEffect(() => {
@@ -372,7 +404,7 @@ export function ConversationThread({
   }, [composerHidden, resetUploads]);
 
   useLayoutEffect(() => {
-    if (!anchorMessageId || messages === null) return;
+    if (!anchorMessageId || messages === null || jumpedRef.current) return;
     const target = document.querySelector(`[data-message-id="${CSS.escape(anchorMessageId)}"]`);
     target?.scrollIntoView({ block: "center" });
   }, [anchorMessageId, messages]);
@@ -506,6 +538,30 @@ export function ConversationThread({
     });
   }
 
+  // The jump hook asks for a read of the latest (or anchored) page through this.
+  jump.reloadRef.current = (): void => {
+    if (latestInFlight.current) rereadAfterFlight.current = true;
+    else void loadLatest(true);
+  };
+
+  const openThread = useCallback((rootId: string, opener: HTMLElement): void => {
+    threadOpenerRef.current = opener;
+    setThreadRootId(rootId);
+  }, []);
+  const closeThread = useCallback((): void => {
+    const opener = threadOpenerRef.current;
+    threadOpenerRef.current = null;
+    setThreadRootId(null);
+    window.requestAnimationFrame(() => {
+      if (opener?.isConnected) opener.focus();
+      else textareaRef.current?.focus();
+    });
+  }, []);
+  const authorById = useMemo(
+    () => new Map((messages ?? []).map((m) => [m.messageId, m.authorDisplayName])),
+    [messages],
+  );
+
   function showLatest(): void {
     const timeline = timelineRef.current;
     if (timeline) timeline.scrollTop = timeline.scrollHeight;
@@ -534,39 +590,15 @@ export function ConversationThread({
 
   return (
     <section className="wx-messaging-thread" aria-label={`Conversation with ${title}`}>
-      <header className="wx-messaging-thread-header">
-        <button
-          type="button"
-          className="wx-messaging-back"
-          onClick={onBack}
-          aria-label="Back to conversations"
-        >
-          <Glyph name="chevron-left" size={20} />
-        </button>
-        <span className={`wx-messaging-avatar wx-kind-${channel.kind}`} aria-hidden="true">
-          {channel.kind === "care_team" ? <Glyph name="users" size={18} /> : initialsOf(title)}
-        </span>
-        <div className="wx-messaging-thread-title">
-          <h2>{channel.kind === "care_team" && patient ? `${title} · Care Team` : title}</h2>
-          <span>{patient ? `MRN ${patient.mrn}` : subtitle}</span>
-        </div>
-        {channel.archivedAt ? (
-          <span className="wx-messaging-readonly">
-            <Glyph name="lock" size={13} /> Archived · read only
-          </span>
-        ) : null}
-        {channel.kind === "care_team" && patient ? (
-          <button
-            type="button"
-            className="wx-messaging-context-toggle"
-            aria-expanded={contextOpen}
-            aria-controls="messaging-patient-context"
-            onClick={() => setContextOpen((open) => !open)}
-          >
-            <Glyph name="user-circle" size={16} /> Patient context
-          </button>
-        ) : null}
-      </header>
+      <ThreadHeader
+        channel={channel}
+        title={title}
+        subtitle={subtitle}
+        patient={patient}
+        contextOpen={contextOpen}
+        onBack={onBack}
+        onToggleContext={() => setContextOpen((open) => !open)}
+      />
 
       <div className="wx-messaging-thread-body">
         <div
@@ -621,7 +653,15 @@ export function ConversationThread({
                   message={message}
                   previous={messages[index - 1]}
                   meId={meId}
-                  anchorMessageId={anchorMessageId}
+                  anchorMessageId={jump.highlightId ?? anchorMessageId}
+                  onOpenThread={openThread}
+                  onJumpToParent={jump.jumpToMessage}
+                  parentAuthor={
+                    message.parentMessageId
+                      ? (authorById.get(message.parentMessageId) ?? null)
+                      : undefined
+                  }
+                  canReply={!channel.archivedAt}
                 />
               ))}
             </>
@@ -629,43 +669,34 @@ export function ConversationThread({
         </div>
 
         {contextOpen && patient ? (
-          <aside
-            id="messaging-patient-context"
-            className="wx-messaging-patient-context"
-            aria-label="Patient context"
-          >
-            <header>
-              <strong>Patient context</strong>
-              <button
-                type="button"
-                onClick={() => setContextOpen(false)}
-                aria-label="Close patient context"
-              >
-                <Glyph name="close" size={17} />
-              </button>
-            </header>
-            <div className="wx-messaging-patient-identity">
-              <span className="wx-messaging-avatar">
-                {initialsOf(`${patient.firstName} ${patient.lastName}`)}
-              </span>
-              <div>
-                <strong>
-                  {patient.firstName} {patient.lastName}
-                </strong>
-                <span>MRN {patient.mrn}</span>
-              </div>
-            </div>
-            <p>Minimum identification details for this authorized care-team conversation.</p>
-            <Link to={`/patients/${patient.id}`}>
-              Open patient chart <Glyph name="arrow-right" size={14} />
-            </Link>
-          </aside>
+          <PatientContextAside patient={patient} onClose={() => setContextOpen(false)} />
+        ) : null}
+        {threadRootId ? (
+          <ThreadPanel
+            channelId={channel.channelId}
+            rootId={threadRootId}
+            archived={Boolean(channel.archivedAt)}
+            meId={meId}
+            meDisplayName={meDisplayName}
+            liveHint={liveHint}
+            onClose={closeThread}
+            onJumpToMessage={jump.jumpToMessage}
+            onReplySent={() => {
+              void loadLatest(true);
+              onMessageSent();
+            }}
+          />
         ) : null}
       </div>
 
       {newMessageCount > 0 ? (
         <button type="button" className="wx-new-messages" onClick={showLatest}>
           {newMessageCount} new {newMessageCount === 1 ? "message" : "messages"}
+        </button>
+      ) : null}
+      {jump.browsingHistory ? (
+        <button type="button" className="wx-new-messages" onClick={jump.backToLatest}>
+          Back to latest messages
         </button>
       ) : null}
       {refreshError && !loadError ? (
