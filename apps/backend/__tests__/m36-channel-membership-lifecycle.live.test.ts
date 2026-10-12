@@ -513,6 +513,13 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     await expect(
       service.markRead(orgA, { userId: author, messageId: sent.messageId }),
     ).rejects.toMatchObject({ statusCode: 404 });
+    // the cross-module seam applies the same rule: no history or read receipts for a former member
+    await expect(provider.listMessages(orgA, { channelId, userId: author })).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    await expect(
+      provider.markRead(orgA, { userId: author, messageId: sent.messageId }),
+    ).rejects.toMatchObject({ statusCode: 404 });
 
     // a suspended membership is cut off the same way
     const suspendedAuthor = await seedUser("susp-author");

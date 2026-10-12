@@ -24,15 +24,15 @@ import type {
   ResolvedMessage,
 } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
-import { WardenXError } from "@wardenx/types";
+import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
+import { createDbMessagingRouteService } from "./messaging-route-service-db";
 import {
   type MessageBodyCipher,
   channelOr404,
   createMessageBodyCipher,
   insertEncryptedMessage,
-  markMessagesRead,
 } from "./messaging-write-core";
 import { type Part2ChannelGate, createSeamPart2ChannelGate } from "./part2-channel-gate";
 
@@ -68,6 +68,9 @@ export function createDbMessagingProvider(
   const cipher = opts.cipher ?? createMessageBodyCipher({ kek: opts.kek });
   // GAP-065 — M39 consent gate on care_team membership (spec §7.13); seam-backed unless injected.
   const part2Gate = opts.part2Gate ?? createSeamPart2ChannelGate(db);
+  // markRead/listMessages take a userId, so they must apply the same live-access rule as the routes
+  // (active user, live membership, Part 2 gate) rather than trusting the caller — one rule, one place.
+  const access = createDbMessagingRouteService(db, { cipher, part2Gate });
 
   function notWired(hook: string): never {
     throw new WardenXError(
@@ -161,17 +164,13 @@ export function createDbMessagingProvider(
     },
 
     async markRead(orgId, input) {
-      return withOrgContext(db, { organizationId: orgId, userId: input.userId }, (tx) =>
-        markMessagesRead(tx, {
-          orgId,
-          userId: input.userId,
-          messageId: input.messageId,
-          upTo: input.upTo,
-        }),
-      );
+      return access.markRead(orgId, input);
     },
 
     async listMessages(orgId, input) {
+      if (!(await access.canViewChannel(orgId, input.userId, input.channelId))) {
+        throw new NotFoundError("channel", input.channelId);
+      }
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
         await channelOr404(tx, orgId, input.channelId);
         const limit = Math.min(Math.max(input.limit ?? 50, 1), 200);

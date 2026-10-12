@@ -153,6 +153,7 @@ async function effectivelyVisibleChannels<T extends EffectiveChannelAccessCandid
   userId: string,
   candidates: readonly T[],
   part2Gate: Part2ChannelGate,
+  warn?: (message: string, context: Record<string, string>) => void,
 ): Promise<T[]> {
   const careTeamPatientIds = [
     ...new Set(
@@ -192,8 +193,14 @@ async function effectivelyVisibleChannels<T extends EffectiveChannelAccessCandid
           });
           if (roster.includes(userId)) currentCareTeamPatients.add(patientId);
         }
-      } catch {
+      } catch (error) {
         // An unavailable clinical/consent seam is an authorization denial, never a stale grant.
+        // Logged (ids only) so an outage is distinguishable from a genuine "not a member" 404.
+        warn?.("messaging visibility seam failed; denying access", {
+          organizationId: orgId,
+          patientId,
+          error: error instanceof Error ? error.name : "unknown",
+        });
       }
     }
   });
@@ -246,6 +253,43 @@ async function careTeamTitlesForAuthorizedChannels(
 
 function dmParticipantKey(userId: string, peerUserId: string): string {
   return [userId, peerUserId].sort().join(":");
+}
+
+/**
+ * Re-check, inside the write transaction, that the actor is still an active user with a live
+ * membership (announcement channels are org-wide). `assertMessageChannelAccess` runs before the
+ * transaction opens, so without this a removal landing in between would still let the write through.
+ * The Part 2 consent seam cannot run inside a transaction and is only checked up front.
+ */
+async function assertLiveMembershipInTx(
+  tx: Parameters<typeof channelOr404>[0],
+  orgId: string,
+  userId: string,
+  messageId: string,
+): Promise<void> {
+  const [row] = await tx
+    .select({ channelId: MSG.channelId, kind: CH.channelKind })
+    .from(MSG)
+    .innerJoin(CH, eq(CH.id, MSG.channelId))
+    .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, messageId)))
+    .limit(1);
+  let live = !!row && (await isActiveMessagingUser(tx, orgId, userId));
+  if (live && row!.kind !== "announcement") {
+    const [member] = await tx
+      .select({ userId: CM.userId })
+      .from(CM)
+      .where(
+        and(
+          eq(CM.organizationId, orgId),
+          eq(CM.channelId, row!.channelId),
+          eq(CM.userId, userId),
+          isNull(CM.removedAt),
+        ),
+      )
+      .limit(1);
+    live = !!member;
+  }
+  if (!live) throw new NotFoundError("message", messageId);
 }
 
 async function isActiveMessagingUser(
@@ -505,6 +549,8 @@ export function createDbMessagingRouteService(
      */
     /** GAP-065 — the M39 Part 2 consent gate on care_team visibility (default: seam-backed, fail-closed). */
     part2Gate?: Part2ChannelGate;
+    /** Operational warning sink (ids only); default: silent. */
+    warn?: (message: string, context: Record<string, string>) => void;
     outbox?: MessagingOutboxPort;
     sendEndpointVerificationCode?: (input: {
       channel: DeliveryEndpointChannel;
@@ -574,7 +620,8 @@ export function createDbMessagingRouteService(
           },
         );
         return (
-          (await effectivelyVisibleChannels(orgId, userId, [candidate], part2Gate)).length === 1
+          (await effectivelyVisibleChannels(orgId, userId, [candidate], part2Gate, opts.warn))
+            .length === 1
         );
       })())
     ) {
@@ -615,6 +662,7 @@ export function createDbMessagingRouteService(
           },
         ],
         part2Gate,
+        opts.warn,
       );
       const displayName = row.displayName?.trim() ?? "";
       if (
@@ -701,7 +749,10 @@ export function createDbMessagingRouteService(
       };
     });
     if (!candidate) return false;
-    return (await effectivelyVisibleChannels(orgId, userId, [candidate], part2Gate)).length === 1;
+    return (
+      (await effectivelyVisibleChannels(orgId, userId, [candidate], part2Gate, opts.warn))
+        .length === 1
+    );
   }
 
   /**
@@ -756,7 +807,13 @@ export function createDbMessagingRouteService(
           memberSource: row.memberSource as ChannelMemberSource,
         }));
       });
-      const rows = await effectivelyVisibleChannels(orgId, userId, candidates, part2Gate);
+      const rows = await effectivelyVisibleChannels(
+        orgId,
+        userId,
+        candidates,
+        part2Gate,
+        opts.warn,
+      );
       if (rows.length === 0) return [];
       // Resolve minimum-necessary patient identity only after stale memberships and clinical access
       // have been rejected. Calls stay outside the M36 transaction because M5 owns this data and its
@@ -1259,6 +1316,7 @@ export function createDbMessagingRouteService(
         }
       }
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
+        await assertLiveMembershipInTx(tx, orgId, input.userId, input.messageId);
         const rows = (await tx
           .select({ authorUserId: MSG.authorUserId, status: MSG.status })
           .from(MSG)
@@ -1306,6 +1364,7 @@ export function createDbMessagingRouteService(
     async deleteMessage(orgId, input) {
       await assertMessageChannelAccess(orgId, input.userId, input.messageId, true);
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
+        await assertLiveMembershipInTx(tx, orgId, input.userId, input.messageId);
         const rows = (await tx
           .select({ authorUserId: MSG.authorUserId, status: MSG.status })
           .from(MSG)
