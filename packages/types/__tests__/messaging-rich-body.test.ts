@@ -12,7 +12,7 @@ import {
   storedBodyToPlainText,
 } from "../src/messaging-rich-body";
 import type { RichBody } from "../src/messaging-rich-body";
-import { STRUCTURAL_CORPUS, XSS_CORPUS, nestedListDoc, wideDoc } from "./fixtures/xss-corpus";
+import { STRUCTURAL_CORPUS, XSS_CORPUS, nestedListDoc, wideDoc } from "../src/messaging-xss-corpus";
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: asserting none survive
 const HAZARDOUS_CHARS = /[\u0000-\u0008\u000B-\u001F\u202A-\u202E\u2066-\u2069\uFEFF\u200B]/;

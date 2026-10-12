@@ -28,10 +28,10 @@ import {
 import { type DbClient, createDbClient } from "@wardenx/db";
 import { messageBodySha256 } from "@wardenx/messaging";
 import type { IdempotencyStore } from "@wardenx/shared";
+import { XSS_CORPUS } from "@wardenx/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { XSS_CORPUS } from "../../../packages/types/__tests__/fixtures/xss-corpus";
 import { buildServer } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-store-db";

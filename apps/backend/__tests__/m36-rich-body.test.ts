@@ -15,9 +15,9 @@ import {
   resetRbacEngine,
 } from "@wardenx/auth";
 import { createInMemoryMessagingService } from "@wardenx/messaging";
+import { XSS_CORPUS } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { XSS_CORPUS } from "../../../packages/types/__tests__/fixtures/xss-corpus";
 import { buildServer } from "../src/bootstrap/index";
 import {
   CHANNEL_VISIBILITY_PREDICATE,

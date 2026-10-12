@@ -1,7 +1,7 @@
 // M36 WP 2.1 - the composer's markdown shortcuts and format keys (pure).
 import { richBodyToPlainText } from "@wardenx/types";
+import { XSS_CORPUS } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
-import { XSS_CORPUS } from "../../../../../packages/types/__tests__/fixtures/xss-corpus";
 import { formatShortcutMarker, toggleWrap } from "./composer-format";
 import { draftToRichBody } from "./draft-to-rich-body";
 

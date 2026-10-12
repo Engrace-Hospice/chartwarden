@@ -5,13 +5,10 @@
 import { cleanup, render } from "@testing-library/react";
 import type { RichBody } from "@wardenx/types";
 import { sanitizeRichBody } from "@wardenx/types";
+import { STRUCTURAL_CORPUS, XSS_CORPUS } from "@wardenx/types";
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  STRUCTURAL_CORPUS,
-  XSS_CORPUS,
-} from "../../../../../packages/types/__tests__/fixtures/xss-corpus";
 import { MessageRow } from "./message-row";
 import type { Message } from "./messaging-types";
 import { RichBodyView } from "./rich-body-view";
