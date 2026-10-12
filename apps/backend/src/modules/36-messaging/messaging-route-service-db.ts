@@ -85,9 +85,11 @@ import { publishMessageHint } from "./message-hint-events";
 import {
   type MessageBodyCipher,
   channelOr404,
+  blankMessageError,
   createMessageBodyCipher,
   insertEncryptedMessage,
   markMessagesRead,
+  withValidMessageContent,
 } from "./messaging-write-core";
 import { type Part2ChannelGate, createSeamPart2ChannelGate } from "./part2-channel-gate";
 
@@ -421,12 +423,6 @@ function decodeCursor(cursor: string): { createdAt: string; id: string } | null 
   } catch {
     return null;
   }
-}
-
-function blankMessageError(): ValidationError {
-  return new ValidationError("a message needs text or at least one attachment", [
-    { field: "body", code: "REQUIRED", message: "text or an attachment is required" },
-  ]);
 }
 
 /** Keep inbox previews compact and text-only. The plaintext exists only in the authorized response
@@ -1272,8 +1268,7 @@ export function createDbMessagingRouteService(
     async sendMessage(orgId, rawInput) {
       // WP 1.5: a message is valid with text OR an attachment. A blank body is stored as the empty string, sealed
       // like any other body, so edit/revision/idempotency/integrity treat it uniformly.
-      if (!rawInput.body.trim() && !rawInput.attachments?.length) throw blankMessageError();
-      const input = rawInput.body.trim() ? rawInput : { ...rawInput, body: "" };
+      const input = withValidMessageContent(rawInput);
       const references = input.references ?? [];
       validateReferenceRanges(input.body, references);
       const candidates = references.length

@@ -24,7 +24,7 @@ import type { MessageAttachmentView } from "@wardenx/messaging";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { DegradedError, NotFoundError, RateLimitedError, WardenXError } from "@wardenx/types";
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
-import type { HintOutboxPort } from "../message-hint-events";
+import { type HintOutboxPort, publishMessageHint } from "../message-hint-events";
 import {
   type AttachmentQuota,
   ATTACHMENT_ACCESS_TTL_SECONDS,
@@ -323,6 +323,8 @@ export async function bindAttachmentsInTx(
     })
     .from(ATT)
     .where(and(eq(ATT.organizationId, args.orgId), inArray(ATT.id, ids)))
+    // A fixed lock order: two sends naming overlapping ids in different orders must not lock them in opposite orders.
+    .orderBy(asc(ATT.id))
     .for("update");
   // An upload nobody sent within this age is about to be reaped (bytes destroyed): never adopt it.
   const oldestBindable = Date.now() - UNBOUND_UPLOAD_BIND_MAX_AGE_MS;
@@ -477,6 +479,16 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
         at: at.toISOString(),
         ...(quarantined ? { signature: verdict.signature } : {}),
       };
+      // A recipient holding `hiddenAttachmentCount > 0` for this message must refetch: publish the same 'edited' hint the
+      // edit path uses (ids and a timestamp only, ADR-0054 A4), in this transaction. An unbound upload has no message.
+      if (messageId) {
+        await publishMessageHint(deps.outbox, tx, "edited", {
+          orgId,
+          channelId: row.channelId,
+          messageId,
+          at,
+        });
+      }
       await deps.outbox?.publish(tx, {
         eventName: quarantined ? "m36.attachment.quarantined" : "m36.attachment.cleared",
         organizationId: orgId,
@@ -640,6 +652,11 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
       }
       throwIfAborted(signal);
       if (result.verdict === "infected") return quarantine(result.signature);
+      // Fail closed: only an explicit `clean` settles clean. Anything else (a new/unknown verdict from a misbehaving or
+      // newer adapter) is a scanner failure: the row stays pending and is retried, never delivered.
+      if (result.verdict !== "clean") {
+        throw new ScanFailure("scanner", new Error("scanner returned an unrecognised verdict"));
+      }
       return (await settle(orgId, row, { state: "clean" }, scanner.name))
         ? ("clean" as const)
         : ("settled" as const);

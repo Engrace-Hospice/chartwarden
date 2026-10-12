@@ -39,6 +39,7 @@ import {
   channelOr404,
   createMessageBodyCipher,
   insertEncryptedMessage,
+  withValidMessageContent,
 } from "./messaging-write-core";
 import { type Part2ChannelGate, createSeamPart2ChannelGate } from "./part2-channel-gate";
 
@@ -161,7 +162,9 @@ export function createDbMessagingProvider(
       );
     },
 
-    async sendMessage(orgId, input) {
+    async sendMessage(orgId, rawInput) {
+      // Same rule as the route: text or an attachment. A seam caller (the portal) cannot create a blank message.
+      const input = withValidMessageContent(rawInput);
       return withOrgContext(
         db,
         { organizationId: orgId, userId: input.authorUserId },

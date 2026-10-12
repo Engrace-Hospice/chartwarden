@@ -2944,6 +2944,109 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
     });
   });
 
+  describe("hardening: fail-closed verdicts, realtime hints, bind lock order, seam guard (L1, B, C, F)", () => {
+    const hintCount = (messageId: string) =>
+      count(
+        `SELECT count(*)::int AS n FROM outbox_event WHERE event_type='m36.message.edited' AND aggregate_id=$1`,
+        [messageId],
+      );
+
+    it("L1: a scanner that answers anything but an explicit clean/infected verdict leaves the row pending (never clean)", async () => {
+      const who = await freshUploader("l1-verdict");
+      const weird = createAttachmentService({
+        db: handle.db,
+        storage: storage.port,
+        scanner: { name: "weird", scan: async () => ({ verdict: "unknown" }) as never },
+        canViewChannel: routeService.canViewChannel,
+        now: () => new Date(clock.now),
+        userRequestsPerMinute: 1_000_000,
+      });
+      const up = await directUpload(weird, who, pdfBytes("l1-weird"));
+      const status = await weird.complete(ORG_A, { userId: who.user, attachmentId: up.attachmentId });
+      expect(status.scanState).toBe("pending");
+      expect(
+        await count(`SELECT count(*)::int AS n FROM message_attachment WHERE id=$1 AND scan_state='pending'`, [up.attachmentId]),
+      ).toBe(1);
+    });
+
+    it("B: when a bound attachment settles (clean or quarantined) the message gets the same 'edited' realtime hint; an unbound one does not", async () => {
+      scanner.down = true;
+      const good = await uploaded(u1, dm, pdfBytes("b-clean"));
+      const bad = await uploaded(u1, dm, pdfBytes("b-eicar", EICAR));
+      const lone = await uploaded(u1, dm, pdfBytes("b-unbound"));
+      scanner.down = false;
+      const m1 = (await send(u1, dm, [good.attachmentId])).json().messageId as string;
+      const m2 = (await send(u1, dm, [bad.attachmentId])).json().messageId as string;
+      expect(await hintCount(m1)).toBe(0);
+      const eventsBefore = await count(`SELECT count(*)::int AS n FROM outbox_event WHERE event_type='m36.message.edited'`);
+      pastBackoff();
+      await attachmentScanTick({
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+        service: attachments,
+      });
+      expect(await hintCount(m1)).toBe(1);
+      expect(await hintCount(m2)).toBe(1);
+      expect(lone.attachmentId).toBeTruthy();
+      // the unbound file settled too (clean) but announced nothing: no message to refresh
+      const eventsAfter = await count(`SELECT count(*)::int AS n FROM outbox_event WHERE event_type='m36.message.edited'`);
+      expect(eventsAfter - eventsBefore).toBe(2);
+      // ids only: the payload carries no body, name or signature
+      const payload = JSON.stringify(
+        (await admin.query(`SELECT payload FROM outbox_event WHERE event_type='m36.message.edited' AND aggregate_id=$1`, [m2])).rows[0].payload,
+      );
+      expect(payload).not.toMatch(/sig|eicar|\.pdf|signature/i);
+    });
+
+    it("C: concurrent sends naming overlapping attachments in opposite orders never deadlock (one wins, one is refused)", async () => {
+      const who = await freshUploader("c-lock");
+      for (let i = 0; i < 6; i += 1) {
+        const a = await directUpload(attachments, who, pdfBytes(`c-a-${i}`));
+        const b = await directUpload(attachments, who, pdfBytes(`c-b-${i}`));
+        await attachments.complete(ORG_A, { userId: who.user, attachmentId: a.attachmentId });
+        await attachments.complete(ORG_A, { userId: who.user, attachmentId: b.attachmentId });
+        const attempt = (ids: string[]) =>
+          routeService
+            .sendMessage(ORG_A, {
+              channelId: who.channel,
+              authorUserId: who.user,
+              body: "",
+              attachments: ids.map((attachmentId) => ({ attachmentId })),
+            })
+            .then(
+              () => "sent",
+              (e: { code?: string }) => e.code ?? "error",
+            );
+        const outcomes = await Promise.all([
+          attempt([a.attachmentId, b.attachmentId]),
+          attempt([b.attachmentId, a.attachmentId]),
+        ]);
+        expect(outcomes.sort()).toEqual(["ATTACHMENT_NOT_BINDABLE", "sent"]);
+      }
+    });
+
+    it("F: the provider seam refuses a blank message with no attachments; a blank body with an attachment is stored as empty text", async () => {
+      const { createDbMessagingProvider } = await import("../src/modules/36-messaging/messaging-provider-db");
+      const provider = createDbMessagingProvider(handle.db, { kek: KEK });
+      const who = await freshUploader("f-seam");
+      const before = await count(`SELECT count(*)::int AS n FROM message WHERE channel_id=$1`, [who.channel]);
+      for (const body of ["", "   \n\t "]) {
+        await expect(
+          provider.sendMessage(ORG_A, { channelId: who.channel, authorUserId: who.user, body }),
+        ).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+      }
+      expect(await count(`SELECT count(*)::int AS n FROM message WHERE channel_id=$1`, [who.channel])).toBe(before);
+      const up = await directUpload(attachments, who, pdfBytes("f-attach"));
+      await attachments.complete(ORG_A, { userId: who.user, attachmentId: up.attachmentId });
+      const sent = await provider.sendMessage(ORG_A, {
+        channelId: who.channel,
+        authorUserId: who.user,
+        body: "  ",
+        attachments: [{ attachmentId: up.attachmentId }],
+      });
+      expect(sent.messageId).toBeTruthy();
+    });
+  });
+
   describe("hardening: audit trail ignores scan-sweep bookkeeping (D)", () => {
     it("retry bookkeeping writes no audit_event; completion and the verdict do", async () => {
       const auditUpdates = (id: string) =>
