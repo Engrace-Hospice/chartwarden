@@ -97,6 +97,9 @@ are not rolled back.
   not a per-file limit) and, if you want a hard per-tenant cap, a MinIO bucket quota on `tenant-*` buckets
   (`mc quota set <alias>/tenant-<orgId> --size <bytes>`). Browsers set `Content-Length` themselves and ignore it in the
   returned `headers` map, which is expected.
+- **Attachment retention.** `MESSAGING_ATTACHMENT_RETENTION_DAYS` (default 7) is how long the object of a quarantined file, or of
+  a file on a deleted message, is kept before the reaper destroys it (the row stays for audit and stops counting toward the
+  quota). It runs on the `DATABASE_DESTRUCTION_URL` credential like the orphan reaper.
 - **`tenant-buckets`** — idempotent one-shot (`scripts/backfill-tenant-buckets.ts`) that creates `tenant-<orgId>` for every
   org lacking it; `deploy.sh` runs it each deploy (a failure only warns: the attachment upload path also creates a missing
   bucket on demand, and answers a typed 503 naming the bucket if it cannot).
