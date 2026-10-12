@@ -3508,6 +3508,68 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
     });
   });
 
+  // WP 1.8 / SG-03: the M36 read routes that surface message, attachment or alert content each leave a row in the
+  // audit trail. `app` above has no `db` (the emitter is inert without one), so this builds the same routes on a
+  // server that has the real wardenx_app handle. The single-resource reads carry the resource id (a missing
+  // `resourceIdParam` makes the audit insert fail on the uuid cast and the best-effort emitter swallows it).
+  describe("read-audit emission (WP 1.8)", () => {
+    let auditApp: FastifyInstance;
+    beforeAll(async () => {
+      auditApp = buildServer({
+        db: handle.db,
+        authenticate: headerAuth,
+        security: { rateLimitEnabled: false },
+        idempotencyStore: createDbIdempotencyStore(handle.db),
+      });
+      registerMessagingRoutes(auditApp, { service: routeService });
+      registerAttachmentRoutes(auditApp, { service: attachments });
+      await auditApp.ready();
+    });
+    afterAll(async () => {
+      await auditApp?.close();
+    });
+
+    const readEvents = async (eventType: string, resourceId: string | null) =>
+      (
+        await admin.query(
+          `SELECT resource_id::text AS rid FROM audit_event
+            WHERE organization_id=$1 AND event_type=$2 AND actor_user_id=$3
+              AND ($4::text IS NULL OR resource_id::text=$4)`,
+          [ORG_A, eventType, u2, resourceId],
+        )
+      ).rows as Array<{ rid: string | null }>;
+
+    it("every message/attachment/alert read lands a read event, with the resource id on single-resource reads", async () => {
+      const { attachmentId } = await uploaded(u1, dm, pdfBytes("wp18-read"));
+      expect((await send(u1, dm, [attachmentId], ORG_A, "wp18 body")).statusCode).toBe(201);
+      const get = (url: string) => auditApp.inject({ method: "GET", url, headers: as(u2) });
+      const cases: Array<{ url: string; eventType: string; resourceId: string | null }> = [
+        { url: "/api/v1/messaging/channels", eventType: "messaging_channel.list_viewed", resourceId: null },
+        { url: `/api/v1/messaging/channels/${dm}`, eventType: "messaging_channel.viewed", resourceId: dm },
+        { url: `/api/v1/messaging/channels/${dm}/messages`, eventType: "message.list_viewed", resourceId: null },
+        {
+          url: `/api/v1/messaging/channels/${dm}/mention-candidates?q=a`,
+          eventType: "message_mention_candidate.viewed",
+          resourceId: dm,
+        },
+        {
+          url: `/api/v1/messaging/attachments/${attachmentId}/access`,
+          eventType: "message_attachment.viewed",
+          resourceId: attachmentId,
+        },
+        { url: "/api/v1/alerts/inbox", eventType: "alert.list_viewed", resourceId: null },
+      ];
+      for (const c of cases) {
+        const before = (await readEvents(c.eventType, c.resourceId)).length;
+        const res = await get(c.url);
+        expect(res.statusCode, c.url).toBe(200);
+        const after = await readEvents(c.eventType, c.resourceId);
+        expect(after.length, `${c.url} left no ${c.eventType} event`).toBe(before + 1);
+        if (c.resourceId) expect(after.at(-1)?.rid).toBe(c.resourceId);
+      }
+    });
+  });
+
   describe("wiring (bound is not computing)", () => {
     it("the composition root mounts the routes with a binding and registers + schedules the scan sweep", () => {
       const root = readFileSync(join(__dirname, "../src/index.ts"), "utf8");

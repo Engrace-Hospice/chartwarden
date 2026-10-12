@@ -36,6 +36,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { MODULES } from "../../../../architecture/module-manifest";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
@@ -342,6 +343,37 @@ describe.skipIf(!DB_URL)(
         db.query("UPDATE alert_receipt SET read_at = now() WHERE id=$1", [a.alertReceipt]),
       );
       expect(res.rowCount).toBe(1);
+    });
+
+    it("alert_receipt: the write-audit trigger (1081) records the read-state UPDATE in org A's trail", async () => {
+      const before = await db.query(
+        "SELECT count(*)::int AS n FROM audit_event WHERE resource_kind='alert_receipt' AND event_type='alert_receipt.update' AND resource_id=$1",
+        [a.alertReceipt],
+      );
+      await withOrg(ORG_A, () =>
+        db.query("UPDATE alert_receipt SET read_at = now() WHERE id=$1", [a.alertReceipt]),
+      );
+      const r = await db.query(
+        "SELECT organization_id::text AS org FROM audit_event WHERE resource_kind='alert_receipt' AND event_type='alert_receipt.update' AND resource_id=$1",
+        [a.alertReceipt],
+      );
+      expect(r.rows.length).toBe(before.rows[0].n + 1);
+      expect(r.rows.every((x) => x.org === ORG_A)).toBe(true);
+    });
+
+    it("WP 1.8 catalog parity: every M36 table has RLS enabled + FORCEd and a write-audit trigger", async () => {
+      const owned = (MODULES.find((m) => m.id === 36)?.ownedTables ?? []) as string[];
+      const r = await db.query(
+        `SELECT c.relname AS t, c.relrowsecurity AS rls, c.relforcerowsecurity AS frc,
+                EXISTS (SELECT 1 FROM pg_trigger g JOIN pg_proc p ON p.oid = g.tgfoid
+                         WHERE g.tgrelid = c.oid AND NOT g.tgisinternal AND g.tgenabled <> 'D'
+                           AND (p.proname = 'wardenx_audit_trigger' OR p.proname LIKE 'audit_phi_write_%')) AS audited
+           FROM pg_class c WHERE c.relnamespace = 'public'::regnamespace AND c.relname = ANY($1::text[])`,
+        [owned],
+      );
+      expect(r.rows.map((x) => x.t).sort()).toEqual([...owned].sort());
+      const bad = r.rows.filter((x) => !(x.rls && x.frc && x.audited)).map((x) => x.t);
+      expect(bad).toEqual([]);
     });
 
     it("alert_receipt: org B cannot UPDATE org A's receipt, nor forge one against org A's alert", async () => {
