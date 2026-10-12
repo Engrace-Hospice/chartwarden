@@ -380,6 +380,85 @@ describe.skipIf(!DB_URL)(
       expect(wide.candidates).toBeGreaterThanOrEqual(2);
     });
 
+    it("rotates through every head and revision in (created_at, id) order across runs, wrapping, so a tamper is found within a cycle", async () => {
+      const orgD = await seedOrg("wp19d");
+      const userD = await seedUser("wp19-d@x.test", orgD);
+      const annD = (
+        await admin.query(
+          `INSERT INTO channel (organization_id, channel_kind, title, retention_class)
+         VALUES ($1,'announcement','news d','operational') RETURNING id`,
+          [orgD],
+        )
+      ).rows[0].id as string;
+      for (let i = 0; i < 6; i++) await send(orgD, annD, userD, `rotation ${i}`);
+      const headIds = (
+        await admin.query(
+          "SELECT id FROM message WHERE organization_id=$1 ORDER BY created_at, id",
+          [orgD],
+        )
+      ).rows.map((r) => r.id as string);
+      for (const id of headIds.slice(0, 5))
+        await service().editMessage(orgD, { userId: userD, messageId: id, body: `edited ${id}` });
+      const revIds = (
+        await admin.query(
+          "SELECT id FROM message_revision WHERE organization_id=$1 ORDER BY created_at, id",
+          [orgD],
+        )
+      ).rows.map((r) => r.id as string);
+      expect(headIds).toHaveLength(6);
+      expect(revIds).toHaveLength(5);
+
+      // Tamper the 5th head and the 5th revision, each in its own (created_at, id) order.
+      await admin.query("UPDATE message SET body_sha256 = repeat('c',64) WHERE id=$1", [
+        headIds[4],
+      ]);
+      await admin.query("UPDATE message_revision SET body_sha256 = repeat('d',64) WHERE id=$1", [
+        revIds[4],
+      ]);
+
+      const small: M36IntegrityJobDeps = { ...deps, sampleLimit: 2 };
+      const auditBefore = (
+        await admin.query("SELECT count(*)::int AS n FROM audit_event WHERE organization_id=$1", [
+          orgD,
+        ])
+      ).rows[0].n as number;
+      const runs: Awaited<ReturnType<typeof runHashVerifyForOrg>>[] = [];
+      for (let i = 0; i < 4; i++) runs.push(await runHashVerifyForOrg(small, orgD));
+
+      // 2 heads + 2 revisions, 2 + 2, then the short tail (head 5-6, revision 5), then wrapped to the start.
+      expect(runs.map((r) => r.scanned)).toEqual([4, 4, 3, 4]);
+      expect(runs.map((r) => r.mismatched)).toEqual([0, 0, 2, 0]);
+
+      const cursors: unknown[] = [];
+      for (const r of runs) {
+        const row = (await auditRows("m36.hash_verify.run")).find((x) => x.resource_id === r.runId);
+        cursors.push(row?.context.cursorEnd);
+      }
+      const at = (id: string) => expect.objectContaining({ id });
+      expect(cursors).toEqual([
+        { heads: at(headIds[1]), revisions: at(revIds[1]) },
+        { heads: at(headIds[3]), revisions: at(revIds[3]) },
+        { heads: null, revisions: null }, // exhausted: the next run starts over
+        { heads: at(headIds[1]), revisions: at(revIds[1]) },
+      ]);
+
+      const found = (await auditRows("m36.integrity.hash_mismatch")).filter(
+        (r) => r.context.runId === runs[2].runId,
+      );
+      expect(found.map((r) => `${r.resource_kind}:${r.resource_id}`).sort()).toEqual(
+        [`message:${headIds[4]}`, `message_revision:${revIds[4]}`].sort(),
+      );
+
+      // The cursor read is a plain SELECT of the org's own audit rows as wardenx_app: it adds no audit row of
+      // its own (each clean run adds exactly its one run row; the tampered run adds two mismatches plus its run row).
+      const auditAfter = (
+        await admin.query("SELECT count(*)::int AS n FROM audit_event WHERE organization_id=$1", [
+          orgD,
+        ])
+      ).rows[0].n as number;
+      expect(auditAfter - auditBefore).toBe(4 + 2);
+    });
+
     it("a whole-org decrypt failure writes a capped number of mismatch rows plus one systemic summary, and still fails", async () => {
       const extra = SYSTEMIC_DECRYPT_FAILURE_THRESHOLD + 10;
       for (let i = 0; i < extra; i++) await send(orgB, chanB, authorB, `systemic ${i}`);
