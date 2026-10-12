@@ -346,7 +346,7 @@ const ResolvedMessageSchema = Type.Object({
   bodyKind: MessageBodyKindSchema,
   bodyDoc: Type.Optional(RichBodySchema),
   // True when a stored rich body cannot be read back: show "could not be displayed", not "deleted".
-  bodyUnreadable: Type.Optional(Type.Boolean()),
+  bodyUnreadable: Type.Optional(Type.Literal(true)),
   createdAt: Type.String(),
   parentMessageId: NullableString(),
   references: Type.Array(
@@ -472,7 +472,11 @@ type _CareTeamConversation = Conforms<
   Static<typeof OpenCareTeamConversationResponseSchema>,
   ServiceCareTeamConversation
 >;
-type _ResolvedMessage = Conforms<Static<typeof ResolvedMessageSchema>, ServiceResolvedMessage>;
+// `bodyDoc` is validated by sanitizeRichBody (the schema is only its envelope), so it is compared separately.
+type _ResolvedMessage = Conforms<
+  Omit<Static<typeof ResolvedMessageSchema>, "bodyDoc">,
+  Omit<ServiceResolvedMessage, "bodyDoc">
+>;
 type _Prefs = Conforms<
   Static<typeof NotificationPreferencesResponseSchema>,
   ServiceNotificationPreferencesView

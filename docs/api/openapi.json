@@ -157554,6 +157554,7 @@
                             }
                           },
                           "bodyUnreadable": {
+                            "const": true,
                             "type": "boolean"
                           },
                           "createdAt": {
