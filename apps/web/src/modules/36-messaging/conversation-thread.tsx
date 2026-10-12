@@ -185,6 +185,8 @@ export function ConversationThread({
   const messagesRef = useRef<Message[] | null>(null);
   const generationRef = useRef(0);
   const latestInFlight = useRef(false);
+  // A hint that lands while a read is in flight may postdate that read: read once more when it settles.
+  const rereadAfterFlight = useRef(false);
   const nearBottomRef = useRef(true);
   const initialScrollPending = useRef(false);
   const readBoundaryRef = useRef<string | null>(null);
@@ -284,6 +286,10 @@ export function ConversationThread({
         return true;
       } finally {
         latestInFlight.current = false;
+        if (rereadAfterFlight.current) {
+          rereadAfterFlight.current = false;
+          void loadLatest(true);
+        }
       }
     },
     [anchorMessageId, channel.channelId, client, markReadBoundary, onAccessRevoked],
@@ -396,7 +402,9 @@ export function ConversationThread({
   }, [channel.kind, channel.subjectId, client]);
 
   useEffect(() => {
-    if (liveToken > 0) void loadLatest(true);
+    if (liveToken === 0) return;
+    if (latestInFlight.current) rereadAfterFlight.current = true;
+    else void loadLatest(true);
   }, [liveToken, loadLatest]);
 
   useEffect(() => {

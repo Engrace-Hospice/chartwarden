@@ -52,9 +52,12 @@ export function useMessagingRealtime(
   useEffect(() => {
     const seen = new Set<string>();
     const socket = createSocket();
+    let firstConnect = true;
     const onConnect = (): void => {
       setConnected(true);
-      handlers.current.onSync();
+      // The screen has just loaded; only a RE-connect can have missed something.
+      if (!firstConnect) handlers.current.onSync();
+      firstConnect = false;
     };
     const onDisconnect = (): void => setConnected(false);
     const onHintEvent = (payload: unknown): void => {

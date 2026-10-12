@@ -20,7 +20,7 @@ const hint = (cursor: string, channelId = "ch1") => ({
 });
 
 describe("useMessagingRealtime", () => {
-  it("reports connection state and syncs on every connect", () => {
+  it("reports connection state and syncs on every reconnect, not the first connect", () => {
     const { emit, factory } = fakeSocket();
     const onSync = vi.fn();
     const { result } = renderHook(() => useMessagingRealtime(vi.fn(), onSync, factory));
@@ -30,7 +30,7 @@ describe("useMessagingRealtime", () => {
     emit("disconnect");
     expect(result.current).toBe(false);
     emit("connect");
-    expect(onSync).toHaveBeenCalledTimes(2);
+    expect(onSync).toHaveBeenCalledTimes(1);
   });
 
   it("delivers a hint once per cursor and ignores malformed payloads", () => {
