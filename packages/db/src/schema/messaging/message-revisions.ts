@@ -47,6 +47,13 @@ export const messageRevisions = pgTable(
   (t) => ({
     uniqueNo: unique("message_revision_unique_no").on(t.organizationId, t.messageId, t.revisionNo),
     byEditor: index("message_revision_edited_by_idx").on(t.editedBy),
+    // 1080: hash_verify rotation (keyset) and its by-primary-key random page, both within a tenant.
+    byOrgCreatedIdIdx: index("message_revision_org_created_id_idx").on(
+      t.organizationId,
+      t.createdAt,
+      t.id,
+    ),
+    byOrgIdIdx: index("message_revision_org_id_idx").on(t.organizationId, t.id),
     messageOrgFk: foreignKey({
       name: "message_revision_message_org_fk",
       columns: [t.organizationId, t.messageId],

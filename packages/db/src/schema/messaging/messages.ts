@@ -60,6 +60,8 @@ export const messages = pgTable(
       .on(t.authorUserId)
       .where(sql`author_user_id IS NOT NULL`),
     byOrgIdx: index("message_org_idx").on(t.organizationId),
+    // 1080: keyset paging for the hash_verify rotation (tenant, created_at, id).
+    byOrgCreatedIdIdx: index("message_org_created_id_idx").on(t.organizationId, t.createdAt, t.id),
     orgIdIdUnique: unique("message_org_id_id_unique").on(t.organizationId, t.id),
     // 1072: every edge carries organization_id, so the database (not only the app) refuses a
     // cross-tenant link; an FK check bypasses RLS, a composite FK cannot.
