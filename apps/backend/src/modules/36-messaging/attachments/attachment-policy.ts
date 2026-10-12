@@ -131,6 +131,16 @@ export function attachmentQuotaFromEnv(env: Record<string, string | undefined>):
   };
 }
 
+/**
+ * How long the OBJECT of a quarantined file, or of a file on a deleted message, is kept before the reaper destroys it (the
+ * row stays for audit). MESSAGING_ATTACHMENT_RETENTION_DAYS; unset or not a positive integer => 7 days.
+ */
+export const DEFAULT_ATTACHMENT_RETENTION_DAYS = 7;
+export function attachmentRetentionMsFromEnv(env: Record<string, string | undefined>): number {
+  const days = positiveInt(env.MESSAGING_ATTACHMENT_RETENTION_DAYS, DEFAULT_ATTACHMENT_RETENTION_DAYS);
+  return days * 24 * 60 * 60 * 1000;
+}
+
 /** Pending, attempted and older than the cap: not deliverable and shown as blocked, but still awaiting a real verdict. */
 export function isScanExpired(
   row: { scanState: string; completedAt: Date | null; scanAttempts: number },

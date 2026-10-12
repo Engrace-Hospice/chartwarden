@@ -53,6 +53,7 @@ import {
   UNBOUND_UPLOAD_REAP_AGE_MS,
   attachmentObjectKey,
   attachmentQuotaFromEnv,
+  attachmentRetentionMsFromEnv,
   eraseLockName,
   isScanExpired,
   validateAuthorizeInput,
@@ -164,6 +165,8 @@ export interface AttachmentServiceDeps {
    */
   readonly reaperDb?: DbClient | undefined;
   readonly onReapError?: (context: { attachmentId: string }, error: unknown) => void;
+  /** Retention of a quarantined / deleted-message file's object before the reaper destroys it. Default: MESSAGING_ATTACHMENT_RETENTION_DAYS (7). */
+  readonly retentionMs?: number;
   /** Per-user requests per minute for authorize and complete (default 60). A 429 `RATE_LIMITED` past it. */
   readonly userRequestsPerMinute?: number;
   /** Per-scan wall-clock bound (read + scanner). Default SCAN_ROW_DEADLINE_MS. */
@@ -205,7 +208,9 @@ export interface AttachmentService {
   /**
    * One org's orphan reap: abandoned uploads (never completed, expired past the grace) and finished uploads no message
    * ever adopted (older than 7 days) have their OBJECT destroyed first, then their row deleted. A row whose object
-   * cannot be destroyed stays, so the work is retryable and no byte is left without a pointer.
+   * cannot be destroyed stays, so the work is retryable and no byte is left without a pointer. The same run also destroys the
+   * OBJECT (the row stays, stamped `object_destroyed_at`) of a quarantined file, and of a file on a deleted message, once the
+   * retention window has passed; each such destroy counts in `reaped` (or `failed`).
    */
   reapOrphansForOrg(
     orgId: string,
@@ -401,6 +406,7 @@ async function denialReason(
 ): Promise<string | null> {
   if (row.scanState === "quarantined") return "quarantined";
   if (row.scanState !== "clean" || !row.completedAt || !row.objectKey) return "not_clean";
+  if (row.objectDestroyedAt) return "object_destroyed";
   if (row.messageId === null) {
     // Not shared yet: only its uploader may preview it.
     return row.uploadedBy === userId ? null : "not_attached";
@@ -513,6 +519,7 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
   const scanDeadlineMs = deps.scanDeadlineMs ?? SCAN_ROW_DEADLINE_MS;
   const abortGraceMs = deps.abortGraceMs ?? ABORT_SETTLE_GRACE_MS;
   const quota = deps.quota ?? attachmentQuotaFromEnv(process.env);
+  const retentionMs = deps.retentionMs ?? attachmentRetentionMsFromEnv(process.env);
   const inlineGate = deps.inlineScanGate ?? PROCESS_INLINE_SCAN_GATE;
   const userRatePerMinute = deps.userRequestsPerMinute ?? DEFAULT_USER_REQUESTS_PER_MINUTE;
   const completeCalls = createFixedWindowCounter(ONE_MINUTE_MS);
@@ -839,14 +846,19 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
             and(
               eq(ATT.organizationId, orgId),
               or(isNotNull(ATT.completedAt), gt(ATT.uploadExpiresAt, now())),
+              // Bytes that are gone stop counting: a destroyed object, and a file on a (soft-)deleted message (its object
+              // is destroyed after the retention window, see reapOrphansForOrg).
+              isNull(ATT.objectDestroyedAt),
+              sql`NOT EXISTS (SELECT 1 FROM message m WHERE m.organization_id = ${ATT.organizationId}
+                    AND m.id = ${ATT.messageId} AND m.status = 'deleted')`,
             ),
           );
         const quotaExceeded = (scope: "user" | "organization", limit: number) =>
           new WardenXError(
             "ATTACHMENT_QUOTA_EXCEEDED",
             scope === "user"
-              ? `your attachment storage allowance (${formatBytes(limit)}) is full; delete or wait for older attachments to expire`
-              : `this organization's attachment storage allowance (${formatBytes(limit)}) is full`,
+              ? `your attachment storage allowance (${formatBytes(limit)}) is full; it frees up when messages carrying your files are deleted, when unsent uploads lapse, or when blocked files are purged`
+              : `this organization's attachment storage allowance (${formatBytes(limit)}) is full; it frees up when messages carrying files are deleted or blocked files are purged`,
             413,
             [{ field: "scope", code: "QUOTA_SCOPE", message: scope }],
           );
@@ -1154,7 +1166,70 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
           deps.onReapError?.({ attachmentId: row.id }, error);
         }
       }
+      await purgeRetainedObjects(orgId, reaperDb, opts, result);
       return result;
     },
   };
+
+  /**
+   * Destroy the OBJECT of rows that must no longer hold bytes but whose row we keep for audit: a quarantined file, and a
+   * clean file on a deleted message, once `retentionMs` has passed. Candidates are read under the app role (RLS), the
+   * destroy is the same deadline-bound storage call the orphan reaper uses, and the stamp is written by the destruction
+   * credential (the only role with UPDATE on `object_destroyed_at`). A failed destroy leaves the row unstamped: retried next run.
+   */
+  async function purgeRetainedObjects(
+    orgId: string,
+    reaperDb: DbClient,
+    opts: { limit?: number; budgetMs?: number },
+    result: { reaped: number; failed: number },
+  ): Promise<void> {
+    const at = now();
+    const cutoff = new Date(at.getTime() - retentionMs);
+    const budgetEndsAt = opts.budgetMs === undefined ? undefined : at.getTime() + opts.budgetMs;
+    const candidates = await withOrgContext(db, systemOrgContext(orgId), (rawTx) =>
+      (rawTx as unknown as Tx)
+        .select({ id: ATT.id, objectKey: ATT.objectKey })
+        .from(ATT)
+        .where(
+          and(
+            eq(ATT.organizationId, orgId),
+            isNull(ATT.objectDestroyedAt),
+            isNotNull(ATT.objectKey),
+            ne(ATT.scanState, "pending"),
+            or(
+              and(eq(ATT.scanState, "quarantined"), lt(ATT.scannedAt, cutoff)),
+              sql`EXISTS (SELECT 1 FROM message m WHERE m.organization_id = ${ATT.organizationId}
+                    AND m.id = ${ATT.messageId} AND m.status = 'deleted' AND m.deleted_at < ${cutoff.toISOString()}::timestamptz)`,
+            ),
+          ),
+        )
+        .orderBy(sql`random()`)
+        .limit(opts.limit ?? REAP_BATCH_LIMIT),
+    );
+    let attempted = 0;
+    for (const row of candidates) {
+      if (attempted > 0 && budgetEndsAt !== undefined && now().getTime() >= budgetEndsAt) break;
+      attempted += 1;
+      const objectKey = row.objectKey;
+      if (!objectKey) continue;
+      try {
+        await runWithDeadline(
+          (signal) => storage.destroyObject({ organizationId: orgId, objectKey, signal }),
+          deps.storageDeadlineMs ?? REAP_DESTROY_DEADLINE_MS,
+          () => new Error("attachment destroy exceeded its deadline"),
+          abortGraceMs,
+        );
+        await withOrgContext(reaperDb, systemOrgContext(orgId), (rawTx) =>
+          (rawTx as unknown as Tx)
+            .update(ATT)
+            .set({ objectDestroyedAt: now() })
+            .where(and(eq(ATT.organizationId, orgId), eq(ATT.id, row.id), isNull(ATT.objectDestroyedAt))),
+        );
+        result.reaped += 1;
+      } catch (error) {
+        result.failed += 1;
+        deps.onReapError?.({ attachmentId: row.id }, error);
+      }
+    }
+  }
 }

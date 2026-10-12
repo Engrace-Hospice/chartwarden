@@ -54,6 +54,8 @@ export const messageAttachments = pgTable(
     /** Consecutive "object not found" reads (reset by a successful read) and when the run began. */
     objectMissingCount: integer("object_missing_count").notNull().default(0),
     firstObjectMissingAt: timestamp("first_object_missing_at", { withTimezone: true }),
+    /** Set (by the destruction credential only, migration 1077) once the retention reaper has destroyed the object. */
+    objectDestroyedAt: timestamp("object_destroyed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
