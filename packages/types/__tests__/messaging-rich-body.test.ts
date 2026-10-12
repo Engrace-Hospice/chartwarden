@@ -4,6 +4,7 @@ import {
   RICH_BODY_LIMITS,
   canonicalRichBodyJson,
   linkTargetLabel,
+  normalizeMentionLabel,
   parseStoredRichBody,
   richBodyMentions,
   richBodyToPlainText,
@@ -151,6 +152,68 @@ describe("sanitizeRichBody", () => {
         expect(projected).not.toContain('"schemaVersion"');
       }
     });
+  });
+});
+
+describe("WP 2.1 hardening: size, link count, expansion, invisible characters", () => {
+  const linkPara = (href: string) => para(text("l", { type: "link", href }));
+
+  it("rejects a link whose NORMALISED href is longer than the limit (percent-encoding expansion)", () => {
+    const href = `https://example.com/${"\u00e9".repeat(1_500)}`;
+    expect(href.length).toBeLessThan(RICH_BODY_LIMITS.maxLinkChars);
+    expect(sanitizeRichBody(doc(linkPara(href))).ok).toBe(false);
+    expect(safeLinkHref(href)).toBeNull();
+  });
+
+  it("caps the number of links per document", () => {
+    const many = (n: number) =>
+      doc(...Array.from({ length: n }, () => linkPara("https://a.example/")));
+    expect(sanitizeRichBody(many(RICH_BODY_LIMITS.maxLinks)).ok).toBe(true);
+    expect(sanitizeRichBody(many(RICH_BODY_LIMITS.maxLinks + 1)).ok).toBe(false);
+    expect(sanitizeRichBody(many(500)).ok).toBe(false);
+  });
+
+  it("caps the canonical JSON size", () => {
+    const big = `https://example.com/${"a".repeat(1_900)}`;
+    const oversize = doc(...Array.from({ length: 40 }, () => linkPara(big)));
+    expect(new TextEncoder().encode(JSON.stringify(oversize)).length).toBeGreaterThan(
+      RICH_BODY_LIMITS.maxCanonicalBytes,
+    );
+    expect(sanitizeRichBody(oversize).ok).toBe(false);
+    expect(sanitizeRichBody(doc(linkPara(big))).ok).toBe(true);
+  });
+
+  it("strips default-ignorable and format characters but keeps ZWJ/VS16 inside emoji sequences", () => {
+    const family = "\u{1F468}\u200D\u{1F469}\u200D\u{1F467}";
+    const heart = "\u2764\uFE0F";
+    const keycap = "1\uFE0F\u20E3";
+    const kept = ok(doc(para(text(`${family} ${heart} ${keycap}`))));
+    expect(richBodyToPlainText(kept)).toBe(`${family} ${heart} ${keycap}`);
+    const hostile =
+      "a\u200Db\uFE0Fc\u3164d\u2800e\uFFA0f\u034Fg\u180Eh\u17B4i\u17B5j\u{E0041}k\u200Cl\u00ADm";
+    expect(richBodyToPlainText(ok(doc(para(text(hostile)))))).toBe("abcdefghijklm");
+    expect(sanitizeRichBody(doc(para(text("\u3164\u2800\uFFA0\u034F\u180E")))).ok).toBe(false);
+  });
+
+  it("refuses an invisible character anywhere in a link target", () => {
+    for (const hidden of ["\u200D", "\u3164", "\u2800", "\u{E0041}", "\u034F"]) {
+      expect(safeLinkHref(`https://exa${hidden}mple.com/`)).toBeNull();
+    }
+  });
+
+  it("normalises a mention label under NFKC", () => {
+    const value = ok(
+      doc(para({ type: "mention", kind: "staff", entityId: ID, label: "\uFF22\uFF4F\uFF42" })),
+    );
+    expect(richBodyMentions(value)[0]?.label).toBe("Bob");
+    expect(normalizeMentionLabel("@\uFF22ob\u200B")).toBe("@Bob");
+  });
+
+  it("drops the query and fragment from a mailto target", () => {
+    expect(safeLinkHref("mailto:a@b.example?subject=x&cc=evil@x.example#f")).toBe(
+      "mailto:a@b.example",
+    );
+    expect(safeLinkHref("mailto:?subject=x")).toBeNull();
   });
 });
 

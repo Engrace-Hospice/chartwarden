@@ -21,6 +21,10 @@ export const RICH_BODY_LIMITS = {
   maxLinkChars: 2_048,
   maxMentionLabelChars: 120,
   maxMarksPerText: 4,
+  /** Links in one document. */
+  maxLinks: 50,
+  /** UTF-8 size of the canonical JSON (what is hashed and encrypted); bounds every expansion after cleaning. */
+  maxCanonicalBytes: 65_536,
 } as const;
 
 export const RICH_LINK_SCHEMES = ["https:", "mailto:"] as const;
@@ -91,12 +95,58 @@ const reject = (reason: string): never => {
   throw new Reject(reason);
 };
 
-/** Text clean-up: NFC, controls and bidi overrides removed; `keepNewlines` only for code blocks. */
-export function cleanRichText(value: string, keepNewlines = false): string {
-  let text = value.normalize("NFC").replace(/\r\n?/g, "\n").replace(STRIP_COMMON, "");
+// Characters a reader cannot see (or that reorder/hide text): Default_Ignorable_Code_Point (soft hyphen, CGJ, Hangul
+// fillers, Khmer inherent vowels, Mongolian separators, variation selectors, tag characters ...) and the format
+// category Cf (ZWNJ/ZWJ, bidi marks, invisible operators ...), plus the braille blank U+2800.
+const INVISIBLE = /[\p{Default_Ignorable_Code_Point}\p{Cf}\u2800]/u;
+const PICTOGRAPH = /\p{Extended_Pictographic}|\p{Emoji_Modifier}|\uFE0F/u;
+const EMOJI_BASE = /[\p{Extended_Pictographic}\p{Emoji_Modifier}]/u;
+
+/**
+ * Remove invisible characters. Documented exception, deliberately simple: a ZWJ (U+200D) survives only between two
+ * pictographs (emoji ZWJ sequences), and a VS16 (U+FE0F) only right after a pictograph or a keycap base followed by
+ * U+20E3. Everything else invisible is dropped, ZWNJ included (known limit: it is meaningful in Persian and some
+ * Indic scripts; recorded in the WP 2.1 note).
+ */
+export function stripInvisible(value: string): string {
+  const chars = Array.from(value);
+  let out = "";
+  let last = "";
+  chars.forEach((char, index) => {
+    if (!INVISIBLE.test(char)) {
+      out += char;
+      last = char;
+      return;
+    }
+    const next = chars[index + 1] ?? "";
+    const keepZwj = char === "\u200D" && PICTOGRAPH.test(last) && EMOJI_BASE.test(next);
+    const keepVs16 =
+      char === "\uFE0F" && (EMOJI_BASE.test(last) || (/[0-9#*]/.test(last) && next === "\u20E3"));
+    if (keepZwj || keepVs16) {
+      out += char;
+      last = char;
+    }
+  });
+  return out;
+}
+
+/** Text clean-up: Unicode-normalised, controls, bidi and invisible characters removed; newlines only for code. */
+export function cleanRichText(
+  value: string,
+  keepNewlines = false,
+  form: "NFC" | "NFKC" = "NFC",
+): string {
+  let text = stripInvisible(
+    value.normalize(form).replace(/\r\n?/g, "\n").replace(STRIP_COMMON, ""),
+  );
   if (!keepNewlines) text = text.replace(STRIP_INLINE, " ");
   else text = text.replace(/[\t]/g, "  ");
   return text;
+}
+
+/** Label comparison form: NFKC, invisible characters removed, trimmed. Both sides of a mention check use it. */
+export function normalizeMentionLabel(value: string): string {
+  return cleanRichText(value, false, "NFKC").trim();
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -116,8 +166,9 @@ export function safeLinkHref(raw: unknown): string | null {
   }
   // Whitespace/control characters inside a scheme are how `java\tscript:` slips past naive filters.
   if (
+    INVISIBLE.test(raw) ||
     // biome-ignore lint/suspicious/noControlCharactersInRegex: rejecting control characters is the point
-    /[\u0000-\u0020\u007F-\u009F\u200B\u2028\u2029\u202A-\u202E\u2060\u2066-\u2069\uFEFF]/.test(raw)
+    /[\u0000-\u0020\u007F-\u009F\u2028\u2029]/.test(raw)
   ) {
     return null;
   }
@@ -134,8 +185,14 @@ export function safeLinkHref(raw: unknown): string | null {
   ) {
     return null; // https://trusted.example@evil.example/ - credentials in a URL are a spoofing shape
   }
-  if (url.protocol === "mailto:" && url.pathname === "") return null;
-  return url.href;
+  if (url.protocol === "mailto:") {
+    // Only the address is kept: a query (subject, cc, bcc, body) or fragment is attacker-chosen content.
+    if (url.pathname === "") return null;
+    const mailto = `mailto:${url.pathname}`;
+    return mailto.length > RICH_BODY_LIMITS.maxLinkChars ? null : mailto;
+  }
+  // The NORMALISED form is what is stored and rendered; percent-encoding can make it much longer than the input.
+  return url.href.length > RICH_BODY_LIMITS.maxLinkChars ? null : url.href;
 }
 
 /** What a reader shows on hover for a link: the real destination host (or the mailto address). */
@@ -151,6 +208,7 @@ export function linkTargetLabel(href: string): string {
 interface Budget {
   nodes: number;
   chars: number;
+  links: number;
 }
 
 function enter(budget: Budget, depth: number, what: string): void {
@@ -168,7 +226,7 @@ function spend(budget: Budget, text: string): void {
   }
 }
 
-function cleanMarks(raw: unknown): RichMark[] {
+function cleanMarks(raw: unknown, budget: Budget): RichMark[] {
   if (raw === undefined) return [];
   if (!Array.isArray(raw) || raw.length > RICH_BODY_LIMITS.maxMarksPerText)
     reject("text: invalid marks");
@@ -185,6 +243,9 @@ function cleanMarks(raw: unknown): RichMark[] {
       exactKeys(mark, ["type", "href"], "link");
       const href = safeLinkHref(mark.href);
       if (href === null) reject("link: only https: and mailto: targets are allowed");
+      budget.links += 1;
+      if (budget.links > RICH_BODY_LIMITS.maxLinks)
+        reject(`more than ${RICH_BODY_LIMITS.maxLinks} links`);
       marks.push({ type: "link", href: href as string });
     } else {
       reject(`mark: unknown type "${mark.type.slice(0, 40)}"`);
@@ -203,7 +264,7 @@ function cleanInline(node: unknown, depth: number, budget: Budget): RichInline {
       const text = cleanRichText(node.text as string);
       if (text === "") reject("text: empty after sanitisation");
       spend(budget, text);
-      const marks = cleanMarks(node.marks);
+      const marks = cleanMarks(node.marks, budget);
       return marks.length > 0 ? { type: "text", text, marks } : { type: "text", text };
     }
     case "hardBreak":
@@ -215,7 +276,7 @@ function cleanInline(node: unknown, depth: number, budget: Budget): RichInline {
       if (typeof node.entityId !== "string" || !UUID.test(node.entityId))
         reject("mention: bad entityId");
       if (typeof node.label !== "string") reject("mention: bad label");
-      const label = cleanRichText(node.label as string).trim();
+      const label = normalizeMentionLabel(node.label as string);
       if (label === "" || label.length > RICH_BODY_LIMITS.maxMentionLabelChars)
         reject("mention: bad label");
       spend(budget, `@${label}`);
@@ -305,12 +366,18 @@ export function sanitizeRichBody(input: unknown): RichBodyResult {
     const doc = input.doc;
     if (!isRecord(doc) || doc.type !== "doc") return reject("body: doc missing");
     exactKeys(doc, ["type", "content"], "doc");
-    const budget: Budget = { nodes: 1, chars: 0 };
+    const budget: Budget = { nodes: 1, chars: 0, links: 0 };
     const content = cleanChildren(doc.content, "doc", (block) => cleanBlock(block, budget));
-    return {
-      ok: true,
-      value: { schemaVersion: RICH_BODY_SCHEMA_VERSION, doc: { type: "doc", content } },
+    const value: RichBody = {
+      schemaVersion: RICH_BODY_SCHEMA_VERSION,
+      doc: { type: "doc", content },
     };
+    if (
+      new TextEncoder().encode(JSON.stringify(value)).length > RICH_BODY_LIMITS.maxCanonicalBytes
+    ) {
+      return reject(`body: larger than ${RICH_BODY_LIMITS.maxCanonicalBytes} bytes`);
+    }
+    return { ok: true, value };
   } catch (error) {
     if (error instanceof Reject) return { ok: false, reason: error.message };
     return { ok: false, reason: "body: could not be read" };
