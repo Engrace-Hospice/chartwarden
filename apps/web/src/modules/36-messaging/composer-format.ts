@@ -108,12 +108,12 @@ export function applyTextEdit(textarea: HTMLTextAreaElement, edit: TextEdit): vo
   // A command that is missing, throws, returns false, or "succeeds" without producing the text (an empty insertText
   // is the usual case) is caught here by comparing the value, and the edit is applied directly.
   if (textarea.value !== edit.value) {
+    // Apply it ourselves only when the command left the text untouched. Any other result is the browser's own
+    // (and it already fired its own input event): overwriting it would fight the user's undo stack.
     if (textarea.value === before) {
       textarea.setRangeText(edit.replacement, edit.replaceStart, edit.replaceEnd, "end");
-    } else {
-      textarea.value = edit.value; // the command did something unexpected: make the value exactly the edit
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
     }
-    textarea.dispatchEvent(new Event("input", { bubbles: true }));
   }
   textarea.setSelectionRange(edit.selectionStart, edit.selectionEnd);
 }

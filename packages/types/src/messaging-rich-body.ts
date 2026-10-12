@@ -280,6 +280,10 @@ function cleanInline(node: unknown, depth: number, budget: Budget): RichInline {
       if (text === "") reject("text: empty after sanitisation");
       spend(budget, text);
       const marks = cleanMarks(node.marks, budget);
+      // A link needs something to click: whitespace-only text (NBSP, U+3000 ...) would be an invisible link.
+      if (text.trim() === "" && marks.some((mark) => mark.type === "link")) {
+        reject("text: a link needs visible text");
+      }
       return marks.length > 0 ? { type: "text", text, marks } : { type: "text", text };
     }
     case "hardBreak":

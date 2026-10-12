@@ -444,7 +444,8 @@ export function ConversationThread({
       // The edit runs through the textarea's own input path (undo stack, onChange, mention query recompute).
       event.preventDefault();
       const area = event.currentTarget;
-      applyTextEdit(area, toggleWrap(draft, area.selectionStart, area.selectionEnd, marker));
+      // Built from the live value: React state may lag a programmatic change (autofill, an extension).
+      applyTextEdit(area, toggleWrap(area.value, area.selectionStart, area.selectionEnd, marker));
       return;
     }
     if (mentionQuery && event.key === "Escape") {

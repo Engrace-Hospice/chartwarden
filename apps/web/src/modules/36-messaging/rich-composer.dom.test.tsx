@@ -154,6 +154,17 @@ describe("rich composer", () => {
     expect(box.value).toBe("say *hello* now");
   });
 
+  it("L5: the edit is built from the textarea's live value, not from possibly stale React state", async () => {
+    mountThread();
+    const box = await composer();
+    type(box, "abc");
+    // A programmatic change that React has not seen yet (autofill, extension, paste handler).
+    box.value = "abcdef";
+    box.setSelectionRange(3, 6);
+    fireEvent.keyDown(box, { code: "KeyB", key: "b", ctrlKey: true });
+    expect(box.value).toBe("abc**def**");
+  });
+
   it("Cmd is not the format key off macOS", async () => {
     mountThread();
     const box = await composer();

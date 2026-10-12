@@ -342,6 +342,25 @@ describe("L1: mailto targets are a conservative address and nothing else", () =>
   });
 });
 
+describe("L1: a link needs visible text", () => {
+  it.each([" ", "\u00A0", "\u3000", " \u00A0\u3000 "])(
+    "rejects a link mark on blank text %j",
+    (blank) => {
+      expect(
+        sanitizeRichBody(doc(para(text(blank, { type: "link", href: "https://good.example/" }))))
+          .ok,
+      ).toBe(false);
+    },
+  );
+
+  it("still allows blank text WITHOUT a link, and visible text with one", () => {
+    expect(sanitizeRichBody(doc(para(text(" ")))).ok).toBe(true);
+    expect(
+      sanitizeRichBody(doc(para(text("x", { type: "link", href: "https://good.example/" })))).ok,
+    ).toBe(true);
+  });
+});
+
 describe("safeLinkHref", () => {
   it.each([
     ["https://example.com/path?q=1#h", "https://example.com/path?q=1#h"],

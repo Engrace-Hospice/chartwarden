@@ -90,4 +90,29 @@ describe("applyTextEdit", () => {
       expect(area.value).toBe("a**b");
     }
   });
+
+  it("L5: an unexpected result from the command is left alone (no forced overwrite, no extra input event)", () => {
+    const edit = toggleWrap("say hello now", 4, 9, "**");
+    const area = mountArea("say hello now");
+    doc.execCommand = vi.fn(() => {
+      area.value = "something else entirely";
+      return true;
+    });
+    const onInput = vi.fn();
+    area.addEventListener("input", onInput);
+    applyTextEdit(area, edit);
+    expect(area.value).toBe("something else entirely");
+    expect(onInput).not.toHaveBeenCalled();
+  });
+
+  it("L5: exactly one input event when the fallback runs", () => {
+    const edit = toggleWrap("ab", 1, 1, "*");
+    const area = mountArea("ab");
+    doc.execCommand = vi.fn(() => false);
+    const onInput = vi.fn();
+    area.addEventListener("input", onInput);
+    applyTextEdit(area, edit);
+    expect(area.value).toBe("a**b");
+    expect(onInput).toHaveBeenCalledTimes(1);
+  });
 });
