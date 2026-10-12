@@ -80,6 +80,7 @@ import {
   insertEncryptedMessage,
   markMessagesRead,
 } from "./messaging-write-core";
+import { publishMessageHint } from "./message-hint-events";
 import { type Part2ChannelGate, createSeamPart2ChannelGate } from "./part2-channel-gate";
 
 const CH = schema.channels;
@@ -1275,6 +1276,12 @@ export function createDbMessagingRouteService(
               });
             }
           }
+          await publishMessageHint(opts.outbox, tx, "sent", {
+            orgId,
+            channelId: input.channelId,
+            messageId,
+            at: createdAt,
+          });
           return { messageId, channelId: input.channelId, createdAt };
         },
       );
@@ -1320,12 +1327,13 @@ export function createDbMessagingRouteService(
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
         await assertLiveMembershipInTx(tx, orgId, input.userId, input.messageId);
         const rows = (await tx
-          .select({ authorUserId: MSG.authorUserId, status: MSG.status })
+          .select({ authorUserId: MSG.authorUserId, status: MSG.status, channelId: MSG.channelId })
           .from(MSG)
           .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, input.messageId)))
           .limit(1)) as Array<{
           authorUserId: string | null;
           status: string;
+          channelId: string;
         }>;
         const m = rows[0];
         if (!m || m.status === "deleted") throw new NotFoundError("message", input.messageId);
@@ -1355,6 +1363,12 @@ export function createDbMessagingRouteService(
             })),
           );
         }
+        await publishMessageHint(opts.outbox, tx, "edited", {
+          orgId,
+          channelId: m.channelId,
+          messageId: input.messageId,
+          at: editedAt,
+        });
         return {
           messageId: input.messageId,
           editedAt: editedAt.toISOString(),
@@ -1368,12 +1382,13 @@ export function createDbMessagingRouteService(
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
         await assertLiveMembershipInTx(tx, orgId, input.userId, input.messageId);
         const rows = (await tx
-          .select({ authorUserId: MSG.authorUserId, status: MSG.status })
+          .select({ authorUserId: MSG.authorUserId, status: MSG.status, channelId: MSG.channelId })
           .from(MSG)
           .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, input.messageId)))
           .limit(1)) as Array<{
           authorUserId: string | null;
           status: string;
+          channelId: string;
         }>;
         const m = rows[0];
         if (!m || m.status === "deleted") throw new NotFoundError("message", input.messageId);
@@ -1382,10 +1397,17 @@ export function createDbMessagingRouteService(
         }
         // The body_cipher is retained through the retention window; only status/deleted_at change.
         // edited_at is cleared so the mutually-exclusive `message_status_shape` CHECK holds.
+        const deletedAt = new Date();
         await tx
           .update(MSG)
-          .set({ status: "deleted", deletedAt: new Date(), editedAt: null })
+          .set({ status: "deleted", deletedAt: deletedAt, editedAt: null })
           .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, input.messageId)));
+        await publishMessageHint(opts.outbox, tx, "deleted", {
+          orgId,
+          channelId: m.channelId,
+          messageId: input.messageId,
+          at: deletedAt,
+        });
       });
     },
 
@@ -1683,6 +1705,12 @@ export function createDbMessagingRouteService(
             channelId,
             authorUserId: input.authorUserId,
             body: input.body,
+          });
+          await publishMessageHint(opts.outbox, tx, "sent", {
+            orgId,
+            channelId,
+            messageId,
+            at: createdAt,
           });
           return { messageId, channelId, createdAt };
         },

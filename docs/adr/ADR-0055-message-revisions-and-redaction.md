@@ -6,10 +6,9 @@
 - **Extends:** M36 spec §3.4 (message envelope, `body_sha256`, tombstone) and ADR-0004 (clinical retention; the "retain the cipher
   through the retention window" rule that M36-F02 already applies to deletes).
 - **Related:** [ADR-0051](ADR-0051-legal-hold-is-an-overlay-not-a-retention-class-flip.md) (overlay pattern; hashed columns are
-  never rewritten by a hold), [ADR-0010](ADR-0010-tenancy-rls-invariants.md), ADR-0054 (draft: `message.edited` hint),
-  ADR-0056 (draft: acknowledgment targets a specific revision).
+  never rewritten by a hold), [ADR-0010](ADR-0010-tenancy-rls-invariants.md), ADR-0054 (`message.edited` hint),
+  ADR-0056 (acknowledgment targets a specific revision).
 
-> **Number check.** Intended ordinal ADR-0055; re-check at promotion (last on `main` at drafting: ADR-0053).
 
 ## Context
 

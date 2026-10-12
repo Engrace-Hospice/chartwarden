@@ -23,6 +23,7 @@ export {
 // ── M36-T08 realtime event & room CONTRACT (§4.3) — pure room-set + sanitized event payloads ──
 export {
   // room grammar + connect-time room-set computation
+  accountRoom,
   userRoom,
   careTeamRoom,
   disciplineRoom,
@@ -36,9 +37,16 @@ export {
   // event name catalogs
   MESSAGING_SERVER_EVENTS,
   MESSAGING_CLIENT_EVENTS,
+  // ADR-0054 hints (PHI-free "something changed" signals)
+  REALTIME_HINT_EVENT,
+  buildMessageHint,
+  isMessageHintOutboxEvent,
 } from "./realtime";
 export type {
   ConnectChannelMembership,
+  MessageHintKind,
+  MessageHintOutboxEvent,
+  RealtimeHint,
   RoomSetInput,
   ServerEventEnvelope,
   MessageNewEvent,

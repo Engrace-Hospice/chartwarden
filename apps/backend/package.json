@@ -14,6 +14,8 @@
     "start:worker": "bun --env-file=../../.env src/worker.ts"
   },
   "dependencies": {
+    "@socket.io/redis-adapter": "8.3.0",
+    "@socket.io/redis-emitter": "5.1.0",
     "@wardenx/audit": "workspace:*",
     "@wardenx/db": "workspace:*",
     "@wardenx/shared": "workspace:*",
@@ -24,6 +26,10 @@
     "fastify": "^5.12.5",
     "ioredis": "5.11.1",
     "pino": "^10.3.1",
-    "prom-client": "^15.1.3"
+    "prom-client": "^15.1.3",
+    "socket.io": "4.8.4"
+  },
+  "devDependencies": {
+    "socket.io-client": "4.8.4"
   }
 }

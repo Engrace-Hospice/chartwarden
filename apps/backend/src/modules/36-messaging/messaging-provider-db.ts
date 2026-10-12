@@ -27,7 +27,11 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
-import { createDbMessagingRouteService } from "./messaging-route-service-db";
+import { publishMessageHint } from "./message-hint-events";
+import {
+  type MessagingOutboxPort,
+  createDbMessagingRouteService,
+} from "./messaging-route-service-db";
 import {
   type MessageBodyCipher,
   channelOr404,
@@ -67,6 +71,8 @@ export function createDbMessagingProvider(
     kek?: Buffer;
     cipher?: MessageBodyCipher;
     part2Gate?: Part2ChannelGate;
+    /** Realtime hint source (ADR-0054 A4); absent in unit wiring, bound in the composition root. */
+    outbox?: MessagingOutboxPort;
     warn?: (message: string, context: Record<string, string>) => void;
   } = {},
 ): MessagingProvider {
@@ -75,7 +81,12 @@ export function createDbMessagingProvider(
   const part2Gate = opts.part2Gate ?? createSeamPart2ChannelGate(db);
   // markRead/listMessages take a userId, so they must apply the same live-access rule as the routes
   // (active user, live membership, Part 2 gate) rather than trusting the caller — one rule, one place.
-  const access = createDbMessagingRouteService(db, { cipher, part2Gate, warn: opts.warn });
+  const access = createDbMessagingRouteService(db, {
+    cipher,
+    part2Gate,
+    warn: opts.warn,
+    outbox: opts.outbox,
+  });
 
   function notWired(hook: string): never {
     throw new WardenXError(
@@ -155,7 +166,7 @@ export function createDbMessagingProvider(
         async (tx) => {
           const ch = await channelOr404(tx, orgId, input.channelId);
           if (ch.isArchived) throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
-          return insertEncryptedMessage(tx, cipher, {
+          const sent = await insertEncryptedMessage(tx, cipher, {
             orgId,
             channelId: input.channelId,
             authorUserId: input.authorUserId,
@@ -164,6 +175,13 @@ export function createDbMessagingProvider(
             parentMessageId: input.parentMessageId,
             quotedMessageId: input.quotedMessageId,
           });
+          await publishMessageHint(opts.outbox, tx, "sent", {
+            orgId,
+            channelId: input.channelId,
+            messageId: sent.messageId,
+            at: sent.createdAt,
+          });
+          return sent;
         },
       );
     },
@@ -407,4 +425,49 @@ function defaultTitle(kind: ChannelKind): string {
     default:
       return kind.replace(/_/g, " ");
   }
+}
+
+/**
+ * Soft-remove every active `channel_member` row a user holds in an org (revoked membership or org offboarding,
+ * audit F3). `removed_at` — not a delete — so the M4 trigger on `channel_member` records who lost access and
+ * when. Returns how many rows ended; a redelivery ends zero (idempotent).
+ */
+export async function endChannelMembershipsForUser(
+  db: DbClient,
+  orgId: string,
+  userId: string,
+): Promise<number> {
+  return withOrgContext(db, { organizationId: orgId, userId: SYNC_SYSTEM_USER_ID }, async (tx) => {
+    const ended = (await tx
+      .update(CM)
+      .set({ removedAt: new Date() })
+      .where(and(eq(CM.organizationId, orgId), eq(CM.userId, userId), isNull(CM.removedAt)))
+      .returning({ id: CM.id })) as Array<{ id: string }>;
+    return ended.length;
+  });
+}
+
+/**
+ * Who a realtime hint for this channel should reach: the active members, or the whole org for the announcement
+ * channel. Read under RLS as the system principal; returns ids only (the hint is PHI-free anyway).
+ */
+export async function channelHintAudience(
+  db: DbClient,
+  orgId: string,
+  channelId: string,
+): Promise<{ orgWide: true } | { userIds: string[] }> {
+  return withOrgContext(db, { organizationId: orgId, userId: SYNC_SYSTEM_USER_ID }, async (tx) => {
+    const [channel] = await tx
+      .select({ kind: CH.channelKind })
+      .from(CH)
+      .where(and(eq(CH.organizationId, orgId), eq(CH.id, channelId)))
+      .limit(1);
+    if (!channel) return { userIds: [] };
+    if (channel.kind === "announcement") return { orgWide: true as const };
+    const members = await tx
+      .select({ userId: CM.userId })
+      .from(CM)
+      .where(and(eq(CM.organizationId, orgId), eq(CM.channelId, channelId), isNull(CM.removedAt)));
+    return { userIds: members.map((m) => m.userId) };
+  });
 }

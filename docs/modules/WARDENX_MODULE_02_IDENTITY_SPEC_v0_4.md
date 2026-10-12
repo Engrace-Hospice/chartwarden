@@ -1193,8 +1193,8 @@ This lets the client UX preemptively trigger a step-up modal when the user click
 
 | Event | Payload | Room | Purpose |
 |---|---|---|---|
-| `session.revoked` | `{ sessionId }` | `user:<userId>` | force client logout when admin revokes |
-| `membership.changed` | `{ organizationId, status }` | `user:<userId>` | reflect suspend/revoke live |
+| `session.revoked` | `{ sessionId }` | `user:<orgId>:<userId>` | force client logout when admin revokes |
+| `membership.changed` | `{ organizationId, status }` | `user:<orgId>:<userId>` | reflect suspend/revoke live |
 | `presence.user_active` | `{ userId, lastSeen }` | `org:<orgId>` | consumed by Module 36 |
 
 ### 4.6 BullMQ Jobs

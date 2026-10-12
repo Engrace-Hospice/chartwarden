@@ -3,6 +3,7 @@
 - **Status:** **Accepted** — ratifies the as-built state (2026-08-14, architecture-corpus
   remediation AR-02; see `audit/ARCHITECTURE_DOC_REMEDIATION_PLAN.md`).
 - **Date:** 2026-08-14
+- **Amended (additive, 2026-10-11):** Decisions 2 and 3 are superseded by [ADR-0054](ADR-0054-realtime-transport-socketio-valkey.md) (Accepted 2026-10-12); Decision 1 and the contract-only-package consequence stay in force. The Status word is unchanged.
 - **Phase:** post-build divergence record. All 40 modules shipped without a realtime transport;
   this ADR records that as a decision rather than leaving the architecture doc describing an
   unbuilt channel in present tense.

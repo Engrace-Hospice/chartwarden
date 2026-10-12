@@ -1,18 +1,17 @@
 # ADR-0054 — Realtime delivery to clients is Socket.IO with the Valkey adapter: hints only, the database cursor is the truth, access is server-decided and revocable
 
-- **Status:** **Proposed** — D1 (Socket.IO) was decided by the product owner 2026-10-11 and the Phase 0 spike
-  returned GO-WITH-CONDITIONS; this ADR writes the conditions down. Ratified when WP 1.1 passes its live suite.
+- **Status:** **Accepted** — accepted by the product owner 2026-10-12. D1 (Socket.IO) was decided 2026-10-11 and the Phase 0
+  spike returned GO-WITH-CONDITIONS; this ADR writes the conditions down. WP 1.1 must pass its live suite before the transport
+  is enabled for any tenant.
 - **Date:** 2026-10-11
 - **Phase:** Messaging Hub Phase 1 (WP 1.1).
 - **Supersedes (partially):** [ADR-0036](ADR-0036-no-realtime-backbone.md) **Decision items 2 and 3** only
   (the "client delivery is deferred" and "until then UI freshness is REST poll" clauses). See "What of ADR-0036 remains in force".
 - **Related:** [ADR-0005](ADR-0005-manifest-single-source-of-truth.md) (outbox/seams carry cross-module effects),
   [ADR-0004](ADR-0004-retention-and-session-conflicts.md) (session lifetimes), [ADR-0049](ADR-0049-tenant-subdomains.md)
-  (host is a consistency check, never an authorization source), ADR-0055 / ADR-0056 (draft: events this transport carries).
+  (host is a consistency check, never an authorization source), ADR-0055 / ADR-0056 (events this transport carries).
   Plan: `docs/messaging-hub/README.md` (D1, D5, D11), `docs/messaging-hub/audit/PHASE_0_AUDIT.md` §4 item 8 (spike).
 
-> **Number check.** ADR-0054 is the intended ordinal (last on `main` at drafting: ADR-0053). Re-check at promotion; a
-> collision means renumbering this file and every cross-citation in the five drafts.
 
 ## Context
 
@@ -68,7 +67,7 @@
     handshake. No message is lost because the DB is the record. Readiness reports the degradation; it does not fail boot.
 12. **Session lifetime.** A socket does not extend or refresh a session. Socket activity does **not** count as activity for the
     ADR-0004 idle timer (15 min idle, 8 h work-session, 24 h hard absolute), and the socket is disconnected on session expiry or
-    revocation (D11, decided 2026-10-11 by the product owner). Connect, disconnect and forced-disconnect are audited.
+    revocation (D11, decided 2026-10-11 by the product owner). Connect, disconnect and forced-disconnect are audited. *Status (WP 1.1): logged only; audit rows are not implemented yet.*
 13. **Ops ownership.** The realtime component gets an owner in the ops runbook: platform/ops (D11, decided 2026-10-11 by the
     product owner).
 
@@ -83,6 +82,38 @@ Decided 2026-10-11 by the product owner (D5): ADR-0036 **stays `Accepted`**. It 
   only as the degraded fallback in item 11.
 - ADR-0036's architecture-doc banners (§25.13 and System Design wording) stay as written: that wording is about module-to-module
   Socket.IO, which remains void.
+
+## Addendum 2026-10-12 — implementation findings (plan approved by the product owner)
+
+Found while mapping WP 1.1 against the code; they refine, and do not reverse, the Decision above.
+
+- **A1. Worker and api are different processes.** Outbox consumers run only in the worker role (`role !== "api"`), while the Socket.IO
+  server runs in the api role. Consumers therefore never hold the `Server`: they call a small injected port (`emit(rooms, event, payload)`,
+  `disconnectRoom(room)`) backed by `@socket.io/redis-emitter` over the same Valkey, which reaches every api node. In `role === "all"`
+  the same port is used, so there is one code path. Item 6's `io.in(room).disconnectSockets(true)` is issued through the emitter.
+- **A2. Module boundary.** `bootstrap/realtime` is M1 and may not import M36 (`module-1-boundary`). Everything M36-shaped
+  (`computeRoomSet`, `listChannels`, `canViewChannel`) is injected from `apps/backend/src/index.ts`. The three Socket.IO packages are
+  `VENDOR_ADAPTERS` entries owned by `apps/backend/src/bootstrap/realtime` in both manifests; M36 consumers never import them.
+- **A3. Revocation carries a user.** `m2.membership.suspended` and `m2.membership.revoked` carry only `membershipId`. M2 adds `userId` to
+  both payloads (additive); M36 consumes that rather than reading M2 tables. `m2.user.deactivated` may arrive without an organization
+  (platform deactivation), so it is also bound as a platform consumer and disconnects by `account:<userId>` (every socket of the person) regardless of org. The M2 platform route publishes the event under the operator's bound org, so the org-bound consumer also handles `scope: "platform"` and disconnects the account; the platform consumer covers a null-org publish. Platform offboarding does not end `channel_member` rows in the person's other orgs (deliberate: M2 publishes no per-org revoke events and REST access is denied for a deactivated user); hints may still be addressed to a deactivated user's org rooms, where they have no live sockets.
+  Personal rooms are org-scoped, `user:<orgId>:<userId>`, so a hint or a revoke for one org never reaches the same person's socket
+  opened for another org; org-bound revocation disconnects only that org's room.
+- **A8. Handshake throttle.** `allowRequest` refuses over-limit attempts before any database work: 60 per client key and 20 per
+  session cookie per minute per node (in memory), the client key being the socket address, or the last `X-Forwarded-For` entry only when the peer
+  is itself in `TRUSTED_PROXY_CIDRS`; the per-session budget is charged after authentication, on the session id the authenticator resolved (not on raw cookie text, which can differ from how the session cookie is parsed). `maxHttpBufferSize` is 1 KB (clients send nothing) and `connectTimeout` 10 s. Refusals share one
+  generic error string. Limits are per node, not per cluster.
+- **A4. Hint events do not exist yet.** M36 publishes only `m36.message.mentioned`. New catalog events `m36.message.sent`,
+  `m36.message.edited` and `m36.message.deleted` (ids and cursor only, no body) are published in the same transaction at every
+  message-write site, and `m36` is added to `declaredConsumers` only together with the bound consumer.
+- **A5. Handshake details.** Session is validated with `getIdentitySession` plus `sessionTimeout.enforce(..., { recordActivity: false })`
+  (item 12); only staff-class sessions past the MFA stage connect; `Origin` is checked against `resolveTrustedOrigins()` because the
+  session cookie is ambient and Socket.IO bypasses the Fastify CSRF hook; the internal service token is not accepted. One sweep timer (one check per distinct session)
+  re-enforces the session and the active membership, and disconnects on expiry; a failed check disconnects after three in a row.
+- **A6. Flag and readiness.** `REALTIME_ENABLED=true` (default off, per-environment). `/ready` capabilities gain a `degraded` value for
+  the Valkey-down case; it does not change the 200/503 decision.
+- **A7. Reconnect endpoint.** The catch-up uses the existing `cursor`/`direction` parameters of `GET /channels/:id/messages`; if they
+  cannot express "after cursor" the endpoint gains that, with the rate limit from item 10.
 
 ## Alternatives considered
 

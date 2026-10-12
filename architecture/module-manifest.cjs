@@ -101,6 +101,10 @@ exports.VENDOR_ADAPTERS = {
   "@anthropic-ai/sdk": "packages/ai-platform",
   "xero-node": "packages/xero-client", // ADR-0028
   "@gusto/embedded-api": "packages/gusto-client", // ADR-0028
+  // ADR-0054 — Socket.IO server, Valkey adapter and the worker-side emitter live in one M1 directory.
+  "socket.io": "apps/backend/src/bootstrap/realtime",
+  "@socket.io/redis-adapter": "apps/backend/src/bootstrap/realtime",
+  "@socket.io/redis-emitter": "apps/backend/src/bootstrap/realtime",
   // DoseSpot client is hand-rolled in packages/dosespot. Xero/Gusto SDKs are registered
   // above (ADR-0028); evv-aggregators and triage-vendors are hand-rolled HTTP but codePath-governed.
 };

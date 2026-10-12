@@ -2,6 +2,7 @@ import {
   type AlertNewEvent,
   MESSAGING_SERVER_EVENTS,
   type MessageNewEvent,
+  accountRoom,
   careTeamRoom,
   computeRoomSet,
   fieldSafetyRoom,
@@ -21,9 +22,17 @@ const ORG = "org_a";
 describe("M36-T08 computeRoomSet (§4.3)", () => {
   it("every authenticated user joins user + org, even with no memberships", () => {
     expect(computeRoomSet({ userId: "u1", orgId: ORG, channels: [] })).toEqual([
+      accountRoom("u1"),
       orgRoom(ORG),
-      userRoom("u1"),
+      userRoom(ORG, "u1"),
     ]);
+  });
+
+  it("scopes the personal room to the org, so one person's two orgs never share a room", () => {
+    expect(userRoom("org_a", "u1")).not.toBe(userRoom("org_b", "u1"));
+    expect(computeRoomSet({ userId: "u1", orgId: "org_b", channels: [] })).not.toContain(
+      userRoom("org_a", "u1"),
+    );
   });
 
   it("derives subject-backed channel rooms by kind", () => {
@@ -50,7 +59,7 @@ describe("M36-T08 computeRoomSet (§4.3)", () => {
         { channelId: "an1", kind: "announcement", subjectId: null },
       ],
     });
-    expect(rooms).toEqual([orgRoom(ORG), userRoom("u1")]);
+    expect(rooms).toEqual([accountRoom("u1"), orgRoom(ORG), userRoom(ORG, "u1")]);
   });
 
   it("joins role/assignment rooms (on-call, billing, field-safety supervisor, IDG)", () => {

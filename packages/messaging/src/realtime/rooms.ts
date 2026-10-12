@@ -8,7 +8,7 @@
 // module imports no socket.io / Valkey client — the room set is cached under `rooms:user:<id>`
 // (cache/keys) by the wiring layer.
 //
-// §4.3 invariant encoded here: every authenticated user joins `user:<id>` (personal alerts) and
+// §4.3 invariant encoded here: every authenticated user joins `user:<orgId>:<id>` (personal alerts) and
 // `org:<orgId>` (announcements). All other rooms are EARNED — a membership row, a held role, an
 // on-call/billing assignment. The set is sorted + de-duplicated so a recompute is diffable.
 
@@ -16,9 +16,16 @@ import type { ChannelKind } from "../interfaces/kinds";
 
 // --- room-name builders (the §4.3 room table) -------------------------------------------------
 
-/** `user:<userId>` — personal alerts (every authenticated user). */
-export function userRoom(userId: string): string {
-  return `user:${userId}`;
+/**
+ * `user:<orgId>:<userId>` — personal alerts. Org-scoped on purpose: a user with memberships in two orgs holds one
+ * socket per session org, and a hint or revoke for org A must never reach their org B socket.
+ */
+export function userRoom(orgId: string, userId: string): string {
+  return `user:${orgId}:${userId}`;
+}
+/** `account:<userId>` — every socket of the person, any org; only for platform-wide offboarding (never for hints). */
+export function accountRoom(userId: string): string {
+  return `account:${userId}`;
 }
 /** `careteam:<patientId>` — one room per active care-team channel. */
 export function careTeamRoom(patientId: string): string {
@@ -90,7 +97,7 @@ export interface RoomSetInput {
  * Compute the EXACT set of Socket.IO rooms the connecting user joins (§4.3). Pure: same input → same
  * sorted, de-duplicated set, so a recompute on `permissions.changed` produces a diffable join/leave.
  *
- *   • always         → `user:<id>`, `org:<orgId>`
+ *   • always         → `user:<orgId>:<id>`, `account:<id>`, `org:<orgId>`
  *   • per membership → care_team→`careteam:<patientId>`, discipline→`discipline:<org>:<key>`,
  *                      location→`location:<locationId>` (subject-backed; on_call channels surface
  *                      via the on-call assignment list below, not their channel row)
@@ -101,7 +108,11 @@ export interface RoomSetInput {
  * §3.3 CHECK forbids it, but the computation never trusts a malformed row into a cross-patient room).
  */
 export function computeRoomSet(input: RoomSetInput): string[] {
-  const rooms = new Set<string>([userRoom(input.userId), orgRoom(input.orgId)]);
+  const rooms = new Set<string>([
+    userRoom(input.orgId, input.userId),
+    accountRoom(input.userId),
+    orgRoom(input.orgId),
+  ]);
 
   for (const ch of input.channels) {
     if (ch.subjectId === null) continue; // DM / announcement carry no subject-backed room

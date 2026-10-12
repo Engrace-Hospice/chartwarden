@@ -6,3 +6,4 @@
 // M1 infra; this package owns the pure contract and imports no socket.io / Valkey client.
 export * from "./rooms";
 export * from "./events";
+export * from "./hints";

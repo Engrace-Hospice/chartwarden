@@ -801,7 +801,7 @@ Type.Object({ name: Type.String(), email: Type.String({format:'email'}),
 
 | Channel | Event/Queue | Purpose |
 |---|---|---|
-| Socket.IO `user:<id>` | `permissions.changed` | force UI re-gate when roles change (the one permitted direct real-time emit, ARCH-272) |
+| Socket.IO `user:<orgId>:<id>` | `permissions.changed` | force UI re-gate when roles change (the one permitted direct real-time emit, ARCH-272) |
 | **Outbox** | `m3.breakglass.invoked` / `m3.breakglass.ended` / `m3.engagement.closed` / `m3.role.assigned` / `m3.role.revoked` | **M03-F04:** emitted in the same transaction as the state change; **Module 36's alert rules** subscribe and deliver the Compliance-Officer notification — M3 does **not** write M36's `alert.new` directly (SD-017 forbids direct notification delivery, and M36 is not an M3 dependency) |
 | BullMQ `authz.reap_breakglass` | scheduled | expire timed-out break-glass events (idempotent consumer, DR-022) |
 | BullMQ `authz.close_engagements` | scheduled | close engagements at `end_at`, revoke sessions (idempotent) |

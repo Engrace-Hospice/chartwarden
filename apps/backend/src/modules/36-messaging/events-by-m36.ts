@@ -51,6 +51,48 @@ const channel = Type.Union([
 
 export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
   {
+    eventName: "m36.message.sent",
+    moduleOwner: "m36",
+    description:
+      "A message was committed to a channel. PHI-free realtime hint source (ADR-0054): ids and one timestamp only. Published in the same transaction as the write; the realtime consumer turns it into a Socket.IO hint and the client re-reads over REST.",
+    payloadSchema: Type.Object({
+      organizationId: id,
+      channelId: id,
+      messageId: id,
+      at: isoInstant,
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.message.edited",
+    moduleOwner: "m36",
+    description:
+      "A message body was edited. PHI-free realtime hint source (ADR-0054): ids and one timestamp only. Published in the same transaction as the write; the realtime consumer turns it into a Socket.IO hint and the client re-reads over REST.",
+    payloadSchema: Type.Object({
+      organizationId: id,
+      channelId: id,
+      messageId: id,
+      at: isoInstant,
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.message.deleted",
+    moduleOwner: "m36",
+    description:
+      "A message was soft-deleted (tombstoned). PHI-free realtime hint source (ADR-0054): ids and one timestamp only. Published in the same transaction as the write; the realtime consumer turns it into a Socket.IO hint and the client re-reads over REST.",
+    payloadSchema: Type.Object({
+      organizationId: id,
+      channelId: id,
+      messageId: id,
+      at: isoInstant,
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m36.message.mentioned",
     moduleOwner: "m36",
     description:
