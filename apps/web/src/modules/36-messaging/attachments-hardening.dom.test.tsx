@@ -21,8 +21,11 @@ const flush = () => act(async () => {});
 const setDraft = (value: string) =>
   fireEvent.change(screen.getByRole("textbox", { name: "Message" }), { target: { value } });
 const textbox = () => screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement;
+// Sorted: the queue runs two uploads at once, so which of them reaches the server first depends on hashing speed.
 const uploadNames = (api: Parameters<typeof calls>[0]) =>
-  calls(api, STORE_PATHS.uploads).map(([, init]) => init.body.fileName as string);
+  calls(api, STORE_PATHS.uploads)
+    .map(([, init]) => init.body.fileName as string)
+    .sort();
 const idOf = (init: Record<string, unknown>) => (init.params as { path: { id: string } }).path.id;
 
 describe("WP 1.5 recheck after a refused send", () => {
