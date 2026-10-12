@@ -1386,6 +1386,7 @@ import { emitWithRecipientFallback } from "./modules/36-messaging/alert-recipien
 import { cronAlertCorrelationId } from "./modules/36-messaging/cron-alert-correlation";
 import {
   M36_DELIVERY_PLATFORM_JOB_ID,
+  M36_INTEGRITY_PLATFORM_JOB_ID,
   M36_OUTBOX_EVENTS,
   bindOutOfBandTransports,
   buildIdgAlertConsumers,
@@ -1405,9 +1406,11 @@ import {
   mountMessagingRoutes,
   mountMessagingWebhookRoutes,
   registerM36DeliveryWorkers,
+  registerM36IntegrityWorkers,
   registerMessagingErasers,
   registerMessagingSeams,
   scheduleM36DeliveryJobs,
+  scheduleM36IntegrityJobs,
   wireAlertRuleSeed,
   wireM36DeliveryTenancy,
 } from "./modules/36-messaging/index";
@@ -1416,9 +1419,11 @@ import {
   endChannelMembershipsForUser,
   setCareTeamChannelArchived,
 } from "./modules/36-messaging/messaging-provider-db";
+import { createMessageBodyCipher } from "./modules/36-messaging/messaging-write-core";
 import {
   buildM36AccessRevocationConsumer,
   buildM36AccessRevocationPlatformConsumer,
+  reassignOwnedItemsNoop,
 } from "./modules/36-messaging/outbox-consumers/access-revocation";
 import { buildM36AdmissionComplianceAlertConsumer } from "./modules/36-messaging/outbox-consumers/admission-compliance-alerts";
 import { buildM36AmendmentSlaAlertConsumer } from "./modules/36-messaging/outbox-consumers/amendment-sla-alerts";
@@ -8220,6 +8225,43 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       app.log.error(err, "M36 delivery-sweep schedule registration failed");
     }
 
+    // ── M36 WP 1.9 (audit F8) — nightly `messaging.hash_verify` (message heads + revision chain) and weekly
+    // `messaging.retention_scan` (plan only, hold-aware). Active-org fan-out needs the platform pool; each org's
+    // run opens its own tenant transaction and records its summary through @wardenx/audit.
+    if (platformDbHandle) {
+      const m36IntegrityOrgs = buildActiveOrgEnumerator({
+        platformDb: platformDbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M36_INTEGRITY_PLATFORM_JOB_ID,
+        reason: "M36 WP 1.9 hash_verify / retention_scan active-org fan-out",
+      });
+      const m36IntegrityWorkers = registerM36IntegrityWorkers({
+        connection: queueConnection,
+        db: dbHandle.db,
+        cipher: createMessageBodyCipher(),
+        holdScopeForOrg: (organizationId) =>
+          activeLegalHoldScopeForOrg(dbHandle.db, organizationId),
+        activeOrgs: m36IntegrityOrgs,
+        onError: (context, err) => app.log.error({ ...context, err }, "M36 integrity job error"),
+      });
+      attachDlqAlertsToAll(m36IntegrityWorkers, "m36");
+      app.addHook("onClose", async () => {
+        await Promise.all(m36IntegrityWorkers.map((w) => w.close()));
+      });
+      try {
+        const m36IntegrityQueues = await scheduleM36IntegrityJobs(queueConnection);
+        app.addHook("onClose", async () => {
+          await Promise.all(m36IntegrityQueues.map((q) => q.close()));
+        });
+      } catch (err) {
+        app.log.error(err, "M36 integrity-job schedule registration failed");
+      }
+    } else {
+      app.log.warn(
+        "M36 hash_verify / retention_scan disabled: DATABASE_PLATFORM_URL (active-org fan-out) is required",
+      );
+    }
+
     // M11 D5 — one repeatable hourly trigger enumerates active org ids under the audited platform
     // context; each delegated service call opens its own tenant/RLS transaction before touching PHI.
     const m11StandingActiveOrgs = buildActiveOrgEnumerator({
@@ -9296,6 +9338,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           buildM36AccessRevocationConsumer({
             endChannelMemberships: (orgId, userId) =>
               endChannelMembershipsForUser(dbHandle.db, orgId, userId),
+            reassignOwnedItems: reassignOwnedItemsNoop, // WP 1.4 seam; real work lands with P3/P4 owners
             ...(realtimeEmitter
               ? {
                   disconnectUser: (orgId, userId) =>

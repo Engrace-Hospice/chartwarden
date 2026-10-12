@@ -95,3 +95,5 @@ reconnect reconciliation, restore consistency) pass; a restore drill proves DB +
 
 **Phase 3 gate:** link-cannot-modify, source-permission-on-open, handoff-accountability, chart-promotion-attribution, lifecycle-no-delete and
 reassignment-updates-access acceptance tests pass, with simulated hospice cases (Workflows B, C, D, E in [`05`](./05-clinical-workflows-and-safety.md)).
+
+> **Implementation status (WP 1.4):** done except owned-item reassignment, which is the no-op seam `reassignOwnedItemsNoop` until P3/P4. See the status section in ADR-0054.

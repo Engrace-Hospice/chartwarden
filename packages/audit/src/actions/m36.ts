@@ -32,6 +32,15 @@ export const M36_ACTION_CATALOG: ModuleActionCatalog = [
     isPartTwoEligible: false,
   },
   {
+    action: "m36.retention_scan.run", // WP 1.9 — one row per weekly messaging.retention_scan execution (plan only)
+    moduleOwner: "m36",
+    defaultRetentionClass: "operational",
+    description:
+      "A weekly message retention scan completed per tenant (runId, candidates, toDestroy, skippedLegalHold). Counts only; the scan plans and never deletes, and a legal-held message is withheld from the plan.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
     action: "m36.dlq_job", // §8.1.2 / §4.4.1 OPS-035 — written for every job landing in any DLQ
     moduleOwner: "m36",
     defaultRetentionClass: "compliance",
@@ -55,6 +64,15 @@ export const M36_ACTION_CATALOG: ModuleActionCatalog = [
     defaultRetentionClass: "operational",
     description:
       "A joined realtime socket ended (sessionId, reason, forced, durationMs). forced=true when the server ended it: revocation, session end, connection cap or shutdown.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
+    action: "m36.membership.access_ended", // WP 1.4 — M2 revoke/offboard ended a user's channel memberships
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "A user's M36 channel memberships were soft-ended after an M2 membership revoke or user deactivation (resource = the user; channelMembershipsEnded count only). Messages are never deleted.",
     denylistCategories: [],
     isPartTwoEligible: false,
   },

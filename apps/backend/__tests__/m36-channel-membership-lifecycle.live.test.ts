@@ -587,10 +587,28 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     expect(row.rows[0].removed_at).not.toBeNull(); // soft-removed, history kept
     expect((await activeMembers()).sort()).toEqual(others);
 
+    // WP 1.4: REST reads are refused, history stays, exactly one PHI-free audit row records the end
+    const provider = createDbMessagingProvider(handle.db, { kek: KEK });
+    await expect(provider.listMessages(orgA, { channelId, userId: leaver })).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    const audits = await admin.query(
+      `SELECT resource_id, context FROM audit_event
+       WHERE organization_id=$1 AND event_type='m36.membership.access_ended' AND resource_id=$2`,
+      [orgA, leaver],
+    );
+    expect(audits.rows).toHaveLength(1);
+    expect(audits.rows[0].context).toEqual({ channelMembershipsEnded: 1 });
+
     // redelivery and the offboarding event converge (idempotent)
     await consumer.handle(event(orgA, "m2.membership.revoked", leaver));
     await consumer.handle(event(orgA, "m2.user.deactivated", leaver));
     expect((await activeMembers()).sort()).toEqual(others);
+    const after = await admin.query(
+      `SELECT count(*)::int AS n FROM audit_event WHERE event_type='m36.membership.access_ended' AND resource_id=$1`,
+      [leaver],
+    );
+    expect(after.rows[0].n).toBe(1); // redelivery wrote no second row
   });
 
   it("an edit keeps the replaced body in an append-only revision chain, inside a server-clock window (ADR-0055)", async () => {

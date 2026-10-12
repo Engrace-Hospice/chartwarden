@@ -5,6 +5,10 @@ import { registerPlatformJob } from "@wardenx/tenancy";
 
 export const M36_DELIVERY_PLATFORM_JOB_ID = "m36.delivery_sweep";
 
+/** WP 1.9 — the nightly hash_verify / weekly retention_scan active-org fan-out. */
+export const M36_INTEGRITY_PLATFORM_JOB_ID = "m36.integrity_jobs";
+
 export function wireM36DeliveryTenancy(): void {
   registerPlatformJob(M36_DELIVERY_PLATFORM_JOB_ID);
+  registerPlatformJob(M36_INTEGRITY_PLATFORM_JOB_ID);
 }

@@ -162,3 +162,12 @@ Found while mapping WP 1.1 against the code; they refine, and do not reverse, th
 Resolved (Decided 2026-10-11 by the product owner): websocket-only vs polling fallback (websocket-first with polling fallback and
 sticky sessions, items 1 and 9); whether socket activity extends the idle timer (no, item 12); realtime ops owner (platform/ops,
 item 13); ADR-0036 status handling (stays Accepted with additive pointer, D5).
+
+## Implementation status (WP 1.4)
+
+Item 6 is built: `m36.access-revocation` (`outbox-consumers/access-revocation.ts`, bound in the worker at `apps/backend/src/index.ts` via
+`buildM36AccessRevocationConsumer`, plus the platform-scope twin) consumes `m2.membership.revoked|suspended` and `m2.user.deactivated`.
+Revoke/deactivate soft-end `channel_member` rows (idempotent, messages untouched) and write one PHI-free `m36.membership.access_ended`
+audit row; every arm drops the user's sockets through `RealtimeEmitterPort.disconnectRoom`, which throws when Valkey is not ready so the
+dispatcher retries. Owned-item reassignment is the named no-op seam `reassignOwnedItemsNoop` until P3/P4 introduce owners. Proven live in
+`m36-channel-membership-lifecycle.live.test.ts` (REST 404 after the event, history kept, cross-tenant untouched, one audit row).

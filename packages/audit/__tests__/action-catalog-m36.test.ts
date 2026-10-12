@@ -11,9 +11,11 @@ describe("M36-T08 action catalog (§8.1.2)", () => {
     expect(M36_ACTION_CATALOG.map((e) => e.action)).toEqual([
       "m36.integrity.hash_mismatch",
       "m36.hash_verify.run",
+      "m36.retention_scan.run",
       "m36.dlq_job",
       "m36.realtime.connected",
       "m36.realtime.disconnected",
+      "m36.membership.access_ended",
     ]);
   });
 
