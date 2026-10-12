@@ -10,9 +10,10 @@
  *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m36:integrity-jobs:live
  * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
  */
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { type AuditExecutor, audit } from "@wardenx/audit";
 import { type DbClient, createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -23,11 +24,13 @@ import {
   MESSAGING_QUEUE_PARAMETERS,
   eraseTenantMessaging,
 } from "@wardenx/messaging";
+import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { Queue } from "bullmq";
 import { createDrizzleMessagingEraseStore } from "../src/modules/36-messaging/erasers/messaging-eraser";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/index";
 import {
   type M36IntegrityJobDeps,
+  SUPPRESSED_ID_RECORD_LIMIT,
   SYSTEMIC_DECRYPT_FAILURE_THRESHOLD,
   runHashVerifyForOrg,
   runRetentionScanForOrg,
@@ -426,7 +429,12 @@ describe.skipIf(!DB_URL)(
         revIds[4],
       ]);
 
-      const small: M36IntegrityJobDeps = { ...deps, sampleLimit: 2 };
+      const small: M36IntegrityJobDeps = {
+        ...deps,
+        sampleLimit: 2,
+        randomSampleSize: 0,
+        recentOverlapMs: 0,
+      };
       const auditBefore = (
         await admin.query("SELECT count(*)::int AS n FROM audit_event WHERE organization_id=$1", [
           orgD,
@@ -467,6 +475,262 @@ describe.skipIf(!DB_URL)(
         ])
       ).rows[0].n as number;
       expect(auditAfter - auditBefore).toBe(4 + 2);
+    });
+
+    // ── WP 1.9 review fixes (A, B, D): out-of-turn passes, per-table systemic streak, cursor robustness ──────────────
+    /** A fresh org with an announcement channel and `n` messages; returns ids in (created_at, id) order. */
+    async function seedRotationOrg(slug: string, n: number) {
+      const orgId = await seedOrg(slug);
+      const userId = await seedUser(`${slug}@x.test`, orgId);
+      const channelId = (
+        await admin.query(
+          `INSERT INTO channel (organization_id, channel_kind, title, retention_class)
+         VALUES ($1,'announcement',$2,'operational') RETURNING id`,
+          [orgId, slug],
+        )
+      ).rows[0].id as string;
+      for (let i = 0; i < n; i++) await send(orgId, channelId, userId, `${slug} ${i}`);
+      const headIds = async () =>
+        (
+          await admin.query(
+            "SELECT id FROM message WHERE organization_id=$1 ORDER BY created_at, id",
+            [orgId],
+          )
+        ).rows.map((r) => r.id as string);
+      return { orgId, userId, channelId, headIds };
+    }
+    const runRowOf = async (runId: string) =>
+      (await auditRows("m36.hash_verify.run")).find((r) => r.resource_id === runId);
+    const tamperHead = (id: string) =>
+      admin.query("UPDATE message SET body_sha256 = repeat('e',64) WHERE id=$1", [id]);
+    /** Write a forged `m36.hash_verify.run` row as if a previous run had left it. */
+    const forgeRunRow = (
+      orgId: string,
+      context: Record<string, unknown>,
+      actor: { actorKind: "system" | "user"; userId: string | null } = {
+        actorKind: "system",
+        userId: null,
+      },
+    ) =>
+      withOrgContext(handle.db, systemOrgContext(orgId), (tx) =>
+        audit(
+          tx as unknown as AuditExecutor,
+          { organizationId: orgId, ...actor, correlationId: "forged" },
+          {
+            eventType: "m36.hash_verify.run",
+            resourceKind: "message_integrity_run",
+            resourceId: randomUUID(),
+            outcome: "success",
+            context,
+          },
+        ),
+      );
+    const rotationOnly = { randomSampleSize: 0, recentOverlapMs: 0 };
+
+    it("verifies rows created since the previous run out of turn, and counts a row seen by two passes once", async () => {
+      const { orgId, userId, channelId } = await seedRotationOrg("wp19r", 6);
+      const small: M36IntegrityJobDeps = { ...deps, sampleLimit: 2, ...rotationOnly };
+      await runHashVerifyForOrg(small, orgId);
+
+      const fresh = await send(orgId, channelId, userId, "arrives after the first run");
+      await tamperHead(fresh.messageId);
+      const second = await runHashVerifyForOrg(small, orgId);
+      // The rotation is still at heads 3-4; only the recent pass can reach the new, tampered row.
+      expect(second).toMatchObject({ scanned: 3, mismatched: 1 });
+      expect((await runRowOf(second.runId))?.context).toMatchObject({
+        passCounts: { rotation: 2, recent: 1, random: 0 },
+        recentOverflow: false,
+      });
+
+      // Dedupe: with a one-hour overlap the recent pass re-reads every row; those the rotation already
+      // returned are counted once (3 rotation + 4 recent-only = 7 distinct rows, not 10).
+      const overlapping: M36IntegrityJobDeps = {
+        ...deps,
+        sampleLimit: 20,
+        randomSampleSize: 0,
+        recentOverlapMs: 60 * 60 * 1000,
+      };
+      const third = await runHashVerifyForOrg(overlapping, orgId);
+      expect(third).toMatchObject({ scanned: 7, mismatched: 1 });
+      expect((await runRowOf(third.runId))?.context.passCounts).toEqual({
+        rotation: 3,
+        recent: 4,
+        random: 0,
+      });
+    });
+
+    it("a random page reaches a row tampered just behind the rotation cursor, without double counting", async () => {
+      const { orgId, headIds } = await seedRotationOrg("wp19q", 6);
+      const ids = await headIds();
+      const rotationOnlyDeps: M36IntegrityJobDeps = { ...deps, sampleLimit: 2, ...rotationOnly };
+      await runHashVerifyForOrg(rotationOnlyDeps, orgId); // cursor now after the 2nd head
+      await tamperHead(ids[0] as string); // behind the cursor: the rotation will not return for ~3 nights
+
+      const blind = await runHashVerifyForOrg(rotationOnlyDeps, orgId);
+      expect(blind.mismatched).toBe(0); // rotation alone is evaded: the window being closed below
+
+      const withRandom: M36IntegrityJobDeps = {
+        ...deps,
+        sampleLimit: 2,
+        randomSampleSize: 100,
+        recentOverlapMs: 0,
+      };
+      const found = await runHashVerifyForOrg(withRandom, orgId);
+      expect(found.mismatched).toBe(1);
+      expect(found.scanned).toBe(6); // 2 rotation + the 4 other rows once each, not 2 + 6
+      const row = await runRowOf(found.runId);
+      expect(row?.context.passCounts).toEqual({ rotation: 2, recent: 0, random: 4 });
+      const mismatch = (await auditRows("m36.integrity.hash_mismatch")).find(
+        (r) => r.context.runId === found.runId,
+      );
+      expect(mismatch?.resource_id).toBe(ids[0]);
+    });
+
+    it("keeps the systemic-decrypt streak per table, and records the suppressed ids (bounded)", async () => {
+      const extra = SYSTEMIC_DECRYPT_FAILURE_THRESHOLD + 2;
+      const { orgId, userId, channelId, headIds } = await seedRotationOrg("wp19s", extra);
+      const ids = await headIds();
+      await service().editMessage(orgId, { userId, messageId: ids[0] as string, body: "edited" });
+      // Corrupt every head cipher AND the revision cipher: the shape of a wrong-KEK tenant.
+      for (const table of ["message", "message_revision"])
+        await admin.query(
+          `UPDATE ${table} SET body_cipher = set_byte(body_cipher, 20, get_byte(body_cipher, 20) # 255) WHERE organization_id=$1`,
+          [orgId],
+        );
+      void channelId;
+
+      const result = await runHashVerifyForOrg(deps, orgId);
+      expect(result.mismatched).toBe(extra + 1);
+      const rows = (await auditRows("m36.integrity.hash_mismatch")).filter(
+        (r) => r.context.runId === result.runId,
+      );
+      // 20 head rows are written; the 2 after the threshold are suppressed; the revision starts its own streak.
+      expect(rows.filter((r) => r.resource_kind === "message")).toHaveLength(
+        SYSTEMIC_DECRYPT_FAILURE_THRESHOLD,
+      );
+      expect(rows.filter((r) => r.resource_kind === "message_revision")).toHaveLength(1);
+      const systemic = (await auditRows("m36.integrity.systemic_decrypt_failure")).find(
+        (r) => r.resource_id === result.runId,
+      );
+      expect(systemic?.context.suppressedMismatches).toBe(2);
+      expect(systemic?.context.suppressedResourceIds).toHaveLength(2);
+      expect(ids).toEqual(expect.arrayContaining(systemic?.context.suppressedResourceIds));
+    });
+
+    it("lists at most 50 suppressed resource ids in the systemic summary while counting them all", async () => {
+      const total = SYSTEMIC_DECRYPT_FAILURE_THRESHOLD + SUPPRESSED_ID_RECORD_LIMIT + 5;
+      const { orgId } = await seedRotationOrg("wp19t", total);
+      await admin.query(
+        `UPDATE message SET body_cipher = set_byte(body_cipher, 20, get_byte(body_cipher, 20) # 255) WHERE organization_id=$1`,
+        [orgId],
+      );
+      const result = await runHashVerifyForOrg(deps, orgId);
+      const systemic = (await auditRows("m36.integrity.systemic_decrypt_failure")).find(
+        (r) => r.resource_id === result.runId,
+      );
+      expect(systemic?.context.suppressedMismatches).toBe(
+        total - SYSTEMIC_DECRYPT_FAILURE_THRESHOLD,
+      );
+      expect(systemic?.context.suppressedResourceIds).toHaveLength(SUPPRESSED_ID_RECORD_LIMIT);
+    });
+
+    it("restarts the rotation and says so when the stored cursor is malformed or absent; then rotates and wraps normally", async () => {
+      const { orgId, headIds } = await seedRotationOrg("wp19m", 4);
+      const ids = await headIds();
+      const small: M36IntegrityJobDeps = { ...deps, sampleLimit: 2, ...rotationOnly };
+      const good = "2026-01-01 00:00:00+00";
+      const uuid = "11111111-1111-4111-8111-111111111111";
+      const cases: Array<[string, Record<string, unknown>, string]> = [
+        [
+          "bad id",
+          { cursorEnd: { heads: { createdAt: good, id: "not-a-uuid" }, revisions: null } },
+          "malformed_cursor",
+        ],
+        [
+          "bad timestamp",
+          { cursorEnd: { heads: { createdAt: "yesterday", id: uuid }, revisions: null } },
+          "malformed_cursor",
+        ],
+        ["wrong shape", { cursorEnd: { heads: 7, revisions: null } }, "malformed_cursor"],
+        ["legacy row without a cursor", { scanned: 3 }, "previous_run_without_cursor"],
+      ];
+      for (const [label, context, reason] of cases) {
+        await forgeRunRow(orgId, context);
+        const run = await runHashVerifyForOrg(small, orgId);
+        const row = await runRowOf(run.runId);
+        expect(row?.context.cursorReset, label).toBe(reason);
+        expect(row?.context.cursorEnd.heads.id, label).toBe(ids[1]); // restarted from the first page
+      }
+      // after the last reset the next runs are ordinary: the second page (which wraps), then the first page again
+      const next = await runHashVerifyForOrg(small, orgId);
+      const nextRow = await runRowOf(next.runId);
+      expect(nextRow?.context.cursorReset).toBeUndefined();
+      expect(nextRow?.context.cursorEnd.heads).toBeNull();
+      const again = await runHashVerifyForOrg(small, orgId);
+      expect((await runRowOf(again.runId))?.context.cursorEnd.heads.id).toBe(ids[1]);
+    });
+
+    it("ignores a non-system actor's run row and another org's cursor", async () => {
+      const a = await seedRotationOrg("wp19u", 4);
+      const b = await seedRotationOrg("wp19v", 4);
+      const small: M36IntegrityJobDeps = { ...deps, sampleLimit: 2, ...rotationOnly };
+      const aIds = await a.headIds();
+      // A user-actor row carrying a plausible cursor at the end of the table must not steer the rotation.
+      const lastCreatedAt = (
+        await admin.query("SELECT created_at::text AS t FROM message WHERE id=$1", [aIds[3]])
+      ).rows[0].t as string;
+      await forgeRunRow(
+        a.orgId,
+        {
+          cursorEnd: {
+            heads: { createdAt: lastCreatedAt, id: aIds[3] },
+            revisions: null,
+          },
+        },
+        { actorKind: "user", userId: a.userId },
+      );
+      const forged = (await auditRows("m36.hash_verify.run")).filter(
+        (r) => r.actor_kind === "user",
+      );
+      expect(forged).toHaveLength(1); // the decoy really is in the trail
+      const runA = await runHashVerifyForOrg(small, a.orgId);
+      const rowA = await runRowOf(runA.runId);
+      expect(rowA?.context.cursorEnd.heads.id).toBe(aIds[1]); // began at the start, not after the forged cursor
+      expect(rowA?.context.cursorReset).toBeUndefined();
+
+      // org B has never run: org A's cursor (and run row) are invisible to it
+      const bIds = await b.headIds();
+      const runB = await runHashVerifyForOrg(small, b.orgId);
+      const rowB = await runRowOf(runB.runId);
+      expect(rowB?.context.cursorEnd.heads.id).toBe(bIds[1]);
+      expect(rowB?.context.cursorReset).toBeUndefined();
+    });
+
+    it("does not skip or repeat rows that share a created_at across a page boundary, and records the cursor timestamp", async () => {
+      const { orgId, headIds } = await seedRotationOrg("wp19w", 4);
+      await admin.query(
+        "UPDATE message SET created_at = '2026-01-01 00:00:00+00' WHERE organization_id=$1",
+        [orgId],
+      );
+      const ids = await headIds(); // now ordered by id alone
+      await tamperHead(ids[2] as string); // first row of the second page
+      const small: M36IntegrityJobDeps = { ...deps, sampleLimit: 2, ...rotationOnly };
+
+      const first = await runHashVerifyForOrg(small, orgId);
+      expect(first.mismatched).toBe(0);
+      const cursor = (await runRowOf(first.runId))?.context.cursorEnd.heads;
+      expect(cursor).toEqual({ createdAt: "2026-01-01 00:00:00+00", id: ids[1] });
+      const stored = (
+        await admin.query("SELECT created_at::text AS t FROM message WHERE id=$1", [ids[1]])
+      ).rows[0].t as string;
+      expect(cursor.createdAt).toBe(stored);
+
+      const second = await runHashVerifyForOrg(small, orgId);
+      expect(second).toMatchObject({ scanned: 2, mismatched: 1 });
+      const hit = (await auditRows("m36.integrity.hash_mismatch")).find(
+        (r) => r.context.runId === second.runId,
+      );
+      expect(hit?.resource_id).toBe(ids[2]);
     });
 
     it("a whole-org decrypt failure writes a capped number of mismatch rows plus one systemic summary, and still fails", async () => {

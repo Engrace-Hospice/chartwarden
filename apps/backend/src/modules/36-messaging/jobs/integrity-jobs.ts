@@ -10,7 +10,7 @@
 // (ADR-0055 item 9) and the M4 certificate path, which is Phase 5 work. What this proves today is the rule that
 // matters first: a held message is withheld from the plan.
 import { randomUUID } from "node:crypto";
-import { type AuditExecutor, audit, createDbAuditQuery } from "@wardenx/audit";
+import { type AuditExecutor, audit } from "@wardenx/audit";
 import { type DbClient, schema } from "@wardenx/db";
 import {
   type HashMismatchEvent,
@@ -22,8 +22,18 @@ import {
   runHashVerify,
 } from "@wardenx/messaging";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
-import { type SQL, and, eq, lt, sql } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 import type { MessageBodyCipher } from "../messaging-write-core";
+import {
+  HASH_VERIFY_RANDOM_SAMPLE_SIZE,
+  HASH_VERIFY_RECENT_OVERLAP_MS,
+  HASH_VERIFY_SAMPLE_LIMIT,
+  type RowMeta,
+  readPreviousRun,
+  sampleRows,
+} from "./integrity-sampling";
+
+export { HASH_VERIFY_SAMPLE_LIMIT };
 
 type Db = DbClient;
 
@@ -39,19 +49,14 @@ export interface M36IntegrityJobDeps {
   readonly holdScopeForOrg: (organizationId: string) => Promise<ActiveHoldScope>;
   readonly now?: () => Date;
   readonly newRunId?: () => string;
-  /** Rows verified per table per org per run. Defaults to {@link HASH_VERIFY_SAMPLE_LIMIT}; tests inject a small one. */
+  /** Rotation and recent-pass rows per table per run. Defaults to {@link HASH_VERIFY_SAMPLE_LIMIT}; tests inject small ones. */
   readonly sampleLimit?: number;
+  /** Random-pass rows per table per run. Defaults to {@link HASH_VERIFY_RANDOM_SAMPLE_SIZE}. */
+  readonly randomSampleSize?: number;
+  /** How far before the previous run's start the recent pass reaches. Defaults to {@link HASH_VERIFY_RECENT_OVERLAP_MS}. */
+  readonly recentOverlapMs?: number;
 }
 
-/**
- * Rows verified per table per org per night. Selection is a guaranteed rotation, not a random sample: each run
- * continues in (created_at, id) order after the previous run's cursor and wraps to the start, so every row is
- * verified once per ceil(rows / limit) runs. The cursor lives in the previous `m36.hash_verify.run` audit row.
- */
-// ponytail: rows created or edited since the last run are NOT verified out of turn (an unbounded read on a busy
-// org, and an edit adds a revision at the tail anyway); a tampered row is found within one rotation. Add a
-// "created_at > last run" pass if sub-rotation latency for new rows is required.
-export const HASH_VERIFY_SAMPLE_LIMIT = 5000;
 /** Candidates examined per org per weekly scan. */
 export const RETENTION_SCAN_BATCH_LIMIT = 5000;
 
@@ -63,10 +68,13 @@ export const MESSAGE_RETENTION_YEARS = { care_related: 7, bereavement: 7, operat
 export const DECRYPT_FAILED = "decrypt-failed";
 
 /**
- * Consecutive DECRYPT_FAILED rows in one run after which per-row mismatch rows stop and ONE summary row is written
- * instead: a whole-org key misconfiguration would otherwise write up to 2 * HASH_VERIFY_SAMPLE_LIMIT critical rows.
+ * Consecutive DECRYPT_FAILED rows (counted per table: heads, then revisions) after which per-row mismatch rows stop
+ * and ONE summary row is written instead: a whole-org key misconfiguration would otherwise write thousands of
+ * critical rows. The summary lists the first {@link SUPPRESSED_ID_RECORD_LIMIT} suppressed resource ids.
  */
 export const SYSTEMIC_DECRYPT_FAILURE_THRESHOLD = 20;
+/** Suppressed resource ids kept (ids only) in the systemic-failure summary row. */
+export const SUPPRESSED_ID_RECORD_LIMIT = 50;
 
 /**
  * The hash the §7.8 eraser leaves on a shredded head beside its emptied cipher. `message_sha256_shape` requires a
@@ -77,14 +85,6 @@ export const ERASED_BODY_SHA256 = "0".repeat(64);
 const MSG = schema.messages;
 const REV = schema.messageRevisions;
 const CH = schema.channels;
-
-interface RowMeta {
-  readonly cipherBytes: Buffer;
-  readonly storedHash: string;
-  readonly resourceKind: "message" | "message_revision";
-  readonly resourceId: string;
-  readonly revisionNo?: number;
-}
 
 function jobContext(organizationId: string, runId: string) {
   return {
@@ -111,152 +111,9 @@ function recompute(cipher: MessageBodyCipher, orgId: string, meta: RowMeta): str
   }
 }
 
-/** Position in one table's (created_at, id) order; `createdAt` is Postgres' own text form (keeps microseconds). */
-export interface RotationCursor {
-  readonly createdAt: string;
-  readonly id: string;
-}
-
-/** Where the next run resumes, per table; `null` = start from the beginning. */
-export interface RotationCursors {
-  readonly heads: RotationCursor | null;
-  readonly revisions: RotationCursor | null;
-}
-
-const FROM_START: RotationCursors = { heads: null, revisions: null };
-
-function parseCursor(raw: unknown): RotationCursor | null {
-  if (!raw || typeof raw !== "object") return null;
-  const { createdAt, id } = raw as Record<string, unknown>;
-  return typeof createdAt === "string" && typeof id === "string" ? { createdAt, id } : null;
-}
-
 /**
- * The previous run's end cursors, read from its `m36.hash_verify.run` audit row through the audit query helper (a
- * plain org-scoped SELECT as `wardenx_app`; reads write no audit row). A missing or malformed row restarts the
- * rotation, which is safe: it only re-verifies rows.
- */
-async function readPreviousCursors(db: Db, orgId: string): Promise<RotationCursors> {
-  const page = await createDbAuditQuery(db).searchEvents(orgId, {
-    eventType: "m36.hash_verify.run",
-    limit: 1,
-  });
-  const end = page.items[0]?.context.cursorEnd;
-  if (!end || typeof end !== "object") return FROM_START;
-  const { heads, revisions } = end as Record<string, unknown>;
-  return { heads: parseCursor(heads), revisions: parseCursor(revisions) };
-}
-
-/** Keep `limit` rows; when the lookahead row proved more exist, resume after the last kept one, else wrap. */
-function pageOf<T extends { readonly id: string; readonly createdAtText: string }>(
-  fetched: readonly T[],
-  limit: number,
-): { page: readonly T[]; end: RotationCursor | null } {
-  if (fetched.length <= limit) return { page: fetched, end: null };
-  const page = fetched.slice(0, limit);
-  const last = page[page.length - 1] as T;
-  return { page, end: { createdAt: last.createdAtText, id: last.id } };
-}
-
-function pastCursor(createdAt: SQL, id: SQL, cursor: RotationCursor | null): SQL | undefined {
-  return cursor
-    ? sql`(${createdAt}, ${id}) > (${cursor.createdAt}::timestamptz, ${cursor.id}::uuid)`
-    : undefined;
-}
-
-/** The next page of heads and revisions for one org (inside its RLS context) and where it ended. */
-async function sampleRows(
-  tx: Parameters<Parameters<typeof withOrgContext>[2]>[0],
-  orgId: string,
-  limit: number,
-  from: RotationCursors,
-): Promise<{
-  rows: HashVerifySampleRow[];
-  meta: WeakMap<HashVerifySampleRow, RowMeta>;
-  cursorEnd: RotationCursors;
-}> {
-  const db = tx as unknown as Db;
-  const fetchedHeads = await db
-    .select({
-      id: MSG.id,
-      createdAtText: sql<string>`${MSG.createdAt}::text`,
-      channelId: MSG.channelId,
-      bodyCipher: MSG.bodyCipher,
-      bodySha256: MSG.bodySha256,
-    })
-    .from(MSG)
-    .where(
-      and(
-        eq(MSG.organizationId, orgId),
-        pastCursor(sql`${MSG.createdAt}`, sql`${MSG.id}`, from.heads),
-      ),
-    )
-    .orderBy(MSG.createdAt, MSG.id)
-    .limit(limit + 1);
-  const fetchedRevisions = await db
-    .select({
-      id: REV.id,
-      createdAtText: sql<string>`${REV.createdAt}::text`,
-      messageId: REV.messageId,
-      revisionNo: REV.revisionNo,
-      channelId: MSG.channelId,
-      bodyCipher: REV.bodyCipher,
-      bodySha256: REV.bodySha256,
-    })
-    .from(REV)
-    .innerJoin(MSG, and(eq(MSG.organizationId, REV.organizationId), eq(MSG.id, REV.messageId)))
-    .where(
-      and(
-        eq(REV.organizationId, orgId),
-        pastCursor(sql`${REV.createdAt}`, sql`${REV.id}`, from.revisions),
-      ),
-    )
-    .orderBy(REV.createdAt, REV.id)
-    .limit(limit + 1);
-  const heads = pageOf(fetchedHeads, limit);
-  const revisions = pageOf(fetchedRevisions, limit);
-
-  const meta = new WeakMap<HashVerifySampleRow, RowMeta>();
-  const rows: HashVerifySampleRow[] = [];
-  // Integrity is checked for held rows too: a hold blocks destruction, it never excuses tampering.
-  for (const h of heads.page) {
-    const row: HashVerifySampleRow = {
-      messageId: h.id,
-      channelId: h.channelId,
-      organizationId: orgId,
-      storedHash: h.bodySha256,
-      legalHold: false,
-    };
-    meta.set(row, {
-      cipherBytes: h.bodyCipher,
-      storedHash: h.bodySha256,
-      resourceKind: "message",
-      resourceId: h.id,
-    });
-    rows.push(row);
-  }
-  for (const r of revisions.page) {
-    const row: HashVerifySampleRow = {
-      messageId: r.messageId,
-      channelId: r.channelId,
-      organizationId: orgId,
-      storedHash: r.bodySha256,
-      legalHold: false,
-    };
-    meta.set(row, {
-      cipherBytes: r.bodyCipher,
-      storedHash: r.bodySha256,
-      resourceKind: "message_revision",
-      resourceId: r.id,
-      revisionNo: r.revisionNo,
-    });
-    rows.push(row);
-  }
-  return { rows, meta, cursorEnd: { heads: heads.end, revisions: revisions.end } };
-}
-
-/**
- * One org's nightly integrity run: verify the next rotation page of message heads and revisions, record every mismatch
+ * One org's nightly integrity run: verify the rotation page, the recently created rows and a random page of message
+ * heads and revisions (see ./integrity-sampling.ts), record every mismatch
  * (`m36.integrity.hash_mismatch`, severity critical) and one `m36.hash_verify.run` summary row. The caller fails
  * the job when `mismatched > 0` so BullMQ's failed set and the DLQ alert fire (same posture as M4 integrity_sample).
  */
@@ -266,25 +123,31 @@ export async function runHashVerifyForOrg(
 ): Promise<HashVerifyRunResult> {
   const runId = (deps.newRunId ?? randomUUID)();
   const detectedAt = (deps.now ?? (() => new Date()))().toISOString();
-  const from = await readPreviousCursors(deps.db, orgId);
+  const previous = await readPreviousRun(deps.db, orgId);
   return withOrgContext(deps.db, systemOrgContext(orgId), async (tx) => {
     const ctx = jobContext(orgId, runId);
     const exec = tx as unknown as AuditExecutor;
-    const { rows, meta, cursorEnd } = await sampleRows(
-      tx,
-      orgId,
-      deps.sampleLimit ?? HASH_VERIFY_SAMPLE_LIMIT,
-      from,
-    );
+    const sampled = await sampleRows(tx as unknown as Db, orgId, previous, {
+      limit: deps.sampleLimit ?? HASH_VERIFY_SAMPLE_LIMIT,
+      randomSize: deps.randomSampleSize ?? HASH_VERIFY_RANDOM_SAMPLE_SIZE,
+      recentOverlapMs: deps.recentOverlapMs ?? HASH_VERIFY_RECENT_OVERLAP_MS,
+    });
+    const { rows, meta } = sampled;
     // runHashVerify emits a mismatch immediately after recomputing the same row, so the row just recomputed
     // is the one the event is about.
     let current: RowMeta | undefined;
     let consecutiveDecryptFailures = 0;
+    let streakKind: RowMeta["resourceKind"] | undefined;
     let suppressedMismatches = 0;
-    let firstSuppressed: RowMeta | undefined;
+    const suppressedIds: string[] = [];
     const result = await runHashVerify(runId, detectedAt, rows, {
       async recomputeHash(row) {
         current = meta.get(row);
+        // The streak is per table: a failing head run must not silence the first revision's own mismatch row.
+        if (current && current.resourceKind !== streakKind) {
+          streakKind = current.resourceKind;
+          consecutiveDecryptFailures = 0;
+        }
         const computed = current ? recompute(deps.cipher, orgId, current) : null;
         // An erased skip (null) neither extends nor breaks the streak; any decrypt that worked resets it.
         if (computed === DECRYPT_FAILED) consecutiveDecryptFailures += 1;
@@ -297,7 +160,9 @@ export async function runHashVerifyForOrg(
           consecutiveDecryptFailures > SYSTEMIC_DECRYPT_FAILURE_THRESHOLD
         ) {
           suppressedMismatches += 1; // still counted in `mismatched`, so the tick still fails
-          firstSuppressed ??= current;
+          if (current && suppressedIds.length < SUPPRESSED_ID_RECORD_LIMIT) {
+            suppressedIds.push(current.resourceId);
+          }
           return;
         }
         await audit(exec, ctx, {
@@ -330,7 +195,8 @@ export async function runHashVerifyForOrg(
           organizationId: orgId,
           threshold: SYSTEMIC_DECRYPT_FAILURE_THRESHOLD,
           suppressedMismatches,
-          firstSuppressedResourceId: firstSuppressed?.resourceId ?? null,
+          firstSuppressedResourceId: suppressedIds[0] ?? null,
+          suppressedResourceIds: suppressedIds,
           detectedAt,
         },
       });
@@ -341,7 +207,14 @@ export async function runHashVerifyForOrg(
       resourceId: runId,
       outcome: result.mismatched > 0 ? "failure" : "success",
       severity: result.mismatched > 0 ? "critical" : "info",
-      context: { ...result, cursorEnd },
+      context: {
+        ...result,
+        cursorEnd: sampled.cursorEnd,
+        passCounts: sampled.passCounts,
+        recentSince: sampled.recentSince,
+        recentOverflow: sampled.recentOverflow,
+        ...(previous.cursorReset ? { cursorReset: previous.cursorReset } : {}),
+      },
     });
     return result;
   });
