@@ -345,6 +345,8 @@ const ResolvedMessageSchema = Type.Object({
   body: Type.String(),
   bodyKind: MessageBodyKindSchema,
   bodyDoc: Type.Optional(RichBodySchema),
+  // True when a stored rich body cannot be read back: show "could not be displayed", not "deleted".
+  bodyUnreadable: Type.Optional(Type.Boolean()),
   createdAt: Type.String(),
   parentMessageId: NullableString(),
   references: Type.Array(

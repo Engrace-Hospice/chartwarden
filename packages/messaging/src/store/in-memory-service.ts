@@ -15,6 +15,7 @@ import {
   NotFoundError,
   type RichBody,
   WardenXError,
+  sanitizeRichBody,
 } from "@wardenx/types";
 import type {
   AlertCategory,
@@ -110,6 +111,16 @@ interface MessageRow {
   deletedAt: string | null;
   parentMessageId: string | null;
   references: readonly MessageReferenceInput[];
+}
+
+/** The same authority the DB service applies: a structured body is re-sanitised here, never trusted. */
+function sanitizedRichBody(raw: RichBody | undefined): RichBody | undefined {
+  if (raw === undefined) return undefined;
+  const checked = sanitizeRichBody(raw);
+  if (!checked.ok) {
+    throw new WardenXError("INVALID_RICH_BODY", "the structured message body is not valid", 422);
+  }
+  return checked.value;
 }
 
 function validateReferences(
@@ -502,6 +513,7 @@ export function createInMemoryMessagingService(
       if (ch.archivedAt) {
         throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
       }
+      const richBody = sanitizedRichBody(input.richBody);
       validateReferences(input.body, input.references ?? [], ch, eligibleStaff);
       // Same rule as the DB service (audit F5): a missing, cross-org or other-channel parent is one answer.
       if (input.parentMessageId) {
@@ -522,8 +534,8 @@ export function createInMemoryMessagingService(
         orgId,
         authorUserId: input.authorUserId,
         body: input.body,
-        bodyKind: input.richBody ? "rich" : (input.bodyKind ?? "plain"),
-        ...(input.richBody ? { richBody: input.richBody } : {}),
+        bodyKind: richBody ? "rich" : (input.bodyKind ?? "plain"),
+        ...(richBody ? { richBody } : {}),
         createdAt,
         editedAt: null,
         deletedAt: null,
@@ -551,9 +563,10 @@ export function createInMemoryMessagingService(
         channelOr404(orgId, m.channelId),
         eligibleStaff,
       );
+      const richBody = sanitizedRichBody(input.richBody);
       m.body = input.body;
-      m.richBody = input.richBody;
-      if (input.richBody) m.bodyKind = "rich";
+      m.richBody = richBody;
+      if (richBody) m.bodyKind = "rich";
       else if (m.bodyKind === "rich") m.bodyKind = "plain";
       m.references = input.references ?? [];
       m.editedAt = iso();

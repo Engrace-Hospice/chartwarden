@@ -14,6 +14,7 @@
 // fail-closed (deny-stub) in the M1 registry; its DB-backed implementation lands with the routes
 // and realtime/jobs tasks (M36-T07/T08).
 
+import type { RichBody } from "@wardenx/types";
 import type { ChannelKind, MessageBodyKind } from "./kinds";
 
 /** An attachment supplied with {@link MessagingProvider.sendMessage} (§3.4, WP 1.5). It references an upload the SAME
@@ -59,6 +60,10 @@ export interface ResolvedMessage {
   readonly authorDisplayName: string | null;
   readonly body: string; // decrypted under the tenant DEK for entitled readers only
   readonly bodyKind: MessageBodyKind;
+  /** WP 2.1: for `bodyKind: "rich"`, `body` is the plain-text projection and this is the sanitised document. */
+  readonly bodyDoc?: RichBody;
+  /** WP 2.1: a rich body that is stored but no longer parses; `body` is then empty and the UI says so. */
+  readonly bodyUnreadable?: true;
   readonly createdAt: string; // ISO-8601
   readonly parentMessageId: string | null;
   readonly references: readonly ResolvedMessageReference[];

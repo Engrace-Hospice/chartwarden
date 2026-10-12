@@ -9,6 +9,7 @@ import {
   type RichBody,
   WardenXError,
   canonicalRichBodyJson,
+  normalizeMentionLabel,
   parseStoredRichBody,
   richBodyMentions,
   richBodyToPlainText,
@@ -50,12 +51,17 @@ export function storedBodyFor(args: {
 export function decodeStoredBody(
   bodyKind: MessageBodyKind,
   plaintext: string,
-): { body: string; bodyDoc?: RichBody } {
+): { body: string; bodyDoc?: RichBody; unreadable?: true } {
   if (bodyKind !== "rich") return { body: plaintext };
   const parsed = parseStoredRichBody(plaintext);
   // Unreadable (corrupt or hostile) rich body: show nothing rather than guess. hash_verify is what flags tampering.
-  if (!parsed.ok) return { body: "" };
+  if (!parsed.ok) return { body: "", unreadable: true };
   return { body: richBodyToPlainText(parsed.value), bodyDoc: parsed.value };
+}
+
+/** A mention token in the text matches the directory name when both agree under NFKC with invisibles removed. */
+export function sameMentionToken(tokenInText: string, displayName: string): boolean {
+  return normalizeMentionLabel(tokenInText) === normalizeMentionLabel(`@${displayName}`);
 }
 
 /**

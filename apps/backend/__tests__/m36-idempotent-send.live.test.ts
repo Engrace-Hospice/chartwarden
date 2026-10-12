@@ -70,6 +70,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.2 idempotent send — LIVE Postgres", () => {
   let outsider: string;
   let dm: string;
   let dm2: string;
+  const warnings: Array<{ message: string; context: Record<string, string> }> = [];
 
   async function applyMigrations() {
     const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
@@ -169,7 +170,11 @@ describe.skipIf(!DB_URL)("M36 WP 1.2 idempotent send — LIVE Postgres", () => {
       publish: (tx: unknown, e: Record<string, unknown>) =>
         publisher.publish(tx as never, { ...e, callerModule: "m36" } as never),
     };
-    service = createDbMessagingRouteService(handle.db, { kek: KEK, outbox: outbox as never });
+    service = createDbMessagingRouteService(handle.db, {
+      kek: KEK,
+      outbox: outbox as never,
+      warn: (message, context) => warnings.push({ message, context }),
+    });
     dm = (await service.openDm(ORG_A, user1, user2)).channelId;
     dm2 = (await service.openDm(ORG_A, user1, outsider)).channelId;
     dbStore = createDbIdempotencyStore(handle.db);
@@ -653,9 +658,47 @@ describe.skipIf(!DB_URL)("M36 WP 1.2 idempotent send — LIVE Postgres", () => {
           sealed.sha256,
         ]);
         const shown = (await read(user2, dm)).find((m) => m.messageId === id) as Json;
-        expect(shown).toMatchObject({ bodyKind: "rich", body: "" });
+        expect(shown).toMatchObject({ bodyKind: "rich", body: "", bodyUnreadable: true });
         expect(shown).not.toHaveProperty("bodyDoc");
       }
+      // S4: the server logs ids only (never content) so an operator can find the row.
+      const logged = warnings.filter((w) => w.context.messageId === id);
+      expect(logged.length).toBeGreaterThanOrEqual(2);
+      expect(logged[0]?.context).toMatchObject({ messageId: id, organizationId: ORG_A });
+      expect(JSON.stringify(logged)).not.toContain("script");
+      expect(JSON.stringify(logged)).not.toContain("not json");
+    });
+
+    it("S3: a mention label matches the directory name under NFKC (fullwidth name, invisible characters)", async () => {
+      await admin.query(`UPDATE "user" SET name=$2 WHERE id=$1`, [user2, "\uFF37\u200BP12 u2"]);
+      try {
+        const res = await post(app, dm, as(user1, randomUUID()), {
+          bodyDoc: docOf(
+            para({ type: "mention", kind: "staff", entityId: user2, label: "WP12 u2" }),
+          ),
+        });
+        expect(res.statusCode).toBe(201);
+      } finally {
+        await admin.query(`UPDATE "user" SET name=$2 WHERE id=$1`, [user2, "WP12 u2"]);
+      }
+    });
+
+    it("S2: an oversize, over-linked or href-expanding document is a 422 and writes nothing", async () => {
+      const before = await messageRows(dm);
+      const link = (href: string) => para(text("l", { type: "link", href }));
+      const bodies = [
+        docOf(link(`https://example.com/${"\u00e9".repeat(1_500)}`)),
+        docOf(...Array.from({ length: 500 }, () => link("https://a.example/"))),
+        docOf(
+          ...Array.from({ length: 40 }, () => link(`https://example.com/${"a".repeat(1_900)}`)),
+        ),
+      ];
+      for (const bodyDoc of bodies) {
+        const res = await post(app, dm, as(user1, randomUUID()), { bodyDoc });
+        expect(res.statusCode).toBe(422);
+        expect(res.json().error.code).toBe("INVALID_RICH_BODY");
+      }
+      expect(await messageRows(dm)).toBe(before);
     });
 
     it("the seam cannot store a rich kind without a document", async () => {

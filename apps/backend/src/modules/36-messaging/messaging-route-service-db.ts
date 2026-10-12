@@ -92,7 +92,7 @@ import {
   withValidMessageContent,
 } from "./messaging-write-core";
 import { type Part2ChannelGate, createSeamPart2ChannelGate } from "./part2-channel-gate";
-import { decodeStoredBody, storedBodyFor } from "./rich-body-codec";
+import { decodeStoredBody, sameMentionToken, storedBodyFor } from "./rich-body-codec";
 
 const CH = schema.channels;
 const CM = schema.channelMembers;
@@ -1235,10 +1235,18 @@ export function createDbMessagingRouteService(
         // Entitled-reader gate: the channel_visibility ABAC predicate already authorized this read
         // at the route, so decrypt each body under the tenant DEK; a 'deleted' tombstone is empty.
         const page = chronologicalRows.map((m): ResolvedMessage => {
-          const decoded =
+          const decoded: ReturnType<typeof decodeStoredBody> =
             m.status === "deleted"
               ? { body: "" }
               : decodeStoredBody(m.bodyKind as MessageBodyKind, cipher.open(orgId, m.bodyCipher));
+          // A rich body that no longer parses is not a deleted message: say so, and leave ids (never content).
+          if (decoded.unreadable) {
+            opts.warn?.("rich message body could not be read; showing a placeholder", {
+              organizationId: orgId,
+              messageId: m.id,
+              channelId: m.channelId,
+            });
+          }
           return {
             messageId: m.id,
             channelId: m.channelId,
@@ -1246,7 +1254,8 @@ export function createDbMessagingRouteService(
             authorDisplayName: m.authorDisplayName?.trim() || null,
             body: decoded.body,
             bodyKind: m.bodyKind as MessageBodyKind,
-            ...("bodyDoc" in decoded && decoded.bodyDoc ? { bodyDoc: decoded.bodyDoc } : {}),
+            ...(decoded.bodyDoc ? { bodyDoc: decoded.bodyDoc } : {}),
+            ...(decoded.unreadable ? { bodyUnreadable: true as const } : {}),
             createdAt: m.createdAt.toISOString(),
             parentMessageId: m.parentMessageId,
             attachments: attachmentsByMessage.get(m.id) ?? [],
@@ -1297,7 +1306,7 @@ export function createDbMessagingRouteService(
         const candidate = candidateByKey.get(`${reference.kind}:${reference.entityId}`);
         if (
           !candidate ||
-          input.body.slice(reference.start, reference.end) !== `@${candidate.displayName}`
+          !sameMentionToken(input.body.slice(reference.start, reference.end), candidate.displayName)
         ) {
           throw new WardenXError(
             "INVALID_MESSAGE_REFERENCES",
@@ -1408,7 +1417,10 @@ export function createDbMessagingRouteService(
           const candidate = candidateByKey.get(`${reference.kind}:${reference.entityId}`);
           if (
             !candidate ||
-            input.body.slice(reference.start, reference.end) !== `@${candidate.displayName}`
+            !sameMentionToken(
+              input.body.slice(reference.start, reference.end),
+              candidate.displayName,
+            )
           ) {
             throw new WardenXError(
               "INVALID_MESSAGE_REFERENCES",
