@@ -99,7 +99,9 @@ export const integritySchedulerId = (queueName: string): string => `${queueName}
  * attempts/backoff (or the cron) on an already-registered repeat key has no effect, and the old key keeps firing
  * (observed against the real BullMQ 5.81 in `m36-integrity-jobs.live.test.ts`). Upserting under a fixed scheduler id
  * is idempotent and replaces the options. A legacy `add({ repeat })` trigger left in Redis by an earlier deploy
- * would run beside the scheduler (two runs per tick), so every other trigger under this job name is removed first.
+ * would run beside the scheduler (two runs per tick), so every other trigger under this job name is removed AFTER the
+ * upsert succeeded. During a rolling deploy an old replica that still registers the legacy trigger can re-create it until
+ * a new replica next boots: a transient, harmless double run.
  *
  * Attempts/backoff come from the §4.4.1 table (hash_verify is 1 attempt by design: see the table). The DLQ alert keys
  * on `attemptsMade >= opts.attempts`, so the job option must carry the table value.
@@ -110,29 +112,36 @@ export async function scheduleM36IntegrityJobs(connection: ConnectionOptions): P
     { name: MESSAGING_QUEUES.retentionScan, pattern: MESSAGING_JOB_SCHEDULES.retentionScan },
   ];
   const queues: Queue[] = [];
-  for (const { name, pattern } of specs) {
-    const { attempts, backoff } = MESSAGING_QUEUE_PARAMETERS[name];
-    const queue = new Queue(name, { connection });
-    const schedulerId = integritySchedulerId(name);
-    for (const stale of await queue.getRepeatableJobs()) {
-      if (stale.name === SCHEDULED_JOB_NAME && stale.key !== schedulerId) {
-        await queue.removeRepeatableByKey(stale.key);
+  try {
+    for (const { name, pattern } of specs) {
+      const { attempts, backoff } = MESSAGING_QUEUE_PARAMETERS[name];
+      const queue = new Queue(name, { connection });
+      queues.push(queue);
+      const schedulerId = integritySchedulerId(name);
+      // Upsert FIRST: if it fails (Redis blip) the legacy trigger is still there, so the queue is never left with no
+      // schedule. A failed removal afterwards only leaves a harmless double run (read-only, concurrency 1).
+      await queue.upsertJobScheduler(
+        schedulerId,
+        { pattern },
+        {
+          name: SCHEDULED_JOB_NAME,
+          data: {},
+          opts: {
+            removeOnComplete: true,
+            attempts,
+            backoff: { type: backoff.type, delay: backoff.baseMs },
+          },
+        },
+      );
+      for (const stale of await queue.getRepeatableJobs()) {
+        if (stale.name === SCHEDULED_JOB_NAME && stale.key !== schedulerId) {
+          await queue.removeRepeatableByKey(stale.key);
+        }
       }
     }
-    await queue.upsertJobScheduler(
-      schedulerId,
-      { pattern },
-      {
-        name: SCHEDULED_JOB_NAME,
-        data: {},
-        opts: {
-          removeOnComplete: true,
-          attempts,
-          backoff: { type: backoff.type, delay: backoff.baseMs },
-        },
-      },
-    );
-    queues.push(queue);
+    return queues;
+  } catch (error) {
+    await Promise.allSettled(queues.map((q) => q.close()));
+    throw error;
   }
-  return queues;
 }

@@ -123,7 +123,7 @@ export async function runHashVerifyForOrg(
 ): Promise<HashVerifyRunResult> {
   const runId = (deps.newRunId ?? randomUUID)();
   const detectedAt = (deps.now ?? (() => new Date()))().toISOString();
-  const previous = await readPreviousRun(deps.db, orgId);
+  const previous = await readPreviousRun(deps.db, orgId, new Date(detectedAt));
   return withOrgContext(deps.db, systemOrgContext(orgId), async (tx) => {
     const ctx = jobContext(orgId, runId);
     const exec = tx as unknown as AuditExecutor;
@@ -214,6 +214,9 @@ export async function runHashVerifyForOrg(
         recentSince: sampled.recentSince,
         recentOverflow: sampled.recentOverflow,
         ...(previous.cursorReset ? { cursorReset: previous.cursorReset } : {}),
+        ...(previous.ignoredNonSystemRuns > 0
+          ? { ignoredNonSystemRuns: previous.ignoredNonSystemRuns }
+          : {}),
       },
     });
     return result;

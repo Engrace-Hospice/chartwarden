@@ -18,6 +18,8 @@ interface UpsertCall {
 }
 const upserts: UpsertCall[] = [];
 const removed: Array<{ queue: string; key: string }> = [];
+const closed: string[] = [];
+const failure = { upsert: false };
 vi.mock("bullmq", () => ({
   Queue: class {
     constructor(public readonly name: string) {}
@@ -32,11 +34,15 @@ vi.mock("bullmq", () => ({
       removed.push({ queue: this.name, key });
       return true;
     }
+    async close() {
+      closed.push(this.name);
+    }
     async upsertJobScheduler(
       schedulerId: string,
       repeat: UpsertCall["repeat"],
       template: UpsertCall["template"],
     ) {
+      if (failure.upsert) throw new Error("redis blip");
       upserts.push({ queue: this.name, schedulerId, repeat, template });
     }
   },
@@ -80,6 +86,19 @@ describe("M36 integrity job scheduling (audit F8)", () => {
       { queue: MESSAGING_QUEUES.hashVerify, key: "legacy-hash-key" },
       { queue: MESSAGING_QUEUES.retentionScan, key: "legacy-hash-key" },
     ]);
+  });
+
+  it("keeps the legacy trigger when the upsert fails (never zero schedules) and closes the queues it opened", async () => {
+    removed.length = 0;
+    closed.length = 0;
+    failure.upsert = true;
+    try {
+      await expect(scheduleM36IntegrityJobs({})).rejects.toThrow("redis blip");
+    } finally {
+      failure.upsert = false;
+    }
+    expect(removed).toEqual([]);
+    expect(closed).toEqual([MESSAGING_QUEUES.hashVerify]);
   });
 
   it("attempts every org, then fails the tick with the per-org errors", async () => {

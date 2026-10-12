@@ -733,6 +733,62 @@ describe.skipIf(!DB_URL)(
       expect(hit?.resource_id).toBe(ids[2]);
     });
 
+    it("a flood of non-system run rows cannot hide the real cursor, and is reported on the run row", async () => {
+      const { orgId, userId, headIds } = await seedRotationOrg("wp19h", 4);
+      const ids = await headIds();
+      const small: M36IntegrityJobDeps = { ...deps, sampleLimit: 2, ...rotationOnly };
+      await runHashVerifyForOrg(small, orgId); // real cursor: after the 2nd head
+      for (let i = 0; i < 6; i++) {
+        await forgeRunRow(
+          orgId,
+          { cursorEnd: { heads: null, revisions: null } },
+          { actorKind: "user", userId },
+        );
+      }
+      const next = await runHashVerifyForOrg(small, orgId);
+      const row = await runRowOf(next.runId);
+      expect(row?.context.cursorEnd.heads).toBeNull(); // continued with heads 3-4, then wrapped
+      expect(row?.context.cursorReset).toBeUndefined();
+      expect(row?.context.ignoredNonSystemRuns).toBe(6);
+      expect(ids).toHaveLength(4);
+    });
+
+    it("clamps a future-dated previous run to now, so the recent pass still runs", async () => {
+      const { orgId } = await seedRotationOrg("wp19i", 4);
+      await forgeRunRow(orgId, {
+        detectedAt: "2999-01-01T00:00:00.000Z",
+        cursorEnd: { heads: null, revisions: null },
+      });
+      const overlapping: M36IntegrityJobDeps = {
+        ...deps,
+        sampleLimit: 2,
+        randomSampleSize: 0,
+        recentOverlapMs: 60 * 60 * 1000,
+      };
+      const run = await runHashVerifyForOrg(overlapping, orgId);
+      const row = await runRowOf(run.runId);
+      // the recent pass ran: its (bounded) page was full of rows the rotation also returned, and it saw more beyond
+      expect(row?.context.passCounts).toEqual({ rotation: 2, recent: 0, random: 0 });
+      expect(row?.context.recentOverflow).toBe(true);
+      expect(Date.parse(row?.context.recentSince)).toBeLessThanOrEqual(Date.now());
+    });
+
+    it("treats an impossible calendar date in the cursor as malformed instead of failing the run", async () => {
+      const { orgId } = await seedRotationOrg("wp19j", 4);
+      await forgeRunRow(orgId, {
+        cursorEnd: {
+          heads: {
+            createdAt: "2026-02-31 00:00:00+00",
+            id: "11111111-1111-4111-8111-111111111111",
+          },
+          revisions: null,
+        },
+      });
+      const small: M36IntegrityJobDeps = { ...deps, sampleLimit: 2, ...rotationOnly };
+      const run = await runHashVerifyForOrg(small, orgId);
+      expect((await runRowOf(run.runId))?.context.cursorReset).toBe("malformed_cursor");
+    });
+
     it("a whole-org decrypt failure writes a capped number of mismatch rows plus one systemic summary, and still fails", async () => {
       const extra = SYSTEMIC_DECRYPT_FAILURE_THRESHOLD + 10;
       for (let i = 0; i < extra; i++) await send(orgB, chanB, authorB, `systemic ${i}`);
@@ -817,7 +873,15 @@ describe.skipIf(!DB_URL)(
  * `scheduleM36IntegrityJobs` must leave exactly one schedule per queue carrying the table's options, idempotently.
  */
 const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
-describe.skipIf(!REDIS_URL)("WP 1.9 — integrity schedules on real BullMQ", () => {
+// This suite OBLITERATES the two integrity queues: refuse unless the Redis is local.
+const REDIS_IS_LOCAL =
+  !!REDIS_URL && ["localhost", "127.0.0.1", "[::1]"].includes(new URL(REDIS_URL).hostname);
+if (REDIS_URL && !REDIS_IS_LOCAL) {
+  describe("WP 1.9 — integrity schedules on real BullMQ", () => {
+    it.skip("skipped: WARDENX_TEST_REDIS_URL is not localhost/127.0.0.1, refusing to obliterate its queues", () => {});
+  });
+}
+describe.skipIf(!REDIS_IS_LOCAL)("WP 1.9 — integrity schedules on real BullMQ", () => {
   const url = new URL(REDIS_URL ?? "redis://localhost:6379");
   const connection = { host: url.hostname, port: Number(url.port || 6379) };
   const names = [MESSAGING_QUEUES.hashVerify, MESSAGING_QUEUES.retentionScan];

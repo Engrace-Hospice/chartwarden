@@ -34,6 +34,8 @@ export const HASH_VERIFY_RANDOM_SAMPLE_SIZE = 500;
 export const HASH_VERIFY_RECENT_OVERLAP_MS = 60 * 60 * 1000;
 /** The audit event the cursor is read back from. */
 export const HASH_VERIFY_RUN_EVENT = "m36.hash_verify.run";
+/** Latest run rows scanned for the newest system-actor one (bounded; forged rows beyond it cannot hide the cursor cheaply). */
+export const PREVIOUS_RUN_SCAN_LIMIT = 50;
 
 export interface RowMeta {
   readonly cipherBytes: Buffer;
@@ -63,6 +65,8 @@ export interface PreviousRun {
   readonly startedAt: Date | null;
   /** Set when a previous run row exists but its cursor could not be used (the rotation restarted). */
   readonly cursorReset: CursorResetReason | null;
+  /** Non-system `m36.hash_verify.run` rows seen among the latest {@link PREVIOUS_RUN_SCAN_LIMIT}: ignored, but reported. */
+  readonly ignoredNonSystemRuns: number;
 }
 
 export interface SampleOptions {
@@ -91,7 +95,8 @@ export interface SampledRows {
 const FROM_START: RotationCursors = { heads: null, revisions: null };
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // Postgres `timestamptz::text`: "2026-10-12 19:00:37.779123+00" (T separator and Z tolerated).
-const TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d{1,6})?([+-]\d{2}(:?\d{2})?|Z)$/;
+const TIMESTAMP_RE =
+  /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(\.\d{1,6})?([+-]\d{2}(:?\d{2})?|Z)$/;
 
 const MALFORMED = Symbol("malformed");
 
@@ -100,21 +105,46 @@ function isoOf(pgTimestamp: string): string {
   return pgTimestamp.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00");
 }
 
+/**
+ * True for a timestamp Postgres will also accept. `Date.parse` alone lets "2026-02-31" through (it rolls over), and
+ * the `::timestamptz` cast would then fail every night, so the calendar fields must survive a round trip.
+ */
+function isRealTimestamp(text: string): boolean {
+  const m = TIMESTAMP_RE.exec(text);
+  if (!m || Number.isNaN(Date.parse(isoOf(text)))) return false;
+  const [y, mo, d, h, mi, sec] = m.slice(1, 7).map(Number) as [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ];
+  const probe = new Date(Date.UTC(y, mo - 1, d, h, mi, sec));
+  return (
+    probe.getUTCFullYear() === y &&
+    probe.getUTCMonth() === mo - 1 &&
+    probe.getUTCDate() === d &&
+    probe.getUTCHours() === h &&
+    probe.getUTCMinutes() === mi &&
+    probe.getUTCSeconds() === sec
+  );
+}
+
 function parseCursor(raw: unknown): RotationCursor | null | typeof MALFORMED {
   if (raw === null) return null;
   if (typeof raw !== "object" || raw === undefined) return MALFORMED;
   const { createdAt, id } = raw as Record<string, unknown>;
   if (typeof createdAt !== "string" || typeof id !== "string") return MALFORMED;
-  if (!TIMESTAMP_RE.test(createdAt) || Number.isNaN(Date.parse(isoOf(createdAt)))) {
-    return MALFORMED;
-  }
+  if (!isRealTimestamp(createdAt)) return MALFORMED;
   return UUID_RE.test(id) ? { createdAt, id } : MALFORMED;
 }
 
-function parseStartedAt(raw: unknown): Date | null {
+/** The previous run's start, clamped to `now`: a future-dated value must not switch the recent pass off. */
+function parseStartedAt(raw: unknown, now: Date): Date | null {
   if (typeof raw !== "string") return null;
   const ms = Date.parse(raw);
-  return Number.isNaN(ms) ? null : new Date(ms);
+  return Number.isNaN(ms) ? null : new Date(Math.min(ms, now.getTime()));
 }
 
 /**
@@ -122,28 +152,42 @@ function parseStartedAt(raw: unknown): Date | null {
  * as `wardenx_app` through the audit query helper; reads write no audit row). Only the system actor's rows count.
  * No row at all is a first run; a row whose cursor is unusable restarts the rotation and reports why.
  */
-export async function readPreviousRun(db: Db, orgId: string): Promise<PreviousRun> {
+export async function readPreviousRun(db: Db, orgId: string, now: Date): Promise<PreviousRun> {
   const page = await createDbAuditQuery(db).searchEvents(orgId, {
     eventType: HASH_VERIFY_RUN_EVENT,
-    limit: 5,
+    limit: PREVIOUS_RUN_SCAN_LIMIT,
   });
   const row = page.items.find((r) => r.actorKind === "system");
-  if (!row) return { cursors: FROM_START, startedAt: null, cursorReset: null };
-  const startedAt = parseStartedAt(row.context.detectedAt);
+  const ignoredNonSystemRuns = page.items.filter((r) => r.actorKind !== "system").length;
+  if (!row) {
+    return { cursors: FROM_START, startedAt: null, cursorReset: null, ignoredNonSystemRuns };
+  }
+  const startedAt = parseStartedAt(row.context.detectedAt, now);
   const end = row.context.cursorEnd;
   if (!end || typeof end !== "object") {
-    return { cursors: FROM_START, startedAt, cursorReset: "previous_run_without_cursor" };
+    return {
+      cursors: FROM_START,
+      startedAt,
+      cursorReset: "previous_run_without_cursor",
+      ignoredNonSystemRuns,
+    };
   }
   const { heads, revisions } = end as Record<string, unknown>;
   const parsedHeads = parseCursor(heads);
   const parsedRevisions = parseCursor(revisions);
   if (parsedHeads === MALFORMED || parsedRevisions === MALFORMED) {
-    return { cursors: FROM_START, startedAt, cursorReset: "malformed_cursor" };
+    return {
+      cursors: FROM_START,
+      startedAt,
+      cursorReset: "malformed_cursor",
+      ignoredNonSystemRuns,
+    };
   }
   return {
     cursors: { heads: parsedHeads, revisions: parsedRevisions },
     startedAt,
     cursorReset: null,
+    ignoredNonSystemRuns,
   };
 }
 
