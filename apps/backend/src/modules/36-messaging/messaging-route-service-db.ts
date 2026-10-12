@@ -61,10 +61,17 @@ import {
   rollUpAlertOutcome,
 } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+  WardenXError,
+} from "@wardenx/types";
 import { type SQL, and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { projectAlertInboxPresentation } from "./alert-inbox-presentation";
+import { attachmentPreviewLabel } from "./attachment-preview-label";
 import { bindAttachmentsInTx, loadAttachmentViews } from "./attachments/attachment-service-db";
 import {
   MAX_VERIFICATION_ATTEMPTS,
@@ -413,6 +420,12 @@ function decodeCursor(cursor: string): { createdAt: string; id: string } | null 
   } catch {
     return null;
   }
+}
+
+function blankMessageError(): ValidationError {
+  return new ValidationError("a message needs text or at least one attachment", [
+    { field: "body", code: "REQUIRED", message: "text or an attachment is required" },
+  ]);
 }
 
 /** Keep inbox previews compact and text-only. The plaintext exists only in the authorized response
@@ -894,6 +907,21 @@ export function createDbMessagingRouteService(
           .where(and(eq(MSG.organizationId, orgId), inArray(MSG.channelId, channelIds)))
           .orderBy(MSG.channelId, desc(MSG.createdAt), desc(MSG.id));
         const latest = new Map(latestRows.map((row) => [row.channelId, row]));
+        // A text-less latest message (attachment-only) previews as its attachments, viewer-scoped.
+        const previewTextByMessage = new Map<string, string>();
+        for (const row of latestRows) {
+          if (row.status !== "deleted") {
+            previewTextByMessage.set(
+              row.messageId,
+              messagePreview(cipher.open(orgId, row.bodyCipher)),
+            );
+          }
+        }
+        const previewAttachments = await loadAttachmentViews(tx, {
+          orgId,
+          viewerUserId: userId,
+          messageIds: [...previewTextByMessage].filter(([, text]) => !text).map(([id]) => id),
+        });
 
         // DM labels are server-derived from the other active channel member. This is a single
         // tenant-scoped join for the entire inbox, never a client-supplied title or per-row query.
@@ -991,7 +1019,8 @@ export function createDbMessagingRouteService(
                   preview:
                     message.status === "deleted"
                       ? "Message deleted"
-                      : messagePreview(cipher.open(orgId, message.bodyCipher)),
+                      : previewTextByMessage.get(message.messageId) ||
+                        attachmentPreviewLabel(previewAttachments.get(message.messageId) ?? []),
                   createdAt: message.createdAt.toISOString(),
                   authorDisplayName: message.authorDisplayName?.trim() || null,
                 };
@@ -1221,7 +1250,11 @@ export function createDbMessagingRouteService(
     canViewChannel: canViewChannelFor,
 
     // --- post a message: archive gate (410) → DEK-encrypt + insert + receipt fan-out (§3.4) -----
-    async sendMessage(orgId, input) {
+    async sendMessage(orgId, rawInput) {
+      // WP 1.5: a message is valid with text OR an attachment. A blank body is stored as the empty string, sealed
+      // like any other body, so edit/revision/idempotency/integrity treat it uniformly.
+      if (!rawInput.body.trim() && !rawInput.attachments?.length) throw blankMessageError();
+      const input = rawInput.body.trim() ? rawInput : { ...rawInput, body: "" };
       const references = input.references ?? [];
       validateReferenceRanges(input.body, references);
       const candidates = references.length
@@ -1377,6 +1410,15 @@ export function createDbMessagingRouteService(
         if (m.authorUserId !== input.userId) {
           throw new ForbiddenError("only the author may edit a message");
         }
+        // WP 1.5: text may be cleared only while the message still shows an attachment.
+        if (!input.body.trim()) {
+          const kept = await loadAttachmentViews(tx, {
+            orgId,
+            viewerUserId: input.userId,
+            messageIds: [input.messageId],
+          });
+          if (!kept.get(input.messageId)?.length) throw blankMessageError();
+        }
         if (Number(m.ageMs) > EDIT_WINDOW_MS) {
           throw new WardenXError(
             "MESSAGE_EDIT_WINDOW_CLOSED",
@@ -1411,7 +1453,10 @@ export function createDbMessagingRouteService(
           bodyWrittenAt: m.editedAt ?? m.createdAt,
           editedBy: input.userId,
         });
-        const { cipher: bodyCipher, sha256 } = cipher.seal(orgId, input.body);
+        const { cipher: bodyCipher, sha256 } = cipher.seal(
+          orgId,
+          input.body.trim() ? input.body : "",
+        );
         const editedAt = new Date();
         await tx
           .update(MSG)

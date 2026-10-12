@@ -157707,12 +157707,8 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "body"
-                ],
                 "properties": {
                   "body": {
-                    "minLength": 1,
                     "maxLength": 8000,
                     "type": "string"
                   },
@@ -158023,7 +158019,6 @@
                 ],
                 "properties": {
                   "body": {
-                    "minLength": 1,
                     "maxLength": 8000,
                     "type": "string"
                   },

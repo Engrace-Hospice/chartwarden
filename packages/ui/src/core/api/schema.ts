@@ -61760,7 +61760,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    body: string;
+                    body?: string;
                     bodyKind?: "plain" | "markdown";
                     parentMessageId?: string;
                     quotedMessageId?: string;

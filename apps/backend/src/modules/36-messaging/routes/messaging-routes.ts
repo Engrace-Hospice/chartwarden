@@ -271,7 +271,7 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
       const result = await service.sendMessage(organizationId, {
         channelId: id,
         authorUserId: userId,
-        body: body.body,
+        body: body.body ?? "",
         bodyKind: body.bodyKind,
         parentMessageId: body.parentMessageId,
         quotedMessageId: body.quotedMessageId,

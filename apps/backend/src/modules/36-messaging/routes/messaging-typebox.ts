@@ -132,7 +132,9 @@ export const AuthorizeAttachmentBodySchema = Type.Object({
 });
 
 export const SendMessageBodySchema = Type.Object({
-  body: Type.String({ minLength: 1, maxLength: 8000 }),
+  // WP 1.5: text may be absent or blank when the message carries an attachment; the service refuses a send with
+  // neither (the schema cannot express "body or attachments").
+  body: Type.Optional(Type.String({ maxLength: 8000 })),
   bodyKind: Type.Optional(Type.Union([Type.Literal("plain"), Type.Literal("markdown")])),
   parentMessageId: Type.Optional(Id),
   quotedMessageId: Type.Optional(Id),
@@ -143,7 +145,8 @@ export const SendMessageBodySchema = Type.Object({
 });
 
 export const EditMessageBodySchema = Type.Object({
-  body: Type.String({ minLength: 1, maxLength: 8000 }),
+  // Blank is allowed only while the message keeps an attachment (checked in the service).
+  body: Type.String({ maxLength: 8000 }),
   references: Type.Optional(Type.Array(MessageReferenceInputSchema, { maxItems: 25 })),
 });
 

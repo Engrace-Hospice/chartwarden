@@ -55,8 +55,8 @@ import type {
   AttachmentStoragePort,
   ScanPort,
 } from "../src/modules/36-messaging/attachments/attachment-ports";
-import { attachmentScanTick } from "../src/modules/36-messaging/attachments/attachment-scan-worker";
 import { createInlineScanGate } from "../src/modules/36-messaging/attachments/attachment-scan-gate";
+import { attachmentScanTick } from "../src/modules/36-messaging/attachments/attachment-scan-worker";
 import { createBuiltinScanner } from "../src/modules/36-messaging/attachments/attachment-scanners";
 import { createAttachmentService } from "../src/modules/36-messaging/attachments/attachment-service-db";
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
@@ -1241,7 +1241,9 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
     it("without the destruction credential (no DELETE grant) it refuses BEFORE destroying any byte", async () => {
       const { org, keys, rows, createDrizzleMessagingEraseStore } = await orgWithObjects(3);
       const before = storage.destroyed.length;
-      const store = createDrizzleMessagingEraseStore(handle.db, { attachmentStorage: storage.port });
+      const store = createDrizzleMessagingEraseStore(handle.db, {
+        attachmentStorage: storage.port,
+      });
       await expect(store.deleteStructuralRows(org)).rejects.toMatchObject({ code: "DEGRADED" });
       expect(storage.destroyed.length).toBe(before); // nothing destroyed: no row left pointing at nothing
       for (const k of keys) expect(storage.objects.has(`${org}/${k}`)).toBe(true);
@@ -1283,14 +1285,16 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
     it("an upload that lands while the erase is running has its bytes destroyed too (no orphaned object)", async () => {
       const { org, keys, rows, createDrizzleMessagingEraseStore } = await orgWithObjects(2);
       const channel = (
-        await admin.query(`SELECT channel_id FROM message_attachment WHERE organization_id=$1 LIMIT 1`, [
-          org,
-        ])
+        await admin.query(
+          `SELECT channel_id FROM message_attachment WHERE organization_id=$1 LIMIT 1`,
+          [org],
+        )
       ).rows[0].channel_id as string;
       const uploader = (
-        await admin.query(`SELECT uploaded_by FROM message_attachment WHERE organization_id=$1 LIMIT 1`, [
-          org,
-        ])
+        await admin.query(
+          `SELECT uploaded_by FROM message_attachment WHERE organization_id=$1 LIMIT 1`,
+          [org],
+        )
       ).rows[0].uploaded_by as string;
       const lateId = randomUUID();
       const lateKey = `messaging/${channel}/${lateId}`;
@@ -1560,9 +1564,13 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         code: "RATE_LIMITED",
         statusCode: 429,
       });
-      expect((await limited.authorize(ORG_A, input(rateOther, "rate-other"))).attachmentId).toBeTruthy();
+      expect(
+        (await limited.authorize(ORG_A, input(rateOther, "rate-other"))).attachmentId,
+      ).toBeTruthy();
       for (let i = 0; i < 3; i += 1) {
-        await limited.complete(ORG_A, { userId: rateUser, attachmentId: ids[0] as string }).catch(() => undefined);
+        await limited
+          .complete(ORG_A, { userId: rateUser, attachmentId: ids[0] as string })
+          .catch(() => undefined);
       }
       await expect(
         limited.complete(ORG_A, { userId: rateUser, attachmentId: ids[0] as string }),
@@ -1816,7 +1824,10 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       const tag = `${org.slice(0, 4)}${org.slice(-4)}`;
       const first = org === ORG_B ? bUser : await seedUser(`x1-${tag}`, org);
       const other = await seedUser(`x2-${tag}`, org);
-      const made = { channel: (await routeService.openDm(org, first, other)).channelId, user: first };
+      const made = {
+        channel: (await routeService.openDm(org, first, other)).channelId,
+        user: first,
+      };
       orgCtxs.set(org, made);
       return made;
     };
@@ -1933,7 +1944,9 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       extra: { nowMs?: () => number; budgetMs?: number } = {},
     ) =>
       attachmentScanTick({
-        activeOrgs: { listActiveOrgs: async () => orgs.map((organizationId) => ({ organizationId })) } as never,
+        activeOrgs: {
+          listActiveOrgs: async () => orgs.map((organizationId) => ({ organizationId })),
+        } as never,
         service: svc,
         ...extra,
       });
@@ -2009,7 +2022,9 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
     it("a total clamd outage fails closed (everything stays pending, nothing delivered), costs a bounded number of attempts per tick, and recovers on the very next tick", async () => {
       const orgs = [orgN(9), ORG_B, orgN(3)];
       const ids: string[] = [];
-      for (const org of orgs) for (let i = 0; i < 4; i += 1) ids.push(await pendingRow(`outage-${org.slice(-4)}-${i}`, { org }));
+      for (const org of orgs)
+        for (let i = 0; i < 4; i += 1)
+          ids.push(await pendingRow(`outage-${org.slice(-4)}-${i}`, { org }));
       let calls = 0;
       const down = service({
         name: "down",
@@ -2020,7 +2035,12 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       });
       const out = await tickOf(down, orgs);
       expect(calls).toBe(orgs.length * MAX_ORG_SCAN_FAILURES_PER_TICK); // bounded: org cap x orgs
-      expect(out).toMatchObject({ clean: 0, quarantined: 0, scannerFailures: calls, storeFailures: 0 });
+      expect(out).toMatchObject({
+        clean: 0,
+        quarantined: 0,
+        scannerFailures: calls,
+        storeFailures: 0,
+      });
       for (const id of ids) expect((await stateOf(id)).scan_state).toBe("pending");
       // No cooldown to wait out: the scanner is back, the next tick scans (the 2 least-recently-attempted rows per org first).
       const up = service(createBuiltinScanner());
@@ -2085,7 +2105,8 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         name: "slow",
         async scan(input) {
           clock.now += slowMs;
-          if (Buffer.from(input.bytes).toString().includes("POISON")) throw new Error("scanner choked");
+          if (Buffer.from(input.bytes).toString().includes("POISON"))
+            throw new Error("scanner choked");
           return createBuiltinScanner().scan(input);
         },
       });
@@ -2132,7 +2153,9 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       });
       const ids: string[] = [];
       for (let i = 0; i < 3; i += 1) {
-        ids.push((await uploaded(u1, dm, pdfBytes(`inline-${i}`), { complete: false })).attachmentId);
+        ids.push(
+          (await uploaded(u1, dm, pdfBytes(`inline-${i}`), { complete: false })).attachmentId,
+        );
       }
       const calls = ids.map((id) => svc.complete(ORG_A, { userId: u1, attachmentId: id }));
       await new Promise((r) => setTimeout(r, 400));
@@ -2254,12 +2277,18 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         object_missing_count: 1,
         scan_attempts: 51, // counted once, by the sweep path
       });
-      expect(await stateOf(tooSoon)).toMatchObject({ scan_state: "pending", object_missing_count: 3 });
+      expect(await stateOf(tooSoon)).toMatchObject({
+        scan_state: "pending",
+        object_missing_count: 3,
+      });
       expect(await stateOf(gone)).toMatchObject({
         scan_state: "quarantined",
         scan_signature: "object-missing",
       });
-      expect(await stateOf(recovered)).toMatchObject({ scan_state: "clean", object_missing_count: 0 });
+      expect(await stateOf(recovered)).toMatchObject({
+        scan_state: "clean",
+        object_missing_count: 0,
+      });
       // a 404 is a per-row outcome, not a failure of either kind
       expect(first).toMatchObject({ scannerFailures: 0, storeFailures: 0 });
       // time passes: the same row finally finalises once its run spans 15 minutes
@@ -2275,8 +2304,9 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
 
     it("an inline complete that sees one 404 counts one attempt (not two) and one miss", async () => {
       const { attachmentId } = await uploaded(u1, dm, pdfBytes("inline-miss"), { complete: false });
-      const key = (await admin.query(`SELECT object_key FROM message_attachment WHERE id=$1`, [attachmentId])).rows[0]
-        .object_key as string;
+      const key = (
+        await admin.query(`SELECT object_key FROM message_attachment WHERE id=$1`, [attachmentId])
+      ).rows[0].object_key as string;
       // Lands, completes (inspect ok), then vanishes before the inline read.
       const flaky: AttachmentStoragePort = { ...storage.port, readBytes: async () => null };
       const svc = createAttachmentService({
@@ -2290,7 +2320,10 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       const done = await svc.complete(ORG_A, { userId: u1, attachmentId });
       expect(done.scanState).toBe("pending");
       expect(key).toContain("messaging/");
-      expect(await stateOf(attachmentId)).toMatchObject({ scan_attempts: 1, object_missing_count: 1 });
+      expect(await stateOf(attachmentId)).toMatchObject({
+        scan_attempts: 1,
+        object_missing_count: 1,
+      });
     });
 
     describe("hardening: aborted calls, fair shares, retry backoff", () => {
@@ -2822,6 +2855,189 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       } finally {
         await admin.query(`DELETE FROM message_attachment WHERE uploaded_by=$1 AND byte_size=25000000`, [u2]);
       }
+    });
+  });
+
+  describe("attachment-only messages (WP 1.5 follow-up)", () => {
+    const post = (
+      userId: string,
+      channelId: string,
+      payload: Record<string, unknown>,
+      key = randomUUID(),
+    ) =>
+      app.inject({
+        method: "POST",
+        url: `/api/v1/messaging/channels/${channelId}/messages`,
+        headers: as(userId, ORG_A, key),
+        payload,
+      });
+    const edit = (userId: string, messageId: string, payload: Record<string, unknown>) =>
+      app.inject({
+        method: "PATCH",
+        url: `/api/v1/messaging/messages/${messageId}`,
+        headers: as(userId),
+        payload,
+      });
+    const lastPreview = async (userId: string, channelId: string) =>
+      (
+        (
+          await app.inject({
+            method: "GET",
+            url: "/api/v1/messaging/channels",
+            headers: as(userId),
+          })
+        ).json() as {
+          channels: Array<{ channelId: string; lastMessage: { preview: string } | null }>;
+        }
+      ).channels.find((c) => c.channelId === channelId)?.lastMessage?.preview;
+    const bodyOf = (res: { json(): unknown }, messageId: string) =>
+      (res.json() as { messages: Array<{ messageId: string; body: string }> }).messages.find(
+        (m) => m.messageId === messageId,
+      )?.body;
+    const messageCount = () =>
+      count(`SELECT count(*)::int AS n FROM message WHERE organization_id=$1`, [ORG_A]);
+
+    it("a send with no body and a clean attachment is 201 and shows to the recipient with an empty body", async () => {
+      const { attachmentId } = await uploaded(u1, dm, pdfBytes("att-only"));
+      const sent = await post(u1, dm, { attachments: [{ attachmentId }] });
+      expect(sent.statusCode).toBe(201);
+      const messageId = sent.json().messageId as string;
+      const seen = await list(u2, dm);
+      expect(bodyOf(seen, messageId)).toBe("");
+      expect(attachmentsOf(seen, messageId)).toEqual([
+        expect.objectContaining({ attachmentId, availability: "available" }),
+      ]);
+    });
+
+    it("an explicit empty or whitespace body with an attachment is also accepted", async () => {
+      const a = await uploaded(u1, dm, pdfBytes("att-empty-1"));
+      const b = await uploaded(u1, dm, pdfBytes("att-empty-2"));
+      expect(
+        (await post(u1, dm, { body: "", attachments: [{ attachmentId: a.attachmentId }] }))
+          .statusCode,
+      ).toBe(201);
+      expect(
+        (await post(u1, dm, { body: "  \n ", attachments: [{ attachmentId: b.attachmentId }] }))
+          .statusCode,
+      ).toBe(201);
+    });
+
+    it("no text and no attachment is a validation error (422, as every other schema violation) and writes nothing", async () => {
+      const before = await messageCount();
+      for (const payload of [
+        {},
+        { body: "" },
+        { body: "   \n\t" },
+        { attachments: [] },
+        { body: " ", attachments: [] },
+      ]) {
+        const res = await post(u1, dm, payload);
+        expect(res.statusCode, JSON.stringify(payload)).toBe(422);
+      }
+      expect(await messageCount()).toBe(before);
+    });
+
+    it("an unbindable (quarantined) attachment stays a 422 and leaves no message behind", async () => {
+      const { attachmentId } = await uploaded(u1, dm, pdfBytes("att-eicar", EICAR));
+      const before = await messageCount();
+      const res = await post(u1, dm, { attachments: [{ attachmentId }] });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error?.code ?? res.json().code).toBe("ATTACHMENT_NOT_BINDABLE");
+      expect(await messageCount()).toBe(before);
+    });
+
+    it("the channel-list preview names a clean file, counts several, and never names a still-scanning one to a recipient", async () => {
+      const one = await uploaded(u1, dm, pdfBytes("prev-1"));
+      expect(
+        (await post(u1, dm, { attachments: [{ attachmentId: one.attachmentId }] })).statusCode,
+      ).toBe(201);
+      expect(await lastPreview(u2, dm)).toBe(`\u{1F4CE} ${SECRET_FILE_NAME}`);
+      const x = await uploaded(u1, dm, pdfBytes("prev-2"));
+      const y = await uploaded(u1, dm, pdfBytes("prev-3"));
+      await post(u1, dm, {
+        attachments: [{ attachmentId: x.attachmentId }, { attachmentId: y.attachmentId }],
+      });
+      expect(await lastPreview(u2, dm)).toBe("\u{1F4CE} 2 attachments");
+
+      scanner.down = true;
+      const pending = await uploaded(u1, dm, pdfBytes("prev-4"));
+      scanner.down = false;
+      expect(
+        (await post(u1, dm, { attachments: [{ attachmentId: pending.attachmentId }] })).statusCode,
+      ).toBe(201);
+      expect(await lastPreview(u2, dm)).toBe("\u{1F4CE} Attachment");
+      expect(await lastPreview(u1, dm)).toBe(`\u{1F4CE} ${SECRET_FILE_NAME}`);
+    });
+
+    it("text wins over the attachment label in the preview", async () => {
+      const { attachmentId } = await uploaded(u1, dm, pdfBytes("prev-text"));
+      await post(u1, dm, { body: "see attached", attachments: [{ attachmentId }] });
+      expect(await lastPreview(u2, dm)).toBe("see attached");
+    });
+
+    it("same Idempotency-Key replays one attachment-only message; a reused clientMessageId under a fresh key does too", async () => {
+      const { attachmentId } = await uploaded(u1, dm, pdfBytes("att-replay"));
+      const key = randomUUID();
+      const clientMessageId = randomUUID();
+      const payload = { attachments: [{ attachmentId }], clientMessageId };
+      const first = await post(u1, dm, payload, key);
+      const again = await post(u1, dm, payload, key);
+      const fresh = await post(u1, dm, payload, randomUUID());
+      expect(first.statusCode).toBe(201);
+      expect(again.json().messageId).toBe(first.json().messageId);
+      expect(fresh.statusCode).toBe(201);
+      expect(fresh.json().messageId).toBe(first.json().messageId);
+      expect(
+        await count(`SELECT count(*)::int AS n FROM message WHERE client_message_id=$1`, [
+          clientMessageId,
+        ]),
+      ).toBe(1);
+    });
+
+    it("edit keeps the attachments: can add text, and can clear text only while an attachment remains", async () => {
+      const { attachmentId } = await uploaded(u1, dm, pdfBytes("att-edit"));
+      const messageId = (await post(u1, dm, { attachments: [{ attachmentId }] })).json()
+        .messageId as string;
+      expect((await edit(u1, messageId, { body: "added caption" })).statusCode).toBe(200);
+      let seen = await list(u2, dm);
+      expect(bodyOf(seen, messageId)).toBe("added caption");
+      expect(attachmentsOf(seen, messageId)).toHaveLength(1);
+      expect((await edit(u1, messageId, { body: "" })).statusCode).toBe(200);
+      seen = await list(u2, dm);
+      expect(bodyOf(seen, messageId)).toBe("");
+      expect(attachmentsOf(seen, messageId)).toHaveLength(1);
+      expect(
+        await count(`SELECT count(*)::int AS n FROM message_revision WHERE message_id=$1`, [
+          messageId,
+        ]),
+      ).toBe(2);
+    });
+
+    it("editing a message with no attachment to empty text is a validation error (422) and changes nothing", async () => {
+      const messageId = (await post(u1, dm, { body: "plain words" })).json().messageId as string;
+      expect((await edit(u1, messageId, { body: "  " })).statusCode).toBe(422);
+      expect(bodyOf(await list(u2, dm), messageId)).toBe("plain words");
+      expect(
+        await count(`SELECT count(*)::int AS n FROM message_revision WHERE message_id=$1`, [
+          messageId,
+        ]),
+      ).toBe(0);
+    });
+
+    it("deleting an attachment-only message tombstones it: no body, no attachments, 'Message deleted' preview", async () => {
+      const { attachmentId } = await uploaded(u1, dm, pdfBytes("att-del"));
+      const messageId = (await post(u1, dm, { attachments: [{ attachmentId }] })).json()
+        .messageId as string;
+      const del = await app.inject({
+        method: "DELETE",
+        url: `/api/v1/messaging/messages/${messageId}`,
+        headers: as(u1),
+      });
+      expect(del.statusCode).toBeLessThan(300);
+      const seen = await list(u2, dm);
+      expect(bodyOf(seen, messageId)).toBe("");
+      expect(attachmentsOf(seen, messageId)).toEqual([]);
+      expect(await lastPreview(u2, dm)).toBe("Message deleted");
     });
   });
 
