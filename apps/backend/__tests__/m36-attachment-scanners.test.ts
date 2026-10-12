@@ -150,13 +150,23 @@ describe("builtin scanner opt-in (any NODE_ENV)", () => {
     },
   );
 
-  it("allows it with the explicit flag and warns loudly", () => {
+  it("refuses builtin in production even WITH the allow flag (L6)", () => {
+    expect(() =>
+      attachmentScannerFromEnv({
+        MESSAGING_ATTACHMENT_SCANNER: "builtin",
+        ALLOW_BUILTIN_ATTACHMENT_SCANNER: "1",
+        NODE_ENV: "production",
+      }),
+    ).toThrow(/production/);
+  });
+
+  it("allows it with the explicit flag outside production and warns loudly", () => {
     const warnings: string[] = [];
     const scanner = attachmentScannerFromEnv(
       {
         MESSAGING_ATTACHMENT_SCANNER: "builtin",
         ALLOW_BUILTIN_ATTACHMENT_SCANNER: "1",
-        NODE_ENV: "production",
+        NODE_ENV: "development",
       },
       (m) => warnings.push(m),
     );

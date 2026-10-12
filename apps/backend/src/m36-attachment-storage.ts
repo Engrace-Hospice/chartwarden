@@ -8,7 +8,8 @@
 //
 //   MESSAGING_ATTACHMENT_SCANNER=clamd     CLAMD_HOST (+ CLAMD_PORT, default 3310): a ClamAV sidecar over INSTREAM
 //   MESSAGING_ATTACHMENT_SCANNER=builtin   EICAR + type-mismatch only. Dev/CI/demo; NOT an antivirus engine. Refused
-//                                          (any NODE_ENV) unless ALLOW_BUILTIN_ATTACHMENT_SCANNER=1; warns loudly at boot.
+//                                          unless ALLOW_BUILTIN_ATTACHMENT_SCANNER=1, and refused outright when
+//                                          NODE_ENV=production; warns loudly at boot.
 //   (unset)                                no scanner: uploads work, every attachment stays pending, none is delivered
 import { DegradedError } from "@wardenx/types";
 import {
@@ -193,6 +194,12 @@ export function attachmentScannerFromEnv(
       throw new Error(
         "MESSAGING_ATTACHMENT_SCANNER=builtin is refused: it is NOT an antivirus engine. Use clamd, or set " +
           "ALLOW_BUILTIN_ATTACHMENT_SCANNER=1 for dev/CI/demo only",
+      );
+    }
+    // Never in production, flag or no flag: a type check must not stand in for malware scanning on a real deployment.
+    if (env.NODE_ENV === "production") {
+      throw new Error(
+        "MESSAGING_ATTACHMENT_SCANNER=builtin is refused in production: it is NOT an antivirus engine. Use clamd",
       );
     }
     onWarn?.(
