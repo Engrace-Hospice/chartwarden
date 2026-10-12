@@ -12,7 +12,7 @@
 | ME-01 | Rich-text formatting | P1 | 2 | CONV | 2.1 | new (markdown kind exists) |
 | ME-02 | File & image attachments | P0 | 1 | CONV | 1.5 | part (schema + M22 ref) |
 | ME-03 | Voice notes | P2 | 6 | CONV | 6.3 | new |
-| ME-04 | Reply to message / threads | P1 | 2 | CONV | 2.2 | part (columns) |
+| ME-04 | Reply to message / threads | P1 | 2 | CONV | 2.2 | part (columns; same-channel guard done) |
 | ME-05 | Edit with history; controlled deletion | P1 | 1 | CONV | 1.3 | part (edit/tombstone, no revisions) |
 | ME-06 | Reactions & emojis | P2 | 2 | COLLAB | 2.4 | new |
 | ME-07 | @mentions | P1 | 2 | CONV | 2.3 | part (refs exist) |
@@ -90,7 +90,7 @@
 | SG-03 | Audit logging | P0 | 1 | GOV | 1.8 | have |
 | SG-04 | Encryption in transit & at rest | P0 | 1 | GOV | 1.8 | have (DEK envelope) |
 | SG-05 | Attachment malware scanning | P0 | 1 | GOV | 1.5 | new |
-| SG-06 | Retention & legal hold | P0 | 5 | GOV | 5.6 | part (retention classes; hold unverified) |
+| SG-06 | Retention & legal hold | P0 | 5 | GOV | 5.6 | part (retention classes; scan scheduled, plan-only; overlay pending) |
 | SG-07 | Workforce offboarding | P0 | 1/5 | GOV | 1.4, 5.9 | new |
 | SG-08 | Break-glass access | P1 | 5 | GOV | 5.8 | part (platform pattern) |
 | SG-09 | Secure file access & expiry | P0 | 1 | GOV | 1.5 | new |

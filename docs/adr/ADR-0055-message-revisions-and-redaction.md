@@ -147,7 +147,7 @@ Verified in the repo today:
 - ~~Single-officer fallback: the length of the countersign period.~~ Decided 2026-10-11 by the product owner: **72 hours**; a redaction not countersigned within it stays non-final.
 - Who are the default holders of `messaging.history.read`, `messaging.redact.request` and `messaging.redact.approve`? Needs
   compliance input.
-- The messaging legal-hold ADR owner and date (the retention scan is not scheduled today, so the risk is latent).
+- The messaging legal-hold ADR owner and date (the retention scan has been scheduled and plan-only since WP 1.9, so nothing is destroyed until this ADR lands).
 
 Resolved (Decided 2026-10-11 by the product owner): edits lock once urgent or ack-requested, correction is a linked amendment (D8);
 four-eyes redaction with distinct requester/approver and a single-officer fallback (D9). The earlier question "no edits after send
@@ -173,14 +173,20 @@ for patient-linked channels" is superseded by D8's narrower lock.
 ## Implementation status (WP 1.9)
 
 - **Revision verification is done.** The nightly `messaging.hash_verify` run (04:00 UTC, `apps/backend/src/modules/36-messaging/jobs/`)
-  samples message heads and `message_revision` rows per tenant, decrypts each under the tenant DEK and compares SHA-256 to the stored
-  hash. A divergence, or a cipher that no longer authenticates, is recorded as `m36.integrity.hash_mismatch` (critical; ids and hashes
+  verifies message heads and `message_revision` rows per tenant (a guaranteed `(created_at, id)` rotation, `HASH_VERIFY_SAMPLE_LIMIT` rows
+  per table per run, wrapping; the cursor is the previous run row's `cursorEnd`, so every row is covered once per `ceil(rows / limit)`
+  nights), decrypts each under the tenant DEK and compares SHA-256 to the stored hash. A divergence, or a cipher that no longer authenticates, is recorded as `m36.integrity.hash_mismatch` (critical; ids and hashes
   only, plus `revisionNo` for a revision) and the run as `m36.hash_verify.run`; the tick then fails so the DLQ alert fires. A held
   message is still verified: a hold blocks destruction, it does not excuse tampering. Proven live as `wardenx_app`, with the tamper
-  seeded over the superuser connection (`test:m36:integrity-jobs:live`).
+  seeded over the superuser connection (`test:m36:integrity-jobs:live`). `hash_verify` is one attempt by design (a mismatch is
+  deterministic; a retry would only duplicate the critical rows); a tamper alert to the security officer through the M36 alert emitter
+  is a follow-up.
 - **The retention scan is scheduled but plan-only.** `messaging.retention_scan` (Sunday 02:00 UTC) selects messages past their channel's
   window, withholds those covered by an active M4 legal hold (conservative reading: org-wide hold, or one naming the channel's patient),
   and records `m36.retention_scan.run` with counts. It deletes nothing and files no certificate: destruction, and the message hold
   overlay of item 9, remain the messaging retention ADR's work. The `operational` window (1 year) is provisional until that ADR.
+  The scan counts from `created_at` and `toDestroy` means "past the age window and not held", not an approved destruction plan; the
+  retention design anchors on the last patient contact, with state overrides, custodian holds and destruction certificates (WP 5.6),
+  and where they differ the architecture wins and the scan changes then.
 - A reply's `parentMessageId` must be in the same channel (422 `PARENT_MESSAGE_NOT_IN_CHANNEL`), checked in the one insert helper both
   the route service and the provider seam use.
