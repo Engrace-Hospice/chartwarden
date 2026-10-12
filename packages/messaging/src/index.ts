@@ -36,9 +36,16 @@ export {
   // event name catalogs
   MESSAGING_SERVER_EVENTS,
   MESSAGING_CLIENT_EVENTS,
+  // ADR-0054 hints (PHI-free "something changed" signals)
+  REALTIME_HINT_EVENT,
+  buildMessageHint,
+  isMessageHintOutboxEvent,
 } from "./realtime";
 export type {
   ConnectChannelMembership,
+  MessageHintKind,
+  MessageHintOutboxEvent,
+  RealtimeHint,
   RoomSetInput,
   ServerEventEnvelope,
   MessageNewEvent,

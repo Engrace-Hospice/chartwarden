@@ -360,7 +360,8 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
         },
       ],
     });
-    expect(emitted).toHaveLength(1);
+    // one mention event plus the realtime hint (m36.message.sent), both in the same transaction
+    expect(emitted.map((e) => e.eventName)).toEqual(["m36.message.mentioned", "m36.message.sent"]);
     expect(emitted[0]).toMatchObject({
       eventName: "m36.message.mentioned",
       aggregateId: sent.messageId,
@@ -591,6 +592,51 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     expect((await activeMembers()).sort()).toEqual(others);
   });
 
+  it("send, edit and delete each publish one PHI-free hint event in the write transaction (ADR-0054 A4)", async () => {
+    const emitted: Array<{ eventName: string; payload: Record<string, unknown> }> = [];
+    const outbox = {
+      publish: async (_tx: unknown, e: { eventName: string; payload: Record<string, unknown> }) => {
+        emitted.push({ eventName: e.eventName, payload: e.payload });
+      },
+    };
+    const service = createDbMessagingRouteService(handle.db, { kek: KEK, outbox });
+    const provider = createDbMessagingProvider(handle.db, { kek: KEK, outbox });
+    const secret = "patient Jane Doe has stage IV cancer";
+
+    const sent = await service.sendMessage(orgA, {
+      channelId,
+      authorUserId: rn,
+      body: secret,
+      bodyKind: "plain",
+    });
+    await service.editMessage(orgA, { userId: rn, messageId: sent.messageId, body: `${secret}!` });
+    await service.deleteMessage(orgA, { userId: rn, messageId: sent.messageId });
+    await provider.sendMessage(orgA, {
+      channelId,
+      authorUserId: rn,
+      body: secret,
+      bodyKind: "plain",
+    });
+
+    expect(emitted.map((e) => e.eventName)).toEqual([
+      "m36.message.sent",
+      "m36.message.edited",
+      "m36.message.deleted",
+      "m36.message.sent",
+    ]);
+    for (const e of emitted) {
+      expect(Object.keys(e.payload).sort()).toEqual([
+        "at",
+        "channelId",
+        "messageId",
+        "organizationId",
+      ]);
+      expect(JSON.stringify(e.payload)).not.toMatch(/Jane|cancer/);
+      expect(e.payload.channelId).toBe(channelId);
+    }
+    expect(emitted[0]!.payload.messageId).toBe(sent.messageId);
+  });
+
   it("a cross-tenant event and a cross-tenant reader never touch or see org A's channel", async () => {
     const service = createDbMessagingRouteService(handle.db);
     const before = await channelRow();
@@ -628,10 +674,10 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     ).rejects.toMatchObject({ code: "CHANNEL_ARCHIVED" });
     // an archived channel is read-only: the author cannot edit their own message (delete stays allowed, below)
     const archivedMessageId = (
-      await admin.query(`SELECT id FROM message WHERE channel_id=$1 AND author_user_id=$2`, [
-        channelId,
-        rn,
-      ])
+      await admin.query(
+        `SELECT id FROM message WHERE channel_id=$1 AND author_user_id=$2 AND status <> 'deleted' ORDER BY created_at LIMIT 1`,
+        [channelId, rn],
+      )
     ).rows[0].id as string;
     await expect(
       service.editMessage(orgA, { userId: rn, messageId: archivedMessageId, body: "rewrite" }),

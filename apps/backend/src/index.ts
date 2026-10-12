@@ -1396,9 +1396,11 @@ import {
   wireM36DeliveryTenancy,
 } from "./modules/36-messaging/index";
 import {
+  channelHintAudience,
   endChannelMembershipsForUser,
   setCareTeamChannelArchived,
 } from "./modules/36-messaging/messaging-provider-db";
+import { buildM36MessageHintConsumer } from "./modules/36-messaging/outbox-consumers/message-hints";
 import {
   buildM36AccessRevocationConsumer,
   buildM36AccessRevocationPlatformConsumer,
@@ -1608,7 +1610,10 @@ export function wireModuleSeams(
               }),
             ),
           }),
-          provider: createDbMessagingProvider(deps.db),
+          provider: createDbMessagingProvider(
+            deps.db,
+            deps.outboxPublisher ? { outbox: bindCallerModule(deps.outboxPublisher, "m36") } : {},
+          ),
         }
       : {},
   );
@@ -9259,6 +9264,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           buildM36AccessRevocationConsumer({
             endChannelMemberships: (orgId, userId) =>
               endChannelMembershipsForUser(dbHandle.db, orgId, userId),
+          }),
+          // WP 1.1 — committed message changes become PHI-free realtime hints (`emitToRooms` is added with the
+          // Valkey emitter in bootstrap/realtime; until then the event is acknowledged and nothing is sent).
+          buildM36MessageHintConsumer({
+            audience: (orgId, channelId) => channelHintAudience(dbHandle.db, orgId, channelId),
           }),
           // FY2027 — the 42 CFR 418.24(d) election-addendum window missed: the first M6 compliance-window fact
           // that pages anyone (care team + compliance), via `m6.election_addendum.overdue`.
