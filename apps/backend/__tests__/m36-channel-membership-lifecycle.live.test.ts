@@ -334,6 +334,52 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     ).toBe(0);
   });
 
+  it("WP 1.6 — a receipt is delivered|read only: ack and acked_at are rejected by the DB, markRead stamps read_at", async () => {
+    const service = createDbMessagingRouteService(handle.db, { kek: KEK });
+    const dm = await service.openDm(orgA, concurrentA, concurrentB);
+    const sent = await service.sendMessage(orgA, {
+      channelId: dm.channelId,
+      authorUserId: concurrentB,
+      body: "wp16 receipt",
+    });
+    const app = new Client({
+      connectionString: await appRoleConnectionString(admin, DB_URL as string),
+    });
+    await app.connect();
+    const rejected = async (setClause: string, code: string) => {
+      await app.query("BEGIN");
+      try {
+        await app.query("SELECT set_config('app.org_id', $1, true)", [orgA]);
+        await expect(
+          app.query(`UPDATE message_receipt SET ${setClause} WHERE message_id=$1 AND user_id=$2`, [
+            sent.messageId,
+            concurrentA,
+          ]),
+        ).rejects.toMatchObject({ code });
+      } finally {
+        await app.query("ROLLBACK");
+      }
+    };
+    try {
+      await rejected("status='ack'", "23514");
+      await rejected("acked_at=now()", "23514");
+      await rejected("status='read'", "23514"); // read without read_at
+    } finally {
+      await app.end();
+    }
+
+    await service.markRead(orgA, { userId: concurrentA, messageId: sent.messageId });
+    const row = (
+      await admin.query(
+        `SELECT status, read_at, acked_at FROM message_receipt WHERE message_id=$1 AND user_id=$2`,
+        [sent.messageId, concurrentA],
+      )
+    ).rows[0];
+    expect(row.status).toBe("read");
+    expect(row.read_at).not.toBeNull();
+    expect(row.acked_at).toBeNull();
+  });
+
   it("commits structured mentions with the outbox atomically and enforces reference RLS", async () => {
     const dmService = createDbMessagingRouteService(handle.db, { kek: KEK });
     const dm = await dmService.openDm(orgA, concurrentA, concurrentB);
@@ -641,7 +687,9 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     expect(revisions.rows[0].body_sha256).toBe(cipher.seal(orgA, "original wording").sha256);
 
     // the app role can append but never rewrite or remove a revision
-    const app = new Client({ connectionString: await appRoleConnectionString(admin, DB_URL as string) });
+    const app = new Client({
+      connectionString: await appRoleConnectionString(admin, DB_URL as string),
+    });
     await app.connect();
     try {
       await app.query("BEGIN");

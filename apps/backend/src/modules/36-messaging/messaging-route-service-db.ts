@@ -2095,10 +2095,9 @@ export function createDbMessagingRouteService(
         // is why `aggregateDeliveryStatus` below has returned `"pending"` for every line of every user's
         // Notifications tab, always.
         //
-        // §2.4.4 settles an in-app row on "socket acked", and ADR-0036 (Accepted, and it wins over a
-        // module spec) records that there IS no socket: `socket.io` is installed nowhere, no realtime
-        // transport was ever built, and "UI freshness is REST refetch/poll". This route is that poll —
-        // `apps/web/src/modules/36-messaging/notifications-inbox.tsx` is its only caller — so the fetch
+        // §2.4.4 settles an in-app row on a confirmed delivery. Here that is poll time (the ADR-0036 REST
+        // refetch/poll model; ADR-0054 realtime is accepted but does not change this).
+        // `apps/web/src/modules/36-messaging/notifications-inbox.tsx` is this route's only caller, so the fetch
         // is the moment the alert reaches the client, and there is no second event to wait for. The row
         // goes straight to `delivered`: `sent` is the "dispatcher accepted" step of a dispatcher tier
         // that does not exist, and parking rows in a state nothing advances is the defect being fixed.

@@ -25,7 +25,7 @@ export interface TransportSendRequest {
 export interface TransportSendResult {
   readonly vendorMessageId: string;
   /**
-   * True when the vendor's acceptance IS the only acknowledgement the channel offers (web-push has no
+   * True when the vendor's acceptance IS the only delivery confirmation the channel offers (web-push has no
    * delivery callback), so the row may settle `delivered` on acceptance. False for SMS/voice/email, whose
    * `delivered` comes from the vendor webhook.
    */

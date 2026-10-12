@@ -9,7 +9,7 @@
 //
 // WHERE: this runs in the worker (outbox dispatcher) while Socket.IO lives in the api role, so `emitToRooms` is the
 // Valkey emitter port, never a Server. It is optional only so the consumer is bound (and the catalog's declared
-// consumer satisfied) before the transport is switched on; with no port the event is acknowledged and nothing is sent.
+// consumer satisfied) before the transport is switched on; with no port the event is consumed and nothing is sent.
 //
 // TENANT: from the envelope `event.organizationId`, NEVER the payload. A malformed payload THROWS (retry -> DLQ).
 // Idempotent: a redelivery builds the identical hint (same cursor) and clients dedupe by cursor.

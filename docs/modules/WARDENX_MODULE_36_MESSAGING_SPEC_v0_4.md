@@ -252,10 +252,10 @@ erDiagram
         uuid id PK
         uuid message_id FK
         uuid user_id FK
-        text status "delivered|read|ack"
+        text status "delivered|read (ack retired; ADR-0056)"
         timestamptz delivered_at
         timestamptz read_at
-        timestamptz acked_at
+        timestamptz acked_at "retired: always NULL"
     }
     presence {
         uuid user_id PK
@@ -517,6 +517,9 @@ export const channelMemberSource = pgEnum('channel_member_source',
 export const messageAuthorKind = pgEnum('message_author_kind', ['user','system'])
 export const messageBodyKind = pgEnum('message_body_kind', ['plain','markdown','system'])
 export const messageStatus = pgEnum('message_status', ['sent','edited','deleted'])
+// 'ack' is retired (WP 1.6, ADR-0056 item 1): the DB enum value remains but migration 1079 CHECK-blocks it.
+// A receipt is delivered (fanned out server-side, not device delivery) or read (explicitly read); clinical
+// acknowledgement lives only in the Phase 4 message_acknowledgment_* tables.
 export const messageReceiptStatus = pgEnum('message_receipt_status',
   ['delivered','read','ack'])
 export const presenceStatus = pgEnum('presence_status', ['online','away','offline'])
@@ -705,7 +708,7 @@ export const messageReceipts = pgTable('message_receipt', {
   status: messageReceiptStatus('status').notNull().default('delivered'),
   deliveredAt: timestamp('delivered_at', { withTimezone: true }).notNull().defaultNow(),
   readAt: timestamp('read_at', { withTimezone: true }),
-  ackedAt: timestamp('acked_at', { withTimezone: true }),
+  ackedAt: timestamp('acked_at', { withTimezone: true }), // retired (WP 1.6): always NULL, CHECK-enforced
 }, (t) => ({
   uniquePerMessageUser: uniqueIndex('message_receipt_unique')
     .on(t.messageId, t.userId),

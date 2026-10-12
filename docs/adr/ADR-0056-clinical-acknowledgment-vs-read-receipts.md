@@ -121,7 +121,9 @@
 ## Migration / rollout
 
 1. Phase 1: remove `ack` from `MessageReceiptStatus`, add the CHECK, add a test that no code path labels a message acknowledged
-   from open/read (WP 1.6).
+   from open/read (WP 1.6). **Done (WP 1.6, migration 1079; this ADR stays Proposed):** `ack` is gone from the type and the
+   Drizzle column type, a CHECK blocks `status = 'ack'`, any `acked_at` and `read` without `read_at`; the enum value and the
+   `acked_at` column remain (inert) until a later enum-rebuild/column-drop migration.
 2. Phase 4: tables and trigger migration (check `arch:migration-numbering` against `main`; mirror enums/tables into
    `packages/db/src/enums.ts`, `packages/types` and both manifests); routes with permission keys composed via `requireAbac`
    (`arch:abac-composed`); outbox events registered; queue declared once.

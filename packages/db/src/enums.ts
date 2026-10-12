@@ -332,7 +332,10 @@ export const messageBodyKind = pgEnum("message_body_kind", ["plain", "markdown",
 // RETAINED until retention expiry (M36-F02 / ADR-0004 / ARCH-185), never zeroed early.
 export const messageStatus = pgEnum("message_status", ["sent", "edited", "deleted"]);
 
-// `message_receipt_status` — per-recipient receipt state (§3.4).
+// `message_receipt_status` — per-recipient receipt state (§3.4): `delivered` (fanned out server-side) |
+// `read` (explicitly read). `ack` is a retired value kept only to match the DB enum (a Postgres enum value
+// cannot be dropped in place); migration 1079 CHECK-blocks it. It is NOT a clinical acknowledgement
+// (ADR-0056 item 1). The column is typed delivered | read in the Drizzle schema.
 export const messageReceiptStatus = pgEnum("message_receipt_status", ["delivered", "read", "ack"]);
 
 // `presence_status` — Socket.IO-driven user presence (§3.5).
