@@ -1298,6 +1298,27 @@ describe("M14-idg-inject — supersede route scope + quorum gates", () => {
     await app.close();
   });
 
+  it("decision PATCH with a uuid id: absent If-Match is 428, malformed is 400 (precondition runs after the scope guard)", async () => {
+    const { app } = await supersedeWorld();
+    const payload = { payload: { kind: "team_note", noteText: "Updated team note." } };
+    const url = `/api/v1/idg/decisions/${DEC_ALIAS}`;
+    const noIfMatch = await app.inject({
+      method: "PATCH",
+      url,
+      headers: { ...SUPER, "idempotency-key": "idem-428" },
+      payload,
+    });
+    expect(noIfMatch.statusCode).toBe(428);
+    const badIfMatch = await app.inject({
+      method: "PATCH",
+      url,
+      headers: { ...SUPER, "if-match": "abc", "idempotency-key": "idem-400" },
+      payload,
+    });
+    expect(badIfMatch.statusCode).toBe(400);
+    await app.close();
+  });
+
   it("404 (no existence leak) when the target meeting is outside the caller's location scope", async () => {
     const { app, backend } = await supersedeWorld();
     const res = await supersede(app, DEC_ALIAS, M_TARGET_B);

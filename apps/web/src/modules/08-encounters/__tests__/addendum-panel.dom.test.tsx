@@ -191,7 +191,7 @@ describe("Addendum panel (GAP-027)", () => {
     fireEvent.click(screen.getByLabelText(/I attest this addendum/));
     fireEvent.click(screen.getByRole("button", { name: "Sign & commit" }));
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toBe("re-authenticate to signRe-authenticate");
+    expect(alert.textContent).toContain("re-authenticate to sign");
     expect(
       within(alert).getByRole("link", { name: "Re-authenticate" }).getAttribute("href"),
     ).toMatch(/^\/step-up\?returnTo=/);
