@@ -82,6 +82,7 @@ import {
   hashVerificationCode,
 } from "./endpoint-verification";
 import { publishMessageHint } from "./message-hint-events";
+import { MESSAGE_ROW_COLUMNS, hydrateMessages } from "./messaging-message-hydration";
 import {
   type MessageBodyCipher,
   blankMessageError,
@@ -583,6 +584,13 @@ export function createDbMessagingRouteService(
   const resolveSiting = opts.resolvePatientLocationIds ?? seamPatientLocationIds;
   const part2Gate = opts.part2Gate ?? createSeamPart2ChannelGate(db);
   const cipher = opts.cipher ?? createMessageBodyCipher({ kek: opts.kek });
+  const hydrationContext = (orgId: string, viewerUserId: string, channelKind: string) => ({
+    orgId,
+    viewerUserId,
+    channelKind,
+    cipher,
+    warn: opts.warn,
+  });
   const resolvePatientId =
     opts.resolvePatientId ??
     (async (organizationId: string, patientId: string) =>
@@ -1163,18 +1171,7 @@ export function createDbMessagingRouteService(
           );
         }
         const rows = await tx
-          .select({
-            id: MSG.id,
-            channelId: MSG.channelId,
-            authorUserId: MSG.authorUserId,
-            authorDisplayName: USER.name,
-            bodyCipher: MSG.bodyCipher,
-            bodyKind: MSG.bodyKind,
-            status: MSG.status,
-            createdAt: MSG.createdAt,
-            createdAtMicros: sql<string>`${MSG.createdAt}::text`,
-            parentMessageId: MSG.parentMessageId,
-          })
+          .select(MESSAGE_ROW_COLUMNS)
           .from(MSG)
           .leftJoin(USER, eq(USER.id, MSG.authorUserId))
           .where(and(...where))
@@ -1186,102 +1183,79 @@ export function createDbMessagingRouteService(
         const hasMore = rows.length > limit;
         const pageRows = rows.slice(0, limit);
         const chronologicalRows = backward ? [...pageRows].reverse() : pageRows;
-        const messageIds = chronologicalRows.map((row) => row.id);
-        const referenceRows =
-          messageIds.length === 0
-            ? []
-            : await tx
-                .select({
-                  messageId: MER.messageId,
-                  kind: MER.referenceKind,
-                  entityId: MER.entityId,
-                  start: MER.startOffset,
-                  end: MER.endOffset,
-                  staffName: USER.name,
-                })
-                .from(MER)
-                .leftJoin(USER, and(eq(USER.id, MER.entityId), eq(MER.referenceKind, "staff")))
-                .where(and(eq(MER.organizationId, orgId), inArray(MER.messageId, messageIds)))
-                .orderBy(asc(MER.startOffset));
-        const referencesByMessage = new Map<string, typeof referenceRows>();
-        for (const reference of referenceRows) {
-          const values = referencesByMessage.get(reference.messageId) ?? [];
-          values.push(reference);
-          referencesByMessage.set(reference.messageId, values);
-        }
-        // WP 1.5: scan-gated attachment metadata. A tombstoned message shows none; the loader hides quarantined
-        // files from everyone and pending ones from everyone but their uploader.
-        const attachmentsByMessage = await loadAttachmentViews(tx, {
-          orgId,
-          viewerUserId: input.userId,
-          messageIds: chronologicalRows
-            .filter((row) => row.status !== "deleted")
-            .map((row) => row.id),
-        });
-        // How many bound files this viewer cannot see (still scanning for someone else, or quarantined): a bare count,
-        // so an attachment-only message is not mistaken for a tombstone and nothing about the files leaks.
-        const liveIds = chronologicalRows
-          .filter((row) => row.status !== "deleted")
-          .map((row) => row.id);
-        const boundRows =
-          liveIds.length === 0
-            ? []
-            : await tx
-                .select({ messageId: MATT.messageId, n: sql<number>`count(*)::int` })
-                .from(MATT)
-                .where(and(eq(MATT.organizationId, orgId), inArray(MATT.messageId, liveIds)))
-                .groupBy(MATT.messageId);
-        const boundByMessage = new Map(boundRows.map((row) => [row.messageId, Number(row.n)]));
         // Entitled-reader gate: the channel_visibility ABAC predicate already authorized this read
         // at the route, so decrypt each body under the tenant DEK; a 'deleted' tombstone is empty.
-        const page = chronologicalRows.map((m): ResolvedMessage => {
-          const decoded: ReturnType<typeof decodeStoredBody> =
-            m.status === "deleted"
-              ? { body: "" }
-              : decodeStoredBody(m.bodyKind as MessageBodyKind, cipher.open(orgId, m.bodyCipher));
-          // A rich body that no longer parses is not a deleted message: say so, and leave ids (never content).
-          if (decoded.unreadable) {
-            opts.warn?.("rich message body could not be read; showing a placeholder", {
-              organizationId: orgId,
-              messageId: m.id,
-              channelId: m.channelId,
-            });
-          }
-          return {
-            messageId: m.id,
-            channelId: m.channelId,
-            authorUserId: m.authorUserId,
-            authorDisplayName: m.authorDisplayName?.trim() || null,
-            body: decoded.body,
-            bodyKind: m.bodyKind as MessageBodyKind,
-            ...(decoded.bodyDoc ? { bodyDoc: decoded.bodyDoc } : {}),
-            ...(decoded.unreadable ? { bodyUnreadable: true as const } : {}),
-            createdAt: m.createdAt.toISOString(),
-            parentMessageId: m.parentMessageId,
-            attachments: attachmentsByMessage.get(m.id) ?? [],
-            hiddenAttachmentCount: Math.max(
-              0,
-              (boundByMessage.get(m.id) ?? 0) - (attachmentsByMessage.get(m.id)?.length ?? 0),
-            ),
-            references: (referencesByMessage.get(m.id) ?? []).map((reference) => ({
-              kind: reference.kind as "staff" | "patient",
-              entityId: reference.entityId,
-              start: reference.start,
-              end: reference.end,
-              displayLabel:
-                reference.kind === "staff"
-                  ? reference.staffName?.trim() || "Staff member"
-                  : "Patient",
-              navigable: reference.kind === "patient" && ch[0]!.kind === "care_team",
-            })),
-          };
-        });
+        const page = await hydrateMessages(
+          tx,
+          hydrationContext(orgId, input.userId, ch[0].kind),
+          chronologicalRows,
+          input.channelId,
+        );
         const cursorRow = backward ? chronologicalRows[0] : chronologicalRows.at(-1);
         const nextCursor =
           hasMore && cursorRow ? encodeCursor(cursorRow.createdAtMicros, cursorRow.id) : undefined;
         return {
           messages: page,
           nextCursor,
+          patientId: ch[0].kind === "care_team" ? ch[0].subjectId : null,
+        };
+      });
+    },
+
+    // WP 2.2: a message and its direct replies. Thread permissions ARE the channel's: the route has already run
+    // `channel_visibility` on the channel id, and every query here is scoped to that channel, so a root that is
+    // absent, in another channel or in another org is the one NOT_FOUND a random id gets.
+    async listThread(orgId, input) {
+      return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
+        const ch = await tx
+          .select({ id: CH.id, kind: CH.channelKind, subjectId: CH.subjectId })
+          .from(CH)
+          .where(and(eq(CH.organizationId, orgId), eq(CH.id, input.channelId)))
+          .limit(1);
+        if (!ch[0]) throw new NotFoundError("channel", input.channelId);
+        const [rootRow] = await tx
+          .select(MESSAGE_ROW_COLUMNS)
+          .from(MSG)
+          .leftJoin(USER, eq(USER.id, MSG.authorUserId))
+          .where(
+            and(
+              eq(MSG.organizationId, orgId),
+              eq(MSG.channelId, input.channelId),
+              eq(MSG.id, input.messageId),
+            ),
+          )
+          .limit(1);
+        if (!rootRow) throw new NotFoundError("message", input.messageId);
+        const limit = Math.min(Math.max(input.limit ?? 50, 1), 200);
+        const where: SQL[] = [
+          eq(MSG.organizationId, orgId),
+          eq(MSG.channelId, input.channelId),
+          eq(MSG.parentMessageId, input.messageId),
+        ];
+        const cur = input.cursor ? decodeCursor(input.cursor) : null;
+        if (cur) where.push(sql`(${MSG.createdAt}, ${MSG.id}) > (${cur.createdAt}, ${cur.id})`);
+        // Oldest first: a thread reads top to bottom. Same (created_at, id) keyset as the channel list, with the
+        // cursor carrying the microsecond text of created_at so rows sharing a millisecond neither repeat nor vanish.
+        const replyRows = await tx
+          .select(MESSAGE_ROW_COLUMNS)
+          .from(MSG)
+          .leftJoin(USER, eq(USER.id, MSG.authorUserId))
+          .where(and(...where))
+          .orderBy(asc(MSG.createdAt), asc(MSG.id))
+          .limit(limit + 1);
+        const hasMore = replyRows.length > limit;
+        const pageRows = replyRows.slice(0, limit);
+        const [root, ...replies] = await hydrateMessages(
+          tx,
+          hydrationContext(orgId, input.userId, ch[0].kind),
+          [rootRow, ...pageRows],
+          input.channelId,
+        );
+        const last = pageRows.at(-1);
+        return {
+          root: root!,
+          replies,
+          nextCursor: hasMore && last ? encodeCursor(last.createdAtMicros, last.id) : undefined,
           patientId: ch[0].kind === "care_team" ? ch[0].subjectId : null,
         };
       });
@@ -1383,6 +1357,7 @@ export function createDbMessagingRouteService(
             orgId,
             channelId: input.channelId,
             messageId,
+            parentMessageId: input.parentMessageId,
             at: createdAt,
           });
           return { messageId, channelId: input.channelId, createdAt };
@@ -1438,6 +1413,7 @@ export function createDbMessagingRouteService(
             authorUserId: MSG.authorUserId,
             status: MSG.status,
             channelId: MSG.channelId,
+            parentMessageId: MSG.parentMessageId,
             bodyCipher: MSG.bodyCipher,
             bodySha256: MSG.bodySha256,
             bodyKind: MSG.bodyKind,
@@ -1536,6 +1512,7 @@ export function createDbMessagingRouteService(
           orgId,
           channelId: m.channelId,
           messageId: input.messageId,
+          parentMessageId: m.parentMessageId,
           at: editedAt,
         });
         return {
@@ -1551,13 +1528,19 @@ export function createDbMessagingRouteService(
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
         await assertLiveMembershipInTx(tx, orgId, input.userId, input.messageId);
         const rows = (await tx
-          .select({ authorUserId: MSG.authorUserId, status: MSG.status, channelId: MSG.channelId })
+          .select({
+            authorUserId: MSG.authorUserId,
+            status: MSG.status,
+            channelId: MSG.channelId,
+            parentMessageId: MSG.parentMessageId,
+          })
           .from(MSG)
           .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, input.messageId)))
           .limit(1)) as Array<{
           authorUserId: string | null;
           status: string;
           channelId: string;
+          parentMessageId: string | null;
         }>;
         const m = rows[0];
         if (!m || m.status === "deleted") throw new NotFoundError("message", input.messageId);
@@ -1575,6 +1558,7 @@ export function createDbMessagingRouteService(
           orgId,
           channelId: m.channelId,
           messageId: input.messageId,
+          parentMessageId: m.parentMessageId,
           at: deletedAt,
         });
       });

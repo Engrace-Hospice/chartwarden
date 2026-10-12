@@ -42,6 +42,8 @@ import {
   EditMessageBodySchema,
   EndpointParamsSchema,
   ListMessagesQuerySchema,
+  ListThreadQuerySchema,
+  ThreadParamsSchema,
   MemberParamsSchema,
   MentionCandidateQuerySchema,
   MessageParamsSchema,
@@ -227,6 +229,35 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
         limit: q.limit,
         direction: q.direction,
         anchorMessageId: q.anchorMessageId,
+      });
+    },
+  );
+
+  // --- WP 2.2: a message and its direct replies. No ACL of its own: the channel's `channel_visibility` predicate on
+  // `:id` is the whole gate, and the service scopes the root and every reply to that channel (a message of another
+  // channel is the 404 a random id gets). One aggregate read event per page, resource = the root message.
+  app.get(
+    "/api/v1/messaging/channels/:id/messages/:messageId/thread",
+    {
+      preHandler: [READ, VIEW_CHANNEL],
+      config: {
+        auditRead: {
+          resourceKind: "message",
+          resourceIdParam: "messageId",
+          patientIdPayloadPath: "patientId",
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id, messageId } = parse(ThreadParamsSchema, request.params);
+      const q = parse(ListThreadQuerySchema, request.query);
+      return service.listThread(organizationId, {
+        channelId: id,
+        messageId,
+        userId,
+        cursor: q.cursor,
+        limit: q.limit,
       });
     },
   );

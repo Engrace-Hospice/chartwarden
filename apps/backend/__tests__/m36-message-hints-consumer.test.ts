@@ -36,6 +36,23 @@ describe("m36.message-hints", () => {
     expect(Object.keys(hint).sort()).toEqual(["cursor", "ids", "kind"]);
   });
 
+  it("a thread reply's hint carries the parent id so a client can refresh that thread", async () => {
+    const emitToRooms = vi.fn().mockResolvedValue(undefined);
+    const consumer = buildM36MessageHintConsumer({
+      audience: async () => ({ userIds: ["u1"] }),
+      emitToRooms,
+    });
+    await consumer.handle(event("m36.message.sent", { ...payload, parentMessageId: "msg_root" }));
+    await consumer.handle(event("m36.message.deleted", { ...payload, parentMessageId: 42 }));
+    expect(emitToRooms.mock.calls[0]![1].ids).toEqual({
+      channelId: "ch_1",
+      messageId: "msg_1",
+      parentMessageId: "msg_root",
+    });
+    // a malformed optional parent id is dropped, not fatal (it is only an optimisation)
+    expect(emitToRooms.mock.calls[1]![1].ids).not.toHaveProperty("parentMessageId");
+  });
+
   it("an announcement channel goes to the org room", async () => {
     const emitToRooms = vi.fn().mockResolvedValue(undefined);
     await buildM36MessageHintConsumer({

@@ -403,7 +403,9 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       sha256Hex: sha256(bytes),
     });
     const key = (
-      await admin.query(`SELECT object_key FROM message_attachment WHERE id=$1`, [auth.attachmentId])
+      await admin.query(`SELECT object_key FROM message_attachment WHERE id=$1`, [
+        auth.attachmentId,
+      ])
     ).rows[0].object_key as string;
     storage.put(org, key, bytes);
     return { attachmentId: auth.attachmentId, key };
@@ -1878,7 +1880,10 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       });
       clock.now += pastGrace;
       try {
-        expect(await svc.reapOrphansForOrg(ORG_A, { budgetMs: 0 })).toEqual({ reaped: 0, failed: 0 });
+        expect(await svc.reapOrphansForOrg(ORG_A, { budgetMs: 0 })).toEqual({
+          reaped: 0,
+          failed: 0,
+        });
         const out = await svc.reapOrphansForOrg(ORG_A, { budgetMs: 1_000, limit: 25 });
         expect(out).toEqual({ reaped: 1, failed: 0 });
       } finally {
@@ -2505,9 +2510,11 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
           userRequestsPerMinute: 1_000_000,
         });
         const { attachmentId } = await directUpload(svc, who, pdfBytes("inspect"));
-        await expect(svc.complete(ORG_A, { userId: who.user, attachmentId })).rejects.toMatchObject({
-          code: "DEGRADED",
-        });
+        await expect(svc.complete(ORG_A, { userId: who.user, attachmentId })).rejects.toMatchObject(
+          {
+            code: "DEGRADED",
+          },
+        );
         expect(stopped).toBe(true);
       });
 
@@ -2536,7 +2543,8 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
 
       it("the tick gives EVERY org with pending work its share however slow each scan is (deterministic fair share, not rotation luck)", async () => {
         const orgs = [orgN(15), orgN(16), orgN(17)];
-        for (const org of orgs) for (let i = 0; i < 4; i += 1) await pendingRow(`share-${i}`, { org });
+        for (const org of orgs)
+          for (let i = 0; i < 4; i += 1) await pendingRow(`share-${i}`, { org });
         const base = clock.now;
         const svc = service({
           name: "slow",
@@ -2547,7 +2555,9 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         });
         try {
           await attachmentScanTick({
-            activeOrgs: { listActiveOrgs: async () => orgs.map((organizationId) => ({ organizationId })) } as never,
+            activeOrgs: {
+              listActiveOrgs: async () => orgs.map((organizationId) => ({ organizationId })),
+            } as never,
             service: svc,
             nowMs: () => clock.now,
             budgetMs: 60_000, // 3 orgs => a 20 s slice each => 2 scans each (the old greedy loop gave the first org 4 and the last 0)
@@ -2603,11 +2613,13 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
           expect(unavailable[0]).toBe(SCAN_UNAVAILABLE_ATTEMPTS);
           expect(await stateOf(id)).toMatchObject({ scan_state: "pending", scan_signature: null });
           expect(
-            (await admin.query(`SELECT scanned_at FROM message_attachment WHERE id=$1`, [id])).rows[0]
-              .scanned_at,
+            (await admin.query(`SELECT scanned_at FROM message_attachment WHERE id=$1`, [id]))
+              .rows[0].scanned_at,
           ).toBeNull();
           // the scanner recovers: a REAL verdict still settles it (verdict-final is untouched)
-          expect(await service(createBuiltinScanner()).scanPendingForOrg(org)).toMatchObject({ clean: 1 });
+          expect(await service(createBuiltinScanner()).scanPendingForOrg(org)).toMatchObject({
+            clean: 1,
+          });
         } finally {
           clock.now = base;
         }
@@ -2699,7 +2711,9 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
           now: () => new Date(atMs),
         });
       const flagged = () =>
-        count(`SELECT count(*)::int AS n FROM messaging_erase_block WHERE organization_id=$1`, [org]);
+        count(`SELECT count(*)::int AS n FROM messaging_erase_block WHERE organization_id=$1`, [
+          org,
+        ]);
       const rows = () =>
         count(`SELECT count(*)::int AS n FROM message_attachment WHERE organization_id=$1`, [org]);
       return { org, who, svc, eraserAt, flagged, rows };
@@ -2718,9 +2732,10 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       expect(await flagged()).toBe(1);
       expect(storage.destroyed.length).toBe(before);
       expect(await rows()).toBe(1);
-      await expect(
-        directUpload(svc, who, pdfBytes("race-late"), org),
-      ).rejects.toMatchObject({ code: "TENANT_ERASURE_IN_PROGRESS", statusCode: 409 });
+      await expect(directUpload(svc, who, pdfBytes("race-late"), org)).rejects.toMatchObject({
+        code: "TENANT_ERASURE_IN_PROGRESS",
+        statusCode: 409,
+      });
       await expect(
         svc.complete(org, { userId: who.user, attachmentId: pending.attachmentId }),
       ).rejects.toMatchObject({ code: "TENANT_ERASURE_IN_PROGRESS", statusCode: 409 });
@@ -2750,7 +2765,15 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         await inflight.query(
           `INSERT INTO message_attachment (id, organization_id, channel_id, uploaded_by, mime_type, byte_size, filename, object_key, sha256_hex, upload_expires_at)
            VALUES ($1,$2,$3,$4,'application/pdf',5,'x.pdf',$5,$6,$7)`,
-          [id, org, who.channel, who.user, key, "a".repeat(64), new Date(clock.now + 600_000).toISOString()],
+          [
+            id,
+            org,
+            who.channel,
+            who.user,
+            key,
+            "a".repeat(64),
+            new Date(clock.now + 600_000).toISOString(),
+          ],
         );
         let settled = false;
         const erase = eraserAt(clock.now).deleteStructuralRows(org);
@@ -2798,7 +2821,9 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       try {
         await c.query("BEGIN");
         await c.query(`SELECT set_config('app.org_id', $1, true)`, [org]);
-        await expect(c.query(`DELETE FROM messaging_erase_block`)).rejects.toThrow(/permission denied/i);
+        await expect(c.query(`DELETE FROM messaging_erase_block`)).rejects.toThrow(
+          /permission denied/i,
+        );
         await c.query("ROLLBACK");
         await c.query("BEGIN");
         await c.query(`SELECT set_config('app.org_id', $1, true)`, [ORG_A]);
@@ -2842,7 +2867,10 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
          RETURNING id`,
         [ORG_A, who.channel, who.user, messageId, byteSize, key, iso(-scannedAgoMs), state],
       );
-      storage.objects.set(`${ORG_A}/${key}`, { bytes: new Uint8Array(byteSize), mime: "application/pdf" });
+      storage.objects.set(`${ORG_A}/${key}`, {
+        bytes: new Uint8Array(byteSize),
+        mime: "application/pdf",
+      });
       return { id: ins.rows[0].id as string, key };
     }
     const destroyedAt = async (id: string) =>
@@ -2853,7 +2881,11 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
 
     it("M4: a quarantined file bound to a message keeps its row but its OBJECT is destroyed after the retention window, not before", async () => {
       const who = await freshUploader("m4-quarantine");
-      const sent = await routeService.sendMessage(ORG_A, { channelId: who.channel, authorUserId: who.user, body: "m4" });
+      const sent = await routeService.sendMessage(ORG_A, {
+        channelId: who.channel,
+        authorUserId: who.user,
+        body: "m4",
+      });
       const fresh = await boundRow(who, sent.messageId, "quarantined", 2 * DAY);
       const old = await boundRow(who, sent.messageId, "quarantined", 8 * DAY);
       const svc = quotaSvc(1_000_000);
@@ -2877,16 +2909,25 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
           (e: { cause?: { message?: string } }) => e.cause?.message ?? "",
         );
       expect(denied).toMatch(/permission denied/i);
-      await destroyer.db.execute(dsql`UPDATE message_attachment SET object_destroyed_at = object_destroyed_at WHERE false`);
+      await destroyer.db.execute(
+        dsql`UPDATE message_attachment SET object_destroyed_at = object_destroyed_at WHERE false`,
+      );
     });
 
     it("M4: a destroy that fails leaves the row unmarked, so the next run retries it", async () => {
       const who = await freshUploader("m4-retry");
-      const sent = await routeService.sendMessage(ORG_A, { channelId: who.channel, authorUserId: who.user, body: "m4r" });
+      const sent = await routeService.sendMessage(ORG_A, {
+        channelId: who.channel,
+        authorUserId: who.user,
+        body: "m4r",
+      });
       const row = await boundRow(who, sent.messageId, "quarantined", 9 * DAY);
       storage.destroyFailure.onKeyIncluding = row.key;
       try {
-        expect(await quotaSvc(1_000_000).reapOrphansForOrg(ORG_A)).toEqual({ reaped: 0, failed: 1 });
+        expect(await quotaSvc(1_000_000).reapOrphansForOrg(ORG_A)).toEqual({
+          reaped: 0,
+          failed: 1,
+        });
         expect(await destroyedAt(row.id)).toBeNull();
       } finally {
         storage.destroyFailure.onKeyIncluding = null;
@@ -2898,7 +2939,11 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
     it("A: a clean file on a message deleted longer ago than the window has its object destroyed too; a recently deleted one does not", async () => {
       const who = await freshUploader("a-deleted");
       const mk = async () => {
-        const sent = await routeService.sendMessage(ORG_A, { channelId: who.channel, authorUserId: who.user, body: "a" });
+        const sent = await routeService.sendMessage(ORG_A, {
+          channelId: who.channel,
+          authorUserId: who.user,
+          body: "a",
+        });
         const row = await boundRow(who, sent.messageId, "clean", 30 * DAY);
         await routeService.deleteMessage(ORG_A, { userId: who.user, messageId: sent.messageId });
         return row;
@@ -2918,29 +2963,64 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
     it("A: quota stops counting a row only once its object is destroyed; rows on deleted messages still count until then", async () => {
       const who = await freshUploader("a-quota");
       const svc = quotaSvc(10_000);
-      const live = await routeService.sendMessage(ORG_A, { channelId: who.channel, authorUserId: who.user, body: "live" });
-      const gone = await routeService.sendMessage(ORG_A, { channelId: who.channel, authorUserId: who.user, body: "gone" });
+      const live = await routeService.sendMessage(ORG_A, {
+        channelId: who.channel,
+        authorUserId: who.user,
+        body: "live",
+      });
+      const gone = await routeService.sendMessage(ORG_A, {
+        channelId: who.channel,
+        authorUserId: who.user,
+        body: "gone",
+      });
       await boundRow(who, live.messageId, "clean", DAY); // counts: 3000
       await boundRow(who, live.messageId, "quarantined", DAY); // counts: 3000 (bytes still in the bucket)
       const destroyedRow = await boundRow(who, live.messageId, "quarantined", DAY);
-      await admin.query(`UPDATE message_attachment SET object_destroyed_at = now() WHERE id=$1`, [destroyedRow.id]); // no longer counts
+      await admin.query(`UPDATE message_attachment SET object_destroyed_at = now() WHERE id=$1`, [
+        destroyedRow.id,
+      ]); // no longer counts
       await boundRow(who, gone.messageId, "clean", DAY); // on a deleted message, object still stored: STILL counts, 3000
       await routeService.deleteMessage(ORG_A, { userId: who.user, messageId: gone.messageId });
       // used = 9000 of 10000: a 1000 fits, a 1001 does not
       await expect(
-        svc.authorize(ORG_A, { userId: who.user, channelId: who.channel, fileName: "q.pdf", contentType: "application/pdf", byteSize: 1_001, sha256Hex: "c".repeat(64) }),
+        svc.authorize(ORG_A, {
+          userId: who.user,
+          channelId: who.channel,
+          fileName: "q.pdf",
+          contentType: "application/pdf",
+          byteSize: 1_001,
+          sha256Hex: "c".repeat(64),
+        }),
       ).rejects.toMatchObject({ statusCode: 413 });
-      await svc.authorize(ORG_A, { userId: who.user, channelId: who.channel, fileName: "q.pdf", contentType: "application/pdf", byteSize: 1_000, sha256Hex: "d".repeat(64) });
+      await svc.authorize(ORG_A, {
+        userId: who.user,
+        channelId: who.channel,
+        fileName: "q.pdf",
+        contentType: "application/pdf",
+        byteSize: 1_000,
+        sha256Hex: "d".repeat(64),
+      });
     });
 
     it("A: upload, send, delete cannot be repeated to hoard bytes: authorize stays 413 until the retention pass destroys the object, then succeeds", async () => {
       const who = await freshUploader("a-hoard");
       const svc = quotaSvc(3_000);
-      const sent = await routeService.sendMessage(ORG_A, { channelId: who.channel, authorUserId: who.user, body: "hoard" });
+      const sent = await routeService.sendMessage(ORG_A, {
+        channelId: who.channel,
+        authorUserId: who.user,
+        body: "hoard",
+      });
       const row = await boundRow(who, sent.messageId, "clean", 30 * DAY);
       await routeService.deleteMessage(ORG_A, { userId: who.user, messageId: sent.messageId });
       const again = () =>
-        svc.authorize(ORG_A, { userId: who.user, channelId: who.channel, fileName: "h.pdf", contentType: "application/pdf", byteSize: 1_000, sha256Hex: "f".repeat(64) });
+        svc.authorize(ORG_A, {
+          userId: who.user,
+          channelId: who.channel,
+          fileName: "h.pdf",
+          contentType: "application/pdf",
+          byteSize: 1_000,
+          sha256Hex: "f".repeat(64),
+        });
       await expect(again()).rejects.toMatchObject({ statusCode: 413 });
       expect(await svc.reapOrphansForOrg(ORG_A)).toEqual({ reaped: 0, failed: 0 }); // deleted just now: inside the window
       await expect(again()).rejects.toMatchObject({ statusCode: 413 });
@@ -2955,22 +3035,31 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
     it("A: a PENDING (never scanned) file bound to a long-deleted message is destroyed too, and counts until then", async () => {
       const who = await freshUploader("a-pending");
       const svc = quotaSvc(1_000_000);
-      const sent = await routeService.sendMessage(ORG_A, { channelId: who.channel, authorUserId: who.user, body: "pend" });
+      const sent = await routeService.sendMessage(ORG_A, {
+        channelId: who.channel,
+        authorUserId: who.user,
+        body: "pend",
+      });
       const row = await boundRow(who, sent.messageId, "clean", 30 * DAY);
       await admin.query(
         `ALTER TABLE message_attachment DISABLE TRIGGER message_attachment_guard_trg`,
       );
       try {
-        await admin.query(`UPDATE message_attachment SET scan_state='pending', scanned_at=NULL WHERE id=$1`, [row.id]);
+        await admin.query(
+          `UPDATE message_attachment SET scan_state='pending', scanned_at=NULL WHERE id=$1`,
+          [row.id],
+        );
       } finally {
-        await admin.query(`ALTER TABLE message_attachment ENABLE TRIGGER message_attachment_guard_trg`);
+        await admin.query(
+          `ALTER TABLE message_attachment ENABLE TRIGGER message_attachment_guard_trg`,
+        );
       }
       await routeService.deleteMessage(ORG_A, { userId: who.user, messageId: sent.messageId });
       expect(await svc.reapOrphansForOrg(ORG_A)).toEqual({ reaped: 0, failed: 0 });
-      await admin.query(
-        `UPDATE message SET deleted_at = $2::timestamptz WHERE id=$1`,
-        [sent.messageId, iso(-8 * DAY)],
-      );
+      await admin.query(`UPDATE message SET deleted_at = $2::timestamptz WHERE id=$1`, [
+        sent.messageId,
+        iso(-8 * DAY),
+      ]);
       expect(await svc.reapOrphansForOrg(ORG_A)).toEqual({ reaped: 1, failed: 0 });
       expect(storage.destroyed).toContain(row.key);
       expect(await destroyedAt(row.id)).not.toBeNull();
@@ -2980,7 +3069,14 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       const who = await freshUploader("a-text");
       const svc = quotaSvc(500);
       const err = await svc
-        .authorize(ORG_A, { userId: who.user, channelId: who.channel, fileName: "q.pdf", contentType: "application/pdf", byteSize: 501, sha256Hex: "e".repeat(64) })
+        .authorize(ORG_A, {
+          userId: who.user,
+          channelId: who.channel,
+          fileName: "q.pdf",
+          contentType: "application/pdf",
+          byteSize: 501,
+          sha256Hex: "e".repeat(64),
+        })
         .catch((e: Error) => e);
       expect((err as Error).message).not.toMatch(/expire/i);
       expect((err as Error).message).toMatch(/destroyed/i);
@@ -3005,10 +3101,16 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         userRequestsPerMinute: 1_000_000,
       });
       const up = await directUpload(weird, who, pdfBytes("l1-weird"));
-      const status = await weird.complete(ORG_A, { userId: who.user, attachmentId: up.attachmentId });
+      const status = await weird.complete(ORG_A, {
+        userId: who.user,
+        attachmentId: up.attachmentId,
+      });
       expect(status.scanState).toBe("pending");
       expect(
-        await count(`SELECT count(*)::int AS n FROM message_attachment WHERE id=$1 AND scan_state='pending'`, [up.attachmentId]),
+        await count(
+          `SELECT count(*)::int AS n FROM message_attachment WHERE id=$1 AND scan_state='pending'`,
+          [up.attachmentId],
+        ),
       ).toBe(1);
     });
 
@@ -3021,7 +3123,9 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       const m1 = (await send(u1, dm, [good.attachmentId])).json().messageId as string;
       const m2 = (await send(u1, dm, [bad.attachmentId])).json().messageId as string;
       expect(await hintCount(m1)).toBe(0);
-      const eventsBefore = await count(`SELECT count(*)::int AS n FROM outbox_event WHERE event_type='m36.message.edited'`);
+      const eventsBefore = await count(
+        `SELECT count(*)::int AS n FROM outbox_event WHERE event_type='m36.message.edited'`,
+      );
       pastBackoff();
       await attachmentScanTick({
         activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
@@ -3031,11 +3135,18 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       expect(await hintCount(m2)).toBe(1);
       expect(lone.attachmentId).toBeTruthy();
       // the unbound file settled too (clean) but announced nothing: no message to refresh
-      const eventsAfter = await count(`SELECT count(*)::int AS n FROM outbox_event WHERE event_type='m36.message.edited'`);
+      const eventsAfter = await count(
+        `SELECT count(*)::int AS n FROM outbox_event WHERE event_type='m36.message.edited'`,
+      );
       expect(eventsAfter - eventsBefore).toBe(2);
       // ids only: the payload carries no body, name or signature
       const payload = JSON.stringify(
-        (await admin.query(`SELECT payload FROM outbox_event WHERE event_type='m36.message.edited' AND aggregate_id=$1`, [m2])).rows[0].payload,
+        (
+          await admin.query(
+            `SELECT payload FROM outbox_event WHERE event_type='m36.message.edited' AND aggregate_id=$1`,
+            [m2],
+          )
+        ).rows[0].payload,
       );
       expect(payload).not.toMatch(/sig|eicar|\.pdf|signature/i);
     });
@@ -3068,16 +3179,22 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
     });
 
     it("F: the provider seam refuses a blank message with no attachments; a blank body with an attachment is stored as empty text", async () => {
-      const { createDbMessagingProvider } = await import("../src/modules/36-messaging/messaging-provider-db");
+      const { createDbMessagingProvider } = await import(
+        "../src/modules/36-messaging/messaging-provider-db"
+      );
       const provider = createDbMessagingProvider(handle.db, { kek: KEK });
       const who = await freshUploader("f-seam");
-      const before = await count(`SELECT count(*)::int AS n FROM message WHERE channel_id=$1`, [who.channel]);
+      const before = await count(`SELECT count(*)::int AS n FROM message WHERE channel_id=$1`, [
+        who.channel,
+      ]);
       for (const body of ["", "   \n\t "]) {
         await expect(
           provider.sendMessage(ORG_A, { channelId: who.channel, authorUserId: who.user, body }),
         ).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
       }
-      expect(await count(`SELECT count(*)::int AS n FROM message WHERE channel_id=$1`, [who.channel])).toBe(before);
+      expect(
+        await count(`SELECT count(*)::int AS n FROM message WHERE channel_id=$1`, [who.channel]),
+      ).toBe(before);
       const up = await directUpload(attachments, who, pdfBytes("f-attach"));
       await attachments.complete(ORG_A, { userId: who.user, attachmentId: up.attachmentId });
       const sent = await provider.sendMessage(ORG_A, {
@@ -3102,7 +3219,11 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       scanner.down = false;
       // complete stamped completed_at (audited); the failed inline attempt only bumped scan_attempts (not audited)
       expect(
-        (await admin.query(`SELECT scan_attempts FROM message_attachment WHERE id=$1`, [up.attachmentId])).rows[0].scan_attempts,
+        (
+          await admin.query(`SELECT scan_attempts FROM message_attachment WHERE id=$1`, [
+            up.attachmentId,
+          ])
+        ).rows[0].scan_attempts,
       ).toBeGreaterThan(0);
       expect(await auditUpdates(up.attachmentId)).toBe(1);
       scanner.down = true;
@@ -3181,7 +3302,16 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       });
       await authorizeBytes(tight, b, 200);
       // a different tenant has its own allowance
-      const orgB = await authorizeBytes(svc, { user: bUser, channel: (await routeService.openDm(ORG_B, bUser, await seedUser("quota-b2", ORG_B))).channelId }, 900_000, ORG_B);
+      const orgB = await authorizeBytes(
+        svc,
+        {
+          user: bUser,
+          channel: (await routeService.openDm(ORG_B, bUser, await seedUser("quota-b2", ORG_B)))
+            .channelId,
+        },
+        900_000,
+        ORG_B,
+      );
       expect(orgB.attachmentId).toBeTruthy();
     });
 
@@ -3193,7 +3323,12 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         authorUserId: who.user,
         body: "bound pending",
       });
-      const insert = (state: string, bound: boolean, completed: boolean, expiresAgoMs: number | null) =>
+      const insert = (
+        state: string,
+        bound: boolean,
+        completed: boolean,
+        expiresAgoMs: number | null,
+      ) =>
         admin.query(
           `INSERT INTO message_attachment (organization_id, channel_id, uploaded_by, message_id, mime_type, byte_size, filename,
              object_key, sha256_hex, completed_at, scan_state, scanned_at, scan_signature, upload_expires_at, created_at)
@@ -3245,7 +3380,10 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         // another user of the same org still uploads (their own allowance is untouched)
         expect((await authorize(u1, dm, pdfBytes("other-user-ok"))).statusCode).toBe(201);
       } finally {
-        await admin.query(`DELETE FROM message_attachment WHERE uploaded_by=$1 AND byte_size=25000000`, [u2]);
+        await admin.query(
+          `DELETE FROM message_attachment WHERE uploaded_by=$1 AND byte_size=25000000`,
+          [u2],
+        );
       }
     });
   });
@@ -3541,12 +3679,26 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
 
     it("every message/attachment/alert read lands a read event, with the resource id on single-resource reads", async () => {
       const { attachmentId } = await uploaded(u1, dm, pdfBytes("wp18-read"));
-      expect((await send(u1, dm, [attachmentId], ORG_A, "wp18 body")).statusCode).toBe(201);
+      const sent = await send(u1, dm, [attachmentId], ORG_A, "wp18 body");
+      expect(sent.statusCode).toBe(201);
+      const rootId = sent.json().messageId as string;
       const get = (url: string) => auditApp.inject({ method: "GET", url, headers: as(u2) });
       const cases: Array<{ url: string; eventType: string; resourceId: string | null }> = [
-        { url: "/api/v1/messaging/channels", eventType: "messaging_channel.list_viewed", resourceId: null },
-        { url: `/api/v1/messaging/channels/${dm}`, eventType: "messaging_channel.viewed", resourceId: dm },
-        { url: `/api/v1/messaging/channels/${dm}/messages`, eventType: "message.list_viewed", resourceId: null },
+        {
+          url: "/api/v1/messaging/channels",
+          eventType: "messaging_channel.list_viewed",
+          resourceId: null,
+        },
+        {
+          url: `/api/v1/messaging/channels/${dm}`,
+          eventType: "messaging_channel.viewed",
+          resourceId: dm,
+        },
+        {
+          url: `/api/v1/messaging/channels/${dm}/messages`,
+          eventType: "message.list_viewed",
+          resourceId: null,
+        },
         {
           url: `/api/v1/messaging/channels/${dm}/mention-candidates?q=a`,
           eventType: "message_mention_candidate.viewed",
@@ -3558,6 +3710,12 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
           resourceId: attachmentId,
         },
         { url: "/api/v1/alerts/inbox", eventType: "alert.list_viewed", resourceId: null },
+        // WP 2.2: the thread read names its root message (a missing resourceIdParam would be swallowed silently)
+        {
+          url: `/api/v1/messaging/channels/${dm}/messages/${rootId}/thread`,
+          eventType: "message.viewed",
+          resourceId: rootId,
+        },
       ];
       for (const c of cases) {
         const before = (await readEvents(c.eventType, c.resourceId)).length;

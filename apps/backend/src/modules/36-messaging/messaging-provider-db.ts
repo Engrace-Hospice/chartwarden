@@ -197,6 +197,7 @@ export function createDbMessagingProvider(
             orgId,
             channelId: input.channelId,
             messageId: sent.messageId,
+            parentMessageId: input.parentMessageId,
             at: sent.createdAt,
           });
           return { messageId: sent.messageId, createdAt: sent.createdAt };

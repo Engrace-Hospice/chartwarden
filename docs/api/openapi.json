@@ -157570,6 +157570,20 @@
                               }
                             ]
                           },
+                          "replyCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "lastReplyAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "references": {
                             "type": "array",
                             "items": {
@@ -157873,6 +157887,518 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/thread": {
+      "get": {
+        "operationId": "getApiV1MessagingChannelsByIdMessagesByMessageIdThread",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "A message and its direct replies, oldest reply first (WP 2.2; channel_visibility ABAC, so a non-member, a removed member and another org get the 404 a random id gets)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "root",
+                    "replies",
+                    "patientId"
+                  ],
+                  "properties": {
+                    "root": {
+                      "type": "object",
+                      "required": [
+                        "messageId",
+                        "channelId",
+                        "authorUserId",
+                        "authorDisplayName",
+                        "body",
+                        "bodyKind",
+                        "createdAt",
+                        "parentMessageId",
+                        "references"
+                      ],
+                      "properties": {
+                        "messageId": {
+                          "type": "string"
+                        },
+                        "channelId": {
+                          "type": "string"
+                        },
+                        "authorUserId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "authorDisplayName": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "body": {
+                          "type": "string"
+                        },
+                        "bodyKind": {
+                          "anyOf": [
+                            {
+                              "const": "plain",
+                              "type": "string"
+                            },
+                            {
+                              "const": "markdown",
+                              "type": "string"
+                            },
+                            {
+                              "const": "system",
+                              "type": "string"
+                            },
+                            {
+                              "const": "rich",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "bodyDoc": {
+                          "type": "object",
+                          "required": [
+                            "schemaVersion",
+                            "doc"
+                          ],
+                          "properties": {
+                            "schemaVersion": {
+                              "const": 1,
+                              "type": "number"
+                            },
+                            "doc": {
+                              "type": "object",
+                              "required": [
+                                "type",
+                                "content"
+                              ],
+                              "properties": {
+                                "type": {
+                                  "const": "doc",
+                                  "type": "string"
+                                },
+                                "content": {
+                                  "maxItems": 500,
+                                  "type": "array",
+                                  "items": {}
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "bodyUnreadable": {
+                          "const": true,
+                          "type": "boolean"
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "parentMessageId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "replyCount": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "lastReplyAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "references": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "kind",
+                              "entityId",
+                              "start",
+                              "end",
+                              "displayLabel",
+                              "navigable"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "anyOf": [
+                                  {
+                                    "const": "staff",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "patient",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "entityId": {
+                                "type": "string"
+                              },
+                              "start": {
+                                "type": "integer"
+                              },
+                              "end": {
+                                "type": "integer"
+                              },
+                              "displayLabel": {
+                                "type": "string"
+                              },
+                              "navigable": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        },
+                        "attachments": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "attachmentId",
+                              "fileName",
+                              "mimeType",
+                              "byteSize",
+                              "availability"
+                            ],
+                            "properties": {
+                              "attachmentId": {
+                                "type": "string"
+                              },
+                              "fileName": {
+                                "type": "string"
+                              },
+                              "mimeType": {
+                                "type": "string"
+                              },
+                              "byteSize": {
+                                "type": "integer"
+                              },
+                              "availability": {
+                                "anyOf": [
+                                  {
+                                    "const": "available",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "scanning",
+                                    "type": "string"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        "hiddenAttachmentCount": {
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "replies": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "messageId",
+                          "channelId",
+                          "authorUserId",
+                          "authorDisplayName",
+                          "body",
+                          "bodyKind",
+                          "createdAt",
+                          "parentMessageId",
+                          "references"
+                        ],
+                        "properties": {
+                          "messageId": {
+                            "type": "string"
+                          },
+                          "channelId": {
+                            "type": "string"
+                          },
+                          "authorUserId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "authorDisplayName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "body": {
+                            "type": "string"
+                          },
+                          "bodyKind": {
+                            "anyOf": [
+                              {
+                                "const": "plain",
+                                "type": "string"
+                              },
+                              {
+                                "const": "markdown",
+                                "type": "string"
+                              },
+                              {
+                                "const": "system",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rich",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "bodyDoc": {
+                            "type": "object",
+                            "required": [
+                              "schemaVersion",
+                              "doc"
+                            ],
+                            "properties": {
+                              "schemaVersion": {
+                                "const": 1,
+                                "type": "number"
+                              },
+                              "doc": {
+                                "type": "object",
+                                "required": [
+                                  "type",
+                                  "content"
+                                ],
+                                "properties": {
+                                  "type": {
+                                    "const": "doc",
+                                    "type": "string"
+                                  },
+                                  "content": {
+                                    "maxItems": 500,
+                                    "type": "array",
+                                    "items": {}
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "bodyUnreadable": {
+                            "const": true,
+                            "type": "boolean"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "parentMessageId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "replyCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "lastReplyAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "references": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "kind",
+                                "entityId",
+                                "start",
+                                "end",
+                                "displayLabel",
+                                "navigable"
+                              ],
+                              "properties": {
+                                "kind": {
+                                  "anyOf": [
+                                    {
+                                      "const": "staff",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "patient",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "entityId": {
+                                  "type": "string"
+                                },
+                                "start": {
+                                  "type": "integer"
+                                },
+                                "end": {
+                                  "type": "integer"
+                                },
+                                "displayLabel": {
+                                  "type": "string"
+                                },
+                                "navigable": {
+                                  "type": "boolean"
+                                }
+                              }
+                            }
+                          },
+                          "attachments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "attachmentId",
+                                "fileName",
+                                "mimeType",
+                                "byteSize",
+                                "availability"
+                              ],
+                              "properties": {
+                                "attachmentId": {
+                                  "type": "string"
+                                },
+                                "fileName": {
+                                  "type": "string"
+                                },
+                                "mimeType": {
+                                  "type": "string"
+                                },
+                                "byteSize": {
+                                  "type": "integer"
+                                },
+                                "availability": {
+                                  "anyOf": [
+                                    {
+                                      "const": "available",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "scanning",
+                                      "type": "string"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          "hiddenAttachmentCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

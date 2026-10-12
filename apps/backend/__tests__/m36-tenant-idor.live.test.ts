@@ -95,6 +95,7 @@ const ROUTES: Record<string, Verdict> = {
   "GET /api/v1/messaging/channels": { kind: "scoped" },
   "GET /api/v1/messaging/channels/:id": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/messages": { kind: "idor" },
+  "GET /api/v1/messaging/channels/:id/messages/:messageId/thread": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/mention-candidates": { kind: "idor" },
   "POST /api/v1/messaging/channels/:id/messages": { kind: "idor" },
   "PATCH /api/v1/messaging/messages/:id": { kind: "idor" },
@@ -881,6 +882,153 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     });
   });
 
+  // ── WP 2.2 threads ─────────────────────────────────────────────────────────────────────────────────────────
+  describe("threads (WP 2.2): permissions are the channel's, counts and paging are exact", () => {
+    const THREAD = "GET /api/v1/messaging/channels/:id/messages/:messageId/thread";
+    let thr: string; // a private channel: u1, u2 active; `outsider` removed
+    let root: string;
+    let replyIds: string[];
+    const send = (who: Who, body: string, parentMessageId?: string, channelId = thr) =>
+      service.sendMessage(who.org, {
+        channelId,
+        authorUserId: who.userId,
+        body,
+        parentMessageId,
+      });
+    const thread = async (who: Who, query = "", channelId = thr, messageId = root) =>
+      call(THREAD, who, { id: channelId, messageId }, undefined, {}, query);
+    const channelPage = async (who: Who, channelId = thr) =>
+      (await call("GET /api/v1/messaging/channels/:id/messages", who, { id: channelId })).json()
+        .messages as Array<{ messageId: string; replyCount?: number; lastReplyAt?: string }>;
+
+    beforeAll(async () => {
+      thr = (
+        await admin.query(
+          `INSERT INTO channel (organization_id, channel_kind, subject_id, title, retention_class)
+           VALUES ($1,'location',$2,'WP22 threads','care_related') RETURNING id`,
+          [orgA, randomUUID()],
+        )
+      ).rows[0].id as string;
+      for (const w of [u1, u2]) {
+        await admin.query(
+          `INSERT INTO channel_member (organization_id, channel_id, user_id, role, source)
+           VALUES ($1,$2,$3,'member','manual')`,
+          [orgA, thr, w.userId],
+        );
+      }
+      await admin.query(
+        `INSERT INTO channel_member (organization_id, channel_id, user_id, role, source, removed_at)
+         VALUES ($1,$2,$3,'member','manual',now())`,
+        [orgA, thr, outsider.userId],
+      );
+      root = (await send(u1, `${SECRET_BODY} thread root`)).messageId;
+      replyIds = [];
+      for (let i = 0; i < 5; i++) {
+        replyIds.push((await send(i % 2 ? u1 : u2, `reply ${i}`, root)).messageId);
+      }
+      // a reply in ANOTHER thread of the same channel and a top-level message: neither counts toward `root`
+      const other = (await send(u1, "other root")).messageId;
+      await send(u2, "other reply", other);
+      // three replies share one created_at to the microsecond, two share the next: the keyset must not skip or repeat
+      await admin.query(
+        `UPDATE message SET created_at = timestamptz '2026-01-01 00:00:00.123456+00' WHERE id = ANY($1)`,
+        [replyIds.slice(0, 3)],
+      );
+      await admin.query(
+        `UPDATE message SET created_at = timestamptz '2026-01-01 00:00:00.123457+00' WHERE id = ANY($1)`,
+        [replyIds.slice(3)],
+      );
+    });
+
+    it("a member reads the root and its replies oldest first, and the channel list carries the same count", async () => {
+      const res = await thread(u2);
+      expect(res.statusCode, res.body).toBe(200);
+      const body = res.json();
+      expect(body.root.messageId).toBe(root);
+      expect(body.root.body).toContain("thread root");
+      expect(body.replies.map((r: { messageId: string }) => r.messageId).sort()).toEqual(
+        [...replyIds].sort(),
+      );
+      expect(
+        body.replies.every((r: { parentMessageId: string }) => r.parentMessageId === root),
+      ).toBe(true);
+      expect(body.root.replyCount).toBe(5);
+      expect(body.root.lastReplyAt).toBe("2026-01-01T00:00:00.123Z");
+      const list = await channelPage(u2);
+      expect(list.find((m) => m.messageId === root)?.replyCount).toBe(5);
+      expect(list.find((m) => m.messageId === replyIds[0])?.replyCount).toBe(0);
+    });
+
+    it("cursor paging returns every reply once, in (created_at, id) order, across microsecond ties", async () => {
+      const seen: string[] = [];
+      let cursor: string | undefined;
+      let pages = 0;
+      do {
+        const res = await thread(u1, `?limit=2${cursor ? `&cursor=${cursor}` : ""}`);
+        expect(res.statusCode, res.body).toBe(200);
+        const page = res.json();
+        seen.push(...page.replies.map((r: { messageId: string }) => r.messageId));
+        cursor = page.nextCursor;
+        pages++;
+      } while (cursor && pages < 10);
+      expect(pages).toBe(3);
+      expect(new Set(seen).size).toBe(seen.length);
+      const expected = (
+        await admin.query(
+          `SELECT id FROM message WHERE parent_message_id=$1 ORDER BY created_at, id`,
+          [root],
+        )
+      ).rows.map((r) => r.id);
+      expect(seen).toEqual(expected);
+    });
+
+    it("a deleted reply leaves the count and stays a bodiless tombstone; a hidden-attachment reply still counts", async () => {
+      const gone = (await send(u2, "WP22-DELETED-REPLY-BODY", root)).messageId;
+      expect((await thread(u1)).json().root.replyCount).toBe(6);
+      await service.deleteMessage(orgA, { userId: u2.userId, messageId: gone });
+      const after = (await thread(u1)).json();
+      expect(after.root.replyCount).toBe(5);
+      const tomb = after.replies.find((r: { messageId: string }) => r.messageId === gone);
+      expect(tomb?.body).toBe("");
+      expect(JSON.stringify(after)).not.toContain("WP22-DELETED-REPLY-BODY");
+      // an attachment-only reply whose file u2 cannot open yet: it is a live row for every member, so it counts
+      const bound = (await send(u1, "", root).catch(() => null)) ?? null;
+      expect(bound).toBeNull(); // a blank body without an attachment is refused (WP 1.5)
+      const withFile = (await send(u1, "with a file nobody can open yet", root)).messageId;
+      await admin.query(
+        `INSERT INTO message_attachment (organization_id, channel_id, message_id, uploaded_by, mime_type, byte_size, filename)
+         VALUES ($1,$2,$3,$4,'application/pdf',10,'wp22.pdf')`,
+        [orgA, thr, withFile, u1.userId],
+      );
+      const seen = (await thread(u2)).json();
+      expect(seen.root.replyCount).toBe(6);
+      expect(
+        seen.replies.find((r: { messageId: string }) => r.messageId === withFile)
+          ?.hiddenAttachmentCount,
+      ).toBe(1);
+      await service.deleteMessage(orgA, { userId: u1.userId, messageId: withFile });
+      expect((await thread(u2)).json().root.replyCount).toBe(5);
+    });
+
+    it("org B, an in-org non-member and a removed member get the answer for a nonexistent id", async () => {
+      expect((await thread(u1)).statusCode).toBe(200); // not vacuous
+      for (const attacker of [bUser, outsider]) {
+        await expectNoOracle(THREAD, attacker, { id: thr, messageId: root });
+      }
+    });
+
+    it("a member of the channel cannot reach a message of ANOTHER channel through the thread route", async () => {
+      // u1 may read locA; msgDmA lives in dmA and root in thr: both are the 404 a random message id gets
+      for (const foreign of [msgDmA, root]) {
+        const real = await thread(u1, "", locA, foreign);
+        const ctl = await thread(u1, "", locA, randomUUID());
+        expect(real.statusCode, real.body).toBe(404);
+        expect(shape(real)).toBe(shape(ctl));
+      }
+      attackers.add(u1.name);
+    });
+  });
+
   describe("dm, staff directory, care-team channel", () => {
     it("org B cannot open a DM with an org A user, same answer as for a random user", async () => {
       attackers.add(bUser.name);
@@ -1324,7 +1472,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         ["cross-org parent", [dmB, orgB, bUser.userId, msgDmA, null], sameChannelFk],
         ["cross-org quote", [dmB, orgB, bUser.userId, null, msgDmA], sameChannelFk],
       ];
-      const asOrg = async <T,>(org: string, fn: (c: Client) => Promise<T>): Promise<T> => {
+      const asOrg = async <T>(org: string, fn: (c: Client) => Promise<T>): Promise<T> => {
         const c = new Client({ connectionString: appUrl });
         await c.connect();
         try {

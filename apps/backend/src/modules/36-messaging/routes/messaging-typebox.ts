@@ -59,6 +59,7 @@ const ResolverSchema = Type.Union([
 
 export const ChannelParamsSchema = Type.Object({ id: Id });
 export const MessageParamsSchema = Type.Object({ id: Id });
+export const ThreadParamsSchema = Type.Object({ id: Id, messageId: Id });
 export const MemberParamsSchema = Type.Object({ id: Id, userId: Id });
 export const PatientConversationParamsSchema = Type.Object({ patientId: Id });
 
@@ -349,6 +350,9 @@ const ResolvedMessageSchema = Type.Object({
   bodyUnreadable: Type.Optional(Type.Literal(true)),
   createdAt: Type.String(),
   parentMessageId: NullableString(),
+  // WP 2.2: live direct replies and the newest one's time (additive; absent on providers that do not compute it).
+  replyCount: Type.Optional(Type.Integer({ minimum: 0 })),
+  lastReplyAt: Type.Optional(NullableString()),
   references: Type.Array(
     Type.Object({
       kind: Type.Union([Type.Literal("staff"), Type.Literal("patient")]),
@@ -364,6 +368,16 @@ const ResolvedMessageSchema = Type.Object({
 });
 export const MessageListResponseSchema = Type.Object({
   messages: Type.Array(ResolvedMessageSchema),
+  nextCursor: Type.Optional(Type.String()),
+  patientId: NullableString(),
+});
+export const ListThreadQuerySchema = Type.Object({
+  cursor: Type.Optional(Type.String()),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+});
+export const ThreadResponseSchema = Type.Object({
+  root: ResolvedMessageSchema,
+  replies: Type.Array(ResolvedMessageSchema),
   nextCursor: Type.Optional(Type.String()),
   patientId: NullableString(),
 });
