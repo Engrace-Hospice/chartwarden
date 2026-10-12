@@ -77,7 +77,9 @@ export function useMessageSender({
   async function send(event?: FormEvent): Promise<void> {
     event?.preventDefault();
     const submitted = draft;
-    if (!submitted.trim() || sending || sendInFlightRef.current || archived) return;
+    // WP 1.5: text OR at least one sendable file (a still-scanning one counts, as before).
+    if (!submitted.trim() && uploads.sendableIds.length === 0) return;
+    if (sending || sendInFlightRef.current || archived) return;
     if (uploads.blocksSend) return;
     const references = draftReferences
       .filter((reference) => reference.end <= submitted.length)
@@ -102,7 +104,8 @@ export function useMessageSender({
           header: { "Idempotency-Key": attempt.idempotencyKey },
         },
         body: {
-          body: submitted,
+          // An attachment-only message omits the text entirely; the server stores an empty body.
+          ...(submitted.trim() ? { body: submitted } : {}),
           references,
           clientMessageId: attempt.clientMessageId,
           ...(attachmentIds.length > 0
@@ -163,7 +166,7 @@ export function sentMessageRow(
     channelId,
     authorUserId: meId,
     authorDisplayName: meDisplayName,
-    body: sent.body,
+    body: sent.body.trim() ? sent.body : "",
     bodyKind: "plain",
     createdAt: sent.createdAt,
     parentMessageId: null,

@@ -751,7 +751,9 @@ export function ConversationThread({
           ) : null}
           <Button
             type="submit"
-            disabled={sending || !draft.trim() || uploads.blocksSend}
+            disabled={
+              sending || (!draft.trim() && uploads.sendableIds.length === 0) || uploads.blocksSend
+            }
             loading={sending}
             aria-label="Send"
             aria-describedby={sendHint ? "messaging-send-hint" : undefined}
