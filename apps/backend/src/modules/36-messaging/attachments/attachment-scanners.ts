@@ -80,17 +80,27 @@ export function createClamdScanner(options: ClamdScannerOptions): ScanPort {
   return {
     name: "clamd",
     endpoint: `${options.host}:${options.port}`,
-    scan({ bytes }) {
+    scan({ bytes, signal }) {
       return new Promise<ScanVerdict>((resolve, reject) => {
         const socket = new Socket();
         const chunks: Buffer[] = [];
         let settled = false;
+        const onAbort = () =>
+          finish(() =>
+            reject(signal?.reason instanceof Error ? signal.reason : new Error("clamd scan aborted")),
+          );
         const finish = (fn: () => void) => {
           if (settled) return;
           settled = true;
-          socket.destroy();
+          signal?.removeEventListener("abort", onAbort);
+          socket.destroy(); // the socket really closes: an aborted scan leaves nothing running
           fn();
         };
+        if (signal?.aborted) {
+          onAbort();
+          return;
+        }
+        signal?.addEventListener("abort", onAbort, { once: true });
         socket.setTimeout(timeoutMs, () => finish(() => reject(new Error("clamd scan timed out"))));
         // Total deadline too: the socket timeout above is only an idle timeout.
         const deadline = setTimeout(

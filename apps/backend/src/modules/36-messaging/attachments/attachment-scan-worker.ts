@@ -7,8 +7,8 @@
 import { MESSAGING_JOB_SCHEDULES, MESSAGING_QUEUES } from "@wardenx/messaging";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { type M36IntegrityWorkerDeps, fanOutOrgs } from "../jobs/integrity-workers";
-import { SCAN_TICK_BUDGET_MS } from "./attachment-policy";
-import { rotateOrgs } from "./attachment-scan-gate";
+import { REAP_TICK_BUDGET_MS, SCAN_TICK_BUDGET_MS } from "./attachment-policy";
+import { fairShareMs, rotateOrgs } from "./attachment-scan-gate";
 import type { AttachmentService, ReapRunResult, ScanRunResult } from "./attachment-service-db";
 
 export interface M36AttachmentScanWorkerDeps
@@ -17,56 +17,96 @@ export interface M36AttachmentScanWorkerDeps
   readonly service: Pick<AttachmentService, "scanPendingForOrg" | "reapOrphansForOrg">;
   /** Epoch ms clock (tests). Default Date.now. */
   readonly nowMs?: () => number;
-  /** Wall-clock budget after which the tick stops starting scans. Default SCAN_TICK_BUDGET_MS. */
+  /** Wall-clock budget of the scan phase, shared fairly across orgs. Default SCAN_TICK_BUDGET_MS. */
   readonly budgetMs?: number;
+  /** Wall-clock budget of the reap phase (its own, independent of the scan phase). Default REAP_TICK_BUDGET_MS. */
+  readonly reapBudgetMs?: number;
 }
 
 /**
- * One tick: scan every active org's pending uploads, then reap its abandoned ones (the reap is a sibling step of the
- * same schedule, so it needs no queue of its own). Returns the summed result (for tests and logs).
+ * One tick, two phases with SEPARATE budgets so neither can starve the other: (1) scan every active org's due pending
+ * uploads within `budgetMs`, (2) reap abandoned uploads within `reapBudgetMs` (a sibling step of the same schedule, so it
+ * needs no queue of its own). Phase 2 runs even when phase 1 throws. Returns the summed result (for tests and logs).
  *
- * Fairness, with no shared state between orgs: the starting org ROTATES every tick (`rotateOrgs`), and the whole tick has
- * a wall-clock budget after which no new scan is started (the cron period is 60 s; each scan is itself deadline-bound, so
- * the tick ends inside the period). Each org's own failures are capped inside `scanPendingForOrg`. An org the budget did
- * not reach is reached on a later tick; a hostile or broken tenant can slow the sweep, never exclude another from it.
+ * Fairness is deterministic and shares no state between orgs: in each phase an org's slice is the budget still unspent
+ * divided by the orgs still to go (`fairShareMs`), so an org that finishes early passes its time on and a slow or failing
+ * org is cut off at its share, leaving every later org its own. Each org with due work always gets its first scan
+ * (reap) started while the phase budget lasts; rotation of the starting org only decides who is cut when there are more
+ * orgs than time. Each org's own failures are capped inside `scanPendingForOrg`; every scan and destroy is deadline-bound
+ * and aborted at its deadline, so a phase ends within its budget plus one such call.
  */
 export async function attachmentScanTick(
   deps: Pick<
     M36AttachmentScanWorkerDeps,
-    "activeOrgs" | "onError" | "service" | "nowMs" | "budgetMs"
+    "activeOrgs" | "onError" | "service" | "nowMs" | "budgetMs" | "reapBudgetMs"
   >,
 ): Promise<ScanRunResult & { readonly reap: ReapRunResult }> {
   const nowMs = deps.nowMs ?? Date.now;
   const startedAt = nowMs();
-  const deadlineMs = startedAt + (deps.budgetMs ?? SCAN_TICK_BUDGET_MS);
-  const rotating = {
-    listActiveOrgs: async () => rotateOrgs(await deps.activeOrgs.listActiveOrgs(), startedAt),
+  const totals = {
+    clean: 0,
+    quarantined: 0,
+    deferred: 0,
+    scannerFailures: 0,
+    storeFailures: 0,
+    scanUnavailable: 0,
   };
-  let clean = 0;
-  let quarantined = 0;
-  let deferred = 0;
-  let scannerFailures = 0;
-  let storeFailures = 0;
-  let reaped = 0;
-  let failed = 0;
-  await fanOutOrgs({ ...deps, activeOrgs: rotating }, "attachment_scan", async (organizationId) => {
-    // The reap is independent of the scan: a scan failure for this org must not also skip its reap (nor starve it forever).
-    try {
-      const result = await deps.service.scanPendingForOrg(organizationId, {
-        budgetMs: Math.max(0, deadlineMs - nowMs()),
-      });
-      clean += result.clean;
-      quarantined += result.quarantined;
-      deferred += result.deferred;
-      scannerFailures += result.scannerFailures;
-      storeFailures += result.storeFailures;
-    } finally {
-      const reap = await deps.service.reapOrphansForOrg(organizationId);
-      reaped += reap.reaped;
-      failed += reap.failed;
-    }
-  });
-  return { clean, quarantined, deferred, scannerFailures, storeFailures, reap: { reaped, failed } };
+  const reapTotals = { reaped: 0, failed: 0 };
+  const phase = (
+    budgetMs: number,
+    job: string,
+    perOrg: (orgId: string, sliceMs: number) => Promise<void>,
+  ) => {
+    const phaseStart = nowMs();
+    let orgsLeft = 0;
+    const rotating = {
+      listActiveOrgs: async () => {
+        const orgs = rotateOrgs(await deps.activeOrgs.listActiveOrgs(), startedAt);
+        orgsLeft = orgs.length;
+        return orgs;
+      },
+    };
+    return fanOutOrgs({ ...deps, activeOrgs: rotating }, job, async (organizationId) => {
+      const slice = fairShareMs(budgetMs - (nowMs() - phaseStart), orgsLeft);
+      orgsLeft -= 1;
+      await perOrg(organizationId, slice);
+    });
+  };
+  const failures: unknown[] = [];
+  try {
+    await phase(
+      deps.budgetMs ?? SCAN_TICK_BUDGET_MS,
+      "attachment_scan",
+      async (organizationId, sliceMs) => {
+        const result = await deps.service.scanPendingForOrg(organizationId, { budgetMs: sliceMs });
+        totals.clean += result.clean;
+        totals.quarantined += result.quarantined;
+        totals.deferred += result.deferred;
+        totals.scannerFailures += result.scannerFailures;
+        totals.storeFailures += result.storeFailures;
+        totals.scanUnavailable += result.scanUnavailable;
+      },
+    );
+  } catch (error) {
+    failures.push(error); // the reap phase still runs; both failures are reported below
+  }
+  try {
+    await phase(
+      deps.reapBudgetMs ?? REAP_TICK_BUDGET_MS,
+      "attachment_reap",
+      async (organizationId, sliceMs) => {
+        const reap = await deps.service.reapOrphansForOrg(organizationId, { budgetMs: sliceMs });
+        reapTotals.reaped += reap.reaped;
+        reapTotals.failed += reap.failed;
+      },
+    );
+  } catch (error) {
+    failures.push(error);
+  }
+  if (failures.length > 0) {
+    throw failures.length === 1 ? failures[0] : new AggregateError(failures, "M36 attachment tick failed in both phases");
+  }
+  return { ...totals, reap: reapTotals };
 }
 
 export function registerM36AttachmentScanWorker(deps: M36AttachmentScanWorkerDeps): Worker[] {

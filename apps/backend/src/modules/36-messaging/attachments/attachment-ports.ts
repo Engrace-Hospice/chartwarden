@@ -17,7 +17,12 @@ export interface AttachmentStoragePort {
     readonly expiresAt: string;
   }>;
   /** Authoritative object metadata; null when nothing was uploaded. */
-  inspect(args: { readonly organizationId: string; readonly objectKey: string }): Promise<{
+  inspect(args: {
+    readonly organizationId: string;
+    readonly objectKey: string;
+    /** Aborts the store call at the service's deadline. A port MUST stop on it (the service backstops one that does not). */
+    readonly signal?: AbortSignal;
+  }): Promise<{
     readonly byteSize: number;
     readonly mimeType: string;
     readonly sha256Hex: string;
@@ -27,6 +32,8 @@ export interface AttachmentStoragePort {
     readonly organizationId: string;
     readonly objectKey: string;
     readonly maxBytes: number;
+    /** Aborts the fetch and the body read at the service's deadline. */
+    readonly signal?: AbortSignal;
   }): Promise<Uint8Array | null>;
   /**
    * A short-lived presigned GET. The URL is never logged. The store is asked to answer it as a download
@@ -45,6 +52,8 @@ export interface AttachmentStoragePort {
   destroyObject(args: {
     readonly organizationId: string;
     readonly objectKey: string;
+    /** Aborts the list/delete calls at the caller's deadline (the reaper and the eraser bound every destroy). */
+    readonly signal?: AbortSignal;
   }): Promise<void>;
 }
 
@@ -60,5 +69,10 @@ export interface ScanPort {
   readonly name: string;
   /** Identifies the backing service (host:port) for diagnostics. Nothing keys shared state on it (no cross-org breaker). */
   readonly endpoint?: string;
-  scan(input: { readonly bytes: Uint8Array; readonly mimeType: string }): Promise<ScanVerdict>;
+  /** `signal` aborts at the service's deadline: the adapter MUST destroy its socket / stop its work and reject. */
+  scan(input: {
+    readonly bytes: Uint8Array;
+    readonly mimeType: string;
+    readonly signal?: AbortSignal;
+  }): Promise<ScanVerdict>;
 }

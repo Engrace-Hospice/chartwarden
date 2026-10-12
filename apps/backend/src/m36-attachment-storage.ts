@@ -27,6 +27,8 @@ import {
 } from "./modules/36-messaging/attachments/attachment-scanners";
 
 const DEFAULT_CLAMD_PORT = 3310;
+/** Backstop for a read with no caller deadline; the service always passes a (shorter) deadline signal. */
+const READ_TIMEOUT_MS = 30_000;
 
 function degraded(): DegradedError {
   return new DegradedError(
@@ -56,8 +58,12 @@ export function createM22BackedAttachmentStorage(stores: {
         sha256Hex,
         ttlSeconds,
       }),
-    inspect: ({ organizationId, objectKey }) =>
-      stores.internalStore.inspectObject({ bucket: bucketOf(organizationId), objectKey }),
+    inspect: ({ organizationId, objectKey, signal }) =>
+      stores.internalStore.inspectObject({
+        bucket: bucketOf(organizationId),
+        objectKey,
+        ...(signal ? { signal } : {}),
+      }),
     presignDownload: ({ organizationId, objectKey, mimeType, ttlSeconds }) =>
       stores.publicStore.presign({
         descriptor: descriptor(organizationId, objectKey, ttlSeconds),
@@ -65,13 +71,14 @@ export function createM22BackedAttachmentStorage(stores: {
         // Never rendered inline: a download, typed as the stored allowlisted type.
         responseOverrides: { contentDisposition: "attachment", contentType: mimeType },
       }),
-    destroyObject: ({ organizationId, objectKey }) =>
+    destroyObject: ({ organizationId, objectKey, signal }) =>
       stores.internalStore.destroyAllVersions({
         bucket: bucketOf(organizationId),
         objectKey,
         organizationId: organizationId as never,
+        ...(signal ? { signal } : {}),
       }),
-    async readBytes({ organizationId, objectKey, maxBytes }) {
+    async readBytes({ organizationId, objectKey, maxBytes, signal }) {
       // The store exposes presign, not GET: sign an internal-endpoint URL and fetch it. The signed URL is a bearer
       // credential, so nothing thrown from here may carry it (fetch errors embed it in `cause`): rethrow sanitized.
       const signed = await stores.internalStore.presign({
@@ -80,7 +87,12 @@ export function createM22BackedAttachmentStorage(stores: {
       });
       let res: Response;
       try {
-        res = await fetch(signed.url, { signal: AbortSignal.timeout(30_000), redirect: "error" });
+        // The caller's deadline signal aborts the request AND the body read (the stream errors when it fires).
+        const timeout = AbortSignal.timeout(READ_TIMEOUT_MS);
+        res = await fetch(signed.url, {
+          signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+          redirect: "error",
+        });
       } catch {
         throw new Error("attachment read failed (store unreachable)");
       }

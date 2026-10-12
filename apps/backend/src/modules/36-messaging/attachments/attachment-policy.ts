@@ -46,8 +46,24 @@ export const UNBOUND_UPLOAD_REAP_AGE_MS = 7 * 24 * 60 * 60 * 1000;
  * once expired) and a real verdict still settles it. It is never deliverable while pending.
  */
 export const MAX_PENDING_SCAN_AGE_MS = 24 * 60 * 60 * 1000;
-/** An expired-pending row is retried by the sweep at most this often. */
+/** An expired-pending row is retried by the sweep at most this often (also the backoff ceiling below). */
 export const EXPIRED_SCAN_RETRY_INTERVAL_MS = 60 * 60 * 1000;
+/**
+ * Retry backoff for a pending row the scanner/store could not judge: the n-th failed attempt waits
+ * `min(SCAN_RETRY_BASE_MS * 2^(n-1), SCAN_RETRY_MAX_MS)` before the sweep tries it again (1, 2, 4, ... 60 min). It never gives
+ * up and never decides: a verdict is final and "the scanner was down" is not one, so the row stays `pending` (never clean,
+ * never quarantined) and keeps being retried at the slow cadence. This only stops the hot loop.
+ */
+export const SCAN_RETRY_BASE_MS = 60 * 1000;
+export const SCAN_RETRY_MAX_MS = EXPIRED_SCAN_RETRY_INTERVAL_MS;
+/**
+ * From this many failed attempts a row is "scan-unavailable": a DERIVED operator signal (reported by the sweep as
+ * `scanUnavailable` and through `onScanUnavailable`), not a stored state and not a verdict. By then the backoff is at its
+ * slow cadence (attempt 7 = 64 min, capped to 60).
+ */
+export const SCAN_UNAVAILABLE_ATTEMPTS = 8;
+/** Backoff exponent clamp, so `power(2, n)` can never overflow in SQL. */
+export const SCAN_RETRY_MAX_EXPONENT = 30;
 /** `complete` makes at most this many inline scan attempts per attachment (counted in `scan_attempts`). */
 export const MAX_INLINE_SCAN_ATTEMPTS = 3;
 /**
@@ -63,7 +79,20 @@ export const OBJECT_MISSING_MIN_SPAN_MS = 15 * 60 * 1000;
  */
 export const MAX_ORG_SCAN_FAILURES_PER_TICK = 2;
 /** ...the whole sweep stops STARTING scans after this much wall time (the cron period is 60 s)... */
-export const SCAN_TICK_BUDGET_MS = 35_000;
+export const SCAN_TICK_BUDGET_MS = 20_000;
+/**
+ * The reap step's OWN budget, separate from the scan budget: a slow reap (hung destroy) cannot starve scanning and a slow
+ * scan cannot starve the reap. Each destroy is itself bounded by REAP_DESTROY_DEADLINE_MS, so a tick ends inside the period:
+ * scan 20 s + one scan overrun 20 s + reap 8 s + one destroy overrun 8 s < 60 s.
+ */
+export const REAP_TICK_BUDGET_MS = 8_000;
+export const REAP_DESTROY_DEADLINE_MS = 8_000;
+/** `complete`'s object inspect is bounded too (a hung store must not hold the request). */
+export const STORAGE_INSPECT_DEADLINE_MS = 15_000;
+/** The eraser bounds each object destroy (it runs in a long job, not in a request or a tick). */
+export const ERASE_DESTROY_DEADLINE_MS = 60_000;
+/** A presigned PUT minted before the erase flag can still land this long after its stated expiry (clock skew allowance). */
+export const ERASE_UPLOAD_URL_GRACE_MS = 60 * 1000;
 /** ...and one scan (read + scanner) is abandoned after this long, so a tick ends within budget + deadline < 60 s. */
 export const SCAN_ROW_DEADLINE_MS = 20_000;
 /** Inline (`complete`) scans in flight: per process, and per org. Over either, the row is left pending for the sweep. */
@@ -74,6 +103,33 @@ export const MAX_QUARANTINED_UPLOADS_PER_USER = 20;
 export const QUARANTINED_UPLOAD_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** Per-user request rate for authorize (counted from rows created) and complete, per rolling minute. */
 export const DEFAULT_USER_REQUESTS_PER_MINUTE = 60;
+
+/** Total stored bytes an org / a single user may hold in attachments (non-erased rows, bound-pending included). */
+export const DEFAULT_ORG_ATTACHMENT_QUOTA_BYTES = 20 * 1024 * 1024 * 1024;
+export const DEFAULT_USER_ATTACHMENT_QUOTA_BYTES = 2 * 1024 * 1024 * 1024;
+
+export interface AttachmentQuota {
+  readonly orgBytes: number;
+  readonly userBytes: number;
+}
+
+/** Digits only: "1e9", "1.5", "-5", "" and "abc" are typos, and a typo must not switch the quota off or on its head. */
+const positiveInt = (raw: string | undefined, fallback: number): number => {
+  const text = raw?.trim() ?? "";
+  const n = /^\d+$/.test(text) ? Number(text) : 0;
+  return Number.isSafeInteger(n) && n > 0 ? n : fallback;
+};
+
+/** MESSAGING_ATTACHMENT_ORG_QUOTA_BYTES / MESSAGING_ATTACHMENT_USER_QUOTA_BYTES; unset or not a positive integer => default. */
+export function attachmentQuotaFromEnv(env: Record<string, string | undefined>): AttachmentQuota {
+  return {
+    orgBytes: positiveInt(env.MESSAGING_ATTACHMENT_ORG_QUOTA_BYTES, DEFAULT_ORG_ATTACHMENT_QUOTA_BYTES),
+    userBytes: positiveInt(
+      env.MESSAGING_ATTACHMENT_USER_QUOTA_BYTES,
+      DEFAULT_USER_ATTACHMENT_QUOTA_BYTES,
+    ),
+  };
+}
 
 /** Pending, attempted and older than the cap: not deliverable and shown as blocked, but still awaiting a real verdict. */
 export function isScanExpired(
@@ -123,6 +179,10 @@ export function validateAuthorizeInput(input: AuthorizeInput): AuthorizeInput {
   }
   return { ...input, fileName: sanitizeFileName(input.fileName) };
 }
+
+/** The advisory-lock name shared by authorize/complete (SHARED) and the tenant eraser (EXCLUSIVE); see migration 1076. */
+export const eraseLockName = (organizationId: string): string =>
+  `m36-attachment-erase:${organizationId}`;
 
 /** Opaque, PHI-free object key (M22 D11 posture): ids only, never the file name. */
 export function attachmentObjectKey(channelId: string, attachmentId: string): string {

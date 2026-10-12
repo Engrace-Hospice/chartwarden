@@ -44,7 +44,12 @@ import {
   OBJECT_MISSING_MIN_SPAN_MS,
   ORPHAN_UPLOAD_GRACE_MS,
   QUARANTINED_UPLOAD_WINDOW_MS,
+  ERASE_UPLOAD_URL_GRACE_MS,
+  SCAN_RETRY_BASE_MS,
+  SCAN_RETRY_MAX_MS,
+  SCAN_UNAVAILABLE_ATTEMPTS,
   UNBOUND_UPLOAD_REAP_AGE_MS,
+  eraseLockName,
 } from "../src/modules/36-messaging/attachments/attachment-policy";
 import type {
   AttachmentStoragePort,
@@ -199,6 +204,10 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
   let attachments: ReturnType<typeof createAttachmentService>;
   const clock = { now: Date.parse("2026-10-12T12:00:00Z") };
   const scanner = { down: false };
+  /** A failed scan is retried with exponential backoff: move the fake clock past the longest wait so the sweep is due. */
+  const pastBackoff = () => {
+    clock.now += SCAN_RETRY_MAX_MS + 1_000;
+  };
   const scanErrors: unknown[] = [];
   let u1: string; // uploader / sender
   let u2: string; // recipient
@@ -338,6 +347,50 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       availability: string;
       fileName: string;
     }>;
+
+  const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+  /** A port call that never answers by itself and tears down `cleanupMs` AFTER the abort signal fires (a socket closing). */
+  const stopsOnAbort = (
+    signal: AbortSignal | undefined,
+    cleanupMs: number,
+    onStopped: () => void,
+  ): Promise<never> =>
+    new Promise<never>((_, reject) => {
+      signal?.addEventListener("abort", () => {
+        setTimeout(() => {
+          onStopped();
+          reject(new Error("work torn down"));
+        }, cleanupMs);
+      });
+    });
+  /** Two fresh members of ORG_A and the DM between them (no per-user history, so caps and quotas start at zero). */
+  async function freshUploader(tag: string, org = ORG_A) {
+    const user = await seedUser(`${tag}-a`, org);
+    const other = await seedUser(`${tag}-b`, org);
+    const channel = (await routeService.openDm(org, user, other)).channelId;
+    return { user, other, channel };
+  }
+  /** authorize through a service directly, then simulate the client PUT. */
+  async function directUpload(
+    svc: ReturnType<typeof createAttachmentService>,
+    who: { user: string; channel: string },
+    bytes: Uint8Array,
+    org = ORG_A,
+  ) {
+    const auth = await svc.authorize(org, {
+      userId: who.user,
+      channelId: who.channel,
+      fileName: "r.pdf",
+      contentType: "application/pdf",
+      byteSize: bytes.length,
+      sha256Hex: sha256(bytes),
+    });
+    const key = (
+      await admin.query(`SELECT object_key FROM message_attachment WHERE id=$1`, [auth.attachmentId])
+    ).rows[0].object_key as string;
+    storage.put(org, key, bytes);
+    return { attachmentId: auth.attachmentId, key };
+  }
 
   beforeAll(async () => {
     admin = new Client({ connectionString: DB_URL });
@@ -706,6 +759,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       expect(shape(await access(u1, attachmentId))).toBe(shape(await access(u1, random))); // even the uploader: not until clean
 
       // the sweep (the worker's tick body) clears it
+      pastBackoff();
       const tick = await attachmentScanTick({
         activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
         service: attachments,
@@ -720,6 +774,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
     it("a scanner outage never produces a clean verdict and the sweep defers instead of failing", async () => {
       scanner.down = true;
       const { attachmentId } = await uploaded(u1, dm, pdfBytes("outage"));
+      pastBackoff();
       const tick = await attachmentScanTick({
         activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
         service: attachments,
@@ -752,6 +807,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         deferred: 0,
         scannerFailures: 0,
         storeFailures: 0,
+        scanUnavailable: 0,
       });
     });
   });
@@ -785,6 +841,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       expect(sent.statusCode).toBe(201);
       const messageId = sent.json().messageId as string;
 
+      pastBackoff();
       await attachmentScanTick({
         activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
         service: attachments,
@@ -1417,11 +1474,14 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       expect(blocked.json()).toMatchObject({ error: { code: "TOO_MANY_QUARANTINED_UPLOADS" } });
       // The cap is per user, and a time bound (no lock-out forever if the reaper credential is missing).
       expect((await authorize(u1, dm, pdfBytes("flag-other-user"))).statusCode).toBe(201);
-      clock.now += QUARANTINED_UPLOAD_WINDOW_MS + 60_000;
+      // created_at is the DB's real clock while `now` is the fake one: age by a whole extra day so the test does not depend
+      // on the time of day it runs.
+      const aging = QUARANTINED_UPLOAD_WINDOW_MS * 2;
+      clock.now += aging;
       try {
         expect((await authorize(u2, dm, pdfBytes("flag-aged-out"))).statusCode).toBe(201);
       } finally {
-        clock.now -= QUARANTINED_UPLOAD_WINDOW_MS + 60_000;
+        clock.now -= aging;
       }
     });
 
@@ -1675,6 +1735,68 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         restore();
       }
     });
+
+    it("a hung destroy is ABORTED at its deadline: the row is kept for the next tick and the reap is not wedged", async () => {
+      const abandoned = await uploaded(u1, dm, pdfBytes("reap-hung"), { complete: false });
+      const key = await keyOf(abandoned.attachmentId);
+      let stopped = false;
+      const hangOne: AttachmentStoragePort = {
+        ...storage.port,
+        destroyObject: (args) =>
+          args.objectKey === key
+            ? stopsOnAbort(args.signal, 20, () => {
+                stopped = true;
+              })
+            : storage.port.destroyObject(args),
+      };
+      const svc = createAttachmentService({
+        db: handle.db,
+        storage: hangOne,
+        canViewChannel: routeService.canViewChannel,
+        now: () => new Date(clock.now),
+        reaperDb: destroyer.db,
+        storageDeadlineMs: 60,
+      });
+      const restore = advance(pastGrace);
+      try {
+        const started = Date.now();
+        const out = await svc.reapOrphansForOrg(ORG_A);
+        expect(out.failed).toBeGreaterThanOrEqual(1);
+        expect(stopped).toBe(true); // torn down, not abandoned to run on
+        expect(Date.now() - started).toBeLessThan(5_000);
+        expect(await exists(abandoned.attachmentId)).toBe(true); // object not confirmed gone => the pointer stays
+      } finally {
+        restore();
+      }
+    });
+
+    it("the reap has a time slice: zero starts nothing, a spent slice stops after the first destroy (which always runs)", async () => {
+      await uploaded(u1, dm, pdfBytes("reap-slice-1"), { complete: false });
+      await uploaded(u1, dm, pdfBytes("reap-slice-2"), { complete: false });
+      const base = clock.now;
+      const ticking: AttachmentStoragePort = {
+        ...storage.port,
+        destroyObject: async (args) => {
+          clock.now += 5_000; // each destroy "takes" 5 s of the service's clock
+          return storage.port.destroyObject(args);
+        },
+      };
+      const svc = createAttachmentService({
+        db: handle.db,
+        storage: ticking,
+        canViewChannel: routeService.canViewChannel,
+        now: () => new Date(clock.now),
+        reaperDb: destroyer.db,
+      });
+      clock.now += pastGrace;
+      try {
+        expect(await svc.reapOrphansForOrg(ORG_A, { budgetMs: 0 })).toEqual({ reaped: 0, failed: 0 });
+        const out = await svc.reapOrphansForOrg(ORG_A, { budgetMs: 1_000, limit: 25 });
+        expect(out).toEqual({ reaped: 1, failed: 0 });
+      } finally {
+        clock.now = base;
+      }
+    });
   });
 
   describe("scan sweep resilience (M3)", () => {
@@ -1803,6 +1925,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       deferred: 0,
       scannerFailures: 0,
       storeFailures: 0,
+      scanUnavailable: 0,
     };
     const tickOf = (
       svc: ReturnType<typeof service>,
@@ -1831,6 +1954,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
           [hostile, ORG_B, orgC, orgD],
           [orgD, orgC, ORG_B, hostile],
         ]) {
+          pastBackoff();
           const result = await tickOf(svc, order);
           // A: 2 scanner failures (its cap), B: 1 store failure (one row) - charged to those orgs alone.
           expect(result.scannerFailures).toBe(MAX_ORG_SCAN_FAILURES_PER_TICK);
@@ -1841,6 +1965,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         expect((await stateOf(brokenB)).scan_state).toBe("pending"); // fail closed
         // A third tick: the poison org's next failure does not "re-open" anything for anyone (there is nothing shared).
         const cNext = await pendingRow("fine-c-2", { org: orgC });
+        pastBackoff();
         const again = await tickOf(svc, [hostile, ORG_B, orgC, orgD]);
         expect(again.scannerFailures).toBe(MAX_ORG_SCAN_FAILURES_PER_TICK);
         expect((await stateOf(cNext)).scan_state).toBe("clean");
@@ -1848,6 +1973,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         storage.readFailure.forOrg = null;
       }
       // The tenant's bucket recovers: its own file is scanned next tick (a store failure never marked anything final).
+      pastBackoff();
       expect(await tickOf(service(poison("POISON")), [ORG_B])).toMatchObject({ clean: 1 });
       expect((await stateOf(brokenB)).scan_state).toBe("clean");
     });
@@ -1898,6 +2024,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       for (const id of ids) expect((await stateOf(id)).scan_state).toBe("pending");
       // No cooldown to wait out: the scanner is back, the next tick scans (the 2 least-recently-attempted rows per org first).
       const up = service(createBuiltinScanner());
+      pastBackoff();
       const first = await tickOf(up, orgs);
       expect(first.clean).toBe(orgs.length * 4); // limit is 50/org: all four rows each
       for (const id of ids) expect((await stateOf(id)).scan_state).toBe("clean");
@@ -1913,6 +2040,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         canViewChannel: routeService.canViewChannel,
         now: () => new Date(clock.now),
         scanDeadlineMs: 60,
+        abortGraceMs: 50, // this scanner ignores the abort signal: the backstop gives up on it
       });
       const started = Date.now();
       expect(await hung.scanPendingForOrg(orgN(12))).toMatchObject({
@@ -1932,7 +2060,9 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         canViewChannel: routeService.canViewChannel,
         now: () => new Date(clock.now),
         scanDeadlineMs: 60,
+        abortGraceMs: 50,
       });
+      pastBackoff(); // the first service's two failures put both rows on retry backoff
       expect(await hungStore.scanPendingForOrg(orgN(12))).toMatchObject({
         storeFailures: 2,
         scannerFailures: 0,
@@ -2162,6 +2292,214 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       expect(key).toContain("messaging/");
       expect(await stateOf(attachmentId)).toMatchObject({ scan_attempts: 1, object_missing_count: 1 });
     });
+
+    describe("hardening: aborted calls, fair shares, retry backoff", () => {
+      it("a hung scanner is ABORTED at the deadline: the work is torn down before the sweep moves on", async () => {
+        await pendingRow("abort-scan", { org: orgN(13) });
+        let stopped = false;
+        const svc = createAttachmentService({
+          db: handle.db,
+          storage: storage.port,
+          scanner: {
+            name: "coop",
+            scan: ({ signal }) =>
+              stopsOnAbort(signal, 30, () => {
+                stopped = true;
+              }),
+          },
+          canViewChannel: routeService.canViewChannel,
+          now: () => new Date(clock.now),
+          scanDeadlineMs: 60,
+        });
+        expect(await svc.scanPendingForOrg(orgN(13))).toMatchObject({
+          scannerFailures: 1,
+          storeFailures: 0,
+        });
+        expect(stopped).toBe(true); // already stopped when the sweep returned, not at the 30 s socket timeout
+      });
+
+      it("a hung bucket read is ABORTED the same way (a store failure)", async () => {
+        await pendingRow("abort-read", { org: orgN(13) });
+        let stopped = false;
+        const svc = createAttachmentService({
+          db: handle.db,
+          storage: {
+            ...storage.port,
+            readBytes: ({ signal }) =>
+              stopsOnAbort(signal, 30, () => {
+                stopped = true;
+              }),
+          },
+          scanner: createBuiltinScanner(),
+          canViewChannel: routeService.canViewChannel,
+          now: () => new Date(clock.now),
+          scanDeadlineMs: 60,
+        });
+        pastBackoff();
+        expect(await svc.scanPendingForOrg(orgN(13))).toMatchObject({ storeFailures: 1 });
+        expect(stopped).toBe(true);
+      });
+
+      it("the inline gate slot is held until the aborted scan has STOPPED (not released at the deadline while work still runs)", async () => {
+        const who = await freshUploader("slot");
+        const gate = createInlineScanGate(1, 1);
+        let stopped = false;
+        const svc = createAttachmentService({
+          db: handle.db,
+          storage: storage.port,
+          scanner: {
+            name: "coop",
+            scan: ({ signal }) =>
+              stopsOnAbort(signal, 300, () => {
+                stopped = true;
+              }),
+          },
+          canViewChannel: routeService.canViewChannel,
+          now: () => new Date(clock.now),
+          scanDeadlineMs: 100,
+          inlineScanGate: gate,
+          userRequestsPerMinute: 1_000_000,
+        });
+        const { attachmentId } = await directUpload(svc, who, pdfBytes("slot"));
+        const call = svc.complete(ORG_A, { userId: who.user, attachmentId });
+        await sleep(250); // past the 100 ms deadline, before the 300 ms teardown has finished
+        expect(stopped).toBe(false);
+        expect(gate.tryAcquire(ORG_A)).toBeNull(); // the work is still running, so the slot is still taken
+        const status = await call;
+        expect(stopped).toBe(true);
+        expect(status.scanState).toBe("pending"); // fail closed
+        const free = gate.tryAcquire(ORG_A);
+        expect(free).not.toBeNull();
+        free?.();
+      });
+
+      it("a hung object-store inspect in complete is aborted at its deadline: a typed 503, not a hung request", async () => {
+        const who = await freshUploader("inspect");
+        let stopped = false;
+        const svc = createAttachmentService({
+          db: handle.db,
+          storage: {
+            ...storage.port,
+            inspect: ({ signal }) =>
+              stopsOnAbort(signal, 10, () => {
+                stopped = true;
+              }),
+          },
+          scanner: createBuiltinScanner(),
+          canViewChannel: routeService.canViewChannel,
+          now: () => new Date(clock.now),
+          storageDeadlineMs: 60,
+          userRequestsPerMinute: 1_000_000,
+        });
+        const { attachmentId } = await directUpload(svc, who, pdfBytes("inspect"));
+        await expect(svc.complete(ORG_A, { userId: who.user, attachmentId })).rejects.toMatchObject({
+          code: "DEGRADED",
+        });
+        expect(stopped).toBe(true);
+      });
+
+      it("a tiny slice still starts the org's first due scan; a zero slice starts none", async () => {
+        const org = orgN(14);
+        for (let i = 0; i < 3; i += 1) await pendingRow(`slice-${i}`, { org });
+        let calls = 0;
+        const base = clock.now;
+        const svc = service({
+          name: "slow",
+          async scan(input) {
+            calls += 1;
+            clock.now += 5_000;
+            return createBuiltinScanner().scan(input);
+          },
+        });
+        try {
+          expect(await svc.scanPendingForOrg(org, { budgetMs: 0 })).toMatchObject({ clean: 0 });
+          expect(calls).toBe(0);
+          expect(await svc.scanPendingForOrg(org, { budgetMs: 1_000 })).toMatchObject({ clean: 1 });
+          expect(calls).toBe(1); // the first scan always starts; the slice is spent after it
+        } finally {
+          clock.now = base;
+        }
+      });
+
+      it("the tick gives EVERY org with pending work its share however slow each scan is (deterministic fair share, not rotation luck)", async () => {
+        const orgs = [orgN(15), orgN(16), orgN(17)];
+        for (const org of orgs) for (let i = 0; i < 4; i += 1) await pendingRow(`share-${i}`, { org });
+        const base = clock.now;
+        const svc = service({
+          name: "slow",
+          async scan(input) {
+            clock.now += 10_000; // every scan "takes" 10 s
+            return createBuiltinScanner().scan(input);
+          },
+        });
+        try {
+          await attachmentScanTick({
+            activeOrgs: { listActiveOrgs: async () => orgs.map((organizationId) => ({ organizationId })) } as never,
+            service: svc,
+            nowMs: () => clock.now,
+            budgetMs: 60_000, // 3 orgs => a 20 s slice each => 2 scans each (the old greedy loop gave the first org 4 and the last 0)
+            reapBudgetMs: 3_000,
+          });
+        } finally {
+          clock.now = base;
+        }
+        for (const org of orgs) {
+          expect(
+            await count(
+              `SELECT count(*)::int AS n FROM message_attachment WHERE organization_id=$1 AND scan_state='clean'`,
+              [org],
+            ),
+          ).toBe(2);
+        }
+      });
+
+      it("a row nobody can judge backs off exponentially (1, 2, 4 ... capped at 60 min), is never hot-looped, surfaces scan-unavailable past the ceiling, and is NEVER clean or quarantined by it", async () => {
+        const org = orgN(18);
+        const id = await pendingRow("backoff", { org });
+        let calls = 0;
+        const unavailable: number[] = [];
+        const svc = createAttachmentService({
+          db: handle.db,
+          storage: storage.port,
+          scanner: {
+            name: "down",
+            async scan() {
+              calls += 1;
+              throw new Error("clamd unreachable");
+            },
+          },
+          canViewChannel: routeService.canViewChannel,
+          now: () => new Date(clock.now),
+          onScanUnavailable: ({ attempts }) => unavailable.push(attempts),
+        });
+        const waitFor = (attempt: number) =>
+          Math.min(SCAN_RETRY_BASE_MS * 2 ** (attempt - 1), SCAN_RETRY_MAX_MS);
+        const base = clock.now;
+        try {
+          for (let attempt = 1; attempt <= SCAN_UNAVAILABLE_ATTEMPTS + 2; attempt += 1) {
+            const before = calls;
+            const out = await svc.scanPendingForOrg(org);
+            expect(calls).toBe(before + 1); // due: tried exactly once
+            expect(out.scanUnavailable).toBe(attempt >= SCAN_UNAVAILABLE_ATTEMPTS ? 1 : 0);
+            clock.now += waitFor(attempt) - 1_000; // just inside the wait...
+            await svc.scanPendingForOrg(org);
+            expect(calls).toBe(before + 1); // ...not retried
+            clock.now += 2_000; // wait elapsed
+          }
+          expect(waitFor(SCAN_UNAVAILABLE_ATTEMPTS + 2)).toBe(SCAN_RETRY_MAX_MS); // the slow, bounded cadence
+          expect(unavailable[0]).toBe(SCAN_UNAVAILABLE_ATTEMPTS);
+          expect(await stateOf(id)).toMatchObject({ scan_state: "pending", scan_signature: null });
+          expect(
+            (await admin.query(`SELECT scanned_at FROM message_attachment WHERE id=$1`, [id])).rows[0]
+              .scanned_at,
+          ).toBeNull();
+          // the scanner recovers: a REAL verdict still settles it (verdict-final is untouched)
+          expect(await service(createBuiltinScanner()).scanPendingForOrg(org)).toMatchObject({ clean: 1 });
+        } finally {
+          clock.now = base;
+        }
+      });
+    });
   });
 
   // Mutation check done by hand: removing `.for("update")` from bindAttachmentsInTx does NOT fail this test. The bind is
@@ -2218,6 +2556,272 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       storage.downloadMimeTypes.length = 0;
       expect((await access(u2, attachmentId)).statusCode).toBe(200);
       expect(storage.downloadMimeTypes).toEqual(["application/pdf"]);
+    });
+  });
+
+  describe("hardening: the late-upload race at tenant erase (migration 1076)", () => {
+    let seqE = 0;
+    async function erasable() {
+      seqE += 1;
+      const org = `66666666-6666-4666-8666-6666000f${String(seqE).padStart(4, "0")}`;
+      await admin.query(
+        `INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,'R','R')`,
+        [org, `wp15-race-${seqE}`],
+      );
+      const who = await freshUploader(`race${seqE}`, org);
+      const svc = createAttachmentService({
+        db: handle.db,
+        storage: storage.port,
+        scanner: createBuiltinScanner(),
+        canViewChannel: routeService.canViewChannel,
+        now: () => new Date(clock.now),
+        userRequestsPerMinute: 1_000_000,
+      });
+      const { createDrizzleMessagingEraseStore } = await import(
+        "../src/modules/36-messaging/erasers/messaging-eraser"
+      );
+      const eraserAt = (atMs: number, db = destroyer.db) =>
+        createDrizzleMessagingEraseStore(db, {
+          attachmentStorage: storage.port,
+          now: () => new Date(atMs),
+        });
+      const flagged = () =>
+        count(`SELECT count(*)::int AS n FROM messaging_erase_block WHERE organization_id=$1`, [org]);
+      const rows = () =>
+        count(`SELECT count(*)::int AS n FROM message_attachment WHERE organization_id=$1`, [org]);
+      return { org, who, svc, eraserAt, flagged, rows };
+    }
+
+    it("the eraser flags the tenant FIRST: authorize and complete refuse from then on, upload URLs already minted must expire before anything is destroyed, then nothing is orphaned", async () => {
+      const { org, who, svc, eraserAt, flagged, rows } = await erasable();
+      const pending = await directUpload(svc, who, pdfBytes("race-pending"), org); // URL minted, not yet completed
+      const ttlEnd = clock.now + ATTACHMENT_UPLOAD_TTL_SECONDS * 1000;
+
+      // 1. Erase while a minted URL is still valid: refused, retryable, NOTHING destroyed, but the door is already shut.
+      const before = storage.destroyed.length;
+      await expect(eraserAt(clock.now).deleteStructuralRows(org)).rejects.toMatchObject({
+        code: "DEGRADED",
+      });
+      expect(await flagged()).toBe(1);
+      expect(storage.destroyed.length).toBe(before);
+      expect(await rows()).toBe(1);
+      await expect(
+        directUpload(svc, who, pdfBytes("race-late"), org),
+      ).rejects.toMatchObject({ code: "TENANT_ERASURE_IN_PROGRESS", statusCode: 409 });
+      await expect(
+        svc.complete(org, { userId: who.user, attachmentId: pending.attachmentId }),
+      ).rejects.toMatchObject({ code: "TENANT_ERASURE_IN_PROGRESS", statusCode: 409 });
+      expect(await rows()).toBe(1); // the refused authorize created nothing
+
+      // 2. The client PUTs inside the URL's life (after the first erase attempt): that object must not survive the erase.
+      storage.put(org, pending.key, pdfBytes("race-put-after-flag"));
+
+      // 3. Once every minted URL has expired (plus the skew grace) the erase destroys the bytes, then the rows.
+      await eraserAt(ttlEnd + ERASE_UPLOAD_URL_GRACE_MS + 1_000).deleteStructuralRows(org);
+      expect(storage.objects.has(`${org}/${pending.key}`)).toBe(false);
+      expect(await rows()).toBe(0);
+    });
+
+    it("the race itself: an authorize in flight when the eraser tries to flag the tenant makes the eraser WAIT, and its row is then seen (never missed)", async () => {
+      const { org, who, eraserAt, flagged, rows } = await erasable();
+      // An authorize that has taken the shared lock and inserted its row but not committed (what authorize does).
+      const inflight = new Client({ connectionString: DB_URL });
+      await inflight.connect();
+      try {
+        await inflight.query("BEGIN");
+        await inflight.query(`SELECT pg_advisory_xact_lock_shared(hashtextextended($1, 0))`, [
+          eraseLockName(org),
+        ]);
+        const id = randomUUID();
+        const key = `messaging/${who.channel}/${id}`;
+        await inflight.query(
+          `INSERT INTO message_attachment (id, organization_id, channel_id, uploaded_by, mime_type, byte_size, filename, object_key, sha256_hex, upload_expires_at)
+           VALUES ($1,$2,$3,$4,'application/pdf',5,'x.pdf',$5,$6,$7)`,
+          [id, org, who.channel, who.user, key, "a".repeat(64), new Date(clock.now + 600_000).toISOString()],
+        );
+        let settled = false;
+        const erase = eraserAt(clock.now).deleteStructuralRows(org);
+        erase.then(
+          () => {
+            settled = true;
+          },
+          () => {
+            settled = true;
+          },
+        );
+        await sleep(500);
+        expect(settled).toBe(false); // blocked on the exclusive lock: it cannot flag past an in-flight authorize
+        expect(await flagged()).toBe(0);
+        await inflight.query("COMMIT");
+        // The row the authorize committed is now visible to the eraser: its URL is still valid, so it refuses (retryable)
+        // instead of deleting a row whose object could still land.
+        await expect(erase).rejects.toMatchObject({ code: "DEGRADED" });
+        expect(await flagged()).toBe(1);
+        expect(await rows()).toBe(1);
+      } finally {
+        await inflight.query("ROLLBACK").catch(() => undefined);
+        await inflight.end();
+      }
+    });
+
+    it("a misconfigured eraser run (no destruction credential) is refused BEFORE it flags the tenant: it must not lock a live org out of uploads", async () => {
+      const { org, who, svc, eraserAt, flagged } = await erasable();
+      const { attachmentId } = await directUpload(svc, who, pdfBytes("race-misconfig"), org);
+      await expect(eraserAt(clock.now, handle.db).deleteStructuralRows(org)).rejects.toMatchObject({
+        code: "DEGRADED",
+      });
+      expect(await flagged()).toBe(0);
+      // still accepting work: the upload completes (and scans clean), it is not refused as "erasing"
+      await expect(svc.complete(org, { userId: who.user, attachmentId })).resolves.toMatchObject({
+        scanState: "clean",
+      });
+    });
+
+    it("the flag cannot be cleared by the app role (insert-only), and is isolated per tenant", async () => {
+      const { org, eraserAt } = await erasable();
+      await eraserAt(clock.now).deleteStructuralRows(org); // no attachments: flags and finishes
+      const c = new Client({ connectionString: appRoleUrl(DB_URL as string) });
+      await c.connect();
+      try {
+        await c.query("BEGIN");
+        await c.query(`SELECT set_config('app.org_id', $1, true)`, [org]);
+        await expect(c.query(`DELETE FROM messaging_erase_block`)).rejects.toThrow(/permission denied/i);
+        await c.query("ROLLBACK");
+        await c.query("BEGIN");
+        await c.query(`SELECT set_config('app.org_id', $1, true)`, [ORG_A]);
+        const other = await c.query(`SELECT count(*)::int AS n FROM messaging_erase_block`);
+        expect(other.rows[0].n).toBe(0); // ORG_A sees none of other tenants' flags
+        await c.query("ROLLBACK");
+      } finally {
+        await c.end();
+      }
+    });
+  });
+
+  describe("hardening: total stored-bytes quota (per user and per org)", () => {
+    const quotaService = (quota: { orgBytes: number; userBytes: number }) =>
+      createAttachmentService({
+        db: handle.db,
+        storage: storage.port,
+        scanner: createBuiltinScanner(),
+        canViewChannel: routeService.canViewChannel,
+        now: () => new Date(clock.now),
+        userRequestsPerMinute: 1_000_000,
+        quota,
+      });
+    const authorizeBytes = (
+      svc: ReturnType<typeof createAttachmentService>,
+      who: { user: string; channel: string },
+      byteSize: number,
+      org = ORG_A,
+    ) =>
+      svc.authorize(org, {
+        userId: who.user,
+        channelId: who.channel,
+        fileName: "q.pdf",
+        contentType: "application/pdf",
+        byteSize,
+        sha256Hex: "b".repeat(64),
+      });
+
+    it("a user over their allowance gets a typed 413 ATTACHMENT_QUOTA_EXCEEDED (scope user); exactly filling it is allowed", async () => {
+      const who = await freshUploader("quota-user");
+      const svc = quotaService({ orgBytes: 1_000_000_000, userBytes: 1_000 });
+      await authorizeBytes(svc, who, 600);
+      await expect(authorizeBytes(svc, who, 401)).rejects.toMatchObject({
+        code: "ATTACHMENT_QUOTA_EXCEEDED",
+        statusCode: 413,
+        details: [{ field: "scope", message: "user" }],
+      });
+      await authorizeBytes(svc, who, 400); // 600 + 400 = exactly 1000
+      await expect(authorizeBytes(svc, who, 1)).rejects.toMatchObject({ statusCode: 413 });
+    });
+
+    it("an org over its allowance is refused for EVERY user of it (scope organization); another org is unaffected", async () => {
+      const a = await freshUploader("quota-org-a");
+      const b = await freshUploader("quota-org-b");
+      const svc = quotaService({ orgBytes: 1_000_000, userBytes: 1_000_000 });
+      // fill most of ORG_A (the suite's earlier rows count too): read what is used, leave exactly 500 bytes of room
+      const used = await count(
+        `SELECT COALESCE(SUM(byte_size),0)::bigint AS n FROM message_attachment
+          WHERE organization_id=$1 AND (completed_at IS NOT NULL OR upload_expires_at > $2::timestamptz)`,
+        [ORG_A, new Date(clock.now).toISOString()],
+      );
+      const tight = quotaService({ orgBytes: Number(used) + 500, userBytes: 1_000_000 });
+      await authorizeBytes(tight, a, 300);
+      await expect(authorizeBytes(tight, b, 300)).rejects.toMatchObject({
+        code: "ATTACHMENT_QUOTA_EXCEEDED",
+        statusCode: 413,
+        details: [{ field: "scope", message: "organization" }],
+      });
+      await authorizeBytes(tight, b, 200);
+      // a different tenant has its own allowance
+      const orgB = await authorizeBytes(svc, { user: bUser, channel: (await routeService.openDm(ORG_B, bUser, await seedUser("quota-b2", ORG_B))).channelId }, 900_000, ORG_B);
+      expect(orgB.attachmentId).toBeTruthy();
+    });
+
+    it("counts a BOUND file that is still pending (the old caps never saw it), quarantined files, and live unfinished uploads; not expired unfinished ones", async () => {
+      const who = await freshUploader("quota-count");
+      const svc = quotaService({ orgBytes: 1_000_000_000, userBytes: 10_000 });
+      const sent = await routeService.sendMessage(ORG_A, {
+        channelId: who.channel,
+        authorUserId: who.user,
+        body: "bound pending",
+      });
+      const insert = (state: string, bound: boolean, completed: boolean, expiresAgoMs: number | null) =>
+        admin.query(
+          `INSERT INTO message_attachment (organization_id, channel_id, uploaded_by, message_id, mime_type, byte_size, filename,
+             object_key, sha256_hex, completed_at, scan_state, scanned_at, scan_signature, upload_expires_at, created_at)
+           VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,'application/pdf',3000,'c.pdf','messaging/'||$2::uuid::text||'/'||gen_random_uuid(), repeat('a',64),
+             $5::timestamptz, $6::text, CASE WHEN $6::text='pending' THEN NULL ELSE now() END, CASE WHEN $6::text='quarantined' THEN 'sig' ELSE NULL END, $7::timestamptz, now() - interval '3 days')`,
+          [
+            ORG_A,
+            who.channel,
+            who.user,
+            bound ? sent.messageId : null,
+            completed ? new Date(clock.now).toISOString() : null,
+            state,
+            expiresAgoMs === null ? null : new Date(clock.now - expiresAgoMs).toISOString(),
+          ],
+        );
+      await insert("pending", true, true, null); // bound + pending + completed: 3000
+      await insert("quarantined", false, true, null); // quarantined: 3000 (the bytes are still in the bucket)
+      await insert("pending", false, false, -600_000); // unfinished, URL still live (expires in 10 min): 3000
+      await insert("pending", false, false, 3_600_000); // unfinished, URL expired an hour ago: NOT counted
+      // used = 9000 of 10000: a 1000 fits, a 1001 does not
+      await expect(authorizeBytes(svc, who, 1_001)).rejects.toMatchObject({ statusCode: 413 });
+      await authorizeBytes(svc, who, 1_000);
+    });
+
+    it("freed on reap/erase: a reaped upload stops counting", async () => {
+      const who = await freshUploader("quota-free");
+      const svc = quotaService({ orgBytes: 1_000_000_000, userBytes: 500 });
+      const first = await authorizeBytes(svc, who, 500);
+      await expect(authorizeBytes(svc, who, 1)).rejects.toMatchObject({ statusCode: 413 });
+      await admin.query(`DELETE FROM message_attachment WHERE id=$1`, [first.attachmentId]); // what the reaper/eraser do
+      await authorizeBytes(svc, who, 500);
+    });
+
+    it("over the HTTP route: 413 with the standard error envelope and the quota code", async () => {
+      // 90 x 25 MB quarantined rows (old enough to be outside every other cap) put `u2` over the 2 GiB default.
+      await admin.query(
+        `INSERT INTO message_attachment (organization_id, channel_id, uploaded_by, mime_type, byte_size, filename,
+           object_key, sha256_hex, completed_at, scan_state, scanned_at, scan_signature, created_at)
+         SELECT $1::uuid,$2::uuid,$3::uuid,'application/pdf',25000000,'big.pdf','messaging/'||$2::text||'/'||gen_random_uuid(), repeat('a',64),
+           now() - interval '3 days','quarantined', now() - interval '3 days','sig', now() - interval '3 days'
+         FROM generate_series(1,90)`,
+        [ORG_A, dm, u2],
+      );
+      try {
+        const res = await authorize(u2, dm, pdfBytes("over-quota"));
+        expect(res.statusCode).toBe(413);
+        expect(res.json()).toMatchObject({ error: { code: "ATTACHMENT_QUOTA_EXCEEDED" } });
+        expect(res.json().error.correlationId).toBeTruthy();
+        // another user of the same org still uploads (their own allowance is untouched)
+        expect((await authorize(u1, dm, pdfBytes("other-user-ok"))).statusCode).toBe(201);
+      } finally {
+        await admin.query(`DELETE FROM message_attachment WHERE uploaded_by=$1 AND byte_size=25000000`, [u2]);
+      }
     });
   });
 

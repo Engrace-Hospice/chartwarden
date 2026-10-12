@@ -138,6 +138,8 @@ export interface ObjectStorePort {
   inspectObject(args: {
     readonly bucket: string;
     readonly objectKey: string;
+    /** Optional: aborts the request (M36 attachments bound every store call). Ignored by stores that cannot abort. */
+    readonly signal?: AbortSignal;
   }): Promise<{
     readonly byteSize: number;
     readonly mimeType: string;
@@ -158,6 +160,8 @@ export interface ObjectStorePort {
     readonly bucket: string;
     readonly objectKey: string;
     readonly organizationId: OrgId;
+    /** Optional: aborts the list/delete requests (see `inspectObject`). */
+    readonly signal?: AbortSignal;
   }): Promise<void>;
 }
 

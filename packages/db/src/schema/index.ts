@@ -125,6 +125,7 @@ export * from "./messaging/message-entity-references";
 export * from "./messaging/message-revisions";
 export * from "./messaging/message-attachments";
 export * from "./messaging/attachment-access-events";
+export * from "./messaging/messaging-erase-blocks";
 export * from "./messaging/message-receipts";
 export * from "./messaging/presence";
 export * from "./messaging/delivery-endpoints";

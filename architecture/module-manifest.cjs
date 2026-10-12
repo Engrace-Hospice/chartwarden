@@ -236,6 +236,7 @@ exports.MODULES = [
       "message_revision",
       "message_attachment",
       "attachment_access_event",
+      "messaging_erase_block",
       "message_receipt",
       "notification_delivery",
       "presence",

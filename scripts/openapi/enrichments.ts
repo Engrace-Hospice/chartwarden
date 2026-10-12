@@ -8949,14 +8949,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
   // WP 1.5 attachments (scan-gated; every refusal is the 404 a random id gets)
   "POST /api/v1/messaging/attachments/uploads": {
     summary:
-      "Authorize an attachment upload: returns attachmentId + a presigned PUT (201; 415 type, 422 size/checksum/name, 410 archived, 429 TOO_MANY_OPEN_UPLOADS past 20 open uploads per user; Idempotency-Key required; Cache-Control: no-store)",
+      "Authorize an attachment upload: returns attachmentId + a presigned PUT (201; 415 type, 422 size/checksum/name, 410 archived, 413 ATTACHMENT_QUOTA_EXCEEDED when the user's or the organization's total stored bytes would pass the quota (details[0].message is the scope: user | organization), 409 TENANT_ERASURE_IN_PROGRESS while the organization's messaging data is being erased, 429 TOO_MANY_OPEN_UPLOADS past 20 open uploads per user; Idempotency-Key required; Cache-Control: no-store)",
     headers: IDEMPOTENCY_KEY_HEADER,
     body: M36AuthorizeAttachmentBodySchema,
     response: M36AuthorizeAttachmentResponseSchema,
   },
   "POST /api/v1/messaging/attachments/:id/complete": {
     summary:
-      "Uploader verifies the object landed (409 ATTACHMENT_NOT_UPLOADED, 422 ATTACHMENT_UPLOAD_MISMATCH) and triggers the malware scan; scanState stays pending until a verdict (Idempotency-Key required; Cache-Control: no-store)",
+      "Uploader verifies the object landed (409 ATTACHMENT_NOT_UPLOADED or TENANT_ERASURE_IN_PROGRESS, 422 ATTACHMENT_UPLOAD_MISMATCH, 503 DEGRADED when the object store does not answer in time) and triggers the malware scan; scanState stays pending until a verdict (Idempotency-Key required; Cache-Control: no-store)",
     headers: IDEMPOTENCY_KEY_HEADER,
     response: M36AttachmentStatusResponseSchema,
   },

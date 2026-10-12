@@ -22,48 +22,58 @@ import { type AuditExecutor, audit } from "@wardenx/audit";
 import { type DbClient, schema } from "@wardenx/db";
 import type { MessageAttachmentView } from "@wardenx/messaging";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, RateLimitedError, WardenXError } from "@wardenx/types";
+import { DegradedError, NotFoundError, RateLimitedError, WardenXError } from "@wardenx/types";
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { HintOutboxPort } from "../message-hint-events";
 import {
+  type AttachmentQuota,
   ATTACHMENT_ACCESS_TTL_SECONDS,
   ATTACHMENT_UPLOAD_TTL_SECONDS,
   MAX_ATTACHMENTS_PER_MESSAGE,
   DEFAULT_USER_REQUESTS_PER_MINUTE,
-  EXPIRED_SCAN_RETRY_INTERVAL_MS,
   MAX_ATTACHMENT_BYTES,
   MAX_INLINE_SCANS_PER_ORG,
   MAX_INLINE_SCANS_PER_PROCESS,
   MAX_INLINE_SCAN_ATTEMPTS,
   MAX_OPEN_UPLOADS_PER_USER,
   MAX_ORG_SCAN_FAILURES_PER_TICK,
-  MAX_PENDING_SCAN_AGE_MS,
   MAX_QUARANTINED_UPLOADS_PER_USER,
   OBJECT_MISSING_MIN_OBSERVATIONS,
   OBJECT_MISSING_MIN_SPAN_MS,
   ORPHAN_UPLOAD_GRACE_MS,
   QUARANTINED_UPLOAD_WINDOW_MS,
+  REAP_DESTROY_DEADLINE_MS,
+  SCAN_RETRY_BASE_MS,
+  SCAN_RETRY_MAX_EXPONENT,
+  SCAN_RETRY_MAX_MS,
   SCAN_ROW_DEADLINE_MS,
+  SCAN_UNAVAILABLE_ATTEMPTS,
+  STORAGE_INSPECT_DEADLINE_MS,
   UNBOUND_UPLOAD_BIND_MAX_AGE_MS,
   UNBOUND_UPLOAD_REAP_AGE_MS,
   attachmentObjectKey,
+  attachmentQuotaFromEnv,
+  eraseLockName,
   isScanExpired,
   validateAuthorizeInput,
 } from "./attachment-policy";
 import type { AttachmentStoragePort, ScanPort } from "./attachment-ports";
 import {
+  ABORT_SETTLE_GRACE_MS,
   type InlineScanGate,
   type ScanFailureKind,
   ScanFailure,
   createFixedWindowCounter,
   createInlineScanGate,
-  withDeadline,
+  runWithDeadline,
+  throwIfAborted,
 } from "./attachment-scan-gate";
 
 const ATT = schema.messageAttachments;
 const AE = schema.attachmentAccessEvents;
 const CH = schema.channels;
 const MSG = schema.messages;
+const EB = schema.messagingEraseBlocks;
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
@@ -113,6 +123,12 @@ export interface ScanRunResult {
   readonly scannerFailures: number;
   /** Of `deferred`: the tenant's own side failed (its bucket 5xx/unreachable, or the database). Charged to that org only. */
   readonly storeFailures: number;
+  /**
+   * Rows this sweep failed on that have now failed SCAN_UNAVAILABLE_ATTEMPTS times or more: the operator signal "the scan
+   * pipeline has been unable to judge this file for a long time". Derived, not a state: the rows stay `pending`
+   * (never clean, never quarantined) and keep being retried at the slow backoff cadence.
+   */
+  readonly scanUnavailable: number;
 }
 
 export interface ReapRunResult {
@@ -134,6 +150,14 @@ export interface AttachmentServiceDeps {
   readonly scanOnComplete?: boolean;
   readonly now?: () => Date;
   readonly onScanError?: (context: { attachmentId: string }, error: unknown) => void;
+  /** Called (alert-worthy) when a sweep failure leaves a row at/over SCAN_UNAVAILABLE_ATTEMPTS failed attempts. */
+  readonly onScanUnavailable?: (context: { attachmentId: string; attempts: number }) => void;
+  /** Total stored-bytes quotas enforced at authorize. Default: `attachmentQuotaFromEnv(process.env)`. */
+  readonly quota?: AttachmentQuota;
+  /** Test override of the storage-call deadlines (complete's inspect, the reaper's destroy). Default per-call constants. */
+  readonly storageDeadlineMs?: number;
+  /** After a deadline aborts a port call, how long to wait for it to really stop before giving up on it. Default 5 s. */
+  readonly abortGraceMs?: number;
   /**
    * The credential that may DELETE `message_attachment` rows (`wardenx_destruction`; the app role has no DELETE grant).
    * Absent => the orphan reaper is a no-op and abandoned uploads accumulate (bytes and rows) until it is bound.
@@ -170,7 +194,9 @@ export interface AttachmentService {
    * One org's sweep: scan every completed, still-pending attachment (least-recently-attempted first, bounded). Stops
    * after MAX_ORG_SCAN_FAILURES_PER_TICK failures of its own, and stops STARTING scans once `budgetMs` (the tick's
    * REMAINING shared budget, measured from this call on the service's own clock) is spent. No state is shared between
-   * orgs: one tenant cannot delay another's scanning.
+   * orgs: one tenant cannot delay another's scanning. `budgetMs` is this org's fair-share SLICE: the first due scan always
+   * starts when the slice is positive (so no org with pending work is skipped), later ones only while the slice lasts;
+   * 0 means the tick's time is gone. Only rows whose retry backoff has elapsed are due.
    */
   scanPendingForOrg(
     orgId: string,
@@ -181,7 +207,10 @@ export interface AttachmentService {
    * ever adopted (older than 7 days) have their OBJECT destroyed first, then their row deleted. A row whose object
    * cannot be destroyed stays, so the work is retryable and no byte is left without a pointer.
    */
-  reapOrphansForOrg(orgId: string, opts?: { limit?: number }): Promise<ReapRunResult>;
+  reapOrphansForOrg(
+    orgId: string,
+    opts?: { limit?: number; budgetMs?: number },
+  ): Promise<ReapRunResult>;
 }
 
 const SCAN_BATCH_LIMIT = 50;
@@ -195,6 +224,33 @@ const PROCESS_INLINE_SCAN_GATE = createInlineScanGate(
 
 function notFound(): NotFoundError {
   return new NotFoundError("attachment");
+}
+
+function formatBytes(n: number): string {
+  return n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1)} GiB` : `${Math.ceil(n / 1024 ** 2)} MiB`;
+}
+
+/**
+ * Refuse while the tenant's messaging data is being erased. Takes the erase lock in SHARED mode for the rest of this
+ * transaction: the eraser takes it EXCLUSIVELY to set the flag, so it waits for this transaction to commit (its row is then
+ * visible to the eraser) and every later transaction sees the committed flag here. See migration 1076.
+ */
+async function assertNotErasing(tx: Tx, orgId: string): Promise<void> {
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock_shared(hashtextextended(${eraseLockName(orgId)}, 0))`,
+  );
+  const [blocked] = await tx
+    .select({ id: EB.organizationId })
+    .from(EB)
+    .where(eq(EB.organizationId, orgId))
+    .limit(1);
+  if (blocked) {
+    throw new WardenXError(
+      "TENANT_ERASURE_IN_PROGRESS",
+      "this organization's messaging data is being erased; attachments cannot be uploaded",
+      409,
+    );
+  }
 }
 
 function availabilityOf(
@@ -453,6 +509,8 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
   // starting org (worker), a hard deadline per scan, and fast-fail on connect-refused. A total clamd outage therefore
   // fails closed (rows stay pending, nothing is delivered) at a bounded cost per tick.
   const scanDeadlineMs = deps.scanDeadlineMs ?? SCAN_ROW_DEADLINE_MS;
+  const abortGraceMs = deps.abortGraceMs ?? ABORT_SETTLE_GRACE_MS;
+  const quota = deps.quota ?? attachmentQuotaFromEnv(process.env);
   const inlineGate = deps.inlineScanGate ?? PROCESS_INLINE_SCAN_GATE;
   const userRatePerMinute = deps.userRequestsPerMinute ?? DEFAULT_USER_REQUESTS_PER_MINUTE;
   const completeCalls = createFixedWindowCounter(ONE_MINUTE_MS);
@@ -525,21 +583,25 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
     if (!row.objectKey) return Promise.reject(new Error("completed attachment has no object key"));
     const objectKey = row.objectKey;
     let phase: ScanFailureKind = "store";
+    const deadlineError = () =>
+      new ScanFailure(phase, new Error("attachment scan exceeded its deadline"));
     const quarantine = async (signature: string) =>
       (await settle(orgId, row, { state: "quarantined", signature }, scanner.name))
         ? ("quarantined" as const)
         : ("settled" as const);
-    const run = async () => {
+    const run = async (signal: AbortSignal) => {
       let bytes: Uint8Array | null;
       try {
         bytes = await storage.readBytes({
           organizationId: orgId,
           objectKey,
           maxBytes: MAX_ATTACHMENT_BYTES,
+          signal,
         });
       } catch (error) {
         throw new ScanFailure("store", error);
       }
+      throwIfAborted(signal); // past the deadline nothing is recorded: not a miss, not a verdict
       if (bytes === null) {
         // A 404 during a store outage/failover is not proof the object is gone: finalise only after repeated CONSECUTIVE
         // misses spanning real time (the run is reset by any successful read, and scanner outages never touch it).
@@ -563,16 +625,17 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
       phase = "scanner";
       let result: Awaited<ReturnType<ScanPort["scan"]>>;
       try {
-        result = await scanner.scan({ bytes, mimeType: row.mimeType });
+        result = await scanner.scan({ bytes, mimeType: row.mimeType, signal });
       } catch (error) {
         throw new ScanFailure("scanner", error);
       }
+      throwIfAborted(signal);
       if (result.verdict === "infected") return quarantine(result.signature);
       return (await settle(orgId, row, { state: "clean" }, scanner.name))
         ? ("clean" as const)
         : ("settled" as const);
     };
-    return withDeadline(run(), scanDeadlineMs, () => phase);
+    return runWithDeadline(run, scanDeadlineMs, deadlineError, abortGraceMs);
   }
 
   /** Atomically take one of the row's bounded inline attempts; false when it has used them all (or was settled). */
@@ -616,6 +679,8 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
         if (channel.isArchived) {
           throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
         }
+        // The tenant is being erased: no new object may be created (migration 1076; holds a SHARED lock to commit).
+        await assertNotErasing(tx, orgId);
         // Cap on open uploads. The advisory lock serializes one user's authorizes so two racing requests cannot both
         // slip under the cap; it is released with the transaction.
         await tx.execute(
@@ -679,6 +744,42 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
             429,
           );
         }
+        // Total stored bytes (per user and per org), counted over every row that still holds or may yet receive bytes:
+        // completed rows of any scan state (a quarantined object stays in the bucket until reaped/erased, a bound-but-pending
+        // one is not unbound so the caps above never see it) plus unfinished uploads whose URL is still live. A row that is
+        // gone (reaped, erased) is not counted, and an expired never-finished upload cannot pin quota while the reaper
+        // credential is missing. The org-wide lock serializes every authorize of the tenant (a short transaction) so two
+        // users cannot both fit under the org limit; it is always taken AFTER the user lock (one order, no deadlock).
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtextextended(${`m36-attachment-quota:${orgId}`}, 0))`,
+        );
+        const [used] = await tx
+          .select({
+            org: sql<string>`COALESCE(SUM(${ATT.byteSize}), 0)::bigint`,
+            mine: sql<string>`COALESCE(SUM(${ATT.byteSize}) FILTER (WHERE ${ATT.uploadedBy} = ${input.userId}), 0)::bigint`,
+          })
+          .from(ATT)
+          .where(
+            and(
+              eq(ATT.organizationId, orgId),
+              or(isNotNull(ATT.completedAt), gt(ATT.uploadExpiresAt, now())),
+            ),
+          );
+        const quotaExceeded = (scope: "user" | "organization", limit: number) =>
+          new WardenXError(
+            "ATTACHMENT_QUOTA_EXCEEDED",
+            scope === "user"
+              ? `your attachment storage allowance (${formatBytes(limit)}) is full; delete or wait for older attachments to expire`
+              : `this organization's attachment storage allowance (${formatBytes(limit)}) is full`,
+            413,
+            [{ field: "scope", code: "QUOTA_SCOPE", message: scope }],
+          );
+        if (Number(used?.mine ?? 0) + valid.byteSize > quota.userBytes) {
+          throw quotaExceeded("user", quota.userBytes);
+        }
+        if (Number(used?.org ?? 0) + valid.byteSize > quota.orgBytes) {
+          throw quotaExceeded("organization", quota.orgBytes);
+        }
         const attachmentId = randomUUID();
         const objectKey = attachmentObjectKey(input.channelId, attachmentId);
         const presigned = await storage.presignUpload({
@@ -722,6 +823,7 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
         throw new RateLimitedError("too many upload requests; wait a moment");
       }
       const row = await ownRowOr404(orgId, input.userId, input.attachmentId);
+      await asUser(orgId, input.userId, (tx) => assertNotErasing(tx, orgId));
       let current = row;
       if (!row.completedAt) {
         // After the upload URL's TTL the row stops counting toward the open cap; if it could still be completed, a user
@@ -735,7 +837,12 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
         }
         const objectKey = row.objectKey;
         const found = objectKey
-          ? await storage.inspect({ organizationId: orgId, objectKey })
+          ? await runWithDeadline(
+              (signal) => storage.inspect({ organizationId: orgId, objectKey, signal }),
+              deps.storageDeadlineMs ?? STORAGE_INSPECT_DEADLINE_MS,
+              () => new DegradedError("attachment-storage", "the object store did not answer in time"),
+              abortGraceMs,
+            )
           : null;
         if (!found) {
           throw new WardenXError("ATTACHMENT_NOT_UPLOADED", "the file has not been uploaded", 409);
@@ -752,6 +859,7 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
           );
         }
         current = await asUser(orgId, input.userId, async (tx) => {
+          await assertNotErasing(tx, orgId);
           await tx
             .update(ATT)
             .set({ completedAt: now() })
@@ -834,14 +942,21 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
     },
 
     async scanPendingForOrg(orgId, opts = {}) {
-      const result = { clean: 0, quarantined: 0, deferred: 0, scannerFailures: 0, storeFailures: 0 };
+      const result = {
+        clean: 0,
+        quarantined: 0,
+        deferred: 0,
+        scannerFailures: 0,
+        storeFailures: 0,
+        scanUnavailable: 0,
+      };
       const scanner = deps.scanner;
-      // The tick's shared wall-clock budget: stop STARTING scans once it is spent (the rest wait for the next tick).
+      // This org's slice of the tick's budget (the worker's fair share): once it is spent, no NEW scan starts. The first
+      // due scan always starts when the slice is positive, so an org with pending work is never skipped; 0 = tick is over.
+      if (!scanner || (opts.budgetMs !== undefined && opts.budgetMs <= 0)) return result;
       const budgetEndsAt = opts.budgetMs === undefined ? undefined : now().getTime() + opts.budgetMs;
       const outOfBudget = () => budgetEndsAt !== undefined && now().getTime() >= budgetEndsAt;
-      if (!scanner || outOfBudget()) return result;
-      const expiredBefore = new Date(now().getTime() - MAX_PENDING_SCAN_AGE_MS);
-      const retryBefore = new Date(now().getTime() - EXPIRED_SCAN_RETRY_INTERVAL_MS);
+      const nowIso = now().toISOString();
       const rows = await withOrgContext(db, systemOrgContext(orgId), async (rawTx) => {
         const tx = rawTx as unknown as Tx;
         return (
@@ -853,11 +968,14 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
                 eq(ATT.organizationId, orgId),
                 eq(ATT.scanState, "pending"),
                 sql`${ATT.completedAt} IS NOT NULL`,
-                // An expired row (no verdict for a day) is retried at most hourly, not every minute.
+                // Exponential backoff: the n-th failed attempt waits min(base * 2^(n-1), cap) before the next try, so a
+                // row nobody can judge is retried at 1, 2, 4 ... 60 min and then hourly, never every minute. Never-attempted
+                // rows are always due. (Clamped exponent: power(2, n) cannot overflow.)
                 or(
-                  gt(ATT.completedAt, expiredBefore),
                   isNull(ATT.lastScanAttemptAt),
-                  lt(ATT.lastScanAttemptAt, retryBefore),
+                  sql`${ATT.lastScanAttemptAt} + make_interval(secs => least(
+                        ${SCAN_RETRY_BASE_MS / 1000}::float8 * power(2, least(greatest(${ATT.scanAttempts}, 1) - 1, ${SCAN_RETRY_MAX_EXPONENT})),
+                        ${SCAN_RETRY_MAX_MS / 1000}::float8)) <= ${nowIso}::timestamptz`,
                 ),
               ),
             )
@@ -873,8 +991,11 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
       // Failures (scanner transport OR this org's own bucket/database) are charged to THIS org only: it stops after its
       // share and the next org starts. Nothing is remembered across orgs or ticks.
       let orgFailures = 0;
+      let started = 0;
       for (const row of rows) {
-        if (orgFailures >= MAX_ORG_SCAN_FAILURES_PER_TICK || outOfBudget()) break;
+        if (orgFailures >= MAX_ORG_SCAN_FAILURES_PER_TICK) break;
+        if (started > 0 && outOfBudget()) break;
+        started += 1;
         // ALWAYS try the scan first. A row past the expiry cap is not condemned by age: it is simply reported blocked
         // (`isScanExpired`) while it stays pending, and a real verdict still settles it.
         try {
@@ -891,6 +1012,10 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
           if (error instanceof ScanFailure && error.kind === "scanner") result.scannerFailures += 1;
           else result.storeFailures += 1;
           await recordAttempt(orgId, row, error);
+          if (row.scanAttempts + 1 >= SCAN_UNAVAILABLE_ATTEMPTS) {
+            result.scanUnavailable += 1;
+            deps.onScanUnavailable?.({ attachmentId: row.id, attempts: row.scanAttempts + 1 });
+          }
         }
       }
       return result;
@@ -900,6 +1025,8 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
       const result = { reaped: 0, failed: 0 };
       const reaperDb = deps.reaperDb;
       if (!reaperDb) return result;
+      if (opts.budgetMs !== undefined && opts.budgetMs <= 0) return result;
+      const budgetEndsAt = opts.budgetMs === undefined ? undefined : now().getTime() + opts.budgetMs;
       const at = now().getTime();
       // Never adopted by a message: an upload that was never completed (expired past the grace) or that sat finished and
       // unsent for a week. `bindAttachmentsInTx` refuses anything older than 6 days, so this never races a send.
@@ -927,10 +1054,20 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
           .limit(opts.limit ?? REAP_BATCH_LIMIT),
       );
       // Object BEFORE row, per row: a row whose object could not be destroyed is kept, so the next tick retries it.
+      let attempted = 0;
       for (const row of candidates) {
+        // This org's slice of the reap budget: the first destroy always runs, later ones only while the slice lasts.
+        if (attempted > 0 && budgetEndsAt !== undefined && now().getTime() >= budgetEndsAt) break;
+        attempted += 1;
         try {
-          if (row.objectKey) {
-            await storage.destroyObject({ organizationId: orgId, objectKey: row.objectKey });
+          const objectKey = row.objectKey;
+          if (objectKey) {
+            await runWithDeadline(
+              (signal) => storage.destroyObject({ organizationId: orgId, objectKey, signal }),
+              deps.storageDeadlineMs ?? REAP_DESTROY_DEADLINE_MS,
+              () => new Error("attachment destroy exceeded its deadline"),
+              abortGraceMs,
+            );
           }
           const gone = await withOrgContext(reaperDb, systemOrgContext(orgId), (rawTx) =>
             (rawTx as unknown as Tx)

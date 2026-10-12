@@ -13224,7 +13224,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Uploader verifies the object landed (409 ATTACHMENT_NOT_UPLOADED, 422 ATTACHMENT_UPLOAD_MISMATCH) and triggers the malware scan; scanState stays pending until a verdict (Idempotency-Key required; Cache-Control: no-store) */
+        /** Uploader verifies the object landed (409 ATTACHMENT_NOT_UPLOADED or TENANT_ERASURE_IN_PROGRESS, 422 ATTACHMENT_UPLOAD_MISMATCH, 503 DEGRADED when the object store does not answer in time) and triggers the malware scan; scanState stays pending until a verdict (Idempotency-Key required; Cache-Control: no-store) */
         post: operations["postApiV1MessagingAttachmentsByIdComplete"];
         delete?: never;
         options?: never;
@@ -13241,7 +13241,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Authorize an attachment upload: returns attachmentId + a presigned PUT (201; 415 type, 422 size/checksum/name, 410 archived, 429 TOO_MANY_OPEN_UPLOADS past 20 open uploads per user; Idempotency-Key required; Cache-Control: no-store) */
+        /** Authorize an attachment upload: returns attachmentId + a presigned PUT (201; 415 type, 422 size/checksum/name, 410 archived, 413 ATTACHMENT_QUOTA_EXCEEDED when the user's or the organization's total stored bytes would pass the quota (details[0].message is the scope: user | organization), 409 TENANT_ERASURE_IN_PROGRESS while the organization's messaging data is being erased, 429 TOO_MANY_OPEN_UPLOADS past 20 open uploads per user; Idempotency-Key required; Cache-Control: no-store) */
         post: operations["postApiV1MessagingAttachmentsUploads"];
         delete?: never;
         options?: never;

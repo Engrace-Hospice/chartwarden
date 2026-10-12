@@ -8265,6 +8265,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               { ...context, reason: err instanceof Error ? err.message : "unknown" },
               "M36 attachment scan deferred (row stays pending)",
             ),
+          // Alert-worthy: the pipeline has not been able to judge this file for a long time (the row stays pending and is
+          // retried hourly; it is NOT quarantined, because "the scanner was down" is not a verdict).
+          onScanUnavailable: (context) =>
+            app.log.error(context, "M36 attachment scan unavailable (row stays pending; check the scanner / bucket)"),
           onReapError: (context, err) =>
             app.log.warn(
               { ...context, reason: err instanceof Error ? err.message : "unknown" },

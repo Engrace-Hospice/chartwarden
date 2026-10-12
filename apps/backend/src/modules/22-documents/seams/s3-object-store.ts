@@ -331,6 +331,8 @@ function createS3SignedFetch(
   readonly query: readonly (readonly [string, string])[];
   readonly payload: Uint8Array | null;
   readonly extraHeaders?: Readonly<Record<string, string>>;
+  /** Aborts the HTTP request (M36 attachments bound every store call; additive, ignored by M22's own callers). */
+  readonly signal?: AbortSignal;
 }) => Promise<Response> {
   const endpointUrl = parseS3Endpoint(config.endpoint, constructorName);
   assertS3Credentials(config, constructorName);
@@ -383,6 +385,7 @@ function createS3SignedFetch(
     const url = `${t.origin}${t.canonicalUri}${canonicalQuery ? `?${canonicalQuery}` : ""}`;
     return fetchImpl(url, {
       method: args.method,
+      ...(args.signal ? { signal: args.signal } : {}),
       headers: {
         ...sendHeaders,
         authorization: `${SIGV4_ALGORITHM} Credential=${config.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
@@ -493,13 +496,14 @@ export function createS3ObjectStore(
       };
     },
 
-    async inspectObject({ bucket, objectKey }) {
+    async inspectObject({ bucket, objectKey, signal }) {
       const res = await signedFetch({
         method: "HEAD",
         bucket,
         objectKey,
         query: [],
         payload: null,
+        ...(signal ? { signal } : {}),
         extraHeaders: { "x-amz-checksum-mode": "ENABLED" },
       });
       if (res.status === 404) return null;
@@ -574,7 +578,7 @@ export function createS3ObjectStore(
       return { url, expiresAt }; // handed straight to the caller — never logged (§4.12)
     },
 
-    async destroyAllVersions({ bucket, objectKey }) {
+    async destroyAllVersions({ bucket, objectKey, signal }) {
       // Page through ?versions with prefix=<key>; entries sort ascending by key, so once a page's
       // max key passes the target the exact-match set is complete.
       let keyMarker: string | null = null;
@@ -592,6 +596,7 @@ export function createS3ObjectStore(
           objectKey: null,
           query,
           payload: null,
+          ...(signal ? { signal } : {}),
         });
         if (listRes.status === 404) return; // bucket gone ⇒ every version already gone
         if (!listRes.ok)
@@ -607,6 +612,7 @@ export function createS3ObjectStore(
             objectKey,
             query: [["versionId", entry.versionId]],
             payload: null,
+            ...(signal ? { signal } : {}),
           });
           if (!delRes.ok && delRes.status !== 404) {
             // 404 ⇒ that version is already gone (idempotent shred); anything else fails LOUDLY.

@@ -3,7 +3,9 @@
 //   POST /api/v1/messaging/attachments/uploads        authorize an upload (messaging.send; must be able to send in the
 //                                                     channel) -> attachmentId + short-lived presigned PUT.
 //                                                     429 TOO_MANY_OPEN_UPLOADS past 20 open uploads per user,
-//                                                     TOO_MANY_QUARANTINED_UPLOADS past 20 flagged in 24 h, RATE_LIMITED.
+//                                                     TOO_MANY_QUARANTINED_UPLOADS past 20 flagged in 24 h, RATE_LIMITED;
+//                                                     413 ATTACHMENT_QUOTA_EXCEEDED (per-user / per-org total bytes);
+//                                                     409 TENANT_ERASURE_IN_PROGRESS once the org's erase has started.
 //   POST /api/v1/messaging/attachments/:id/complete   uploader only; verifies the object landed, then scans
 //                                                     (410 UPLOAD_EXPIRED after the upload TTL; 429 RATE_LIMITED)
 //   GET  /api/v1/messaging/attachments/:id            uploader only; status (pending|clean|quarantined)
