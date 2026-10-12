@@ -408,3 +408,23 @@ function defaultTitle(kind: ChannelKind): string {
       return kind.replace(/_/g, " ");
   }
 }
+
+/**
+ * Soft-remove every active `channel_member` row a user holds in an org (revoked membership or org offboarding,
+ * audit F3). `removed_at` — not a delete — so the M4 trigger on `channel_member` records who lost access and
+ * when. Returns how many rows ended; a redelivery ends zero (idempotent).
+ */
+export async function endChannelMembershipsForUser(
+  db: DbClient,
+  orgId: string,
+  userId: string,
+): Promise<number> {
+  return withOrgContext(db, { organizationId: orgId, userId: SYNC_SYSTEM_USER_ID }, async (tx) => {
+    const ended = (await tx
+      .update(CM)
+      .set({ removedAt: new Date() })
+      .where(and(eq(CM.organizationId, orgId), eq(CM.userId, userId), isNull(CM.removedAt)))
+      .returning({ id: CM.id })) as Array<{ id: string }>;
+    return ended.length;
+  });
+}

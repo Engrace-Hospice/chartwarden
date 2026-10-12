@@ -616,7 +616,14 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
             : "m2.membership.updated";
       await publishM2(deps, {
         eventName,
-        payload: { membershipId: mId, organizationId: orgId, from, to: nextStatus },
+        // userId lets consumers (M36 realtime, ADR-0054 A3) act on the person without reading M2 tables.
+        payload: {
+          membershipId: mId,
+          organizationId: orgId,
+          userId: membership.userId,
+          from,
+          to: nextStatus,
+        },
         organizationId: orgId,
         aggregateKind: "membership",
         aggregateId: mId,
@@ -656,7 +663,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     );
     await publishM2(deps, {
       eventName: "m2.membership.revoked",
-      payload: { membershipId: mId, organizationId: orgId },
+      payload: { membershipId: mId, organizationId: orgId, userId: membership.userId },
       organizationId: orgId,
       aggregateKind: "membership",
       aggregateId: mId,

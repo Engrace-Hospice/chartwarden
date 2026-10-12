@@ -29,8 +29,10 @@ import {
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/index";
 import {
   createDbMessagingProvider,
+  endChannelMembershipsForUser,
   setCareTeamChannelArchived,
 } from "../src/modules/36-messaging/messaging-provider-db";
+import { buildM36AccessRevocationConsumer } from "../src/modules/36-messaging/outbox-consumers/access-revocation";
 import { buildM36ChannelMembershipSyncConsumer } from "../src/modules/36-messaging/outbox-consumers/channel-membership-sync";
 import { createDbConsentEvaluator } from "../src/modules/39-consent/index";
 import { appRoleConnectionString } from "./_live-app-role";
@@ -543,6 +545,50 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     ).rejects.toMatchObject({ statusCode: 404 });
     const stored = await admin.query(`SELECT status FROM message WHERE id=$1`, [sent2.messageId]);
     expect(stored.rows[0].status).not.toBe("deleted");
+  });
+
+  it("m2.membership.revoked / m2.user.deactivated end the user's channel memberships in that org only (audit F3)", async () => {
+    const service = createDbMessagingRouteService(handle.db);
+    const leaver = await seedUser("leaver");
+    await admin.query(
+      `INSERT INTO channel_member (organization_id, channel_id, user_id, role, source)
+       VALUES ($1,$2,$3,'member','manual')`,
+      [orgA, channelId, leaver],
+    );
+    expect(await service.canViewChannel(orgA, leaver, channelId)).toBe(true);
+    const others = (await activeMembers()).filter((u) => u !== leaver).sort();
+
+    const consumer = buildM36AccessRevocationConsumer({
+      endChannelMemberships: (o, u) => endChannelMembershipsForUser(handle.db, o, u),
+    });
+    const event = (organizationId: string, eventType: string, userId: string) => ({
+      id: "55555555-5555-4555-8555-555555555555",
+      organizationId,
+      eventType,
+      aggregateKind: "membership",
+      aggregateId: "agg",
+      payload: { userId, membershipId: "m", organizationId },
+      attemptCount: 0,
+      createdAt: new Date(),
+    });
+
+    // a cross-tenant delivery (org B envelope) touches nothing in org A
+    await consumer.handle(event(orgB, "m2.membership.revoked", leaver));
+    expect(await service.canViewChannel(orgA, leaver, channelId)).toBe(true);
+
+    await consumer.handle(event(orgA, "m2.membership.revoked", leaver));
+    expect(await service.canViewChannel(orgA, leaver, channelId)).toBe(false);
+    const row = await admin.query(
+      `SELECT removed_at FROM channel_member WHERE channel_id=$1 AND user_id=$2`,
+      [channelId, leaver],
+    );
+    expect(row.rows[0].removed_at).not.toBeNull(); // soft-removed, history kept
+    expect((await activeMembers()).sort()).toEqual(others);
+
+    // redelivery and the offboarding event converge (idempotent)
+    await consumer.handle(event(orgA, "m2.membership.revoked", leaver));
+    await consumer.handle(event(orgA, "m2.user.deactivated", leaver));
+    expect((await activeMembers()).sort()).toEqual(others);
   });
 
   it("a cross-tenant event and a cross-tenant reader never touch or see org A's channel", async () => {

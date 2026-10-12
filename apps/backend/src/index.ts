@@ -1395,7 +1395,14 @@ import {
   wireAlertRuleSeed,
   wireM36DeliveryTenancy,
 } from "./modules/36-messaging/index";
-import { setCareTeamChannelArchived } from "./modules/36-messaging/messaging-provider-db";
+import {
+  endChannelMembershipsForUser,
+  setCareTeamChannelArchived,
+} from "./modules/36-messaging/messaging-provider-db";
+import {
+  buildM36AccessRevocationConsumer,
+  buildM36AccessRevocationPlatformConsumer,
+} from "./modules/36-messaging/outbox-consumers/access-revocation";
 import { buildM36AdmissionComplianceAlertConsumer } from "./modules/36-messaging/outbox-consumers/admission-compliance-alerts";
 import { buildM36AmendmentSlaAlertConsumer } from "./modules/36-messaging/outbox-consumers/amendment-sla-alerts";
 import { buildM36CapThresholdAlertConsumer } from "./modules/36-messaging/outbox-consumers/cap-threshold-alerts";
@@ -9247,6 +9254,12 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                 ).getAdmissionSummary(orgId, admissionId)
               ).patientId,
           }),
+          // WP 1.1 / audit F3 — a revoked membership or offboarded user loses channel access immediately (the
+          // sockets half is added with bootstrap/realtime; `disconnectUser` is absent until then).
+          buildM36AccessRevocationConsumer({
+            endChannelMemberships: (orgId, userId) =>
+              endChannelMembershipsForUser(dbHandle.db, orgId, userId),
+          }),
           // FY2027 — the 42 CFR 418.24(d) election-addendum window missed: the first M6 compliance-window fact
           // that pages anyone (care team + compliance), via `m6.election_addendum.overdue`.
           buildM36AdmissionComplianceAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
@@ -10357,6 +10370,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           // emitted with `organizationId: null` — a MAC jurisdiction serves many tenants). One
           // `system_status` component PER JURISDICTION, not a platform-wide singleton.
           buildM1MacPortalHealthConsumer({ db: dbHandle.db }),
+          // WP 1.1 — a platform-wide offboarding (`m2.user.deactivated`, no org) has no org to end memberships in.
+          buildM36AccessRevocationPlatformConsumer({}),
         ],
         eventCatalog: bootOutboxCatalog,
         options: {

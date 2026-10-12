@@ -99,10 +99,11 @@ export const M2_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       membershipId: nonEmptyString,
       organizationId: orgId,
+      userId: Type.Optional(nonEmptyString), // absent on rows published before ADR-0054 A3
       from: membershipStatus,
       to: membershipStatus,
     }),
-    declaredConsumers: [],
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -140,8 +141,9 @@ export const M2_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       membershipId: nonEmptyString,
       organizationId: orgId,
+      userId: Type.Optional(nonEmptyString), // absent on rows published before ADR-0054 A3
     }),
-    declaredConsumers: [],
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -154,7 +156,7 @@ export const M2_OUTBOX_EVENTS: ModuleEventContribution = [
       reason: nonEmptyString,
       scope: Type.Optional(Type.Literal("platform")),
     }),
-    declaredConsumers: [],
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
 
