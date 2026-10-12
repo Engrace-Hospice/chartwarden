@@ -177,7 +177,7 @@ flowchart TD
 
 Three principles drive the picture:
 
-1. **In-app is the always-available floor.** Every alert delivery starts with a Socket.IO emit to the recipient's `user:<id>` room. Out-of-band channels (push/SMS/email/voice) are *additive* per preference, never replacements. If Twilio and Postmark are both down, a connected user still gets the alert.
+1. **In-app is the always-available floor.** Every alert delivery starts with a Socket.IO emit to the recipient's `user:<orgId>:<id>` room. Out-of-band channels (push/SMS/email/voice) are *additive* per preference, never replacements. If Twilio and Postmark are both down, a connected user still gets the alert.
 2. **`sanitizeForOutOfBand` is the only path to out-of-band payloads.** Every dispatcher (`packages/messaging/dispatchers/{twilio-sms,twilio-voice,postmark,web-push}.ts`) takes its payload from the sanitizer's output, never from the source emit. The sanitizer's contract: no field tagged `phi: true`, no message body, no patient identifiers beyond a content-free `notification_delivery_id` that deep-links into the authenticated app. A lint rule (§4.7) blocks direct vendor calls outside the sanitizer.
 3. **Recipient resolution is dynamic at emit time, not static on the rule.** `alert_rule` names a `RecipientResolver` (e.g. `care_team(patient_id)`, `on_call(provider_entity_id)`, `discipline(org_id, 'RN')`, `tenant_admins`), not a frozen user list. The resolver consults the source-of-truth seam (M5 caseload, M19 on-call) at emit time, so on-call escalation always goes to who's actually on shift right now, not who was on shift when the rule was written.
 
@@ -1657,7 +1657,7 @@ export const tenantNotificationTemplateOverlay = pgTable('tenant_notification_te
 
 | Room | Format | Members at connect | Notes |
 |---|---|---|---|
-| User-direct | `user:<userId>` | the user | for personal alerts |
+| User-direct | `user:<orgId>:<userId>` | the user | for personal alerts |
 | Care team | `careteam:<patientId>` | `channel_member` where channel kind = care_team and active | one room per care-team channel |
 | Discipline | `discipline:<orgId>:<disciplineKey>` | M2 members holding the role | re-evaluated on role grant |
 | Location | `location:<locationId>` | M2 members whose default locations include it | |
@@ -1678,10 +1678,10 @@ export const tenantNotificationTemplateOverlay = pgTable('tenant_notification_te
 | `channel.member_added` / `_removed` | channel room | `{ channelId, userId, source }` | re-render member list |
 | `channel.archived` | channel room | `{ channelId, archivedAt }` | UI lock |
 | `presence.user_active` | `org:<orgId>` (subscribed cosocially) | `{ userId, lastSeen, status }` | throttled; once per 30s per user |
-| `alert.new` | `user:<userId>` | `{ alertId, eventType, category, severity, summary, deepLink }` | `summary` is sanitizer-output (no PHI) for parity with out-of-band channels |
-| `alert.delivered` | `user:<userId>` | `{ alertId, channel, vendorMessageId? }` | per-channel ack |
+| `alert.new` | `user:<orgId>:<userId>` | `{ alertId, eventType, category, severity, summary, deepLink }` | `summary` is sanitizer-output (no PHI) for parity with out-of-band channels |
+| `alert.delivered` | `user:<orgId>:<userId>` | `{ alertId, channel, vendorMessageId? }` | per-channel ack |
 | `system.status_changed` | `org:<orgId>` | per M1 | degraded-banner trigger |
-| `permissions.changed` | `user:<userId>` | per M3 §11 D6 | recompute room set; refetch |
+| `permissions.changed` | `user:<orgId>:<userId>` | per M3 §11 D6 | recompute room set; refetch |
 
 **Events (client → server).** Limited surface; most writes go via REST + are emitted by the server.
 

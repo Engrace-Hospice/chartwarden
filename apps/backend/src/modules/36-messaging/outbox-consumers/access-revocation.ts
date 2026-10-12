@@ -34,6 +34,11 @@ export interface AccessRevocationDeps {
   readonly endChannelMemberships: (orgId: string, userId: string) => Promise<unknown>;
   /** Drop the user's live sockets IN THIS ORG on every api node (ADR-0054 item 6). Absent while realtime is not wired. */
   readonly disconnectUser?: (orgId: string, userId: string) => Promise<void>;
+  /**
+   * Drop every socket of the person in any org. Used for a platform-scoped deactivation, which the M2 route publishes
+   * under the OPERATOR's bound org (so it lands here, not on the platform consumer): the person's own orgs are not on the event.
+   */
+  readonly disconnectAccount?: (userId: string) => Promise<void>;
 }
 
 export interface PlatformAccessRevocationDeps {
@@ -74,7 +79,8 @@ async function handleEvent(
     case "m2.user.deactivated": {
       const userId = requireString(p, "userId", event.eventType);
       await deps.endChannelMemberships(event.organizationId, userId);
-      await deps.disconnectUser?.(event.organizationId, userId);
+      if (p.scope === "platform") await deps.disconnectAccount?.(userId);
+      else await deps.disconnectUser?.(event.organizationId, userId);
       return;
     }
     default:

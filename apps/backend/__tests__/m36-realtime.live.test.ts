@@ -5,6 +5,7 @@
  */
 import { type Server, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { userRoom } from "@wardenx/messaging";
 import { Redis } from "ioredis";
 import { type Socket, io as connect } from "socket.io-client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -17,6 +18,7 @@ import {
 
 const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
 const ORIGIN = "https://app.wardenx.test";
+const ORG_ID = "org_1";
 const HINT = { kind: "message.new", cursor: "c1", ids: { channelId: "ch_1", messageId: "msg_1" } };
 
 const PRINCIPALS: Record<string, RealtimePrincipal> = {
@@ -61,7 +63,7 @@ describe.skipIf(!REDIS_URL)("M36 realtime transport — LIVE Valkey, two nodes",
       recheckIntervalMs: 150,
       ...(options.perSession ? { handshakesPerSessionPerMinute: options.perSession } : {}),
       authenticate: async (headers) => PRINCIPALS[tokenOf(headers.cookie)] ?? null,
-      resolveRooms: async (p) => [`user:${p.userId}`, `org:${p.organizationId}`],
+      resolveRooms: async (p) => [userRoom(p.organizationId, p.userId), `org:${p.organizationId}`],
       stillValid: async (p) => aliveSessions.has(p.sessionId),
     });
     handles.push(handle);
@@ -135,7 +137,7 @@ describe.skipIf(!REDIS_URL)("M36 realtime transport — LIVE Valkey, two nodes",
     await settle();
 
     const got = [nextHint(u1a), nextHint(u1b), nextHint(u2, 600)];
-    await emitter.emit(["user:u1"], "hint", HINT);
+    await emitter.emit([userRoom(ORG_ID, "u1")], "hint", HINT);
     const [h1, h2, h3] = await Promise.all(got);
     expect(h1).toEqual(HINT);
     expect(h2).toEqual(HINT); // cross-node
@@ -154,10 +156,10 @@ describe.skipIf(!REDIS_URL)("M36 realtime transport — LIVE Valkey, two nodes",
     const a = await node();
     const u2 = open(a.url, "tok_u2");
     await connected(u2);
-    for (const evt of ["join", "subscribe", "join_room"]) u2.emit(evt, "user:u1");
+    for (const evt of ["join", "subscribe", "join_room"]) u2.emit(evt, userRoom(ORG_ID, "u1"));
     await settle();
     const got = nextHint(u2, 600);
-    await emitter.emit(["user:u1"], "hint", HINT);
+    await emitter.emit([userRoom(ORG_ID, "u1")], "hint", HINT);
     expect(await got).toBeNull();
   });
 
@@ -171,7 +173,7 @@ describe.skipIf(!REDIS_URL)("M36 realtime transport — LIVE Valkey, two nodes",
     await settle();
     const started = Date.now();
     const down = Promise.all([disconnected(u1a), disconnected(u1b)]);
-    await emitter.disconnectRoom("user:u1");
+    await emitter.disconnectRoom(userRoom(ORG_ID, "u1"));
     await down;
     expect(Date.now() - started).toBeLessThan(5000);
     expect(u2.connected).toBe(true); // another user is untouched

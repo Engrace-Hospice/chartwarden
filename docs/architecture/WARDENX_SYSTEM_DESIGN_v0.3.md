@@ -365,7 +365,7 @@ sequenceDiagram
     AE->>DB: INSERT alert (recipient, status=pending)
     AE->>V: PUBLISH alert:user:<id>
     par In-app delivery
-      S->>S: room('user:<id>').emit('alert.new', payload)
+      S->>S: room('user:<orgId>:<id>').emit('alert.new', payload)
     and Push delivery (if enabled + endpoint registered)
       AE->>PUSH: send to subscription endpoint
     and SMS delivery (urgent + SMS enabled)
@@ -1150,7 +1150,7 @@ Events follow `<domain>.<action>` pattern:
 | `claim.acknowledged` | `{ claimId, status }` | `billing:<providerEntityId>` |
 | `evv.check_in` | `{ visitId, clinician, location }` | `supervisor:<locationId>` |
 | `evv.geofence_violation` | same | `supervisor:<locationId>`, `safety:<orgId>` |
-| `alert.new` | `{ alertId, category, severity, summary }` | `user:<userId>` |
+| `alert.new` | `{ alertId, category, severity, summary }` | `user:<orgId>:<userId>` |
 | `presence.user_active` | `{ userId, lastSeen }` | `org:<orgId>` |
 | `hope.sfv_triggered` | `{ patientId, dueDate, severity }` | `careteam:<patientId>` |
 | `field_safety.sos` | `{ userId, location, timestamp }` | `safety:<orgId>` (urgent) |
@@ -1159,7 +1159,7 @@ Events follow `<domain>.<action>` pattern:
 
 | Room type | Format | Members |
 |---|---|---|
-| User-direct | `user:<userId>` | The user's active connections |
+| User-direct | `user:<orgId>:<userId>` | The user's active connections |
 | Patient care team | `careteam:<patientId>` | Assigned clinicians + portal caregivers per consent |
 | Location | `location:<locationId>` | All staff with location membership |
 | Discipline | `discipline:<orgId>:<discipline>` | All staff of a discipline |

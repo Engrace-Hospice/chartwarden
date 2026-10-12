@@ -9298,6 +9298,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               ? {
                   disconnectUser: (orgId, userId) =>
                     realtimeEmitter.disconnectRoom(userRoom(orgId, userId)),
+                  disconnectAccount: (userId) =>
+                    realtimeEmitter.disconnectRoom(accountRoom(userId)),
                 }
               : {}),
           }),

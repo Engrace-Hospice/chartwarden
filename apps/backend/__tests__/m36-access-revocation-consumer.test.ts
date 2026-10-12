@@ -19,10 +19,16 @@ const event = (eventType: string, payload: unknown) => ({
 function setup() {
   const endChannelMemberships = vi.fn().mockResolvedValue(1);
   const disconnectUser = vi.fn().mockResolvedValue(undefined);
+  const disconnectAccount = vi.fn().mockResolvedValue(undefined);
   return {
     endChannelMemberships,
     disconnectUser,
-    consumer: buildM36AccessRevocationConsumer({ endChannelMemberships, disconnectUser }),
+    disconnectAccount,
+    consumer: buildM36AccessRevocationConsumer({
+      endChannelMemberships,
+      disconnectUser,
+      disconnectAccount,
+    }),
   };
 }
 
@@ -82,6 +88,15 @@ describe("m36.access-revocation", () => {
     await expect(setup().consumer.handle(event("m2.something.else", {}))).rejects.toThrow(
       /unexpected event/,
     );
+  });
+
+  it("platform-scoped deactivation published under the operator's org drops every socket of the account", async () => {
+    const t = setup();
+    await t.consumer.handle(
+      event("m2.user.deactivated", { userId: "u9", reason: "x", scope: "platform" }),
+    );
+    expect(t.disconnectAccount).toHaveBeenCalledWith("u9");
+    expect(t.disconnectUser).not.toHaveBeenCalled(); // the operator's org room is the wrong room
   });
 
   it("platform deactivation drops sockets by user, with no org", async () => {
