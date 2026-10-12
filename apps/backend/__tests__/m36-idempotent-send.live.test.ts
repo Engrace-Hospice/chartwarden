@@ -26,16 +26,19 @@ import {
   resetRbacEngine,
 } from "@wardenx/auth";
 import { type DbClient, createDbClient } from "@wardenx/db";
+import { messageBodySha256 } from "@wardenx/messaging";
 import type { IdempotencyStore } from "@wardenx/shared";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { XSS_CORPUS } from "../../../packages/types/__tests__/fixtures/xss-corpus";
 import { buildServer } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-store-db";
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
 import { CHANNEL_VISIBILITY_PREDICATE } from "../src/modules/36-messaging/index";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
+import { createMessageBodyCipher } from "../src/modules/36-messaging/messaging-write-core";
 import { registerMessagingRoutes } from "../src/modules/36-messaging/routes/messaging-routes";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -401,5 +404,294 @@ describe.skipIf(!DB_URL)("M36 WP 1.2 idempotent send — LIVE Postgres", () => {
       await service.sendMessage(ORG_A, { channelId: dm, authorUserId: user1, body: "same" });
       expect(await messageRows(dm)).toBe(before + 2);
     });
+  });
+
+  describe("WP 2.1 structured (rich) body, real DB, real route stack", () => {
+    const para = (...content: unknown[]) => ({ type: "paragraph", content });
+    const text = (value: string, ...marks: unknown[]) =>
+      marks.length ? { type: "text", text: value, marks } : { type: "text", text: value };
+    const docOf = (...content: unknown[]) => ({ schemaVersion: 1, doc: { type: "doc", content } });
+    const bodyCipher = createMessageBodyCipher({ kek: KEK });
+    type Json = Record<string, any>;
+    const read = async (userId: string, channelId: string) => {
+      const all: Json[] = [];
+      let cursor: string | undefined;
+      do {
+        const query = `limit=100&direction=forward${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+        const res = await app.inject({
+          method: "GET",
+          url: `/api/v1/messaging/channels/${channelId}/messages?${query}`,
+          headers: as(userId),
+        });
+        expect(res.statusCode).toBe(200);
+        all.push(...(res.json().messages as Json[]));
+        cursor = res.json().nextCursor as string | undefined;
+      } while (cursor);
+      return all;
+    };
+    const patch = (userId: string, messageId: string, payload: Record<string, unknown>) =>
+      app.inject({
+        method: "PATCH",
+        url: `/api/v1/messaging/messages/${messageId}`,
+        headers: as(userId),
+        payload,
+      });
+    const rowOf = async (messageId: string) =>
+      (
+        await admin.query(`SELECT body_kind, body_sha256, body_cipher FROM message WHERE id=$1`, [
+          messageId,
+        ])
+      ).rows[0] as { body_kind: string; body_sha256: string; body_cipher: Buffer };
+    const plaintextOf = (row: { body_cipher: Buffer }) => bodyCipher.open(ORG_A, row.body_cipher);
+
+    it("stores canonical JSON under the tenant DEK with body_sha256 = the hash hash_verify recomputes", async () => {
+      const res = await post(app, dm, as(user1, randomUUID()), {
+        bodyDoc: docOf(
+          para(
+            text("Hello ", { type: "bold" }),
+            text("docs", { type: "link", href: "https://example.com/g" }),
+          ),
+        ),
+      });
+      expect(res.statusCode).toBe(201);
+      const row = await rowOf(res.json().messageId);
+      expect(row.body_kind).toBe("rich");
+      const plaintext = plaintextOf(row);
+      expect(JSON.parse(plaintext)).toMatchObject({ schemaVersion: 1 });
+      expect(messageBodySha256(plaintext)).toBe(row.body_sha256);
+      // Encrypted at rest: the visible text is not in the stored bytes.
+      expect(row.body_cipher.includes(Buffer.from("Hello"))).toBe(false);
+    });
+
+    it("returns the projection as body (never JSON or a link target) plus the sanitised bodyDoc, and previews the projection", async () => {
+      const res = await post(app, dm, as(user1, randomUUID()), {
+        bodyDoc: docOf(
+          para(
+            text("read the "),
+            text("guide", { type: "link", href: "https://hidden.example/secret?t=1" }),
+          ),
+        ),
+      });
+      const id = res.json().messageId as string;
+      const message = (await read(user2, dm)).find((m) => m.messageId === id) as Json;
+      expect(message).toMatchObject({ bodyKind: "rich", body: "read the guide" });
+      expect(message.bodyDoc.doc.content[0].content[1].marks[0].href).toBe(
+        "https://hidden.example/secret?t=1",
+      );
+      expect(message.body).not.toContain("hidden.example");
+
+      const channels = await app.inject({
+        method: "GET",
+        url: "/api/v1/messaging/channels",
+        headers: as(user2),
+      });
+      const entry = channels
+        .json()
+        .channels.find((c: { channelId: string }) => c.channelId === dm) as Json;
+      expect(entry.lastMessage.preview).toBe("read the guide");
+      expect(JSON.stringify(entry)).not.toContain("hidden.example");
+    });
+
+    it("a mention node becomes a message_entity_reference at projection offsets and one mentioned event", async () => {
+      const res = await post(app, dm, as(user1, randomUUID()), {
+        bodyDoc: docOf(
+          para(
+            text("ping "),
+            { type: "mention", kind: "staff", entityId: user2, label: "WP12 u2" },
+            text(" now"),
+          ),
+        ),
+      });
+      expect(res.statusCode).toBe(201);
+      const id = res.json().messageId as string;
+      const refs = (
+        await admin.query(
+          `SELECT reference_kind, entity_id, start_offset, end_offset FROM message_entity_reference WHERE message_id=$1`,
+          [id],
+        )
+      ).rows;
+      expect(refs).toEqual([
+        { reference_kind: "staff", entity_id: user2, start_offset: 5, end_offset: 13 },
+      ]);
+      expect(
+        await count(
+          `SELECT count(*)::int AS n FROM outbox_event WHERE event_type='m36.message.mentioned' AND aggregate_id=$1`,
+          [id],
+        ),
+      ).toBe(1);
+      const message = (await read(user2, dm)).find((m) => m.messageId === id) as Json;
+      expect(message.body).toBe("ping @WP12 u2 now");
+      expect(message.body.slice(5, 13)).toBe("@WP12 u2");
+      expect(message.references[0]).toMatchObject({
+        kind: "staff",
+        entityId: user2,
+        displayLabel: "WP12 u2",
+      });
+    });
+
+    it("a mention label that is not the directory name, or an id outside the channel, is refused and writes nothing", async () => {
+      const before = await messageRows(dm);
+      for (const entityId of [user2, randomUUID()]) {
+        const res = await post(app, dm, as(user1, randomUUID()), {
+          bodyDoc: docOf(
+            para({ type: "mention", kind: "staff", entityId, label: "<img src=x onerror=1>" }),
+          ),
+        });
+        expect(res.statusCode).toBe(422);
+        expect(res.body).not.toContain("<img");
+      }
+      expect(await messageRows(dm)).toBe(before);
+    });
+
+    it("idempotency: the same key and bodyDoc replays the original; a different bodyDoc under the key is 409", async () => {
+      const headers = as(user1, randomUUID());
+      const doc = docOf(para(text("once", { type: "italic" })));
+      const first = await post(app, dm, headers, { bodyDoc: doc });
+      const again = await post(app, dm, headers, { bodyDoc: doc });
+      const changed = await post(app, dm, headers, { bodyDoc: docOf(para(text("twice"))) });
+      expect(first.statusCode).toBe(201);
+      expect(again.json().messageId).toBe(first.json().messageId);
+      expect(changed.statusCode).toBe(409);
+      // The DB backstop: the same clientMessageId with an equal document returns the original, a changed one is 409.
+      const clientMessageId = randomUUID();
+      const a = await post(app, dm, as(user1, randomUUID()), { bodyDoc: doc, clientMessageId });
+      const b = await post(app, dm, as(user1, randomUUID()), { bodyDoc: doc, clientMessageId });
+      const c = await post(app, dm, as(user1, randomUUID()), {
+        bodyDoc: docOf(para(text("else"))),
+        clientMessageId,
+      });
+      expect(b.json().messageId).toBe(a.json().messageId);
+      expect(c.statusCode).toBe(409);
+    });
+
+    it("an edit carries its own format: rich -> rich -> plain -> rich, one revision per edit, each self-describing", async () => {
+      const sent = await post(app, dm, as(user1, randomUUID()), {
+        bodyDoc: docOf(para(text("v1", { type: "bold" }))),
+      });
+      const id = sent.json().messageId as string;
+      expect((await patch(user1, id, { bodyDoc: docOf(para(text("v2"))) })).statusCode).toBe(200);
+      expect((await rowOf(id)).body_kind).toBe("rich");
+      const looksLikeJson = 'v3 plain {"looks":"like json"}';
+      expect((await patch(user1, id, { body: looksLikeJson })).statusCode).toBe(200);
+      const plain = await rowOf(id);
+      expect(plain.body_kind).toBe("plain");
+      expect(plaintextOf(plain)).toBe(looksLikeJson);
+      expect(
+        (await patch(user1, id, { bodyDoc: docOf(para(text("v4", { type: "code" }))) })).statusCode,
+      ).toBe(200);
+      const head = await rowOf(id);
+      expect(head.body_kind).toBe("rich");
+      expect(messageBodySha256(plaintextOf(head))).toBe(head.body_sha256);
+
+      const revisions = (
+        await admin.query(
+          `SELECT revision_no, body_kind, body_sha256, body_cipher FROM message_revision WHERE message_id=$1 ORDER BY revision_no`,
+          [id],
+        )
+      ).rows as Array<{
+        revision_no: number;
+        body_kind: string;
+        body_sha256: string;
+        body_cipher: Buffer;
+      }>;
+      expect(revisions.map((r) => [r.revision_no, r.body_kind])).toEqual([
+        [1, "rich"],
+        [2, "rich"],
+        [3, "plain"],
+      ]);
+      for (const revision of revisions) {
+        expect(messageBodySha256(plaintextOf(revision))).toBe(revision.body_sha256);
+      }
+      const shown = (await read(user2, dm)).find((m) => m.messageId === id) as Json;
+      expect(shown).toMatchObject({ bodyKind: "rich", body: "v4" });
+      expect((await patch(user1, id, {})).statusCode).toBe(422);
+      expect(
+        (await patch(user1, id, { body: "x", bodyDoc: docOf(para(text("y"))) })).statusCode,
+      ).toBe(422);
+    });
+
+    it("back-compat: existing plain and markdown rows read exactly as stored, with no bodyDoc", async () => {
+      const plain = await service.sendMessage(ORG_A, {
+        channelId: dm,
+        authorUserId: user1,
+        body: "**raw** <b>x</b>",
+        bodyKind: "plain",
+      });
+      const markdown = await service.sendMessage(ORG_A, {
+        channelId: dm,
+        authorUserId: user1,
+        body: "# [a](javascript:1)",
+        bodyKind: "markdown",
+      });
+      const lookalike = '{"schemaVersion":1,"doc":{"type":"doc","content":[]}}';
+      const legacy = await post(app, dm, as(user1, randomUUID()), { body: lookalike });
+      const messages = await read(user2, dm);
+      const byId = (id: string) => messages.find((m) => m.messageId === id) as Json;
+      expect(byId(plain.messageId)).toMatchObject({ bodyKind: "plain", body: "**raw** <b>x</b>" });
+      expect(byId(markdown.messageId)).toMatchObject({
+        bodyKind: "markdown",
+        body: "# [a](javascript:1)",
+      });
+      // A plain string that merely looks like a rich body stays plain text.
+      expect(byId(legacy.json().messageId)).toMatchObject({ bodyKind: "plain", body: lookalike });
+      for (const id of [plain.messageId, markdown.messageId, legacy.json().messageId]) {
+        expect(byId(id)).not.toHaveProperty("bodyDoc");
+      }
+    });
+
+    it("a rich row whose stored plaintext is not a valid document reads as an empty message, never as JSON or a 500", async () => {
+      const sent = await post(app, dm, as(user1, randomUUID()), {
+        bodyDoc: docOf(para(text("fine"))),
+      });
+      const id = sent.json().messageId as string;
+      const hostile = JSON.stringify(docOf({ type: "html", html: "<script>1</script>" }));
+      for (const garbage of ["not json", hostile]) {
+        const sealed = bodyCipher.seal(ORG_A, garbage);
+        await admin.query(`UPDATE message SET body_cipher=$2, body_sha256=$3 WHERE id=$1`, [
+          id,
+          sealed.cipher,
+          sealed.sha256,
+        ]);
+        const shown = (await read(user2, dm)).find((m) => m.messageId === id) as Json;
+        expect(shown).toMatchObject({ bodyKind: "rich", body: "" });
+        expect(shown).not.toHaveProperty("bodyDoc");
+      }
+    });
+
+    it("the seam cannot store a rich kind without a document", async () => {
+      await expect(
+        service.sendMessage(ORG_A, {
+          channelId: dm,
+          authorUserId: user1,
+          body: "x",
+          bodyKind: "rich",
+        }),
+      ).rejects.toMatchObject({ statusCode: 422 });
+    });
+
+    it("XSS corpus, stored: no payload is stored as an executable link target, as JSON on the wire, or echoed in an error", async () => {
+      for (const { payload } of XSS_CORPUS) {
+        const asText = await post(app, dm, as(user1, randomUUID()), {
+          bodyDoc: docOf(para(text(payload))),
+        });
+        const asLink = await post(app, dm, as(user1, randomUUID()), {
+          bodyDoc: docOf(para(text("go", { type: "link", href: payload }))),
+        });
+        expect([201, 422]).toContain(asText.statusCode);
+        if (asText.statusCode === 422 && payload.length > 3) {
+          expect(asText.body).not.toContain(payload);
+        }
+        if (asLink.statusCode === 422 && payload.length > 3) {
+          expect(asLink.body).not.toContain(payload);
+        }
+      }
+      for (const message of await read(user2, dm)) {
+        if (message.bodyKind !== "rich" || !message.bodyDoc) continue;
+        expect(message.body).not.toContain('"schemaVersion"');
+        for (const match of JSON.stringify(message.bodyDoc).matchAll(/"href":"([^"]*)"/g)) {
+          expect(match[1]).toMatch(/^(https:\/\/|mailto:)/);
+        }
+      }
+    }, 120_000);
   });
 });
