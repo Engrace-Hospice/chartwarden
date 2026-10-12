@@ -159,8 +159,12 @@ export type MessageBodyKind = "plain" | "markdown" | "system";
  *  retention expiry (M36-F02 / ADR-0004). */
 export type MessageStatus = "sent" | "edited" | "deleted";
 
-/** Per-recipient receipt state (§3.4). */
-export type MessageReceiptStatus = "delivered" | "read" | "ack";
+/**
+ * Per-recipient receipt state (§3.4). `delivered` = fanned out to the recipient's inbox server-side (NOT
+ * device delivery); `read` = the recipient explicitly read it in the foreground. A receipt is never a
+ * clinical sign-off (ADR-0056 item 1: that is its own Phase 4 aggregate, never a receipt status).
+ */
+export type MessageReceiptStatus = "delivered" | "read";
 
 /** Socket.IO-driven user presence (§3.5). */
 export type PresenceStatus = "online" | "away" | "offline";

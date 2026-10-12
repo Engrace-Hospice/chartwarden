@@ -14,12 +14,12 @@ import type {
 } from "../interfaces/kinds";
 import { FLOOR_CHANNEL } from "./preferences";
 
-/** A settled delivery as seen by the outcome roll-up: did the channel acknowledge delivery? */
+/** A settled delivery as seen by the outcome roll-up: did the channel confirm delivery? */
 export interface DeliverySettlement {
   /** The user the alert was *for* — the original recipient, even when the row was forwarded. */
   readonly recipientUserId: string;
   readonly channel: NotificationChannel;
-  /** True once the channel acked delivery (in-app: socket ack; SMS/email: vendor webhook). */
+  /** True once the channel confirmed delivery (in-app: poll-time settlement; SMS/email: vendor webhook). */
   readonly delivered: boolean;
 }
 

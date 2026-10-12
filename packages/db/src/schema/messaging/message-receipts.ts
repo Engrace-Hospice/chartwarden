@@ -1,6 +1,8 @@
-// @wardenx/db — `message_receipt` (M36 Secure Messaging §3.4). Per-recipient delivery/read/ack
-// state for a message. M36-F04 / ADR-0010: organization_id is carried DIRECTLY (canonical
-// app.org_id RLS + the SD-028 composite index); co-partitioned with `message` in M36-T03. The
+// @wardenx/db — `message_receipt` (M36 Secure Messaging §3.4). Per-recipient delivered/read
+// state for a message (delivered = fanned out server-side, read = explicitly read; never an acknowledgement,
+// ADR-0056 item 1; migration 1079 CHECK-blocks the retired `ack` status and `acked_at`).
+// M36-F04 / ADR-0010: organization_id is carried DIRECTLY (canonical app.org_id RLS + the SD-028
+// composite index); co-partitioned with `message` in M36-T03. The
 // unread-inbox query path is served by the partial index on (user_id, status) WHERE
 // status = 'delivered'. RLS + the M4 write-audit trigger land in M36-T03.
 import { sql } from "drizzle-orm";
@@ -21,9 +23,13 @@ export const messageReceipts = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    status: messageReceiptStatus("status").notNull().default("delivered"),
+    status: messageReceiptStatus("status")
+      .$type<"delivered" | "read">()
+      .notNull()
+      .default("delivered"),
     deliveredAt: timestamp("delivered_at", { withTimezone: true }).notNull().defaultNow(),
     readAt: timestamp("read_at", { withTimezone: true }),
+    /** RETIRED (WP 1.6): always NULL, enforced by the 1079 CHECK. Column kept; dropped in a later cleanup. */
     ackedAt: timestamp("acked_at", { withTimezone: true }),
   },
   (t) => ({

@@ -2,7 +2,7 @@
 //
 // Implemented on node:crypto alone (no `web-push` dependency): VAPID (ES256 JWT) authorizes the sender to the
 // push service, and the sanitized payload is encrypted for the browser with aes128gcm content coding. Web Push
-// has no delivery callback, so the push service's `201 Created` IS the only acknowledgement the channel offers
+// has no delivery callback, so the push service's `201 Created` IS the only delivery confirmation the channel offers
 // and the row settles on acceptance (`settlesOnAcceptance: true`).
 //
 // DESTINATION is the verified push endpoint's value: the browser's `PushSubscription.toJSON()` serialized as
