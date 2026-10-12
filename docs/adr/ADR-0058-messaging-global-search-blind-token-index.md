@@ -157,8 +157,21 @@ residual risk. The review record is linked from this ADR before Status changes.
 
 ## Open questions
 
-- Which key model protects message bodies in production (HKDF-from-`MESSAGING_ENCRYPTION_KEY` vs the versioned `TenantKeyProvider`)?
-  This decides the derivation root and rotation story.
+- **Key model: answered by the code (2026-10-11), awaiting reviewer confirmation of production custody.** Message bodies use
+  HKDF-from-`MESSAGING_ENCRYPTION_KEY` (`packages/messaging/src/crypto/body-crypto.ts`); nothing under
+  `apps/backend/src/modules/36-messaging` references `TenantKeyProvider` or `tenant-kek.ts` (M34, `M34_TENANT_KEK`, random wrapped
+  DEKs). Consequences the reviewer must weigh:
+  1. The DEK is a pure function of one env var and the org id, so it is always recomputable: there is no key row to destroy. The
+     eraser (`messaging-eraser.ts`) therefore overwrites `message.body_cipher` and deletes rows; it cannot shred cryptographically.
+     ADR-0045 calls out this exact property as the reason M34 wraps instead of deriving.
+  2. The ops runbook (§8.3.3) states `MESSAGING_ENCRYPTION_KEY` is not rotatable today and that message bodies, unlike the other
+     two derived keys, are not recoverable by re-entry. An HMAC key derived from it inherits both limits.
+  3. Options: (a) derive the HMAC key from the existing KEK (cheapest; index erasure must be an explicit row delete, not a key
+     shred); (b) move message bodies to the M34 wrapped-DEK ring first (real shred, rotation, but a data migration of every
+     `body_cipher` and `message_revision.body_cipher`). The reviewer picks; (b) before launch is far cheaper than after.
+  4. `message_revision` (ADR-0055) holds replaced bodies under the same key; `wardenx_app` cannot UPDATE it, so tenant erasure
+     removes revision ciphertext only through the FK cascade when the message rows are deleted. Any key migration must cover it.
+  Still to confirm in production: that the deployed secret is a single per-environment value and where it is escrowed (runbook §8.4).
 - Truncation width `T`, padding buckets, stop-word list, minimum prefix length (3?) and maximum token length: reviewer to fix.
 - Remaining reviewer-fixed details: what counts as "ID-like", and diacritic handling for the future tokeniser.
 - Should hold-bearing tenants be able to disable global search entirely (per-tenant flag, default off)?
