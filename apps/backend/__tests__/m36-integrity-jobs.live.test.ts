@@ -17,9 +17,12 @@ import { type DbClient, createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { activeLegalHoldScopeForOrg } from "../src/modules/04-audit/legal-hold-scope";
+import { eraseTenantMessaging } from "@wardenx/messaging";
+import { createDrizzleMessagingEraseStore } from "../src/modules/36-messaging/erasers/messaging-eraser";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/index";
 import {
   type M36IntegrityJobDeps,
+  SYSTEMIC_DECRYPT_FAILURE_THRESHOLD,
   runHashVerifyForOrg,
   runRetentionScanForOrg,
 } from "../src/modules/36-messaging/jobs/integrity-jobs";
@@ -338,6 +341,9 @@ describe.skipIf(!DB_URL)(
       expect(scan.toDestroyMessageIds).not.toContain(recent.messageId);
       expect(scan.skippedLegalHold).toBeGreaterThanOrEqual(1);
       expect(scan.candidates).toBe(scan.toDestroy + scan.skippedLegalHold);
+      // ORDER BY (created_at, id): the plan is deterministic across runs
+      const again = await runRetentionScanForOrg(deps, orgA);
+      expect(again.toDestroyMessageIds).toEqual(scan.toDestroyMessageIds);
 
       const run = (await auditRows("m36.retention_scan.run")).find(
         (r) => r.resource_id === scan.runId,
@@ -361,6 +367,82 @@ describe.skipIf(!DB_URL)(
       expect(wide.toDestroy).toBe(0);
       expect(wide.skippedLegalHold).toBe(wide.candidates);
       expect(wide.candidates).toBeGreaterThanOrEqual(2);
+    });
+
+    it("a whole-org decrypt failure writes a capped number of mismatch rows plus one systemic summary, and still fails", async () => {
+      const extra = SYSTEMIC_DECRYPT_FAILURE_THRESHOLD + 10;
+      for (let i = 0; i < extra; i++) await send(orgB, chanB, authorB, `systemic ${i}`);
+      // Corrupt every org B cipher: the shape of a wrong-KEK / lost-DEK tenant.
+      await admin.query(
+        `UPDATE message SET body_cipher = set_byte(body_cipher, 20, get_byte(body_cipher, 20) # 255) WHERE organization_id=$1`,
+        [orgB],
+      );
+      const total = (
+        await admin.query("SELECT count(*)::int AS n FROM message WHERE organization_id=$1", [orgB])
+      ).rows[0].n as number;
+
+      const result = await runHashVerifyForOrg(deps, orgB);
+      expect(result.mismatched).toBe(total); // every failure still counted, so the tick still fails
+
+      const rows = (await auditRows("m36.integrity.hash_mismatch")).filter(
+        (r) => r.context.runId === result.runId,
+      );
+      expect(rows).toHaveLength(SYSTEMIC_DECRYPT_FAILURE_THRESHOLD);
+      const systemic = (await auditRows("m36.integrity.systemic_decrypt_failure")).filter(
+        (r) => r.resource_id === result.runId,
+      );
+      expect(systemic).toHaveLength(1);
+      expect(systemic[0]).toMatchObject({ severity: "critical", outcome: "failure" });
+      expect(systemic[0].context).toMatchObject({
+        threshold: SYSTEMIC_DECRYPT_FAILURE_THRESHOLD,
+        suppressedMismatches: total - SYSTEMIC_DECRYPT_FAILURE_THRESHOLD,
+      });
+      expect(JSON.stringify(systemic)).not.toContain("systemic 0");
+      await expect(
+        hashVerifyTick({
+          ...deps,
+          connection: {},
+          activeOrgs: { listActiveOrgs: async () => [{ organizationId: orgB }] },
+          onError: () => undefined,
+        }),
+      ).rejects.toThrow(/failed for 1 of 1 org/);
+    });
+
+    it("tenant erase leaves zero message_revision rows and nothing for hash_verify to scan", async () => {
+      const orgC = await seedOrg("wp19c");
+      const userC = await seedUser("wp19-c@x.test", orgC);
+      const annC = (
+        await admin.query(
+          `INSERT INTO channel (organization_id, channel_kind, title, retention_class)
+         VALUES ($1,'announcement','news c','operational') RETURNING id`,
+          [orgC],
+        )
+      ).rows[0].id as string;
+      const m = await send(orgC, annC, userC, "c v1");
+      await service().editMessage(orgC, { userId: userC, messageId: m.messageId, body: "c v2" });
+      const revisionsOf = async () =>
+        (
+          await admin.query(
+            "SELECT count(*)::int AS n FROM message_revision WHERE organization_id=$1",
+            [orgC],
+          )
+        ).rows[0].n as number;
+      expect(await revisionsOf()).toBeGreaterThanOrEqual(1);
+
+      const eraseStore = createDrizzleMessagingEraseStore(handle.db, {
+        soleTenantUserIds: async () => [],
+      });
+      // After the cipher scrub alone, an erased head is a skip, not a mismatch.
+      await eraseStore.destroyTenantDek(orgC);
+      const scrubbed = await runHashVerifyForOrg(deps, orgC);
+      expect(scrubbed.mismatched).toBe(0);
+      expect(scrubbed.skippedDeletedTenant).toBeGreaterThanOrEqual(1);
+
+      await eraseTenantMessaging(orgC, eraseStore);
+
+      expect(await revisionsOf()).toBe(0); // FK ON DELETE CASCADE from the hard-deleted heads
+      const verify = await runHashVerifyForOrg(deps, orgC);
+      expect(verify.scanned).toBe(0);
     });
   },
 );

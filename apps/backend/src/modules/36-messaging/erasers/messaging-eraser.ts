@@ -26,6 +26,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import type { DataEraser } from "@wardenx/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
+import { ERASED_BODY_SHA256 } from "../jobs/integrity-jobs";
 
 /** Injected adapter for the M36 eraser (slice defaults to the in-memory messaging-erase store). */
 export interface MessagingEraserDeps {
@@ -97,7 +98,7 @@ export function createDrizzleMessagingEraseStore(
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
         const shredded = await tx
           .update(MSG)
-          .set({ bodyCipher: Buffer.alloc(0), bodySha256: "" })
+          .set({ bodyCipher: Buffer.alloc(0), bodySha256: ERASED_BODY_SHA256 })
           .where(and(eq(MSG.organizationId, orgId), sql`octet_length(${MSG.bodyCipher}) > 0`))
           .returning({ id: MSG.id });
         return { bodiesRendered: shredded.length };

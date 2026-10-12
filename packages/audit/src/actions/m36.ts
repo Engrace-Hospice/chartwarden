@@ -23,6 +23,15 @@ export const M36_ACTION_CATALOG: ModuleActionCatalog = [
     isPartTwoEligible: false,
   },
   {
+    action: "m36.integrity.systemic_decrypt_failure", // one row per run when per-row mismatch rows were suppressed
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "A hash_verify run hit a streak of undecryptable bodies (runId, organizationId, threshold, suppressedMismatches, firstSuppressedResourceId): a whole-tenant key problem, not row tampering. Per-row mismatch rows stop after the threshold; the failures stay counted in the run row. Ids and counts only.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
     action: "m36.hash_verify.run", // §8.1.2 — one row per nightly messaging.hash_verify execution
     moduleOwner: "m36",
     defaultRetentionClass: "operational",
