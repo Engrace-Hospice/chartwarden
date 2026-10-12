@@ -8,10 +8,12 @@ import { ConversationThread } from "./conversation-thread";
 import type { ChannelSummary, ConversationFilter } from "./messaging-types";
 import { channelKindLabel, channelLabel } from "./messaging-utils";
 import { NewConversationDialog } from "./new-conversation-dialog";
+import { useMessagingRealtime } from "./use-messaging-realtime";
 import "./staff-messaging.css";
 
 const CHANNEL_POLL_INTERVAL_MS = 15_000;
 const MAX_CHANNEL_POLL_INTERVAL_MS = 60_000;
+const REALTIME_CHANNEL_POLL_INTERVAL_MS = 120_000;
 
 function useNarrowMessagingLayout(): boolean {
   const query = "(max-width: 760px)";
@@ -170,14 +172,38 @@ function OrganizationStaffMessaging({
     };
   }, [loadChannels]);
 
+  // ADR-0054 hints: a hint (or a reconnect) refreshes the list at once and nudges the open thread. If a load is
+  // already in flight it may predate the change, so wait for it and read again.
+  const [liveToken, setLiveToken] = useState(0);
+  const activeIdRef = useRef<string | null>(null);
+  activeIdRef.current = activeId;
+  const refreshFromHint = useCallback(async (): Promise<void> => {
+    if (channelLoadInFlight.current) await channelLoadInFlight.current;
+    await loadChannels(true);
+  }, [loadChannels]);
+  const realtimeConnected = useMessagingRealtime(
+    useCallback(
+      (hint) => {
+        void refreshFromHint();
+        if (hint.ids.channelId === activeIdRef.current) setLiveToken((n) => n + 1);
+      },
+      [refreshFromHint],
+    ),
+    useCallback(() => {
+      void refreshFromHint();
+      setLiveToken((n) => n + 1);
+    }, [refreshFromHint]),
+  );
+
   useEffect(() => {
     let timer: number | undefined;
     let failures = 0;
     let stopped = false;
+    const base = realtimeConnected ? REALTIME_CHANNEL_POLL_INTERVAL_MS : CHANNEL_POLL_INTERVAL_MS;
     const schedule = (): void => {
       timer = window.setTimeout(
         tick,
-        Math.min(CHANNEL_POLL_INTERVAL_MS * 2 ** failures, MAX_CHANNEL_POLL_INTERVAL_MS),
+        Math.min(base * 2 ** failures, Math.max(MAX_CHANNEL_POLL_INTERVAL_MS, base)),
       );
     };
     const tick = async (): Promise<void> => {
@@ -201,7 +227,7 @@ function OrganizationStaffMessaging({
       document.removeEventListener("visibilitychange", refreshWhenVisible);
       window.removeEventListener("focus", refreshWhenVisible);
     };
-  }, [loadChannels]);
+  }, [loadChannels, realtimeConnected]);
 
   const openConversation = useCallback(
     async (channelId: string): Promise<boolean> => {
@@ -305,6 +331,8 @@ function OrganizationStaffMessaging({
               onReadConfirmed={onReadConfirmed}
               onMessageSent={() => void loadChannels(true)}
               onAccessRevoked={onAccessRevoked}
+              liveToken={liveToken}
+              realtimeConnected={realtimeConnected}
               anchorMessageId={
                 activeChannel.channelId === requestedChannelId ? requestedMessageId : null
               }

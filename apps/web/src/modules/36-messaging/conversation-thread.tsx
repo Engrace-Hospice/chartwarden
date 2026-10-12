@@ -31,6 +31,7 @@ import {
 const MESSAGE_PAGE_SIZE = 50;
 const POLL_INTERVAL_MS = 15_000;
 const MAX_POLL_INTERVAL_MS = 60_000;
+const REALTIME_POLL_INTERVAL_MS = 120_000;
 
 function isAccessError(error: unknown): boolean {
   const serialized = JSON.stringify(error ?? "").toLowerCase();
@@ -50,6 +51,10 @@ export interface ConversationThreadProps {
   onMessageSent: () => void;
   onAccessRevoked: (channelId: string) => void;
   anchorMessageId?: string | null;
+  /** Changes when a realtime hint (or a socket reconnect) says this channel has news: read the latest now. */
+  liveToken?: number;
+  /** While the socket is up, polling is only a safety net and runs slowly. */
+  realtimeConnected?: boolean;
 }
 
 function reconcileReferences(
@@ -154,6 +159,8 @@ export function ConversationThread({
   onMessageSent,
   onAccessRevoked,
   anchorMessageId = null,
+  liveToken = 0,
+  realtimeConnected = false,
 }: ConversationThreadProps): JSX.Element {
   const client = useApiClient();
   const [messages, setMessages] = useState<Message[] | null>(null);
@@ -389,11 +396,16 @@ export function ConversationThread({
   }, [channel.kind, channel.subjectId, client]);
 
   useEffect(() => {
+    if (liveToken > 0) void loadLatest(true);
+  }, [liveToken, loadLatest]);
+
+  useEffect(() => {
     let timer: number | undefined;
     let failures = 0;
     let stopped = false;
+    const base = realtimeConnected ? REALTIME_POLL_INTERVAL_MS : POLL_INTERVAL_MS;
     const schedule = (): void => {
-      const delay = Math.min(POLL_INTERVAL_MS * 2 ** failures, MAX_POLL_INTERVAL_MS);
+      const delay = Math.min(base * 2 ** failures, Math.max(MAX_POLL_INTERVAL_MS, base));
       timer = window.setTimeout(tick, delay);
     };
     const tick = async (): Promise<void> => {
@@ -417,7 +429,7 @@ export function ConversationThread({
       document.removeEventListener("visibilitychange", refreshWhenVisible);
       window.removeEventListener("focus", refreshWhenVisible);
     };
-  }, [loadLatest]);
+  }, [loadLatest, realtimeConnected]);
 
   useLayoutEffect(() => {
     if (!initialScrollPending.current || messages === null) return;

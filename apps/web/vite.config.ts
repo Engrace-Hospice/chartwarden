@@ -18,6 +18,8 @@ export default defineConfig({
     proxy: {
       "/api": { target: API_PROXY_TARGET, changeOrigin: true },
       "/webhooks": { target: API_PROXY_TARGET, changeOrigin: true },
+      // ADR-0054 realtime hints; the backend serves it only when REALTIME_ENABLED is set (polling covers the rest).
+      "/socket.io": { target: API_PROXY_TARGET, changeOrigin: true, ws: true },
     },
   },
   // Output under dist/ (already git-ignored); tsc -b emits the type graph into dist/ alongside.
