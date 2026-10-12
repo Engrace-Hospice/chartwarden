@@ -671,6 +671,28 @@ describe("createS3ObjectStore verified upload (mocked fetch)", () => {
     expect(result.expiresAt).toBe("2013-05-24T00:15:00.000Z");
   });
 
+  it("binds the exact byte length into the signature when contentLength is given (H1), and leaves other callers unchanged", async () => {
+    const store = createS3ObjectStore(testConfig, { fetchImpl: neverFetch, now: fixedNow });
+    const sha256Hex = createHash("sha256").update("verified upload").digest("hex");
+    const base = {
+      bucket: "tenant-abc",
+      objectKey: "uploads/upload-id/object",
+      mimeType: "application/pdf",
+      sha256Hex,
+      ttlSeconds: 900,
+    };
+    const bound = await store.presignUpload({ ...base, contentLength: 1234 });
+    expect(bound.url).toContain(
+      "X-Amz-SignedHeaders=content-length%3Bcontent-type%3Bhost%3Bx-amz-checksum-sha256",
+    );
+    expect(bound.headers["content-length"]).toBe("1234");
+    const other = await store.presignUpload({ ...base, contentLength: 1235 });
+    expect(other.url).not.toBe(bound.url); // a different length is a different signature
+    const unbound = await store.presignUpload(base);
+    expect(unbound.url).not.toContain("content-length");
+    expect(unbound.headers).not.toHaveProperty("content-length");
+  });
+
   it("HEADs with checksum mode and normalizes verified metadata to lowercase hex", async () => {
     const sha256Hex = createHash("sha256").update("verified upload").digest("hex");
     const { fetchImpl, calls } = mockFetch(

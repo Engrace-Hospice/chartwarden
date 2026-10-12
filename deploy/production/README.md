@@ -85,6 +85,13 @@ are not rolled back.
   `depends_on` it: a down scanner leaves attachments `pending` (nothing is delivered). Alert on `pending` attachments
   older than a few minutes or repeated `deferred` scans; check the scanner with `docker compose exec clamav clamdcheck.sh`.
   `deploy.sh` brings it up without recreating it. Pin the image by digest when you promote it.
+- **Attachment upload size (defence in depth).** The presigned PUT signs `content-length` for exactly the declared
+  `byteSize`, so MinIO refuses any other length and the quota (which counts `byteSize`) is real; `complete` also compares
+  the stored size and destroys a mismatching object at once. The independent backstop is on the storage origin:
+  `client_max_body_size` in `nginx/wardenx-storage.conf` (100m today, sized for the largest M22 upload, so it is a ceiling
+  not a per-file limit) and, if you want a hard per-tenant cap, a MinIO bucket quota on `tenant-*` buckets
+  (`mc quota set <alias>/tenant-<orgId> --size <bytes>`). Browsers set `Content-Length` themselves and ignore it in the
+  returned `headers` map, which is expected.
 - **`tenant-buckets`** — idempotent one-shot (`scripts/backfill-tenant-buckets.ts`) that creates `tenant-<orgId>` for every
   org lacking it; `deploy.sh` runs it each deploy (a failure only warns: the attachment upload path also creates a missing
   bucket on demand, and answers a typed 503 naming the bucket if it cannot).

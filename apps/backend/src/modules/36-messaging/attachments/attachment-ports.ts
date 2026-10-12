@@ -10,6 +10,8 @@ export interface AttachmentStoragePort {
     readonly objectKey: string;
     readonly mimeType: string;
     readonly sha256Hex: string;
+    /** The declared size; the PUT is signed for exactly this many bytes (quota counts it, so it must be true). */
+    readonly byteSize: number;
     readonly ttlSeconds: number;
   }): Promise<{
     readonly url: string;

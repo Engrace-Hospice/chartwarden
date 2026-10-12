@@ -129,6 +129,8 @@ export interface ObjectStorePort {
     readonly mimeType: string;
     readonly sha256Hex: string;
     readonly ttlSeconds: number;
+    /** When set, `content-length` is signed: the store refuses a body of any other length (declared-size enforcement). */
+    readonly contentLength?: number;
   }): Promise<{
     readonly url: string;
     readonly headers: Readonly<Record<string, string>>;

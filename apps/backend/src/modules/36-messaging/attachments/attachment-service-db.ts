@@ -638,6 +638,22 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
     return runWithDeadline(run, scanDeadlineMs, deadlineError, abortGraceMs);
   }
 
+  /** Destroy a row's object under the reaper deadline; never throws (callers have already decided to refuse). */
+  async function destroyQuietly(orgId: string, row: AttachmentRow): Promise<void> {
+    const objectKey = row.objectKey;
+    if (!objectKey) return;
+    try {
+      await runWithDeadline(
+        (signal) => storage.destroyObject({ organizationId: orgId, objectKey, signal }),
+        deps.storageDeadlineMs ?? REAP_DESTROY_DEADLINE_MS,
+        () => new Error("attachment destroy exceeded its deadline"),
+        abortGraceMs,
+      );
+    } catch (error) {
+      deps.onReapError?.({ attachmentId: row.id }, error);
+    }
+  }
+
   /** Atomically take one of the row's bounded inline attempts; false when it has used them all (or was settled). */
   async function claimInlineAttempt(orgId: string, row: AttachmentRow): Promise<boolean> {
     const claimed = await withOrgContext(db, systemOrgContext(orgId), (tx) =>
@@ -787,6 +803,7 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
           objectKey,
           mimeType: valid.contentType,
           sha256Hex: valid.sha256Hex,
+          byteSize: valid.byteSize,
           ttlSeconds: ATTACHMENT_UPLOAD_TTL_SECONDS,
         });
         const [row] = await tx
@@ -852,6 +869,9 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
           found.sha256Hex !== row.sha256Hex ||
           found.mimeType !== row.mimeType
         ) {
+          // The bytes are not what was authorized: destroy them now (best effort; the reaper retries the row later) so a
+          // wrong-size/wrong-type object never sits in the tenant bucket until the orphan window.
+          await destroyQuietly(orgId, row);
           throw new WardenXError(
             "ATTACHMENT_UPLOAD_MISMATCH",
             "the uploaded file does not match what was authorized",

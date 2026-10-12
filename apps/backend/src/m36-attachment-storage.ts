@@ -69,7 +69,7 @@ export function createM22BackedAttachmentStorage(stores: {
     accessKind: "signed_url_issued" as const,
   });
   return {
-    async presignUpload({ organizationId, objectKey, mimeType, sha256Hex, ttlSeconds }) {
+    async presignUpload({ organizationId, objectKey, mimeType, sha256Hex, byteSize, ttlSeconds }) {
       await ensureBucket(organizationId);
       return stores.publicStore.presignUpload({
         bucket: bucketOf(organizationId),
@@ -77,6 +77,8 @@ export function createM22BackedAttachmentStorage(stores: {
         mimeType,
         sha256Hex,
         ttlSeconds,
+        // Sign the declared length: the store refuses any other size, so quota (which counts byteSize) is real.
+        contentLength: byteSize,
       });
     },
     inspect: ({ organizationId, objectKey, signal }) =>

@@ -103,6 +103,8 @@ function createFakeStorage(clock: { now: number }) {
   const ttlsRequested: number[] = [];
   const downloadMimeTypes: string[] = [];
   const destroyed: string[] = [];
+  /** Every presignUpload call (the size the PUT was bound to). */
+  const presigned: { objectKey: string; byteSize: number }[] = [];
   /** Failure injection for destroyObject: a key containing this text throws (a store that cannot reach MinIO). */
   const destroyFailure = { onKeyIncluding: null as string | null, keys: new Set<string>() };
   /** Failure injection for readBytes: every read for this org throws (a tenant bucket answering 5xx). */
@@ -111,7 +113,8 @@ function createFakeStorage(clock: { now: number }) {
   const destroyHook: { before: ((objectKey: string) => Promise<void>) | null } = { before: null };
   const key = (org: string, objectKey: string) => `${org}/${objectKey}`;
   const port: AttachmentStoragePort = {
-    async presignUpload({ organizationId, objectKey, ttlSeconds }) {
+    async presignUpload({ organizationId, objectKey, byteSize, ttlSeconds }) {
+      presigned.push({ objectKey, byteSize });
       return {
         url: `https://objects.test/put/${key(organizationId, objectKey)}?sig=put`,
         headers: { "x-amz-checksum-sha256": "enforced" },
@@ -153,6 +156,7 @@ function createFakeStorage(clock: { now: number }) {
     ttlsRequested,
     downloadMimeTypes,
     destroyed,
+    presigned,
     destroyFailure,
     readFailure,
     destroyHook,
@@ -551,8 +555,15 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       const row = (
         await admin.query(`SELECT object_key FROM message_attachment WHERE id=$1`, [attachmentId])
       ).rows[0];
+      // H1: the PUT was signed for exactly the declared size
+      expect(storage.presigned.find((p) => p.objectKey === row.object_key)?.byteSize).toBe(
+        bytes.length,
+      );
       storage.put(ORG_A, row.object_key, pdfBytes("something else"));
       expect((await complete(u1, attachmentId)).statusCode).toBe(422);
+      // H1: a mismatching object is destroyed at once, not left in the bucket
+      expect(storage.destroyed).toContain(row.object_key);
+      expect(storage.objects.has(`${ORG_A}/${row.object_key}`)).toBe(false);
       expect(
         await count(
           `SELECT count(*)::int AS n FROM message_attachment WHERE id=$1 AND completed_at IS NOT NULL`,

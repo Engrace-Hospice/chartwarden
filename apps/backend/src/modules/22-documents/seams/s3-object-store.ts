@@ -450,7 +450,14 @@ export function createS3ObjectStore(
       return { sha256Hex };
     },
 
-    async presignUpload({ bucket, objectKey, mimeType, sha256Hex, ttlSeconds: requested }) {
+    async presignUpload({
+      bucket,
+      objectKey,
+      mimeType,
+      sha256Hex,
+      ttlSeconds: requested,
+      contentLength,
+    }) {
       const ttlSeconds = Math.min(Math.max(Math.ceil(requested), 30), 900);
       const at = now();
       const amzDate = sigV4AmzDate(at);
@@ -458,7 +465,11 @@ export function createS3ObjectStore(
       const scope = scopeFor(dateStamp);
       const t = target(bucket, objectKey);
       const checksum = Buffer.from(sha256Hex, "hex").toString("base64");
-      const signedHeadersValue = "content-type;host;x-amz-checksum-sha256";
+      // Optional exact-size binding: with `content-length` signed the store refuses a body of any other length.
+      const signedHeadersValue =
+        contentLength === undefined
+          ? "content-type;host;x-amz-checksum-sha256"
+          : "content-length;content-type;host;x-amz-checksum-sha256";
       const query: (readonly [string, string])[] = [
         ["X-Amz-Algorithm", SIGV4_ALGORITHM],
         ["X-Amz-Credential", `${config.accessKeyId}/${scope}`],
@@ -471,6 +482,7 @@ export function createS3ObjectStore(
         host: t.host,
         "content-type": mimeType,
         "x-amz-checksum-sha256": checksum,
+        ...(contentLength === undefined ? {} : { "content-length": String(contentLength) }),
       };
       const { text: canonicalRequest } = sigV4CanonicalRequest({
         method: "PUT",
@@ -491,7 +503,11 @@ export function createS3ObjectStore(
       );
       return {
         url: `${t.origin}${t.canonicalUri}?${canonicalQuery}&X-Amz-Signature=${signature}`,
-        headers: { "content-type": mimeType, "x-amz-checksum-sha256": checksum },
+        headers: {
+          "content-type": mimeType,
+          "x-amz-checksum-sha256": checksum,
+          ...(contentLength === undefined ? {} : { "content-length": String(contentLength) }),
+        },
         expiresAt: new Date(at.getTime() + ttlSeconds * 1000).toISOString(),
       };
     },
