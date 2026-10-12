@@ -66,7 +66,6 @@ describe("every link shows its host unless the text is exactly that host", () =>
     "EVIL.NET",
     "evil.net.",
     "Evil.Net",
-    "www.evil.net",
     "https://evil.net",
     "https://evil.net/",
     "HTTPS://EVIL.NET",
@@ -85,22 +84,48 @@ describe("every link shows its host unless the text is exactly that host", () =>
     }
   });
 
-  it("compares internationalised hosts by their punycode form", () => {
+  it("any destination with an xn-- label always shows the host (homograph on homograph)", () => {
+    // Cyrillic a in both the text and the href: they parse to the same punycode host, which used to look "exact".
+    expect(needsDestinationSuffix("b\u0430nk.com", "https://b\u0430nk.com/")).toBe(true);
+    expect(needsDestinationSuffix("ex\u0430mple.com", "https://xn--exmple-4nf.com/")).toBe(true);
+    // A legitimate IDN destination gets the (redundant) punycode suffix; accepted.
     expect(needsDestinationSuffix("b\u00fccher.example", "https://xn--bcher-kva.example/")).toBe(
-      false,
+      true,
     );
     expect(needsDestinationSuffix("xn--bcher-kva.example", "https://b\u00fccher.example/")).toBe(
-      false,
+      true,
     );
     expect(needsDestinationSuffix("apple.com", "https://xn--pple-43d.com/")).toBe(true);
+    // ASCII destinations stay exact-quiet; non-ASCII text is never "exactly" an ASCII host.
+    expect(needsDestinationSuffix("bank.com", "https://bank.com/")).toBe(false);
+    expect(needsDestinationSuffix("b\u0430nk.com", "https://bank.com/")).toBe(true);
+    expect(needsDestinationSuffix("bank.com\u00b7", "https://bank.com/")).toBe(true);
   });
 
-  it("www. is the only prefix that may differ, and only the leading one", () => {
-    expect(needsDestinationSuffix("evil.net", "https://www.evil.net/")).toBe(false);
-    expect(needsDestinationSuffix("www.evil.net", "https://evil.net/")).toBe(false);
-    expect(needsDestinationSuffix("www.www.evil.net", "https://evil.net/")).toBe(true);
-    expect(needsDestinationSuffix("web.evil.net", "https://evil.net/")).toBe(true);
+  it("www.: only the destination's own leading www. may be left out of the text", () => {
+    expect(needsDestinationSuffix("bank.com", "https://www.bank.com/")).toBe(false);
+    expect(needsDestinationSuffix("www.bank.com", "https://www.bank.com/")).toBe(false);
+    expect(needsDestinationSuffix("www.bank.com", "https://bank.com/")).toBe(true);
+    expect(needsDestinationSuffix("www.www.bank.com", "https://www.bank.com/")).toBe(true);
+    expect(needsDestinationSuffix("web.bank.com", "https://www.bank.com/")).toBe(true);
     expect(needsDestinationSuffix("evil.net", "https://sub.evil.net/")).toBe(true);
+  });
+
+  it("a percent sign, or any IPv4 spelling other than the canonical one, is not exact", () => {
+    expect(needsDestinationSuffix("bank%2Ecom", "https://bank.com/")).toBe(true);
+    expect(needsDestinationSuffix("bank.com%", "https://bank.com/")).toBe(true);
+    for (const text of ["127.1", "0x7f.1", "2130706433", "127.000.000.001", "0177.0.0.1"]) {
+      expect(needsDestinationSuffix(text, "https://127.0.0.1/")).toBe(true);
+    }
+    expect(needsDestinationSuffix("127.0.0.1", "https://127.0.0.1/")).toBe(false);
+    expect(needsDestinationSuffix("127.0.0.1:8443", "https://127.0.0.1:8443/")).toBe(false);
+  });
+
+  it("only a single trailing dot is exact", () => {
+    expect(needsDestinationSuffix("bank.com.", "https://bank.com/")).toBe(false);
+    expect(needsDestinationSuffix("bank.com..", "https://bank.com/")).toBe(true);
+    expect(needsDestinationSuffix("bank.com...", "https://bank.com/")).toBe(true);
+    expect(needsDestinationSuffix("bank.com\u2026", "https://bank.com/")).toBe(true);
   });
 
   it.each([

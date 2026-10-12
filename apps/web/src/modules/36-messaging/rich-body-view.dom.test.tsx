@@ -117,7 +117,7 @@ describe("S1: a link never hides where it goes", () => {
   });
 });
 
-describe("a link inside a longer host-like token shows its destination (no neighbour rule needed)", () => {
+describe("a link that is only part of a host-like token shows its destination", () => {
   it("[bank] + .com/login linking elsewhere", () => {
     const { container } = view(
       sanitized(

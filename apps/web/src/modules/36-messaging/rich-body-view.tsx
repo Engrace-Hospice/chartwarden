@@ -39,7 +39,8 @@ function applyMarks(
       const href = safeLinkHref(mark.href);
       // An unsafe target degrades to its visible text, never to an inert-looking-but-live anchor.
       if (href === null) continue;
-      // https: hosts are punycode already (URL parsing), so an IDN look-alike shows as xn--...
+      // The canonical host as the URL parser spells it: an internationalised host is punycode (xn--...), and a
+      // destination like that always gets the inline suffix, so the tell is never hidden by identical-looking text.
       const destination = linkTargetLabel(href);
       const external = href.startsWith("https:");
       node = (
