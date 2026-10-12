@@ -157553,6 +157553,9 @@
                               }
                             }
                           },
+                          "bodyUnreadable": {
+                            "type": "boolean"
+                          },
                           "createdAt": {
                             "type": "string"
                           },

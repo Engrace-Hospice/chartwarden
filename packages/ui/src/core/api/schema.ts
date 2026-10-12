@@ -61727,6 +61727,7 @@ export interface operations {
                                     content: unknown[];
                                 };
                             };
+                            bodyUnreadable?: boolean;
                             createdAt: string;
                             parentMessageId: string | null;
                             references: {
