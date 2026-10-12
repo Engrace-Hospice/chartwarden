@@ -258,7 +258,8 @@ function dmParticipantKey(userId: string, peerUserId: string): string {
 /**
  * Re-check, inside the write transaction, that the actor is still an active user with a live
  * membership (announcement channels are org-wide). `assertMessageChannelAccess` runs before the
- * transaction opens, so without this a removal landing in between would still let the write through.
+ * transaction opens, so this narrows the window for a removal landing in between to the gap between
+ * this read and the write (plain READ COMMITTED reads, no row lock), rather than closing it.
  * The Part 2 consent seam cannot run inside a transaction and is only checked up front.
  */
 async function assertLiveMembershipInTx(
