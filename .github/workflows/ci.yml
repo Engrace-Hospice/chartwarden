@@ -719,8 +719,8 @@ jobs:
             }
           # GAP-104 — care_team channel membership lifecycle (unassign revokes access, discharge archives).
           - { name: "M36 Channel membership", scripts: "test:m36:channel-membership:live" }
-        # ADR-0054 / WP 1.1 — Socket.IO transport on a real Valkey, two nodes (auth, origin, rooms, revocation, expiry, cap).
-        - { name: "M36 Realtime", scripts: "test:m36:realtime:live" }
+          # ADR-0054 / WP 1.1 — Socket.IO transport on a real Valkey, two nodes (auth, origin, rooms, revocation, expiry, cap).
+          - { name: "M36 Realtime", scripts: "test:m36:realtime:live" }
           - { name: "M39 Consent", scripts: "test:m39:consent-lifecycle:live" }
           # GAP-158 / GAP-161 / GAP-164 (batch 17 close-out) - caregiver->user link + M40 grief catalog,
           # M32 same-tx outbox emit sites, M34 platform-ops / tenant account+flags routes.
