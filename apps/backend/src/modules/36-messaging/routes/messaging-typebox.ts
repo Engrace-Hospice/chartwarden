@@ -338,6 +338,7 @@ const ResolvedMessageSchema = Type.Object({
     }),
   ),
   attachments: Type.Optional(Type.Array(MessageAttachmentViewSchema)),
+  hiddenAttachmentCount: Type.Optional(Type.Integer({ minimum: 0 })),
 });
 export const MessageListResponseSchema = Type.Object({
   messages: Type.Array(ResolvedMessageSchema),

@@ -97,6 +97,7 @@ const MSG = schema.messages;
 const MR = schema.messageReceipts;
 const MER = schema.messageEntityReferences;
 const MREV = schema.messageRevisions;
+const MATT = schema.messageAttachments;
 
 // ADR-0055 item 3: the author may edit for this long after the message was created (server clock). Tenant shortening
 // arrives with per-tenant messaging settings; the platform maximum is this value.
@@ -1210,6 +1211,20 @@ export function createDbMessagingRouteService(
             .filter((row) => row.status !== "deleted")
             .map((row) => row.id),
         });
+        // How many bound files this viewer cannot see (still scanning for someone else, or quarantined): a bare count,
+        // so an attachment-only message is not mistaken for a tombstone and nothing about the files leaks.
+        const liveIds = chronologicalRows
+          .filter((row) => row.status !== "deleted")
+          .map((row) => row.id);
+        const boundRows =
+          liveIds.length === 0
+            ? []
+            : await tx
+                .select({ messageId: MATT.messageId, n: sql<number>`count(*)::int` })
+                .from(MATT)
+                .where(and(eq(MATT.organizationId, orgId), inArray(MATT.messageId, liveIds)))
+                .groupBy(MATT.messageId);
+        const boundByMessage = new Map(boundRows.map((row) => [row.messageId, Number(row.n)]));
         // Entitled-reader gate: the channel_visibility ABAC predicate already authorized this read
         // at the route, so decrypt each body under the tenant DEK; a 'deleted' tombstone is empty.
         const page = chronologicalRows.map(
@@ -1223,6 +1238,10 @@ export function createDbMessagingRouteService(
             createdAt: m.createdAt.toISOString(),
             parentMessageId: m.parentMessageId,
             attachments: attachmentsByMessage.get(m.id) ?? [],
+            hiddenAttachmentCount: Math.max(
+              0,
+              (boundByMessage.get(m.id) ?? 0) - (attachmentsByMessage.get(m.id)?.length ?? 0),
+            ),
             references: (referencesByMessage.get(m.id) ?? []).map((reference) => ({
               kind: reference.kind as "staff" | "patient",
               entityId: reference.entityId,

@@ -64,6 +64,8 @@ export interface ResolvedMessage {
   readonly references: readonly ResolvedMessageReference[];
   /** WP 1.5: scan-gated attachment metadata (quarantined and, for non-uploaders, pending ones are omitted). */
   readonly attachments?: readonly MessageAttachmentView[];
+  /** Bound files this viewer cannot see (scanning for others, or withheld): a bare count, never ids, names or state. */
+  readonly hiddenAttachmentCount?: number;
 }
 
 /**

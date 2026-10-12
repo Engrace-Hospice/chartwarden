@@ -61735,6 +61735,7 @@ export interface operations {
                                 byteSize: number;
                                 availability: "available" | "scanning";
                             }[];
+                            hiddenAttachmentCount?: number;
                         }[];
                         nextCursor?: string;
                         patientId: string | null;

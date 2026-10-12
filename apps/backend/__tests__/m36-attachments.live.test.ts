@@ -202,7 +202,9 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
   let app: FastifyInstance;
   let storage: ReturnType<typeof createFakeStorage>;
   let attachments: ReturnType<typeof createAttachmentService>;
-  const clock = { now: Date.parse("2026-10-12T12:00:00Z") };
+  // Rows are stamped by the database clock, the service reads this one: a hard-coded date makes every
+  // "ages out after 24 h" assertion depend on the wall clock being before that date + 1 min.
+  const clock = { now: Date.now() };
   const scanner = { down: false };
   /** A failed scan is retried with exponential backoff: move the fake clock past the longest wait so the sweep is due. */
   const pastBackoff = () => {
@@ -3022,6 +3024,80 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
           messageId,
         ]),
       ).toBe(0);
+    });
+
+    const hiddenOf = (res: { json(): unknown }, messageId: string) =>
+      (
+        res.json() as { messages: Array<{ messageId: string; hiddenAttachmentCount?: number }> }
+      ).messages.find((m) => m.messageId === messageId)?.hiddenAttachmentCount;
+
+    it("tells a recipient that files exist but are not visible yet (still scanning), without ids or names", async () => {
+      scanner.down = true;
+      const pending = await uploaded(u1, dm, pdfBytes("hid-pending"));
+      scanner.down = false;
+      const messageId = (
+        await post(u1, dm, { attachments: [{ attachmentId: pending.attachmentId }] })
+      ).json().messageId as string;
+      const forRecipient = await list(u2, dm);
+      expect(hiddenOf(forRecipient, messageId)).toBe(1);
+      expect(attachmentsOf(forRecipient, messageId)).toEqual([]);
+      const row = (forRecipient.json() as { messages: Array<{ messageId: string }> }).messages.find(
+        (m) => m.messageId === messageId,
+      );
+      expect(JSON.stringify(row)).not.toContain(pending.attachmentId);
+      expect(JSON.stringify(row)).not.toContain(SECRET_FILE_NAME);
+      // the uploader sees the file itself, so nothing is hidden from them
+      expect(hiddenOf(await list(u1, dm), messageId)).toBe(0);
+    });
+
+    it("a file quarantined after the send is hidden from everyone with the same neutral count", async () => {
+      scanner.down = true;
+      const bad = await uploaded(u1, dm, pdfBytes("hid-eicar", EICAR));
+      scanner.down = false;
+      const messageId = (
+        await post(u1, dm, { attachments: [{ attachmentId: bad.attachmentId }] })
+      ).json().messageId as string;
+      await attachmentScanTick({
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+        service: attachments,
+      });
+      for (const viewer of [u1, u2]) {
+        const view = await list(viewer, dm);
+        expect(hiddenOf(view, messageId)).toBe(1);
+        expect(view.body).not.toContain(bad.attachmentId);
+        expect(view.body).not.toMatch(/quarantin|malware|infect/i);
+      }
+    });
+
+    it("counts only hidden files; text messages, visible files and tombstones report none", async () => {
+      const clean = await uploaded(u1, dm, pdfBytes("hid-clean"));
+      scanner.down = true;
+      const pending = await uploaded(u1, dm, pdfBytes("hid-mixed"));
+      scanner.down = false;
+      const mixed = (
+        await post(u1, dm, {
+          attachments: [
+            { attachmentId: clean.attachmentId },
+            { attachmentId: pending.attachmentId },
+          ],
+        })
+      ).json().messageId as string;
+      const plain = (await post(u1, dm, { body: "hello" })).json().messageId as string;
+      const view = await list(u2, dm);
+      expect(hiddenOf(view, mixed)).toBe(1);
+      expect(attachmentsOf(view, mixed)).toHaveLength(1);
+      expect(hiddenOf(view, plain) ?? 0).toBe(0);
+
+      const gone = await uploaded(u1, dm, pdfBytes("hid-del"));
+      const goneId = (
+        await post(u1, dm, { attachments: [{ attachmentId: gone.attachmentId }] })
+      ).json().messageId as string;
+      await app.inject({
+        method: "DELETE",
+        url: `/api/v1/messaging/messages/${goneId}`,
+        headers: as(u1),
+      });
+      expect(hiddenOf(await list(u2, dm), goneId) ?? 0).toBe(0);
     });
 
     it("deleting an attachment-only message tombstones it: no body, no attachments, 'Message deleted' preview", async () => {
