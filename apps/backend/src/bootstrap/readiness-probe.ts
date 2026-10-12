@@ -16,6 +16,8 @@ import { safeErrorMessage } from "./redact-database-error";
 // unready about (mirrors today's boot posture — a slice/test boot with no DB/Redis still serves).
 import type { ReadinessChecks, ReadinessProbe } from "./routes/health";
 
+export type CapabilityStates = Readonly<Record<string, "ready" | "disabled" | "degraded">>;
+
 export interface ReadinessProbeDeps {
   /** Cheap DB reachability probe, e.g. a `SELECT 1`; omitted when no DB is configured. */
   readonly pingDb?: () => Promise<void>;
@@ -34,8 +36,12 @@ export interface ReadinessProbeDeps {
   readonly outboxPendingDepth?: () => Promise<number>;
   /** Depth at/above which `outbox` reports "fail" — a growing backlog signals a stuck dispatcher. */
   readonly outboxDepthThreshold?: number;
-  /** Product capabilities intentionally disabled at this deployment tier; contains no secret detail. */
-  readonly capabilities?: Readonly<Record<string, "ready" | "disabled">>;
+  /**
+   * Product capabilities intentionally disabled at this deployment tier; contains no secret detail.
+   * `degraded` = running but impaired (e.g. realtime without its cross-node fan-out); it never changes 200/503.
+   * A function is evaluated per probe, for capabilities whose state changes while the process runs.
+   */
+  readonly capabilities?: CapabilityStates | (() => CapabilityStates);
   /** Per-check timeout; a hung probe (wedged pool, stalled reconnect) reports "fail" rather than hanging `/ready`. */
   readonly timeoutMs?: number;
   /** Log sink for probe failures (default `console.warn`) — so a flapping dependency leaves a trail. */
@@ -120,7 +126,12 @@ export function buildReadinessProbe(deps: ReadinessProbeDeps): ReadinessProbe {
       valkey,
       minio,
       outbox,
-      ...(deps.capabilities ? { capabilities: deps.capabilities } : {}),
+      ...(deps.capabilities
+        ? {
+            capabilities:
+              typeof deps.capabilities === "function" ? deps.capabilities() : deps.capabilities,
+          }
+        : {}),
     };
   };
 }

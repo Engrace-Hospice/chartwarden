@@ -23,7 +23,10 @@ export const ReadyResponseSchema = Type.Object({
     minio: CheckState,
     outbox: CheckState,
     capabilities: Type.Optional(
-      Type.Record(Type.String(), Type.Union([Type.Literal("ready"), Type.Literal("disabled")])),
+      Type.Record(
+        Type.String(),
+        Type.Union([Type.Literal("ready"), Type.Literal("disabled"), Type.Literal("degraded")]),
+      ),
     ),
   }),
 });
@@ -42,7 +45,7 @@ export interface ReadinessChecks {
   /** TASK-040B — pending-row backlog depth on `outbox_event`; "fail" past a configured ceiling. */
   readonly outbox: "ok" | "fail";
   /** Sanitized product capabilities; disabled is explicit but does not mean the host is unhealthy. */
-  readonly capabilities?: Readonly<Record<string, "ready" | "disabled">>;
+  readonly capabilities?: Readonly<Record<string, "ready" | "disabled" | "degraded">>;
 }
 
 /** Probes each dependency; the boot default reports all-ok (no infra wired in the slice). */

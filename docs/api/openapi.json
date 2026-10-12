@@ -281829,6 +281829,10 @@
                                 {
                                   "const": "disabled",
                                   "type": "string"
+                                },
+                                {
+                                  "const": "degraded",
+                                  "type": "string"
                                 }
                               ]
                             }

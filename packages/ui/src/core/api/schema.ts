@@ -89977,7 +89977,7 @@ export interface operations {
                             minio: "ok" | "fail";
                             outbox: "ok" | "fail";
                             capabilities?: {
-                                [key: string]: "ready" | "disabled";
+                                [key: string]: "ready" | "disabled" | "degraded";
                             };
                         };
                     };

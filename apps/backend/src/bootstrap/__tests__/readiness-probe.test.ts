@@ -107,3 +107,13 @@ describe("/ready route with the real probe wired in", () => {
     expect(res.json()).toMatchObject({ status: "not_ready", checks: { db: "fail" } });
   });
 });
+
+describe("readiness capabilities evaluated per probe", () => {
+  it("reports a degraded capability without failing host readiness, re-reading a thunk each time", async () => {
+    let state: "ready" | "degraded" = "ready";
+    const probe = buildReadinessProbe({ capabilities: () => ({ realtime: state }) });
+    expect(await probe()).toMatchObject({ capabilities: { realtime: "ready" } });
+    state = "degraded";
+    expect(await probe()).toMatchObject({ capabilities: { realtime: "degraded" } });
+  });
+});

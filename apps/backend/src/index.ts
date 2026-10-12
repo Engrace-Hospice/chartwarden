@@ -28,6 +28,7 @@ import {
   registerDbEffectivePermissionResolver,
   registerIdentityAuth,
   resolveMfaEnforcement,
+  resolveTrustedOrigins,
 } from "@wardenx/auth";
 import type { RbacEngineHandle, SessionContextStore } from "@wardenx/auth";
 import { type DbClient, createDbClient, schema } from "@wardenx/db";
@@ -41,7 +42,12 @@ import {
 } from "@wardenx/dosespot";
 import { createUnboundIqiesAdapter } from "@wardenx/iqies-client";
 import type { AlertEmitter, MessagingProvider } from "@wardenx/messaging";
-import { createAlertPayloadRegistry } from "@wardenx/messaging";
+import {
+  REALTIME_HINT_EVENT,
+  computeRoomSet,
+  createAlertPayloadRegistry,
+  userRoom,
+} from "@wardenx/messaging";
 import {
   type PseudonymKeyProvider,
   createStripePaymentMethodVerifier,
@@ -1395,6 +1401,11 @@ import {
   wireAlertRuleSeed,
   wireM36DeliveryTenancy,
 } from "./modules/36-messaging/index";
+import {
+  type RealtimeHandle,
+  createRealtimeEmitter,
+  startRealtimeServer,
+} from "./bootstrap/realtime";
 import {
   channelHintAudience,
   endChannelMembershipsForUser,
@@ -3354,6 +3365,20 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   // close over the eventual dispatcher instance rather than needing it to exist yet; undefined
   // (no DATABASE_PLATFORM_URL / dispatcher disabled) reports "ok" — nothing to be unready about.
   let outboxDispatcherRef: OutboxDispatcher | undefined;
+  // WP 1.1 / ADR-0054 — the Socket.IO transport is OPT-IN per environment (the web client keeps polling until the
+  // flag is on). `realtimeRef` is late-bound like the dispatcher ref: the readiness probe is built before the
+  // server exists. Consumers (worker side) never hold the Server: they reach every api node through the Valkey
+  // emitter (addendum A1), on a dedicated connection that queues offline instead of rejecting during an outage.
+  const realtimeEnabled = process.env.REALTIME_ENABLED === "true";
+  let realtimeRef: RealtimeHandle | undefined;
+  const realtimeEmitterClient =
+    realtimeEnabled && queueConnection
+      ? new Redis({ ...(queueConnection as RedisOptions), maxRetriesPerRequest: null })
+      : null;
+  realtimeEmitterClient?.on("error", () => {});
+  const realtimeEmitter = realtimeEmitterClient
+    ? createRealtimeEmitter(realtimeEmitterClient)
+    : undefined;
   // TASK-040C (OPS-005/006) — shared by BOTH the readiness probe (below) and the metrics registry's
   // `wardenx_outbox_pending_depth` gauge, so the "no dispatcher running yet/at all → 0" fallback is
   // defined exactly once instead of duplicated at each call site.
@@ -4049,12 +4074,14 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         : {}),
       outboxPendingDepth,
       outboxDepthThreshold: Number(process.env.OUTBOX_READY_DEPTH_THRESHOLD ?? 500),
-      capabilities: {
+      capabilities: () => ({
         m22DocumentUpload: s3ObjectStoreConfigFromEnv(process.env) ? "ready" : "disabled",
         m23AsyncWorkers: m23SubmissionQueues ? "ready" : "disabled",
         m24AsyncWorkers: m24SubmissionQueues ? "ready" : "disabled",
         m34AsyncWorkers: m34ProvisionQueue ? "ready" : "disabled",
-      },
+        // The Socket.IO server runs in the api role only; "degraded" = Valkey fan-out is down (polling still works).
+        realtime: realtimeRef ? realtimeRef.state() : "disabled",
+      }),
     }),
     // Postgres-backed idempotency. The bootstrap default is an in-memory Map, and nothing ever
     // replaced it — so on the production mount an Idempotency-Key was process-local: a retry landing
@@ -9264,11 +9291,20 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           buildM36AccessRevocationConsumer({
             endChannelMemberships: (orgId, userId) =>
               endChannelMembershipsForUser(dbHandle.db, orgId, userId),
+            ...(realtimeEmitter
+              ? { disconnectUser: (userId) => realtimeEmitter.disconnectRoom(userRoom(userId)) }
+              : {}),
           }),
           // WP 1.1 — committed message changes become PHI-free realtime hints (`emitToRooms` is added with the
           // Valkey emitter in bootstrap/realtime; until then the event is acknowledged and nothing is sent).
           buildM36MessageHintConsumer({
             audience: (orgId, channelId) => channelHintAudience(dbHandle.db, orgId, channelId),
+            ...(realtimeEmitter
+              ? {
+                  emitToRooms: (rooms, hint) =>
+                    realtimeEmitter.emit(rooms, REALTIME_HINT_EVENT, hint),
+                }
+              : {}),
           }),
           // FY2027 — the 42 CFR 418.24(d) election-addendum window missed: the first M6 compliance-window fact
           // that pages anyone (care team + compliance), via `m6.election_addendum.overdue`.
@@ -10381,7 +10417,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           // `system_status` component PER JURISDICTION, not a platform-wide singleton.
           buildM1MacPortalHealthConsumer({ db: dbHandle.db }),
           // WP 1.1 — a platform-wide offboarding (`m2.user.deactivated`, no org) has no org to end memberships in.
-          buildM36AccessRevocationPlatformConsumer({}),
+          buildM36AccessRevocationPlatformConsumer(
+            realtimeEmitter
+              ? { disconnectUser: (userId) => realtimeEmitter.disconnectRoom(userRoom(userId)) }
+              : {},
+          ),
         ],
         eventCatalog: bootOutboxCatalog,
         options: {
@@ -10445,6 +10485,77 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         ? Number(process.env.LISTENER_HEALTH_PORT ?? 3002)
         : Number(process.env.PORT ?? 3000);
   app.log.info(describeClearinghouseBinding(clearinghouseBinding));
+  // WP 1.1 / ADR-0054 — the Socket.IO transport. API role only (never the worker or the MLLP listener), opt-in via
+  // REALTIME_ENABLED. It attaches to the same HTTP server and so bypasses Fastify's hooks: authentication, the
+  // Origin check, staff-only and the idle-timer rule are therefore re-implemented here, not inherited.
+  if (realtimeEnabled && role !== "worker" && !listenerProcess) {
+    if (!auth || !dbHandle || !queueConnection) {
+      app.log.warn(
+        "REALTIME_ENABLED is set but auth, the database or Valkey is unavailable; not starting",
+      );
+    } else {
+      const sessionEnforcer = createDbSessionTimeoutEnforcer(dbHandle.db);
+      const messagingService = createDbMessagingRouteService(dbHandle.db);
+      const pubClient = new Redis({
+        ...(queueConnection as RedisOptions),
+        maxRetriesPerRequest: null,
+      });
+      const subClient = pubClient.duplicate();
+      pubClient.on("error", () => {});
+      subClient.on("error", () => {});
+      realtimeRef = startRealtimeServer({
+        httpServer: app.server,
+        pubClient,
+        subClient,
+        trustedOrigins: resolveTrustedOrigins(),
+        log: (event, context) => app.log.info(context, event),
+        authenticate: async (headers) => {
+          const snap = await getIdentitySession(auth, headers);
+          if (!snap || snap.passwordChangeRequired || !snap.activeOrganizationId) return null;
+          // A socket is not activity (ADR-0054 item 12): never extend the idle timer.
+          const state = await sessionEnforcer.enforce(snap.sessionId, { recordActivity: false });
+          if (state !== "active") return null;
+          const actor = await getSeam("SessionContextResolver").resolveActor(
+            { orgId: snap.activeOrganizationId },
+            snap.sessionId,
+          );
+          // Staff only: portal, auditor and external sessions have no realtime channel (addendum A5).
+          if (!actor || actor.sessionClass !== "staff") return null;
+          if (mfaGate) {
+            const verdict = await mfaGate.forRoles({
+              userId: actor.userId,
+              sessionId: snap.sessionId,
+              roleKeys: actor.roles,
+            });
+            if (!verdict.satisfied) return null;
+          }
+          return {
+            userId: snap.userId,
+            organizationId: actor.organizationId,
+            sessionId: snap.sessionId,
+          };
+        },
+        resolveRooms: async ({ organizationId, userId }) =>
+          computeRoomSet({
+            userId,
+            orgId: organizationId,
+            channels: (await messagingService.listChannels(organizationId, userId)).map((c) => ({
+              channelId: c.channelId,
+              kind: c.kind,
+              subjectId: c.subjectId,
+            })),
+          }),
+        stillValid: async ({ sessionId }) =>
+          (await sessionEnforcer.enforce(sessionId, { recordActivity: false })) === "active",
+      });
+      app.addHook("onClose", async () => {
+        await realtimeRef?.close();
+        pubClient.disconnect();
+        subClient.disconnect();
+      });
+    }
+  }
+  if (realtimeEmitterClient) app.addHook("onClose", () => realtimeEmitterClient.quit());
   app.listen({ port, host: "0.0.0.0" }).catch((err) => {
     app.log.error(err);
     process.exit(1);
