@@ -4,14 +4,17 @@ import { BlockList, isIP } from "node:net";
 
 const IPV4_MAPPED = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i;
 
-/** Normalise one address into a rate-limit key: strip `:port`, unwrap IPv4-mapped IPv6, and collapse IPv6 to its /64. */
-function normalise(raw: string): string {
+/** The plain address: strip `[...]`/`:port` and unwrap IPv4-mapped IPv6. Trust is decided on THIS form. */
+function canonical(raw: string): string {
   let addr = raw.trim();
   const bracket = /^\[([^\]]+)\](?::\d+)?$/.exec(addr);
   if (bracket) addr = bracket[1] ?? addr;
   else if (/^\d+\.\d+\.\d+\.\d+:\d+$/.test(addr)) addr = addr.slice(0, addr.lastIndexOf(":"));
-  const mapped = IPV4_MAPPED.exec(addr);
-  if (mapped) return mapped[1] ?? addr;
+  return IPV4_MAPPED.exec(addr)?.[1] ?? addr;
+}
+
+/** The rate-limit bucket for a canonical address: IPv6 collapses to its /64 (a trust check on this form would fail). */
+function bucket(addr: string): string {
   if (isIP(addr) !== 6) return addr;
   // A /64 holder controls 2^64 addresses: bucket the prefix, not the host. Expand `::` then keep the first 4 groups.
   const [head = "", tail = ""] = addr.split("::");
@@ -46,17 +49,17 @@ export function realtimeClientKey(
     return family !== 0 && trusted.check(addr, family === 4 ? "ipv4" : "ipv6");
   };
   return (req) => {
-    const peer = (req.socket.remoteAddress ?? "unknown").replace(/^::ffff:/i, "");
-    if (!isTrusted(peer)) return normalise(peer);
+    const peer = canonical(req.socket.remoteAddress ?? "unknown");
+    if (!isTrusted(peer)) return bucket(peer);
     const xff = req.headers["x-forwarded-for"];
     const chain = (Array.isArray(xff) ? xff.join(",") : (xff ?? ""))
       .split(",")
       .map((e) => e.trim())
       .filter(Boolean);
     for (let i = chain.length - 1; i >= 0; i--) {
-      const hop = normalise(chain[i] ?? "");
-      if (!isTrusted(hop)) return hop;
+      const hop = canonical(chain[i] ?? "");
+      if (!isTrusted(hop)) return bucket(hop);
     }
-    return normalise(peer);
+    return bucket(peer);
   };
 }

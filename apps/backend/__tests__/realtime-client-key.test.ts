@@ -32,6 +32,10 @@ describe("realtimeClientKey", () => {
     expect(key(req("2001:db8:1:3::1"))).not.toBe(key(req("2001:db8:1:2::1")));
     expect(key(req("::ffff:203.0.113.9"))).toBe("203.0.113.9");
   });
+  it("recognises a trusted IPv6 proxy hop in the chain instead of mistaking it for the client", () => {
+    const key = realtimeClientKey(["2001:db8:ffff::/48"]);
+    expect(key(req("2001:db8:ffff::5", "198.51.100.7, 2001:db8:ffff::9"))).toBe("198.51.100.7");
+  });
   it("falls back to the peer when a trusted proxy sent no header, and skips keyword entries", () => {
     expect(realtimeClientKey(["10.0.0.0/8"])(req("10.1.2.3"))).toBe("10.1.2.3");
     expect(realtimeClientKey(["loopback"])(req("127.0.0.1", "1.2.3.4"))).toBe("127.0.0.1");

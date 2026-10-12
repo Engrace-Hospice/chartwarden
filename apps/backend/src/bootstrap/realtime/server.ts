@@ -64,7 +64,8 @@ const DEFAULT_HANDSHAKES_PER_SESSION = 20;
 const MAX_HTTP_BUFFER_BYTES = 1024;
 const CONNECT_TIMEOUT_MS = 10_000;
 
-// Hard bound on distinct keys per window: past it, new keys are refused instead of growing memory without limit.
+// Hard bound on distinct keys per window. Past it the OLDEST key is evicted: memory stays bounded and a key flood can
+// only weaken the throttle (it already could by rotating keys), never lock every new legitimate caller out.
 const MAX_LIMITER_KEYS = 100_000;
 
 /** Fixed-window counter per key, in memory per node; the whole table resets each window and is capped in size. */
@@ -79,7 +80,10 @@ function createWindowLimiter(max: number) {
         counts = new Map();
       }
       const seen = counts.get(key);
-      if (seen === undefined && counts.size >= MAX_LIMITER_KEYS) return false;
+      if (seen === undefined && counts.size >= MAX_LIMITER_KEYS) {
+        const oldest = counts.keys().next().value;
+        if (oldest !== undefined) counts.delete(oldest);
+      }
       const n = (seen ?? 0) + 1;
       counts.set(key, n);
       return n <= max;
