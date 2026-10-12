@@ -1423,6 +1423,7 @@ import { createMessageBodyCipher } from "./modules/36-messaging/messaging-write-
 import {
   buildM36AccessRevocationConsumer,
   buildM36AccessRevocationPlatformConsumer,
+  reassignOwnedItemsNoop,
 } from "./modules/36-messaging/outbox-consumers/access-revocation";
 import { buildM36AdmissionComplianceAlertConsumer } from "./modules/36-messaging/outbox-consumers/admission-compliance-alerts";
 import { buildM36AmendmentSlaAlertConsumer } from "./modules/36-messaging/outbox-consumers/amendment-sla-alerts";
@@ -9337,6 +9338,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           buildM36AccessRevocationConsumer({
             endChannelMemberships: (orgId, userId) =>
               endChannelMembershipsForUser(dbHandle.db, orgId, userId),
+            reassignOwnedItems: reassignOwnedItemsNoop, // WP 1.4 seam; real work lands with P3/P4 owners
             ...(realtimeEmitter
               ? {
                   disconnectUser: (orgId, userId) =>
