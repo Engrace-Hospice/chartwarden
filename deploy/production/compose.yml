@@ -171,6 +171,11 @@ services:
   clamav:
     image: clamav/clamav-debian:1.4
     restart: unless-stopped
+    # clamd loads the whole signature set (a reload briefly doubles it): bound it so a scan flood or a bad update
+    # cannot starve postgres/minio/api on the same host.
+    mem_limit: 3g
+    cpus: 2
+    networks: [scan]
     volumes:
       - clamav-data:/var/lib/clamav
       - ./clamav/clamd.conf:/etc/clamav/clamd.conf:ro
@@ -227,6 +232,9 @@ services:
       DOCLING_WORKER_TOKEN: ${DOCLING_WORKER_TOKEN:?set in .env.production}
     ports:
       - "127.0.0.1:3000:3000"
+    # M36: clamd is reachable only over the dedicated `scan` network (joined by clamav, api and worker alone), so a
+    # compromised sidecar (postgres, minio, docling, ...) cannot reach it and clamd cannot reach them.
+    networks: [default, scan]
     depends_on:
       provision:
         condition: service_completed_successfully
@@ -274,6 +282,9 @@ services:
       # GAP-138 — DocLens parse worker (compose-network only).
       DOCLING_WORKER_URL: http://docling-worker:8000
       DOCLING_WORKER_TOKEN: ${DOCLING_WORKER_TOKEN:?set in .env.production}
+    # M36: clamd is reachable only over the dedicated `scan` network (joined by clamav, api and worker alone), so a
+    # compromised sidecar (postgres, minio, docling, ...) cannot reach it and clamd cannot reach them.
+    networks: [default, scan]
     depends_on:
       provision:
         condition: service_completed_successfully
@@ -404,6 +415,10 @@ services:
       seed-api:
         condition: service_healthy
     restart: "no"
+
+networks:
+  # Dedicated clamd network (api, worker, clamav only). Not `internal`: freshclam must reach the signature mirrors.
+  scan:
 
 volumes:
   postgres-data:

@@ -68,6 +68,11 @@ services:
   # multi-arch (the alpine clamav/clamav image has no arm64 build).
   clamav:
     image: clamav/clamav-debian:1.4
+    # clamd loads the whole signature set (a reload briefly doubles it): bound it so a scan flood or a bad update
+    # cannot starve postgres/minio/api on the same host.
+    mem_limit: 3g
+    cpus: 2
+    networks: [scan]
     volumes:
       - wardenx-compose-clamav:/var/lib/clamav
       - ./deploy/clamav/clamd.conf:/etc/clamav/clamd.conf:ro
@@ -167,6 +172,9 @@ services:
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
     ports:
       - "3000:3000"
+    # M36: clamd is reachable only over the dedicated `scan` network (joined by clamav, api and worker alone), so a
+    # compromised sidecar (postgres, minio, docling, ...) cannot reach it and clamd cannot reach them.
+    networks: [default, scan]
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -215,6 +223,9 @@ services:
       DOCLING_WORKER_TOKEN: wardenx-local-docling-dev-token-not-for-production
     ports:
       - "3001:3001"
+    # M36: clamd is reachable only over the dedicated `scan` network (joined by clamav, api and worker alone), so a
+    # compromised sidecar (postgres, minio, docling, ...) cannot reach it and clamd cannot reach them.
+    networks: [default, scan]
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -246,6 +257,10 @@ services:
       timeout: 5s
       retries: 12
       start_period: 20s
+
+networks:
+  # Dedicated clamd network (api, worker, clamav only). Not `internal`: freshclam must reach the signature mirrors.
+  scan:
 
 volumes:
   wardenx-compose-pgdata:

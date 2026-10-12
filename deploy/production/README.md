@@ -84,7 +84,12 @@ are not rolled back.
   refreshed in-container by freshclam. api/worker run `MESSAGING_ATTACHMENT_SCANNER=clamd` against `clamav:3310` and do not
   `depends_on` it: a down scanner leaves attachments `pending` (nothing is delivered). Alert on `pending` attachments
   older than a few minutes or repeated `deferred` scans; check the scanner with `docker compose exec clamav clamdcheck.sh`.
-  `deploy.sh` brings it up without recreating it. Pin the image by digest when you promote it.
+  `deploy.sh` brings it up without recreating it. clamd's protocol is unauthenticated, so the sidecar sits on a dedicated
+  `scan` network that only `clamav`, `api` and `worker` join (postgres, minio, docling and the rest cannot reach it), and
+  it is capped (`mem_limit: 3g`, `cpus: 2`) so a scan flood or a bad signature reload cannot starve the host. Follow-ups
+  (not done here, they need network access to resolve): pin `clamav/clamav-debian:1.4` by digest
+  (`image: clamav/clamav-debian@sha256:...`) when you promote it, and alert on a stale signature database (for example
+  `docker compose exec clamav clamscan --version` reporting a database older than 2 days, or freshclam errors in the log).
 - **Attachment upload size (defence in depth).** The presigned PUT signs `content-length` for exactly the declared
   `byteSize`, so MinIO refuses any other length and the quota (which counts `byteSize`) is real; `complete` also compares
   the stored size and destroys a mismatching object at once. The independent backstop is on the storage origin:
