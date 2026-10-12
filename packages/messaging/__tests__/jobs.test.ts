@@ -33,7 +33,8 @@ describe("M36-T08 queue parameters (§4.4.1)", () => {
       const p = MESSAGING_QUEUE_PARAMETERS[n];
       expect(p.name).toBe(n);
       expect(p.dlq).toBe(`${n}.dlq`);
-      expect(p.attempts).toBeGreaterThanOrEqual(2);
+      // hash_verify is deliberately one attempt (WP 1.9): a mismatch is deterministic, a retry only doubles audit rows.
+      expect(p.attempts).toBeGreaterThanOrEqual(n === MESSAGING_QUEUES.hashVerify ? 1 : 2);
       expect(p.concurrency).toBeGreaterThanOrEqual(1);
     }
   });

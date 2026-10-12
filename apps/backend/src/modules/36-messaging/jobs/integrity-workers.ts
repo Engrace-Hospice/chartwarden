@@ -4,7 +4,11 @@
 // package is their one owner, `arch:queue-names`). Each tick fans out over active orgs; one org failing never
 // stops the others, and the tick then FAILS (AggregateError) so the failure is visible in the failed set / DLQ alert
 // rather than reported green. A hash mismatch is such a failure.
-import { MESSAGING_JOB_SCHEDULES, MESSAGING_QUEUES } from "@wardenx/messaging";
+import {
+  MESSAGING_JOB_SCHEDULES,
+  MESSAGING_QUEUES,
+  MESSAGING_QUEUE_PARAMETERS,
+} from "@wardenx/messaging";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import {
   type M36IntegrityJobDeps,
@@ -63,16 +67,31 @@ export async function retentionScanTick(deps: M36IntegrityWorkerDeps): Promise<n
   });
 }
 
-/** Construct the two Workers (the caller owns lifecycle). */
+/** Construct the two Workers (the caller owns lifecycle). Concurrency comes from the §4.4.1 parameter table. */
 export function registerM36IntegrityWorkers(deps: M36IntegrityWorkerDeps): Worker[] {
-  const options = { connection: deps.connection, concurrency: 1 };
+  const options = (queue: keyof typeof MESSAGING_QUEUE_PARAMETERS) => ({
+    connection: deps.connection,
+    concurrency: MESSAGING_QUEUE_PARAMETERS[queue].concurrency,
+  });
   return [
-    new Worker(MESSAGING_QUEUES.hashVerify, () => hashVerifyTick(deps), options),
-    new Worker(MESSAGING_QUEUES.retentionScan, () => retentionScanTick(deps), options),
+    new Worker(
+      MESSAGING_QUEUES.hashVerify,
+      () => hashVerifyTick(deps),
+      options(MESSAGING_QUEUES.hashVerify),
+    ),
+    new Worker(
+      MESSAGING_QUEUES.retentionScan,
+      () => retentionScanTick(deps),
+      options(MESSAGING_QUEUES.retentionScan),
+    ),
   ];
 }
 
-/** Register the repeatable triggers. Returns the `Queue`s to `close()`. */
+/**
+ * Register the repeatable triggers. Returns the `Queue`s to `close()`. Attempts/backoff come from the §4.4.1 table
+ * (hash_verify is 1 attempt by design: see the table). The DLQ alert keys on `attemptsMade >= opts.attempts`, so
+ * the job option must carry the table value.
+ */
 export async function scheduleM36IntegrityJobs(connection: ConnectionOptions): Promise<Queue[]> {
   const specs = [
     { name: MESSAGING_QUEUES.hashVerify, pattern: MESSAGING_JOB_SCHEDULES.hashVerify },
@@ -80,8 +99,18 @@ export async function scheduleM36IntegrityJobs(connection: ConnectionOptions): P
   ];
   const queues: Queue[] = [];
   for (const { name, pattern } of specs) {
+    const { attempts, backoff } = MESSAGING_QUEUE_PARAMETERS[name];
     const queue = new Queue(name, { connection });
-    await queue.add("scheduled", {}, { repeat: { pattern }, removeOnComplete: true });
+    await queue.add(
+      "scheduled",
+      {},
+      {
+        repeat: { pattern },
+        removeOnComplete: true,
+        attempts,
+        backoff: { type: backoff.type, delay: backoff.baseMs },
+      },
+    );
     queues.push(queue);
   }
   return queues;
