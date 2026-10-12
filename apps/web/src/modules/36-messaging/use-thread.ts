@@ -8,11 +8,43 @@ import { mergeMessages } from "./messaging-utils";
 
 const THREAD_PAGE_SIZE = 50;
 
-/** What a realtime hint said changed (ids only). `null` ids = "something may have changed" (a reconnect). */
-export interface LiveHint {
+/** One realtime hint (ids only). `null` ids = "something may have changed" (a reconnect). */
+export interface LiveHintItem {
   readonly seq: number;
   readonly messageId: string | null;
   readonly parentMessageId: string | null;
+}
+
+/**
+ * The recent hints for the open channel, oldest first, with the newest `seq`. A queue, not a single value: two hints
+ * delivered in one batch must both be looked at, or one that concerns an open thread could be hidden by a later one
+ * that does not.
+ */
+export interface LiveHint {
+  readonly seq: number;
+  readonly items: readonly LiveHintItem[];
+}
+
+/** Safety-net polling of an open thread, the same cadence as the channel's. */
+const POLL_INTERVAL_MS = 15_000;
+const REALTIME_POLL_INTERVAL_MS = 120_000;
+
+const LIVE_HINT_QUEUE = 20;
+
+/** Append one hint; applied as a state updater, so hints delivered in one batch accumulate instead of overwriting. */
+export function pushLiveHint(
+  previous: LiveHint | null,
+  messageId: string | null,
+  parentMessageId: string | null,
+): LiveHint {
+  const seq = (previous?.seq ?? 0) + 1;
+  return {
+    seq,
+    items: [
+      ...(previous?.items ?? []).slice(-(LIVE_HINT_QUEUE - 1)),
+      { seq, messageId, parentMessageId },
+    ],
+  };
 }
 
 export type ThreadStatus = "loading" | "ready" | "unavailable" | "failed";
@@ -24,7 +56,8 @@ export interface ThreadState {
   readonly hasMore: boolean;
   readonly loadingMore: boolean;
   readonly refreshFailed: boolean;
-  readonly reload: () => void;
+  /** `background`: a refresh that must never replace a working view with the failure state. */
+  readonly reload: (background?: boolean) => void;
   readonly loadMore: () => void;
   /**
    * Show a reply the server just accepted. Returns false when it was NOT inserted: with replies still unloaded
@@ -42,6 +75,7 @@ export function useThread(
   channelId: string,
   rootId: string,
   liveHint: LiveHint | null,
+  realtimeConnected = false,
 ): ThreadState {
   const client = useApiClient();
   const [status, setStatus] = useState<ThreadStatus>("loading");
@@ -132,13 +166,28 @@ export function useThread(
   const handledSeq = useRef(liveHint?.seq ?? 0);
   useEffect(() => {
     if (!liveHint || liveHint.seq === handledSeq.current) return;
+    const handled = handledSeq.current;
     handledSeq.current = liveHint.seq;
-    const concernsThread =
-      (liveHint.messageId === null && liveHint.parentMessageId === null) ||
-      liveHint.parentMessageId === rootId ||
-      liveHint.messageId === rootId;
+    const concernsThread = liveHint.items.some(
+      (item) =>
+        item.seq > handled &&
+        ((item.messageId === null && item.parentMessageId === null) ||
+          item.parentMessageId === rootId ||
+          item.messageId === rootId),
+    );
     if (concernsThread) void read(true);
   }, [liveHint, read, rootId]);
+
+  // Safety net: a dropped hint costs latency, never correctness. Slow while the socket is up, paused while hidden.
+  useEffect(() => {
+    const timer = window.setInterval(
+      () => {
+        if (!document.hidden) void read(true);
+      },
+      realtimeConnected ? REALTIME_POLL_INTERVAL_MS : POLL_INTERVAL_MS,
+    );
+    return () => window.clearInterval(timer);
+  }, [read, realtimeConnected]);
 
   const loadMore = useCallback((): void => {
     if (!cursor || loadingMore) return;
@@ -197,7 +246,7 @@ export function useThread(
     hasMore: cursor !== null,
     loadingMore,
     refreshFailed,
-    reload: () => void read(false),
+    reload: (background = false) => void read(background),
     loadMore,
     addSent,
   };

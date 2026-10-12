@@ -25,7 +25,9 @@ export interface ThreadPanelProps {
   meId: string;
   meDisplayName: string;
   liveHint: LiveHint | null;
-  /** Unsent reply text per root id, owned by the caller so a draft survives switching threads. */
+  realtimeConnected: boolean;
+  /** Unsent reply TEXT per root id (a chosen file is not part of a draft); owned by the caller so it survives a switch.
+   *  Unsent reply text per root id, owned by the caller so a draft survives switching threads. */
   drafts: MutableRefObject<Map<string, string>>;
   onClose: () => void;
   /** Scroll to (and focus) a message in the channel timeline, loading its page if needed. */
@@ -45,30 +47,30 @@ export function ThreadPanel({
   meId,
   meDisplayName,
   liveHint,
+  realtimeConnected,
   drafts,
   onClose,
   onJumpToMessage,
   onReplySent,
 }: ThreadPanelProps): JSX.Element {
-  const thread = useThread(channelId, rootId, liveHint);
+  const thread = useThread(channelId, rootId, liveHint, realtimeConnected);
   const uploads = useAttachmentUploads(channelId);
   const [draft, setDraft] = useState(() => drafts.current.get(rootId) ?? "");
-  const [announcement, setAnnouncement] = useState("");
+  const [announcement, setAnnouncement] = useState({ text: "", n: 0 });
+  const announce = (text: string): void => setAnnouncement((a) => ({ text, n: a.n + 1 }));
   const panelRef = useRef<HTMLElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const attachButtonRef = useRef<HTMLButtonElement>(null);
   const loadMoreRef = useRef<HTMLButtonElement>(null);
   const composingRef = useRef(false);
-  // Bumped on unmount, so a send that answers late is dropped (useMessageSender contract).
+  // Never bumped: a reply that is accepted AFTER the panel closed must still be recorded (draft cleared, count
+  // patched), so the sender must not drop its answer. The panel is keyed per thread, so nothing can cross threads.
   const generationRef = useRef(0);
   const { addSent, status, replies, loadingMore } = thread;
 
   // Opening puts focus on the panel so a keyboard or screen-reader user lands in it.
   useEffect(() => {
     panelRef.current?.focus();
-    return () => {
-      generationRef.current += 1;
-    };
   }, []);
 
   const changeDraft = (next: string): void => {
@@ -81,7 +83,7 @@ export function ThreadPanel({
     setDraft((current) => (current === sent.body ? "" : current));
     drafts.current.delete(rootId);
     const inserted = addSent(sentMessageRow(sent, channelId, meId, meDisplayName, rootId));
-    if (!inserted) setAnnouncement("Reply sent. Load more replies to see it.");
+    if (!inserted) announce("Reply sent. Load more replies to see it.");
     onReplySent(rootId, sent.createdAt);
   };
   const { send, sending, sendError, clearSendError } = useMessageSender({
@@ -97,6 +99,8 @@ export function ThreadPanel({
 
   // Announce replies from other people that arrive after the thread was first shown (a polite live region).
   const seenRef = useRef<Set<string> | null>(null);
+  const loadMoreFromRef = useRef<number | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: announce only sets state
   useEffect(() => {
     if (status !== "ready") return;
     if (seenRef.current === null) {
@@ -104,17 +108,21 @@ export function ThreadPanel({
       return;
     }
     const seen = seenRef.current;
+    if (loadMoreFromRef.current !== null) {
+      // Replies the user asked for with Load more are not news.
+      for (const r of replies) seen.add(r.messageId);
+      return;
+    }
     const fresh = replies.filter((r) => !seen.has(r.messageId));
     for (const r of fresh) seen.add(r.messageId);
     const fromOthers = fresh.filter((r) => r.authorUserId !== meId).length;
     if (fromOthers > 0) {
-      setAnnouncement(`${fromOthers} new ${fromOthers === 1 ? "reply" : "replies"}`);
+      announce(`${fromOthers} new ${fromOthers === 1 ? "reply" : "replies"}`);
     }
   }, [replies, status, meId]);
 
   // Focus must not fall to the page when the control that had it unmounts: after Load more it goes to the first
   // reply that arrived (or back to the button if nothing did); after a successful Retry it goes to the panel.
-  const loadMoreFromRef = useRef<number | null>(null);
   const wasLoadingMore = useRef(false);
   useEffect(() => {
     if (loadingMore) {
@@ -185,7 +193,7 @@ export function ThreadPanel({
         </button>
       </header>
       <output className="sr-only" aria-live="polite" aria-atomic="true">
-        {announcement}
+        <span key={announcement.n}>{announcement.text}</span>
       </output>
 
       <div className="wx-thread-panel-body">
@@ -201,7 +209,7 @@ export function ThreadPanel({
         ) : status === "failed" || !root ? (
           <div className="wx-message-state" role="alert">
             <strong>Thread could not be loaded</strong>
-            <Button size="sm" tone="secondary" onClick={thread.reload}>
+            <Button size="sm" tone="secondary" onClick={() => thread.reload(false)}>
               Retry
             </Button>
           </div>
@@ -254,7 +262,7 @@ export function ThreadPanel({
         {thread.refreshFailed && status === "ready" ? (
           <output className="wx-thread-refresh-warning">
             Connection interrupted.{" "}
-            <button type="button" onClick={thread.reload}>
+            <button type="button" onClick={() => thread.reload(true)}>
               Retry now
             </button>
           </output>

@@ -36,6 +36,7 @@ import { INITIAL_READ_VIEW, type ReadView, useJumpToMessage } from "./use-jump-t
 import { useLatestPolling } from "./use-latest-polling";
 import { sentMessageRow, useMessageSender } from "./use-message-sender";
 import type { SentMessage } from "./use-message-sender";
+import { usePatientHeader } from "./use-patient-header";
 import { useScanningRefresh } from "./use-scanning-refresh";
 import type { LiveHint } from "./use-thread";
 import { useThreadPanelState } from "./use-thread-panel-state";
@@ -96,11 +97,11 @@ export function ConversationThread({
   const [mentionError, setMentionError] = useState(false);
   const [mentionRetry, setMentionRetry] = useState(0);
   const [mentionIndex, setMentionIndex] = useState(0);
-  const [patient, setPatient] = useState<PatientHeaderInfo | null>(null);
   const [contextOpen, setContextOpen] = useState(false);
   const timelineRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<Message[] | null>(null);
   const generationRef = useRef(0);
+  const [patient, setPatient] = usePatientHeader(channel, generationRef);
   const latestInFlight = useRef(false);
   const handledAnchor = useRef(anchorMessageId);
   // A hint that lands while a read is in flight may postdate that read: read once more when it settles.
@@ -122,12 +123,16 @@ export function ConversationThread({
   const meIdRef = useRef(meId);
   const onReadConfirmedRef = useRef(onReadConfirmed);
   const onAccessRevokedRef = useRef(onAccessRevoked);
+  // The route anchor follows ONLY its own prop: "Back to latest" clears the mirror, and a re-render with new callback
+  // identities must not write the old anchor back.
   useEffect(() => {
     anchorRef.current = anchorMessageId;
+  }, [anchorMessageId]);
+  useEffect(() => {
     meIdRef.current = meId;
     onReadConfirmedRef.current = onReadConfirmed;
     onAccessRevokedRef.current = onAccessRevoked;
-  }, [anchorMessageId, meId, onReadConfirmed, onAccessRevoked]);
+  }, [meId, onReadConfirmed, onAccessRevoked]);
 
   // WP 2.2 jump-to-parent (and "Back to latest" after an anchored page): see use-jump-to-message.ts.
   const readViewRef = useRef<ReadView>(INITIAL_READ_VIEW);
@@ -226,17 +231,20 @@ export function ConversationThread({
       const view = readViewRef.current;
       const anchorMessageId = view.anchor ?? anchorRef.current;
       try {
-        const { data, error } = await client.GET("/api/v1/messaging/channels/{id}/messages", {
-          params: {
-            path: { id: channel.channelId },
-            query: {
-              limit: MESSAGE_PAGE_SIZE,
-              direction: "backward",
-              ...(anchorMessageId ? { anchorMessageId } : {}),
+        const { data, error, response } = await client.GET(
+          "/api/v1/messaging/channels/{id}/messages",
+          {
+            params: {
+              path: { id: channel.channelId },
+              query: {
+                limit: MESSAGE_PAGE_SIZE,
+                direction: "backward",
+                ...(anchorMessageId ? { anchorMessageId } : {}),
+              },
             },
+            ...(background ? { headers: BACKGROUND_REQUEST_HEADERS } : {}),
           },
-          ...(background ? { headers: BACKGROUND_REQUEST_HEADERS } : {}),
-        });
+        );
         if (generation !== generationRef.current) return false;
         if (view !== readViewRef.current) {
           // A newer request (a jump, back to latest) arrived while this read was in flight: this answer is for the
@@ -244,9 +252,10 @@ export function ConversationThread({
           rereadAfterFlight.current = true;
           return true;
         }
-        if (error && view.anchor) {
-          // The page a user jump asked for cannot be read (the message is gone). Not an access revocation: say so,
-          // go back to the newest page, and let that read surface a real revocation if there is one.
+        if (error && view.anchor && response?.status === 404) {
+          // The page a user jump asked for is gone (404). Not an access revocation: say so, go back to the newest
+          // page, and let that read surface a real revocation if there is one. Any other error (503, 429, 403)
+          // keeps the page on screen and takes the ordinary error path below.
           anchorGone();
           rereadAfterFlight.current = true;
           return false;
@@ -303,7 +312,7 @@ export function ConversationThread({
         }
       }
     },
-    [channel.channelId, client, markReadBoundary, anchorGone],
+    [channel.channelId, client, markReadBoundary, anchorGone, setPatient],
   );
 
   useEffect(() => {
@@ -346,6 +355,7 @@ export function ConversationThread({
     const timeline = timelineRef.current;
     const previousHeight = timeline?.scrollHeight ?? 0;
     const generation = generationRef.current;
+    const token = readViewRef.current.token;
     setLoadingOlder(true);
     const { data, error } = await client.GET("/api/v1/messaging/channels/{id}/messages", {
       params: {
@@ -355,6 +365,8 @@ export function ConversationThread({
     });
     if (generation !== generationRef.current) return;
     setLoadingOlder(false);
+    // A jump or Back to latest replaced the list while this page was in flight: it belongs to the old list.
+    if (token !== readViewRef.current.token) return;
     if (error) {
       setRefreshError(true);
       return;
@@ -401,7 +413,7 @@ export function ConversationThread({
       generationRef.current += 1;
     };
     // loadLatest changes identity only with the channel (or client); every other input is read through a ref.
-  }, [loadLatest, resetSender, jumpReset, panelReset]);
+  }, [loadLatest, resetSender, jumpReset, panelReset, setPatient]);
 
   // A new anchor on the same channel re-reads around it without touching the draft, chips or an in-flight send.
   useEffect(() => {
@@ -426,17 +438,6 @@ export function ConversationThread({
     );
     target?.scrollIntoView({ block: "center" });
   }, [anchorMessageId, messages]);
-
-  useEffect(() => {
-    if (channel.kind !== "care_team" || !channel.subjectId) return;
-    const generation = generationRef.current;
-    void client
-      .GET("/api/v1/patients/{id}", { params: { path: { id: channel.subjectId } } })
-      .then(({ data, error }) => {
-        if (generation !== generationRef.current) return;
-        setPatient(error || !data ? null : (data as PatientHeaderInfo));
-      });
-  }, [channel.kind, channel.subjectId, client]);
 
   // Starts at the token this thread mounted with: the initial load already reads the latest, so only a LATER bump acts.
   const handledLiveToken = useRef(liveToken);
@@ -676,6 +677,7 @@ export function ConversationThread({
             meId={meId}
             meDisplayName={meDisplayName}
             liveHint={liveHint}
+            realtimeConnected={realtimeConnected}
             drafts={panel.draftsRef}
             onClose={panel.closeThread}
             onJumpToMessage={panel.showInConversation}

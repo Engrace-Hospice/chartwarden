@@ -9,7 +9,7 @@ import type { ChannelSummary, ConversationFilter } from "./messaging-types";
 import { channelKindLabel, channelLabel } from "./messaging-utils";
 import { NewConversationDialog } from "./new-conversation-dialog";
 import { useMessagingRealtime } from "./use-messaging-realtime";
-import type { LiveHint } from "./use-thread";
+import { type LiveHint, pushLiveHint } from "./use-thread";
 import "./staff-messaging.css";
 
 const CHANNEL_POLL_INTERVAL_MS = 15_000;
@@ -193,11 +193,9 @@ function OrganizationStaffMessaging({
         void refreshFromHint();
         if (hint.ids.channelId === activeIdRef.current) {
           setLiveToken((n) => n + 1);
-          setLiveHint((previous) => ({
-            seq: (previous?.seq ?? 0) + 1,
-            messageId: hint.ids.messageId,
-            parentMessageId: hint.ids.parentMessageId ?? null,
-          }));
+          setLiveHint((previous) =>
+            pushLiveHint(previous, hint.ids.messageId, hint.ids.parentMessageId ?? null),
+          );
         }
       },
       [refreshFromHint],
@@ -205,11 +203,7 @@ function OrganizationStaffMessaging({
     useCallback(() => {
       void refreshFromHint();
       setLiveToken((n) => n + 1);
-      setLiveHint((previous) => ({
-        seq: (previous?.seq ?? 0) + 1,
-        messageId: null,
-        parentMessageId: null,
-      }));
+      setLiveHint((previous) => pushLiveHint(previous, null, null));
     }, [refreshFromHint]),
   );
 

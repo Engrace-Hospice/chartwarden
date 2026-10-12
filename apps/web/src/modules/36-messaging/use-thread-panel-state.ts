@@ -4,8 +4,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 
+const NARROW_QUERY = "(max-width: 760px)";
+
 function isNarrowScreen(): boolean {
-  return typeof window.matchMedia === "function" && window.matchMedia("(max-width: 760px)").matches;
+  return typeof window.matchMedia === "function" && window.matchMedia(NARROW_QUERY).matches;
 }
 
 interface PanelStateInput {
@@ -30,6 +32,9 @@ export function useThreadPanelState({ timelineRef, textareaRef, jumpToMessage }:
       const opener = openerRef.current;
       const closing = rootId;
       openerRef.current = null;
+      // The timeline is inert behind a slide-over. Lift that NOW: the focus move that follows (a jump, the opener) runs
+      // before React would re-run the effect below, and a browser will not focus inside an inert subtree.
+      timelineRef.current?.removeAttribute("inert");
       setRootId(null);
       if (!restoreFocus) return;
       // The opener, else any other control that opens the same thread, else the timeline, else the composer.
@@ -56,11 +61,21 @@ export function useThreadPanelState({ timelineRef, textareaRef, jumpToMessage }:
   );
 
   // A slide-over hides the timeline behind it: keep it out of the tab order and the accessibility tree meanwhile.
+  // Re-evaluated when the screen is resized or rotated, not decided once.
   useEffect(() => {
     const timeline = timelineRef.current;
-    if (!timeline) return;
-    timeline.toggleAttribute("inert", rootId !== null && isNarrowScreen());
-    return () => timeline.removeAttribute("inert");
+    if (!timeline || rootId === null) return;
+    const query =
+      typeof window.matchMedia === "function" ? window.matchMedia(NARROW_QUERY) : undefined;
+    const apply = (): void => {
+      timeline.toggleAttribute("inert", isNarrowScreen());
+    };
+    apply();
+    query?.addEventListener("change", apply);
+    return () => {
+      query?.removeEventListener("change", apply);
+      timeline.removeAttribute("inert");
+    };
   }, [rootId, timelineRef]);
 
   /** A different channel. */

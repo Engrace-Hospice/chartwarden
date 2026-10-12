@@ -133,10 +133,13 @@ export function useJumpToMessage({
     [jumpedRef, request],
   );
 
-  /** The page a jump asked for could not be read (the message is gone): back to the newest page, with a notice. */
+  /**
+   * The page a jump asked for is gone (404): back to the newest page, with a notice. The page on screen is the stale
+   * anchored one, so the newest page REPLACES it rather than merging into it.
+   */
   const anchorGone = useCallback((): void => {
     pendingFocusRef.current = null;
-    request(null, false);
+    request(null, true);
     setBrowsingHistory(false);
     setHighlightId(null);
     setAnchorMissing(true);
