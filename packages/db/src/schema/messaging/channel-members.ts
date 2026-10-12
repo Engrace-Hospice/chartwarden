@@ -6,7 +6,7 @@
 // or manually added. `removed_at` is the soft-delete marker — the active-row partial unique
 // index keys on removed_at IS NULL. RLS + the M4 write-audit trigger land in M36-T03.
 import { sql } from "drizzle-orm";
-import { index, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { foreignKey, index, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { channelMemberRole, channelMemberSource } from "../../enums";
 import { organizations } from "../organizations";
 import { users } from "../users";
@@ -19,9 +19,7 @@ export const channelMembers = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
-    channelId: uuid("channel_id")
-      .notNull()
-      .references(() => channels.id, { onDelete: "cascade" }),
+    channelId: uuid("channel_id").notNull(), // composite FK (organization_id, channel_id) below
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
@@ -32,6 +30,12 @@ export const channelMembers = pgTable(
     removedAt: timestamp("removed_at", { withTimezone: true }),
   },
   (t) => ({
+    channelOrgFk: foreignKey({
+      name: "channel_member_channel_org_fk",
+      columns: [t.organizationId, t.channelId],
+      foreignColumns: [channels.organizationId, channels.id],
+    }).onDelete("cascade"),
+    byOrgChannelIdx: index("channel_member_org_channel_idx").on(t.organizationId, t.channelId),
     activeMembership: uniqueIndex("channel_member_active_unique")
       .on(t.channelId, t.userId)
       .where(sql`removed_at IS NULL`),

@@ -10,9 +10,9 @@
 // PE/location rule — it carries no patient field, only the channel reference.
 import { sql } from "drizzle-orm";
 import {
-  type AnyPgColumn,
   check,
   customType,
+  foreignKey,
   index,
   pgTable,
   text,
@@ -36,9 +36,7 @@ export const messages = pgTable(
   "message",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    channelId: uuid("channel_id")
-      .notNull()
-      .references(() => channels.id, { onDelete: "restrict" }),
+    channelId: uuid("channel_id").notNull(), // composite FK (organization_id, channel_id) below
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
@@ -47,8 +45,8 @@ export const messages = pgTable(
     bodyCipher: bytea("body_cipher").notNull(), // envelope-encrypted under tenant DEK
     bodySha256: text("body_sha256").notNull(), // hex SHA-256 of plaintext pre-encryption
     bodyKind: messageBodyKind("body_kind").notNull().default("plain"),
-    parentMessageId: uuid("parent_message_id").references((): AnyPgColumn => messages.id),
-    quotedMessageId: uuid("quoted_message_id").references((): AnyPgColumn => messages.id),
+    parentMessageId: uuid("parent_message_id"), // composite FK below
+    quotedMessageId: uuid("quoted_message_id"), // composite FK below
     // WP 1.2: client-minted, stable across retries; the DB backstop behind the Idempotency-Key middleware.
     clientMessageId: uuid("client_message_id"),
     status: messageStatus("status").notNull().default("sent"),
@@ -63,6 +61,30 @@ export const messages = pgTable(
       .where(sql`author_user_id IS NOT NULL`),
     byOrgIdx: index("message_org_idx").on(t.organizationId),
     orgIdIdUnique: unique("message_org_id_id_unique").on(t.organizationId, t.id),
+    // 1072: every edge carries organization_id, so the database (not only the app) refuses a
+    // cross-tenant link; an FK check bypasses RLS, a composite FK cannot.
+    channelOrgFk: foreignKey({
+      name: "message_channel_org_fk",
+      columns: [t.organizationId, t.channelId],
+      foreignColumns: [channels.organizationId, channels.id],
+    }).onDelete("restrict"),
+    parentOrgFk: foreignKey({
+      name: "message_parent_org_fk",
+      columns: [t.organizationId, t.parentMessageId],
+      foreignColumns: [t.organizationId, t.id],
+    }),
+    quotedOrgFk: foreignKey({
+      name: "message_quoted_org_fk",
+      columns: [t.organizationId, t.quotedMessageId],
+      foreignColumns: [t.organizationId, t.id],
+    }),
+    byOrgChannelIdx: index("message_org_channel_idx").on(t.organizationId, t.channelId),
+    byOrgParentIdx: index("message_org_parent_idx")
+      .on(t.organizationId, t.parentMessageId)
+      .where(sql`parent_message_id IS NOT NULL`),
+    byOrgQuotedIdx: index("message_org_quoted_idx")
+      .on(t.organizationId, t.quotedMessageId)
+      .where(sql`quoted_message_id IS NOT NULL`),
     clientMessageUnique: unique("message_client_message_unique").on(
       t.organizationId,
       t.authorUserId,

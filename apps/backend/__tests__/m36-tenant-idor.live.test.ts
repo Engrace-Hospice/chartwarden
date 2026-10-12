@@ -1066,6 +1066,35 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         await cell(`SELECT count(*)::int AS n FROM message WHERE body_sha256 = repeat('a',64)`),
       ).toBe(0);
     });
+    it("composite FKs: an org B row cannot point at an org A channel or message (FK checks bypass RLS)", async () => {
+      const insMsg = `INSERT INTO message (channel_id, organization_id, author_user_id, author_kind, body_cipher, body_sha256, parent_message_id, quoted_message_id)
+                      VALUES ($1,$2,$3,'user','\\x00',repeat('a',64),$4,$5)`;
+      const cases: Array<[string, string, unknown[]]> = [
+        ["message.channel_id -> org A channel", insMsg, [dmA, orgB, bUser.userId, null, null]],
+        ["message.parent_message_id -> org A message", insMsg, [dmB, orgB, bUser.userId, msgDmA, null]],
+        ["message.quoted_message_id -> org A message", insMsg, [dmB, orgB, bUser.userId, null, msgDmA]],
+        [
+          "channel_member.channel_id -> org A channel",
+          `INSERT INTO channel_member (organization_id, channel_id, user_id, role, source) VALUES ($1,$2,$3,'member','manual')`,
+          [orgB, dmA, bUser.userId],
+        ],
+        [
+          "message_receipt.message_id -> org A message",
+          `INSERT INTO message_receipt (organization_id, message_id, user_id) VALUES ($1,$2,$3)`,
+          [orgB, msgDmA, bUser.userId],
+        ],
+      ];
+      for (const [label, sql, args] of cases) {
+        await asOrgB(async (c) => {
+          await expect(c.query(sql, args), label).rejects.toThrow(/violates foreign key constraint/i);
+        });
+      }
+      // positive control: the same message insert against org B's own channel is accepted
+      await asOrgB(async (c) => {
+        const ok = await c.query(insMsg, [dmB, orgB, bUser.userId, null, null]);
+        expect(ok.rowCount).toBe(1);
+      });
+    });
     it("UPDATE / DELETE of org A rows touches zero rows; moving a B row into org A is rejected", async () => {
       await asOrgB(async (c) => {
         const upd = await c.query(
