@@ -54,6 +54,18 @@ export const MESSAGE_RETENTION_YEARS = { care_related: 7, bereavement: 7, operat
 /** What the audit row for a failed GCM/auth decode records as the "computed" hash (never body text). */
 export const DECRYPT_FAILED = "decrypt-failed";
 
+/**
+ * Consecutive DECRYPT_FAILED rows in one run after which per-row mismatch rows stop and ONE summary row is written
+ * instead: a whole-org key misconfiguration would otherwise write up to 2 * HASH_VERIFY_SAMPLE_LIMIT critical rows.
+ */
+export const SYSTEMIC_DECRYPT_FAILURE_THRESHOLD = 20;
+
+/**
+ * The hash the §7.8 eraser leaves on a shredded head beside its emptied cipher. `message_sha256_shape` requires a
+ * 64-hex value, so the earlier empty-string sentinel made the eraser's UPDATE fail on a real database.
+ */
+export const ERASED_BODY_SHA256 = "0".repeat(64);
+
 const MSG = schema.messages;
 const REV = schema.messageRevisions;
 const CH = schema.channels;
@@ -81,9 +93,9 @@ function jobContext(organizationId: string, runId: string) {
  * corrupt, so it is reported as a mismatch against a sentinel rather than skipped.
  */
 function recompute(cipher: MessageBodyCipher, orgId: string, meta: RowMeta): string | null {
-  // Erased means cipher AND hash both blanked (the eraser sets them together); an emptied cipher with a hash left
+  // Erased means cipher emptied AND hash = ERASED_BODY_SHA256 (the eraser sets them together); an emptied cipher with a hash left
   // behind is tampering and falls through to the mismatch sentinel.
-  if (meta.cipherBytes.length === 0 && meta.storedHash === "") return null;
+  if (meta.cipherBytes.length === 0 && meta.storedHash === ERASED_BODY_SHA256) return null;
   try {
     return messageBodySha256(cipher.open(orgId, meta.cipherBytes));
   } catch {
@@ -176,12 +188,27 @@ export async function runHashVerifyForOrg(
     // runHashVerify emits a mismatch immediately after recomputing the same row, so the row just recomputed
     // is the one the event is about.
     let current: RowMeta | undefined;
+    let consecutiveDecryptFailures = 0;
+    let suppressedMismatches = 0;
+    let firstSuppressed: RowMeta | undefined;
     const result = await runHashVerify(runId, detectedAt, rows, {
       async recomputeHash(row) {
         current = meta.get(row);
-        return current ? recompute(deps.cipher, orgId, current) : null;
+        const computed = current ? recompute(deps.cipher, orgId, current) : null;
+        // An erased skip (null) neither extends nor breaks the streak; any decrypt that worked resets it.
+        if (computed === DECRYPT_FAILED) consecutiveDecryptFailures += 1;
+        else if (computed !== null) consecutiveDecryptFailures = 0;
+        return computed;
       },
       async emitMismatch(event: HashMismatchEvent) {
+        if (
+          event.computedHash === DECRYPT_FAILED &&
+          consecutiveDecryptFailures > SYSTEMIC_DECRYPT_FAILURE_THRESHOLD
+        ) {
+          suppressedMismatches += 1; // still counted in `mismatched`, so the tick still fails
+          firstSuppressed ??= current;
+          return;
+        }
         await audit(exec, ctx, {
           eventType: "m36.integrity.hash_mismatch",
           resourceKind: current?.resourceKind ?? "message",
@@ -200,6 +227,23 @@ export async function runHashVerifyForOrg(
         });
       },
     });
+    if (suppressedMismatches > 0) {
+      await audit(exec, ctx, {
+        eventType: "m36.integrity.systemic_decrypt_failure",
+        resourceKind: "message_integrity_run",
+        resourceId: runId,
+        outcome: "failure",
+        severity: "critical",
+        context: {
+          runId,
+          organizationId: orgId,
+          threshold: SYSTEMIC_DECRYPT_FAILURE_THRESHOLD,
+          suppressedMismatches,
+          firstSuppressedResourceId: firstSuppressed?.resourceId ?? null,
+          detectedAt,
+        },
+      });
+    }
     await audit(exec, ctx, {
       eventType: "m36.hash_verify.run",
       resourceKind: "message_integrity_run",
@@ -251,6 +295,7 @@ export async function runRetentionScanForOrg(
             lt(MSG.createdAt, end),
           ),
         )
+        .orderBy(MSG.createdAt, MSG.id)
         .limit(RETENTION_SCAN_BATCH_LIMIT);
       for (const r of rows) {
         candidates.push({
