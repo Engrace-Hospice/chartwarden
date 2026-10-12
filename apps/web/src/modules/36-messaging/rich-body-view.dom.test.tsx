@@ -61,6 +61,62 @@ function view(body: unknown, references: Message["references"] = []) {
   );
 }
 
+describe("S1: a link never hides where it goes", () => {
+  const linkDoc = (label: string, href: string) =>
+    sanitized(docOf(para(text(label, { type: "link", href }))));
+  const anchor = (label: string, href: string) => {
+    const { container } = view(linkDoc(label, href));
+    return container.querySelector("a") as HTMLAnchorElement;
+  };
+
+  it("shows the real host inline when the visible text looks like another address", () => {
+    for (const label of [
+      "intranet.example",
+      "https://intranet.example/login",
+      "ceo@intranet.example",
+    ]) {
+      const a = anchor(label, "https://evil.example/phish");
+      expect(a.textContent).toContain(label);
+      expect(a.textContent).toContain("(evil.example)");
+    }
+  });
+
+  it("adds no suffix for plain words or when the text already names the real host", () => {
+    expect(anchor("the guide", "https://good.example/g").textContent).toBe(
+      "the guide (opens in new tab)",
+    );
+    expect(anchor("good.example", "https://good.example/g").textContent).toBe(
+      "good.example (opens in new tab)",
+    );
+    expect(anchor("https://GOOD.example/x", "https://good.example/y").textContent).not.toContain(
+      "(good.example)",
+    );
+  });
+
+  it("shows punycode for an internationalised host, and compares hosts under NFKC", () => {
+    const a = anchor("b\u00fccher.example", "https://b\u00fccher.example/");
+    expect(a.textContent).toContain("b\u00fccher.example");
+    const spoof = anchor("apple.com", "https://xn--pple-43d.com/");
+    expect(spoof.textContent).toContain("(xn--pple-43d.com)");
+    const fullwidth = anchor("\uFF47ood.example", "https://good.example/");
+    expect(fullwidth.textContent).not.toContain("(good.example)");
+  });
+
+  it("announces the new tab to screen readers", () => {
+    const a = anchor("the guide", "https://good.example/g");
+    const hint = a.querySelector(".sr-only");
+    expect(hint?.textContent).toBe(" (opens in new tab)");
+  });
+
+  it("a mailto link does not open a tab, and shows the address when the text names another", () => {
+    const a = anchor("write to hr@corp.example", "mailto:evil@evil.example");
+    expect(a.getAttribute("target")).toBeNull();
+    expect(a.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(a.querySelector(".sr-only")).toBeNull();
+    expect(a.textContent).toContain("(evil@evil.example)");
+  });
+});
+
 describe("RichBodyView renders the closed node set", () => {
   it("builds elements for every node and marks, links open safely", () => {
     const { container } = view(

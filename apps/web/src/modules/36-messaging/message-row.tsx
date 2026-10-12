@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { MessageAttachments } from "./message-attachments";
@@ -13,6 +14,9 @@ function MessageText({ message }: { message: Message }): JSX.Element {
   )
     return <></>;
   // WP 2.1: a structured body renders from its document; everything else renders exactly as it always has.
+  if (message.bodyKind === "rich" && message.bodyUnreadable) {
+    return <span className="wx-rich-fallback">Message could not be displayed</span>;
+  }
   if (message.bodyKind === "rich") {
     return (
       <RichBodyView
@@ -70,7 +74,7 @@ interface MessageRowProps {
 }
 
 /** One timeline entry: optional day divider, then a system line or a message bubble. */
-export function MessageRow({
+function MessageRowImpl({
   message,
   previous,
   meId,
@@ -144,3 +148,6 @@ export function MessageRow({
     </div>
   );
 }
+
+/** Memoised: typing in the composer re-renders the thread, but a row only re-renders when its own message changes. */
+export const MessageRow = memo(MessageRowImpl);

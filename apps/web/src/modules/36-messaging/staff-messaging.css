@@ -552,6 +552,16 @@
   margin-top: 0.35rem;
 }
 
+.wx-rich-fallback {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.wx-link-destination {
+  opacity: 0.85;
+  font-size: 0.8em;
+}
+
 .wx-rich-p,
 .wx-rich-list {
   margin: 0;

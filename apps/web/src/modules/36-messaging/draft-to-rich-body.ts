@@ -21,7 +21,11 @@ import type { MessageReferenceInput } from "./messaging-types";
 type Inline = RichInline;
 const BULLET = /^[-*] (.*)$/;
 const ORDERED = /^\d{1,3}[.)] (.*)$/;
-const FENCE = "```";
+// An ordered run is a list only when it starts at 1; "3. text" on its own stays prose.
+const ORDERED_START = /^1[.)] /;
+// A fence line is the whole trimmed line: three backticks and an optional language word. Inline ```code``` is not one.
+const FENCE_OPEN = /^```[\w+-]*$/;
+const FENCE_CLOSE = "```";
 
 function isWordChar(char: string | undefined): boolean {
   return char !== undefined && /[\p{L}\p{N}]/u.test(char);
@@ -99,30 +103,57 @@ function parseInline(text: string, marks: readonly RichMark[]): Inline[] {
   return out;
 }
 
+// A mention inside a line is swapped for this private-use character while the line's markdown is parsed, so a
+// marker pair can span a mention (**see @Bob**) with no stray literal markers; the mention nodes are put back after.
+// A U+E000 typed by the user is replaced by a space first, so it can never forge a mention.
+const MENTION_SLOT = "\uE000";
+
 /** One line of prose, with mention references (offsets into the whole draft) kept as atoms. */
 function lineInlines(
   line: string,
   lineStart: number,
   references: readonly MessageReferenceInput[],
 ): Inline[] {
-  const inside = references
+  const inside: MessageReferenceInput[] = [];
+  let slotted = "";
+  let cursor = 0;
+  const candidates = references
     .filter((reference) => reference.start >= lineStart && reference.end <= lineStart + line.length)
     .sort((a, b) => a.start - b.start);
-  const out: Inline[] = [];
-  let cursor = 0;
-  for (const reference of inside) {
+  for (const reference of candidates) {
     const start = reference.start - lineStart;
     if (start < cursor) continue;
-    out.push(...parseInline(line.slice(cursor, start), []));
-    out.push({
-      type: "mention",
-      kind: reference.kind,
-      entityId: reference.entityId,
-      label: reference.displayLabel,
-    });
+    slotted += line.slice(cursor, start).replaceAll(MENTION_SLOT, " ") + MENTION_SLOT;
+    inside.push(reference);
     cursor = reference.end - lineStart;
   }
-  out.push(...parseInline(line.slice(cursor), []));
+  slotted += line.slice(cursor).replaceAll(MENTION_SLOT, " ");
+
+  const out: Inline[] = [];
+  for (const node of parseInline(slotted, [])) {
+    if (node.type !== "text" || !node.text.includes(MENTION_SLOT)) {
+      out.push(node);
+      continue;
+    }
+    node.text.split(MENTION_SLOT).forEach((piece, index, pieces) => {
+      if (piece !== "") {
+        out.push(
+          node.marks
+            ? { type: "text", text: piece, marks: node.marks }
+            : { type: "text", text: piece },
+        );
+      }
+      const reference = index < pieces.length - 1 ? inside.shift() : undefined;
+      if (reference) {
+        out.push({
+          type: "mention",
+          kind: reference.kind,
+          entityId: reference.entityId,
+          label: reference.displayLabel,
+        });
+      }
+    });
+  }
   return out;
 }
 
@@ -176,11 +207,11 @@ function blocksOf(draft: string, references: readonly MessageReferenceInput[]): 
   };
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i] as Line;
-    if (line.text.trim().startsWith(FENCE)) {
+    if (FENCE_OPEN.test(line.text.trim())) {
       endProse();
       const code: string[] = [];
       i += 1;
-      while (i < lines.length && !(lines[i] as Line).text.trim().startsWith(FENCE)) {
+      while (i < lines.length && (lines[i] as Line).text.trim() !== FENCE_CLOSE) {
         code.push((lines[i] as Line).text);
         i += 1;
       }
@@ -189,7 +220,7 @@ function blocksOf(draft: string, references: readonly MessageReferenceInput[]): 
     }
     const kind = BULLET.test(line.text)
       ? "bulletList"
-      : ORDERED.test(line.text)
+      : ORDERED_START.test(line.text)
         ? "orderedList"
         : null;
     if (kind) {

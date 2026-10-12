@@ -38,6 +38,8 @@ export interface Message {
   bodyKind: "plain" | "markdown" | "system" | "rich";
   /** WP 2.1: for `bodyKind: "rich"`, `body` is the plain-text projection and this is the document. */
   bodyDoc?: RichBody;
+  /** WP 2.1: a stored rich body that cannot be read back; show a distinct placeholder, not 'deleted'. */
+  bodyUnreadable?: boolean;
   createdAt: string;
   parentMessageId: string | null;
   references: MessageReference[];

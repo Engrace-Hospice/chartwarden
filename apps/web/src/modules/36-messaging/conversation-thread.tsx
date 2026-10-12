@@ -11,7 +11,7 @@ import type { JSX, KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
 import { AttachButton, AttachmentChips } from "./attachment-composer";
 import { sendBlockedReason } from "./attachment-utils";
-import { formatShortcutMarker, toggleWrap } from "./composer-format";
+import { applyTextEdit, detectMac, formatShortcutMarker, toggleWrap } from "./composer-format";
 import { MentionMenu } from "./mention-menu";
 import { activeMentionQuery, reconcileReferences } from "./mention-utils";
 import { MessageRow } from "./message-row";
@@ -104,6 +104,7 @@ export function ConversationThread({
   const initialScrollPending = useRef(false);
   const readBoundaryRef = useRef<string | null>(null);
   const composingRef = useRef(false);
+  const [isMac] = useState(detectMac);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mentionGenerationRef = useRef(0);
   // WP 1.5: resets itself on channel switch and unmount (generation-guarded inside the hook).
@@ -435,21 +436,15 @@ export function ConversationThread({
     if (timeline) timeline.scrollTop = timeline.scrollHeight;
   }, [messages]);
 
-  function applyFormatShortcut(event: KeyboardEvent<HTMLTextAreaElement>, marker: string): void {
-    event.preventDefault();
-    const textarea = event.currentTarget;
-    const edit = toggleWrap(draft, textarea.selectionStart, textarea.selectionEnd, marker);
-    setDraftReferences(reconcileReferences(draft, edit.value, draftReferences));
-    setDraft(edit.value);
-    window.requestAnimationFrame(() =>
-      textarea.setSelectionRange(edit.selectionStart, edit.selectionEnd),
-    );
-  }
-
   function handleComposerKey(event: KeyboardEvent<HTMLTextAreaElement>): void {
-    const marker = formatShortcutMarker(event);
+    // While an IME is composing, every key belongs to the IME (candidate selection, cancel): handle none of ours.
+    if (composingRef.current || event.nativeEvent.isComposing) return;
+    const marker = formatShortcutMarker(event, isMac);
     if (marker) {
-      applyFormatShortcut(event, marker);
+      // The edit runs through the textarea's own input path (undo stack, onChange, mention query recompute).
+      event.preventDefault();
+      const area = event.currentTarget;
+      applyTextEdit(area, toggleWrap(draft, area.selectionStart, area.selectionEnd, marker));
       return;
     }
     if (mentionQuery && event.key === "Escape") {
@@ -473,18 +468,14 @@ export function ConversationThread({
         return;
       }
     }
-    if (
-      event.key === "Enter" &&
-      !event.shiftKey &&
-      !composingRef.current &&
-      !event.nativeEvent.isComposing
-    ) {
+    if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       void send();
       return;
     }
-    // Escape never traps: it closes the mention popup (above) or, with none open, hands focus back to the page.
-    if (event.key === "Escape" && !event.nativeEvent.isComposing) event.currentTarget.blur();
+    // Escape in an EMPTY composer hands focus back to the page; with a draft it does nothing (the draft is never
+    // lost to a stray key). Tab is never intercepted outside the mention popup, so there is no keyboard trap.
+    if (event.key === "Escape" && draft === "") event.currentTarget.blur();
   }
 
   function chooseMention(candidate: MentionCandidate): void {

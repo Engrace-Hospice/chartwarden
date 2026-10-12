@@ -2,12 +2,17 @@
 // send a structured body, keyboard shortcuts behave and never trap focus, a stored rich message renders from its
 // document, and hostile text in a message, an error message or a hostile document never becomes live DOM.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { sanitizeRichBody } from "@wardenx/types";
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";
 import { StaffMessaging } from "./staff-messaging";
 
+vi.mock("@wardenx/types", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@wardenx/types")>();
+  return { ...actual, sanitizeRichBody: vi.fn(actual.sanitizeRichBody) };
+});
 vi.mock("socket.io-client", () => ({
   io: () => ({ on: () => {}, off: () => {}, close: () => {} }),
 }));
@@ -109,7 +114,7 @@ describe("rich composer", () => {
     expect(sent.body).not.toHaveProperty("body");
     expect(sent.body).not.toHaveProperty("references");
     expect((await screen.findByText("urgent")).tagName).toBe("STRONG");
-    const link = screen.getByRole("link", { name: "guide" });
+    const link = screen.getByRole("link", { name: /^guide/ });
     expect(link.getAttribute("rel")).toBe("noopener noreferrer");
   });
 
@@ -135,29 +140,81 @@ describe("rich composer", () => {
     expect(POST).not.toHaveBeenCalled();
   });
 
-  it("Ctrl+B and Cmd+I wrap the selection, a second press unwraps", async () => {
+  it("Ctrl+B wraps the selection synchronously (selection restored at once), a second press unwraps", async () => {
     mountThread();
     const box = await composer();
     type(box, "say hello now", 4, 9);
-    fireEvent.keyDown(box, { key: "b", ctrlKey: true });
+    fireEvent.keyDown(box, { code: "KeyB", key: "b", ctrlKey: true });
     expect(box.value).toBe("say **hello** now");
-    await waitFor(() => expect([box.selectionStart, box.selectionEnd]).toEqual([6, 11]));
-    fireEvent.keyDown(box, { key: "b", ctrlKey: true });
+    expect([box.selectionStart, box.selectionEnd]).toEqual([6, 11]);
+    fireEvent.keyDown(box, { code: "KeyB", key: "b", ctrlKey: true });
     expect(box.value).toBe("say hello now");
     type(box, "say hello now", 4, 9);
-    fireEvent.keyDown(box, { key: "i", metaKey: true });
+    fireEvent.keyDown(box, { code: "KeyI", key: "\u0448", ctrlKey: true });
     expect(box.value).toBe("say *hello* now");
   });
 
-  it("Escape never traps focus: it leaves the composer and keeps the draft", async () => {
+  it("Cmd is not the format key off macOS", async () => {
+    mountThread();
+    const box = await composer();
+    type(box, "say hello now", 4, 9);
+    fireEvent.keyDown(box, { code: "KeyB", key: "b", metaKey: true });
+    expect(box.value).toBe("say hello now");
+  });
+
+  it("a shortcut edit goes through the input path, so the mention query is recomputed (W7)", async () => {
+    mountThread();
+    const box = await composer();
+    type(box, "hello @Nu");
+    expect(box.getAttribute("aria-expanded")).toBe("true");
+    box.setSelectionRange(0, 9);
+    fireEvent.keyDown(box, { code: "KeyB", key: "b", ctrlKey: true });
+    expect(box.value).toBe("**hello @Nu**");
+    expect(box.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("Escape closes the mention popup first and does not blur", async () => {
+    mountThread();
+    const box = await composer();
+    box.focus();
+    type(box, "hello @Nu");
+    expect(box.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.keyDown(box, { key: "Escape" });
+    expect(box.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(box);
+  });
+
+  it("Escape with text in the composer keeps focus and the draft; with an empty composer it leaves", async () => {
     mountThread();
     const box = await composer();
     box.focus();
     type(box, "draft stays");
+    fireEvent.keyDown(box, { key: "Escape" });
     expect(document.activeElement).toBe(box);
+    expect(box.value).toBe("draft stays");
+    type(box, "");
     fireEvent.keyDown(box, { key: "Escape" });
     expect(document.activeElement).not.toBe(box);
-    expect(box.value).toBe("draft stays");
+  });
+
+  it("nothing in the composer is a keyboard trap: Tab is never prevented", async () => {
+    mountThread();
+    const box = await composer();
+    type(box, "text");
+    expect(fireEvent.keyDown(box, { key: "Tab" })).toBe(true);
+  });
+
+  it("IME composition: Enter, Escape-for-popup and format keys are ignored while composing (W6)", async () => {
+    const { POST } = mountThread();
+    const box = await composer();
+    type(box, "hello @Nu");
+    fireEvent.keyDown(box, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(box, { key: "Escape", isComposing: true });
+    expect(POST).not.toHaveBeenCalled();
+    expect(box.getAttribute("aria-expanded")).toBe("true");
+    box.setSelectionRange(0, 5);
+    fireEvent.keyDown(box, { code: "KeyB", key: "b", ctrlKey: true, isComposing: true });
+    expect(box.value).toBe("hello @Nu");
   });
 
   it("labels the composer for assistive technology and advertises the shortcuts", async () => {
@@ -196,7 +253,7 @@ describe("stored and reflected hostile content in the real thread", () => {
         },
       ],
     });
-    expect(await screen.findByRole("link", { name: "docs" })).toBeTruthy();
+    expect(await screen.findByRole("link", { name: /^docs/ })).toBeTruthy();
     expect(document.querySelector("img")).toBeNull();
     expect(screen.getByText(/<img src=x onerror=window.__xss=1>/)).toBeTruthy();
     expect((window as unknown as Record<string, unknown>).__xss).toBeUndefined();
@@ -253,5 +310,50 @@ describe("stored and reflected hostile content in the real thread", () => {
     expect(alert.textContent).toContain('<img src=x onerror="window.__xss=1">');
     expect(alert.querySelector("img")).toBeNull();
     expect((window as unknown as Record<string, unknown>).__xss).toBeUndefined();
+  });
+
+  it("typing in the composer does not re-sanitise rendered messages (W1)", async () => {
+    mountThread({
+      messages: [
+        {
+          ...BASE,
+          messageId: "m-memo",
+          body: "hello",
+          bodyKind: "rich",
+          bodyDoc: docOf(para(text("hello", { type: "bold" }))),
+        },
+      ],
+    });
+    await screen.findByText("hello");
+    const box = await composer();
+    const before = vi.mocked(sanitizeRichBody).mock.calls.length;
+    for (const value of ["a", "ab", "abc", "abcd", "abcde"]) type(box, value);
+    expect(box.value).toBe("abcde");
+    expect(vi.mocked(sanitizeRichBody).mock.calls.length).toBe(before);
+  });
+
+  it("an unreadable stored rich body says so instead of 'Message deleted' (S4)", async () => {
+    mountThread({
+      messages: [{ ...BASE, messageId: "m-bad", body: "", bodyKind: "rich", bodyUnreadable: true }],
+    });
+    expect(await screen.findByText("Message could not be displayed")).toBeTruthy();
+    expect(screen.queryByText("Message deleted")).toBeNull();
+  });
+
+  it("the fallback text keeps its line breaks (W5)", async () => {
+    mountThread({
+      messages: [
+        {
+          ...BASE,
+          messageId: "m-fb",
+          body: "line one\nline two",
+          bodyKind: "rich",
+          bodyDoc: { schemaVersion: 1, doc: { type: "doc", content: [{ type: "html" }] } },
+        },
+      ],
+    });
+    const fallback = (await screen.findByText(/line one/)) as HTMLElement;
+    expect(fallback.className).toContain("wx-rich-fallback");
+    expect(fallback.textContent).toBe("line one\nline two");
   });
 });

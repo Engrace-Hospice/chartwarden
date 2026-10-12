@@ -9,6 +9,7 @@ import {
   safeLinkHref,
   sanitizeRichBody,
 } from "@wardenx/types";
+import { useMemo } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { MessageReference } from "./messaging-types";
@@ -23,7 +24,25 @@ import type { MessageReference } from "./messaging-types";
 
 const LINK_REL = "noopener noreferrer";
 
-function applyMarks(content: ReactNode, marks: readonly RichMark[], key: string): ReactNode {
+/** Lower-cased NFKC, so a full-width or composed look-alike compares equal to the real thing. */
+const fold = (value: string): string => value.normalize("NFKC").toLowerCase();
+
+/**
+ * The visible link text "looks like an address" (a dot, an @ or a scheme separator) but does not contain the real
+ * destination: the reader must be shown where the link really goes, inline, not only on hover. Plain words
+ * ("the guide") and text that already names the real host get no suffix.
+ */
+function needsDestinationSuffix(visibleText: string, destination: string): boolean {
+  const text = fold(visibleText);
+  if (!/[.@]|:\/\//.test(text)) return false;
+  return !text.includes(fold(destination));
+}
+
+function applyMarks(
+  content: ReactNode,
+  marks: readonly RichMark[],
+  visibleText: string,
+): ReactNode {
   let node = content;
   for (const mark of marks) {
     if (mark.type === "code") node = <code>{node}</code>;
@@ -33,16 +52,22 @@ function applyMarks(content: ReactNode, marks: readonly RichMark[], key: string)
       const href = safeLinkHref(mark.href);
       // An unsafe target degrades to its visible text, never to an inert-looking-but-live anchor.
       if (href === null) continue;
+      // https: hosts are punycode already (URL parsing), so an IDN look-alike shows as xn--...
+      const destination = linkTargetLabel(href);
+      const external = href.startsWith("https:");
       node = (
         <a
-          key={`${key}-a`}
           href={href}
-          target="_blank"
+          {...(external ? { target: "_blank" } : {})}
           rel={LINK_REL}
-          // The visible text is whatever the author typed; the title always shows where the link really goes.
-          title={`Opens ${linkTargetLabel(href)}`}
+          // The visible text is whatever the author typed; the title also shows where the link really goes.
+          title={`Opens ${destination}`}
         >
           {node}
+          {needsDestinationSuffix(visibleText, destination) ? (
+            <span className="wx-link-destination"> ({destination})</span>
+          ) : null}
+          {external ? <span className="sr-only"> (opens in new tab)</span> : null}
         </a>
       );
     }
@@ -59,10 +84,9 @@ function Inline({
   index: number;
   references: readonly MessageReference[];
 }): JSX.Element {
-  const key = `i-${index}`;
-  if (node.type === "hardBreak") return <br key={key} />;
+  if (node.type === "hardBreak") return <br />;
   if (node.type === "text") {
-    return <span key={key}>{applyMarks(node.text, node.marks ?? [], key)}</span>;
+    return <span>{applyMarks(node.text, node.marks ?? [], node.text)}</span>;
   }
   // The server's label (fresh from the directory) wins over the label frozen into the document.
   const reference = references.find(
@@ -71,16 +95,12 @@ function Inline({
   const label = `@${reference?.displayLabel.trim() || node.label}`;
   if (node.kind === "patient" && reference?.navigable) {
     return (
-      <Link key={key} className="wx-message-reference" to={`/patients/${node.entityId}`}>
+      <Link className="wx-message-reference" to={`/patients/${node.entityId}`}>
         {label}
       </Link>
     );
   }
-  return (
-    <span key={key} className="wx-message-reference">
-      {label}
-    </span>
-  );
+  return <span className="wx-message-reference">{label}</span>;
 }
 
 function Paragraph({
@@ -159,8 +179,12 @@ export function RichBodyView({
   references: readonly MessageReference[];
   fallbackText: string;
 }): JSX.Element {
-  const checked = bodyDoc === undefined ? null : sanitizeRichBody(bodyDoc);
-  if (!checked?.ok) return <>{fallbackText}</>;
+  // Sanitised once per document, not once per render: typing in the composer re-renders the thread.
+  const checked = useMemo(
+    () => (bodyDoc === undefined ? null : sanitizeRichBody(bodyDoc)),
+    [bodyDoc],
+  );
+  if (!checked?.ok) return <span className="wx-rich-fallback">{fallbackText}</span>;
   return (
     <div className="wx-rich-body">
       {checked.value.doc.content.map((block, index) => (
