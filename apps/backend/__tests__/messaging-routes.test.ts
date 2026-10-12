@@ -408,7 +408,7 @@ describe("M36-T07 messaging route inventory", () => {
       await app.close();
     });
 
-    it("only the author may edit/delete (FORBIDDEN otherwise)", async () => {
+    it("only the author may edit/delete (a non-member sees 404, like the DB service)", async () => {
       const { app } = makeServer();
       const post = await app.inject({
         method: "POST",
@@ -426,14 +426,15 @@ describe("M36-T07 messaging route inventory", () => {
       });
       expect(edit.statusCode).toBe(200);
 
-      // rn_2 has messaging.send but did not author the message → 403.
+      // rn_2 has messaging.send but is neither the author nor a channel member → 404 (no existence
+      // oracle; a member who is not the author gets 403, see in-memory-message-access.test.ts).
       const forged = await app.inject({
         method: "PATCH",
         url: `/api/v1/messaging/messages/${messageId}`,
         headers: RN2,
         payload: { body: "tampered" },
       });
-      expect(forged.statusCode).toBe(403);
+      expect(forged.statusCode).toBe(404);
       await app.close();
     });
 

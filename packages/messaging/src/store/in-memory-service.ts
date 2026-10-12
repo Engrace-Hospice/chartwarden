@@ -195,6 +195,14 @@ export interface InMemoryMessagingSeed {
     archivedAt?: string | null;
     members?: readonly { userId: string; role?: ChannelMemberRole; source?: ChannelMemberSource }[];
   }[];
+  /** Pre-existing messages, so a test can start from a channel archived after the message was sent. */
+  readonly messages?: readonly {
+    messageId: string;
+    channelId: string;
+    orgId: string;
+    authorUserId: string;
+    body?: string;
+  }[];
   readonly alerts?: readonly { orgId: string; userId: string; item: AlertInboxItem }[];
 }
 
@@ -258,6 +266,21 @@ export function createInMemoryMessagingService(
       subjectId: c.subjectId ?? null,
       archivedAt: c.archivedAt ?? null,
       members,
+    });
+  }
+  for (const m of options.seed?.messages ?? []) {
+    messages.set(m.messageId, {
+      messageId: m.messageId,
+      channelId: m.channelId,
+      orgId: m.orgId,
+      authorUserId: m.authorUserId,
+      body: m.body ?? "seeded",
+      bodyKind: "plain",
+      createdAt: iso(),
+      editedAt: null,
+      deletedAt: null,
+      parentMessageId: null,
+      references: [],
     });
   }
   for (const a of options.seed?.alerts ?? []) {
@@ -356,6 +379,27 @@ export function createInMemoryMessagingService(
           }
         : null,
     };
+  };
+
+  /**
+   * Mirrors the DB service's guard: edit/delete/mark-read need live channel access. No access (or an
+   * unknown / cross-org message) is a 404; `writable` also refuses an archived channel with 410.
+   */
+  const accessibleMessage = async (
+    canView: (orgId: string, userId: string, channelId: string) => Promise<boolean>,
+    orgId: string,
+    userId: string,
+    messageId: string,
+    writable: boolean,
+  ) => {
+    const m = messages.get(messageId);
+    if (!m || m.orgId !== orgId || !(await canView(orgId, userId, m.channelId))) {
+      throw new NotFoundError("message", messageId);
+    }
+    if (writable && channels.get(m.channelId)?.archivedAt) {
+      throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+    }
+    return m;
   };
 
   return {
@@ -469,9 +513,14 @@ export function createInMemoryMessagingService(
     },
 
     async editMessage(orgId, input) {
-      const m = messages.get(input.messageId);
-      if (!m || m.orgId !== orgId || m.deletedAt)
-        throw new NotFoundError("message", input.messageId);
+      const m = await accessibleMessage(
+        (o, u, c) => this.canViewChannel(o, u, c),
+        orgId,
+        input.userId,
+        input.messageId,
+        true,
+      );
+      if (m.deletedAt) throw new NotFoundError("message", input.messageId);
       if (m.authorUserId !== input.userId) {
         throw new ForbiddenError("only the author may edit a message");
       }
@@ -488,9 +537,14 @@ export function createInMemoryMessagingService(
     },
 
     async deleteMessage(orgId, input) {
-      const m = messages.get(input.messageId);
-      if (!m || m.orgId !== orgId || m.deletedAt)
-        throw new NotFoundError("message", input.messageId);
+      const m = await accessibleMessage(
+        (o, u, c) => this.canViewChannel(o, u, c),
+        orgId,
+        input.userId,
+        input.messageId,
+        true,
+      );
+      if (m.deletedAt) throw new NotFoundError("message", input.messageId);
       if (m.authorUserId !== input.userId) {
         throw new ForbiddenError("only the author may delete a message");
       }
@@ -498,8 +552,13 @@ export function createInMemoryMessagingService(
     },
 
     async markRead(orgId, input) {
-      const m = messages.get(input.messageId);
-      if (!m || m.orgId !== orgId) throw new NotFoundError("message", input.messageId);
+      const m = await accessibleMessage(
+        (o, u, c) => this.canViewChannel(o, u, c),
+        orgId,
+        input.userId,
+        input.messageId,
+        false,
+      );
       // Single → pointer to this message; upTo → same (all earlier are already ≤ this createdAt).
       readPointers.set(`${orgId}:${input.userId}:${m.channelId}`, m.createdAt);
     },
