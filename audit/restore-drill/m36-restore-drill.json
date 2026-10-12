@@ -1,0 +1,97 @@
+{
+  "runId": "79e9f4",
+  "startedAt": "2026-10-12T20:42:33.107Z",
+  "scale": "demo: 2 tenants, ~15 messages, ~6 attachments (<= 1.2 MB), private containers on one machine",
+  "fault": "none",
+  "backupMethod": {
+    "postgres": "pg_dump -U postgres -d wardenx | gzip, as deploy/production/reseed-demo.sh runs it (logical, single snapshot, no WAL archive, no PITR)",
+    "objectStore": "tar of the stopped MinIO /data (closest real mechanism; production has NO object-store backup)",
+    "coordination": "writes quiesced between the two (production has no coordination between them)"
+  },
+  "rto": {
+    "restoreWallMs": 9197,
+    "phasesMs": {
+      "source-up": 1177,
+      "scratch-containers-up (stand-in for a new host)": 1198,
+      "roles bootstrap (migrate+provision on a throwaway db)": 3388,
+      "pg_dump load (psql, ON_ERROR_STOP)": 4591
+    },
+    "verifyWallMs": 185
+  },
+  "rpo": {
+    "backupAt": "2026-10-12T20:42:38.089Z",
+    "failureAt": "2026-10-12T20:42:39.757Z",
+    "dataWindowLostMs": 1668,
+    "rowsLostPerTable": {
+      "alert": 0,
+      "alert_payload_catalog": 0,
+      "alert_receipt": 0,
+      "alert_rule": 0,
+      "channel": 0,
+      "channel_member": 0,
+      "delivery_endpoint": 0,
+      "message": 3,
+      "message_entity_reference": 0,
+      "message_revision": 0,
+      "message_attachment": 1,
+      "attachment_access_event": 0,
+      "messaging_erase_block": 0,
+      "message_receipt": 3,
+      "notification_delivery": 0,
+      "presence": 0,
+      "tenant_alert_routing_override": 0,
+      "user_notification_preferences": 0,
+      "notification_template": 0,
+      "tenant_notification_template_overlay": 0
+    },
+    "objectsLost": 1
+  },
+  "checks": [
+    {
+      "name": "row counts per M36 table equal the backup-time counts",
+      "ok": true,
+      "detail": "20 tables, 46 rows, all equal"
+    },
+    {
+      "name": "RLS flags, policies, grants and triggers per M36 table equal the source",
+      "ok": true,
+      "detail": "20 entries identical"
+    },
+    {
+      "name": "audit_event count and M4 hash chain per org equal the backup-time source",
+      "ok": true,
+      "detail": "2 entries identical"
+    },
+    {
+      "name": "every non-destroyed attachment row has its object present and byte-identical (size, sha256, etag)",
+      "ok": true,
+      "detail": "5 objects verified"
+    },
+    {
+      "name": "destroyed attachment rows have no object",
+      "ok": true,
+      "detail": "none present"
+    },
+    {
+      "name": "no orphan objects (every stored object is referenced by a row)",
+      "ok": true,
+      "detail": "none"
+    },
+    {
+      "name": "restored DB: wardenx_app logs in, is NOT superuser/BYPASSRLS",
+      "ok": true,
+      "detail": "wardenx_app super=false bypassrls=false"
+    },
+    {
+      "name": "RLS holds after restore: no tenant context reads nothing; own tenant reads rows; cross-tenant reads nothing",
+      "ok": true,
+      "detail": "no-context=0, A->A=10, A->B message=0 attachment=0 channel=0 audit=0"
+    },
+    {
+      "name": "message and message_revision body hashes verify (runHashVerifyForOrg, full coverage)",
+      "ok": true,
+      "detail": "19 rows hashed (expected >= 19), 0 mismatched"
+    }
+  ],
+  "passed": true
+}
