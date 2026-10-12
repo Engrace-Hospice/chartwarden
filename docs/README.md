@@ -203,6 +203,7 @@ represent **completed, merged** waves and are retained as historical governance 
 | [`reviews/`](./reviews/) | Review prompt templates (architecture compliance, exceedance, red-team, lock-grade, production readiness). |
 | [`agents/`](./agents/) | Agent-skill config: issue tracker, triage labels, domain docs. |
 | [`UI-UX/`](./UI-UX/) | UI redesign plan, component catalog, migration matrix and phase-0 UI inventory. |
+| [`messaging-hub/`](./messaging-hub/README.md) | Proposal: evolve M36 into a Clinical Communication & Care Coordination Hub — baseline/gap map, architecture, phased work packages (0–6), clinical workflows & safety, UX, testing/release gates, 88-capability register. |
 
 ---
 
