@@ -3715,6 +3715,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   const m36AttachmentBinding = buildM36AttachmentBinding(process.env, (message) =>
     console.warn(`⚠️  ${message}`),
   );
+  if (s3ObjectStoreConfigFromEnv(process.env) && !destructionDbHandle) {
+    console.warn(
+      "⚠️  M36 attachments are enabled (MINIO_* is set) but DATABASE_DESTRUCTION_URL is not: the attachment orphan reaper is off and a tenant erase will refuse (wardenx_app cannot DELETE message_attachment). Provision wardenx_destruction_login (db:provision-roles) and set it.",
+    );
+  }
   // GAP-099 — M40's first publisher. It had none until now because nothing could WRITE a canonical
   // (migration 0019 created `mdm_canonical_writer` and never a function owning it), so there was no
   // canonical change for M40 to announce; migration 0202 built the write path and events-by-m40.ts the

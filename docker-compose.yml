@@ -59,6 +59,25 @@ services:
     volumes:
       - wardenx-compose-minio:/data
 
+  # M36 WP 1.5 — the attachment malware scanner (clamd over TCP INSTREAM). Reachable only on the compose network:
+  # NO published host port. deploy/clamav/clamd.conf sets the alert-on-unscannable policy (encrypted, over-limit) and
+  # StreamMaxLength >= the 25 MB upload cap. The signature DB is a named volume, so a restart does not re-download it;
+  # the first boot downloads it (a minute or two), during which the healthcheck is "starting". api/worker only wait for
+  # the container to START, never for it to be healthy: until clamd answers, attachments simply stay `pending`
+  # (nothing is delivered), and unrelated boot paths never fail on a signature download. clamav/clamav-debian is
+  # multi-arch (the alpine clamav/clamav image has no arm64 build).
+  clamav:
+    image: clamav/clamav-debian:1.4
+    volumes:
+      - wardenx-compose-clamav:/var/lib/clamav
+      - ./deploy/clamav/clamd.conf:/etc/clamav/clamd.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "clamdcheck.sh"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 180s
+
   # One-shot: applies the full migration chain + bootstraps the runtime LOGIN roles (plain
   # `db:migrate`, not `db:migrate:deploy` — this is a fresh local/CI environment, not a per-deploy
   # re-run against an already-migrated prod DB; see TASK-040E). `restart: "no"` + api/worker
@@ -72,16 +91,25 @@ services:
       [
         "sh",
         "-c",
-        "bun run scripts/db/migrate.ts && bun run scripts/db/provision-runtime-roles.ts",
+        # The bucket backfill is best-effort here (MinIO may still be starting): the attachment upload path also
+        # creates a missing tenant bucket on demand, so a miss only costs the first upload a bucket-create round trip.
+        "bun run scripts/db/migrate.ts && bun run scripts/db/provision-runtime-roles.ts && (bun run scripts/backfill-tenant-buckets.ts || echo 'tenant bucket backfill skipped (will be created on first use)')",
       ]
     environment:
       DATABASE_ADMIN_URL: postgres://postgres:postgres@postgres:5432/wardenx
       PROVISION_DATABASE_URL: postgres://postgres:postgres@postgres:5432/wardenx
       WARDENX_APP_PASSWORD: wardenx-app-dev-password
       WARDENX_PLATFORM_PASSWORD: wardenx-platform-dev-password
+      WARDENX_DESTRUCTION_PASSWORD: wardenx-destruction-dev-password
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: wardenx
+      MINIO_SECRET_KEY: wardenx-minio-secret
+      MINIO_REGION: us-east-1
     depends_on:
       postgres:
         condition: service_healthy
+      minio:
+        condition: service_started
     restart: "no"
 
   api:
@@ -97,11 +125,18 @@ services:
       LOG_LEVEL: info
       DATABASE_URL: postgres://wardenx_app:wardenx-app-dev-password@postgres:5432/wardenx
       DATABASE_PLATFORM_URL: postgres://wardenx_platform_login:wardenx-platform-dev-password@postgres:5432/wardenx
+      DATABASE_DESTRUCTION_URL: postgres://wardenx_destruction_login:wardenx-destruction-dev-password@postgres:5432/wardenx
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: wardenx
       MINIO_SECRET_KEY: wardenx-minio-secret
       MINIO_REGION: us-east-1
+      # M36 attachment scanner: the ClamAV sidecar. The builtin scanner (EICAR + type check, NOT an antivirus) is
+      # opt-in only: MESSAGING_ATTACHMENT_SCANNER=builtin ALLOW_BUILTIN_ATTACHMENT_SCANNER=1 in your .env.
+      MESSAGING_ATTACHMENT_SCANNER: ${MESSAGING_ATTACHMENT_SCANNER:-clamd}
+      ALLOW_BUILTIN_ATTACHMENT_SCANNER: ${ALLOW_BUILTIN_ATTACHMENT_SCANNER:-}
+      CLAMD_HOST: clamav
+      CLAMD_PORT: "3310"
       BETTER_AUTH_URL: http://localhost:3000
       BETTER_AUTH_SECRET: wardenx-local-compose-dev-secret-not-for-production-use
       TRUSTED_ORIGINS: http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:5175
@@ -139,6 +174,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+      clamav:
+        condition: service_started
     healthcheck:
       test: ["CMD", "bun", "-e", "process.exit((await fetch('http://localhost:3000/health')).ok ? 0 : 1)"]
       interval: 5s
@@ -158,11 +195,18 @@ services:
       LOG_LEVEL: info
       DATABASE_URL: postgres://wardenx_app:wardenx-app-dev-password@postgres:5432/wardenx
       DATABASE_PLATFORM_URL: postgres://wardenx_platform_login:wardenx-platform-dev-password@postgres:5432/wardenx
+      DATABASE_DESTRUCTION_URL: postgres://wardenx_destruction_login:wardenx-destruction-dev-password@postgres:5432/wardenx
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: wardenx
       MINIO_SECRET_KEY: wardenx-minio-secret
       MINIO_REGION: us-east-1
+      # M36 attachment scanner: the ClamAV sidecar. The builtin scanner (EICAR + type check, NOT an antivirus) is
+      # opt-in only: MESSAGING_ATTACHMENT_SCANNER=builtin ALLOW_BUILTIN_ATTACHMENT_SCANNER=1 in your .env.
+      MESSAGING_ATTACHMENT_SCANNER: ${MESSAGING_ATTACHMENT_SCANNER:-clamd}
+      ALLOW_BUILTIN_ATTACHMENT_SCANNER: ${ALLOW_BUILTIN_ATTACHMENT_SCANNER:-}
+      CLAMD_HOST: clamav
+      CLAMD_PORT: "3310"
       BETTER_AUTH_URL: http://localhost:3000
       BETTER_AUTH_SECRET: wardenx-local-compose-dev-secret-not-for-production-use
       TRUSTED_ORIGINS: http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:5175
@@ -177,6 +221,8 @@ services:
       redis:
         condition: service_healthy
       minio:
+        condition: service_started
+      clamav:
         condition: service_started
     healthcheck:
       test: ["CMD", "bun", "-e", "process.exit((await fetch('http://localhost:3001/health')).ok ? 0 : 1)"]
@@ -204,3 +250,4 @@ services:
 volumes:
   wardenx-compose-pgdata:
   wardenx-compose-minio:
+  wardenx-compose-clamav:

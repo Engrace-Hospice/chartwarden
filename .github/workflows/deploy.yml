@@ -351,5 +351,8 @@ jobs:
             deploy/production/smoke.sh \
             deploy/production/compose.yml \
             "$DEPLOY_USER@$DEPLOY_HOST:/opt/wardenx/"
+          # M36 WP 1.5 — the ClamAV sidecar's config is bind-mounted from /opt/wardenx/clamav/ by compose.yml.
+          ssh -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p /opt/wardenx/clamav"
+          scp -P "$port" deploy/clamav/clamd.conf "$DEPLOY_USER@$DEPLOY_HOST:/opt/wardenx/clamav/clamd.conf"
           ssh -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" \
             "chmod 700 /opt/wardenx/deploy.sh /opt/wardenx/smoke.sh && /opt/wardenx/deploy.sh '$BACKEND_IMAGE' '$WEB_IMAGE' '$DOCLING_IMAGE'"

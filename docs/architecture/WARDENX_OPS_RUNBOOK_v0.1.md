@@ -890,6 +890,15 @@ mc admin policy attach wardenx-primary tenant-<new-org-id> --user tenant-<new-or
 mc admin user info wardenx-primary tenant-<new-org-id>
 ```
 
+**Backfill (current deployment).** The application's per-tenant bucket is `tenant-<orgId>`, created by the M34 provisioner at
+onboarding. Orgs that predate that lack it: run `bun run ops:backfill-tenant-buckets` (compose: the `tenant-buckets` one-shot,
+which `deploy.sh` runs every deploy). It is idempotent; "already exists" is success.
+
+**Attachment scanner (ClamAV).** Message attachments are delivered only after a clamd verdict of clean. The `clamav` sidecar is
+internal-network only; its config is `deploy/clamav/clamd.conf` (alerts on encrypted and over-limit files). Alert on attachments
+`pending` for more than a few minutes and on repeated `deferred` scans; a down scanner never blocks the EHR, it only withholds
+files. `DATABASE_DESTRUCTION_URL` must be set on api and worker (orphan reaper, tenant erase).
+
 ---
 
 ## 7. Cache Operations (Valkey)

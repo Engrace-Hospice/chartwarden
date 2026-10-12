@@ -110,6 +110,17 @@ M34 offboarding eraser, **and every per-tenant PHI cipher**) and `DATABASE_DESTR
 (right-to-erasure over the append-only clinical/billing tables + `audit_event`). Without them the
 affected paths refuse loudly — the boot log says exactly what is off.
 
+**Message attachments (M36 WP 1.5) in the compose stack.** `docker compose up` starts a `clamav` sidecar (clamd on the
+compose network only; config `deploy/clamav/clamd.conf`; signature DB in the `wardenx-compose-clamav` volume, downloaded on
+first start, a minute or two) and sets `MESSAGING_ATTACHMENT_SCANNER=clamd` on api and worker. api/worker only wait for it to
+*start*: until clamd answers, attachments stay `pending` (nothing is delivered). For a quick run without ClamAV set
+`MESSAGING_ATTACHMENT_SCANNER=builtin ALLOW_BUILTIN_ATTACHMENT_SCANNER=1` in `.env` (EICAR + type check, not an antivirus).
+The compose api/worker also get `DATABASE_DESTRUCTION_URL` (the eraser and the orphan reaper need it), and the `migrate` step
+runs `bun run ops:backfill-tenant-buckets`, which creates the `tenant-<orgId>` bucket for every org that lacks it (re-run it
+any time; it is idempotent). Upload also creates a missing bucket on demand, and answers a typed 503 naming the bucket if it
+cannot. An existing dev volume predating the destruction role needs `docker compose build migrate && docker compose run --rm migrate`
+once (it provisions `wardenx_destruction_login`); do not run host `db:migrate` against that stack.
+
 **The PHI-cipher half is easy to miss, so it is spelled out (F-082).** Migration 0052 §5 REVOKES
 `wardenx_app`'s SELECT on `tenant_key_ring` by design — the request path reads only the
 ciphertext-free metadata view — so the platform login is the only credential that can resolve a

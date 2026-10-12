@@ -162,6 +162,41 @@ services:
         condition: service_completed_successfully
     restart: "no"
 
+  # M36 WP 1.5 — the attachment malware scanner (clamd over TCP INSTREAM). Compose-network only: NO published port.
+  # deploy/clamav/clamd.conf (mounted read-only; deploy.sh ships it next to this file) alerts on encrypted/over-limit
+  # content and sets StreamMaxLength >= the 25 MB upload cap. The signature DB persists in `clamav-data` and
+  # freshclam refreshes it in-container (CLAMAV_NO_FRESHCLAMD unset). api/worker do NOT `depends_on` it: a down or
+  # still-updating scanner leaves attachments `pending` (nothing is delivered), it must never block the EHR.
+  # Alert on a stuck scanner: old `pending` rows / `deferred` scans (docs/architecture/WARDENX_OPS_RUNBOOK_v0.1.md).
+  clamav:
+    image: clamav/clamav-debian:1.4
+    restart: unless-stopped
+    volumes:
+      - clamav-data:/var/lib/clamav
+      - ./clamav/clamd.conf:/etc/clamav/clamd.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 300s
+
+  # M36 WP 1.5 — idempotent one-shot: create `tenant-<orgId>` for every org that lacks the bucket (orgs onboarded
+  # before bucket provisioning). Safe to re-run; deploy.sh runs it after `provision` and treats a failure as a warning,
+  # because the attachment upload path also creates a missing bucket on demand.
+  tenant-buckets:
+    image: ${WARDENX_IMAGE:?set immutable GHCR image in .env.production}
+    pull_policy: always
+    env_file: .env.production
+    command: ["bun", "run", "scripts/backfill-tenant-buckets.ts"]
+    environment:
+      DATABASE_ADMIN_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/wardenx
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?set in .env.production}
+      MINIO_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?set in .env.production}
+      MINIO_REGION: us-east-1
+    restart: "no"
+
   api:
     image: ${WARDENX_IMAGE:?set immutable GHCR image in .env.production}
     pull_policy: always
@@ -176,6 +211,10 @@ services:
       DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${WARDENX_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
       # GAP-141 — the bearer MinIO's audit webhook presents to /api/v1/webhooks/minio/access-log.
       MINIO_ACCESS_LOG_WEBHOOK_TOKEN: ${MINIO_ACCESS_LOG_WEBHOOK_TOKEN:?set in .env.production}
+      # M36 WP 1.5 — the ClamAV sidecar above. The builtin scanner is refused unless ALLOW_BUILTIN_ATTACHMENT_SCANNER=1.
+      MESSAGING_ATTACHMENT_SCANNER: clamd
+      CLAMD_HOST: clamav
+      CLAMD_PORT: "3310"
       REDIS_URL: redis://valkey:6379
       MINIO_ENDPOINT: http://minio:9000
       MINIO_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
@@ -221,6 +260,10 @@ services:
       DATABASE_URL: postgresql://wardenx_app:${WARDENX_APP_PASSWORD}@postgres:5432/wardenx
       DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${WARDENX_PLATFORM_PASSWORD}@postgres:5432/wardenx
       DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${WARDENX_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
+      # M36 WP 1.5 — the ClamAV sidecar above. The builtin scanner is refused unless ALLOW_BUILTIN_ATTACHMENT_SCANNER=1.
+      MESSAGING_ATTACHMENT_SCANNER: clamd
+      CLAMD_HOST: clamav
+      CLAMD_PORT: "3310"
       REDIS_URL: redis://valkey:6379
       MINIO_ENDPOINT: http://minio:9000
       MINIO_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
@@ -366,3 +409,4 @@ volumes:
   postgres-data:
   valkey-data:
   minio-data:
+  clamav-data:

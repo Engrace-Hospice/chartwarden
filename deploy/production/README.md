@@ -78,6 +78,20 @@ are not rolled back.
   (`MINIO_APP_ACCESS_KEY` / `MINIO_APP_SECRET_KEY`). The policy allows object and bucket operations on `tenant-*` and
   `wardenx-*` buckets only; the MinIO root account is no longer an application credential.
 
+- **`clamav`** (M36 message attachments) — clamd over TCP on the compose network only (no published port), config from
+  `deploy/clamav/clamd.conf` (shipped to `/opt/wardenx/clamav/` by `deploy.yml`): alerts on encrypted archives/documents
+  and over-limit files, `StreamMaxLength` 26M (>= the 25 MB upload cap), signature DB in the `clamav-data` volume,
+  refreshed in-container by freshclam. api/worker run `MESSAGING_ATTACHMENT_SCANNER=clamd` against `clamav:3310` and do not
+  `depends_on` it: a down scanner leaves attachments `pending` (nothing is delivered). Alert on `pending` attachments
+  older than a few minutes or repeated `deferred` scans; check the scanner with `docker compose exec clamav clamdcheck.sh`.
+  `deploy.sh` brings it up without recreating it. Pin the image by digest when you promote it.
+- **`tenant-buckets`** — idempotent one-shot (`scripts/backfill-tenant-buckets.ts`) that creates `tenant-<orgId>` for every
+  org lacking it; `deploy.sh` runs it each deploy (a failure only warns: the attachment upload path also creates a missing
+  bucket on demand, and answers a typed 503 naming the bucket if it cannot).
+- `DATABASE_DESTRUCTION_URL` (already set on api/worker) is required by attachments: the tenant eraser and the orphan
+  reaper delete `message_attachment` rows, which `wardenx_app` cannot. Without it the reaper is disabled (logged at boot)
+  and a messaging erase refuses loudly.
+
 `minio` also runs MinIO's **audit webhook** to the api (`MINIO_AUDIT_WEBHOOK_*`, token `MINIO_ACCESS_LOG_WEBHOOK_TOKEN`):
 the api keeps successful `GetObject` calls on `tenant-*` buckets and records them as `signed_url_consumed` in
 `document_access_log`, attributed to the principal the signed URL was issued to (best effort; unattributable fetches are

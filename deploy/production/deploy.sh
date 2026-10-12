@@ -269,6 +269,12 @@ docker compose --env-file .env.production -f compose.yml run --rm --no-deps prov
   restore_previous_release
   exit 1
 }
+# M36 WP 1.5 — keep the ClamAV sidecar up WITHOUT recreating it (no scan gap, signature DB kept). Not fatal: a scanner
+# that is down leaves attachments `pending` (nothing delivered), so it must not roll back an otherwise good release.
+docker compose --env-file .env.production -f compose.yml up -d --no-deps clamav \
+  || echo "WARNING: clamav sidecar did not start; message attachments stay pending until it does" >&2
+docker compose --env-file .env.production -f compose.yml run --rm --no-deps tenant-buckets \
+  || echo "WARNING: tenant bucket backfill failed; uploads create a missing bucket on demand" >&2
 docker compose --env-file .env.production -f compose.yml up -d --no-deps --force-recreate api worker web docling-worker || {
   restore_previous_release
   exit 1

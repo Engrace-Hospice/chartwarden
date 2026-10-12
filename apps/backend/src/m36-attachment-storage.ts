@@ -14,6 +14,7 @@ import { DegradedError } from "@wardenx/types";
 import {
   type ObjectStorePort,
   createS3ObjectStore,
+  createS3TenantStorageProvisioner,
   deriveTenantBucket,
   s3ObjectStoreConfigFromEnv,
 } from "./modules/22-documents";
@@ -41,7 +42,25 @@ function degraded(): DegradedError {
 export function createM22BackedAttachmentStorage(stores: {
   readonly publicStore: ObjectStorePort;
   readonly internalStore: ObjectStorePort;
+  /** Idempotently creates `tenant-<orgId>` (M34's provisioner). Without it a missing bucket is a bare store 404. */
+  readonly ensureTenantBucket?: (organizationId: string) => Promise<unknown>;
 }): AttachmentStoragePort {
+  // Orgs onboarded before the bucket was provisioned (the dev demo org, older tenants) have none: create it on first
+  // upload instead of answering a bare 404. Memoized per process; a failure is not cached and surfaces as an
+  // actionable 503, never a silent 404 that looks like "file not found".
+  const ensured = new Set<string>();
+  const ensureBucket = async (organizationId: string): Promise<void> => {
+    if (!stores.ensureTenantBucket || ensured.has(organizationId)) return;
+    try {
+      await stores.ensureTenantBucket(organizationId);
+    } catch {
+      throw new DegradedError(
+        "attachment-storage",
+        `the tenant bucket ${deriveTenantBucket(organizationId as never)} is missing and could not be created: check MINIO_* credentials allow CreateBucket on tenant-* buckets, or run \`bun run scripts/backfill-tenant-buckets.ts\``,
+      );
+    }
+    ensured.add(organizationId);
+  };
   const bucketOf = (organizationId: string) => deriveTenantBucket(organizationId as never);
   const descriptor = (organizationId: string, objectKey: string, ttlSeconds: number) => ({
     bucket: bucketOf(organizationId),
@@ -50,14 +69,16 @@ export function createM22BackedAttachmentStorage(stores: {
     accessKind: "signed_url_issued" as const,
   });
   return {
-    presignUpload: ({ organizationId, objectKey, mimeType, sha256Hex, ttlSeconds }) =>
-      stores.publicStore.presignUpload({
+    async presignUpload({ organizationId, objectKey, mimeType, sha256Hex, ttlSeconds }) {
+      await ensureBucket(organizationId);
+      return stores.publicStore.presignUpload({
         bucket: bucketOf(organizationId),
         objectKey,
         mimeType,
         sha256Hex,
         ttlSeconds,
-      }),
+      });
+    },
     inspect: ({ organizationId, objectKey, signal }) =>
       stores.internalStore.inspectObject({
         bucket: bucketOf(organizationId),
@@ -185,12 +206,14 @@ export function buildM36AttachmentStorage(
   env: Record<string, string | undefined>,
 ): AttachmentStoragePort {
   const config = s3ObjectStoreConfigFromEnv(env);
-  return config
-    ? createM22BackedAttachmentStorage({
-        publicStore: createS3ObjectStore(config),
-        internalStore: createS3ObjectStore({ ...config, publicEndpoint: config.endpoint }),
-      })
-    : createRefusingAttachmentStorage();
+  if (!config) return createRefusingAttachmentStorage();
+  const provisioner = createS3TenantStorageProvisioner(config);
+  return createM22BackedAttachmentStorage({
+    publicStore: createS3ObjectStore(config),
+    internalStore: createS3ObjectStore({ ...config, publicEndpoint: config.endpoint }),
+    ensureTenantBucket: (organizationId) =>
+      provisioner.ensureTenantPrefixes({ organizationId, prefixes: [] }),
+  });
 }
 
 export function buildM36AttachmentBinding(
