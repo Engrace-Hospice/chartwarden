@@ -11,6 +11,8 @@ import type { JSX, KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
 import { AttachButton, AttachmentChips } from "./attachment-composer";
 import { sendBlockedReason } from "./attachment-utils";
+import { formatShortcutMarker, toggleWrap } from "./composer-format";
+import { MentionMenu } from "./mention-menu";
 import { activeMentionQuery, reconcileReferences } from "./mention-utils";
 import { MessageRow } from "./message-row";
 import type {
@@ -433,7 +435,28 @@ export function ConversationThread({
     if (timeline) timeline.scrollTop = timeline.scrollHeight;
   }, [messages]);
 
+  function applyFormatShortcut(event: KeyboardEvent<HTMLTextAreaElement>, marker: string): void {
+    event.preventDefault();
+    const textarea = event.currentTarget;
+    const edit = toggleWrap(draft, textarea.selectionStart, textarea.selectionEnd, marker);
+    setDraftReferences(reconcileReferences(draft, edit.value, draftReferences));
+    setDraft(edit.value);
+    window.requestAnimationFrame(() =>
+      textarea.setSelectionRange(edit.selectionStart, edit.selectionEnd),
+    );
+  }
+
   function handleComposerKey(event: KeyboardEvent<HTMLTextAreaElement>): void {
+    const marker = formatShortcutMarker(event);
+    if (marker) {
+      applyFormatShortcut(event, marker);
+      return;
+    }
+    if (mentionQuery && event.key === "Escape") {
+      event.preventDefault();
+      setMentionQuery(null);
+      return;
+    }
     if (mentionQuery && mentionCandidates.length > 0) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
@@ -442,11 +465,6 @@ export function ConversationThread({
             ? (index + 1) % mentionCandidates.length
             : (index - 1 + mentionCandidates.length) % mentionCandidates.length,
         );
-        return;
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setMentionQuery(null);
         return;
       }
       if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
@@ -463,7 +481,10 @@ export function ConversationThread({
     ) {
       event.preventDefault();
       void send();
+      return;
     }
+    // Escape never traps: it closes the mention popup (above) or, with none open, hands focus back to the page.
+    if (event.key === "Escape") event.currentTarget.blur();
   }
 
   function chooseMention(candidate: MentionCandidate): void {
@@ -707,47 +728,14 @@ export function ConversationThread({
           <AttachmentChips uploads={uploads} disabled={sending} attachButtonRef={attachButtonRef} />
           <AttachButton uploads={uploads} disabled={sending} buttonRef={attachButtonRef} />
           {mentionQuery ? (
-            // biome-ignore lint/a11y/useFocusableInteractive: focus remains in the composer while arrow keys control this ARIA combobox popup
-            <div
-              id="messaging-mention-suggestions"
-              className="wx-mention-menu"
-              // biome-ignore lint/a11y/useSemanticElements: a native select cannot serve as a rich, async composer popup
-              role="listbox"
-              aria-label="Mention suggestions"
-            >
-              {mentionLoading ? (
-                <span className="wx-mention-state">Searching…</span>
-              ) : mentionError ? (
-                <span className="wx-mention-state" role="alert">
-                  Suggestions could not be loaded.{" "}
-                  <button type="button" onClick={() => setMentionRetry((value) => value + 1)}>
-                    Retry
-                  </button>
-                </span>
-              ) : mentionCandidates.length === 0 ? (
-                <span className="wx-mention-state">No eligible people or patients</span>
-              ) : (
-                mentionCandidates.map((candidate, index) => (
-                  <button
-                    // biome-ignore lint/a11y/useSemanticElements: a native option cannot render the required staff/patient detail markup
-                    type="button"
-                    role="option"
-                    tabIndex={-1}
-                    aria-selected={index === mentionIndex}
-                    className={index === mentionIndex ? "is-active" : undefined}
-                    key={`${candidate.kind}:${candidate.entityId}`}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => chooseMention(candidate)}
-                  >
-                    <strong>{candidate.displayName}</strong>
-                    <span>
-                      {candidate.kind === "patient" ? "Patient" : "Staff"}
-                      {candidate.detail ? ` · ${candidate.detail}` : ""}
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
+            <MentionMenu
+              loading={mentionLoading}
+              error={mentionError}
+              candidates={mentionCandidates}
+              activeIndex={mentionIndex}
+              onChoose={chooseMention}
+              onRetry={() => setMentionRetry((value) => value + 1)}
+            />
           ) : null}
           <Button
             type="submit"
