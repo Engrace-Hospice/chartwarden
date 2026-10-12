@@ -484,7 +484,7 @@ export function ConversationThread({
       return;
     }
     // Escape never traps: it closes the mention popup (above) or, with none open, hands focus back to the page.
-    if (event.key === "Escape") event.currentTarget.blur();
+    if (event.key === "Escape" && !event.nativeEvent.isComposing) event.currentTarget.blur();
   }
 
   function chooseMention(candidate: MentionCandidate): void {

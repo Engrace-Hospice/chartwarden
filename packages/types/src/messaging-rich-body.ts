@@ -40,7 +40,7 @@ export interface RichMention {
   readonly type: "mention";
   readonly kind: "staff" | "patient";
   readonly entityId: string;
-  /** Display label at write time; the server overwrites it from the directory, readers prefer the server's. */
+  /** Display label at write time; the server rejects a label that is not the directory name, readers prefer the server's. */
   readonly label: string;
 }
 export interface RichHardBreak {
@@ -333,47 +333,6 @@ export function parseStoredRichBody(plaintext: string): RichBodyResult {
 
 // --- plain-text projection ------------------------------------------------------------------------------------
 
-function inlineText(node: RichInline): string {
-  if (node.type === "text") return node.text;
-  if (node.type === "mention") return `@${node.label}`;
-  return "\n";
-}
-
-function listLines(list: RichList, indent: number): string[] {
-  const lines: string[] = [];
-  list.content.forEach((item, index) => {
-    const marker = list.type === "orderedList" ? `${index + 1}. ` : "- ";
-    let first = true;
-    for (const child of item.content) {
-      if (child.type === "paragraph") {
-        const text = child.content.map(inlineText).join("");
-        lines.push(`${" ".repeat(indent)}${first ? marker : " ".repeat(marker.length)}${text}`);
-        first = false;
-      } else {
-        lines.push(...listLines(child, indent + 2));
-      }
-    }
-  });
-  return lines;
-}
-
-/**
- * The deterministic plain-text projection: visible text only. No JSON, no mark delimiters, no link targets, no
- * labels for anything the reader would not see. This is the ONLY form that may reach previews, search, the
- * `body` field legacy clients read, and any non-in-app channel.
- */
-export function richBodyToPlainText(body: RichBody): string {
-  const blocks = body.doc.content.map((block) => {
-    if (block.type === "paragraph") return block.content.map(inlineText).join("");
-    if (block.type === "codeBlock") return block.text;
-    return listLines(block, 0).join("\n");
-  });
-  return blocks
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
 export interface RichMentionSpan {
   readonly kind: "staff" | "patient";
   readonly entityId: string;
@@ -383,40 +342,70 @@ export interface RichMentionSpan {
   readonly end: number;
 }
 
-/** Mention nodes in document order with their offsets in the plain-text projection. */
-export function richBodyMentions(body: RichBody): RichMentionSpan[] {
-  const spans: RichMentionSpan[] = [];
-  const full = richBodyToPlainText(body);
-  // Walk in the same order and with the same separators as the projection, locating each token from a cursor.
-  let cursor = 0;
-  const visit = (node: RichInline | RichBlock | RichListItem): void => {
-    if (node.type === "text") {
-      const at = full.indexOf(node.text, cursor);
-      if (at >= 0) cursor = at + node.text.length;
-    } else if (node.type === "mention") {
-      const token = `@${node.label}`;
-      const at = full.indexOf(token, cursor);
-      if (at >= 0) {
-        spans.push({
-          kind: node.kind,
-          entityId: node.entityId,
-          label: node.label,
-          start: at,
-          end: at + token.length,
-        });
-        cursor = at + token.length;
-      }
-    } else if (node.type === "codeBlock") {
-      const at = full.indexOf(node.text, cursor);
-      if (at >= 0) cursor = at + node.text.length;
-    } else if (node.type !== "hardBreak") {
-      for (const child of node.content) visit(child);
-    }
-  };
-  for (const block of body.doc.content) visit(block);
-  return spans;
+interface Projection {
+  readonly text: string;
+  readonly mentions: RichMentionSpan[];
 }
 
+/** One pass builds the text and the mention offsets together, so they cannot disagree. */
+function project(body: RichBody): Projection {
+  let raw = "";
+  const found: RichMentionSpan[] = [];
+  const inline = (node: RichInline): void => {
+    if (node.type === "text") raw += node.text;
+    else if (node.type === "hardBreak") raw += "\n";
+    else {
+      const token = `@${node.label}`;
+      found.push({
+        kind: node.kind,
+        entityId: node.entityId,
+        label: node.label,
+        start: raw.length,
+        end: raw.length + token.length,
+      });
+      raw += token;
+    }
+  };
+  const listBlock = (node: RichList, indent: number): void => {
+    node.content.forEach((item, index) => {
+      const marker = node.type === "orderedList" ? `${index + 1}. ` : "- ";
+      let first = true;
+      for (const child of item.content) {
+        if (child.type === "paragraph") {
+          if (raw !== "" && !raw.endsWith("\n")) raw += "\n";
+          raw += `${" ".repeat(indent)}${first ? marker : " ".repeat(marker.length)}`;
+          first = false;
+          for (const node2 of child.content) inline(node2);
+        } else listBlock(child, indent + 2);
+      }
+    });
+  };
+  body.doc.content.forEach((block, index) => {
+    if (index > 0) raw += "\n";
+    if (block.type === "paragraph") for (const node of block.content) inline(node);
+    else if (block.type === "codeBlock") raw += block.text;
+    else listBlock(block, 0);
+  });
+  const lead = raw.length - raw.trimStart().length;
+  return {
+    text: raw.trim(),
+    mentions: found.map((span) => ({ ...span, start: span.start - lead, end: span.end - lead })),
+  };
+}
+
+/**
+ * The deterministic plain-text projection: visible text only. No JSON, no mark delimiters, no link targets, no
+ * labels for anything the reader would not see. This is the ONLY form that may reach previews, search, the
+ * `body` field legacy clients read, and any non-in-app channel.
+ */
+export function richBodyToPlainText(body: RichBody): string {
+  return project(body).text;
+}
+
+/** Mention nodes in document order with their offsets in the plain-text projection. */
+export function richBodyMentions(body: RichBody): RichMentionSpan[] {
+  return project(body).mentions;
+}
 /** Collapse a stored body of ANY kind to the text a reader/preview may show. Unreadable rich body => "". */
 export function storedBodyToPlainText(bodyKind: string, plaintext: string): string {
   if (bodyKind !== "rich") return plaintext;

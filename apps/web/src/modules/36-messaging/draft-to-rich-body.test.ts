@@ -138,6 +138,8 @@ describe("composer format shortcuts", () => {
       toggleWrap(wrapped.value, wrapped.selectionStart, wrapped.selectionEnd, "**").value,
     ).toBe("say hello now");
     expect(toggleWrap("**hello**", 0, 9, "**").value).toBe("hello");
+    // Ctrl+I inside bold adds italic instead of stripping half of the bold markers.
+    expect(toggleWrap("**bold**", 2, 6, "*").value).toBe("***bold***");
     expect(toggleWrap("ab", 1, 1, "*")).toEqual({
       value: "a**b",
       selectionStart: 2,

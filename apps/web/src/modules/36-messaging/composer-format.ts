@@ -28,7 +28,10 @@ export function toggleWrap(value: string, start: number, end: number, marker: st
   const selected = value.slice(start, end);
   const length = marker.length;
   const around =
-    value.slice(start - length, start) === marker && value.slice(end, end + length) === marker;
+    value.slice(start - length, start) === marker &&
+    value.slice(end, end + length) === marker &&
+    // A lone `*` is not the italic marker when it is half of a bold `**`.
+    !(marker === "*" && (value[start - 2] === "*" || value[end + 1] === "*"));
   if (around) {
     return {
       value: value.slice(0, start - length) + selected + value.slice(end + length),

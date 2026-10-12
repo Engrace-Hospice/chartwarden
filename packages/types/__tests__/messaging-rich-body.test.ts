@@ -237,6 +237,25 @@ describe("richBodyToPlainText", () => {
     expect(richBodyToPlainText(value)).toBe("a@Ann");
   });
 
+  it("keeps mention offsets exact when the document starts with whitespace or has multiline blocks", () => {
+    const value = ok(
+      doc(
+        para(
+          text(" "),
+          { type: "mention", kind: "staff", entityId: ID, label: "Bob" },
+          text(" "),
+          text("x", { type: "bold" }),
+        ),
+        { type: "codeBlock", text: "a\n\n\nb" },
+        para({ type: "mention", kind: "staff", entityId: ID, label: "Bob" }),
+      ),
+    );
+    const projected = richBodyToPlainText(value);
+    const spans = richBodyMentions(value);
+    expect(spans).toHaveLength(2);
+    for (const span of spans) expect(projected.slice(span.start, span.end)).toBe("@Bob");
+  });
+
   it("offsets mentions into the projection", () => {
     const value = ok(
       doc(
