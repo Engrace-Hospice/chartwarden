@@ -660,6 +660,77 @@ export function createDbMessagingRouteService(
     }
     return [...staff, ...patients];
   }
+  async function canViewChannelFor(
+    orgId: string,
+    userId: string,
+    channelId: string,
+  ): Promise<boolean> {
+    const candidate = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+      if (!(await isActiveMessagingUser(tx, orgId, userId))) return null;
+      const c = await tx
+        .select({ kind: CH.channelKind, subjectId: CH.subjectId })
+        .from(CH)
+        .where(and(eq(CH.organizationId, orgId), eq(CH.id, channelId)))
+        .limit(1);
+      if (!c[0]) return null; // unknown / cross-org → no existence oracle
+      // §4.5: announcement is org-wide; the bereavement provider-seam refinement (M16) is a later
+      // cross-module integration — until then the channel-member check is the visibility rule.
+      if (c[0].kind === "announcement") {
+        return {
+          kind: c[0].kind as ChannelKind,
+          subjectId: c[0].subjectId,
+          memberSource: null,
+        };
+      }
+      const m = await tx
+        .select({ source: CM.source })
+        .from(CM)
+        .where(
+          and(
+            eq(CM.organizationId, orgId),
+            eq(CM.channelId, channelId),
+            eq(CM.userId, userId),
+            isNull(CM.removedAt),
+          ),
+        )
+        .limit(1);
+      return {
+        kind: c[0].kind as ChannelKind,
+        subjectId: c[0].subjectId,
+        memberSource: (m[0]?.source as ChannelMemberSource | undefined) ?? null,
+      };
+    });
+    if (!candidate) return false;
+    return (await effectivelyVisibleChannels(orgId, userId, [candidate], part2Gate)).length === 1;
+  }
+
+  /**
+   * Edit/delete/mark-read act on an existing message, so the actor must still be allowed into its
+   * channel (active user, live membership, Part 2 gate). A miss is a 404, matching canViewChannel's
+   * no-existence-oracle rule; `writable` additionally refuses archived channels with 410.
+   */
+  async function assertMessageChannelAccess(
+    orgId: string,
+    userId: string,
+    messageId: string,
+    writable: boolean,
+  ): Promise<void> {
+    const row = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+      const rows = await tx
+        .select({ channelId: MSG.channelId, isArchived: CH.isArchived })
+        .from(MSG)
+        .innerJoin(CH, eq(CH.id, MSG.channelId))
+        .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, messageId)))
+        .limit(1);
+      return rows[0] ?? null;
+    });
+    if (!row || !(await canViewChannelFor(orgId, userId, row.channelId))) {
+      throw new NotFoundError("message", messageId);
+    }
+    if (writable && row.isArchived) {
+      throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+    }
+  }
   return {
     // ── channels & messages (§4.2; reads) ─────────────────────────────────────────────────────
     async listChannels(orgId, userId): Promise<ChannelSummary[]> {
@@ -1071,45 +1142,7 @@ export function createDbMessagingRouteService(
       });
     },
 
-    async canViewChannel(orgId, userId, channelId): Promise<boolean> {
-      const candidate = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
-        if (!(await isActiveMessagingUser(tx, orgId, userId))) return null;
-        const c = await tx
-          .select({ kind: CH.channelKind, subjectId: CH.subjectId })
-          .from(CH)
-          .where(and(eq(CH.organizationId, orgId), eq(CH.id, channelId)))
-          .limit(1);
-        if (!c[0]) return null; // unknown / cross-org → no existence oracle
-        // §4.5: announcement is org-wide; the bereavement provider-seam refinement (M16) is a later
-        // cross-module integration — until then the channel-member check is the visibility rule.
-        if (c[0].kind === "announcement") {
-          return {
-            kind: c[0].kind as ChannelKind,
-            subjectId: c[0].subjectId,
-            memberSource: null,
-          };
-        }
-        const m = await tx
-          .select({ source: CM.source })
-          .from(CM)
-          .where(
-            and(
-              eq(CM.organizationId, orgId),
-              eq(CM.channelId, channelId),
-              eq(CM.userId, userId),
-              isNull(CM.removedAt),
-            ),
-          )
-          .limit(1);
-        return {
-          kind: c[0].kind as ChannelKind,
-          subjectId: c[0].subjectId,
-          memberSource: (m[0]?.source as ChannelMemberSource | undefined) ?? null,
-        };
-      });
-      if (!candidate) return false;
-      return (await effectivelyVisibleChannels(orgId, userId, [candidate], part2Gate)).length === 1;
-    },
+    canViewChannel: canViewChannelFor,
 
     // --- post a message: archive gate (410) → DEK-encrypt + insert + receipt fan-out (§3.4) -----
     async sendMessage(orgId, input) {
@@ -1190,6 +1223,7 @@ export function createDbMessagingRouteService(
 
     // --- edit within the window (author only): re-encrypt + re-hash, status='edited' -----------
     async editMessage(orgId, input) {
+      await assertMessageChannelAccess(orgId, input.userId, input.messageId, true);
       const references = input.references ?? [];
       validateReferenceRanges(input.body, references);
       if (references.length > 0) {
@@ -1270,6 +1304,7 @@ export function createDbMessagingRouteService(
 
     // --- soft-delete (author only): tombstone — status='deleted', cipher RETAINED (M36-F02) ----
     async deleteMessage(orgId, input) {
+      await assertMessageChannelAccess(orgId, input.userId, input.messageId, true);
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
         const rows = (await tx
           .select({ authorUserId: MSG.authorUserId, status: MSG.status })
@@ -1294,6 +1329,7 @@ export function createDbMessagingRouteService(
     },
 
     async markRead(orgId, input) {
+      await assertMessageChannelAccess(orgId, input.userId, input.messageId, false);
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, (tx) =>
         markMessagesRead(tx, {
           orgId,

@@ -120,9 +120,9 @@ describe.skipIf(!DB_URL)("GAP-096 — M36 AlertEmitter, LIVE Postgres", () => {
         [ORG],
       )
     ).rows[0].id as string;
-    clinicianUserId = (
-      await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, ["gap096-rn@x.test"])
-    ).rows[0].id as string;
+    // The emitter re-checks the final audience for an active membership, so a real clinician needs one.
+    const clinicianRoleId = await insertRole("rn", "RN", "clinical_staff");
+    clinicianUserId = await insertMember("gap096-rn@x.test", clinicianRoleId);
     await admin.query(
       `INSERT INTO patient_assignment (patient_id, organization_id, clinician_user_id, role, assigned_at)
        VALUES ($1,$2,$3,'primary_rn',CURRENT_DATE)`,
@@ -260,6 +260,37 @@ describe.skipIf(!DB_URL)("GAP-096 — M36 AlertEmitter, LIVE Postgres", () => {
       [result.alertId],
     );
     expect(deliveryRows.map((r) => r.recipient_user_id)).toEqual([clinicianUserId]);
+  });
+
+  it("care_team resolver drops an assigned clinician who has no active membership", async () => {
+    const otherPatientId = (
+      await admin.query(
+        `INSERT INTO patient (organization_id,mrn,legal_first_name,legal_last_name,dob,sex_assigned_at_birth,status)
+         VALUES ($1,'MRN-GAP096-B','Drew','Departed','1971-06-06','F','active') RETURNING id`,
+        [ORG],
+      )
+    ).rows[0].id as string;
+    const departedUserId = (
+      await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [
+        "gap096-gone@x.test",
+      ])
+    ).rows[0].id as string;
+    await admin.query(
+      `INSERT INTO patient_assignment (patient_id, organization_id, clinician_user_id, role, assigned_at)
+       VALUES ($1,$2,$3,'primary_rn',CURRENT_DATE)`,
+      [otherPatientId, ORG, departedUserId],
+    );
+    const result = await getAlertEmitter().emit(ORG, {
+      eventType: "test.gap096.care_team",
+      payload: { patientId: otherPatientId },
+      severity: "warn",
+      correlationId: "corr-gap096-3b",
+    });
+    const { rows: deliveryRows } = await admin.query(
+      "SELECT recipient_user_id FROM notification_delivery WHERE alert_id = $1",
+      [result.alertId],
+    );
+    expect(deliveryRows).toEqual([]);
   });
 
   it("disciplineMembers refuses loudly rather than silently resolving to nobody", async () => {
