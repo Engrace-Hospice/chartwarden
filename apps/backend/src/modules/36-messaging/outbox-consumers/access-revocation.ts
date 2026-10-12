@@ -29,6 +29,9 @@ export const M36_ACCESS_REVOCATION_EVENT_TYPES = [
   "m2.user.deactivated",
 ] as const;
 
+/** WP 1.4 stub: no owned items exist until P3/P4 (tasks, escalations). Replace with the real reassignment then. */
+export const reassignOwnedItemsNoop = async (_orgId: string, _userId: string): Promise<void> => {};
+
 export interface AccessRevocationDeps {
   /** Soft-remove every active `channel_member` row for the user in the org (M36 DB adapter). */
   readonly endChannelMemberships: (orgId: string, userId: string) => Promise<unknown>;
@@ -39,6 +42,11 @@ export interface AccessRevocationDeps {
    * under the OPERATOR's bound org (so it lands here, not on the platform consumer): the person's own orgs are not on the event.
    */
   readonly disconnectAccount?: (userId: string) => Promise<void>;
+  /**
+   * WP 1.4 seam: hand the leaver's owned work (tasks, escalations, on-call duties) to their successor. NO-OP today:
+   * M36 has no owned items until P3 (tasks) / P4 (escalations) land. Wire the real reassignment here, not in the handler.
+   */
+  readonly reassignOwnedItems?: (orgId: string, userId: string) => Promise<void>;
 }
 
 export interface PlatformAccessRevocationDeps {
@@ -73,12 +81,14 @@ async function handleEvent(
       const userId = optionalString(p, "userId");
       if (!userId) return;
       await deps.endChannelMemberships(event.organizationId, userId);
+      await deps.reassignOwnedItems?.(event.organizationId, userId);
       await deps.disconnectUser?.(event.organizationId, userId);
       return;
     }
     case "m2.user.deactivated": {
       const userId = requireString(p, "userId", event.eventType);
       await deps.endChannelMemberships(event.organizationId, userId);
+      await deps.reassignOwnedItems?.(event.organizationId, userId);
       if (p.scope === "platform") await deps.disconnectAccount?.(userId);
       else await deps.disconnectUser?.(event.organizationId, userId);
       return;

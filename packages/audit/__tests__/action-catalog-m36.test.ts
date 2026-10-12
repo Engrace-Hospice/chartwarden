@@ -14,6 +14,7 @@ describe("M36-T08 action catalog (§8.1.2)", () => {
       "m36.dlq_job",
       "m36.realtime.connected",
       "m36.realtime.disconnected",
+      "m36.membership.access_ended",
     ]);
   });
 

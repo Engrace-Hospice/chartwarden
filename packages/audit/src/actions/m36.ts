@@ -58,4 +58,13 @@ export const M36_ACTION_CATALOG: ModuleActionCatalog = [
     denylistCategories: [],
     isPartTwoEligible: false,
   },
+  {
+    action: "m36.membership.access_ended", // WP 1.4 — M2 revoke/offboard ended a user's channel memberships
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "A user's M36 channel memberships were soft-ended after an M2 membership revoke or user deactivation (resource = the user; channelMembershipsEnded count only). Messages are never deleted.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
 ];

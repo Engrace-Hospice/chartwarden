@@ -16,6 +16,7 @@
 // deferrals — driven by M16/M17/M19 outbox events not wired in Phase 1 — since they have no equivalent
 // read seam yet (a clear NOT_IMPLEMENTED throw beats reconciling against source data with no producer).
 // GAP-104 (2026-10-05): `archiveCareTeamChannel` is real (see `outbox-consumers/channel-membership-sync.ts`).
+import { type AuditExecutor, audit } from "@wardenx/audit";
 import { type DbClient, schema } from "@wardenx/db";
 import type {
   ChannelKind,
@@ -443,6 +444,27 @@ export async function endChannelMembershipsForUser(
       .set({ removedAt: new Date() })
       .where(and(eq(CM.organizationId, orgId), eq(CM.userId, userId), isNull(CM.removedAt)))
       .returning({ id: CM.id })) as Array<{ id: string }>;
+    if (ended.length > 0) {
+      // WP 1.4: one PHI-free row per offboarding that actually ended something (a redelivery ends zero, writes none).
+      await audit(
+        tx as unknown as AuditExecutor,
+        {
+          organizationId: orgId,
+          userId: null,
+          actorKind: "system",
+          correlationId: crypto.randomUUID(),
+        },
+        {
+          eventType: "m36.membership.access_ended",
+          resourceKind: "user",
+          resourceId: userId,
+          outcome: "success",
+          severity: "info",
+          retentionClass: "compliance",
+          context: { channelMembershipsEnded: ended.length },
+        },
+      );
+    }
     return ended.length;
   });
 }

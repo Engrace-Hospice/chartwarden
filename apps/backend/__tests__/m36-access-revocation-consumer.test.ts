@@ -113,4 +113,33 @@ describe("m36.access-revocation", () => {
     });
     expect(disconnectAccount).toHaveBeenCalledWith("u3");
   });
+
+  it("a socket-drop failure rejects so the dispatcher retries; the retry re-ends memberships idempotently", async () => {
+    const endChannelMemberships = vi.fn().mockResolvedValue(0);
+    const disconnectUser = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("realtime emitter not ready (reconnecting)"))
+      .mockResolvedValue(undefined);
+    const c = buildM36AccessRevocationConsumer({ endChannelMemberships, disconnectUser });
+    const e = event("m2.membership.revoked", { userId: "u1" });
+    await expect(c.handle(e)).rejects.toThrow(/not ready/);
+    await expect(c.handle(e)).resolves.toBeUndefined();
+    expect(endChannelMemberships).toHaveBeenCalledTimes(2);
+    expect(disconnectUser).toHaveBeenCalledTimes(2);
+  });
+
+  it("calls the owned-items reassignment seam on revoke and org deactivation, not on suspend", async () => {
+    const reassignOwnedItems = vi.fn().mockResolvedValue(undefined);
+    const c = buildM36AccessRevocationConsumer({
+      endChannelMemberships: vi.fn().mockResolvedValue(1),
+      reassignOwnedItems,
+    });
+    await c.handle(event("m2.membership.revoked", { userId: "u1" }));
+    await c.handle(event("m2.user.deactivated", { userId: "u2" }));
+    await c.handle(event("m2.membership.suspended", { userId: "u3", to: "suspended" }));
+    expect(reassignOwnedItems.mock.calls).toEqual([
+      [ORG, "u1"],
+      [ORG, "u2"],
+    ]);
+  });
 });
