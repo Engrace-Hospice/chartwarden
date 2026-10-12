@@ -534,6 +534,30 @@ describe.skipIf(!DB_URL)("M36 WP 1.2 idempotent send — LIVE Postgres", () => {
       });
     });
 
+    it("M1: write-time mention offsets index the body exactly as it is read back, after invisible+combining sequences", async () => {
+      for (const prefix of ["e\u200C\u0301 ", "a\u00AD\u0308 ", "o\u202E\u0323\u200B "]) {
+        const res = await post(app, dm, as(user1, randomUUID()), {
+          bodyDoc: docOf(
+            para(
+              text(prefix),
+              { type: "mention", kind: "staff", entityId: user2, label: "WP12 u2" },
+              text(" end"),
+            ),
+          ),
+        });
+        expect(res.statusCode).toBe(201);
+        const id = res.json().messageId as string;
+        const stored = (
+          await admin.query(
+            `SELECT start_offset, end_offset FROM message_entity_reference WHERE message_id=$1`,
+            [id],
+          )
+        ).rows[0] as { start_offset: number; end_offset: number };
+        const shown = (await read(user2, dm)).find((m) => m.messageId === id) as Json;
+        expect(shown.body.slice(stored.start_offset, stored.end_offset)).toBe("@WP12 u2");
+      }
+    });
+
     it("a mention label that is not the directory name, or an id outside the channel, is refused and writes nothing", async () => {
       const before = await messageRows(dm);
       for (const entityId of [user2, randomUUID()]) {

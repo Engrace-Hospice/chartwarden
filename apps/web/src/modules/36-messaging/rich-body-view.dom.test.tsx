@@ -117,6 +117,32 @@ describe("S1: a link never hides where it goes", () => {
   });
 });
 
+describe("L2: a link inside a longer host-like token shows its destination", () => {
+  it("[bank] + .com/login linking elsewhere", () => {
+    const { container } = view(
+      sanitized(
+        docOf(para(text("bank", { type: "link", href: "https://evil.net/x" }), text(".com/login"))),
+      ),
+    );
+    expect(container.querySelector("a")?.textContent).toContain("(evil.net)");
+  });
+
+  it("an ordinary word next to punctuation gets no suffix", () => {
+    const { container } = view(
+      sanitized(
+        docOf(
+          para(
+            text("see "),
+            text("guide", { type: "link", href: "https://evil.net/x" }),
+            text(", then"),
+          ),
+        ),
+      ),
+    );
+    expect(container.querySelector("a")?.textContent).not.toContain("(evil.net)");
+  });
+});
+
 describe("RichBodyView renders the closed node set", () => {
   it("builds elements for every node and marks, links open safely", () => {
     const { container } = view(

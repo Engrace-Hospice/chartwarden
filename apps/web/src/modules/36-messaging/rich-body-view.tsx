@@ -12,6 +12,7 @@ import {
 import { useMemo } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { type LinkNeighbours, needsDestinationSuffix } from "./link-destination";
 import type { MessageReference } from "./messaging-types";
 
 // M36 WP 2.1 - the safe renderer for a structured message body.
@@ -24,24 +25,11 @@ import type { MessageReference } from "./messaging-types";
 
 const LINK_REL = "noopener noreferrer";
 
-/** Lower-cased NFKC, so a full-width or composed look-alike compares equal to the real thing. */
-const fold = (value: string): string => value.normalize("NFKC").toLowerCase();
-
-/**
- * The visible link text "looks like an address" (a dot, an @ or a scheme separator) but does not contain the real
- * destination: the reader must be shown where the link really goes, inline, not only on hover. Plain words
- * ("the guide") and text that already names the real host get no suffix.
- */
-function needsDestinationSuffix(visibleText: string, destination: string): boolean {
-  const text = fold(visibleText);
-  if (!/[.@]|:\/\//.test(text)) return false;
-  return !text.includes(fold(destination));
-}
-
 function applyMarks(
   content: ReactNode,
   marks: readonly RichMark[],
   visibleText: string,
+  neighbours: LinkNeighbours,
 ): ReactNode {
   let node = content;
   for (const mark of marks) {
@@ -64,7 +52,7 @@ function applyMarks(
           title={`Opens ${destination}`}
         >
           {node}
-          {needsDestinationSuffix(visibleText, destination) ? (
+          {needsDestinationSuffix(visibleText, href, neighbours) ? (
             <span className="wx-link-destination"> ({destination})</span>
           ) : null}
           {external ? <span className="sr-only"> (opens in new tab)</span> : null}
@@ -75,18 +63,21 @@ function applyMarks(
   return node;
 }
 
+/** Text of a directly adjacent plain/marked text node; anything else (mention, break, edge) reads as a boundary. */
+const textOf = (node: RichInline | undefined): string => (node?.type === "text" ? node.text : "");
+
 function Inline({
   node,
-  index,
+  neighbours,
   references,
 }: {
   node: RichInline;
-  index: number;
+  neighbours: LinkNeighbours;
   references: readonly MessageReference[];
 }): JSX.Element {
   if (node.type === "hardBreak") return <br />;
   if (node.type === "text") {
-    return <span>{applyMarks(node.text, node.marks ?? [], node.text)}</span>;
+    return <span>{applyMarks(node.text, node.marks ?? [], node.text, neighbours)}</span>;
   }
   // The server's label (fresh from the directory) wins over the label frozen into the document.
   const reference = references.find(
@@ -113,8 +104,16 @@ function Paragraph({
   return (
     <p className="wx-rich-p">
       {node.content.map((child, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: the document is immutable; position is its identity
-        <Inline key={index} node={child} index={index} references={references} />
+        <Inline
+          // biome-ignore lint/suspicious/noArrayIndexKey: the document is immutable; position is its identity
+          key={index}
+          node={child}
+          neighbours={{
+            before: textOf(node.content[index - 1]),
+            after: textOf(node.content[index + 1]),
+          }}
+          references={references}
+        />
       ))}
     </p>
   );

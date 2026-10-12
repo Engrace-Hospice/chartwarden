@@ -96,17 +96,23 @@ export function toggleWrap(value: string, start: number, end: number, marker: st
  * dispatched `input` event does (2); undo then falls back to the browser's default behaviour for programmatic edits.
  */
 export function applyTextEdit(textarea: HTMLTextAreaElement, edit: TextEdit): void {
+  const before = textarea.value;
   textarea.focus();
   textarea.setSelectionRange(edit.replaceStart, edit.replaceEnd);
   const execCommand = (document as { execCommand?: (...args: unknown[]) => boolean }).execCommand;
-  let applied = false;
   try {
-    applied = execCommand?.call(document, "insertText", false, edit.replacement) === true;
+    execCommand?.call(document, "insertText", false, edit.replacement);
   } catch {
-    applied = false;
+    // fall through: the value check below decides whether the command did the job
   }
-  if (!applied) {
-    textarea.setRangeText(edit.replacement, edit.replaceStart, edit.replaceEnd, "end");
+  // A command that is missing, throws, returns false, or "succeeds" without producing the text (an empty insertText
+  // is the usual case) is caught here by comparing the value, and the edit is applied directly.
+  if (textarea.value !== edit.value) {
+    if (textarea.value === before) {
+      textarea.setRangeText(edit.replacement, edit.replaceStart, edit.replaceEnd, "end");
+    } else {
+      textarea.value = edit.value; // the command did something unexpected: make the value exactly the edit
+    }
     textarea.dispatchEvent(new Event("input", { bubbles: true }));
   }
   textarea.setSelectionRange(edit.selectionStart, edit.selectionEnd);
