@@ -45,6 +45,18 @@ describe("useMessagingRealtime", () => {
     expect(onHint.mock.calls.map(([h]) => h.cursor)).toEqual(["c1", "c2"]);
   });
 
+  it("forgets seen cursors on reconnect so a restarted server's cursor is not swallowed", () => {
+    const { emit, factory } = fakeSocket();
+    const onHint = vi.fn();
+    renderHook(() => useMessagingRealtime(onHint, vi.fn(), factory));
+    emit("connect");
+    emit("hint", hint("c1"));
+    emit("disconnect");
+    emit("connect");
+    emit("hint", hint("c1"));
+    expect(onHint).toHaveBeenCalledTimes(2);
+  });
+
   it("closes the socket on unmount", () => {
     const { socket, factory } = fakeSocket();
     const { unmount } = renderHook(() => useMessagingRealtime(vi.fn(), vi.fn(), factory));

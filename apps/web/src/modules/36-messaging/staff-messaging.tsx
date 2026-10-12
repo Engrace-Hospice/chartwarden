@@ -178,7 +178,10 @@ function OrganizationStaffMessaging({
   const activeIdRef = useRef<string | null>(null);
   activeIdRef.current = activeId;
   const refreshFromHint = useCallback(async (): Promise<void> => {
+    const generation = generationRef.current;
     if (channelLoadInFlight.current) await channelLoadInFlight.current;
+    // Unmounted (or the org/user changed) while waiting: the cleanup bumped the generation, so do not read.
+    if (generation !== generationRef.current) return;
     await loadChannels(true);
   }, [loadChannels]);
   const realtimeConnected = useMessagingRealtime(

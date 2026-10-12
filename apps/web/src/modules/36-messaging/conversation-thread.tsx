@@ -288,7 +288,8 @@ export function ConversationThread({
         latestInFlight.current = false;
         if (rereadAfterFlight.current) {
           rereadAfterFlight.current = false;
-          void loadLatest(true);
+          // A thread that was unmounted or switched meanwhile bumped the generation: do not read for it.
+          if (generation === generationRef.current) void loadLatest(true);
         }
       }
     },
@@ -401,8 +402,11 @@ export function ConversationThread({
       });
   }, [channel.kind, channel.subjectId, client]);
 
+  // Starts at the token this thread mounted with: the initial load already reads the latest, so only a LATER bump acts.
+  const handledLiveToken = useRef(liveToken);
   useEffect(() => {
-    if (liveToken === 0) return;
+    if (liveToken === handledLiveToken.current) return;
+    handledLiveToken.current = liveToken;
     if (latestInFlight.current) rereadAfterFlight.current = true;
     else void loadLatest(true);
   }, [liveToken, loadLatest]);

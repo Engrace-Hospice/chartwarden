@@ -160,7 +160,10 @@ for patient-linked channels" is superseded by D8's narrower lock.
   `SELECT, DELETE` so retention and the tenant eraser remove revisions with their message.
 - `editMessage` locks the message row, writes the replaced body and its mention snapshot as the next revision, then overwrites the head
   (so `body_sha256` verification on `message` is unchanged), inside one transaction. The window is 5 minutes from `created_at`,
-  measured with `now()` in Postgres, and a late edit returns 409 `MESSAGE_EDIT_WINDOW_CLOSED`.
+  measured with `clock_timestamp()` in Postgres (so a wait on the row lock counts), and a late edit returns 409 `MESSAGE_EDIT_WINDOW_CLOSED`.
+- Revisions follow the message's retention: an author's soft delete keeps `body_cipher` (M36-F02), so earlier edit bodies stay with it
+  until retention or the tenant eraser removes the message (the foreign-key cascade removes its revisions). Redaction (Phase 5) is the
+  only path that removes a body early.
 - The existing `m36.message.edited` event is kept (it already feeds the hint consumer); a separate `m36.message.revised.v1` was not
   added because nothing consumes it yet.
 - **Not in WP 1.3:** the edit lock for urgent and acknowledgment-requested messages (the columns arrive with ADR-0056 in Phase 4);

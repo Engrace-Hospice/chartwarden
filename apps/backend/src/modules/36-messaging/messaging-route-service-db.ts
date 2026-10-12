@@ -1342,7 +1342,7 @@ export function createDbMessagingRouteService(
             bodyKind: MSG.bodyKind,
             createdAt: MSG.createdAt,
             editedAt: MSG.editedAt,
-            ageMs: sql<number>`extract(epoch from (now() - ${MSG.createdAt})) * 1000`,
+            ageMs: sql<number>`extract(epoch from (clock_timestamp() - ${MSG.createdAt})) * 1000`,
           })
           .from(MSG)
           .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, input.messageId)))

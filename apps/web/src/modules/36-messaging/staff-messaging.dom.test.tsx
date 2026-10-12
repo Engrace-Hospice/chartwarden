@@ -398,6 +398,17 @@ describe("M36 messaging organization switching", () => {
       sockets.handlers.get("hint")?.(hint);
     });
     await waitFor(() => expect(channelLoads()).toBe(before + 1));
+    await act(async () => {}); // settle: a missing dedupe would show up as a second load by now
+    expect(channelLoads()).toBe(before + 1);
+    const threadReads = () =>
+      get.mock.calls.filter(([path]) => path === "/api/v1/messaging/channels/{id}/messages").length;
+    const readsBefore = threadReads();
+    await act(async () => {
+      sockets.handlers.get("hint")?.({ ...hint, cursor: "c-2" });
+    });
+    await waitFor(() => expect(channelLoads()).toBe(before + 2));
+    await act(async () => {});
+    expect(threadReads() - readsBefore).toBe(1); // the open thread re-reads exactly once for a hint on it
   });
 
   it("discards a late tenant A channel error while tenant B is loading", async () => {

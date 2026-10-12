@@ -105,15 +105,16 @@ export function createRealtimeTelemetry(
         sessionId: str(context.sessionId),
       });
     } else if (event === "realtime.disconnect") {
-      const reason = str(context.reason);
-      disconnects.inc({ reason: DISCONNECT_REASONS.has(reason) ? reason : "other" });
+      const raw = str(context.reason);
+      const reason = DISCONNECT_REASONS.has(raw) ? raw : "other";
+      disconnects.inc({ reason });
       record({
         kind: "disconnected",
         organizationId: str(context.organizationId),
         userId: str(context.userId),
         sessionId: str(context.sessionId),
         reason,
-        forced: isForced(reason),
+        forced: isForced(raw),
         durationMs: num(context.durationMs),
       });
     } else if (event === "realtime.refused") {

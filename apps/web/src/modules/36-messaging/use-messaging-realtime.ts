@@ -55,6 +55,8 @@ export function useMessagingRealtime(
     let firstConnect = true;
     const onConnect = (): void => {
       setConnected(true);
+      // Cursors may restart with the server; a stale entry must not swallow a fresh hint.
+      seen.clear();
       // The screen has just loaded; only a RE-connect can have missed something.
       if (!firstConnect) handlers.current.onSync();
       firstConnect = false;
@@ -74,6 +76,7 @@ export function useMessagingRealtime(
       socket.off("disconnect", onDisconnect);
       socket.off(HINT_EVENT, onHintEvent);
       socket.close();
+      setConnected(false);
     };
   }, [createSocket]);
 
