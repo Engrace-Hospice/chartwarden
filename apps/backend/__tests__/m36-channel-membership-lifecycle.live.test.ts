@@ -28,6 +28,7 @@ import {
 } from "../src/modules/05-patient/seams/drizzle-stores";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/index";
 import {
+  channelHintAudience,
   createDbMessagingProvider,
   endChannelMembershipsForUser,
   setCareTeamChannelArchived,
@@ -655,6 +656,97 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
       [leaver],
     );
     expect(after.rows[0].n).toBe(1); // redelivery wrote no second row
+  });
+
+  it("Phase 1 gate (revoked participants): once access ends the realtime audience drops the user at once (send refusal is proven at the route in m36-idempotent-send.live)", async () => {
+    const revoked = await seedUser("gate-revoked");
+    await admin.query(
+      `INSERT INTO channel_member (organization_id, channel_id, user_id, role, source)
+       VALUES ($1,$2,$3,'member','manual')`,
+      [orgA, channelId, revoked],
+    );
+    // control: while a member the user is addressed by the realtime fan-out
+    expect(await channelHintAudience(handle.db, orgA, channelId)).toMatchObject({
+      userIds: expect.arrayContaining([revoked]),
+    });
+
+    const consumer = buildM36AccessRevocationConsumer({
+      endChannelMemberships: (o, u) => endChannelMembershipsForUser(handle.db, o, u),
+    });
+    await consumer.handle({
+      id: "66666666-6666-4666-8666-666666666666",
+      organizationId: orgA,
+      eventType: "m2.membership.revoked",
+      aggregateKind: "membership",
+      aggregateId: "agg",
+      payload: { userId: revoked, membershipId: "m", organizationId: orgA },
+      attemptCount: 0,
+      createdAt: new Date(),
+    });
+
+    // realtime: the next hint's audience no longer contains the user (no stale-room window)
+    const audience = await channelHintAudience(handle.db, orgA, channelId);
+    expect("userIds" in audience && audience.userIds).not.toContain(revoked);
+    expect("userIds" in audience && audience.userIds).toContain(rn);
+  });
+
+  it("Phase 1 gate (reconnect reconciliation): paging forward from the DB cursor after a gap yields every missed message exactly once, in order", async () => {
+    const service = createDbMessagingRouteService(handle.db, { kek: KEK });
+    const reader = await seedUser("gate-reader");
+    const writer = await seedUser("gate-writer");
+    const dm = await service.openDm(orgA, reader, writer);
+    const send = (body: string) =>
+      service.sendMessage(orgA, { channelId: dm.channelId, authorUserId: writer, body });
+    const page = (cursor?: string) =>
+      service.listMessages(orgA, {
+        channelId: dm.channelId,
+        userId: reader,
+        direction: "forward",
+        limit: 2,
+        ...(cursor ? { cursor } : {}),
+      });
+
+    // online: the client has seen the first messages (a page of 2 hands out the resume cursor)
+    const seen = [await send("m1"), await send("m2"), await send("m3")];
+    const first = await page();
+    expect(first.messages.map((m) => m.messageId)).toEqual(
+      seen.slice(0, 2).map((m) => m.messageId),
+    );
+    const resumeFrom = first.nextCursor;
+    expect(resumeFrom).toBeDefined();
+
+    // disconnected: five more arrive
+    const missed = [
+      await send("m4"),
+      await send("m5"),
+      await send("m6"),
+      await send("m7"),
+      await send("m8"),
+    ];
+    const allIds = [...seen, ...missed].map((m) => m.messageId);
+
+    // reconnect: walk forward from the last cursor until the server stops handing one out
+    const got: string[] = first.messages.map((m) => m.messageId);
+    let cursor = resumeFrom;
+    for (let i = 0; i < 10 && cursor; i += 1) {
+      const next = await page(cursor);
+      got.push(...next.messages.map((m) => m.messageId));
+      cursor = next.nextCursor;
+    }
+    expect(got).toEqual(allIds); // no loss, no duplicate, send order
+
+    // a replayed catch-up from the same cursor is deterministic (clients dedupe by id)
+    const replay = await page(resumeFrom);
+    expect(replay.messages.map((m) => m.messageId)).toEqual(allIds.slice(2, 4));
+
+    // an anchored (jump-to-message) page includes the anchor itself and the rows before it
+    const anchored = await service.listMessages(orgA, {
+      channelId: dm.channelId,
+      userId: reader,
+      anchorMessageId: allIds[4],
+      limit: 3,
+    });
+    expect(anchored.messages.map((m) => m.messageId)).toEqual(allIds.slice(2, 5));
   });
 
   it("an edit keeps the replaced body in an append-only revision chain, inside a server-clock window (ADR-0055)", async () => {
