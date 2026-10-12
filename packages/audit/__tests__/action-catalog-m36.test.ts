@@ -10,6 +10,7 @@ describe("M36-T08 action catalog (§8.1.2)", () => {
   it("declares the §8.1.2 job/integrity events and the ADR-0054 realtime events under m36", () => {
     expect(M36_ACTION_CATALOG.map((e) => e.action)).toEqual([
       "m36.integrity.hash_mismatch",
+      "m36.integrity.systemic_decrypt_failure",
       "m36.hash_verify.run",
       "m36.retention_scan.run",
       "m36.dlq_job",

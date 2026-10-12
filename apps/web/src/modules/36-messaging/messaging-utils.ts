@@ -89,3 +89,28 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
   }
   return fallback;
 }
+
+/**
+ * WP 1.2 — the identity of one composed message across send attempts. `clientMessageId` (the DB backstop) and
+ * `idempotencyKey` (the HTTP middleware) are minted once per composed message and reused on every retry, so a
+ * lost response followed by a retry is a replay of the original send, never a second message.
+ */
+export interface SendAttempt {
+  readonly fingerprint: string;
+  readonly clientMessageId: string;
+  readonly idempotencyKey: string;
+}
+
+/** Reuse `previous` while the composed message (channel + body + references) is unchanged; else mint fresh ids. */
+export function sendAttemptFor(previous: SendAttempt | null, fingerprint: string): SendAttempt {
+  if (previous?.fingerprint === fingerprint) return previous;
+  return { fingerprint, clientMessageId: crypto.randomUUID(), idempotencyKey: crypto.randomUUID() };
+}
+
+/**
+ * A 409 means the server still holds the first attempt's key as in-flight/unfinished, so the same key can never
+ * succeed. Rotate only the header key; `clientMessageId` stays, so the server answers with the original message.
+ */
+export function rotateIdempotencyKey(attempt: SendAttempt): SendAttempt {
+  return { ...attempt, idempotencyKey: crypto.randomUUID() };
+}

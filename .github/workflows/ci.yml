@@ -739,6 +739,8 @@ jobs:
           - { name: "M4 legal-hold overlay - materialise, DELETE guard, trigger, detach, RLS", scripts: "test:gap008:legal-hold-overlay:live" }
           # M36 Postmark adapter bound to a local fake HTTP server: magic-link + funeral invite delivery, retry, fail-closed.
           - { name: "M36 transactional email provider", scripts: "test:m36:transactional-email:live" }
+          # WP 1.2 - Idempotency-Key required on send (replay = original, reused key/other user 409, concurrent = one row) + client_message_id DB backstop.
+          - { name: "M36 Idempotent send", scripts: "test:m36:idempotent-send:live" }
           - { name: "GAP-173 M40 license + grief RLS", scripts: "test:gap-173:live" }
           - { name: "M31 prefs + uploads", scripts: "test:gap-031:live" }
           - { name: "M30 CAHPS export + M2 auditor link", scripts: "test:gap-087:live" }

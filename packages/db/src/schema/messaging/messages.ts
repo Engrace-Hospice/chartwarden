@@ -49,6 +49,8 @@ export const messages = pgTable(
     bodyKind: messageBodyKind("body_kind").notNull().default("plain"),
     parentMessageId: uuid("parent_message_id").references((): AnyPgColumn => messages.id),
     quotedMessageId: uuid("quoted_message_id").references((): AnyPgColumn => messages.id),
+    // WP 1.2: client-minted, stable across retries; the DB backstop behind the Idempotency-Key middleware.
+    clientMessageId: uuid("client_message_id"),
     status: messageStatus("status").notNull().default("sent"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     editedAt: timestamp("edited_at", { withTimezone: true }),
@@ -61,6 +63,11 @@ export const messages = pgTable(
       .where(sql`author_user_id IS NOT NULL`),
     byOrgIdx: index("message_org_idx").on(t.organizationId),
     orgIdIdUnique: unique("message_org_id_id_unique").on(t.organizationId, t.id),
+    clientMessageUnique: unique("message_client_message_unique").on(
+      t.organizationId,
+      t.authorUserId,
+      t.clientMessageId,
+    ),
     byParentIdx: index("message_parent_idx")
       .on(t.parentMessageId)
       .where(sql`parent_message_id IS NOT NULL`),

@@ -204,6 +204,8 @@ export interface MessagingRouteService {
       bodyKind?: MessageBodyKind;
       parentMessageId?: string;
       quotedMessageId?: string;
+      /** WP 1.2: client-minted, stable across retries; a repeat returns the original message. */
+      clientMessageId?: string;
       attachments?: readonly AttachmentInput[];
       correlationId?: string;
       references?: readonly MessageReferenceInput[];

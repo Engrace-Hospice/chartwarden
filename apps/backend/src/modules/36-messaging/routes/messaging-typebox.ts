@@ -30,6 +30,9 @@ import { ValidationError } from "@wardenx/types";
 /** Free-form opaque id (channels/messages/endpoints/rules). minLength:1, not uuid-format, so the
  *  slice's deterministic ids and production uuids both route. */
 const Id = Type.String({ minLength: 1, maxLength: 64 });
+// A canonical uuid (no `format: "uuid"`: that format is not registered with TypeBox at runtime here).
+const UUID_PATTERN =
+  "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
 const ChannelKindSchema = Type.Union(CHANNEL_KINDS.map((k) => Type.Literal(k)));
 const SeveritySchema = Type.Union([
   Type.Literal("info"),
@@ -89,6 +92,8 @@ export const SendMessageBodySchema = Type.Object({
   bodyKind: Type.Optional(Type.Union([Type.Literal("plain"), Type.Literal("markdown")])),
   parentMessageId: Type.Optional(Id),
   quotedMessageId: Type.Optional(Id),
+  // WP 1.2 DB backstop: a client-minted uuid, stable across retries of one composed message.
+  clientMessageId: Type.Optional(Type.String({ pattern: UUID_PATTERN })),
   attachments: Type.Optional(Type.Array(AttachmentSchema, { maxItems: 10 })),
   references: Type.Optional(Type.Array(MessageReferenceInputSchema, { maxItems: 25 })),
 });

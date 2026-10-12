@@ -26,7 +26,10 @@ import {
   dayLabel,
   initialsOf,
   mergeMessages,
+  rotateIdempotencyKey,
+  sendAttemptFor,
 } from "./messaging-utils";
+import type { SendAttempt } from "./messaging-utils";
 
 const MESSAGE_PAGE_SIZE = 50;
 const POLL_INTERVAL_MS = 15_000;
@@ -190,6 +193,8 @@ export function ConversationThread({
   const nearBottomRef = useRef(true);
   const initialScrollPending = useRef(false);
   const readBoundaryRef = useRef<string | null>(null);
+  const sendAttemptRef = useRef<SendAttempt | null>(null);
+  const sendInFlightRef = useRef(false);
   const composingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mentionGenerationRef = useRef(0);
@@ -379,6 +384,8 @@ export function ConversationThread({
     setContextOpen(false);
     setNewMessageCount(0);
     readBoundaryRef.current = null;
+    sendAttemptRef.current = null;
+    sendInFlightRef.current = false;
     void loadLatest();
     return () => {
       generationRef.current += 1;
@@ -453,27 +460,55 @@ export function ConversationThread({
   async function send(event?: FormEvent): Promise<void> {
     event?.preventDefault();
     const submitted = draft;
-    if (!submitted.trim() || sending || channel.archivedAt) return;
+    if (!submitted.trim() || sending || sendInFlightRef.current || channel.archivedAt) return;
+    const references = draftReferences
+      .filter((reference) => reference.end <= submitted.length)
+      .map(referenceInput);
+    // WP 1.2: one stable id pair per composed message, reused on retry (see sendAttemptFor).
+    const attempt = sendAttemptFor(
+      sendAttemptRef.current,
+      JSON.stringify([channel.channelId, submitted, references]),
+    );
+    sendAttemptRef.current = attempt;
+    // Take the latch only after the attempt exists: sendAttemptFor can throw (crypto.randomUUID).
+    sendInFlightRef.current = true;
     const generation = generationRef.current;
     setSending(true);
     setSendError(null);
-    const { data, error } = await client.POST("/api/v1/messaging/channels/{id}/messages", {
-      params: { path: { id: channel.channelId } },
-      body: {
-        body: submitted,
-        references: draftReferences
-          .filter((reference) => reference.end <= submitted.length)
-          .map(referenceInput),
-      },
-    });
+    const postMessage = () =>
+      client.POST("/api/v1/messaging/channels/{id}/messages", {
+        params: {
+          path: { id: channel.channelId },
+          header: { "Idempotency-Key": attempt.idempotencyKey },
+        },
+        body: { body: submitted, references, clientMessageId: attempt.clientMessageId },
+      });
+    let result: Awaited<ReturnType<typeof postMessage>>;
+    try {
+      result = await postMessage();
+    } catch {
+      // Network failure / aborted fetch: no response arrived, so keep the attempt for the retry.
+      if (generation !== generationRef.current) return;
+      sendInFlightRef.current = false;
+      setSending(false);
+      setSendError("Message could not be sent. Your draft has been preserved.");
+      return;
+    }
+    const { data, error, response } = result;
     if (generation !== generationRef.current) return;
+    sendInFlightRef.current = false;
     setSending(false);
+    // The idempotency store caches every answered response, errors included, so a retry under the
+    // same key would replay the failure. Keep the key only when no response arrived (lost reply).
+    if (response && response.status >= 400)
+      sendAttemptRef.current = rotateIdempotencyKey(attempt);
     if (error || !data) {
       setSendError(
         apiErrorMessage(error, "Message could not be sent. Your draft has been preserved."),
       );
       return;
     }
+    sendAttemptRef.current = null;
     setDraft((current) => (current === submitted ? "" : current));
     setDraftReferences([]);
     setMentionQuery(null);

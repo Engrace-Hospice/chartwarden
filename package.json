@@ -489,6 +489,7 @@
     "test:gap-158-invitation:live": "vitest run apps/backend/__tests__/gap-158-portal-invitation-link.live.test.ts",
     "test:m31:portal-signin:live": "vitest run apps/backend/__tests__/m31-portal-signin.live.test.ts",
     "test:m36:transactional-email:live": "vitest run apps/backend/__tests__/m36-transactional-email.live.test.ts",
+    "test:m36:idempotent-send:live": "vitest run apps/backend/__tests__/m36-idempotent-send.live.test.ts",
     "test:m2:link-redemption:live": "vitest run apps/backend/__tests__/m2-link-redemption.live.test.ts",
     "test:m2:auth-hardening:live": "vitest run apps/backend/__tests__/m2-auth-hardening.live.test.ts",
     "test:m3:role-templates:live": "vitest run apps/backend/__tests__/m3-role-templates.live.test.ts",

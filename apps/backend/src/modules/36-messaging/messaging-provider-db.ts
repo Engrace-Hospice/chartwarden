@@ -175,14 +175,16 @@ export function createDbMessagingProvider(
             bodyKind: input.bodyKind,
             parentMessageId: input.parentMessageId,
             quotedMessageId: input.quotedMessageId,
+            clientMessageId: input.clientMessageId,
           });
+          if (sent.replayed) return { messageId: sent.messageId, createdAt: sent.createdAt };
           await publishMessageHint(opts.outbox, tx, "sent", {
             orgId,
             channelId: input.channelId,
             messageId: sent.messageId,
             at: sent.createdAt,
           });
-          return sent;
+          return { messageId: sent.messageId, createdAt: sent.createdAt };
         },
       );
     },
