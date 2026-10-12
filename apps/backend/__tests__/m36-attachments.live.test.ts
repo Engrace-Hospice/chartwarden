@@ -27,6 +27,7 @@ import {
 } from "@wardenx/auth";
 import { type DbClient, createDbClient } from "@wardenx/db";
 import type { IdempotencyStore } from "@wardenx/shared";
+import { DegradedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -105,6 +106,9 @@ function createFakeStorage(clock: { now: number }) {
   const destroyed: string[] = [];
   /** Every presignUpload call (the size the PUT was bound to). */
   const presigned: { objectKey: string; byteSize: number }[] = [];
+  /** Ordered log of storage calls that matter for sequencing (ensureBucket before presignUpload). */
+  const calls: string[] = [];
+  const ensureFailure = { on: false };
   /** Failure injection for destroyObject: a key containing this text throws (a store that cannot reach MinIO). */
   const destroyFailure = { onKeyIncluding: null as string | null, keys: new Set<string>() };
   /** Failure injection for readBytes: every read for this org throws (a tenant bucket answering 5xx). */
@@ -113,7 +117,12 @@ function createFakeStorage(clock: { now: number }) {
   const destroyHook: { before: ((objectKey: string) => Promise<void>) | null } = { before: null };
   const key = (org: string, objectKey: string) => `${org}/${objectKey}`;
   const port: AttachmentStoragePort = {
+    async ensureBucket() {
+      calls.push("ensureBucket");
+      if (ensureFailure.on) throw new DegradedError("attachment-storage", "unavailable");
+    },
     async presignUpload({ organizationId, objectKey, byteSize, ttlSeconds }) {
+      calls.push("presignUpload");
       presigned.push({ objectKey, byteSize });
       return {
         url: `https://objects.test/put/${key(organizationId, objectKey)}?sig=put`,
@@ -157,6 +166,8 @@ function createFakeStorage(clock: { now: number }) {
     downloadMimeTypes,
     destroyed,
     presigned,
+    calls,
+    ensureFailure,
     destroyFailure,
     readFailure,
     destroyHook,
@@ -595,6 +606,62 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         payload: {},
       });
       expect(done.statusCode).toBe(400);
+    });
+
+    it("M1: the presigned PUT URL is never stored in the idempotency table", async () => {
+      const bytes = pdfBytes("no-capture");
+      const key = randomUUID();
+      const res = await authorize(u1, dm, bytes, {}, ORG_A, key);
+      expect(res.statusCode).toBe(201);
+      expect(
+        await count(
+          `SELECT count(*)::int AS n FROM idempotency_key WHERE key=$1 OR response_body::text LIKE '%objects.test/put%'`,
+          [key],
+        ),
+      ).toBe(0);
+    });
+
+    it("M1: retrying the same authorize (a fresh key) re-signs the open row: one row, one slot, one quota charge", async () => {
+      const bytes = pdfBytes("retry-same");
+      const before = await count(`SELECT count(*)::int AS n FROM message_attachment`);
+      const first = await authorize(u1, dm, bytes);
+      const second = await authorize(u1, dm, bytes);
+      expect(first.statusCode).toBe(201);
+      expect(second.statusCode).toBe(201);
+      expect(second.json().attachmentId).toBe(first.json().attachmentId);
+      expect(second.json().upload.url).toContain("objects.test/put");
+      expect(await count(`SELECT count(*)::int AS n FROM message_attachment`)).toBe(before + 1);
+      // a different file is still a new row
+      const other = await authorize(u1, dm, pdfBytes("retry-other"));
+      expect(other.json().attachmentId).not.toBe(first.json().attachmentId);
+    });
+
+    it("M1: a retry is not reused once the row's upload window is nearly over", async () => {
+      const bytes = pdfBytes("retry-late");
+      const first = await authorize(u1, dm, bytes);
+      clock.now += (ATTACHMENT_UPLOAD_TTL_SECONDS - 30) * 1000;
+      const second = await authorize(u1, dm, bytes);
+      expect(second.statusCode).toBe(201);
+      expect(second.json().attachmentId).not.toBe(first.json().attachmentId);
+    });
+
+    it("M2: the bucket is ensured before the signing, and a failing ensure is a generic 503 with no row", async () => {
+      const bytes = pdfBytes("ensure-order");
+      storage.calls.length = 0;
+      const ok = await authorize(u1, dm, bytes);
+      expect(ok.statusCode).toBe(201);
+      expect(storage.calls).toEqual(["ensureBucket", "presignUpload"]);
+
+      const before = await count(`SELECT count(*)::int AS n FROM message_attachment`);
+      storage.ensureFailure.on = true;
+      try {
+        const bad = await authorize(u1, dm, pdfBytes("ensure-fails"));
+        expect(bad.statusCode).toBe(503);
+        expect(storage.calls.at(-1)).toBe("ensureBucket"); // never reached signing
+      } finally {
+        storage.ensureFailure.on = false;
+      }
+      expect(await count(`SELECT count(*)::int AS n FROM message_attachment`)).toBe(before);
     });
 
     it("a replayed authorize (same key) returns the original and writes one row; a replayed complete is stable", async () => {
@@ -3068,6 +3135,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       const messageId = (
         await post(u1, dm, { attachments: [{ attachmentId: bad.attachmentId }] })
       ).json().messageId as string;
+      pastBackoff(); // the failed inline scan above put the row on a retry backoff: make the sweep due
       await attachmentScanTick({
         activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
         service: attachments,

@@ -43,7 +43,13 @@ export function registerAttachmentRoutes(app: FastifyInstance, deps: AttachmentR
 
   app.post(
     "/api/v1/messaging/attachments/uploads",
-    { preHandler: [SEND, REQUIRE_IDEMPOTENCY_KEY] },
+    {
+      preHandler: [SEND, REQUIRE_IDEMPOTENCY_KEY],
+      // The response carries a presigned PUT URL (a bearer credential): it must not be persisted in idempotency_key and
+      // replayed (a replay after the TTL would hand back a dead URL with 201). Retry safety is the service's: the same
+      // open request re-signs its existing row instead of consuming another slot or quota.
+      config: { noIdempotencyCapture: true },
+    },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(AuthorizeAttachmentBodySchema, request.body);

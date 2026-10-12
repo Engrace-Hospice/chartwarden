@@ -216,6 +216,8 @@ export interface AttachmentService {
 const SCAN_BATCH_LIMIT = 50;
 const REAP_BATCH_LIMIT = 25;
 const ONE_MINUTE_MS = 60_000;
+/** An open upload with less than this left is not re-signed on retry (the adapter clamps a TTL to >= 30 s). */
+const MIN_REUSABLE_UPLOAD_MS = 60_000;
 /** One gate for the process: the route-side service and the sweep's service are separate instances. */
 const PROCESS_INLINE_SCAN_GATE = createInlineScanGate(
   MAX_INLINE_SCANS_PER_PROCESS,
@@ -673,6 +675,20 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
     return claimed.length > 0;
   }
 
+  const authorized = (
+    row: AttachmentRow,
+    presigned: { url: string; headers: Readonly<Record<string, string>>; expiresAt: string },
+  ): AuthorizedUpload => ({
+    attachmentId: row.id,
+    upload: {
+      method: "PUT" as const,
+      url: presigned.url,
+      headers: presigned.headers,
+      expiresAt: presigned.expiresAt,
+    },
+    status: toStatus(row, now().getTime()),
+  });
+
   return {
     async authorize(orgId, input) {
       const valid = validateAuthorizeInput({
@@ -684,6 +700,17 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
       // "can send in this channel" is the channel_visibility rule; a stranger gets the random-id answer.
       if (!(await deps.canViewChannel(orgId, input.userId, input.channelId))) {
         throw new NotFoundError("channel", input.channelId);
+      }
+      // Bucket creation is network IO: do it BEFORE the transaction (which holds the per-user and per-org advisory locks),
+      // under a deadline, so a slow object store can never pin the quota lock. Signing the URL is local (below).
+      if (storage.ensureBucket) {
+        const ensureBucket = storage.ensureBucket.bind(storage);
+        await runWithDeadline(
+          () => ensureBucket(orgId),
+          deps.storageDeadlineMs ?? STORAGE_INSPECT_DEADLINE_MS,
+          () => new DegradedError("attachment-storage", "the object store did not answer in time"),
+          abortGraceMs,
+        );
       }
       return asUser(orgId, input.userId, async (tx) => {
         const [channel] = await tx
@@ -702,6 +729,39 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
         await tx.execute(
           sql`SELECT pg_advisory_xact_lock(hashtextextended(${`m36-attachment-open:${input.userId}`}, 0))`,
         );
+        // A retry of the SAME request (same user, channel, file, size, type, name) while its upload is still open re-signs
+        // that row instead of consuming another slot / quota / rate token. A row about to expire is not reused.
+        const [reusable] = await tx
+          .select()
+          .from(ATT)
+          .where(
+            and(
+              eq(ATT.organizationId, orgId),
+              eq(ATT.uploadedBy, input.userId),
+              eq(ATT.channelId, input.channelId),
+              eq(ATT.sha256Hex, valid.sha256Hex),
+              eq(ATT.byteSize, valid.byteSize),
+              eq(ATT.mimeType, valid.contentType),
+              eq(ATT.filename, valid.fileName),
+              isNull(ATT.completedAt),
+              isNull(ATT.messageId),
+              eq(ATT.scanState, "pending"),
+              gt(ATT.uploadExpiresAt, new Date(now().getTime() + MIN_REUSABLE_UPLOAD_MS)),
+            ),
+          )
+          .orderBy(sql`${ATT.createdAt} DESC`)
+          .limit(1);
+        if (reusable?.objectKey && reusable.uploadExpiresAt) {
+          const presigned = await storage.presignUpload({
+            organizationId: orgId,
+            objectKey: reusable.objectKey,
+            mimeType: reusable.mimeType,
+            sha256Hex: valid.sha256Hex,
+            byteSize: valid.byteSize,
+            ttlSeconds: Math.floor((reusable.uploadExpiresAt.getTime() - now().getTime()) / 1000),
+          });
+          return authorized(reusable, presigned);
+        }
         // Rate: rows this user created in the last minute (DB clock, same as created_at). Counted under the advisory lock.
         const [recent] = await tx
           .select({ n: sql<number>`count(*)::int` })
@@ -798,14 +858,6 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
         }
         const attachmentId = randomUUID();
         const objectKey = attachmentObjectKey(input.channelId, attachmentId);
-        const presigned = await storage.presignUpload({
-          organizationId: orgId,
-          objectKey,
-          mimeType: valid.contentType,
-          sha256Hex: valid.sha256Hex,
-          byteSize: valid.byteSize,
-          ttlSeconds: ATTACHMENT_UPLOAD_TTL_SECONDS,
-        });
         const [row] = await tx
           .insert(ATT)
           .values({
@@ -818,20 +870,21 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
             filename: valid.fileName,
             objectKey,
             sha256Hex: valid.sha256Hex,
-            uploadExpiresAt: new Date(presigned.expiresAt),
+            uploadExpiresAt: new Date(now().getTime() + ATTACHMENT_UPLOAD_TTL_SECONDS * 1000),
           })
           .returning();
         if (!row) throw new Error("attachment insert returned no row");
-        return {
-          attachmentId,
-          upload: {
-            method: "PUT" as const,
-            url: presigned.url,
-            headers: presigned.headers,
-            expiresAt: presigned.expiresAt,
-          },
-          status: toStatus(row, now().getTime()),
-        };
+        // Sign AFTER the row exists, inside the same transaction (signing is local, no IO): if anything after this throws,
+        // the row rolls back, so a live upload URL can never exist without its row.
+        const presigned = await storage.presignUpload({
+          organizationId: orgId,
+          objectKey,
+          mimeType: valid.contentType,
+          sha256Hex: valid.sha256Hex,
+          byteSize: valid.byteSize,
+          ttlSeconds: ATTACHMENT_UPLOAD_TTL_SECONDS,
+        });
+        return authorized(row, presigned);
       });
     },
 

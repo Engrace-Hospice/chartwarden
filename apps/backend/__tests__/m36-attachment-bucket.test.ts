@@ -8,6 +8,7 @@ const upload = {
   objectKey: "k",
   mimeType: "text/plain",
   sha256Hex: "0".repeat(64),
+  byteSize: 1,
   ttlSeconds: 60,
 };
 const stores = (ensure?: (o: string) => Promise<unknown>) => {
@@ -21,22 +22,34 @@ const stores = (ensure?: (o: string) => Promise<unknown>) => {
 };
 
 describe("attachment storage tenant bucket", () => {
-  it("ensures the bucket once per org before presigning", async () => {
+  it("ensures the bucket once per org (ensureBucket), and presigning does no IO of its own", async () => {
     const ensure = vi.fn().mockResolvedValue({});
     const { port, presignUpload } = stores(ensure);
-    await port.presignUpload(upload);
-    await port.presignUpload(upload);
+    await port.ensureBucket?.(ORG);
+    await port.ensureBucket?.(ORG);
+    await port.presignUpload({ ...upload, byteSize: 1 });
     expect(ensure).toHaveBeenCalledTimes(1);
-    expect(presignUpload).toHaveBeenCalledTimes(2);
+    expect(presignUpload).toHaveBeenCalledTimes(1);
   });
 
-  it("answers an actionable DEGRADED error when the bucket cannot be created, and retries next time", async () => {
+  it("answers a generic DEGRADED error (no bucket name) when the bucket cannot be created, logs the detail, and retries next time", async () => {
     const ensure = vi.fn().mockRejectedValueOnce(new Error("HTTP 403")).mockResolvedValue({});
-    const { port } = stores(ensure);
-    await expect(port.presignUpload(upload)).rejects.toThrow(
-      /tenant-.*missing and could not be created/,
+    const logged: string[] = [];
+    const presignUpload = vi.fn();
+    const port = createM22BackedAttachmentStorage({
+      publicStore: { presignUpload } as never,
+      internalStore: {} as never,
+      ensureTenantBucket: ensure,
+      onError: (message) => logged.push(message),
+    });
+    const failure = await port.ensureBucket?.(ORG).then(
+      () => null,
+      (e: Error) => e,
     );
-    await port.presignUpload(upload);
+    expect(failure?.message).not.toMatch(/tenant-/);
+    expect(failure?.message).toMatch(/temporarily unavailable/);
+    expect(logged.join(" ")).toMatch(/tenant-.*missing and could not be created/);
+    await port.ensureBucket?.(ORG);
     expect(ensure).toHaveBeenCalledTimes(2);
   });
 });

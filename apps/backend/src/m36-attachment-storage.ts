@@ -31,6 +31,12 @@ const DEFAULT_CLAMD_PORT = 3310;
 /** Backstop for a read with no caller deadline; the service always passes a (shorter) deadline signal. */
 const READ_TIMEOUT_MS = 30_000;
 
+function defaultOnError(message: string, error: unknown): void {
+  process.stderr.write(
+    `${JSON.stringify({ level: "error", msg: message, err: error instanceof Error ? error.message : String(error) })}\n`,
+  );
+}
+
 function degraded(): DegradedError {
   return new DegradedError(
     "attachment-storage",
@@ -44,20 +50,25 @@ export function createM22BackedAttachmentStorage(stores: {
   readonly internalStore: ObjectStorePort;
   /** Idempotently creates `tenant-<orgId>` (M34's provisioner). Without it a missing bucket is a bare store 404. */
   readonly ensureTenantBucket?: (organizationId: string) => Promise<unknown>;
+  /** Server-side sink for operational detail (default: one JSON line on stderr). */
+  readonly onError?: (message: string, error: unknown) => void;
 }): AttachmentStoragePort {
   // Orgs onboarded before the bucket was provisioned (the dev demo org, older tenants) have none: create it on first
-  // upload instead of answering a bare 404. Memoized per process; a failure is not cached and surfaces as an
-  // actionable 503, never a silent 404 that looks like "file not found".
+  // upload instead of answering a bare 404. Memoized per process; a failure is not cached and surfaces as a typed 503,
+  // never a silent 404 that looks like "file not found". The bucket name and the operator fix are logged here, server-side;
+  // the client only learns the store is unavailable.
   const ensured = new Set<string>();
+  const logError = stores.onError ?? defaultOnError;
   const ensureBucket = async (organizationId: string): Promise<void> => {
     if (!stores.ensureTenantBucket || ensured.has(organizationId)) return;
     try {
       await stores.ensureTenantBucket(organizationId);
-    } catch {
-      throw new DegradedError(
-        "attachment-storage",
-        `the tenant bucket ${deriveTenantBucket(organizationId as never)} is missing and could not be created: check MINIO_* credentials allow CreateBucket on tenant-* buckets, or run \`bun run scripts/backfill-tenant-buckets.ts\``,
+    } catch (error) {
+      logError(
+        `attachment storage: tenant bucket ${deriveTenantBucket(organizationId as never)} is missing and could not be created: check MINIO_* credentials allow CreateBucket on tenant-* buckets, or run \`bun run scripts/backfill-tenant-buckets.ts\``,
+        error,
       );
+      throw new DegradedError("attachment-storage", "attachment storage is temporarily unavailable");
     }
     ensured.add(organizationId);
   };
@@ -69,8 +80,9 @@ export function createM22BackedAttachmentStorage(stores: {
     accessKind: "signed_url_issued" as const,
   });
   return {
+    ensureBucket,
+    // Pure signing (no IO): the service calls `ensureBucket` first, outside its transaction.
     async presignUpload({ organizationId, objectKey, mimeType, sha256Hex, byteSize, ttlSeconds }) {
-      await ensureBucket(organizationId);
       return stores.publicStore.presignUpload({
         bucket: bucketOf(organizationId),
         objectKey,

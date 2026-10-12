@@ -4,6 +4,11 @@
 // (`apps/backend/src/m36-attachment-storage.ts`), and `ScanPort` over a scanner.
 
 export interface AttachmentStoragePort {
+  /**
+   * Idempotently make sure the tenant's bucket exists. Network IO: the service calls it BEFORE any transaction, under a
+   * deadline. Throws a typed 503 (`DegradedError`) with a client-safe message; operational detail is logged server-side.
+   */
+  ensureBucket?(organizationId: string): Promise<void>;
   /** A checksum-enforced presigned PUT into the tenant bucket. The returned headers MUST accompany the upload. */
   presignUpload(args: {
     readonly organizationId: string;
