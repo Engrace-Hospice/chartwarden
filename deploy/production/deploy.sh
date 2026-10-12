@@ -60,6 +60,9 @@ ensure_secret MINIO_APP_ACCESS_KEY "wardenx-app"
 ensure_secret MINIO_APP_SECRET_KEY "$(openssl rand -hex 24)"
 # The bearer MinIO's audit webhook presents to the api's access-log receiver (GAP-141).
 ensure_secret MINIO_ACCESS_LOG_WEBHOOK_TOKEN "$(openssl rand -hex 32)"
+# The least-privilege destruction login (tenant erase, attachment reaper). compose.yml requires it and the
+# `migrate` one-shot provisions the role with it, so a server whose env file predates it gets one generated.
+ensure_secret WARDENX_DESTRUCTION_PASSWORD "$(openssl rand -hex 24)"
 
 backup_file=$(mktemp .env.production.before-deploy.XXXXXX)
 next_file=$(mktemp .env.production.next.XXXXXX)

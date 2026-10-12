@@ -105,7 +105,9 @@ are not rolled back.
   bucket on demand, and answers a typed 503 naming the bucket if it cannot).
 - `DATABASE_DESTRUCTION_URL` (already set on api/worker) is required by attachments: the tenant eraser and the orphan
   reaper delete `message_attachment` rows, which `wardenx_app` cannot. Without it the reaper is disabled (logged at boot)
-  and a messaging erase refuses loudly.
+  and a messaging erase refuses loudly. Its password, `WARDENX_DESTRUCTION_PASSWORD`, is required by `compose.yml`
+  (already true before attachments); `deploy.sh` generates one into `.env.production` when the file predates it and never
+  overwrites a value an operator set.
 
 `minio` also runs MinIO's **audit webhook** to the api (`MINIO_AUDIT_WEBHOOK_*`, token `MINIO_ACCESS_LOG_WEBHOOK_TOKEN`):
 the api keeps successful `GetObject` calls on `tenant-*` buckets and records them as `signed_url_consumed` in
