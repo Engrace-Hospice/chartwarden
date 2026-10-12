@@ -83,6 +83,32 @@ Decided 2026-10-11 by the product owner (D5): ADR-0036 **stays `Accepted`**. It 
 - ADR-0036's architecture-doc banners (§25.13 and System Design wording) stay as written: that wording is about module-to-module
   Socket.IO, which remains void.
 
+## Addendum 2026-10-12 — implementation findings (plan approved by the product owner)
+
+Found while mapping WP 1.1 against the code; they refine, and do not reverse, the Decision above.
+
+- **A1. Worker and api are different processes.** Outbox consumers run only in the worker role (`role !== "api"`), while the Socket.IO
+  server runs in the api role. Consumers therefore never hold the `Server`: they call a small injected port (`disconnectUser(userId)`,
+  `publishHint(room, hint)`) backed by `@socket.io/redis-emitter` over the same Valkey, which reaches every api node. In `role === "all"`
+  the same port is used, so there is one code path. Item 6's `io.in(room).disconnectSockets(true)` is issued through the emitter.
+- **A2. Module boundary.** `bootstrap/realtime` is M1 and may not import M36 (`module-1-boundary`). Everything M36-shaped
+  (`computeRoomSet`, `listChannels`, `canViewChannel`) is injected from `apps/backend/src/index.ts`. The three Socket.IO packages are
+  `VENDOR_ADAPTERS` entries owned by `apps/backend/src/bootstrap/realtime` in both manifests; M36 consumers never import them.
+- **A3. Revocation carries a user.** `m2.membership.suspended` and `m2.membership.revoked` carry only `membershipId`. M2 adds `userId` to
+  both payloads (additive); M36 consumes that rather than reading M2 tables. `m2.user.deactivated` may arrive without an organization
+  (platform deactivation), so it is also bound as a platform consumer and disconnects by `user:<userId>` regardless of org.
+- **A4. Hint events do not exist yet.** M36 publishes only `m36.message.mentioned`. New catalog events `m36.message.sent`,
+  `m36.message.edited` and `m36.message.deleted` (ids and cursor only, no body) are published in the same transaction at every
+  message-write site, and `m36` is added to `declaredConsumers` only together with the bound consumer.
+- **A5. Handshake details.** Session is validated with `getIdentitySession` plus `sessionTimeout.enforce(..., { recordActivity: false })`
+  (item 12); only staff-class sessions past the MFA stage connect; `Origin` is checked against `resolveTrustedOrigins()` because the
+  session cookie is ambient and Socket.IO bypasses the Fastify CSRF hook; the internal service token is not accepted. A per-socket timer
+  re-enforces the session and disconnects on expiry.
+- **A6. Flag and readiness.** `REALTIME_ENABLED=true` (default off, per-environment). `/ready` capabilities gain a `degraded` value for
+  the Valkey-down case; it does not change the 200/503 decision.
+- **A7. Reconnect endpoint.** The catch-up uses the existing `cursor`/`direction` parameters of `GET /channels/:id/messages`; if they
+  cannot express "after cursor" the endpoint gains that, with the rate limit from item 10.
+
 ## Alternatives considered
 
 - **SSE + REST** (the plan's stated fallback). One-way, simple, proxies well, no sticky sessions. Rejected as primary because D1
