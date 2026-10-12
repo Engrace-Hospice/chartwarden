@@ -863,19 +863,17 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
             and(
               eq(ATT.organizationId, orgId),
               or(isNotNull(ATT.completedAt), gt(ATT.uploadExpiresAt, now())),
-              // Bytes that are gone stop counting: a destroyed object, and a file on a (soft-)deleted message (its object
-              // is destroyed after the retention window, see reapOrphansForOrg).
+              // Bytes count until the OBJECT is destroyed (a quarantined file, or a file on a deleted message, is destroyed
+              // after the retention window, see reapOrphansForOrg): deleting the message frees nothing by itself.
               isNull(ATT.objectDestroyedAt),
-              sql`NOT EXISTS (SELECT 1 FROM message m WHERE m.organization_id = ${ATT.organizationId}
-                    AND m.id = ${ATT.messageId} AND m.status = 'deleted')`,
             ),
           );
         const quotaExceeded = (scope: "user" | "organization", limit: number) =>
           new WardenXError(
             "ATTACHMENT_QUOTA_EXCEEDED",
             scope === "user"
-              ? `your attachment storage allowance (${formatBytes(limit)}) is full; it frees up when messages carrying your files are deleted, when unsent uploads lapse, or when blocked files are purged`
-              : `this organization's attachment storage allowance (${formatBytes(limit)}) is full; it frees up when messages carrying files are deleted or blocked files are purged`,
+              ? `your attachment storage allowance (${formatBytes(limit)}) is full; it frees up when stored files are destroyed (after the retention period following a message delete or a block) and when unsent uploads lapse`
+              : `this organization's attachment storage allowance (${formatBytes(limit)}) is full; it frees up when stored files are destroyed (after the retention period following a message delete or a block)`,
             413,
             [{ field: "scope", code: "QUOTA_SCOPE", message: scope }],
           );
@@ -1212,7 +1210,6 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
             eq(ATT.organizationId, orgId),
             isNull(ATT.objectDestroyedAt),
             isNotNull(ATT.objectKey),
-            ne(ATT.scanState, "pending"),
             or(
               and(eq(ATT.scanState, "quarantined"), lt(ATT.scannedAt, cutoff)),
               sql`EXISTS (SELECT 1 FROM message m WHERE m.organization_id = ${ATT.organizationId}

@@ -173,7 +173,7 @@ services:
     restart: unless-stopped
     # clamd loads the whole signature set (a reload briefly doubles it): bound it so a scan flood or a bad update
     # cannot starve postgres/minio/api on the same host.
-    mem_limit: 3g
+    mem_limit: 4g
     cpus: 2
     networks: [scan]
     volumes:

@@ -2915,7 +2915,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       expect(await rowExists(longGone.id)).toBe(true);
     });
 
-    it("A: quota stops counting rows whose object is destroyed and rows on deleted messages; live quarantined and clean rows still count", async () => {
+    it("A: quota stops counting a row only once its object is destroyed; rows on deleted messages still count until then", async () => {
       const who = await freshUploader("a-quota");
       const svc = quotaSvc(10_000);
       const live = await routeService.sendMessage(ORG_A, { channelId: who.channel, authorUserId: who.user, body: "live" });
@@ -2924,13 +2924,56 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       await boundRow(who, live.messageId, "quarantined", DAY); // counts: 3000 (bytes still in the bucket)
       const destroyedRow = await boundRow(who, live.messageId, "quarantined", DAY);
       await admin.query(`UPDATE message_attachment SET object_destroyed_at = now() WHERE id=$1`, [destroyedRow.id]); // no longer counts
-      await boundRow(who, gone.messageId, "clean", DAY); // on a deleted message: no longer counts
+      await boundRow(who, gone.messageId, "clean", DAY); // on a deleted message, object still stored: STILL counts, 3000
       await routeService.deleteMessage(ORG_A, { userId: who.user, messageId: gone.messageId });
-      // used = 6000 of 10000: a 4000 fits, a 4001 does not
+      // used = 9000 of 10000: a 1000 fits, a 1001 does not
       await expect(
-        svc.authorize(ORG_A, { userId: who.user, channelId: who.channel, fileName: "q.pdf", contentType: "application/pdf", byteSize: 4_001, sha256Hex: "c".repeat(64) }),
+        svc.authorize(ORG_A, { userId: who.user, channelId: who.channel, fileName: "q.pdf", contentType: "application/pdf", byteSize: 1_001, sha256Hex: "c".repeat(64) }),
       ).rejects.toMatchObject({ statusCode: 413 });
-      await svc.authorize(ORG_A, { userId: who.user, channelId: who.channel, fileName: "q.pdf", contentType: "application/pdf", byteSize: 4_000, sha256Hex: "d".repeat(64) });
+      await svc.authorize(ORG_A, { userId: who.user, channelId: who.channel, fileName: "q.pdf", contentType: "application/pdf", byteSize: 1_000, sha256Hex: "d".repeat(64) });
+    });
+
+    it("A: upload, send, delete cannot be repeated to hoard bytes: authorize stays 413 until the retention pass destroys the object, then succeeds", async () => {
+      const who = await freshUploader("a-hoard");
+      const svc = quotaSvc(3_000);
+      const sent = await routeService.sendMessage(ORG_A, { channelId: who.channel, authorUserId: who.user, body: "hoard" });
+      const row = await boundRow(who, sent.messageId, "clean", 30 * DAY);
+      await routeService.deleteMessage(ORG_A, { userId: who.user, messageId: sent.messageId });
+      const again = () =>
+        svc.authorize(ORG_A, { userId: who.user, channelId: who.channel, fileName: "h.pdf", contentType: "application/pdf", byteSize: 1_000, sha256Hex: "f".repeat(64) });
+      await expect(again()).rejects.toMatchObject({ statusCode: 413 });
+      expect(await svc.reapOrphansForOrg(ORG_A)).toEqual({ reaped: 0, failed: 0 }); // deleted just now: inside the window
+      await expect(again()).rejects.toMatchObject({ statusCode: 413 });
+      await admin.query(
+        `UPDATE message SET deleted_at = $2::timestamptz WHERE id = (SELECT message_id FROM message_attachment WHERE id=$1)`,
+        [row.id, iso(-8 * DAY)],
+      );
+      expect(await svc.reapOrphansForOrg(ORG_A)).toEqual({ reaped: 1, failed: 0 });
+      expect((await again()).attachmentId).toBeTruthy();
+    });
+
+    it("A: a PENDING (never scanned) file bound to a long-deleted message is destroyed too, and counts until then", async () => {
+      const who = await freshUploader("a-pending");
+      const svc = quotaSvc(1_000_000);
+      const sent = await routeService.sendMessage(ORG_A, { channelId: who.channel, authorUserId: who.user, body: "pend" });
+      const row = await boundRow(who, sent.messageId, "clean", 30 * DAY);
+      await admin.query(
+        `ALTER TABLE message_attachment DISABLE TRIGGER message_attachment_guard_trg`,
+      );
+      try {
+        await admin.query(`UPDATE message_attachment SET scan_state='pending', scanned_at=NULL WHERE id=$1`, [row.id]);
+      } finally {
+        await admin.query(`ALTER TABLE message_attachment ENABLE TRIGGER message_attachment_guard_trg`);
+      }
+      await routeService.deleteMessage(ORG_A, { userId: who.user, messageId: sent.messageId });
+      expect(await svc.reapOrphansForOrg(ORG_A)).toEqual({ reaped: 0, failed: 0 });
+      await admin.query(
+        `UPDATE message SET deleted_at = $2::timestamptz WHERE id=$1`,
+        [sent.messageId, iso(-8 * DAY)],
+      );
+      expect(await svc.reapOrphansForOrg(ORG_A)).toEqual({ reaped: 1, failed: 0 });
+      expect(storage.destroyed).toContain(row.key);
+      expect(await destroyedAt(row.id)).not.toBeNull();
     });
 
     it("A: the 413 message says what is true (no 'expire' promise) and names the retention", async () => {
@@ -2940,7 +2983,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         .authorize(ORG_A, { userId: who.user, channelId: who.channel, fileName: "q.pdf", contentType: "application/pdf", byteSize: 501, sha256Hex: "e".repeat(64) })
         .catch((e: Error) => e);
       expect((err as Error).message).not.toMatch(/expire/i);
-      expect((err as Error).message).toMatch(/deleted/i);
+      expect((err as Error).message).toMatch(/destroyed/i);
     });
   });
 
@@ -3126,9 +3169,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       const used = await count(
         `SELECT COALESCE(SUM(byte_size),0)::bigint AS n FROM message_attachment
           WHERE organization_id=$1 AND (completed_at IS NOT NULL OR upload_expires_at > $2::timestamptz)
-            AND object_destroyed_at IS NULL
-            AND NOT EXISTS (SELECT 1 FROM message m WHERE m.organization_id = message_attachment.organization_id
-                              AND m.id = message_attachment.message_id AND m.status = 'deleted')`,
+            AND object_destroyed_at IS NULL`,
         [ORG_A, new Date(clock.now).toISOString()],
       );
       const tight = quotaService({ orgBytes: Number(used) + 500, userBytes: 1_000_000 });

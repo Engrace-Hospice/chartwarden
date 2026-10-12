@@ -86,7 +86,7 @@ are not rolled back.
   older than a few minutes or repeated `deferred` scans; check the scanner with `docker compose exec clamav clamdcheck.sh`.
   `deploy.sh` brings it up without recreating it. clamd's protocol is unauthenticated, so the sidecar sits on a dedicated
   `scan` network that only `clamav`, `api` and `worker` join (postgres, minio, docling and the rest cannot reach it), and
-  it is capped (`mem_limit: 3g`, `cpus: 2`) so a scan flood or a bad signature reload cannot starve the host. Follow-ups
+  it is capped (`mem_limit: 4g`, `cpus: 2`) so a scan flood or a bad signature reload cannot starve the host. Follow-ups
   (not done here, they need network access to resolve): pin `clamav/clamav-debian:1.4` by digest
   (`image: clamav/clamav-debian@sha256:...`) when you promote it, and alert on a stale signature database (for example
   `docker compose exec clamav clamscan --version` reporting a database older than 2 days, or freshclam errors in the log).
@@ -98,8 +98,8 @@ are not rolled back.
   (`mc quota set <alias>/tenant-<orgId> --size <bytes>`). Browsers set `Content-Length` themselves and ignore it in the
   returned `headers` map, which is expected.
 - **Attachment retention.** `MESSAGING_ATTACHMENT_RETENTION_DAYS` (default 7) is how long the object of a quarantined file, or of
-  a file on a deleted message, is kept before the reaper destroys it (the row stays for audit and stops counting toward the
-  quota). It runs on the `DATABASE_DESTRUCTION_URL` credential like the orphan reaper.
+  a file on a deleted message, is kept before the reaper destroys it (the row stays for audit; it stops counting toward the
+  quota only once the object is destroyed, not when the message is deleted). It runs on the `DATABASE_DESTRUCTION_URL` credential like the orphan reaper.
 - **`tenant-buckets`** — idempotent one-shot (`scripts/backfill-tenant-buckets.ts`) that creates `tenant-<orgId>` for every
   org lacking it; `deploy.sh` runs it each deploy (a failure only warns: the attachment upload path also creates a missing
   bucket on demand, and answers a typed 503 naming the bucket if it cannot).
