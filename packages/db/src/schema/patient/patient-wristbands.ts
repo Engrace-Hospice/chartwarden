@@ -60,6 +60,7 @@ export const patientWristbands = pgTable(
       .on(t.organizationId, t.patientId)
       .where(sql`${t.supersededAt} IS NULL AND ${t.voidedAt} IS NULL`),
     patientIdx: index("patient_wristband_patient_idx").on(t.organizationId, t.patientId),
+    patientFkIdx: index("patient_wristband_patient_id_idx").on(t.patientId), // 1073: covers the patient FK
     digestShape: check("patient_wristband_digest_chk", sql`${t.payloadDigest} ~ '^[0-9a-f]{64}$'`),
     issueReasonChk: check(
       "patient_wristband_issue_reason_chk",
