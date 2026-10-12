@@ -1,5 +1,6 @@
 // apps/backend/src/bootstrap/realtime — ADR-0054 realtime transport (M1 infra). Owner of the socket.io,
 // @socket.io/redis-adapter and @socket.io/redis-emitter imports (VENDOR_ADAPTERS in both manifests).
+export { realtimeClientKey } from "./client-key";
 export { createRealtimeEmitter, type RealtimeEmitterPort } from "./emitter";
 export {
   startRealtimeServer,

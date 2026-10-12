@@ -259,6 +259,7 @@ import {
 import {
   type RealtimeHandle,
   createRealtimeEmitter,
+  realtimeClientKey,
   startRealtimeServer,
 } from "./bootstrap/realtime";
 import { revokeAuditorMagicLinksForEngagement } from "./modules/02-identity/auditor-magic-link-store";
@@ -10516,19 +10517,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         pubClient,
         subClient,
         trustedOrigins: resolveTrustedOrigins(),
-        // Behind a trusted proxy the socket address is the proxy: key on the entry the nearest proxy appended.
-        ...(parseTrustedProxies(process.env.TRUSTED_PROXY_CIDRS)
-          ? {
-              clientKey: (req) => {
-                const xff = req.headers["x-forwarded-for"];
-                const last = (Array.isArray(xff) ? xff.join(",") : (xff ?? ""))
-                  .split(",")
-                  .pop()
-                  ?.trim();
-                return last || req.socket.remoteAddress || "unknown";
-              },
-            }
-          : {}),
+        // Behind a trusted proxy the socket address is the proxy: key on the entry that proxy appended, but only when
+        // the TCP peer really is one of TRUSTED_PROXY_CIDRS (otherwise the header is the caller's own).
+        clientKey: realtimeClientKey(parseTrustedProxies(process.env.TRUSTED_PROXY_CIDRS)),
         log: (event, context) => app.log.info(context, event),
         authenticate: async (headers) => {
           const snap = await getIdentitySession(auth, headers);

@@ -82,10 +82,16 @@ function createWindowLimiter(max: number) {
   };
 }
 
+// Key on the session-token cookie(s) only: hashing the whole header would let a caller mint a fresh bucket per
+// request by varying any unrelated cookie.
 function sessionCookieKey(req: IncomingMessage): string {
-  return createHash("sha256")
-    .update(req.headers.cookie ?? "")
-    .digest("base64url");
+  const tokens = (req.headers.cookie ?? "")
+    .split(";")
+    .map((c) => c.trim())
+    .filter((c) => c.split("=")[0]?.includes("session_token"))
+    .sort()
+    .join(";");
+  return createHash("sha256").update(tokens).digest("base64url");
 }
 
 export function startRealtimeServer(options: RealtimeOptions): RealtimeHandle {

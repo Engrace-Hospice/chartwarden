@@ -91,6 +91,11 @@ export const REGISTERED_HEADERS: Readonly<Record<string, RegisteredHeader>> = {
     reason:
       "GAP-002: marks a timer poll so it does not refresh the session idle clock. The timeout is still enforced; omitting the header only keeps the caller's OWN session alive, which any real request does anyway.",
   },
+  "x-forwarded-for": {
+    classification: "not-authorization",
+    reason:
+      "Realtime handshake throttle key only (ADR-0054 A8), read solely when TRUSTED_PROXY_CIDRS is set, last entry. A forged value can only move the caller into another rate bucket; it decides no access.",
+  },
   "x-correlation-id": {
     classification: "not-authorization",
     reason: "Trace correlation only. Never read by a guard, a predicate, or a service decision.",

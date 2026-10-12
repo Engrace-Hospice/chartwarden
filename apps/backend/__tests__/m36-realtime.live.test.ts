@@ -24,7 +24,8 @@ const PRINCIPALS: Record<string, RealtimePrincipal> = {
   tok_u2: { userId: "u2", organizationId: "org_1", sessionId: "s_u2" },
   tok_dead: { userId: "u3", organizationId: "org_1", sessionId: "s_dead" },
 };
-const tokenOf = (cookie: string | undefined) => /t=([^;]+)/.exec(cookie ?? "")?.[1] ?? "";
+const tokenOf = (cookie: string | undefined) =>
+  /session_token=([^;]+)/.exec(cookie ?? "")?.[1] ?? "";
 
 describe.skipIf(!REDIS_URL)("M36 realtime transport — LIVE Valkey, two nodes", () => {
   const redis: Redis[] = [];
@@ -77,7 +78,10 @@ describe.skipIf(!REDIS_URL)("M36 realtime transport — LIVE Valkey, two nodes",
     const socket = connect(url, {
       transports: ["websocket"],
       reconnection: false,
-      extraHeaders: { cookie: `t=${token}`, ...(origin ? { origin } : {}) },
+      extraHeaders: {
+        cookie: `better-auth.session_token=${token}; junk=${Math.random()}`, // junk varies per request: must not mint a new throttle bucket
+        ...(origin ? { origin } : {}),
+      },
     });
     clients.push(socket);
     return socket;

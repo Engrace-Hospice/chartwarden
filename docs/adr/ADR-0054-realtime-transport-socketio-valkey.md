@@ -100,8 +100,8 @@ Found while mapping WP 1.1 against the code; they refine, and do not reverse, th
   Personal rooms are org-scoped, `user:<orgId>:<userId>`, so a hint or a revoke for one org never reaches the same person's socket
   opened for another org; org-bound revocation disconnects only that org's room.
 - **A8. Handshake throttle.** `allowRequest` refuses over-limit attempts before any database work: 60 per client key and 20 per
-  session cookie per minute per node (in memory), the client key being the socket address, or the last `X-Forwarded-For` entry when
-  `TRUSTED_PROXY_CIDRS` is set. `maxHttpBufferSize` is 1 KB (clients send nothing) and `connectTimeout` 10 s. Refusals share one
+  session cookie per minute per node (in memory), the client key being the socket address, or the last `X-Forwarded-For` entry only when the peer
+  is itself in `TRUSTED_PROXY_CIDRS`; the session key hashes the session-token cookie alone, not the whole header. `maxHttpBufferSize` is 1 KB (clients send nothing) and `connectTimeout` 10 s. Refusals share one
   generic error string. Limits are per node, not per cluster.
 - **A4. Hint events do not exist yet.** M36 publishes only `m36.message.mentioned`. New catalog events `m36.message.sent`,
   `m36.message.edited` and `m36.message.deleted` (ids and cursor only, no body) are published in the same transaction at every
