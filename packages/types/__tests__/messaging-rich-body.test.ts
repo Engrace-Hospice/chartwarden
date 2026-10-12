@@ -14,6 +14,8 @@ import {
 import type { RichBody } from "../src/messaging-rich-body";
 import { STRUCTURAL_CORPUS, XSS_CORPUS, nestedListDoc, wideDoc } from "./fixtures/xss-corpus";
 
+// biome-ignore lint/suspicious/noControlCharactersInRegex: asserting none survive
+const HAZARDOUS_CHARS = /[\u0000-\u0008\u000B-\u001F\u202A-\u202E\u2066-\u2069\uFEFF\u200B]/;
 const ID = "11111111-1111-4111-8111-111111111111";
 const doc = (...content: unknown[]) => ({ schemaVersion: 1, doc: { type: "doc", content } });
 const para = (...content: unknown[]) => ({ type: "paragraph", content });
@@ -145,10 +147,7 @@ describe("sanitizeRichBody", () => {
         const result = sanitizeRichBody(doc(content));
         if (!result.ok) continue; // rejection is also safe
         const projected = richBodyToPlainText(result.value);
-        // biome-ignore lint/suspicious/noControlCharactersInRegex: asserting none survive
-        expect(projected).not.toMatch(
-          /[\u0000-\u0008\u000B-\u001F\u202A-\u202E\u2066-\u2069\uFEFF\u200B]/,
-        );
+        expect(projected).not.toMatch(HAZARDOUS_CHARS);
         expect(projected).not.toContain('"schemaVersion"');
       }
     });
