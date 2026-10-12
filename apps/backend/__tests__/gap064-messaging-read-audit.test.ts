@@ -149,6 +149,32 @@ describe("GAP-064 messaging read-audit", () => {
     await app.close();
   });
 
+  it("a thread read (WP 2.2) emits a view event naming the root message, attributed to the patient", async () => {
+    const { app, service } = makeServer();
+    const root = await service.sendMessage(ORG, {
+      channelId: CT,
+      authorUserId: "rn_1",
+      body: "root",
+    });
+    await service.sendMessage(ORG, {
+      channelId: CT,
+      authorUserId: "rn_1",
+      body: "reply",
+      parentMessageId: root.messageId,
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/messaging/channels/${CT}/messages/${root.messageId}/thread`,
+      headers: RN1,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().root.replyCount).toBe(1);
+    const row = captured.find((r) => r.eventType === "message.viewed");
+    expect(row?.resourceId).toBe(root.messageId);
+    expect(JSON.stringify(row)).toContain("patient_x");
+    await app.close();
+  });
+
   it("the alert inbox emits a list-read event", async () => {
     const { app } = makeServer();
     const res = await app.inject({ method: "GET", url: "/api/v1/alerts/inbox", headers: RN1 });
