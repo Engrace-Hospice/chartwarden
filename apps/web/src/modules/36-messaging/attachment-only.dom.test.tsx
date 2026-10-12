@@ -104,4 +104,42 @@ describe("WP 1.5 attachment-only messages (web)", () => {
     await screen.findByRole("list", { name: "Attachments" });
     expect(screen.queryByText("Message deleted")).toBeNull();
   });
+
+  describe("files the viewer cannot see yet", () => {
+    const row = (over: Record<string, unknown>) => ({
+      messageId: "m-9",
+      channelId: "dm-1",
+      authorUserId: "other-user",
+      authorDisplayName: "Other",
+      body: "",
+      bodyKind: "plain",
+      createdAt: "2026-10-10T09:00:00.000Z",
+      parentMessageId: null,
+      references: [],
+      attachments: [],
+      ...over,
+    });
+    const listOf = (message: unknown) => (path: string) =>
+      path === STORE_PATHS.messages
+        ? { data: { messages: [message] }, error: undefined }
+        : undefined;
+
+    it("shows a neutral note, not 'Message deleted' and not an empty bubble, for an attachment-only message with hidden files", async () => {
+      mountThread({ GET: listOf(row({ hiddenAttachmentCount: 1 })) });
+      expect(await screen.findByText("Attachment not available yet")).toBeTruthy();
+      expect(screen.queryByText("Message deleted")).toBeNull();
+    });
+
+    it("pluralises, and shows the note beside text", async () => {
+      mountThread({ GET: listOf(row({ body: "see these", hiddenAttachmentCount: 2 })) });
+      expect(await screen.findByText("2 attachments not available yet")).toBeTruthy();
+      expect(screen.getByText("see these")).toBeTruthy();
+    });
+
+    it("still reads 'Message deleted' for a real tombstone", async () => {
+      mountThread({ GET: listOf(row({ hiddenAttachmentCount: 0 })) });
+      expect(await screen.findByText("Message deleted")).toBeTruthy();
+      expect(screen.queryByText(/not available yet/)).toBeNull();
+    });
+  });
 });

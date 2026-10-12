@@ -6,7 +6,11 @@ import { absoluteTime, dayLabel, initialsOf } from "./messaging-utils";
 
 function MessageText({ message }: { message: Message }): JSX.Element {
   // An attachment-only message has no text to show; the attachment list below is its content.
-  if (!message.body && (message.attachments?.length ?? 0) > 0) return <></>;
+  if (
+    !message.body &&
+    (message.attachments?.length ?? 0) + (message.hiddenAttachmentCount ?? 0) > 0
+  )
+    return <></>;
   const references = [...(message.references ?? [])]
     .filter(
       (reference) =>
@@ -101,6 +105,13 @@ export function MessageRow({
                 <MessageText message={message} />
               </span>
               <MessageAttachments attachments={message.attachments} />
+              {message.hiddenAttachmentCount ? (
+                <small className="wx-message-attachment-hidden">
+                  {message.hiddenAttachmentCount === 1
+                    ? "Attachment not available yet"
+                    : `${message.hiddenAttachmentCount} attachments not available yet`}
+                </small>
+              ) : null}
               <time
                 dateTime={message.createdAt}
                 title={absoluteTime(message.createdAt)}
