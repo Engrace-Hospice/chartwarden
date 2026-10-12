@@ -1037,6 +1037,7 @@ a.wx-message-reference:hover {
 }
 
 .wx-attachment-chip.is-failed,
+.wx-attachment-chip.is-reattach,
 .wx-attachment-chip.is-blocked {
   border-color: var(--color-error-pill-fg);
 }
@@ -1058,6 +1059,7 @@ a.wx-message-reference:hover {
 }
 
 .wx-attachment-chip.is-failed .wx-attachment-state,
+.wx-attachment-chip.is-reattach .wx-attachment-state,
 .wx-attachment-chip.is-blocked .wx-attachment-state,
 .wx-attachment-unavailable {
   color: var(--color-error-pill-fg);

@@ -1,7 +1,12 @@
 import { Glyph, useApiClient } from "@wardenx/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
-import { displayFileName, formatBytes, isSafeAccessUrl } from "./attachment-utils";
+import {
+  displayFileName,
+  formatBytes,
+  isSafeAccessUrl,
+  withRequestDeadline,
+} from "./attachment-utils";
 import type { MessageAttachment } from "./messaging-types";
 
 type OpenState = "idle" | "opening" | "unavailable" | "popup-blocked";
@@ -29,6 +34,7 @@ function AttachmentRow({ attachment }: { attachment: MessageAttachment }): JSX.E
   // fresh signed URL (it lives 120 s): fetched, used once, never stored, rendered or logged.
   async function open(): Promise<void> {
     if (openingRef.current) return;
+    setState("idle");
     // "noopener" in the features string would make window.open return null, so detach the opener by hand.
     // A blocked popup is treated as a failure to open (no same-tab navigation: that would leave the thread).
     const tab = window.open("", "_blank");
@@ -43,6 +49,7 @@ function AttachmentRow({ attachment }: { attachment: MessageAttachment }): JSX.E
       tab.opener = null;
       const { data } = await client.GET("/api/v1/messaging/attachments/{id}/access", {
         params: { path: { id: attachment.attachmentId } },
+        signal: withRequestDeadline().signal,
       });
       url = data?.url && isSafeAccessUrl(data.url) ? data.url : null;
     } catch {

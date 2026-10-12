@@ -104,6 +104,7 @@ export type AttachmentChipStatus =
   | "scanning"
   | "ready"
   | "blocked"
+  | "reattach"
   | "failed";
 export interface AttachmentChip {
   readonly localId: string;

@@ -1,6 +1,6 @@
 import { useApiClient } from "@wardenx/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiErrorCode, selectFiles, sha256Hex } from "./attachment-utils";
+import { apiErrorCode, selectFiles, sha256Hex, withRequestDeadline } from "./attachment-utils";
 import type { AttachmentChip } from "./messaging-types";
 
 /**
@@ -44,6 +44,7 @@ const BLOCKED_MESSAGE = "This file was blocked by the security scan. Remove it."
 const GONE_MESSAGE = "This file is no longer available. Remove it.";
 const NETWORK_MESSAGE = "Upload interrupted. Check your connection and retry.";
 const STALLED_MESSAGE = "The upload took too long. Check your connection and retry.";
+const REATTACH_MESSAGE = "The server refused this file. Remove it and attach it again.";
 const SCAN_UNREADABLE_MESSAGE = "The scan result could not be read. Retry, or remove the file.";
 
 const AUTHORIZE_MESSAGES: Readonly<Record<string, string>> = {
@@ -107,6 +108,7 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
   const queueRef = useRef<string[]>([]);
   const pollTimers = useRef(new Map<string, number>());
   const controllers = useRef(new Map<string, AbortController>());
+  const recheckControllers = useRef(new Map<string, AbortController>());
   const pumpRef = useRef<() => void>(() => {});
 
   const commit = useCallback((next: readonly Tracked[]) => {
@@ -134,6 +136,8 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
   const abortItem = useCallback((localId: string) => {
     controllers.current.get(localId)?.abort();
     controllers.current.delete(localId);
+    recheckControllers.current.get(localId)?.abort();
+    recheckControllers.current.delete(localId);
   }, []);
 
   // Stop every poll, abort every in-flight request and drop the queue: late replies see a new generation.
@@ -143,6 +147,8 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
     pollTimers.current.clear();
     for (const controller of controllers.current.values()) controller.abort();
     controllers.current.clear();
+    for (const controller of recheckControllers.current.values()) controller.abort();
+    recheckControllers.current.clear();
     queueRef.current = [];
     runningRef.current.clear();
   }, []);
@@ -231,17 +237,18 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
           }
           patch(localId, { status: "uploading" });
           const { authorizeKey, fileName, contentType, byteSize } = item;
+          const authorizeDeadline = withRequestDeadline(signal);
           const authorize = () =>
             client.POST("/api/v1/messaging/attachments/uploads", {
               params: { header: { "Idempotency-Key": authorizeKey } },
               body: { channelId, fileName, contentType, byteSize, sha256Hex: digest },
-              signal,
+              signal: authorizeDeadline.signal,
             });
           let result: Awaited<ReturnType<typeof authorize>>;
           try {
             result = await authorize();
           } catch {
-            if (live()) fail(NETWORK_MESSAGE);
+            if (live()) fail(authorizeDeadline.expired() ? STALLED_MESSAGE : NETWORK_MESSAGE);
             return;
           }
           item = live();
@@ -314,19 +321,20 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
 
         patch(localId, { status: "uploading", message: null });
         const { attachmentId, completeKey } = item;
+        const completeDeadline = withRequestDeadline(signal);
         const complete = () =>
           client.POST("/api/v1/messaging/attachments/{id}/complete", {
             params: {
               path: { id: attachmentId ?? "" },
               header: { "Idempotency-Key": completeKey },
             },
-            signal,
+            signal: completeDeadline.signal,
           });
         let completion: Awaited<ReturnType<typeof complete>>;
         try {
           completion = await complete();
         } catch {
-          if (live()) fail(NETWORK_MESSAGE);
+          if (live()) fail(completeDeadline.expired() ? STALLED_MESSAGE : NETWORK_MESSAGE);
           return;
         }
         if (!live()) return;
@@ -443,33 +451,63 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
   );
 
   // After a refused send: find out which candidates are no longer sendable so the user knows what to remove.
+  // If none can be flagged (the refusal names no culprit), every attached chip needs re-attaching: leaving them
+  // sendable would offer a Retry of the same refused payload.
   const recheck = useCallback(async (): Promise<void> => {
     const generation = generationRef.current;
     const candidates = itemsRef.current.filter(
       (item) => item.attachmentId && (item.status === "ready" || item.status === "scanning"),
     );
-    await Promise.all(
-      candidates.map(async ({ localId, attachmentId }) => {
+    // True when a verdict was applied to the chip as it was when the read started.
+    const applyIfUnchanged = (
+      localId: string,
+      read: Pick<Tracked, "status" | "attachmentId">,
+      changes: Partial<Tracked>,
+    ): boolean => {
+      if (generation !== generationRef.current) return false;
+      const now = itemsRef.current.find((item) => item.localId === localId);
+      if (!now || now.status !== read.status || now.attachmentId !== read.attachmentId)
+        return false;
+      patch(localId, changes);
+      return true;
+    };
+    const flagged = await Promise.all(
+      candidates.map(async ({ localId, attachmentId, status }) => {
+        const controller = new AbortController();
+        recheckControllers.current.set(localId, controller);
+        const deadline = withRequestDeadline(controller.signal);
         try {
           const result = await client.GET("/api/v1/messaging/attachments/{id}", {
             params: { path: { id: attachmentId ?? "" } },
+            signal: deadline.signal,
           });
-          if (generation !== generationRef.current) return;
           const verdict = verdictOf(result);
-          if (verdict === "blocked") {
+          const read = { status, attachmentId };
+          if (verdict === "blocked" || verdict === "gone") {
+            const message = verdict === "blocked" ? BLOCKED_MESSAGE : GONE_MESSAGE;
+            if (!applyIfUnchanged(localId, read, { status: "blocked", message })) return false;
             stopPolling(localId);
-            patch(localId, { status: "blocked", message: BLOCKED_MESSAGE });
-          } else if (verdict === "gone") {
-            stopPolling(localId);
-            patch(localId, { status: "blocked", message: GONE_MESSAGE });
-          } else if (verdict === "available") {
-            patch(localId, { status: "ready", message: null });
+            return true;
           }
+          if (verdict === "available")
+            applyIfUnchanged(localId, read, { status: "ready", message: null });
         } catch {
-          // Status unreachable (or pending/unknown/401/403/5xx above): leave the chip as it is.
+          // Status unreachable, timed out or aborted (or pending/unknown/401/403/5xx above): leave the chip.
+        } finally {
+          if (recheckControllers.current.get(localId) === controller) {
+            recheckControllers.current.delete(localId);
+          }
         }
+        return false;
       }),
     );
+    if (generation !== generationRef.current || flagged.some(Boolean)) return;
+    for (const item of itemsRef.current) {
+      if (item.attachmentId && (item.status === "ready" || item.status === "scanning")) {
+        stopPolling(item.localId);
+        patch(item.localId, { status: "reattach", message: REATTACH_MESSAGE });
+      }
+    }
   }, [client, patch, stopPolling]);
 
   const chips: readonly AttachmentChip[] = tracked.map(

@@ -11,6 +11,7 @@ const STATUS_LABEL: Readonly<Record<AttachmentChip["status"], string>> = {
   scanning: "Scanning…",
   ready: "Ready",
   blocked: "Blocked",
+  reattach: "Re-attach",
   failed: "Failed",
 };
 
@@ -95,7 +96,13 @@ export function AttachmentChips({
     const target = pendingFocus.current;
     if (target === undefined) return;
     pendingFocus.current = undefined;
-    const element = target === null ? attachButtonRef.current : removeButtons.current.get(target);
+    const attachButton = attachButtonRef.current;
+    // A disabled button cannot take focus: fall back to the message box in the same form.
+    const fallback =
+      attachButton && !attachButton.disabled
+        ? attachButton
+        : attachButton?.form?.querySelector("textarea");
+    const element = target === null ? fallback : removeButtons.current.get(target);
     element?.focus();
   }, [chips, attachButtonRef]);
 

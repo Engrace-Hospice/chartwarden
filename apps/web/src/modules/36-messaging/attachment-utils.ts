@@ -128,11 +128,30 @@ export function toSentAttachments(chips: readonly AttachmentChip[]): MessageAtta
 
 /** Why Send is held back by the attachments, in words; null when they do not block it. */
 export function sendBlockedReason(chips: readonly AttachmentChip[]): string | null {
-  if (chips.some((chip) => chip.status === "failed" || chip.status === "blocked")) {
-    return "Retry or remove the files marked Failed or Blocked to send.";
+  if (
+    chips.some(
+      (chip) => chip.status === "failed" || chip.status === "blocked" || chip.status === "reattach",
+    )
+  ) {
+    return "Retry or remove the files marked Failed, Blocked or Re-attach to send.";
   }
   if (chips.some((chip) => chip.status === "hashing" || chip.status === "uploading")) {
     return "Send is available once the files finish uploading.";
   }
   return null;
+}
+
+/** Deadline for one attachment API request (authorize, complete, status, access). */
+export const ATTACHMENT_REQUEST_TIMEOUT_MS = 30_000;
+
+/** `base` plus a request deadline; `expired()` tells a timeout from a user/teardown abort. */
+export function withRequestDeadline(base?: AbortSignal): {
+  signal: AbortSignal;
+  expired: () => boolean;
+} {
+  const deadline = AbortSignal.timeout(ATTACHMENT_REQUEST_TIMEOUT_MS);
+  return {
+    signal: base ? AbortSignal.any([base, deadline]) : deadline,
+    expired: () => deadline.aborted,
+  };
 }
