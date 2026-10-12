@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * M36 Phase 1 gate - "restore consistency": a restore drill that proves DB + object-store consistency and measures
- * RPO/RTO (docs/messaging-hub/ restore-drill runbook: docs/operations/M36_RESTORE_DRILL.md).
+ * RPO/RTO (docs/messaging-hub/ restore-drill runbook: docs/runbooks/m36-restore-drill.md).
  *
  * Runs ONLY against containers this process starts (pgvector/pgvector:pg18 + MinIO), never the shared Docker cluster:
  *   1. source: migrate + provision roles (the production path), seed two tenants through the real M36 routes
@@ -350,8 +350,11 @@ async function main(): Promise<number> {
     console.log(renderMarkdown(report));
     return passed ? 0 : 1;
   } finally {
-    removeRunContainers(runId);
-    rmSync(work, { recursive: true, force: true });
+    try {
+      removeRunContainers(runId);
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
   }
 }
 
