@@ -1161,7 +1161,9 @@ describe("M36 clinical messenger workspace", () => {
     await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
 
     const [first, second] = post.mock.calls.map((call) => call[1]);
-    expect(second.params.header["Idempotency-Key"]).not.toBe(first.params.header["Idempotency-Key"]);
+    expect(second.params.header["Idempotency-Key"]).not.toBe(
+      first.params.header["Idempotency-Key"],
+    );
     expect(second.body.clientMessageId).toBe(first.body.clientMessageId);
   });
 

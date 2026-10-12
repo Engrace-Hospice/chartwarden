@@ -7,8 +7,12 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { FormEvent, JSX, KeyboardEvent } from "react";
+import type { JSX, KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
+import { AttachButton, AttachmentChips } from "./attachment-composer";
+import { sendBlockedReason } from "./attachment-utils";
+import { activeMentionQuery, reconcileReferences } from "./mention-utils";
+import { MessageRow } from "./message-row";
 import type {
   ChannelSummary,
   MentionCandidate,
@@ -18,18 +22,16 @@ import type {
   PatientHeaderInfo,
 } from "./messaging-types";
 import {
-  absoluteTime,
-  apiErrorMessage,
   channelKindLabel,
   channelLabel,
   compareMessages,
-  dayLabel,
   initialsOf,
   mergeMessages,
-  rotateIdempotencyKey,
-  sendAttemptFor,
 } from "./messaging-utils";
-import type { SendAttempt } from "./messaging-utils";
+import { useAttachmentUploads } from "./use-attachment-upload";
+import { sentMessageRow, useMessageSender } from "./use-message-sender";
+import type { SentMessage } from "./use-message-sender";
+import { useScanningRefresh } from "./use-scanning-refresh";
 
 const MESSAGE_PAGE_SIZE = 50;
 const POLL_INTERVAL_MS = 15_000;
@@ -60,99 +62,6 @@ export interface ConversationThreadProps {
   realtimeConnected?: boolean;
 }
 
-function reconcileReferences(
-  previous: string,
-  next: string,
-  references: readonly MessageReferenceInput[],
-): MessageReferenceInput[] {
-  let prefix = 0;
-  while (prefix < previous.length && prefix < next.length && previous[prefix] === next[prefix])
-    prefix++;
-  let suffix = 0;
-  while (
-    suffix < previous.length - prefix &&
-    suffix < next.length - prefix &&
-    previous[previous.length - 1 - suffix] === next[next.length - 1 - suffix]
-  )
-    suffix++;
-  const removedEnd = previous.length - suffix;
-  const delta = next.length - previous.length;
-  return references.flatMap((reference) => {
-    if (reference.end <= prefix) return [reference];
-    if (reference.start >= removedEnd) {
-      const shifted = { ...reference, start: reference.start + delta, end: reference.end + delta };
-      return next.slice(shifted.start, shifted.end) === `@${shifted.displayLabel}` ? [shifted] : [];
-    }
-    return [];
-  });
-}
-
-function referenceInput(reference: MessageReferenceInput) {
-  return {
-    kind: reference.kind,
-    entityId: reference.entityId,
-    start: reference.start,
-    end: reference.end,
-  };
-}
-
-function activeMentionQuery(
-  value: string,
-  cursor: number,
-  references: readonly MessageReferenceInput[],
-): { query: string; start: number } | null {
-  const before = value.slice(0, cursor);
-  const match = before.match(/(?:^|\s)@([\p{L}\p{N} .'-]{0,60})$/u);
-  if (!match) return null;
-  const query = match[1] ?? "";
-  const start = cursor - query.length - 1;
-  // A selected token ends mention discovery. Text after its separating space is ordinary prose;
-  // without this guard the regex treated the token and every following word as one long search.
-  if (references.some((reference) => reference.start === start && cursor >= reference.end)) {
-    return null;
-  }
-  return { query, start };
-}
-
-function MessageText({ message }: { message: Message }): JSX.Element {
-  const references = [...(message.references ?? [])]
-    .filter(
-      (reference) =>
-        reference.start >= 0 &&
-        reference.end <= message.body.length &&
-        reference.end > reference.start,
-    )
-    .sort((a, b) => a.start - b.start);
-  if (references.length === 0) return <>{message.body || "Message deleted"}</>;
-  const parts: JSX.Element[] = [];
-  let cursor = 0;
-  for (const reference of references) {
-    if (reference.start < cursor) continue;
-    if (reference.start > cursor)
-      parts.push(<span key={`t-${cursor}`}>{message.body.slice(cursor, reference.start)}</span>);
-    const text = message.body.slice(reference.start, reference.end);
-    parts.push(
-      reference.kind === "patient" && reference.navigable ? (
-        <Link
-          key={`r-${reference.start}`}
-          className="wx-message-reference"
-          to={`/patients/${reference.entityId}`}
-        >
-          {text}
-        </Link>
-      ) : (
-        <span key={`r-${reference.start}`} className="wx-message-reference">
-          {text}
-        </span>
-      ),
-    );
-    cursor = reference.end;
-  }
-  if (cursor < message.body.length)
-    parts.push(<span key={`t-${cursor}`}>{message.body.slice(cursor)}</span>);
-  return <>{parts}</>;
-}
-
 export function ConversationThread({
   channel,
   meId,
@@ -180,24 +89,64 @@ export function ConversationThread({
   const [mentionError, setMentionError] = useState(false);
   const [mentionRetry, setMentionRetry] = useState(0);
   const [mentionIndex, setMentionIndex] = useState(0);
-  const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState<string | null>(null);
   const [patient, setPatient] = useState<PatientHeaderInfo | null>(null);
   const [contextOpen, setContextOpen] = useState(false);
   const timelineRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<Message[] | null>(null);
   const generationRef = useRef(0);
   const latestInFlight = useRef(false);
+  const handledAnchor = useRef(anchorMessageId);
   // A hint that lands while a read is in flight may postdate that read: read once more when it settles.
   const rereadAfterFlight = useRef(false);
   const nearBottomRef = useRef(true);
   const initialScrollPending = useRef(false);
   const readBoundaryRef = useRef<string | null>(null);
-  const sendAttemptRef = useRef<SendAttempt | null>(null);
-  const sendInFlightRef = useRef(false);
   const composingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mentionGenerationRef = useRef(0);
+  // WP 1.5: resets itself on channel switch and unmount (generation-guarded inside the hook).
+  const uploads = useAttachmentUploads(channel.channelId);
+  const attachButtonRef = useRef<HTMLButtonElement>(null);
+  // The ids the newest latest-page read returned (plus our own sends): only these can be updated by a refresh.
+  const latestPageIdsRef = useRef<ReadonlySet<string>>(new Set());
+  // Changing identities of these props must not re-run the channel reset (it would clear the draft/sender).
+  const anchorRef = useRef(anchorMessageId);
+  const meIdRef = useRef(meId);
+  const onReadConfirmedRef = useRef(onReadConfirmed);
+  const onAccessRevokedRef = useRef(onAccessRevoked);
+  useEffect(() => {
+    anchorRef.current = anchorMessageId;
+    meIdRef.current = meId;
+    onReadConfirmedRef.current = onReadConfirmed;
+    onAccessRevokedRef.current = onAccessRevoked;
+  }, [anchorMessageId, meId, onReadConfirmed, onAccessRevoked]);
+
+  const handleSent = (sent: SentMessage): void => {
+    latestPageIdsRef.current = new Set([...latestPageIdsRef.current, sent.messageId]);
+    setDraft((current) => (current === sent.body ? "" : current));
+    setDraftReferences([]);
+    setMentionQuery(null);
+    const withSentMessage = mergeMessages(messagesRef.current ?? [], [
+      sentMessageRow(sent, channel.channelId, meId, meDisplayName),
+    ]);
+    messagesRef.current = withSentMessage;
+    setMessages(withSentMessage);
+    nearBottomRef.current = true;
+    window.requestAnimationFrame(() => {
+      const timeline = timelineRef.current;
+      if (timeline) timeline.scrollTop = timeline.scrollHeight;
+    });
+    onMessageSent();
+  };
+  const { send, sending, sendError, clearSendError, resetSender } = useMessageSender({
+    channelId: channel.channelId,
+    archived: Boolean(channel.archivedAt),
+    draft,
+    draftReferences,
+    uploads,
+    generationRef,
+    onSent: handleSent,
+  });
 
   useLayoutEffect(() => {
     // Recalculate after every controlled-value change, including selection and send/reset.
@@ -220,7 +169,9 @@ export function ConversationThread({
       const latestIncoming = [...candidateMessages]
         .sort(compareMessages)
         .reverse()
-        .find((message) => message.authorUserId !== null && message.authorUserId !== meId);
+        .find(
+          (message) => message.authorUserId !== null && message.authorUserId !== meIdRef.current,
+        );
       if (!latestIncoming || readBoundaryRef.current === latestIncoming.messageId) return;
       const generation = generationRef.current;
       readBoundaryRef.current = latestIncoming.messageId;
@@ -233,9 +184,9 @@ export function ConversationThread({
         readBoundaryRef.current = null;
         return;
       }
-      onReadConfirmed(channel.channelId);
+      onReadConfirmedRef.current(channel.channelId);
     },
-    [channel.channelId, client, meId, onReadConfirmed],
+    [channel.channelId, client],
   );
 
   const loadLatest = useCallback(
@@ -243,6 +194,7 @@ export function ConversationThread({
       if (latestInFlight.current) return true;
       latestInFlight.current = true;
       const generation = generationRef.current;
+      const anchorMessageId = anchorRef.current;
       try {
         const { data, error } = await client.GET("/api/v1/messaging/channels/{id}/messages", {
           params: {
@@ -257,7 +209,7 @@ export function ConversationThread({
         });
         if (generation !== generationRef.current) return false;
         if (error) {
-          if (isAccessError(error)) onAccessRevoked(channel.channelId);
+          if (isAccessError(error)) onAccessRevokedRef.current(channel.channelId);
           if (background) setRefreshError(true);
           else {
             setMessages([]);
@@ -267,6 +219,7 @@ export function ConversationThread({
           return false;
         }
         const incoming = (data?.messages ?? []) as Message[];
+        latestPageIdsRef.current = new Set(incoming.map((message) => message.messageId));
         const currentMessages = messagesRef.current;
         const wasInitial = currentMessages === null;
         const existingIds = new Set(currentMessages?.map((message) => message.messageId) ?? []);
@@ -290,15 +243,19 @@ export function ConversationThread({
         if (!background) window.setTimeout(() => void markReadBoundary(incoming), 0);
         return true;
       } finally {
-        latestInFlight.current = false;
-        if (rereadAfterFlight.current) {
-          rereadAfterFlight.current = false;
-          // A thread that was unmounted or switched meanwhile bumped the generation: do not read for it.
-          if (generation === generationRef.current) void loadLatest(true);
+        // A thread that was unmounted or switched meanwhile bumped the generation: the reset effect already
+        // cleared these flags for the new channel, so a stale reply must neither clear them (it would unlock a
+        // second read while the new channel's first read is in flight) nor trigger a read for the old thread.
+        if (generation === generationRef.current) {
+          latestInFlight.current = false;
+          if (rereadAfterFlight.current) {
+            rereadAfterFlight.current = false;
+            void loadLatest(true);
+          }
         }
       }
     },
-    [anchorMessageId, channel.channelId, client, markReadBoundary, onAccessRevoked],
+    [channel.channelId, client, markReadBoundary],
   );
 
   useEffect(() => {
@@ -376,21 +333,40 @@ export function ConversationThread({
     setMentionCandidates([]);
     setMentionLoading(false);
     setMentionError(false);
-    setSending(false);
     setLoadError(null);
     setRefreshError(false);
-    setSendError(null);
     setPatient(null);
     setContextOpen(false);
     setNewMessageCount(0);
     readBoundaryRef.current = null;
-    sendAttemptRef.current = null;
-    sendInFlightRef.current = false;
+    latestPageIdsRef.current = new Set();
+    // The previous channel's latest read may still be in flight: its reply is discarded by the generation
+    // check, so it must not keep this channel's first read from being issued.
+    latestInFlight.current = false;
+    rereadAfterFlight.current = false;
+    handledAnchor.current = anchorRef.current;
+    resetSender();
     void loadLatest();
     return () => {
       generationRef.current += 1;
     };
-  }, [loadLatest]);
+    // loadLatest changes identity only with the channel (or client); every other input is read through a ref.
+  }, [loadLatest, resetSender]);
+
+  // A new anchor on the same channel re-reads around it without touching the draft, chips or an in-flight send.
+  useEffect(() => {
+    if (anchorMessageId === handledAnchor.current) return;
+    handledAnchor.current = anchorMessageId;
+    if (latestInFlight.current) rereadAfterFlight.current = true;
+    else void loadLatest(true);
+  }, [anchorMessageId, loadLatest]);
+
+  // The composer is replaced by a notice when the channel is archived or unreadable: drop the uploads with it.
+  const { reset: resetUploads } = uploads;
+  const composerHidden = Boolean(channel.archivedAt) || loadError !== null;
+  useEffect(() => {
+    if (composerHidden) resetUploads();
+  }, [composerHidden, resetUploads]);
 
   useLayoutEffect(() => {
     if (!anchorMessageId || messages === null) return;
@@ -456,84 +432,6 @@ export function ConversationThread({
     const timeline = timelineRef.current;
     if (timeline) timeline.scrollTop = timeline.scrollHeight;
   }, [messages]);
-
-  async function send(event?: FormEvent): Promise<void> {
-    event?.preventDefault();
-    const submitted = draft;
-    if (!submitted.trim() || sending || sendInFlightRef.current || channel.archivedAt) return;
-    const references = draftReferences
-      .filter((reference) => reference.end <= submitted.length)
-      .map(referenceInput);
-    // WP 1.2: one stable id pair per composed message, reused on retry (see sendAttemptFor).
-    const attempt = sendAttemptFor(
-      sendAttemptRef.current,
-      JSON.stringify([channel.channelId, submitted, references]),
-    );
-    sendAttemptRef.current = attempt;
-    // Take the latch only after the attempt exists: sendAttemptFor can throw (crypto.randomUUID).
-    sendInFlightRef.current = true;
-    const generation = generationRef.current;
-    setSending(true);
-    setSendError(null);
-    const postMessage = () =>
-      client.POST("/api/v1/messaging/channels/{id}/messages", {
-        params: {
-          path: { id: channel.channelId },
-          header: { "Idempotency-Key": attempt.idempotencyKey },
-        },
-        body: { body: submitted, references, clientMessageId: attempt.clientMessageId },
-      });
-    let result: Awaited<ReturnType<typeof postMessage>>;
-    try {
-      result = await postMessage();
-    } catch {
-      // Network failure / aborted fetch: no response arrived, so keep the attempt for the retry.
-      if (generation !== generationRef.current) return;
-      sendInFlightRef.current = false;
-      setSending(false);
-      setSendError("Message could not be sent. Your draft has been preserved.");
-      return;
-    }
-    const { data, error, response } = result;
-    if (generation !== generationRef.current) return;
-    sendInFlightRef.current = false;
-    setSending(false);
-    // The idempotency store caches every answered response, errors included, so a retry under the
-    // same key would replay the failure. Keep the key only when no response arrived (lost reply).
-    if (response && response.status >= 400)
-      sendAttemptRef.current = rotateIdempotencyKey(attempt);
-    if (error || !data) {
-      setSendError(
-        apiErrorMessage(error, "Message could not be sent. Your draft has been preserved."),
-      );
-      return;
-    }
-    sendAttemptRef.current = null;
-    setDraft((current) => (current === submitted ? "" : current));
-    setDraftReferences([]);
-    setMentionQuery(null);
-    const withSentMessage = mergeMessages(messagesRef.current ?? [], [
-      {
-        messageId: data.messageId,
-        channelId: channel.channelId,
-        authorUserId: meId,
-        authorDisplayName: meDisplayName,
-        body: submitted,
-        bodyKind: "plain",
-        createdAt: data.createdAt,
-        parentMessageId: null,
-        references: draftReferences.map((reference) => ({ ...reference, navigable: true })),
-      },
-    ]);
-    messagesRef.current = withSentMessage;
-    setMessages(withSentMessage);
-    nearBottomRef.current = true;
-    window.requestAnimationFrame(() => {
-      const timeline = timelineRef.current;
-      if (timeline) timeline.scrollTop = timeline.scrollHeight;
-    });
-    onMessageSent();
-  }
 
   function handleComposerKey(event: KeyboardEvent<HTMLTextAreaElement>): void {
     if (mentionQuery && mentionCandidates.length > 0) {
@@ -602,6 +500,18 @@ export function ConversationThread({
     setNewMessageCount(0);
     void markReadBoundary(messages ?? []);
   }
+
+  const sendHint = sendBlockedReason(uploads.chips);
+  // Only scanning files on the latest page count: a loadLatest cannot update a row loaded through "Load older".
+  const scanningKey = (messages ?? [])
+    .filter((message) => latestPageIdsRef.current.has(message.messageId))
+    .flatMap((message) => message.attachments ?? [])
+    .filter((attachment) => attachment.availability === "scanning")
+    .map((attachment) => attachment.attachmentId)
+    .sort()
+    .join(",");
+  // A file the uploader sent while it was still scanning turns openable on the server with no push: re-read.
+  useScanningRefresh(scanningKey, loadLatest, channel.channelId);
 
   const title = patient ? `${patient.firstName} ${patient.lastName}` : channelLabel(channel);
   const subtitle =
@@ -692,65 +602,15 @@ export function ConversationThread({
               ) : (
                 <span className="wx-history-start">Beginning of conversation</span>
               )}
-              {messages.map((message, index) => {
-                const previous = messages[index - 1];
-                const showDay =
-                  !previous || dayLabel(previous.createdAt) !== dayLabel(message.createdAt);
-                const mine = message.authorUserId === meId;
-                const system = message.authorUserId === null || message.bodyKind === "system";
-                const grouped =
-                  previous &&
-                  previous.authorUserId === message.authorUserId &&
-                  new Date(message.createdAt).getTime() - new Date(previous.createdAt).getTime() <
-                    300_000 &&
-                  !showDay;
-                return (
-                  <div key={message.messageId}>
-                    {showDay ? (
-                      <div className="wx-message-day">
-                        <span>{dayLabel(message.createdAt)}</span>
-                      </div>
-                    ) : null}
-                    {system ? (
-                      <div className="wx-system-message">{message.body || "Message deleted"}</div>
-                    ) : (
-                      <article
-                        data-message-id={message.messageId}
-                        data-highlighted={message.messageId === anchorMessageId || undefined}
-                        className={`wx-message-row ${mine ? "is-mine" : ""} ${grouped ? "is-grouped" : ""}`}
-                      >
-                        {!mine && !grouped ? (
-                          <span className="wx-message-avatar" aria-hidden="true">
-                            {initialsOf(message.authorDisplayName || "Staff")}
-                          </span>
-                        ) : !mine ? (
-                          <span className="wx-message-avatar-spacer" />
-                        ) : null}
-                        <div className="wx-message-copy">
-                          {!mine && !grouped ? (
-                            <strong>{message.authorDisplayName || "Staff member"}</strong>
-                          ) : null}
-                          <div className="wx-message-bubble">
-                            <span>
-                              <MessageText message={message} />
-                            </span>
-                            <time
-                              dateTime={message.createdAt}
-                              title={absoluteTime(message.createdAt)}
-                              aria-label={absoluteTime(message.createdAt)}
-                            >
-                              {new Intl.DateTimeFormat(undefined, {
-                                hour: "numeric",
-                                minute: "2-digit",
-                              }).format(new Date(message.createdAt))}
-                            </time>
-                          </div>
-                        </div>
-                      </article>
-                    )}
-                  </div>
-                );
-              })}
+              {messages.map((message, index) => (
+                <MessageRow
+                  key={message.messageId}
+                  message={message}
+                  previous={messages[index - 1]}
+                  meId={meId}
+                  anchorMessageId={anchorMessageId}
+                />
+              ))}
             </>
           )}
         </div>
@@ -834,7 +694,7 @@ export function ConversationThread({
               setDraft(next);
               const cursor = event.target.selectionStart ?? next.length;
               setMentionQuery(activeMentionQuery(next, cursor, nextReferences));
-              if (sendError) setSendError(null);
+              if (sendError) clearSendError();
             }}
             onKeyDown={handleComposerKey}
             onCompositionStart={() => {
@@ -844,6 +704,8 @@ export function ConversationThread({
               composingRef.current = false;
             }}
           />
+          <AttachmentChips uploads={uploads} disabled={sending} attachButtonRef={attachButtonRef} />
+          <AttachButton uploads={uploads} disabled={sending} buttonRef={attachButtonRef} />
           {mentionQuery ? (
             // biome-ignore lint/a11y/useFocusableInteractive: focus remains in the composer while arrow keys control this ARIA combobox popup
             <div
@@ -889,13 +751,19 @@ export function ConversationThread({
           ) : null}
           <Button
             type="submit"
-            disabled={sending || !draft.trim()}
+            disabled={sending || !draft.trim() || uploads.blocksSend}
             loading={sending}
             aria-label="Send"
+            aria-describedby={sendHint ? "messaging-send-hint" : undefined}
           >
             <Glyph name="send" size={16} /> <span>Send</span>
           </Button>
           <small>Enter to send · Shift+Enter for a new line</small>
+          {sendHint ? (
+            <div id="messaging-send-hint" className="wx-send-hint">
+              {sendHint}
+            </div>
+          ) : null}
           {sendError ? (
             <div role="alert" className="wx-composer-error">
               {sendError}{" "}

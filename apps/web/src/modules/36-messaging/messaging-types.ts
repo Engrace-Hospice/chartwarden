@@ -37,6 +37,16 @@ export interface Message {
   createdAt: string;
   parentMessageId: string | null;
   references: MessageReference[];
+  /** WP 1.5: absent on older payloads. `scanning` is only ever listed to the uploader. */
+  attachments?: MessageAttachment[];
+}
+
+export interface MessageAttachment {
+  attachmentId: string;
+  fileName: string;
+  mimeType: string;
+  byteSize: number;
+  availability: "available" | "scanning";
 }
 
 export interface MessageReference {
@@ -84,3 +94,22 @@ export interface PatientHeaderInfo {
 
 export type ConversationFilter = "all" | "unread" | "mentions" | "dm" | "care_team" | "archived";
 export type ConversationType = "direct" | "patient";
+
+/** WP 1.5: one file in the composer tray. */
+export type AttachmentChipStatus =
+  | "hashing"
+  | "uploading"
+  | "scanning"
+  | "ready"
+  | "blocked"
+  | "failed";
+export interface AttachmentChip {
+  readonly localId: string;
+  readonly file: File;
+  readonly fileName: string;
+  readonly contentType: string;
+  readonly byteSize: number;
+  readonly status: AttachmentChipStatus;
+  readonly message: string | null;
+  readonly attachmentId: string | null;
+}
