@@ -104,9 +104,7 @@ export async function attachmentScanTick(
     failures.push(error);
   }
   if (failures.length > 0) {
-    throw failures.length === 1
-      ? failures[0]
-      : new AggregateError(failures, "M36 attachment tick failed in both phases");
+    throw failures.length === 1 ? failures[0] : new AggregateError(failures, "M36 attachment tick failed in both phases");
   }
   return { ...totals, reap: reapTotals };
 }

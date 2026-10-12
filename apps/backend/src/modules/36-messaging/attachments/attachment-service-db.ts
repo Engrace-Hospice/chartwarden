@@ -26,11 +26,11 @@ import { DegradedError, NotFoundError, RateLimitedError, WardenXError } from "@w
 import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { type HintOutboxPort, publishMessageHint } from "../message-hint-events";
 import {
+  type AttachmentQuota,
   ATTACHMENT_ACCESS_TTL_SECONDS,
   ATTACHMENT_UPLOAD_TTL_SECONDS,
-  type AttachmentQuota,
-  DEFAULT_USER_REQUESTS_PER_MINUTE,
   MAX_ATTACHMENTS_PER_MESSAGE,
+  DEFAULT_USER_REQUESTS_PER_MINUTE,
   MAX_ATTACHMENT_BYTES,
   MAX_INLINE_SCANS_PER_ORG,
   MAX_INLINE_SCANS_PER_PROCESS,
@@ -62,8 +62,8 @@ import type { AttachmentStoragePort, ScanPort } from "./attachment-ports";
 import {
   ABORT_SETTLE_GRACE_MS,
   type InlineScanGate,
-  ScanFailure,
   type ScanFailureKind,
+  ScanFailure,
   createFixedWindowCounter,
   createInlineScanGate,
   runWithDeadline,
@@ -585,9 +585,7 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
       (tx as unknown as Tx)
         .update(ATT)
         .set({ objectMissingCount: 0, firstObjectMissingAt: null })
-        .where(
-          and(eq(ATT.organizationId, orgId), eq(ATT.id, row.id), eq(ATT.scanState, "pending")),
-        ),
+        .where(and(eq(ATT.organizationId, orgId), eq(ATT.id, row.id), eq(ATT.scanState, "pending"))),
     );
   }
 
@@ -631,10 +629,7 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
         const missing = await noteObjectMissing(orgId, row, opts.attemptCounted);
         if (!missing) return "settled" as const;
         const spanMs = now().getTime() - missing.firstAt.getTime();
-        if (
-          missing.count >= OBJECT_MISSING_MIN_OBSERVATIONS &&
-          spanMs >= OBJECT_MISSING_MIN_SPAN_MS
-        ) {
+        if (missing.count >= OBJECT_MISSING_MIN_OBSERVATIONS && spanMs >= OBJECT_MISSING_MIN_SPAN_MS) {
           return quarantine("object-missing");
         }
         deps.onScanError?.(
@@ -942,8 +937,7 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
           ? await runWithDeadline(
               (signal) => storage.inspect({ organizationId: orgId, objectKey, signal }),
               deps.storageDeadlineMs ?? STORAGE_INSPECT_DEADLINE_MS,
-              () =>
-                new DegradedError("attachment-storage", "the object store did not answer in time"),
+              () => new DegradedError("attachment-storage", "the object store did not answer in time"),
               abortGraceMs,
             )
           : null;
@@ -996,7 +990,10 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
     },
 
     async status(orgId, input) {
-      return toStatus(await ownRowOr404(orgId, input.userId, input.attachmentId), now().getTime());
+      return toStatus(
+        await ownRowOr404(orgId, input.userId, input.attachmentId),
+        now().getTime(),
+      );
     },
 
     async access(orgId, input) {
@@ -1057,8 +1054,7 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
       // This org's slice of the tick's budget (the worker's fair share): once it is spent, no NEW scan starts. The first
       // due scan always starts when the slice is positive, so an org with pending work is never skipped; 0 = tick is over.
       if (!scanner || (opts.budgetMs !== undefined && opts.budgetMs <= 0)) return result;
-      const budgetEndsAt =
-        opts.budgetMs === undefined ? undefined : now().getTime() + opts.budgetMs;
+      const budgetEndsAt = opts.budgetMs === undefined ? undefined : now().getTime() + opts.budgetMs;
       const outOfBudget = () => budgetEndsAt !== undefined && now().getTime() >= budgetEndsAt;
       const nowIso = now().toISOString();
       const rows = await withOrgContext(db, systemOrgContext(orgId), async (rawTx) => {
@@ -1130,8 +1126,7 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
       const reaperDb = deps.reaperDb;
       if (!reaperDb) return result;
       if (opts.budgetMs !== undefined && opts.budgetMs <= 0) return result;
-      const budgetEndsAt =
-        opts.budgetMs === undefined ? undefined : now().getTime() + opts.budgetMs;
+      const budgetEndsAt = opts.budgetMs === undefined ? undefined : now().getTime() + opts.budgetMs;
       const at = now().getTime();
       // Never adopted by a message: an upload that was never completed (expired past the grace) or that sat finished and
       // unsent for a week. `bindAttachmentsInTx` refuses anything older than 6 days, so this never races a send.
@@ -1242,9 +1237,7 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
           (rawTx as unknown as Tx)
             .update(ATT)
             .set({ objectDestroyedAt: now() })
-            .where(
-              and(eq(ATT.organizationId, orgId), eq(ATT.id, row.id), isNull(ATT.objectDestroyedAt)),
-            ),
+            .where(and(eq(ATT.organizationId, orgId), eq(ATT.id, row.id), isNull(ATT.objectDestroyedAt))),
         );
         result.reaped += 1;
       } catch (error) {
