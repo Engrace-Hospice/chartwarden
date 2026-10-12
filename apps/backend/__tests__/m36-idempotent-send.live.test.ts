@@ -231,6 +231,35 @@ describe.skipIf(!DB_URL)("M36 WP 1.2 idempotent send — LIVE Postgres", () => {
       expect(await sentEvents(id)).toBe(1);
     });
 
+    it("Phase 1 gate (revoked participants): a member removed from the channel is refused on send (a replayed key re-serves only their own earlier response) and nothing is written", async () => {
+      const key = randomUUID();
+      const ok = await post(app, dm2, as(outsider, key), { body: "while a member" });
+      expect(ok.statusCode).toBe(201);
+      await admin.query(
+        `UPDATE channel_member SET removed_at = now() WHERE channel_id=$1 AND user_id=$2`,
+        [dm2, outsider],
+      );
+      const rows = await messageRows(dm2);
+      const events = await count(
+        `SELECT count(*)::int AS n FROM outbox_event WHERE event_type='m36.message.sent'`,
+        [],
+      );
+      const fresh = await post(app, dm2, as(outsider, randomUUID()), { body: "after removal" });
+      const replayed = await post(app, dm2, as(outsider, key), { body: "while a member" });
+      expect([403, 404]).toContain(fresh.statusCode); // refused by the visibility predicate
+      // The M1 store replays the caller's own recorded response (their earlier messageId) before authorization runs;
+      // that is a replay, not a write, and it carries nothing the user did not already receive.
+      if (replayed.statusCode === 201) expect(replayed.json().messageId).toBe(ok.json().messageId);
+      else expect([403, 404]).toContain(replayed.statusCode);
+      expect(await messageRows(dm2)).toBe(rows);
+      expect(
+        await count(
+          `SELECT count(*)::int AS n FROM outbox_event WHERE event_type='m36.message.sent'`,
+          [],
+        ),
+      ).toBe(events);
+    });
+
     it("same key with a different body is rejected (409) and writes nothing", async () => {
       const headers = as(user1, randomUUID());
       const first = await post(app, dm, headers, { body: "original" });
