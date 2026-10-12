@@ -65,6 +65,7 @@ import { ConflictError, ForbiddenError, NotFoundError, WardenXError } from "@war
 import { type SQL, and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { projectAlertInboxPresentation } from "./alert-inbox-presentation";
+import { bindAttachmentsInTx, loadAttachmentViews } from "./attachments/attachment-service-db";
 import {
   MAX_VERIFICATION_ATTEMPTS,
   VERIFICATION_CODE_TTL_MS,
@@ -1171,6 +1172,15 @@ export function createDbMessagingRouteService(
           values.push(reference);
           referencesByMessage.set(reference.messageId, values);
         }
+        // WP 1.5: scan-gated attachment metadata. A tombstoned message shows none; the loader hides quarantined
+        // files from everyone and pending ones from everyone but their uploader.
+        const attachmentsByMessage = await loadAttachmentViews(tx, {
+          orgId,
+          viewerUserId: input.userId,
+          messageIds: chronologicalRows
+            .filter((row) => row.status !== "deleted")
+            .map((row) => row.id),
+        });
         // Entitled-reader gate: the channel_visibility ABAC predicate already authorized this read
         // at the route, so decrypt each body under the tenant DEK; a 'deleted' tombstone is empty.
         const page = chronologicalRows.map(
@@ -1183,6 +1193,7 @@ export function createDbMessagingRouteService(
             bodyKind: m.bodyKind as MessageBodyKind,
             createdAt: m.createdAt.toISOString(),
             parentMessageId: m.parentMessageId,
+            attachments: attachmentsByMessage.get(m.id) ?? [],
             references: (referencesByMessage.get(m.id) ?? []).map((reference) => ({
               kind: reference.kind as "staff" | "patient",
               entityId: reference.entityId,
@@ -1250,6 +1261,17 @@ export function createDbMessagingRouteService(
           });
           // WP 1.2: a retry of an already-committed send returns the original and emits nothing again.
           if (replayed) return { messageId, channelId: input.channelId, createdAt };
+          // WP 1.5: bind the caller's own completed uploads inside this transaction; any refusal rolls the
+          // message back with it (one uniform 422, so no id-existence oracle).
+          if (input.attachments?.length) {
+            await bindAttachmentsInTx(tx, {
+              orgId,
+              channelId: input.channelId,
+              authorUserId: input.authorUserId,
+              messageId,
+              attachmentIds: input.attachments.map((attachment) => attachment.attachmentId),
+            });
+          }
           if (references.length > 0) {
             await tx.insert(MER).values(
               references.map((reference) => ({

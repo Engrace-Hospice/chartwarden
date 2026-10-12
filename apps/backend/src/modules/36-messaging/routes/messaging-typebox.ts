@@ -80,11 +80,55 @@ const MessageReferenceInputSchema = Type.Object({
   end: Type.Integer({ minimum: 1, maximum: 8001 }),
 });
 
-const AttachmentSchema = Type.Object({
-  storageKey: Type.String({ minLength: 1 }),
+// WP 1.5: a send names uploads the caller already authorized + completed (POST /attachments/uploads); the server looks
+// up name/type/size itself. A canonical uuid, so a malformed id is a 422 and never reaches a uuid cast.
+const UuidId = Type.String({ pattern: UUID_PATTERN });
+const AttachmentSchema = Type.Object({ attachmentId: UuidId });
+
+export const AttachmentParamsSchema = Type.Object({ id: UuidId });
+export const AttachmentStatusResponseSchema = Type.Object({
+  attachmentId: Type.String(),
+  channelId: Type.String(),
+  fileName: Type.String(),
+  mimeType: Type.String(),
+  byteSize: Type.Integer(),
+  scanState: Type.Union([
+    Type.Literal("pending"),
+    Type.Literal("clean"),
+    Type.Literal("quarantined"),
+  ]),
+  availability: Type.Union([
+    Type.Literal("uploading"),
+    Type.Literal("scanning"),
+    Type.Literal("available"),
+    Type.Literal("blocked"),
+  ]),
+  attached: Type.Boolean(),
+});
+export const AuthorizeAttachmentResponseSchema = Type.Object({
+  attachmentId: Type.String(),
+  upload: Type.Object({
+    method: Type.Literal("PUT"),
+    url: Type.String(),
+    headers: Type.Record(Type.String(), Type.String()),
+    expiresAt: Type.String(),
+  }),
+  status: AttachmentStatusResponseSchema,
+});
+export const AttachmentAccessResponseSchema = Type.Object({
+  url: Type.String(),
+  expiresAt: Type.String(),
+  fileName: Type.String(),
+  mimeType: Type.String(),
+  byteSize: Type.Integer(),
+});
+export const AuthorizeAttachmentBodySchema = Type.Object({
+  channelId: UuidId,
   fileName: Type.String({ minLength: 1, maxLength: 255 }),
-  contentType: Type.String({ minLength: 1 }),
-  byteSize: Type.Integer({ minimum: 0, maximum: 25_000_000 }),
+  contentType: Type.String({ minLength: 1, maxLength: 127 }),
+  byteSize: Type.Integer({ minimum: 1, maximum: 25_000_000 }),
+  /** Lowercase hex SHA-256 of the file. The presigned PUT enforces it, so the bytes cannot differ from it. */
+  sha256Hex: Type.String({ pattern: "^[0-9a-f]{64}$" }),
 });
 
 export const SendMessageBodySchema = Type.Object({
@@ -264,6 +308,13 @@ export const ChannelDetailResponseSchema = Type.Object({
   patientId: NullableString(),
   members: Type.Array(ChannelMemberViewSchema),
 });
+const MessageAttachmentViewSchema = Type.Object({
+  attachmentId: Type.String(),
+  fileName: Type.String(),
+  mimeType: Type.String(),
+  byteSize: Type.Integer(),
+  availability: Type.Union([Type.Literal("available"), Type.Literal("scanning")]),
+});
 const ResolvedMessageSchema = Type.Object({
   messageId: Type.String(),
   channelId: Type.String(),
@@ -283,6 +334,7 @@ const ResolvedMessageSchema = Type.Object({
       navigable: Type.Boolean(),
     }),
   ),
+  attachments: Type.Optional(Type.Array(MessageAttachmentViewSchema)),
 });
 export const MessageListResponseSchema = Type.Object({
   messages: Type.Array(ResolvedMessageSchema),

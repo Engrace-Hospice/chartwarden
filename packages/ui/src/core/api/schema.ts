@@ -13181,6 +13181,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/attachments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Uploader-only attachment status (pending | clean | quarantined) */
+        get: operations["getApiV1MessagingAttachmentsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/attachments/{id}/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Short-lived signed download URL (120 s) for a clean attachment; current channel members only; one attachment_access_event per open; Cache-Control: no-store */
+        get: operations["getApiV1MessagingAttachmentsByIdAccess"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/attachments/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Uploader verifies the object landed (409 ATTACHMENT_NOT_UPLOADED, 422 ATTACHMENT_UPLOAD_MISMATCH) and triggers the malware scan; scanState stays pending until a verdict (Idempotency-Key required; Cache-Control: no-store) */
+        post: operations["postApiV1MessagingAttachmentsByIdComplete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/attachments/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Authorize an attachment upload: returns attachmentId + a presigned PUT (201; 415 type, 422 size/checksum/name, 410 archived, 429 TOO_MANY_OPEN_UPLOADS past 20 open uploads per user; Idempotency-Key required; Cache-Control: no-store) */
+        post: operations["postApiV1MessagingAttachmentsUploads"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/channels": {
         parameters: {
             query?: never;
@@ -61294,6 +61362,161 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingAttachmentsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        attachmentId: string;
+                        channelId: string;
+                        fileName: string;
+                        mimeType: string;
+                        byteSize: number;
+                        scanState: "pending" | "clean" | "quarantined";
+                        availability: "uploading" | "scanning" | "available" | "blocked";
+                        attached: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingAttachmentsByIdAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        url: string;
+                        expiresAt: string;
+                        fileName: string;
+                        mimeType: string;
+                        byteSize: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingAttachmentsByIdComplete: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        attachmentId: string;
+                        channelId: string;
+                        fileName: string;
+                        mimeType: string;
+                        byteSize: number;
+                        scanState: "pending" | "clean" | "quarantined";
+                        availability: "uploading" | "scanning" | "available" | "blocked";
+                        attached: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingAttachmentsUploads: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    channelId: string;
+                    fileName: string;
+                    contentType: string;
+                    byteSize: number;
+                    sha256Hex: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        attachmentId: string;
+                        upload: {
+                            /** @constant */
+                            method: "PUT";
+                            url: string;
+                            headers: {
+                                [key: string]: string;
+                            };
+                            expiresAt: string;
+                        };
+                        status: {
+                            attachmentId: string;
+                            channelId: string;
+                            fileName: string;
+                            mimeType: string;
+                            byteSize: number;
+                            scanState: "pending" | "clean" | "quarantined";
+                            availability: "uploading" | "scanning" | "available" | "blocked";
+                            attached: boolean;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1MessagingChannels: {
         parameters: {
             query?: never;
@@ -61505,6 +61728,13 @@ export interface operations {
                                 displayLabel: string;
                                 navigable: boolean;
                             }[];
+                            attachments?: {
+                                attachmentId: string;
+                                fileName: string;
+                                mimeType: string;
+                                byteSize: number;
+                                availability: "available" | "scanning";
+                            }[];
                         }[];
                         nextCursor?: string;
                         patientId: string | null;
@@ -61536,10 +61766,7 @@ export interface operations {
                     quotedMessageId?: string;
                     clientMessageId?: string;
                     attachments?: {
-                        storageKey: string;
-                        fileName: string;
-                        contentType: string;
-                        byteSize: number;
+                        attachmentId: string;
                     }[];
                     references?: {
                         kind: "staff" | "patient";

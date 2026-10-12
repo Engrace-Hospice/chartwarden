@@ -287,6 +287,7 @@ export const MODULES: ModuleDef[] = [
       "message_entity_reference",
       "message_revision",
       "message_attachment",
+      "attachment_access_event",
       "message_receipt",
       "notification_delivery",
       "presence",

@@ -131,7 +131,7 @@ function actorOf(request: FastifyRequest): { organizationId: string; userId: str
  * (bootstrap/plugins/idempotency.ts) can replay a retry instead of posting twice. The middleware only guards a
  * request that HAS a key; this guard is what makes the key mandatory on the send routes.
  */
-const REQUIRE_IDEMPOTENCY_KEY: PreHandler = async (request) => {
+export const REQUIRE_IDEMPOTENCY_KEY: PreHandler = async (request) => {
   const raw = request.headers["idempotency-key"];
   const value = Array.isArray(raw) ? raw[0] : raw;
   if (typeof value !== "string" || value.length < 1 || value.length > 128) {

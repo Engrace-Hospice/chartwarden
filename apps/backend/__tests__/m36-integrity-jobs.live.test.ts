@@ -41,6 +41,8 @@ describe.skipIf(!DB_URL)(
   () => {
     let admin: Client;
     let handle: { db: DbClient; close: () => Promise<void> };
+    /** A login that is actually `wardenx_destruction`: the erase credential (the app role cannot delete attachments). */
+    let destroyer: { db: DbClient; close: () => Promise<void> };
     let orgA: string;
     let orgB: string;
     let author: string;
@@ -150,6 +152,14 @@ describe.skipIf(!DB_URL)(
       handle = createDbClient({
         connectionString: await appRoleConnectionString(admin, DB_URL as string),
       });
+      await admin.query(
+        `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='wp19_destroyer') THEN
+           CREATE ROLE wp19_destroyer LOGIN PASSWORD 'wp19_destroyer_pw' IN ROLE wardenx_destruction; END IF; END $$;`,
+      );
+      const destroyerUrl = new URL(DB_URL as string);
+      destroyerUrl.username = "wp19_destroyer";
+      destroyerUrl.password = "wp19_destroyer_pw";
+      destroyer = createDbClient({ connectionString: destroyerUrl.toString() });
       deps = {
         db: handle.db,
         cipher: createMessageBodyCipher({ kek: KEK }),
@@ -159,6 +169,7 @@ describe.skipIf(!DB_URL)(
 
     afterAll(async () => {
       await handle?.close();
+      await destroyer?.close();
       if (admin) await admin.end();
     });
 
@@ -429,7 +440,7 @@ describe.skipIf(!DB_URL)(
         ).rows[0].n as number;
       expect(await revisionsOf()).toBeGreaterThanOrEqual(1);
 
-      const eraseStore = createDrizzleMessagingEraseStore(handle.db, {
+      const eraseStore = createDrizzleMessagingEraseStore(destroyer.db, {
         soleTenantUserIds: async () => [],
       });
       // After the cipher scrub alone, an erased head is a skip, not a mismatch.

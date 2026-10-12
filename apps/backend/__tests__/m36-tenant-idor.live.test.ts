@@ -18,7 +18,7 @@
  *   WARDENX_TEST_DATABASE_URL=postgres://… [WARDENX_TEST_REDIS_URL=redis://…] bun run test:m36:tenant-idor:live
  * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
  */
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { type Server, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -53,14 +53,18 @@ import {
   createDrizzleCareTeamStore,
   createDrizzlePatientReaderStore,
 } from "../src/modules/05-patient/seams/drizzle-stores";
+import type { AttachmentStoragePort } from "../src/modules/36-messaging/attachments/attachment-ports";
+import { createBuiltinScanner } from "../src/modules/36-messaging/attachments/attachment-scanners";
+import { createAttachmentService } from "../src/modules/36-messaging/attachments/attachment-service-db";
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
-import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
 import {
   channelHintAudience,
   createDbMessagingProvider,
 } from "../src/modules/36-messaging/messaging-provider-db";
+import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
 import { buildM36MessageHintConsumer } from "../src/modules/36-messaging/outbox-consumers/message-hints";
 import { registerAdminAlertDeliveriesRoutes } from "../src/modules/36-messaging/routes/admin-alert-deliveries-routes";
+import { registerAttachmentRoutes } from "../src/modules/36-messaging/routes/attachment-routes";
 import {
   CHANNEL_MEMBER_ADMIN_PREDICATE,
   CHANNEL_VISIBILITY_PREDICATE,
@@ -97,6 +101,11 @@ const ROUTES: Record<string, Verdict> = {
   "DELETE /api/v1/messaging/messages/:id": { kind: "idor" },
   "POST /api/v1/messaging/messages/:id/read": { kind: "idor" },
   "POST /api/v1/messaging/dm": { kind: "idor" },
+  // WP 1.5 attachments: the id is an attachment's (or a body channelId); every refusal must be a random id's answer.
+  "POST /api/v1/messaging/attachments/uploads": { kind: "idor" },
+  "POST /api/v1/messaging/attachments/:id/complete": { kind: "idor" },
+  "GET /api/v1/messaging/attachments/:id": { kind: "idor" },
+  "GET /api/v1/messaging/attachments/:id/access": { kind: "idor" },
   "GET /api/v1/messaging/dm/staff": { kind: "scoped" },
   "POST /api/v1/messaging/patients/:patientId/care-team-channel": { kind: "idor" },
   "POST /api/v1/messaging/channels/:id/members": { kind: "idor" },
@@ -131,6 +140,7 @@ const ROUTES: Record<string, Verdict> = {
 /** The registrar files under routes/ - a new file must be classified here, then mounted in `registeredRoutes`. */
 const REGISTRAR_FILES = [
   "admin-alert-deliveries-routes.ts",
+  "attachment-routes.ts",
   "messaging-routes.ts",
   "messaging-typebox.ts", // schemas only
   "webhook-routes.ts",
@@ -145,6 +155,7 @@ function registeredRoutes(): string[] {
     }
   });
   registerMessagingRoutes(probe, { service: {} as never });
+  registerAttachmentRoutes(probe, { service: {} as never });
   registerAdminAlertDeliveriesRoutes(probe, {} as never);
   registerMessagingWebhookRoutes(probe, { publicBaseUrl: "https://x.test" } as never);
   return [...seen].sort();
@@ -169,6 +180,7 @@ function headerAuth(request: FastifyRequest): void {
   request.context.locationIds = [];
 }
 
+const sha256Of = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 const VOLATILE_KEYS = new Set(["requestId", "correlationId", "timestamp", "traceId"]);
 /** Status + body with ids and per-request fields masked, so a real id and a random id can be compared exactly. */
@@ -219,6 +231,10 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
   let alertA: string;
   let ruleA: string;
   let careTeamA: string;
+  let attClean: string; // a clean attachment bound to a message in dmA
+  let attPending: string; // completed, awaiting a verdict
+  let attQuarantined: string; // infected
+  let attUnattached: string; // clean, not yet sent
   const exercised = new Set<string>();
   const attackers = new Set<string>();
 
@@ -275,6 +291,8 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     if (attackers.has(who.name)) exercisedByAttacker.add(route);
     const needsKey =
       route === "POST /api/v1/messaging/channels/:id/messages" ||
+      route === "POST /api/v1/messaging/attachments/uploads" ||
+      route === "POST /api/v1/messaging/attachments/:id/complete" ||
       route === "POST /api/v1/messaging/announce";
     const res = await app.inject({
       method: method as "GET",
@@ -297,6 +315,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     "message_revision",
     "message_receipt",
     "message_attachment",
+    "attachment_access_event",
     "message_entity_reference",
     "delivery_endpoint",
     "user_notification_preferences",
@@ -451,6 +470,69 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       idempotencyStore: createDbIdempotencyStore(handle.db),
     });
     registerMessagingRoutes(app, { service });
+    const blobs = new Map<string, Uint8Array>();
+    const fakeStorage: AttachmentStoragePort = {
+      presignUpload: async ({ objectKey }) => ({
+        url: `https://objects.test/put/${objectKey}`,
+        headers: {},
+        expiresAt: new Date(Date.now() + 600_000).toISOString(),
+      }),
+      inspect: async ({ objectKey }) => {
+        const b = blobs.get(objectKey);
+        return b
+          ? { byteSize: b.length, mimeType: "application/pdf", sha256Hex: sha256Of(b) }
+          : null;
+      },
+      readBytes: async ({ objectKey }) => blobs.get(objectKey) ?? null,
+      destroyObject: async ({ objectKey }) => {
+        blobs.delete(objectKey);
+      },
+      presignDownload: async ({ objectKey, ttlSeconds }) => ({
+        url: `https://objects.test/get/${objectKey}`,
+        expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
+      }),
+    };
+    const attachmentService = createAttachmentService({
+      db: handle.db,
+      storage: fakeStorage,
+      scanner: createBuiltinScanner(),
+      outbox: outbox as never,
+      canViewChannel: service.canViewChannel,
+    });
+    registerAttachmentRoutes(app, { service: attachmentService });
+    /** Upload + complete a file as `who` straight through the service (the fixture, not an attack). */
+    const makeAttachment = async (who: Who, channelId: string, text: string, scan = true) => {
+      const bytes = new TextEncoder().encode(`%PDF-1.4\n${text}\n%%EOF`);
+      const up = await attachmentService.authorize(who.org, {
+        userId: who.userId,
+        channelId,
+        fileName: "wp17-attachment.pdf",
+        contentType: "application/pdf",
+        byteSize: bytes.length,
+        sha256Hex: sha256Of(bytes),
+      });
+      const key = (
+        await admin.query("SELECT object_key FROM message_attachment WHERE id=$1", [
+          up.attachmentId,
+        ])
+      ).rows[0].object_key as string;
+      blobs.set(key, bytes);
+      if (scan)
+        await attachmentService.complete(who.org, {
+          userId: who.userId,
+          attachmentId: up.attachmentId,
+        });
+      else {
+        // completed but never scanned: a service with no scanner leaves it pending
+        const noScan = createAttachmentService({
+          db: handle.db,
+          storage: fakeStorage,
+          canViewChannel: service.canViewChannel,
+        });
+        await noScan.complete(who.org, { userId: who.userId, attachmentId: up.attachmentId });
+      }
+      return up.attachmentId;
+    };
 
     // ── fixtures: org A's private world, org B's own ────────────────────────────────────────────────────────
     dmA = (await service.openDm(orgA, u1.userId, u2.userId)).channelId;
@@ -494,10 +576,24 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       body: "org B hello",
     });
     await admin.query(
-      `INSERT INTO message_attachment (message_id, document_ref, mime_type, byte_size, filename)
-       VALUES ($1,$2,'application/pdf',10,'wp17.pdf')`,
-      [msgDmA, randomUUID()],
+      `INSERT INTO message_attachment (organization_id, channel_id, message_id, uploaded_by, mime_type, byte_size, filename)
+       VALUES ($1,$2,$3,$4,'application/pdf',10,'wp17.pdf')`,
+      [orgA, dmA, msgDmA, u1.userId],
     );
+    attClean = await makeAttachment(u1, dmA, "clean");
+    attUnattached = await makeAttachment(u1, dmA, "unattached");
+    attPending = await makeAttachment(u1, dmA, "pending", false);
+    attQuarantined = await makeAttachment(
+      u1,
+      dmA,
+      "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*",
+    );
+    await service.sendMessage(orgA, {
+      channelId: dmA,
+      authorUserId: u1.userId,
+      body: "with a file",
+      attachments: [{ attachmentId: attClean }],
+    });
     careTeamA = (await service.openCareTeamChannel(orgA, u1.userId, patientA)).channelId;
     endpointA = (
       await service.registerEndpoint(orgA, u1.userId, { channel: "email", target: "wp17-a@x.test" })
@@ -610,6 +706,110 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     });
   });
 
+  describe("attachment routes (WP 1.5): org B and an in-org non-member get the answer for a nonexistent id", () => {
+    const bytes = new TextEncoder().encode("%PDF-1.4\nattack\n%%EOF");
+    const uploadBody = (channelId: string) => ({
+      channelId,
+      fileName: "attack.pdf",
+      contentType: "application/pdf",
+      byteSize: bytes.length,
+      sha256Hex: sha256Of(bytes),
+    });
+    it("legitimate use works (the attacks are not vacuous)", async () => {
+      expect(
+        (await call("GET /api/v1/messaging/attachments/:id/access", u2, { id: attClean }))
+          .statusCode,
+      ).toBe(200);
+      expect(
+        (await call("GET /api/v1/messaging/attachments/:id", u1, { id: attClean })).statusCode,
+      ).toBe(200);
+      expect(
+        (await call("POST /api/v1/messaging/attachments/uploads", u1, {}, uploadBody(dmA)))
+          .statusCode,
+      ).toBe(201);
+      expect(
+        (
+          await call(
+            "POST /api/v1/messaging/attachments/:id/complete",
+            u1,
+            { id: attUnattached },
+            {},
+          )
+        ).statusCode,
+      ).toBe(200);
+    });
+    it("access / status / complete of A's attachments (clean, unattached, pending, quarantined)", async () => {
+      for (const route of [
+        "GET /api/v1/messaging/attachments/:id/access",
+        "GET /api/v1/messaging/attachments/:id",
+        "POST /api/v1/messaging/attachments/:id/complete",
+      ]) {
+        const payload = route.startsWith("POST") ? {} : undefined;
+        for (const attacker of [bUser, outsider]) {
+          for (const id of [attClean, attUnattached, attPending, attQuarantined]) {
+            await expectNoOracle(route, attacker, { id }, payload);
+          }
+        }
+      }
+    });
+    it("authorizing an upload into A's channels answers as a nonexistent channel", async () => {
+      const route = "POST /api/v1/messaging/attachments/uploads";
+      for (const attacker of [bUser, outsider]) {
+        attackers.add(attacker.name);
+        for (const channelId of [dmA, locA, careTeamA]) {
+          const real = await call(route, attacker, {}, uploadBody(channelId));
+          const ctl = await call(route, attacker, {}, uploadBody(randomUUID()));
+          expect(real.statusCode, real.body).toBeGreaterThanOrEqual(400);
+          expect(shape(real), `${attacker.name} ${channelId}`).toBe(shape(ctl));
+          expectNoLeak(real.body, attacker, `upload ${attacker.name}`);
+        }
+      }
+    });
+    it("an A member cannot bind A's attachment from another user, and org B cannot send one into B's own channel", async () => {
+      const route = "POST /api/v1/messaging/channels/:id/messages";
+      // u2 is a member of dmA but did not upload attClean/attUnattached
+      attackers.add(u2.name);
+      const stolen = await call(
+        route,
+        u2,
+        { id: dmA },
+        { body: "x", attachments: [{ attachmentId: attUnattached }] },
+      );
+      const random = await call(
+        route,
+        u2,
+        { id: dmA },
+        { body: "x", attachments: [{ attachmentId: randomUUID() }] },
+      );
+      expect(stolen.statusCode, stolen.body).toBe(422);
+      expect(shape(stolen)).toBe(shape(random));
+      attackers.add(bUser.name);
+      const cross = await call(
+        route,
+        bUser,
+        { id: dmB },
+        { body: "x", attachments: [{ attachmentId: attUnattached }] },
+      );
+      const ctl = await call(
+        route,
+        bUser,
+        { id: dmB },
+        { body: "x", attachments: [{ attachmentId: randomUUID() }] },
+      );
+      expect(cross.statusCode, cross.body).toBe(422);
+      expect(shape(cross)).toBe(shape(ctl));
+    });
+    it("a quarantined or pending file is not even the uploader's to open", async () => {
+      for (const id of [attQuarantined, attPending]) {
+        const real = await call("GET /api/v1/messaging/attachments/:id/access", u1, { id });
+        const ctl = await call("GET /api/v1/messaging/attachments/:id/access", u1, {
+          id: randomUUID(),
+        });
+        expect(shape(real)).toBe(shape(ctl));
+      }
+    });
+  });
+
   describe("message-id routes", () => {
     it("edit / delete / mark-read of A's messages", async () => {
       for (const route of [
@@ -660,7 +860,10 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
           expect(real.statusCode, label).toBeLessThan(500);
           expect(shape(real), label).toBe(shape(ctl));
           if (who === u1) {
-            const code = field === "parentMessageId" ? "PARENT_MESSAGE_NOT_IN_CHANNEL" : "QUOTED_MESSAGE_NOT_IN_CHANNEL";
+            const code =
+              field === "parentMessageId"
+                ? "PARENT_MESSAGE_NOT_IN_CHANNEL"
+                : "QUOTED_MESSAGE_NOT_IN_CHANNEL";
             expect(real.body, label).toContain(code);
           }
         }
@@ -668,7 +871,12 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     });
     it("positive control: a same-channel parent and quote are accepted", async () => {
       const route = "POST /api/v1/messaging/channels/:id/messages";
-      const ok = await call(route, u1, { id: dmA }, { body: "ok", parentMessageId: msgDmA, quotedMessageId: msgDmA });
+      const ok = await call(
+        route,
+        u1,
+        { id: dmA },
+        { body: "ok", parentMessageId: msgDmA, quotedMessageId: msgDmA },
+      );
       expect(ok.statusCode, ok.body).toBe(201);
     });
   });
@@ -873,6 +1081,11 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         ["POST /api/v1/messaging/messages/:id/read", bUser, { id: msgDmA }, {}],
         ["POST /api/v1/messaging/messages/:id/read", outsider, { id: msgLocA }, { upTo: true }],
         ["POST /api/v1/messaging/channels/:id/messages", bUser, { id: dmA }, { body: "x" }],
+        ["GET /api/v1/messaging/attachments/:id/access", bUser, { id: attClean }],
+        ["GET /api/v1/messaging/attachments/:id/access", outsider, { id: attClean }],
+        ["GET /api/v1/messaging/attachments/:id", outsider, { id: attClean }],
+        ["POST /api/v1/messaging/attachments/:id/complete", bUser, { id: attPending }, {}],
+        ["POST /api/v1/messaging/attachments/:id/complete", outsider, { id: attPending }, {}],
         [
           "POST /api/v1/messaging/channels/:id/messages",
           outsider,
@@ -997,7 +1210,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         });
       },
     );
-    it("message_attachment (child of message) is unreadable for org A's message", async () => {
+    it("message_attachment is unreadable for org A's message", async () => {
       expect(await cell(`SELECT count(*)::int AS n FROM message_attachment`)).toBeGreaterThan(0);
       await asOrgB(async (c) => {
         expect((await c.query("SELECT count(*)::int AS n FROM message_attachment")).rows[0].n).toBe(
@@ -1047,19 +1260,14 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         ],
         [
           "message_attachment",
-          `INSERT INTO message_attachment (message_id, document_ref, mime_type, byte_size, filename) VALUES ($1,$2,'a/b',1,'x')`,
-          () => [msgDmA, randomUUID()],
+          `INSERT INTO message_attachment (organization_id, channel_id, uploaded_by, mime_type, byte_size, filename) VALUES ($1,$2,$3,'a/b',1,'x')`,
+          () => [orgA, dmA, u1.userId],
         ],
       ];
       for (const [table, sql, args] of inserts) {
         await asOrgB(async (c) => {
-          // message_attachment has no organization_id of its own (parent-join policy), so any
-          // rejection is accepted there; every other table must be refused by RLS itself.
-          const reason =
-            table === "message_attachment"
-              ? /row-level security|violates|permission denied|not-null|null value/i
-              : /row-level security/i;
-          await expect(c.query(sql, args()), table).rejects.toThrow(reason);
+          // 1075: message_attachment carries organization_id, so RLS itself refuses it like every other table.
+          await expect(c.query(sql, args()), table).rejects.toThrow(/row-level security/i);
         });
       }
       expect(
@@ -1071,8 +1279,16 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
                       VALUES ($1,$2,$3,'user','\\x00',repeat('a',64),$4,$5)`;
       const cases: Array<[string, string, unknown[]]> = [
         ["message.channel_id -> org A channel", insMsg, [dmA, orgB, bUser.userId, null, null]],
-        ["message.parent_message_id -> org A message", insMsg, [dmB, orgB, bUser.userId, msgDmA, null]],
-        ["message.quoted_message_id -> org A message", insMsg, [dmB, orgB, bUser.userId, null, msgDmA]],
+        [
+          "message.parent_message_id -> org A message",
+          insMsg,
+          [dmB, orgB, bUser.userId, msgDmA, null],
+        ],
+        [
+          "message.quoted_message_id -> org A message",
+          insMsg,
+          [dmB, orgB, bUser.userId, null, msgDmA],
+        ],
         [
           "channel_member.channel_id -> org A channel",
           `INSERT INTO channel_member (organization_id, channel_id, user_id, role, source) VALUES ($1,$2,$3,'member','manual')`,
@@ -1086,7 +1302,9 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       ];
       for (const [label, sql, args] of cases) {
         await asOrgB(async (c) => {
-          await expect(c.query(sql, args), label).rejects.toThrow(/violates foreign key constraint/i);
+          await expect(c.query(sql, args), label).rejects.toThrow(
+            /violates foreign key constraint/i,
+          );
         });
       }
       // positive control: the same message insert against org B's own channel is accepted
@@ -1113,9 +1331,10 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       ).rows[0].id as string;
       await admin.query(upd, [mid, orgA, dmA, u1.userId]);
       expect(
-        await cell(`SELECT count(*)::int AS n FROM channel_member WHERE last_read_message_id = $1`, [
-          mid,
-        ]),
+        await cell(
+          `SELECT count(*)::int AS n FROM channel_member WHERE last_read_message_id = $1`,
+          [mid],
+        ),
       ).toBe(1);
       await admin.query(`DELETE FROM message WHERE id = $1`, [mid]);
       expect(
@@ -1149,11 +1368,14 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
           ).rowCount,
         ).toBe(0);
         expect(
-          (await c.query(`DELETE FROM message_attachment WHERE message_id=$1`, [msgDmA])).rowCount,
-        ).toBe(0);
-        expect(
           (await c.query(`DELETE FROM channel_member WHERE channel_id=$1`, [locA])).rowCount,
         ).toBe(0);
+      });
+      // 1075: the app role has no DELETE on message_attachment at all (stronger than zero rows under RLS).
+      await asOrgB(async (c) => {
+        await expect(
+          c.query(`DELETE FROM message_attachment WHERE message_id=$1`, [msgDmA]),
+        ).rejects.toThrow(/permission denied/i);
       });
       await asOrgB(async (c) => {
         await expect(

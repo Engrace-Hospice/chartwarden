@@ -16,14 +16,22 @@
 
 import type { ChannelKind, MessageBodyKind } from "./kinds";
 
-/** An attachment supplied with {@link MessagingProvider.sendMessage} (§3.4). The body/object
- *  store wiring is M36-T08; the seam contract only names the caller-supplied metadata. */
+/** An attachment supplied with {@link MessagingProvider.sendMessage} (§3.4, WP 1.5). It references an upload the SAME
+ *  user already authorized and completed through `POST /api/v1/messaging/attachments/uploads`; the server looks the
+ *  rest up and never trusts client-supplied file metadata. */
 export interface AttachmentInput {
-  /** Object-store key the upload was staged under (pre-signed PUT, M36-T08). */
-  readonly storageKey: string;
+  readonly attachmentId: string;
+}
+
+/** An attachment as an entitled reader sees it. Never a document reference, object key or permanent URL: the bytes
+ *  are fetched through `GET /api/v1/messaging/attachments/:id/access`, which re-authorizes every open. */
+export interface MessageAttachmentView {
+  readonly attachmentId: string;
   readonly fileName: string;
-  readonly contentType: string;
+  readonly mimeType: string;
   readonly byteSize: number;
+  /** `available`: scanned clean. `scanning`: pending - shown to the uploader only; every other reader gets no entry. */
+  readonly availability: "available" | "scanning";
 }
 
 export type MessageReferenceKind = "staff" | "patient";
@@ -54,6 +62,8 @@ export interface ResolvedMessage {
   readonly createdAt: string; // ISO-8601
   readonly parentMessageId: string | null;
   readonly references: readonly ResolvedMessageReference[];
+  /** WP 1.5: scan-gated attachment metadata (quarantined and, for non-uploaders, pending ones are omitted). */
+  readonly attachments?: readonly MessageAttachmentView[];
 }
 
 /**

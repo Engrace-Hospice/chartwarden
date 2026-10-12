@@ -147,6 +147,11 @@ export interface ObjectStorePort {
   presign(args: {
     readonly descriptor: SignedUrlDescriptor;
     readonly organizationId: OrgId;
+    /** Optional (M36 chat attachments): sign S3 `response-content-*` overrides so the object is served as a download. */
+    readonly responseOverrides?: {
+      readonly contentDisposition?: string;
+      readonly contentType?: string;
+    };
   }): Promise<{ readonly url: string; readonly expiresAt: IsoInstant }>;
   /** Version-aware destruction: delete EVERY object version + delete-marker for the key (D12 / DR-019). */
   destroyAllVersions(args: {

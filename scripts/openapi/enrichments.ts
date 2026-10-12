@@ -1265,6 +1265,10 @@ import {
   DmStaffSearchResponseSchema as M36DmStaffSearchResponseSchema,
   EditMessageBodySchema as M36EditMessageBodySchema,
   EditMessageResponseSchema as M36EditMessageResponseSchema,
+  AttachmentAccessResponseSchema as M36AttachmentAccessResponseSchema,
+  AttachmentStatusResponseSchema as M36AttachmentStatusResponseSchema,
+  AuthorizeAttachmentBodySchema as M36AuthorizeAttachmentBodySchema,
+  AuthorizeAttachmentResponseSchema as M36AuthorizeAttachmentResponseSchema,
   ListMessagesQuerySchema as M36ListMessagesQuerySchema,
   MentionCandidateQuerySchema as M36MentionCandidateQuerySchema,
   MentionCandidateResponseSchema as M36MentionCandidateResponseSchema,
@@ -8941,6 +8945,29 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/messaging/messages/:id/read": {
     summary: "Mark message(s) read — single or up-through-id (204)",
     body: M36ReadBodySchema,
+  },
+  // WP 1.5 attachments (scan-gated; every refusal is the 404 a random id gets)
+  "POST /api/v1/messaging/attachments/uploads": {
+    summary:
+      "Authorize an attachment upload: returns attachmentId + a presigned PUT (201; 415 type, 422 size/checksum/name, 410 archived, 429 TOO_MANY_OPEN_UPLOADS past 20 open uploads per user; Idempotency-Key required; Cache-Control: no-store)",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    body: M36AuthorizeAttachmentBodySchema,
+    response: M36AuthorizeAttachmentResponseSchema,
+  },
+  "POST /api/v1/messaging/attachments/:id/complete": {
+    summary:
+      "Uploader verifies the object landed (409 ATTACHMENT_NOT_UPLOADED, 422 ATTACHMENT_UPLOAD_MISMATCH) and triggers the malware scan; scanState stays pending until a verdict (Idempotency-Key required; Cache-Control: no-store)",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M36AttachmentStatusResponseSchema,
+  },
+  "GET /api/v1/messaging/attachments/:id": {
+    summary: "Uploader-only attachment status (pending | clean | quarantined)",
+    response: M36AttachmentStatusResponseSchema,
+  },
+  "GET /api/v1/messaging/attachments/:id/access": {
+    summary:
+      "Short-lived signed download URL (120 s) for a clean attachment; current channel members only; one attachment_access_event per open; Cache-Control: no-store",
+    response: M36AttachmentAccessResponseSchema,
   },
   "POST /api/v1/messaging/dm": {
     summary: "Open or find a 1:1 DM channel (idempotent; 200/201)",

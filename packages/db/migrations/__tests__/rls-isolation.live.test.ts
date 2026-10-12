@@ -458,9 +458,9 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
         );
         messageId = m.rows[0].id as string;
         await db.query(
-          `INSERT INTO message_attachment (message_id,document_ref,mime_type,byte_size,filename)
-           VALUES ($1,$2,'application/pdf',10,'f.pdf')`,
-          [messageId, SUBJECT],
+          `INSERT INTO message_attachment (organization_id,channel_id,uploaded_by,message_id,document_ref,mime_type,byte_size,filename)
+           VALUES ($1,$2,$3,$4,$5,'application/pdf',10,'f.pdf')`,
+          [ORG_A, cid, U_A, messageId, SUBJECT],
         );
         // FB-T05 write path: the send → read-receipt fan-out writes a per-recipient message_receipt
         // (org-scoped). Seed one so the two-tenant isolation of the receipt surface is exercised.
@@ -520,7 +520,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       ).rejects.toThrow();
     });
 
-    it("§3.7 children with no org column are org-isolated through the parent join", async () => {
+    it("§3.7 message_attachment (org column since 1075) and notification_delivery (parent join) are org-isolated", async () => {
       const att = await withOrg(ORG_B, () =>
         db.query("SELECT count(*)::int AS n FROM message_attachment WHERE message_id=$1", [
           messageId,

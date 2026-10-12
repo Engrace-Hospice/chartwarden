@@ -108,6 +108,40 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m36.attachment.cleared",
+    moduleOwner: "m36",
+    description:
+      "A message attachment passed its malware scan and became deliverable (WP 1.5). PHI-free: ids, the scanner name and one timestamp. Record-only: the durable record of the verdict; clients learn availability by re-reading the message list.",
+    payloadSchema: Type.Object({
+      organizationId: id,
+      attachmentId: id,
+      channelId: id,
+      /** Null while the attachment is still unbound (scanned before the message was sent). */
+      messageId: nullableId,
+      scanner: id,
+      at: isoInstant,
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.attachment.quarantined",
+    moduleOwner: "m36",
+    description:
+      "A message attachment failed its malware scan and was quarantined (WP 1.5): it is never delivered to or downloadable by any member, including the uploader. PHI-free: ids, the signature name, the scanner name and one timestamp. Record-only.",
+    payloadSchema: Type.Object({
+      organizationId: id,
+      attachmentId: id,
+      channelId: id,
+      messageId: nullableId,
+      signature: id,
+      scanner: id,
+      at: isoInstant,
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m36.notification.delivery_failed",
     moduleOwner: "m36",
     description:

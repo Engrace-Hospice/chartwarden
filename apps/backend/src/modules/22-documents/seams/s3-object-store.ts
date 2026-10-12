@@ -519,7 +519,14 @@ export function createS3ObjectStore(
       };
     },
 
-    async presign({ descriptor }: { descriptor: SignedUrlDescriptor; organizationId: OrgId }) {
+    async presign({
+      descriptor,
+      responseOverrides,
+    }: {
+      descriptor: SignedUrlDescriptor;
+      organizationId: OrgId;
+      responseOverrides?: { contentDisposition?: string; contentType?: string };
+    }) {
       const requested = descriptor.ttlSeconds;
       const ttlSeconds = Math.min(
         Number.isFinite(requested) && requested > 0
@@ -538,6 +545,13 @@ export function createS3ObjectStore(
         ["X-Amz-Date", amzDate],
         ["X-Amz-Expires", String(ttlSeconds)],
         ["X-Amz-SignedHeaders", "host"],
+        // Optional and absent for every M22 caller, so M22 URLs are byte-identical to before.
+        ...(responseOverrides?.contentDisposition
+          ? [["response-content-disposition", responseOverrides.contentDisposition] as const]
+          : []),
+        ...(responseOverrides?.contentType
+          ? [["response-content-type", responseOverrides.contentType] as const]
+          : []),
       ];
       const canonicalQuery = sigV4CanonicalQuery(query);
       const { text: canonicalRequest } = sigV4CanonicalRequest({

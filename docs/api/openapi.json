@@ -156320,6 +156320,470 @@
         }
       }
     },
+    "/api/v1/messaging/attachments/{id}": {
+      "get": {
+        "operationId": "getApiV1MessagingAttachmentsById",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Uploader-only attachment status (pending | clean | quarantined)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "attachmentId",
+                    "channelId",
+                    "fileName",
+                    "mimeType",
+                    "byteSize",
+                    "scanState",
+                    "availability",
+                    "attached"
+                  ],
+                  "properties": {
+                    "attachmentId": {
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "type": "string"
+                    },
+                    "fileName": {
+                      "type": "string"
+                    },
+                    "mimeType": {
+                      "type": "string"
+                    },
+                    "byteSize": {
+                      "type": "integer"
+                    },
+                    "scanState": {
+                      "anyOf": [
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "clean",
+                          "type": "string"
+                        },
+                        {
+                          "const": "quarantined",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "availability": {
+                      "anyOf": [
+                        {
+                          "const": "uploading",
+                          "type": "string"
+                        },
+                        {
+                          "const": "scanning",
+                          "type": "string"
+                        },
+                        {
+                          "const": "available",
+                          "type": "string"
+                        },
+                        {
+                          "const": "blocked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "attached": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/attachments/{id}/access": {
+      "get": {
+        "operationId": "getApiV1MessagingAttachmentsByIdAccess",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Short-lived signed download URL (120 s) for a clean attachment; current channel members only; one attachment_access_event per open; Cache-Control: no-store",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "url",
+                    "expiresAt",
+                    "fileName",
+                    "mimeType",
+                    "byteSize"
+                  ],
+                  "properties": {
+                    "url": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    },
+                    "fileName": {
+                      "type": "string"
+                    },
+                    "mimeType": {
+                      "type": "string"
+                    },
+                    "byteSize": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/attachments/{id}/complete": {
+      "post": {
+        "operationId": "postApiV1MessagingAttachmentsByIdComplete",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Uploader verifies the object landed (409 ATTACHMENT_NOT_UPLOADED, 422 ATTACHMENT_UPLOAD_MISMATCH) and triggers the malware scan; scanState stays pending until a verdict (Idempotency-Key required; Cache-Control: no-store)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "attachmentId",
+                    "channelId",
+                    "fileName",
+                    "mimeType",
+                    "byteSize",
+                    "scanState",
+                    "availability",
+                    "attached"
+                  ],
+                  "properties": {
+                    "attachmentId": {
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "type": "string"
+                    },
+                    "fileName": {
+                      "type": "string"
+                    },
+                    "mimeType": {
+                      "type": "string"
+                    },
+                    "byteSize": {
+                      "type": "integer"
+                    },
+                    "scanState": {
+                      "anyOf": [
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "clean",
+                          "type": "string"
+                        },
+                        {
+                          "const": "quarantined",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "availability": {
+                      "anyOf": [
+                        {
+                          "const": "uploading",
+                          "type": "string"
+                        },
+                        {
+                          "const": "scanning",
+                          "type": "string"
+                        },
+                        {
+                          "const": "available",
+                          "type": "string"
+                        },
+                        {
+                          "const": "blocked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "attached": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/attachments/uploads": {
+      "post": {
+        "operationId": "postApiV1MessagingAttachmentsUploads",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Authorize an attachment upload: returns attachmentId + a presigned PUT (201; 415 type, 422 size/checksum/name, 410 archived, 429 TOO_MANY_OPEN_UPLOADS past 20 open uploads per user; Idempotency-Key required; Cache-Control: no-store)",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "attachmentId",
+                    "upload",
+                    "status"
+                  ],
+                  "properties": {
+                    "attachmentId": {
+                      "type": "string"
+                    },
+                    "upload": {
+                      "type": "object",
+                      "required": [
+                        "method",
+                        "url",
+                        "headers",
+                        "expiresAt"
+                      ],
+                      "properties": {
+                        "method": {
+                          "const": "PUT",
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "headers": {
+                          "type": "object",
+                          "patternProperties": {
+                            "^(.*)$": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "expiresAt": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "status": {
+                      "type": "object",
+                      "required": [
+                        "attachmentId",
+                        "channelId",
+                        "fileName",
+                        "mimeType",
+                        "byteSize",
+                        "scanState",
+                        "availability",
+                        "attached"
+                      ],
+                      "properties": {
+                        "attachmentId": {
+                          "type": "string"
+                        },
+                        "channelId": {
+                          "type": "string"
+                        },
+                        "fileName": {
+                          "type": "string"
+                        },
+                        "mimeType": {
+                          "type": "string"
+                        },
+                        "byteSize": {
+                          "type": "integer"
+                        },
+                        "scanState": {
+                          "anyOf": [
+                            {
+                              "const": "pending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "clean",
+                              "type": "string"
+                            },
+                            {
+                              "const": "quarantined",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "availability": {
+                          "anyOf": [
+                            {
+                              "const": "uploading",
+                              "type": "string"
+                            },
+                            {
+                              "const": "scanning",
+                              "type": "string"
+                            },
+                            {
+                              "const": "available",
+                              "type": "string"
+                            },
+                            {
+                              "const": "blocked",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "attached": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "channelId",
+                  "fileName",
+                  "contentType",
+                  "byteSize",
+                  "sha256Hex"
+                ],
+                "properties": {
+                  "channelId": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  },
+                  "fileName": {
+                    "minLength": 1,
+                    "maxLength": 255,
+                    "type": "string"
+                  },
+                  "contentType": {
+                    "minLength": 1,
+                    "maxLength": 127,
+                    "type": "string"
+                  },
+                  "byteSize": {
+                    "minimum": 1,
+                    "maximum": 25000000,
+                    "type": "integer"
+                  },
+                  "sha256Hex": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/messaging/channels": {
       "get": {
         "operationId": "getApiV1MessagingChannels",
@@ -157109,6 +157573,45 @@
                                 }
                               }
                             }
+                          },
+                          "attachments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "attachmentId",
+                                "fileName",
+                                "mimeType",
+                                "byteSize",
+                                "availability"
+                              ],
+                              "properties": {
+                                "attachmentId": {
+                                  "type": "string"
+                                },
+                                "fileName": {
+                                  "type": "string"
+                                },
+                                "mimeType": {
+                                  "type": "string"
+                                },
+                                "byteSize": {
+                                  "type": "integer"
+                                },
+                                "availability": {
+                                  "anyOf": [
+                                    {
+                                      "const": "available",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "scanning",
+                                      "type": "string"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
                           }
                         }
                       }
@@ -157245,29 +157748,12 @@
                     "items": {
                       "type": "object",
                       "required": [
-                        "storageKey",
-                        "fileName",
-                        "contentType",
-                        "byteSize"
+                        "attachmentId"
                       ],
                       "properties": {
-                        "storageKey": {
-                          "minLength": 1,
+                        "attachmentId": {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
                           "type": "string"
-                        },
-                        "fileName": {
-                          "minLength": 1,
-                          "maxLength": 255,
-                          "type": "string"
-                        },
-                        "contentType": {
-                          "minLength": 1,
-                          "type": "string"
-                        },
-                        "byteSize": {
-                          "minimum": 0,
-                          "maximum": 25000000,
-                          "type": "integer"
                         }
                       }
                     }

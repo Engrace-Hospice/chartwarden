@@ -141,6 +141,8 @@ export {
 
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
+import type { AttachmentStoragePort, ScanPort } from "./attachments/attachment-ports";
+import { createAttachmentService as _createAttachmentService } from "./attachments/attachment-service-db";
 import type { EndpointVerificationSender } from "./delivery/transport-binding";
 import { createDbMessagingRouteService as _createDbMessagingRouteService } from "./messaging-route-service-db";
 import type { MessagingOutboxPort } from "./messaging-route-service-db";
@@ -149,6 +151,7 @@ import {
   registerAdminAlertDeliveriesRoutes as _registerAdminAlertDeliveriesRoutes,
   registerMessagingAdminPredicates as _registerMessagingAdminPredicates,
 } from "./routes/admin-alert-deliveries-routes";
+import { registerAttachmentRoutes as _registerAttachmentRoutes } from "./routes/attachment-routes";
 import {
   registerMessagingAbacPredicates as _registerMessagingAbacPredicates,
   registerMessagingRoutes as _registerMessagingRoutes,
@@ -168,6 +171,8 @@ export function mountMessagingRoutes(
   opts: {
     sendEndpointVerificationCode?: EndpointVerificationSender;
     outbox?: MessagingOutboxPort;
+    /** WP 1.5: object storage + malware scanner. No scanner => attachments stay pending (nothing is delivered). */
+    attachments?: { storage: AttachmentStoragePort; scanner?: ScanPort | undefined };
   } = {},
 ): void {
   // GAP-063 — the §4.2 OTP sender; with none bound, sms/email endpoint registration answers 503.
@@ -179,6 +184,19 @@ export function mountMessagingRoutes(
   });
   _registerMessagingAbacPredicates(service); // idempotent — single-owner registry, re-boot-safe
   _registerMessagingRoutes(app, { service });
+  // WP 1.5 — attachment authorize/complete/access. The visibility rule is the route service's own, so an attachment
+  // is exactly as reachable as the channel it was posted in. Without storage the routes answer a typed 503.
+  if (opts.attachments) {
+    _registerAttachmentRoutes(app, {
+      service: _createAttachmentService({
+        db,
+        storage: opts.attachments.storage,
+        scanner: opts.attachments.scanner,
+        outbox: opts.outbox,
+        canViewChannel: service.canViewChannel,
+      }),
+    });
+  }
   // GAP-165 — the platform-ops cross-tenant delivery drill (§4.1 `messaging.admin.read`): own predicate, own
   // SECURITY DEFINER reader (0474), audited per read. Not tenant-scoped, so it takes the pooled handle directly.
   _registerMessagingAdminPredicates();
@@ -234,3 +252,17 @@ export {
   registerM36IntegrityWorkers,
   scheduleM36IntegrityJobs,
 } from "./jobs/integrity-workers";
+// WP 1.5 — attachments: scan-gated upload/complete/access service, its routes, the scan sweep worker and the ports
+// the composition root binds (M36 never imports M22; see apps/backend/src/m36-attachment-storage.ts).
+export {
+  type AttachmentService,
+  createAttachmentService,
+} from "./attachments/attachment-service-db";
+export type { AttachmentStoragePort, ScanPort } from "./attachments/attachment-ports";
+export {
+  type M36AttachmentScanWorkerDeps,
+  attachmentScanTick,
+  registerM36AttachmentScanWorker,
+  scheduleM36AttachmentScanJobs,
+} from "./attachments/attachment-scan-worker";
+export { registerAttachmentRoutes } from "./routes/attachment-routes";
