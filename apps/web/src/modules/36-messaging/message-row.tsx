@@ -142,6 +142,11 @@ function MessageRowImpl({
               <button
                 type="button"
                 className="wx-reply-context"
+                aria-label={
+                  parentAuthor
+                    ? `Jump to message from ${parentAuthor}`
+                    : "Jump to the message this replies to"
+                }
                 onClick={() => onJumpToParent(message.parentMessageId!)}
               >
                 <Glyph name="arrow-up" size={12} />

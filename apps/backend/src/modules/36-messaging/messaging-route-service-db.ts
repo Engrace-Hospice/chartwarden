@@ -419,14 +419,25 @@ function aggregateDeliveryStatus(statuses: readonly string[]): AlertInboxItem["d
 function encodeCursor(createdAtMicros: string, id: string): string {
   return Buffer.from(`${createdAtMicros}|${id}`, "utf8").toString("base64url");
 }
-function decodeCursor(cursor: string): { createdAt: string; id: string } | null {
-  try {
-    const [createdAt, id] = Buffer.from(cursor, "base64url").toString("utf8").split("|");
-    if (!createdAt || !id) return null;
-    return { createdAt, id };
-  } catch {
-    return null;
+const CURSOR_TIME = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?[+-]\d{2}(:?\d{2})?$/;
+const CURSOR_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/**
+ * A cursor is `created_at::text|uuid` as this service issued it. Anything else is the caller's mistake: a 400, never
+ * a database cast error (500) and never a silent first page.
+ */
+function decodeCursor(cursor: string): { createdAt: string; id: string } {
+  const parts = Buffer.from(cursor, "base64url").toString("utf8").split("|");
+  const [createdAt, id] = parts;
+  if (
+    parts.length !== 2 ||
+    !createdAt ||
+    !id ||
+    !CURSOR_TIME.test(createdAt) ||
+    !CURSOR_ID.test(id)
+  ) {
+    throw new WardenXError("INVALID_CURSOR", "the cursor is not valid", 400);
   }
+  return { createdAt, id };
 }
 
 /** Keep inbox previews compact and text-only. The plaintext exists only in the authorized response

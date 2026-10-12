@@ -32,16 +32,15 @@ import {
 import { PatientContextAside, ThreadHeader } from "./thread-header";
 import { ThreadPanel } from "./thread-panel";
 import { useAttachmentUploads } from "./use-attachment-upload";
-import { useJumpToMessage } from "./use-jump-to-message";
+import { INITIAL_READ_VIEW, type ReadView, useJumpToMessage } from "./use-jump-to-message";
+import { useLatestPolling } from "./use-latest-polling";
 import { sentMessageRow, useMessageSender } from "./use-message-sender";
 import type { SentMessage } from "./use-message-sender";
 import { useScanningRefresh } from "./use-scanning-refresh";
 import type { LiveHint } from "./use-thread";
+import { useThreadPanelState } from "./use-thread-panel-state";
 
 const MESSAGE_PAGE_SIZE = 50;
-const POLL_INTERVAL_MS = 15_000;
-const MAX_POLL_INTERVAL_MS = 60_000;
-const REALTIME_POLL_INTERVAL_MS = 120_000;
 
 function isAccessError(error: unknown): boolean {
   const serialized = JSON.stringify(error ?? "").toLowerCase();
@@ -99,9 +98,6 @@ export function ConversationThread({
   const [mentionIndex, setMentionIndex] = useState(0);
   const [patient, setPatient] = useState<PatientHeaderInfo | null>(null);
   const [contextOpen, setContextOpen] = useState(false);
-  // WP 2.2: the open thread panel (null = closed) and the control to give focus back to when it closes.
-  const [threadRootId, setThreadRootId] = useState<string | null>(null);
-  const threadOpenerRef = useRef<HTMLElement | null>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<Message[] | null>(null);
   const generationRef = useRef(0);
@@ -134,8 +130,7 @@ export function ConversationThread({
   }, [anchorMessageId, meId, onReadConfirmed, onAccessRevoked]);
 
   // WP 2.2 jump-to-parent (and "Back to latest" after an anchored page): see use-jump-to-message.ts.
-  const jumpAnchorRef = useRef<string | null>(null);
-  const replaceNextRef = useRef(false);
+  const readViewRef = useRef<ReadView>(INITIAL_READ_VIEW);
   const jumpedRef = useRef(false);
   const jump = useJumpToMessage({
     timelineRef,
@@ -143,11 +138,16 @@ export function ConversationThread({
     routeAnchorRef: anchorRef,
     initialScrollPending,
     nearBottomRef,
-    jumpAnchorRef,
-    replaceNextRef,
+    viewRef: readViewRef,
     jumpedRef,
   });
-  const { reset: jumpReset } = jump;
+  const { reset: jumpReset, anchorGone, routeAnchorChanged } = jump;
+  const panel = useThreadPanelState({
+    timelineRef,
+    textareaRef,
+    jumpToMessage: jump.jumpToMessage,
+  });
+  const { reset: panelReset } = panel;
 
   const handleSent = (sent: SentMessage): void => {
     latestPageIdsRef.current = new Set([...latestPageIdsRef.current, sent.messageId]);
@@ -222,7 +222,9 @@ export function ConversationThread({
       if (latestInFlight.current) return true;
       latestInFlight.current = true;
       const generation = generationRef.current;
-      const anchorMessageId = jumpAnchorRef.current ?? anchorRef.current;
+      // The request is captured when the read is issued (see use-jump-to-message.ts).
+      const view = readViewRef.current;
+      const anchorMessageId = view.anchor ?? anchorRef.current;
       try {
         const { data, error } = await client.GET("/api/v1/messaging/channels/{id}/messages", {
           params: {
@@ -236,6 +238,19 @@ export function ConversationThread({
           ...(background ? { headers: BACKGROUND_REQUEST_HEADERS } : {}),
         });
         if (generation !== generationRef.current) return false;
+        if (view !== readViewRef.current) {
+          // A newer request (a jump, back to latest) arrived while this read was in flight: this answer is for the
+          // wrong page. Drop it; the queued re-read carries the new request.
+          rereadAfterFlight.current = true;
+          return true;
+        }
+        if (error && view.anchor) {
+          // The page a user jump asked for cannot be read (the message is gone). Not an access revocation: say so,
+          // go back to the newest page, and let that read surface a real revocation if there is one.
+          anchorGone();
+          rereadAfterFlight.current = true;
+          return false;
+        }
         if (error) {
           if (isAccessError(error)) onAccessRevokedRef.current(channel.channelId);
           if (background) setRefreshError(true);
@@ -249,8 +264,8 @@ export function ConversationThread({
         const incoming = (data?.messages ?? []) as Message[];
         latestPageIdsRef.current = new Set(incoming.map((message) => message.messageId));
         // WP 2.2: a jump to an unloaded message (or back to latest) shows ONE contiguous page, never a merge of two.
-        const replace = replaceNextRef.current;
-        replaceNextRef.current = false;
+        const replace = view.replace;
+        if (replace) readViewRef.current = { ...view, replace: false };
         const currentMessages = replace ? null : messagesRef.current;
         const wasInitial = messagesRef.current === null;
         const existingIds = new Set(currentMessages?.map((message) => message.messageId) ?? []);
@@ -288,7 +303,7 @@ export function ConversationThread({
         }
       }
     },
-    [channel.channelId, client, markReadBoundary],
+    [channel.channelId, client, markReadBoundary, anchorGone],
   );
 
   useEffect(() => {
@@ -370,7 +385,7 @@ export function ConversationThread({
     setRefreshError(false);
     setPatient(null);
     setContextOpen(false);
-    setThreadRootId(null);
+    panelReset();
     jumpReset();
     setNewMessageCount(0);
     readBoundaryRef.current = null;
@@ -386,15 +401,16 @@ export function ConversationThread({
       generationRef.current += 1;
     };
     // loadLatest changes identity only with the channel (or client); every other input is read through a ref.
-  }, [loadLatest, resetSender, jumpReset]);
+  }, [loadLatest, resetSender, jumpReset, panelReset]);
 
   // A new anchor on the same channel re-reads around it without touching the draft, chips or an in-flight send.
   useEffect(() => {
     if (anchorMessageId === handledAnchor.current) return;
     handledAnchor.current = anchorMessageId;
+    routeAnchorChanged(readViewRef.current.anchor !== null);
     if (latestInFlight.current) rereadAfterFlight.current = true;
     else void loadLatest(true);
-  }, [anchorMessageId, loadLatest]);
+  }, [anchorMessageId, loadLatest, routeAnchorChanged]);
 
   // The composer is replaced by a notice when the channel is archived or unreadable: drop the uploads with it.
   const { reset: resetUploads } = uploads;
@@ -405,7 +421,9 @@ export function ConversationThread({
 
   useLayoutEffect(() => {
     if (!anchorMessageId || messages === null || jumpedRef.current) return;
-    const target = document.querySelector(`[data-message-id="${CSS.escape(anchorMessageId)}"]`);
+    const target = timelineRef.current?.querySelector(
+      `[data-message-id="${CSS.escape(anchorMessageId)}"]`,
+    );
     target?.scrollIntoView({ block: "center" });
   }, [anchorMessageId, messages]);
 
@@ -429,37 +447,7 @@ export function ConversationThread({
     else void loadLatest(true);
   }, [liveToken, loadLatest]);
 
-  useEffect(() => {
-    let timer: number | undefined;
-    let failures = 0;
-    let stopped = false;
-    const base = realtimeConnected ? REALTIME_POLL_INTERVAL_MS : POLL_INTERVAL_MS;
-    const schedule = (): void => {
-      const delay = Math.min(base * 2 ** failures, Math.max(MAX_POLL_INTERVAL_MS, base));
-      timer = window.setTimeout(tick, delay);
-    };
-    const tick = async (): Promise<void> => {
-      if (stopped) return;
-      if (document.hidden) {
-        schedule();
-        return;
-      }
-      failures = (await loadLatest(true)) ? 0 : Math.min(failures + 1, 2);
-      schedule();
-    };
-    const refreshWhenVisible = (): void => {
-      if (!document.hidden) void loadLatest(true);
-    };
-    schedule();
-    document.addEventListener("visibilitychange", refreshWhenVisible);
-    window.addEventListener("focus", refreshWhenVisible);
-    return () => {
-      stopped = true;
-      if (timer !== undefined) window.clearTimeout(timer);
-      document.removeEventListener("visibilitychange", refreshWhenVisible);
-      window.removeEventListener("focus", refreshWhenVisible);
-    };
-  }, [loadLatest, realtimeConnected]);
+  useLatestPolling(loadLatest, realtimeConnected);
 
   useLayoutEffect(() => {
     if (!initialScrollPending.current || messages === null) return;
@@ -538,25 +526,32 @@ export function ConversationThread({
     });
   }
 
-  // The jump hook asks for a read of the latest (or anchored) page through this.
-  jump.reloadRef.current = (): void => {
-    if (latestInFlight.current) rereadAfterFlight.current = true;
-    else void loadLatest(true);
-  };
+  // The jump hook asks for a read of the latest (or requested) page through this. Bound after commit, not in render.
+  const { reloadRef } = jump;
+  useLayoutEffect(() => {
+    reloadRef.current = (): void => {
+      if (latestInFlight.current) rereadAfterFlight.current = true;
+      else void loadLatest(true);
+    };
+  }, [reloadRef, loadLatest]);
 
-  const openThread = useCallback((rootId: string, opener: HTMLElement): void => {
-    threadOpenerRef.current = opener;
-    setThreadRootId(rootId);
-  }, []);
-  const closeThread = useCallback((): void => {
-    const opener = threadOpenerRef.current;
-    threadOpenerRef.current = null;
-    setThreadRootId(null);
-    window.requestAnimationFrame(() => {
-      if (opener?.isConnected) opener.focus();
-      else textareaRef.current?.focus();
-    });
-  }, []);
+  // A reply was accepted in the panel: patch that root's count now (it may be outside the latest page, which a
+  // re-read would not refresh), then re-read, queueing the re-read if one is already in flight.
+  const handleReplySent = useCallback(
+    (rootId: string, createdAt: string): void => {
+      const patched = (messagesRef.current ?? []).map((m) =>
+        m.messageId === rootId
+          ? { ...m, replyCount: (m.replyCount ?? 0) + 1, lastReplyAt: createdAt }
+          : m,
+      );
+      messagesRef.current = patched;
+      setMessages(patched);
+      if (latestInFlight.current) rereadAfterFlight.current = true;
+      else void loadLatest(true);
+      onMessageSent();
+    },
+    [loadLatest, onMessageSent],
+  );
   const authorById = useMemo(
     () => new Map((messages ?? []).map((m) => [m.messageId, m.authorDisplayName])),
     [messages],
@@ -605,6 +600,7 @@ export function ConversationThread({
           ref={timelineRef}
           className="wx-message-timeline"
           aria-label="Message history"
+          tabIndex={-1}
           onScroll={(event) => {
             const element = event.currentTarget;
             nearBottomRef.current =
@@ -654,7 +650,7 @@ export function ConversationThread({
                   previous={messages[index - 1]}
                   meId={meId}
                   anchorMessageId={jump.highlightId ?? anchorMessageId}
-                  onOpenThread={openThread}
+                  onOpenThread={panel.openThread}
                   onJumpToParent={jump.jumpToMessage}
                   parentAuthor={
                     message.parentMessageId
@@ -671,20 +667,19 @@ export function ConversationThread({
         {contextOpen && patient ? (
           <PatientContextAside patient={patient} onClose={() => setContextOpen(false)} />
         ) : null}
-        {threadRootId ? (
+        {panel.rootId ? (
           <ThreadPanel
+            key={panel.rootId}
             channelId={channel.channelId}
-            rootId={threadRootId}
+            rootId={panel.rootId}
             archived={Boolean(channel.archivedAt)}
             meId={meId}
             meDisplayName={meDisplayName}
             liveHint={liveHint}
-            onClose={closeThread}
-            onJumpToMessage={jump.jumpToMessage}
-            onReplySent={() => {
-              void loadLatest(true);
-              onMessageSent();
-            }}
+            drafts={panel.draftsRef}
+            onClose={panel.closeThread}
+            onJumpToMessage={panel.showInConversation}
+            onReplySent={handleReplySent}
           />
         ) : null}
       </div>
@@ -698,6 +693,9 @@ export function ConversationThread({
         <button type="button" className="wx-new-messages" onClick={jump.backToLatest}>
           Back to latest messages
         </button>
+      ) : null}
+      {jump.anchorMissing ? (
+        <output className="wx-thread-refresh-warning">That message is no longer available.</output>
       ) : null}
       {refreshError && !loadError ? (
         <output className="wx-thread-refresh-warning">

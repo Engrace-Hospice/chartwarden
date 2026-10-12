@@ -1010,6 +1010,34 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       expect((await thread(u2)).json().root.replyCount).toBe(5);
     });
 
+    it("a malformed cursor is a 400 on the thread read and the channel list, never a 500 and never a silent first page", async () => {
+      const b64 = (text: string) => Buffer.from(text, "utf8").toString("base64url");
+      const bad = [
+        b64("not-a-time|not-a-uuid"),
+        b64("2026-01-01 00:00:00.123456+00|not-a-uuid"),
+        b64(`garbage|${randomUUID()}`),
+        b64("no separator at all"),
+        "!!!not base64!!!",
+      ];
+      for (const cursor of bad) {
+        const t = await thread(u1, `?cursor=${encodeURIComponent(cursor)}`);
+        expect(t.statusCode, `thread ${cursor}: ${t.body}`).toBe(400);
+        const l = await call(
+          "GET /api/v1/messaging/channels/:id/messages",
+          u1,
+          { id: thr },
+          undefined,
+          {},
+          `?cursor=${encodeURIComponent(cursor)}`,
+        );
+        expect(l.statusCode, `list ${cursor}: ${l.body}`).toBe(400);
+      }
+      // a cursor the server itself issued still works (positive control)
+      const first = (await thread(u1, "?limit=2")).json();
+      expect(first.nextCursor).toBeTruthy();
+      expect((await thread(u1, `?limit=2&cursor=${first.nextCursor}`)).statusCode).toBe(200);
+    });
+
     it("org B, an in-org non-member and a removed member get the answer for a nonexistent id", async () => {
       expect((await thread(u1)).statusCode).toBe(200); // not vacuous
       for (const attacker of [bUser, outsider]) {

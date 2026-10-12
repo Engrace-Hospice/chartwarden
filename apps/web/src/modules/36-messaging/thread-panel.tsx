@@ -2,11 +2,13 @@
 // like the patient-context pane): the root message, its replies oldest first, and a composer whose sends carry
 // `parentMessageId`. Permissions are the channel's; there is nothing thread-specific to grant or deny.
 //
-// Keyboard: focus lands on the panel when it opens; Escape closes it (and the caller returns focus to whatever opened
-// it) except inside a composer that holds a draft, where a stray key must never lose the text; Tab is never trapped.
+// The panel is keyed by the root id by its caller, so it holds no state across threads; drafts live in the caller
+// (`drafts`) and survive a switch. Keyboard: focus lands on the panel when it opens; Escape or Close returns focus to
+// whatever opened it, except that Escape does nothing while a draft or an attachment is held (a stray key never loses
+// the text); Tab is never trapped.
 import { Button, EmptyState, Glyph, LoadingSpinner } from "@wardenx/ui";
 import { useEffect, useRef, useState } from "react";
-import type { JSX, KeyboardEvent } from "react";
+import type { JSX, KeyboardEvent, MutableRefObject } from "react";
 import { AttachButton, AttachmentChips } from "./attachment-composer";
 import { sendBlockedReason } from "./attachment-utils";
 import { MessageRow } from "./message-row";
@@ -23,11 +25,13 @@ export interface ThreadPanelProps {
   meId: string;
   meDisplayName: string;
   liveHint: LiveHint | null;
+  /** Unsent reply text per root id, owned by the caller so a draft survives switching threads. */
+  drafts: MutableRefObject<Map<string, string>>;
   onClose: () => void;
   /** Scroll to (and focus) a message in the channel timeline, loading its page if needed. */
   onJumpToMessage: (messageId: string) => void;
-  /** A reply was accepted: the channel timeline's reply count is now stale. */
-  onReplySent: () => void;
+  /** A reply was accepted: the root's reply count in the channel timeline is now stale. */
+  onReplySent: (rootId: string, createdAt: string) => void;
 }
 
 function replyCountLabel(count: number): string {
@@ -41,40 +45,46 @@ export function ThreadPanel({
   meId,
   meDisplayName,
   liveHint,
+  drafts,
   onClose,
   onJumpToMessage,
   onReplySent,
 }: ThreadPanelProps): JSX.Element {
   const thread = useThread(channelId, rootId, liveHint);
   const uploads = useAttachmentUploads(channelId);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(() => drafts.current.get(rootId) ?? "");
+  const [announcement, setAnnouncement] = useState("");
   const panelRef = useRef<HTMLElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const attachButtonRef = useRef<HTMLButtonElement>(null);
+  const loadMoreRef = useRef<HTMLButtonElement>(null);
   const composingRef = useRef(false);
-  // Bumped on unmount and on a different thread, so a send that answers late is dropped (useMessageSender contract).
+  // Bumped on unmount, so a send that answers late is dropped (useMessageSender contract).
   const generationRef = useRef(0);
-  const { addSent } = thread;
+  const { addSent, status, replies, loadingMore } = thread;
 
-  // Opening, or moving to another thread, puts focus on the panel so a keyboard or screen-reader user lands in it.
-  // The draft belongs to one thread: a different root starts empty.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: rootId is the trigger, not a value read in the body
+  // Opening puts focus on the panel so a keyboard or screen-reader user lands in it.
   useEffect(() => {
-    generationRef.current += 1;
-    setDraft("");
     panelRef.current?.focus();
     return () => {
       generationRef.current += 1;
     };
-  }, [rootId]);
+  }, []);
+
+  const changeDraft = (next: string): void => {
+    setDraft(next);
+    if (next) drafts.current.set(rootId, next);
+    else drafts.current.delete(rootId);
+  };
 
   const handleSent = (sent: SentMessage): void => {
     setDraft((current) => (current === sent.body ? "" : current));
-    addSent(sentMessageRow(sent, channelId, meId, meDisplayName, rootId));
-    onReplySent();
-    textareaRef.current?.focus();
+    drafts.current.delete(rootId);
+    const inserted = addSent(sentMessageRow(sent, channelId, meId, meDisplayName, rootId));
+    if (!inserted) setAnnouncement("Reply sent. Load more replies to see it.");
+    onReplySent(rootId, sent.createdAt);
   };
-  const { send, sending, sendError, clearSendError, resetSender } = useMessageSender({
+  const { send, sending, sendError, clearSendError } = useMessageSender({
     channelId,
     parentMessageId: rootId,
     archived,
@@ -84,17 +94,53 @@ export function ThreadPanel({
     generationRef,
     onSent: handleSent,
   });
-  const { reset: resetUploads } = uploads;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: rootId is the trigger; the sender and uploads reset with it
+
+  // Announce replies from other people that arrive after the thread was first shown (a polite live region).
+  const seenRef = useRef<Set<string> | null>(null);
   useEffect(() => {
-    resetSender();
-    resetUploads();
-  }, [rootId, resetSender, resetUploads]);
+    if (status !== "ready") return;
+    if (seenRef.current === null) {
+      seenRef.current = new Set(replies.map((r) => r.messageId));
+      return;
+    }
+    const seen = seenRef.current;
+    const fresh = replies.filter((r) => !seen.has(r.messageId));
+    for (const r of fresh) seen.add(r.messageId);
+    const fromOthers = fresh.filter((r) => r.authorUserId !== meId).length;
+    if (fromOthers > 0) {
+      setAnnouncement(`${fromOthers} new ${fromOthers === 1 ? "reply" : "replies"}`);
+    }
+  }, [replies, status, meId]);
+
+  // Focus must not fall to the page when the control that had it unmounts: after Load more it goes to the first
+  // reply that arrived (or back to the button if nothing did); after a successful Retry it goes to the panel.
+  const loadMoreFromRef = useRef<number | null>(null);
+  const wasLoadingMore = useRef(false);
+  useEffect(() => {
+    if (loadingMore) {
+      wasLoadingMore.current = true;
+      return;
+    }
+    if (!wasLoadingMore.current) return;
+    wasLoadingMore.current = false;
+    const from = loadMoreFromRef.current;
+    loadMoreFromRef.current = null;
+    const first = from !== null ? replies[from] : undefined;
+    const target = first
+      ? panelRef.current?.querySelector<HTMLElement>(
+          `[data-message-id="${CSS.escape(first.messageId)}"]`,
+        )
+      : loadMoreRef.current;
+    target?.focus();
+  }, [loadingMore, replies]);
+  useEffect(() => {
+    if (status === "ready" && document.activeElement === document.body) panelRef.current?.focus();
+  }, [status]);
 
   function handlePanelKey(event: KeyboardEvent<HTMLElement>): void {
     if (event.key !== "Escape" || event.defaultPrevented) return;
-    const inDraftingComposer = event.target === textareaRef.current && draft !== "";
-    if (inDraftingComposer) return;
+    // A draft or a chosen file is the user's work: whichever element has focus, Escape never discards it.
+    if (draft !== "" || uploads.chips.length > 0) return;
     event.preventDefault();
     onClose();
   }
@@ -109,7 +155,7 @@ export function ThreadPanel({
   }
 
   const sendHint = sendBlockedReason(uploads.chips);
-  const { root, replies } = thread;
+  const { root } = thread;
   const replyCount = root?.replyCount ?? replies.length;
 
   return (
@@ -123,9 +169,9 @@ export function ThreadPanel({
       <header>
         <div className="wx-thread-panel-title">
           <strong>Thread</strong>
-          <span>{thread.status === "ready" ? replyCountLabel(replyCount) : " "}</span>
+          <span>{status === "ready" ? replyCountLabel(replyCount) : " "}</span>
         </div>
-        {thread.status === "ready" ? (
+        {status === "ready" ? (
           <button
             type="button"
             className="wx-thread-panel-show"
@@ -138,18 +184,21 @@ export function ThreadPanel({
           <Glyph name="close" size={17} />
         </button>
       </header>
+      <output className="sr-only" aria-live="polite" aria-atomic="true">
+        {announcement}
+      </output>
 
       <div className="wx-thread-panel-body">
-        {thread.status === "loading" ? (
+        {status === "loading" ? (
           <output className="wx-message-state">
             <LoadingSpinner label="Loading thread" />
           </output>
-        ) : thread.status === "unavailable" ? (
+        ) : status === "unavailable" ? (
           <div className="wx-message-state" role="alert">
             <strong>Thread unavailable</strong>
             <span>This thread is unavailable or your access has changed.</span>
           </div>
-        ) : thread.status === "failed" || !root ? (
+        ) : status === "failed" || !root ? (
           <div className="wx-message-state" role="alert">
             <strong>Thread could not be loaded</strong>
             <Button size="sm" tone="secondary" onClick={thread.reload}>
@@ -159,7 +208,10 @@ export function ThreadPanel({
         ) : (
           <>
             <MessageRow message={root} previous={undefined} meId={meId} anchorMessageId={null} />
-            <div className="wx-thread-divider" aria-hidden={replies.length === 0}>
+            <div
+              className="wx-thread-divider"
+              aria-hidden={replies.length === 0 ? true : undefined}
+            >
               <span>{replyCountLabel(replyCount)}</span>
             </div>
             {replies.length === 0 ? (
@@ -185,17 +237,21 @@ export function ThreadPanel({
             )}
             {thread.hasMore ? (
               <button
+                ref={loadMoreRef}
                 type="button"
                 className="wx-load-older"
-                onClick={thread.loadMore}
-                disabled={thread.loadingMore}
+                onClick={() => {
+                  loadMoreFromRef.current = replies.length;
+                  thread.loadMore();
+                }}
+                aria-disabled={loadingMore || undefined}
               >
-                {thread.loadingMore ? "Loading…" : "Load more replies"}
+                {loadingMore ? "Loading…" : "Load more replies"}
               </button>
             ) : null}
           </>
         )}
-        {thread.refreshFailed && thread.status === "ready" ? (
+        {thread.refreshFailed && status === "ready" ? (
           <output className="wx-thread-refresh-warning">
             Connection interrupted.{" "}
             <button type="button" onClick={thread.reload}>
@@ -210,7 +266,7 @@ export function ThreadPanel({
           <Glyph name="lock" size={16} />
           This conversation is archived. Replies are read only.
         </output>
-      ) : thread.status === "ready" ? (
+      ) : status === "ready" ? (
         <form className="wx-message-composer" onSubmit={(event) => void send(event)}>
           <label htmlFor="messaging-thread-composer" className="sr-only">
             Reply in thread
@@ -221,9 +277,10 @@ export function ThreadPanel({
             rows={1}
             placeholder="Reply…"
             value={draft}
-            disabled={sending}
+            // readOnly, not disabled: a disabled control drops focus, and Escape would stop reaching the panel.
+            readOnly={sending}
             onChange={(event) => {
-              setDraft(event.target.value);
+              changeDraft(event.target.value);
               if (sendError) clearSendError();
             }}
             onKeyDown={handleComposerKey}

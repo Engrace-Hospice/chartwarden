@@ -313,7 +313,7 @@ describe("WP 2.2 jump to parent", () => {
   it("focuses and scrolls to the parent when it is on screen, without another read", async () => {
     const { handlers } = threadWorld();
     const { api } = mount(handlers);
-    const link = await screen.findAllByRole("button", { name: "Replying to Other Nurse" });
+    const link = await screen.findAllByRole("button", { name: "Jump to message from Other Nurse" });
     const listReads = api.GET.mock.calls.filter(([p]) => p === LIST).length;
     fireEvent.click(link[0]!);
     const parentRow = document.querySelector('[data-message-id="root-1"]') as HTMLElement;
@@ -340,7 +340,9 @@ describe("WP 2.2 jump to parent", () => {
           : { data: { messages: [reply] }, error: undefined };
       },
     });
-    fireEvent.click(await screen.findByRole("button", { name: "Replying to an earlier message" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Jump to the message this replies to" }),
+    );
     await screen.findByText("ancient");
     const anchored = api.GET.mock.calls.find(
       ([p, init]) => p === LIST && init.params.query.anchorMessageId === "old-parent",
@@ -363,5 +365,371 @@ describe("WP 2.2 jump to parent", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Show in conversation" }));
     const row = document.querySelector('[data-message-id="root-1"]') as HTMLElement;
     await waitFor(() => expect(document.activeElement).toBe(row));
+  });
+});
+
+// ── review fixes ────────────────────────────────────────────────────────────────────────────────────────────────
+const openRoot = async () =>
+  fireEvent.click(await screen.findByRole("button", { name: "Open thread, 2 replies" }));
+const sendReply = async (text: string) => {
+  const box = (await screen.findByLabelText("Reply in thread")) as HTMLTextAreaElement;
+  fireEvent.change(box, { target: { value: text } });
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Send reply" }));
+  });
+  return box;
+};
+
+describe("WP 2.2 jump while a read is in flight (H1, M8, M9)", () => {
+  const parent = message("old-parent", { createdAt: "2026-09-01T09:00:00.000Z", body: "ancient" });
+  const reply = message("late-reply", {
+    parentMessageId: "old-parent",
+    createdAt: "2026-10-10T09:00:00.000Z",
+  });
+  function gatedWorld(extra: Partial<ComponentProps<typeof ConversationThread>> = {}) {
+    const gate = { promise: null as Promise<void> | null, release: () => {} };
+    const closeGate = () => {
+      gate.promise = new Promise<void>((resolve) => {
+        gate.release = resolve;
+      });
+    };
+    const handler: Handler = (path, init) => {
+      if (path !== LIST) return undefined;
+      const anchored = init.params.query.anchorMessageId === "old-parent";
+      const data = { data: { messages: [anchored ? parent : reply] }, error: undefined };
+      return gate.promise ? gate.promise.then(() => data) : data;
+    };
+    return { gate, closeGate, ...mount({ GET: handler }, {}, extra) };
+  }
+  const bump = (w: ReturnType<typeof gatedWorld>, liveToken: number) =>
+    w.view.rerender(w.tree({ liveToken }));
+  const jumpLink = () =>
+    screen.findByRole("button", { name: "Jump to the message this replies to" });
+
+  it("a jump asked for while a latest read is in flight shows the anchored page ALONE", async () => {
+    const w = gatedWorld();
+    const link = await jumpLink();
+    w.closeGate();
+    bump(w, 1); // a background read is now in flight
+    fireEvent.click(link);
+    await act(async () => w.gate.release());
+    await screen.findByText("ancient");
+    expect(screen.queryByText("body of late-reply")).toBeNull();
+  });
+
+  it("Back to latest asked for while an anchored read is in flight shows the latest page ALONE", async () => {
+    const w = gatedWorld();
+    fireEvent.click(await jumpLink());
+    await screen.findByText("ancient");
+    w.closeGate();
+    bump(w, 1);
+    fireEvent.click(screen.getByRole("button", { name: "Back to latest messages" }));
+    await act(async () => w.gate.release());
+    await screen.findByText("body of late-reply");
+    expect(screen.queryByText("ancient")).toBeNull();
+  });
+
+  it("a changed route anchor ends the jump: Back to latest goes away and the new anchor is read", async () => {
+    const w = gatedWorld();
+    fireEvent.click(await jumpLink());
+    await screen.findByText("ancient");
+    w.view.rerender(w.tree({ anchorMessageId: "other-anchor" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Back to latest messages" })).toBeNull(),
+    );
+    expect(
+      w.api.GET.mock.calls.some(
+        ([p, i]) => p === LIST && i.params.query.anchorMessageId === "other-anchor",
+      ),
+    ).toBe(true);
+  });
+
+  it("an anchor that is gone says so, is not an access revocation, and leaves the timeline alone", async () => {
+    const onAccessRevoked = vi.fn();
+    mount(
+      {
+        GET: (path, init) =>
+          path !== LIST
+            ? undefined
+            : init.params.query.anchorMessageId === "old-parent"
+              ? {
+                  data: undefined,
+                  error: { error: { code: "NOT_FOUND" } },
+                  response: { status: 404 },
+                }
+              : { data: { messages: [reply] }, error: undefined },
+      },
+      {},
+      { onAccessRevoked },
+    );
+    fireEvent.click(await jumpLink());
+    await screen.findByText("That message is no longer available.");
+    expect(onAccessRevoked).not.toHaveBeenCalled();
+    expect(screen.getByText("body of late-reply")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Back to latest messages" })).toBeNull();
+  });
+});
+
+describe("WP 2.2 panel behaviour (H2, H3, M1-M7, M10, M11)", () => {
+  it("never disables the reply box while sending (a disabled box drops focus), and Escape still works after", async () => {
+    let finish = () => {};
+    const sent = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const world = threadWorld();
+    mount({
+      ...world.handlers,
+      POST: () =>
+        sent.then(() => ({
+          data: {
+            messageId: "new-reply",
+            channelId: "dm-1",
+            createdAt: "2026-10-10T10:00:00.000Z",
+          },
+          error: undefined,
+          response: { status: 201 },
+        })),
+    });
+    await openRoot();
+    const box = (await screen.findByLabelText("Reply in thread")) as HTMLTextAreaElement;
+    box.focus();
+    fireEvent.change(box, { target: { value: "on it" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Send reply" }));
+    });
+    expect(box.disabled).toBe(false);
+    expect(box.readOnly).toBe(true);
+    await act(async () => finish());
+    await within(screen.getByRole("complementary", { name: "Thread" })).findByText("on it");
+    expect(document.activeElement).toBe(box);
+    expect(box.readOnly).toBe(false);
+    fireEvent.keyDown(box, { key: "Escape" });
+    await waitFor(() => expect(panel()).toBeNull());
+  });
+
+  it("a thread read that rejects shows a failure with Retry, not a spinner forever", async () => {
+    const { handlers } = threadWorld();
+    let first = true;
+    mount({
+      ...handlers,
+      GET: (path, init) => {
+        if (path === THREAD && first) {
+          first = false;
+          return Promise.reject(new Error("network down"));
+        }
+        return handlers.GET(path, init);
+      },
+    });
+    await openRoot();
+    const dialog = await screen.findByRole("complementary", { name: "Thread" });
+    await within(dialog).findByText("Thread could not be loaded");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Retry" }));
+    await within(dialog).findByText("body of reply-a");
+  });
+
+  it("a Load more that rejects clears its spinner and offers another try", async () => {
+    const { handlers, root, replyA } = threadWorld();
+    mount({
+      ...handlers,
+      GET: (path, init) => {
+        if (path === THREAD) {
+          return init.params.query.cursor
+            ? Promise.reject(new Error("network down"))
+            : {
+                data: { root, replies: [replyA], nextCursor: "c1", patientId: null },
+                error: undefined,
+              };
+        }
+        return handlers.GET(path, init);
+      },
+    });
+    await openRoot();
+    const dialog = await screen.findByRole("complementary", { name: "Thread" });
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Load more replies" }));
+    await within(dialog).findByText(/Connection interrupted/);
+    const again = within(dialog).getByRole("button", {
+      name: "Load more replies",
+    }) as HTMLButtonElement;
+    expect(again.disabled).toBe(false);
+  });
+
+  it("announces a new reply from someone else in a polite live region", async () => {
+    const { handlers, root, replyA, replyB } = threadWorld();
+    let extra = false;
+    const replyC = message("reply-c", {
+      parentMessageId: "root-1",
+      createdAt: "2026-10-10T09:09:00.000Z",
+    });
+    const { view, tree } = mount({
+      ...handlers,
+      GET: (path, init) =>
+        path === THREAD && extra
+          ? {
+              data: { root, replies: [replyA, replyB, replyC], patientId: null },
+              error: undefined,
+            }
+          : handlers.GET(path, init),
+    });
+    await openRoot();
+    await screen.findByText("body of reply-a");
+    extra = true;
+    view.rerender(tree({ liveHint: { seq: 1, messageId: "reply-c", parentMessageId: "root-1" } }));
+    const note = await screen.findByText(/1 new reply/);
+    expect(note.closest("[aria-live='polite']")).toBeTruthy();
+  });
+
+  it("Escape never closes while a draft is held, whichever element has focus", async () => {
+    const { handlers } = threadWorld();
+    mount(handlers);
+    await openRoot();
+    const dialog = await screen.findByRole("complementary", { name: "Thread" });
+    fireEvent.change(await screen.findByLabelText("Reply in thread"), {
+      target: { value: "draft" },
+    });
+    fireEvent.keyDown(within(dialog).getByRole("button", { name: "Close thread" }), {
+      key: "Escape",
+    });
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(panel()).toBeTruthy();
+  });
+
+  it("keeps a draft per thread when switching threads and back", async () => {
+    const { handlers } = threadWorld();
+    mount(handlers);
+    await openRoot();
+    fireEvent.change(await screen.findByLabelText("Reply in thread"), {
+      target: { value: "keep me" },
+    });
+    fireEvent.click(
+      within(document.querySelector('[data-message-id="solo-1"]') as HTMLElement).getByRole(
+        "button",
+        { name: "Reply in thread to Other Nurse" },
+      ),
+    );
+    await waitFor(() =>
+      expect((screen.getByLabelText("Reply in thread") as HTMLTextAreaElement).value).toBe(""),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open thread, 2 replies" }));
+    await waitFor(() =>
+      expect((screen.getByLabelText("Reply in thread") as HTMLTextAreaElement).value).toBe(
+        "keep me",
+      ),
+    );
+  });
+
+  it("does not insert a non-contiguous reply when more replies are unloaded", async () => {
+    const { handlers, root, replyA } = threadWorld();
+    mount({
+      ...handlers,
+      GET: (path, init) =>
+        path === THREAD
+          ? {
+              data: { root, replies: [replyA], nextCursor: "c1", patientId: null },
+              error: undefined,
+            }
+          : handlers.GET(path, init),
+    });
+    await openRoot();
+    await sendReply("hidden for now");
+    const dialog = screen.getByRole("complementary", { name: "Thread" });
+    await within(dialog).findByText(/Reply sent\. Load more replies to see it/);
+    expect(within(dialog).queryByText("hidden for now")).toBeNull();
+  });
+
+  it("patches the timeline's reply count at once, and re-reads even when a read was in flight", async () => {
+    let serverReplies = 2;
+    let hold: Promise<void> | null = null;
+    let release = () => {};
+    const world = threadWorld({
+      GET: (path) => {
+        if (path !== LIST) return undefined;
+        const data = {
+          data: { messages: [message("root-1", { replyCount: serverReplies })] },
+          error: undefined,
+        };
+        return hold ? hold.then(() => data) : data;
+      },
+    });
+    const { api, view, tree } = mount({
+      ...world.handlers,
+      POST: () => {
+        serverReplies += 1;
+        return undefined;
+      },
+    });
+    await openRoot();
+    await screen.findByLabelText("Reply in thread");
+    hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    view.rerender(tree({ liveToken: 1 })); // a latest read is now in flight
+    const before = api.GET.mock.calls.filter(([p]) => p === LIST).length;
+    await sendReply("one more");
+    expect(await screen.findByRole("button", { name: "Open thread, 3 replies" })).toBeTruthy();
+    await act(async () => release());
+    await waitFor(() =>
+      expect(api.GET.mock.calls.filter(([p]) => p === LIST).length).toBeGreaterThan(before),
+    );
+  });
+
+  it("closes the slide-over when 'Show in conversation' is used on a narrow screen", async () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: true,
+      media: query,
+      addEventListener() {},
+      removeEventListener() {},
+    })) as unknown as typeof window.matchMedia;
+    try {
+      const { handlers } = threadWorld();
+      mount(handlers);
+      await openRoot();
+      fireEvent.click(await screen.findByRole("button", { name: "Show in conversation" }));
+      await waitFor(() => expect(panel()).toBeNull());
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+
+  it("returns focus to another control for the same thread when the opener is gone", async () => {
+    const { handlers } = threadWorld();
+    mount(handlers);
+    const open = await screen.findByRole("button", { name: "Open thread, 2 replies" });
+    fireEvent.click(open);
+    const dialog = await screen.findByRole("complementary", { name: "Thread" });
+    open.remove();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => expect(panel()).toBeNull());
+    await waitFor(() => {
+      const active = document.activeElement as HTMLElement;
+      expect(active.getAttribute("data-thread-opener")).toBe("root-1");
+      expect(active).not.toBe(open);
+    });
+  });
+
+  it("moves focus to the first newly loaded reply when Load more unmounts", async () => {
+    const { handlers, root, replyA, replyB } = threadWorld();
+    mount({
+      ...handlers,
+      GET: (path, init) =>
+        path === THREAD
+          ? init.params.query.cursor
+            ? { data: { root, replies: [replyB], patientId: null }, error: undefined }
+            : {
+                data: { root, replies: [replyA], nextCursor: "c1", patientId: null },
+                error: undefined,
+              }
+          : handlers.GET(path, init),
+    });
+    await openRoot();
+    const dialog = await screen.findByRole("complementary", { name: "Thread" });
+    const more = await within(dialog).findByRole("button", { name: "Load more replies" });
+    more.focus();
+    fireEvent.click(more);
+    await waitFor(() =>
+      expect((document.activeElement as HTMLElement).getAttribute("data-message-id")).toBe(
+        "reply-b",
+      ),
+    );
   });
 });

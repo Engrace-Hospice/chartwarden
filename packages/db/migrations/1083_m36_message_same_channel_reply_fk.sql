@@ -8,16 +8,17 @@
 -- (organization_id, id) edges are implied by the new ones and are replaced, not kept beside them.
 --
 -- Existing rows: the application guard has refused a cross-channel link since WP 1.7, so none is expected. The new
--- foreign keys are added NOT VALID (enforced for every write from this point on, no scan under the strong lock) and
--- then VALIDATEd (a scan under SHARE UPDATE EXCLUSIVE, which does not block reads or writes). A pre-existing
--- violating row would make VALIDATE, and so this migration, fail loudly with the offending constraint, leaving the
+-- foreign keys are added NOT VALID and then VALIDATEd as separate, readable steps. The runner applies this file as ONE
+-- transaction, so this does NOT shorten any lock: the DROP CONSTRAINT takes ACCESS EXCLUSIVE on `message` and holds it
+-- to commit, so the UNIQUE build, both VALIDATE scans and both CREATE INDEX statements all run with reads and writes on
+-- `message` blocked. Fine for demo-sized data; on a large table schedule it off-hours. A pre-existing violating row
+-- would make VALIDATE, and so this migration, fail loudly with the offending constraint, leaving the
 -- schema untouched (one transaction): the remedy is a reviewed data repair (re-point or null the link; the message
 -- itself and its hash are never altered), never a silent NOT VALID left behind. Find them first with:
 --   SELECT c.id FROM message c JOIN message p ON p.organization_id = c.organization_id AND p.id = c.parent_message_id
 --    WHERE p.channel_id <> c.channel_id;      -- and the same for quoted_message_id
 --
--- Locking: the UNIQUE constraint builds its index under a SHARE lock (writes to `message` wait while it builds);
--- same trade-off 1072 and 1080 accepted. Index coverage (test:fk-indexes:live): the referenced side is the new unique
+-- Same locking trade-off 1072 and 1080 accepted. Index coverage (test:fk-indexes:live): the referenced side is the new unique
 -- constraint; the referencing side is a partial (organization_id, channel_id, parent|quoted) index, which also serves
 -- the thread read (`WHERE organization_id = $1 AND channel_id = $2 AND parent_message_id = $3 ORDER BY created_at`
 -- needs only the sort of one thread's replies) and the grouped reply-count lookup. It replaces the narrower

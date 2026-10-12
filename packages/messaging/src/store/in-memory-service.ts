@@ -428,7 +428,11 @@ export function createInMemoryMessagingService(
     channel: { readonly kind: ChannelKind },
   ): ResolvedMessage => {
     const replies = [...messages.values()].filter(
-      (r) => r.orgId === orgId && r.parentMessageId === m.messageId && !r.deletedAt,
+      (r) =>
+        r.orgId === orgId &&
+        r.channelId === m.channelId &&
+        r.parentMessageId === m.messageId &&
+        !r.deletedAt,
     );
     return {
       messageId: m.messageId,
@@ -532,7 +536,7 @@ export function createInMemoryMessagingService(
       if (root?.orgId !== orgId || root.channelId !== input.channelId) {
         throw new NotFoundError("message", input.messageId);
       }
-      const limit = input.limit ?? 50;
+      const limit = Math.min(Math.max(input.limit ?? 50, 1), 200);
       const cursor = input.cursor ? decodeMessageCursor(input.cursor) : null;
       const afterCursor = (m: MessageRow): boolean =>
         !cursor ||

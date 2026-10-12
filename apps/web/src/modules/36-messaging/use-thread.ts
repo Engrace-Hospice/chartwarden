@@ -2,7 +2,7 @@
 // GET /channels/:id/messages/:messageId/thread (oldest reply first, keyset-paged). Permissions are the channel's: a
 // thread the viewer may no longer read is the same "unavailable" answer as a thread that never existed.
 import { BACKGROUND_REQUEST_HEADERS, useApiClient } from "@wardenx/ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Message } from "./messaging-types";
 import { mergeMessages } from "./messaging-utils";
 
@@ -26,14 +26,16 @@ export interface ThreadState {
   readonly refreshFailed: boolean;
   readonly reload: () => void;
   readonly loadMore: () => void;
-  /** Show a reply the server just accepted without waiting for the next read. */
-  readonly addSent: (reply: Message) => void;
+  /**
+   * Show a reply the server just accepted. Returns false when it was NOT inserted: with replies still unloaded
+   * (`hasMore`) it would sit after a gap, so it is left for "Load more replies" or the next read.
+   */
+  readonly addSent: (reply: Message) => boolean;
 }
 
-function isUnavailable(error: unknown, status: number | undefined): boolean {
-  if (status === 403 || status === 404) return true;
-  const serialized = JSON.stringify(error ?? "").toLowerCase();
-  return serialized.includes("not_found") || serialized.includes("forbidden");
+/** A thread the viewer cannot read answers exactly like one that does not exist (403/404). */
+function isUnavailable(status: number | undefined): boolean {
+  return status === 403 || status === 404;
 }
 
 export function useThread(
@@ -75,7 +77,7 @@ export function useThread(
         );
         if (generation !== generationRef.current) return;
         if (error || !data) {
-          if (isUnavailable(error, response?.status)) setStatus("unavailable");
+          if (isUnavailable(response?.status)) setStatus("unavailable");
           else if (background) setRefreshFailed(true);
           else setStatus("failed");
           return;
@@ -89,6 +91,11 @@ export function useThread(
           setCursor((data.nextCursor as string | undefined) ?? null);
         setRefreshFailed(false);
         setStatus("ready");
+      } catch {
+        // A rejected request (network down): a failed first load offers Retry; a failed refresh keeps what is shown.
+        if (generation !== generationRef.current) return;
+        if (background) setRefreshFailed(true);
+        else setStatus("failed");
       } finally {
         if (generation === generationRef.current) {
           inFlightRef.current = false;
@@ -137,16 +144,18 @@ export function useThread(
     if (!cursor || loadingMore) return;
     const generation = generationRef.current;
     setLoadingMore(true);
-    void client
-      .GET("/api/v1/messaging/channels/{id}/messages/{messageId}/thread", {
-        params: {
-          path: { id: channelId, messageId: rootId },
-          query: { limit: THREAD_PAGE_SIZE, cursor },
-        },
-      })
-      .then(({ data, error }) => {
+    void (async () => {
+      try {
+        const { data, error } = await client.GET(
+          "/api/v1/messaging/channels/{id}/messages/{messageId}/thread",
+          {
+            params: {
+              path: { id: channelId, messageId: rootId },
+              query: { limit: THREAD_PAGE_SIZE, cursor },
+            },
+          },
+        );
         if (generation !== generationRef.current) return;
-        setLoadingMore(false);
         if (error || !data) {
           setRefreshFailed(true);
           return;
@@ -156,22 +165,29 @@ export function useThread(
         repliesRef.current = merged;
         setReplies(merged);
         setCursor((data.nextCursor as string | undefined) ?? null);
-      });
+      } catch {
+        if (generation === generationRef.current) setRefreshFailed(true);
+      } finally {
+        if (generation === generationRef.current) setLoadingMore(false);
+      }
+    })();
   }, [channelId, client, cursor, loadingMore, rootId]);
 
-  const addSent = useCallback((reply: Message): void => {
+  const hasMoreRef = useRef(false);
+  useLayoutEffect(() => {
+    hasMoreRef.current = cursor !== null;
+  }, [cursor]);
+  const addSent = useCallback((reply: Message): boolean => {
+    const bump = (current: Message | null): Message | null =>
+      current
+        ? { ...current, replyCount: (current.replyCount ?? 0) + 1, lastReplyAt: reply.createdAt }
+        : current;
+    setRoot(bump);
+    if (hasMoreRef.current) return false;
     const merged = mergeMessages(repliesRef.current, [reply]);
     repliesRef.current = merged;
     setReplies(merged);
-    setRoot((current) =>
-      current
-        ? {
-            ...current,
-            replyCount: (current.replyCount ?? 0) + 1,
-            lastReplyAt: reply.createdAt,
-          }
-        : current,
-    );
+    return true;
   }, []);
 
   return {

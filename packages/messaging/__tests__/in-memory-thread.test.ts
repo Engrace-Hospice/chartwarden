@@ -73,4 +73,25 @@ describe("in-memory service: threads", () => {
       ).rejects.toMatchObject({ statusCode: 404 });
     }
   });
+
+  it("clamps the page size to 1..200 like the DB service", async () => {
+    const service = makeService();
+    const root = await send(service, "ch_1", "root");
+    for (let i = 0; i < 3; i++) await send(service, "ch_1", `r${i}`, root.messageId);
+    const zero = await service.listThread(ORG, {
+      channelId: "ch_1",
+      messageId: root.messageId,
+      userId: "member",
+      limit: 0,
+    });
+    expect(zero.replies).toHaveLength(1);
+    expect(zero.nextCursor).toBeTruthy();
+    const huge = await service.listThread(ORG, {
+      channelId: "ch_1",
+      messageId: root.messageId,
+      userId: "member",
+      limit: 100000,
+    });
+    expect(huge.replies).toHaveLength(3);
+  });
 });
