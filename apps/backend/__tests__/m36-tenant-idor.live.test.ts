@@ -1095,6 +1095,37 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         expect(ok.rowCount).toBe(1);
       });
     });
+    it("channel_member.last_read_message_id: a cross-tenant pointer is refused; erasing the message only nulls the pointer", async () => {
+      const upd = `UPDATE channel_member SET last_read_message_id = $1
+                   WHERE organization_id = $2 AND channel_id = $3 AND user_id = $4`;
+      await asOrgB(async (c) => {
+        await expect(c.query(upd, [msgDmA, orgB, dmB, bUser.userId])).rejects.toThrow(
+          /violates foreign key constraint/i,
+        );
+      });
+      // SET NULL: point u1's membership at a throwaway org A message, erase it, the member row survives
+      const mid = (
+        await admin.query(
+          `INSERT INTO message (channel_id, organization_id, author_user_id, author_kind, body_cipher, body_sha256)
+           VALUES ($1,$2,$3,'user','\\x00',repeat('b',64)) RETURNING id`,
+          [dmA, orgA, u1.userId],
+        )
+      ).rows[0].id as string;
+      await admin.query(upd, [mid, orgA, dmA, u1.userId]);
+      expect(
+        await cell(`SELECT count(*)::int AS n FROM channel_member WHERE last_read_message_id = $1`, [
+          mid,
+        ]),
+      ).toBe(1);
+      await admin.query(`DELETE FROM message WHERE id = $1`, [mid]);
+      expect(
+        await cell(
+          `SELECT count(*)::int AS n FROM channel_member
+            WHERE organization_id = $1 AND channel_id = $2 AND user_id = $3 AND last_read_message_id IS NULL`,
+          [orgA, dmA, u1.userId],
+        ),
+      ).toBe(1);
+    });
     it("UPDATE / DELETE of org A rows touches zero rows; moving a B row into org A is rejected", async () => {
       await asOrgB(async (c) => {
         const upd = await c.query(
