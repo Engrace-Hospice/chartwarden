@@ -162,6 +162,8 @@ export const MESSAGING_QUEUE_PARAMETERS: { readonly [K in MessagingQueueName]: Q
   // would find the same rows and double the critical `m36.integrity.hash_mismatch` audit rows. The first failure is
   // already final, so the DLQ alert (which fires only on the last attempt) fires at once. The backoff is inert at
   // one attempt and kept for the table's shape. Concurrency 1: two overlapping ticks would race the rotation cursor.
+  // Trade-off: a TRANSIENT failure (database or Redis blip) also gets no retry, so that org stays unverified until the
+  // next night's run. It is alerted (failed tick + DLQ alert on the first failure), not retried.
   "messaging.hash_verify": {
     name: "messaging.hash_verify",
     priority: 2,
