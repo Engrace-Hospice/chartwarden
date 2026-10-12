@@ -28,8 +28,8 @@ import {
 } from "../src/modules/14-idg/index";
 
 // GAP-128 - these suites exercise other behavior; the per-patient caseload scope is covered in idg-caseload-scope.test.ts.
-const COVERS_EVERY_PATIENT = async (): Promise<readonly string[]> =>
-  ({ includes: () => true }) as unknown as readonly string[];
+// The list reads iterate the resolved caseload (5c07d4ad7), so it must be a real list, not an `includes` stub.
+const COVERS_EVERY_PATIENT = async (): Promise<readonly string[]> => [P1, P2, P_UNKNOWN];
 
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];

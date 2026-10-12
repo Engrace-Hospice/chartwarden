@@ -22,6 +22,8 @@ import {
 } from "../src/modules/14-idg/index";
 import type { PacketDisclosurePort } from "../src/modules/14-idg/routes/packet-disclosure";
 
+// GAP-128 - these suites exercise other behavior; the per-patient caseload scope is covered in idg-caseload-scope.test.ts.
+// The list reads iterate the resolved caseload (5c07d4ad7), so it must be a real list, not an `includes` stub.
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
   if (typeof user !== "string" || user.length === 0) return;
@@ -49,6 +51,7 @@ const RN = "33333333-3333-4333-8333-333333333331";
 const MSW = "33333333-3333-4333-8333-333333333332";
 const COORD = "33333333-3333-4333-8333-3333333333c0";
 const READER = "33333333-3333-4333-8333-3333333333e0";
+const COVERS_EVERY_PATIENT = async (): Promise<readonly string[]> => [P_CLEAR, P_SUD, P_OFF];
 const NAMES = new Map([[RN, { displayName: "Rita RN" }]]);
 
 const hdr = (user: string, extra: Record<string, string> = {}) => ({
@@ -151,6 +154,7 @@ async function makeServer(sudAllowed: boolean) {
     service: backend,
     sudDisclosure,
     enrichment: { membershipDisplay: { displayForMemberships: async () => NAMES } },
+    caseload: COVERS_EVERY_PATIENT,
   });
   return app;
 }

@@ -50,8 +50,8 @@ import {
 import type { IdgMeetingSeed } from "../src/modules/14-idg/routes/service";
 
 // GAP-128 - these suites exercise other behavior; the per-patient caseload scope is covered in idg-caseload-scope.test.ts.
-const COVERS_EVERY_PATIENT = async (): Promise<readonly string[]> =>
-  ({ includes: () => true }) as unknown as readonly string[];
+// The list reads iterate the resolved caseload (5c07d4ad7), so it must be a real list, not an `includes` stub.
+const COVERS_EVERY_PATIENT = async (): Promise<readonly string[]> => [PATIENT];
 
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
@@ -545,10 +545,11 @@ describe("M14-idg-inject — live meeting: reads + attendance + packets + agenda
     });
     expect(actionItem.statusCode).toBe(201);
 
-    // route #24 — list action items (org-scoped).
+    // route #24 — list action items (the default assignee is the caller since 5c07d4ad7; a coordinator names the
+    // assignee of the item created above).
     const actionItems = await app.inject({
       method: "GET",
-      url: "/api/v1/idg/action-items",
+      url: `/api/v1/idg/action-items?assignee=${RN_MSHIP}`,
       headers: SUPER,
     });
     expect(actionItems.statusCode).toBe(200);
@@ -889,21 +890,23 @@ describe("M14-idg-inject — known limitation: server-generated sub-resource ids
       payload: { payload: { kind: "team_note", noteText: "Updated team note." } },
     });
     expect(decisionPatch.statusCode).toBe(422);
-    // concurrency precondition: absent If-Match is 428, malformed is 400 — before any state is read.
+    // Since 5c07d4ad7 the child-scope guard (which validates `:id`) runs BEFORE the If-Match precondition on every
+    // id-keyed route, so with this non-uuid id an absent/malformed If-Match is the same 422 on `id`; the 428/400
+    // preconditions are proven on uuid-keyed routes (idg-discipline-notes.test.ts).
     const noIfMatch = await app.inject({
       method: "PATCH",
       url: `/api/v1/idg/decisions/${decisionId}`,
       headers: { ...SUPER, "idempotency-key": "idem-6" },
       payload: { payload: { kind: "team_note", noteText: "Updated team note." } },
     });
-    expect(noIfMatch.statusCode).toBe(428);
+    expect(noIfMatch.statusCode).toBe(422);
     const badIfMatch = await app.inject({
       method: "PATCH",
       url: `/api/v1/idg/decisions/${decisionId}`,
       headers: { ...SUPER, "if-match": "abc", "idempotency-key": "idem-bad" },
       payload: { payload: { kind: "team_note", noteText: "Updated team note." } },
     });
-    expect(badIfMatch.statusCode).toBe(400);
+    expect(badIfMatch.statusCode).toBe(422);
     const decisionSupersede = await app.inject({
       method: "POST",
       url: `/api/v1/idg/decisions/${decisionId}/supersede`,
@@ -1239,6 +1242,11 @@ describe("M14-idg-inject — supersede route scope + quorum gates", () => {
     const service = {
       ...backend,
       decisionMeetingId: (o: string, id: string) => backend.decisionMeetingId(o, real(id)),
+      scopedChildFacts: (
+        o: string,
+        kind: Parameters<typeof backend.scopedChildFacts>[1],
+        id: string,
+      ) => backend.scopedChildFacts(o, kind, real(id)),
       supersedeDecision: (
         o: string,
         u: string,
