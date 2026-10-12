@@ -82,6 +82,8 @@ export type RichBodyResult =
   | { readonly ok: true; readonly value: RichBody }
   | { readonly ok: false; readonly reason: string };
 
+const MAILTO_ADDRESS = "[A-Za-z0-9._+-]{1,64}@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+";
+const MAILTO_PATH = new RegExp(`^${MAILTO_ADDRESS}(?:,${MAILTO_ADDRESS})*$`);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // C0/C1 controls (newline and tab are kept only where the node allows them), bidi embedding/override/isolate
 // controls (Trojan-Source), BOM, word joiner, zero-width space, line/paragraph separators.
@@ -130,15 +132,25 @@ export function stripInvisible(value: string): string {
   return out;
 }
 
+const MAX_CLEAN_PASSES = 8;
+
 /** Text clean-up: Unicode-normalised, controls, bidi and invisible characters removed; newlines only for code. */
 export function cleanRichText(
   value: string,
   keepNewlines = false,
   form: "NFC" | "NFKC" = "NFC",
 ): string {
-  let text = stripInvisible(
-    value.normalize(form).replace(/\r\n?/g, "\n").replace(STRIP_COMMON, ""),
-  );
+  // Strip, normalise, strip again, until nothing changes. Normalising after stripping can compose a base with a
+  // combining mark that an invisible character used to separate (e + ZWNJ + U+0301), so one pass is not a fixed
+  // point; the result of this loop is, which keeps sanitize(sanitize(x)) === sanitize(x) and therefore keeps
+  // write-time mention offsets valid against the body as it is read back.
+  let text = value.replace(/\r\n?/g, "\n");
+  for (let pass = 0; pass < MAX_CLEAN_PASSES; pass += 1) {
+    const next = stripInvisible(text.replace(STRIP_COMMON, "")).normalize(form);
+    const settled = stripInvisible(next.replace(STRIP_COMMON, "")).normalize(form);
+    if (settled === text) break;
+    text = settled;
+  }
   if (!keepNewlines) text = text.replace(STRIP_INLINE, " ");
   else text = text.replace(/[\t]/g, "  ");
   return text;
@@ -187,7 +199,9 @@ export function safeLinkHref(raw: unknown): string | null {
   }
   if (url.protocol === "mailto:") {
     // Only the address is kept: a query (subject, cc, bcc, body) or fragment is attacker-chosen content.
-    if (url.pathname === "") return null;
+    // A conservative address list only: no percent escapes (they can hide bidi or invisible characters and are never
+    // needed for an ordinary address), no non-ASCII, no spaces. Anything else is not linked.
+    if (!MAILTO_PATH.test(url.pathname)) return null;
     const mailto = `mailto:${url.pathname}`;
     return mailto.length > RICH_BODY_LIMITS.maxLinkChars ? null : mailto;
   }
@@ -199,9 +213,10 @@ export function safeLinkHref(raw: unknown): string | null {
 export function linkTargetLabel(href: string): string {
   try {
     const url = new URL(href);
-    return url.protocol === "mailto:" ? decodeURIComponent(url.pathname) : url.host;
+    // Never empty: a reader who is shown nothing cannot tell where the link goes, so fall back to the whole target.
+    return (url.protocol === "mailto:" ? url.pathname : url.host) || href;
   } catch {
-    return "";
+    return href;
   }
 }
 

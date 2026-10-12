@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   RICH_BODY_LIMITS,
   canonicalRichBodyJson,
+  cleanRichText,
   linkTargetLabel,
   normalizeMentionLabel,
   parseStoredRichBody,
@@ -214,6 +215,130 @@ describe("WP 2.1 hardening: size, link count, expansion, invisible characters", 
       "mailto:a@b.example",
     );
     expect(safeLinkHref("mailto:?subject=x")).toBeNull();
+  });
+});
+
+describe("M1: cleaning is idempotent, so write-time offsets index the stored body", () => {
+  const REPROS = [
+    "e\u200C\u0301",
+    "a\u00AD\u0308b",
+    "o\u202E\u0323\u200Bx",
+    "\u0065\u2066\u0301\u034F\u0301",
+  ];
+
+  function alphabetSequence(seed: number): string {
+    const alphabet = [
+      "e",
+      "a",
+      "o",
+      "n",
+      "\u00e9",
+      "\u00f1",
+      "\u0301",
+      "\u0308",
+      "\u0323",
+      "\u0327",
+      "\u200B",
+      "\u200C",
+      "\u00AD",
+      "\u202E",
+      "\u2066",
+      "\u034F",
+      "\u3164",
+      "\uFE0F",
+      " ",
+      "x",
+      "\uFF21",
+      "\u2460",
+      "\u{1F600}",
+    ];
+    let state = seed;
+    const next = () => {
+      state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+      return state;
+    };
+    return Array.from({ length: 4 + (next() % 12) }, () => alphabet[next() % alphabet.length]).join(
+      "",
+    );
+  }
+  const inputs = [...REPROS, ...Array.from({ length: 400 }, (_, i) => alphabetSequence(i + 1))];
+
+  it("cleanRichText(cleanRichText(x)) === cleanRichText(x) for every form", () => {
+    for (const input of inputs) {
+      for (const [newlines, form] of [
+        [false, "NFC"],
+        [true, "NFC"],
+        [false, "NFKC"],
+      ] as const) {
+        const once = cleanRichText(input, newlines, form);
+        expect(cleanRichText(once, newlines, form)).toBe(once);
+      }
+    }
+  });
+
+  it("sanitizeRichBody is idempotent over text, code, mention label and link text", () => {
+    for (const input of inputs) {
+      const value = doc(
+        para(text(`${input}x`), {
+          type: "mention",
+          kind: "staff",
+          entityId: ID,
+          label: `${input}Bob`,
+        }),
+        { type: "codeBlock", text: `${input}\n${input}` },
+      );
+      const first = sanitizeRichBody(value);
+      if (!first.ok) continue;
+      const second = sanitizeRichBody(JSON.parse(JSON.stringify(first.value)));
+      expect(second.ok).toBe(true);
+      if (second.ok)
+        expect(canonicalRichBodyJson(second.value)).toBe(canonicalRichBodyJson(first.value));
+    }
+  });
+
+  it("mention offsets computed at write time index the re-read body exactly", () => {
+    for (const input of inputs) {
+      const written = sanitizeRichBody(
+        doc(
+          para(text(`${input}x`), { type: "mention", kind: "staff", entityId: ID, label: "Bob" }),
+        ),
+      );
+      if (!written.ok) continue;
+      const reread = sanitizeRichBody(JSON.parse(canonicalRichBodyJson(written.value)));
+      expect(reread.ok).toBe(true);
+      if (!reread.ok) continue;
+      const projected = richBodyToPlainText(reread.value);
+      for (const span of richBodyMentions(written.value)) {
+        expect(projected.slice(span.start, span.end)).toBe("@Bob");
+      }
+    }
+  });
+});
+
+describe("L1: mailto targets are a conservative address and nothing else", () => {
+  it.each([
+    "mailto:%zz@evil.com",
+    "mailto:%E2%80%AEmoc.live@x.com",
+    "mailto:a%40b.example",
+    "mailto:a@b.example%00",
+    "mailto:a b@c.example",
+    "mailto:\u00e9@c.example",
+    "mailto:a@b",
+    "mailto:,@x.example",
+  ])("refuses %s", (href) => {
+    expect(safeLinkHref(href)).toBeNull();
+  });
+
+  it("keeps ordinary addresses, single or comma separated", () => {
+    expect(safeLinkHref("mailto:first.last+tag@example.co.uk")).toBe(
+      "mailto:first.last+tag@example.co.uk",
+    );
+    expect(safeLinkHref("mailto:a@b.example,c@d.example")).toBe("mailto:a@b.example,c@d.example");
+  });
+
+  it("linkTargetLabel never returns an empty string", () => {
+    expect(linkTargetLabel("not a url")).not.toBe("");
+    expect(linkTargetLabel("mailto:")).not.toBe("");
   });
 });
 
