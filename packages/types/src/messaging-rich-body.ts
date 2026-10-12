@@ -84,6 +84,7 @@ export type RichBodyResult =
 
 const MAILTO_ADDRESS = "[A-Za-z0-9._+-]{1,64}@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+";
 const MAILTO_PATH = new RegExp(`^${MAILTO_ADDRESS}(?:,${MAILTO_ADDRESS})*$`);
+const VISIBLE_GLYPH = /[\p{L}\p{N}\p{S}\p{P}]/u;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // C0/C1 controls (newline and tab are kept only where the node allows them), bidi embedding/override/isolate
 // controls (Trojan-Source), BOM, word joiner, zero-width space, line/paragraph separators.
@@ -280,8 +281,9 @@ function cleanInline(node: unknown, depth: number, budget: Budget): RichInline {
       if (text === "") reject("text: empty after sanitisation");
       spend(budget, text);
       const marks = cleanMarks(node.marks, budget);
-      // A link needs something to click: whitespace-only text (NBSP, U+3000 ...) would be an invisible link.
-      if (text.trim() === "" && marks.some((mark) => mark.type === "link")) {
+      // A link needs something to click: text with no letter, digit, symbol or punctuation left after cleaning
+      // (whitespace, NBSP, U+3000, a lone combining mark ...) would be an invisible link. Digit-only text is fine.
+      if (!VISIBLE_GLYPH.test(text) && marks.some((mark) => mark.type === "link")) {
         reject("text: a link needs visible text");
       }
       return marks.length > 0 ? { type: "text", text, marks } : { type: "text", text };

@@ -342,19 +342,36 @@ describe("L1: mailto targets are a conservative address and nothing else", () =>
   });
 });
 
-describe("L1: a link needs visible text", () => {
-  it.each([" ", "\u00A0", "\u3000", " \u00A0\u3000 "])(
-    "rejects a link mark on blank text %j",
-    (blank) => {
-      expect(
-        sanitizeRichBody(doc(para(text(blank, { type: "link", href: "https://good.example/" }))))
-          .ok,
-      ).toBe(false);
-    },
-  );
+describe("M1: a link needs something visible to click", () => {
+  it.each([
+    " ",
+    "\u00A0",
+    "\u3000",
+    " \u00A0\u3000 ",
+    "\u0301",
+    "\u20DD",
+    "\u0E31",
+    "\u1AB0",
+    "\u0301\u200D", // cleans to U+0301
+    "\u0301\u0301\u20DD",
+  ])("rejects a link mark on text with no letter, digit, symbol or punctuation: %j", (blank) => {
+    expect(
+      sanitizeRichBody(doc(para(text(blank, { type: "link", href: "https://good.example/" })))).ok,
+    ).toBe(false);
+  });
 
-  it("still allows blank text WITHOUT a link, and visible text with one", () => {
+  it("allows digit-only, symbol-only and punctuation-only link text (visible targets)", () => {
+    for (const visible of ["123", "\u2192", "..."]) {
+      expect(
+        sanitizeRichBody(doc(para(text(visible, { type: "link", href: "https://good.example/" }))))
+          .ok,
+      ).toBe(true);
+    }
+  });
+
+  it("still allows mark-only text WITHOUT a link, and visible text with one", () => {
     expect(sanitizeRichBody(doc(para(text(" ")))).ok).toBe(true);
+    expect(sanitizeRichBody(doc(para(text("\u0301")))).ok).toBe(true);
     expect(
       sanitizeRichBody(doc(para(text("x", { type: "link", href: "https://good.example/" })))).ok,
     ).toBe(true);

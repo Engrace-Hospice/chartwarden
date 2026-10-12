@@ -12,7 +12,7 @@ import {
 import { useMemo } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { type LinkNeighbours, needsDestinationSuffix } from "./link-destination";
+import { needsDestinationSuffix } from "./link-destination";
 import type { MessageReference } from "./messaging-types";
 
 // M36 WP 2.1 - the safe renderer for a structured message body.
@@ -29,7 +29,6 @@ function applyMarks(
   content: ReactNode,
   marks: readonly RichMark[],
   visibleText: string,
-  neighbours: LinkNeighbours,
 ): ReactNode {
   let node = content;
   for (const mark of marks) {
@@ -52,7 +51,7 @@ function applyMarks(
           title={`Opens ${destination}`}
         >
           {node}
-          {needsDestinationSuffix(visibleText, href, neighbours) ? (
+          {needsDestinationSuffix(visibleText, href) ? (
             <span className="wx-link-destination"> ({destination})</span>
           ) : null}
           {external ? <span className="sr-only"> (opens in new tab)</span> : null}
@@ -63,21 +62,16 @@ function applyMarks(
   return node;
 }
 
-/** Text of a directly adjacent plain/marked text node; anything else (mention, break, edge) reads as a boundary. */
-const textOf = (node: RichInline | undefined): string => (node?.type === "text" ? node.text : "");
-
 function Inline({
   node,
-  neighbours,
   references,
 }: {
   node: RichInline;
-  neighbours: LinkNeighbours;
   references: readonly MessageReference[];
 }): JSX.Element {
   if (node.type === "hardBreak") return <br />;
   if (node.type === "text") {
-    return <span>{applyMarks(node.text, node.marks ?? [], node.text, neighbours)}</span>;
+    return <span>{applyMarks(node.text, node.marks ?? [], node.text)}</span>;
   }
   // The server's label (fresh from the directory) wins over the label frozen into the document.
   const reference = references.find(
@@ -108,10 +102,6 @@ function Paragraph({
           // biome-ignore lint/suspicious/noArrayIndexKey: the document is immutable; position is its identity
           key={index}
           node={child}
-          neighbours={{
-            before: textOf(node.content[index - 1]),
-            after: textOf(node.content[index + 1]),
-          }}
           references={references}
         />
       ))}

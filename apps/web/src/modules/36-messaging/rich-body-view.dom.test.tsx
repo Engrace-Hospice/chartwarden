@@ -81,14 +81,14 @@ describe("S1: a link never hides where it goes", () => {
     }
   });
 
-  it("adds no suffix for plain words or when the text already names the real host", () => {
+  it("shows the host for plain words too, and stays quiet only when the text is exactly the host", () => {
     expect(anchor("the guide", "https://good.example/g").textContent).toBe(
-      "the guide (opens in new tab)",
+      "the guide (good.example) (opens in new tab)",
     );
     expect(anchor("good.example", "https://good.example/g").textContent).toBe(
       "good.example (opens in new tab)",
     );
-    expect(anchor("https://GOOD.example/x", "https://good.example/y").textContent).not.toContain(
+    expect(anchor("https://GOOD.example", "https://good.example/y").textContent).not.toContain(
       "(good.example)",
     );
   });
@@ -117,7 +117,7 @@ describe("S1: a link never hides where it goes", () => {
   });
 });
 
-describe("L2: a link inside a longer host-like token shows its destination", () => {
+describe("a link inside a longer host-like token shows its destination (no neighbour rule needed)", () => {
   it("[bank] + .com/login linking elsewhere", () => {
     const { container } = view(
       sanitized(
@@ -125,21 +125,6 @@ describe("L2: a link inside a longer host-like token shows its destination", () 
       ),
     );
     expect(container.querySelector("a")?.textContent).toContain("(evil.net)");
-  });
-
-  it("an ordinary word next to punctuation gets no suffix", () => {
-    const { container } = view(
-      sanitized(
-        docOf(
-          para(
-            text("see "),
-            text("guide", { type: "link", href: "https://evil.net/x" }),
-            text(", then"),
-          ),
-        ),
-      ),
-    );
-    expect(container.querySelector("a")?.textContent).not.toContain("(evil.net)");
   });
 });
 
