@@ -31,7 +31,7 @@ export interface QueueParameters {
   readonly idempotency: string;
 }
 
-/** The twelve §4.4 queue names. */
+/** The thirteen §4.4 queue names (WP 1.5 added `attachment_scan`). */
 export const MESSAGING_QUEUES = {
   fanOut: "messaging.fan_out",
   sendInApp: "messaging.send_in_app",
@@ -45,6 +45,7 @@ export const MESSAGING_QUEUES = {
   bereavementClose: "messaging.bereavement_close",
   deliveryReconcile: "messaging.delivery_reconcile",
   hashVerify: "messaging.hash_verify",
+  attachmentScan: "messaging.attachment_scan",
 } as const;
 
 /** A queue name from the catalog. */
@@ -165,6 +166,19 @@ export const MESSAGING_QUEUE_PARAMETERS: { readonly [K in MessagingQueueName]: Q
     idempotency:
       "(messageId, verifyRunId); destroyed-DEK (offboarded tenant) decode is skipped, not a mismatch",
   },
+  // WP 1.5: the retry path for attachments the scanner could not answer for (the inline scan on `complete` is the
+  // fast path). Idempotent by construction: a verdict is applied with `WHERE scan_state = 'pending'`, so a second
+  // run, or a concurrent inline scan, settles nothing twice. A scanner outage defers (row stays pending); it never
+  // fails the job into the DLQ and never marks anything clean.
+  "messaging.attachment_scan": {
+    name: "messaging.attachment_scan",
+    priority: 3,
+    attempts: 2,
+    backoff: { type: "fixed", baseMs: 60000 },
+    concurrency: 1,
+    dlq: "messaging.attachment_scan.dlq",
+    idempotency: "attachmentId; verdict applied WHERE scan_state='pending' (first writer wins)",
+  },
 };
 
 /** The repeat cadences for the scheduled jobs (UTC cron). Event-triggered queues have no entry. */
@@ -181,4 +195,6 @@ export const MESSAGING_JOB_SCHEDULES = {
   deliveryReconcile: "15 * * * *",
   /** hash_verify: nightly off-peak, 04:00 UTC. */
   hashVerify: "0 4 * * *",
+  /** attachment_scan: every minute (sweeps completed uploads still awaiting a verdict). */
+  attachmentScan: "* * * * *",
 } as const;

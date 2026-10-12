@@ -61,10 +61,18 @@ import {
   rollUpAlertOutcome,
 } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+  WardenXError,
+} from "@wardenx/types";
 import { type SQL, and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { projectAlertInboxPresentation } from "./alert-inbox-presentation";
+import { attachmentPreviewLabel } from "./attachment-preview-label";
+import { bindAttachmentsInTx, loadAttachmentViews } from "./attachments/attachment-service-db";
 import {
   MAX_VERIFICATION_ATTEMPTS,
   VERIFICATION_CODE_TTL_MS,
@@ -77,9 +85,11 @@ import { publishMessageHint } from "./message-hint-events";
 import {
   type MessageBodyCipher,
   channelOr404,
+  blankMessageError,
   createMessageBodyCipher,
   insertEncryptedMessage,
   markMessagesRead,
+  withValidMessageContent,
 } from "./messaging-write-core";
 import { type Part2ChannelGate, createSeamPart2ChannelGate } from "./part2-channel-gate";
 
@@ -89,6 +99,7 @@ const MSG = schema.messages;
 const MR = schema.messageReceipts;
 const MER = schema.messageEntityReferences;
 const MREV = schema.messageRevisions;
+const MATT = schema.messageAttachments;
 
 // ADR-0055 item 3: the author may edit for this long after the message was created (server clock). Tenant shortening
 // arrives with per-tenant messaging settings; the platform maximum is this value.
@@ -893,6 +904,21 @@ export function createDbMessagingRouteService(
           .where(and(eq(MSG.organizationId, orgId), inArray(MSG.channelId, channelIds)))
           .orderBy(MSG.channelId, desc(MSG.createdAt), desc(MSG.id));
         const latest = new Map(latestRows.map((row) => [row.channelId, row]));
+        // A text-less latest message (attachment-only) previews as its attachments, viewer-scoped.
+        const previewTextByMessage = new Map<string, string>();
+        for (const row of latestRows) {
+          if (row.status !== "deleted") {
+            previewTextByMessage.set(
+              row.messageId,
+              messagePreview(cipher.open(orgId, row.bodyCipher)),
+            );
+          }
+        }
+        const previewAttachments = await loadAttachmentViews(tx, {
+          orgId,
+          viewerUserId: userId,
+          messageIds: [...previewTextByMessage].filter(([, text]) => !text).map(([id]) => id),
+        });
 
         // DM labels are server-derived from the other active channel member. This is a single
         // tenant-scoped join for the entire inbox, never a client-supplied title or per-row query.
@@ -990,7 +1016,8 @@ export function createDbMessagingRouteService(
                   preview:
                     message.status === "deleted"
                       ? "Message deleted"
-                      : messagePreview(cipher.open(orgId, message.bodyCipher)),
+                      : previewTextByMessage.get(message.messageId) ||
+                        attachmentPreviewLabel(previewAttachments.get(message.messageId) ?? []),
                   createdAt: message.createdAt.toISOString(),
                   authorDisplayName: message.authorDisplayName?.trim() || null,
                 };
@@ -1171,6 +1198,29 @@ export function createDbMessagingRouteService(
           values.push(reference);
           referencesByMessage.set(reference.messageId, values);
         }
+        // WP 1.5: scan-gated attachment metadata. A tombstoned message shows none; the loader hides quarantined
+        // files from everyone and pending ones from everyone but their uploader.
+        const attachmentsByMessage = await loadAttachmentViews(tx, {
+          orgId,
+          viewerUserId: input.userId,
+          messageIds: chronologicalRows
+            .filter((row) => row.status !== "deleted")
+            .map((row) => row.id),
+        });
+        // How many bound files this viewer cannot see (still scanning for someone else, or quarantined): a bare count,
+        // so an attachment-only message is not mistaken for a tombstone and nothing about the files leaks.
+        const liveIds = chronologicalRows
+          .filter((row) => row.status !== "deleted")
+          .map((row) => row.id);
+        const boundRows =
+          liveIds.length === 0
+            ? []
+            : await tx
+                .select({ messageId: MATT.messageId, n: sql<number>`count(*)::int` })
+                .from(MATT)
+                .where(and(eq(MATT.organizationId, orgId), inArray(MATT.messageId, liveIds)))
+                .groupBy(MATT.messageId);
+        const boundByMessage = new Map(boundRows.map((row) => [row.messageId, Number(row.n)]));
         // Entitled-reader gate: the channel_visibility ABAC predicate already authorized this read
         // at the route, so decrypt each body under the tenant DEK; a 'deleted' tombstone is empty.
         const page = chronologicalRows.map(
@@ -1183,6 +1233,11 @@ export function createDbMessagingRouteService(
             bodyKind: m.bodyKind as MessageBodyKind,
             createdAt: m.createdAt.toISOString(),
             parentMessageId: m.parentMessageId,
+            attachments: attachmentsByMessage.get(m.id) ?? [],
+            hiddenAttachmentCount: Math.max(
+              0,
+              (boundByMessage.get(m.id) ?? 0) - (attachmentsByMessage.get(m.id)?.length ?? 0),
+            ),
             references: (referencesByMessage.get(m.id) ?? []).map((reference) => ({
               kind: reference.kind as "staff" | "patient",
               entityId: reference.entityId,
@@ -1210,7 +1265,10 @@ export function createDbMessagingRouteService(
     canViewChannel: canViewChannelFor,
 
     // --- post a message: archive gate (410) → DEK-encrypt + insert + receipt fan-out (§3.4) -----
-    async sendMessage(orgId, input) {
+    async sendMessage(orgId, rawInput) {
+      // WP 1.5: a message is valid with text OR an attachment. A blank body is stored as the empty string, sealed
+      // like any other body, so edit/revision/idempotency/integrity treat it uniformly.
+      const input = withValidMessageContent(rawInput);
       const references = input.references ?? [];
       validateReferenceRanges(input.body, references);
       const candidates = references.length
@@ -1250,6 +1308,17 @@ export function createDbMessagingRouteService(
           });
           // WP 1.2: a retry of an already-committed send returns the original and emits nothing again.
           if (replayed) return { messageId, channelId: input.channelId, createdAt };
+          // WP 1.5: bind the caller's own completed uploads inside this transaction; any refusal rolls the
+          // message back with it (one uniform 422, so no id-existence oracle).
+          if (input.attachments?.length) {
+            await bindAttachmentsInTx(tx, {
+              orgId,
+              channelId: input.channelId,
+              authorUserId: input.authorUserId,
+              messageId,
+              attachmentIds: input.attachments.map((attachment) => attachment.attachmentId),
+            });
+          }
           if (references.length > 0) {
             await tx.insert(MER).values(
               references.map((reference) => ({
@@ -1355,6 +1424,15 @@ export function createDbMessagingRouteService(
         if (m.authorUserId !== input.userId) {
           throw new ForbiddenError("only the author may edit a message");
         }
+        // WP 1.5: text may be cleared only while the message still shows an attachment.
+        if (!input.body.trim()) {
+          const kept = await loadAttachmentViews(tx, {
+            orgId,
+            viewerUserId: input.userId,
+            messageIds: [input.messageId],
+          });
+          if (!kept.get(input.messageId)?.length) throw blankMessageError();
+        }
         if (Number(m.ageMs) > EDIT_WINDOW_MS) {
           throw new WardenXError(
             "MESSAGE_EDIT_WINDOW_CLOSED",
@@ -1389,7 +1467,10 @@ export function createDbMessagingRouteService(
           bodyWrittenAt: m.editedAt ?? m.createdAt,
           editedBy: input.userId,
         });
-        const { cipher: bodyCipher, sha256 } = cipher.seal(orgId, input.body);
+        const { cipher: bodyCipher, sha256 } = cipher.seal(
+          orgId,
+          input.body.trim() ? input.body : "",
+        );
         const editedAt = new Date();
         await tx
           .update(MSG)

@@ -78,6 +78,37 @@ are not rolled back.
   (`MINIO_APP_ACCESS_KEY` / `MINIO_APP_SECRET_KEY`). The policy allows object and bucket operations on `tenant-*` and
   `wardenx-*` buckets only; the MinIO root account is no longer an application credential.
 
+- **`clamav`** (M36 message attachments) — clamd over TCP on the compose network only (no published port), config from
+  `deploy/clamav/clamd.conf` (shipped to `/opt/wardenx/clamav/` by `deploy.yml`): alerts on encrypted archives/documents
+  and over-limit files, `StreamMaxLength` 26M (>= the 25 MB upload cap), signature DB in the `clamav-data` volume,
+  refreshed in-container by freshclam. api/worker run `MESSAGING_ATTACHMENT_SCANNER=clamd` against `clamav:3310` and do not
+  `depends_on` it: a down scanner leaves attachments `pending` (nothing is delivered). Alert on `pending` attachments
+  older than a few minutes or repeated `deferred` scans; check the scanner with `docker compose exec clamav clamdcheck.sh`.
+  `deploy.sh` brings it up without recreating it. clamd's protocol is unauthenticated, so the sidecar sits on a dedicated
+  `scan` network that only `clamav`, `api` and `worker` join (postgres, minio, docling and the rest cannot reach it), and
+  it is capped (`mem_limit: 4g`, `cpus: 2`) so a scan flood or a bad signature reload cannot starve the host. Follow-ups
+  (not done here, they need network access to resolve): pin `clamav/clamav-debian:1.4` by digest
+  (`image: clamav/clamav-debian@sha256:...`) when you promote it, and alert on a stale signature database (for example
+  `docker compose exec clamav clamscan --version` reporting a database older than 2 days, or freshclam errors in the log).
+- **Attachment upload size (defence in depth).** The presigned PUT signs `content-length` for exactly the declared
+  `byteSize`, so MinIO refuses any other length and the quota (which counts `byteSize`) is real; `complete` also compares
+  the stored size and destroys a mismatching object at once. The independent backstop is on the storage origin:
+  `client_max_body_size` in `nginx/wardenx-storage.conf` (100m today, sized for the largest M22 upload, so it is a ceiling
+  not a per-file limit) and, if you want a hard per-tenant cap, a MinIO bucket quota on `tenant-*` buckets
+  (`mc quota set <alias>/tenant-<orgId> --size <bytes>`). Browsers set `Content-Length` themselves and ignore it in the
+  returned `headers` map, which is expected.
+- **Attachment retention.** `MESSAGING_ATTACHMENT_RETENTION_DAYS` (default 7) is how long the object of a quarantined file, or of
+  a file on a deleted message, is kept before the reaper destroys it (the row stays for audit; it stops counting toward the
+  quota only once the object is destroyed, not when the message is deleted). It runs on the `DATABASE_DESTRUCTION_URL` credential like the orphan reaper.
+- **`tenant-buckets`** — idempotent one-shot (`scripts/backfill-tenant-buckets.ts`) that creates `tenant-<orgId>` for every
+  org lacking it; `deploy.sh` runs it each deploy (a failure only warns: the attachment upload path also creates a missing
+  bucket on demand, and answers a typed 503 naming the bucket if it cannot).
+- `DATABASE_DESTRUCTION_URL` (already set on api/worker) is required by attachments: the tenant eraser and the orphan
+  reaper delete `message_attachment` rows, which `wardenx_app` cannot. Without it the reaper is disabled (logged at boot)
+  and a messaging erase refuses loudly. Its password, `WARDENX_DESTRUCTION_PASSWORD`, is required by `compose.yml`
+  (already true before attachments); `deploy.sh` generates one into `.env.production` when the file predates it and never
+  overwrites a value an operator set.
+
 `minio` also runs MinIO's **audit webhook** to the api (`MINIO_AUDIT_WEBHOOK_*`, token `MINIO_ACCESS_LOG_WEBHOOK_TOKEN`):
 the api keeps successful `GetObject` calls on `tenant-*` buckets and records them as `signed_url_consumed` in
 `document_access_log`, attributed to the principal the signed URL was issued to (best effort; unattributable fetches are

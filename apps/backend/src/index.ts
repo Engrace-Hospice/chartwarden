@@ -187,6 +187,7 @@ import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolv
 import { createDrizzleSystemStatusReader } from "./bootstrap/system-status-store";
 import { createPlatformKekAdapter, loadPlatformKekRing } from "./bootstrap/tenant-kek";
 import { buildM23OverrideAuditPort } from "./m23-override-audit";
+import { buildM36AttachmentBinding, buildM36AttachmentStorage } from "./m36-attachment-storage";
 import {
   type AuthAuditDb,
   createAuthAuditSink,
@@ -1393,6 +1394,7 @@ import {
   buildIdgCarryForwardComplianceConsumer,
   buildM36BreakGlassAlertConsumer,
   buildM36ClinicalAlertConsumer,
+  createAttachmentService,
   createDbMessagingProvider,
   createDbMessagingRouteService,
   createDrizzleAlertEmitter,
@@ -1405,10 +1407,12 @@ import {
   createSosContactCaller,
   mountMessagingRoutes,
   mountMessagingWebhookRoutes,
+  registerM36AttachmentScanWorker,
   registerM36DeliveryWorkers,
   registerM36IntegrityWorkers,
   registerMessagingErasers,
   registerMessagingSeams,
+  scheduleM36AttachmentScanJobs,
   scheduleM36DeliveryJobs,
   scheduleM36IntegrityJobs,
   wireAlertRuleSeed,
@@ -2603,9 +2607,11 @@ export function wireModuleErasers(
   registerMessagingErasers(
     db
       ? {
-          store: createDrizzleMessagingEraseStore(
-            eraseDb ?? db,
-            deps.platformDb
+          store: createDrizzleMessagingEraseStore(eraseDb ?? db, {
+            // WP 1.5: the attachment bytes live in the tenant's MinIO bucket; the structural erase destroys them
+            // BEFORE it deletes the rows that point at them (the refusing port, when MINIO_* is unset, throws).
+            attachmentStorage: buildM36AttachmentStorage(process.env),
+            ...(deps.platformDb
               ? {
                   soleTenantUserIds: buildSoleTenantUserResolver({
                     platformDb: deps.platformDb,
@@ -2613,8 +2619,8 @@ export function wireModuleErasers(
                     jobId: M36_SOLE_TENANT_JOB_ID,
                   }),
                 }
-              : {},
-          ),
+              : {}),
+          }),
         }
       : {},
   );
@@ -3704,6 +3710,16 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   // GAP-101 — M36's first publisher: the out-of-band dispatcher + vendor-webhook reconcile emit
   // `m36.notification.delivery_failed` in the same tx that settles the delivery `failed`.
   const m36OutboxPublisher = bindCallerModule(txOutboxPublisher, "m36");
+  // WP 1.5 — M36 attachment storage (over M22's per-tenant MinIO store) + malware scanner, shared by the routes and the
+  // scan sweep. No MINIO_* => uploads answer 503; no scanner (MESSAGING_ATTACHMENT_SCANNER) => nothing leaves `pending`.
+  const m36AttachmentBinding = buildM36AttachmentBinding(process.env, (message) =>
+    console.warn(`⚠️  ${message}`),
+  );
+  if (s3ObjectStoreConfigFromEnv(process.env) && !destructionDbHandle) {
+    console.warn(
+      "⚠️  M36 attachments are enabled (MINIO_* is set) but DATABASE_DESTRUCTION_URL is not: the attachment orphan reaper is off and a tenant erase will refuse (wardenx_app cannot DELETE message_attachment). Provision wardenx_destruction_login (db:provision-roles) and set it.",
+    );
+  }
   // GAP-099 — M40's first publisher. It had none until now because nothing could WRITE a canonical
   // (migration 0019 created `mdm_canonical_writer` and never a function owning it), so there was no
   // canonical change for M40 to announce; migration 0202 built the write path and events-by-m40.ts the
@@ -4504,7 +4520,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             // GAP-063 — delivers the sms/email endpoint OTP; unbound => registration answers 503.
             sendEndpointVerificationCode: outOfBandBinding.sendEndpointVerificationCode,
             outbox: m36OutboxPublisher,
-          }); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05)
+            attachments: m36AttachmentBinding,
+          }); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05) + WP 1.5 attachments
           // GAP-101 — the §4.9 inbound vendor webhooks (Twilio sms/voice status, Postmark event): signature-authenticated
           // (replay window + HMAC / IP allowlist + bearer), reconciling `notification_delivery`. FAIL-CLOSED: a vendor
           // secret that is not configured answers 503 and never verifies against a default.
@@ -8223,6 +8240,71 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       });
     } catch (err) {
       app.log.error(err, "M36 delivery-sweep schedule registration failed");
+    }
+
+    // ── M36 WP 1.5 — `messaging.attachment_scan` (every minute): the retry path for completed uploads the scanner
+    // could not answer for. `complete` already tries one scan inline. Fan-out needs the platform pool; the verdict is
+    // applied per org under withOrgContext. Without a scanner the sweep is a no-op and attachments stay pending.
+    if (platformDbHandle) {
+      const m36AttachmentScanOrgs = buildActiveOrgEnumerator({
+        platformDb: platformDbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M36_INTEGRITY_PLATFORM_JOB_ID,
+        reason: "M36 WP 1.5 attachment_scan active-org fan-out",
+      });
+      const m36AttachmentScanWorkers = registerM36AttachmentScanWorker({
+        connection: queueConnection,
+        service: createAttachmentService({
+          db: dbHandle.db,
+          storage: m36AttachmentBinding.storage,
+          scanner: m36AttachmentBinding.scanner,
+          outbox: m36OutboxPublisher,
+          canViewChannel: async () => false, // the sweep is not a reader
+          // The orphan reaper deletes rows, which only the destruction credential may do (the app role has no DELETE).
+          reaperDb: destructionDbHandle?.db,
+          // Message only. The storage adapter signs URLs and sanitizes its own fetch errors, but M22's store `opError`
+          // embeds the bucket and object key in its message - for attachments those are ids only
+          // (`messaging/<channelId>/<attachmentId>`), never a file name or PHI. A signed URL must never reach a log.
+          onScanError: (context, err) =>
+            app.log.warn(
+              { ...context, reason: err instanceof Error ? err.message : "unknown" },
+              "M36 attachment scan deferred (row stays pending)",
+            ),
+          // Alert-worthy: the pipeline has not been able to judge this file for a long time (the row stays pending and is
+          // retried hourly; it is NOT quarantined, because "the scanner was down" is not a verdict).
+          onScanUnavailable: (context) =>
+            app.log.error(context, "M36 attachment scan unavailable (row stays pending; check the scanner / bucket)"),
+          onReapError: (context, err) =>
+            app.log.warn(
+              { ...context, reason: err instanceof Error ? err.message : "unknown" },
+              "M36 attachment reap deferred (row and object kept)",
+            ),
+        }),
+        activeOrgs: m36AttachmentScanOrgs,
+        // Message only (not the error object): DB/driver errors can carry statement parameters.
+        onError: (context, err) =>
+          app.log.error(
+            { ...context, reason: err instanceof Error ? err.message : "unknown" },
+            "M36 attachment scan error",
+          ),
+      });
+      if (!destructionDbHandle) {
+        app.log.warn(
+          "M36 attachment orphan reaper disabled: DATABASE_DESTRUCTION_URL is not set (abandoned uploads are kept)",
+        );
+      }
+      attachDlqAlertsToAll(m36AttachmentScanWorkers, "m36");
+      app.addHook("onClose", async () => {
+        await Promise.all(m36AttachmentScanWorkers.map((w) => w.close()));
+      });
+      try {
+        const m36AttachmentScanQueues = await scheduleM36AttachmentScanJobs(queueConnection);
+        app.addHook("onClose", async () => {
+          await Promise.all(m36AttachmentScanQueues.map((q) => q.close()));
+        });
+      } catch (err) {
+        app.log.error(err, "M36 attachment-scan schedule registration failed");
+      }
     }
 
     // ── M36 WP 1.9 (audit F8) — nightly `messaging.hash_verify` (message heads + revision chain) and weekly

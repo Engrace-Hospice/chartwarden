@@ -127,6 +127,7 @@ export type { MessagingCache } from "./cache";
 export type {
   MessagingProvider,
   AttachmentInput,
+  MessageAttachmentView,
   ResolvedMessage,
   MessageReferenceInput,
   MessageReferenceKind,

@@ -206,6 +206,33 @@ describe("createS3ObjectStore presign", () => {
     expect(expiresAt).toBe("2013-05-25T00:00:00.000Z");
   });
 
+  it("optional responseOverrides (M36 chat attachments) are signed query params; absent => M22 URL unchanged", async () => {
+    const store = createS3ObjectStore(
+      {
+        endpoint: "http://minio.local:9000",
+        accessKeyId: AWS_EXAMPLE_ACCESS_KEY,
+        secretAccessKey: AWS_EXAMPLE_SECRET_KEY,
+      },
+      { fetchImpl: neverFetch, now: fixedNow },
+    );
+    const descriptor: SignedUrlDescriptor = {
+      bucket: "tenant-abc",
+      objectKey: "messaging/c/a",
+      ttlSeconds: 120,
+      accessKind: "signed_url_issued",
+    };
+    const plain = await store.presign({ descriptor, organizationId: orgId });
+    const forced = await store.presign({
+      descriptor,
+      organizationId: orgId,
+      responseOverrides: { contentDisposition: "attachment", contentType: "application/pdf" },
+    });
+    expect(plain.url).not.toContain("response-content");
+    expect(forced.url).toContain("response-content-disposition=attachment");
+    expect(forced.url).toContain("response-content-type=application%2Fpdf");
+    expect(forced.url).not.toBe(plain.url); // the signature covers the overrides
+  });
+
   it("path-style (MinIO default): shape, descriptor TTL, deterministic under a fixed clock", async () => {
     const store = createS3ObjectStore(
       {
@@ -642,6 +669,28 @@ describe("createS3ObjectStore verified upload (mocked fetch)", () => {
       "x-amz-checksum-sha256": Buffer.from(sha256Hex, "hex").toString("base64"),
     });
     expect(result.expiresAt).toBe("2013-05-24T00:15:00.000Z");
+  });
+
+  it("binds the exact byte length into the signature when contentLength is given (H1), and leaves other callers unchanged", async () => {
+    const store = createS3ObjectStore(testConfig, { fetchImpl: neverFetch, now: fixedNow });
+    const sha256Hex = createHash("sha256").update("verified upload").digest("hex");
+    const base = {
+      bucket: "tenant-abc",
+      objectKey: "uploads/upload-id/object",
+      mimeType: "application/pdf",
+      sha256Hex,
+      ttlSeconds: 900,
+    };
+    const bound = await store.presignUpload({ ...base, contentLength: 1234 });
+    expect(bound.url).toContain(
+      "X-Amz-SignedHeaders=content-length%3Bcontent-type%3Bhost%3Bx-amz-checksum-sha256",
+    );
+    expect(bound.headers["content-length"]).toBe("1234");
+    const other = await store.presignUpload({ ...base, contentLength: 1235 });
+    expect(other.url).not.toBe(bound.url); // a different length is a different signature
+    const unbound = await store.presignUpload(base);
+    expect(unbound.url).not.toContain("content-length");
+    expect(unbound.headers).not.toHaveProperty("content-length");
   });
 
   it("HEADs with checksum mode and normalizes verified metadata to lowercase hex", async () => {

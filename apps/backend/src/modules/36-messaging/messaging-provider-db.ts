@@ -28,6 +28,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
+import { bindAttachmentsInTx } from "./attachments/attachment-service-db";
 import { publishMessageHint } from "./message-hint-events";
 import {
   type MessagingOutboxPort,
@@ -38,6 +39,7 @@ import {
   channelOr404,
   createMessageBodyCipher,
   insertEncryptedMessage,
+  withValidMessageContent,
 } from "./messaging-write-core";
 import { type Part2ChannelGate, createSeamPart2ChannelGate } from "./part2-channel-gate";
 
@@ -160,7 +162,9 @@ export function createDbMessagingProvider(
       );
     },
 
-    async sendMessage(orgId, input) {
+    async sendMessage(orgId, rawInput) {
+      // Same rule as the route: text or an attachment. A seam caller (the portal) cannot create a blank message.
+      const input = withValidMessageContent(rawInput);
       return withOrgContext(
         db,
         { organizationId: orgId, userId: input.authorUserId },
@@ -178,6 +182,16 @@ export function createDbMessagingProvider(
             clientMessageId: input.clientMessageId,
           });
           if (sent.replayed) return { messageId: sent.messageId, createdAt: sent.createdAt };
+          // WP 1.5: the seam binds attachments exactly like the route (never silently drops them).
+          if (input.attachments?.length) {
+            await bindAttachmentsInTx(tx, {
+              orgId,
+              channelId: input.channelId,
+              authorUserId: input.authorUserId,
+              messageId: sent.messageId,
+              attachmentIds: input.attachments.map((attachment) => attachment.attachmentId),
+            });
+          }
           await publishMessageHint(opts.outbox, tx, "sent", {
             orgId,
             channelId: input.channelId,

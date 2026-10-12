@@ -129,6 +129,8 @@ export interface ObjectStorePort {
     readonly mimeType: string;
     readonly sha256Hex: string;
     readonly ttlSeconds: number;
+    /** When set, `content-length` is signed: the store refuses a body of any other length (declared-size enforcement). */
+    readonly contentLength?: number;
   }): Promise<{
     readonly url: string;
     readonly headers: Readonly<Record<string, string>>;
@@ -138,6 +140,8 @@ export interface ObjectStorePort {
   inspectObject(args: {
     readonly bucket: string;
     readonly objectKey: string;
+    /** Optional: aborts the request (M36 attachments bound every store call). Ignored by stores that cannot abort. */
+    readonly signal?: AbortSignal;
   }): Promise<{
     readonly byteSize: number;
     readonly mimeType: string;
@@ -147,12 +151,19 @@ export interface ObjectStorePort {
   presign(args: {
     readonly descriptor: SignedUrlDescriptor;
     readonly organizationId: OrgId;
+    /** Optional (M36 chat attachments): sign S3 `response-content-*` overrides so the object is served as a download. */
+    readonly responseOverrides?: {
+      readonly contentDisposition?: string;
+      readonly contentType?: string;
+    };
   }): Promise<{ readonly url: string; readonly expiresAt: IsoInstant }>;
   /** Version-aware destruction: delete EVERY object version + delete-marker for the key (D12 / DR-019). */
   destroyAllVersions(args: {
     readonly bucket: string;
     readonly objectKey: string;
     readonly organizationId: OrgId;
+    /** Optional: aborts the list/delete requests (see `inspectObject`). */
+    readonly signal?: AbortSignal;
   }): Promise<void>;
 }
 

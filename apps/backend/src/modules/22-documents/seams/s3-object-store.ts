@@ -331,6 +331,8 @@ function createS3SignedFetch(
   readonly query: readonly (readonly [string, string])[];
   readonly payload: Uint8Array | null;
   readonly extraHeaders?: Readonly<Record<string, string>>;
+  /** Aborts the HTTP request (M36 attachments bound every store call; additive, ignored by M22's own callers). */
+  readonly signal?: AbortSignal;
 }) => Promise<Response> {
   const endpointUrl = parseS3Endpoint(config.endpoint, constructorName);
   assertS3Credentials(config, constructorName);
@@ -383,6 +385,7 @@ function createS3SignedFetch(
     const url = `${t.origin}${t.canonicalUri}${canonicalQuery ? `?${canonicalQuery}` : ""}`;
     return fetchImpl(url, {
       method: args.method,
+      ...(args.signal ? { signal: args.signal } : {}),
       headers: {
         ...sendHeaders,
         authorization: `${SIGV4_ALGORITHM} Credential=${config.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
@@ -447,7 +450,14 @@ export function createS3ObjectStore(
       return { sha256Hex };
     },
 
-    async presignUpload({ bucket, objectKey, mimeType, sha256Hex, ttlSeconds: requested }) {
+    async presignUpload({
+      bucket,
+      objectKey,
+      mimeType,
+      sha256Hex,
+      ttlSeconds: requested,
+      contentLength,
+    }) {
       const ttlSeconds = Math.min(Math.max(Math.ceil(requested), 30), 900);
       const at = now();
       const amzDate = sigV4AmzDate(at);
@@ -455,7 +465,11 @@ export function createS3ObjectStore(
       const scope = scopeFor(dateStamp);
       const t = target(bucket, objectKey);
       const checksum = Buffer.from(sha256Hex, "hex").toString("base64");
-      const signedHeadersValue = "content-type;host;x-amz-checksum-sha256";
+      // Optional exact-size binding: with `content-length` signed the store refuses a body of any other length.
+      const signedHeadersValue =
+        contentLength === undefined
+          ? "content-type;host;x-amz-checksum-sha256"
+          : "content-length;content-type;host;x-amz-checksum-sha256";
       const query: (readonly [string, string])[] = [
         ["X-Amz-Algorithm", SIGV4_ALGORITHM],
         ["X-Amz-Credential", `${config.accessKeyId}/${scope}`],
@@ -468,6 +482,7 @@ export function createS3ObjectStore(
         host: t.host,
         "content-type": mimeType,
         "x-amz-checksum-sha256": checksum,
+        ...(contentLength === undefined ? {} : { "content-length": String(contentLength) }),
       };
       const { text: canonicalRequest } = sigV4CanonicalRequest({
         method: "PUT",
@@ -488,18 +503,23 @@ export function createS3ObjectStore(
       );
       return {
         url: `${t.origin}${t.canonicalUri}?${canonicalQuery}&X-Amz-Signature=${signature}`,
-        headers: { "content-type": mimeType, "x-amz-checksum-sha256": checksum },
+        headers: {
+          "content-type": mimeType,
+          "x-amz-checksum-sha256": checksum,
+          ...(contentLength === undefined ? {} : { "content-length": String(contentLength) }),
+        },
         expiresAt: new Date(at.getTime() + ttlSeconds * 1000).toISOString(),
       };
     },
 
-    async inspectObject({ bucket, objectKey }) {
+    async inspectObject({ bucket, objectKey, signal }) {
       const res = await signedFetch({
         method: "HEAD",
         bucket,
         objectKey,
         query: [],
         payload: null,
+        ...(signal ? { signal } : {}),
         extraHeaders: { "x-amz-checksum-mode": "ENABLED" },
       });
       if (res.status === 404) return null;
@@ -519,7 +539,14 @@ export function createS3ObjectStore(
       };
     },
 
-    async presign({ descriptor }: { descriptor: SignedUrlDescriptor; organizationId: OrgId }) {
+    async presign({
+      descriptor,
+      responseOverrides,
+    }: {
+      descriptor: SignedUrlDescriptor;
+      organizationId: OrgId;
+      responseOverrides?: { contentDisposition?: string; contentType?: string };
+    }) {
       const requested = descriptor.ttlSeconds;
       const ttlSeconds = Math.min(
         Number.isFinite(requested) && requested > 0
@@ -538,6 +565,13 @@ export function createS3ObjectStore(
         ["X-Amz-Date", amzDate],
         ["X-Amz-Expires", String(ttlSeconds)],
         ["X-Amz-SignedHeaders", "host"],
+        // Optional and absent for every M22 caller, so M22 URLs are byte-identical to before.
+        ...(responseOverrides?.contentDisposition
+          ? [["response-content-disposition", responseOverrides.contentDisposition] as const]
+          : []),
+        ...(responseOverrides?.contentType
+          ? [["response-content-type", responseOverrides.contentType] as const]
+          : []),
       ];
       const canonicalQuery = sigV4CanonicalQuery(query);
       const { text: canonicalRequest } = sigV4CanonicalRequest({
@@ -560,7 +594,7 @@ export function createS3ObjectStore(
       return { url, expiresAt }; // handed straight to the caller — never logged (§4.12)
     },
 
-    async destroyAllVersions({ bucket, objectKey }) {
+    async destroyAllVersions({ bucket, objectKey, signal }) {
       // Page through ?versions with prefix=<key>; entries sort ascending by key, so once a page's
       // max key passes the target the exact-match set is complete.
       let keyMarker: string | null = null;
@@ -578,6 +612,7 @@ export function createS3ObjectStore(
           objectKey: null,
           query,
           payload: null,
+          ...(signal ? { signal } : {}),
         });
         if (listRes.status === 404) return; // bucket gone ⇒ every version already gone
         if (!listRes.ok)
@@ -593,6 +628,7 @@ export function createS3ObjectStore(
             objectKey,
             query: [["versionId", entry.versionId]],
             payload: null,
+            ...(signal ? { signal } : {}),
           });
           if (!delRes.ok && delRes.status !== 404) {
             // 404 ⇒ that version is already gone (idempotent shred); anything else fails LOUDLY.

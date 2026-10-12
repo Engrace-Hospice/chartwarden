@@ -743,6 +743,7 @@ jobs:
           - { name: "M36 Idempotent send", scripts: "test:m36:idempotent-send:live" }
           # WP 1.7 - tenant & IDOR proof: every M36 route + the socket gateway attacked from org B and from an in-org non-member (needs Valkey, which this job provides).
           - { name: "M36 Tenant IDOR", scripts: "test:m36:tenant-idor:live" }
+          - { name: "M36 Attachments", scripts: "test:m36:attachments:live" }
           - { name: "GAP-173 M40 license + grief RLS", scripts: "test:gap-173:live" }
           - { name: "M31 prefs + uploads", scripts: "test:gap-031:live" }
           - { name: "M30 CAHPS export + M2 auditor link", scripts: "test:gap-087:live" }

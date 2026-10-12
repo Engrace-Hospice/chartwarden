@@ -23,10 +23,22 @@ import {
   eraseTenantMessaging,
 } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
+import { DegradedError } from "@wardenx/types";
 import type { DataEraser } from "@wardenx/types";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
+import { ERASE_DESTROY_DEADLINE_MS, ERASE_UPLOAD_URL_GRACE_MS, eraseLockName } from "../attachments/attachment-policy";
+import type { AttachmentStoragePort } from "../attachments/attachment-ports";
+import { runWithDeadline } from "../attachments/attachment-scan-gate";
 import { ERASED_BODY_SHA256 } from "../jobs/integrity-jobs";
+
+/** Attachment objects destroyed (then their rows deleted) per short transaction. */
+const ERASE_OBJECT_BATCH = 100;
+/** Passes of "destroy every object" before the structural step; each pass after the first only finds late uploads. */
+const ERASE_MAX_OBJECT_PASSES = 5;
+
+/** Thrown inside the preflight probe's transaction to roll it back after the real removal ran. */
+class ProbeRollback extends Error {}
 
 /** Injected adapter for the M36 eraser (slice defaults to the in-memory messaging-erase store). */
 export interface MessagingEraserDeps {
@@ -44,6 +56,14 @@ export interface DrizzleMessagingEraseDeps {
    * enumeration (the M30 active-org-enumerator pattern); without it the D9 step refuses.
    */
   soleTenantUserIds?: (orgId: string) => Promise<readonly string[]>;
+  /**
+   * Destroys the bytes behind `message_attachment.object_key` (the composition root binds M36's storage port over the
+   * M22 tenant bucket). Without it, an org that HAS attachment objects cannot be erased: the structural step throws
+   * (loud, retryable) rather than certify destruction while the only copy of the bytes survives unreachable.
+   */
+  attachmentStorage?: Pick<AttachmentStoragePort, "destroyObject">;
+  /** Epoch clock for the upload-URL expiry check (tests). Default `new Date()`. */
+  now?: () => Date;
 }
 
 /**
@@ -61,9 +81,9 @@ export interface DrizzleMessagingEraseDeps {
  *     `octet_length > 0` is the idempotency predicate: a second pass finds 0.
  *   • `deleteStructuralRows` — FK-ordered hard deletes of the org-scoped subtree under
  *     `withOrgContext`, children before parents (delivery→alert; attachment/receipt→message→
- *     channel_member→channel; overlay→template). The parent-join children (notification_delivery,
- *     message_attachment — no organization_id by design, 0017) are keyed through a parent
- *     subquery, mirroring their RLS shape.
+ *     channel_member→channel; overlay→template). The parent-join child (notification_delivery
+ *     — no organization_id by design, 0017) is keyed through a parent subquery, mirroring its RLS shape;
+ *     message_attachment carries organization_id (1075) and is keyed on it; attachment_access_event cascades from it.
  *   • `deleteSoleTenantUserRows` — per sole-tenant user, deletes presence / delivery_endpoint /
  *     user_notification_preferences inside `withOrgContext` with THAT user as the context user:
  *     those tables' RLS keys on `app.user_id` (self-only, 0017 §5–7), so the subject's own id is
@@ -84,6 +104,7 @@ export function createDrizzleMessagingEraseStore(
   const MSG = schema.messages;
   const RCPT = schema.messageReceipts;
   const ATT = schema.messageAttachments;
+  const EB = schema.messagingEraseBlocks;
   const AL = schema.alerts;
   const ND = schema.notificationDeliveries;
   const RO = schema.tenantAlertRoutingOverride;
@@ -92,6 +113,161 @@ export function createDrizzleMessagingEraseStore(
   const PRES = schema.presence;
   const DE = schema.deliveryEndpoints;
   const UNP = schema.userNotificationPreferences;
+
+  /**
+   * Stop the tenant from creating any more attachment objects (migration 1076). Takes the erase lock EXCLUSIVELY: that
+   * waits for every in-flight `authorize`/`complete` (which hold it SHARED until they commit), so their rows are visible to
+   * the sweeps below, and once this commits every later one sees the flag and refuses. Idempotent.
+   */
+  async function blockNewUploads(orgId: string): Promise<void> {
+    await withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtextextended(${eraseLockName(orgId)}, 0))`,
+      );
+      await tx.insert(EB).values({ organizationId: orgId }).onConflictDoNothing();
+    });
+  }
+
+  /**
+   * A presigned PUT minted before the block stays valid until its own expiry, and an object that lands after the destroy
+   * pass is an orphan once its row is deleted. So refuse (retryably) until every URL the tenant ever minted has expired;
+   * with new authorizes blocked, nothing can then create an object, and the destroy passes that follow are final.
+   */
+  async function assertUploadUrlsExpired(orgId: string): Promise<void> {
+    const cutoff = new Date((deps.now?.() ?? new Date()).getTime() - ERASE_UPLOAD_URL_GRACE_MS);
+    const [live] = await withOrgContext(db, { organizationId: orgId, userId: "" }, (tx) =>
+      tx
+        .select({ until: ATT.uploadExpiresAt })
+        .from(ATT)
+        .where(and(eq(ATT.organizationId, orgId), gt(ATT.uploadExpiresAt, cutoff)))
+        .orderBy(desc(ATT.uploadExpiresAt))
+        .limit(1),
+    );
+    if (live?.until) {
+      throw new DegradedError(
+        "attachment-destruction",
+        `upload URLs minted before the erase block stay valid until ${live.until.toISOString()}; retry after that (new uploads are already refused)`,
+      );
+    }
+  }
+
+  /**
+   * Destroy the bytes behind `message_attachment.object_key` in bounded batches (the M22 document-eraser order,
+   * D12/DR-019): the row is the only pointer to the object, so a row is deleted only AFTER its object is gone, batch by
+   * batch, each batch in its own short transaction (no network IO inside one long transaction). A failure throws with the
+   * failing batch's rows (and so its keys) still in place; objects already destroyed are idempotent on the retry.
+   * Returns how many objects this pass destroyed.
+   *
+   * (`preflightAttachmentRemoval` runs first: the rows can only be removed with the destruction credential, so an erase run
+   * without it would destroy the bytes and then fail on the row removal, leaving rows that point at nothing.)
+   *
+   * Retry semantics if the real removal still removes nothing after a batch's objects were destroyed (only a grant revoked
+   * mid-run can do that): it throws; the batch's rows remain, the destroyed objects are gone, and the retry re-destroys
+   * them idempotently (destroyObject on a missing object resolves) and then removes the rows.
+   */
+  const noObjectStore = () =>
+    new DegradedError(
+      "attachment-storage",
+      "tenant has attachment objects but no object store is bound to destroy them; refusing to erase (retry once bound)",
+    );
+  const cannotRemove = () =>
+    new DegradedError(
+      "attachment-destruction",
+      "tenant has attachment objects but this connection cannot delete message_attachment rows (bind DATABASE_DESTRUCTION_URL); refusing to destroy the bytes first",
+    );
+
+  /**
+   * Runs BEFORE the erase block and before anything is destroyed (a misconfigured eraser must not lock the tenant out of
+   * uploads for nothing): needs an object store when the tenant has objects, and a connection that can really remove the
+   * rows. The probe is a REAL removal of the first row inside a transaction that is rolled back: it exercises privilege,
+   * RLS policy, triggers and FKs exactly as the real one will, and commits nothing.
+   */
+  async function preflightAttachmentRemoval(orgId: string): Promise<void> {
+    const [first] = await withOrgContext(db, { organizationId: orgId, userId: "" }, (tx) =>
+      tx
+        .select({ id: ATT.id })
+        .from(ATT)
+        .where(and(eq(ATT.organizationId, orgId), sql`${ATT.objectKey} IS NOT NULL`))
+        .orderBy(ATT.id)
+        .limit(1),
+    );
+    if (!first) return;
+    if (!deps.attachmentStorage) throw noObjectStore();
+    let probeRemoved = false;
+    try {
+      await withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
+        const gone = await tx
+          .delete(ATT)
+          .where(and(eq(ATT.organizationId, orgId), eq(ATT.id, first.id)))
+          .returning({ id: ATT.id });
+        probeRemoved = gone.length === 1;
+        throw new ProbeRollback(); // never commit the probe
+      });
+    } catch (error) {
+      if (!(error instanceof ProbeRollback)) throw cannotRemove(); // permission denied, trigger refusal, ...
+    }
+    if (!probeRemoved) throw cannotRemove(); // the grant exists but RLS hides the row from this role
+  }
+
+  async function destroyAttachmentObjects(orgId: string): Promise<number> {
+    const withKeys = and(eq(ATT.organizationId, orgId), sql`${ATT.objectKey} IS NOT NULL`);
+    const nextBatch = () =>
+      withOrgContext(db, { organizationId: orgId, userId: "" }, (tx) =>
+        tx
+          .select({ id: ATT.id, key: ATT.objectKey })
+          .from(ATT)
+          .where(withKeys)
+          .orderBy(ATT.id)
+          .limit(ERASE_OBJECT_BATCH),
+      );
+    let batch = await nextBatch();
+    if (batch.length === 0) return 0;
+    const storage = deps.attachmentStorage;
+    if (!storage) throw noObjectStore(); // (preflight refused earlier; kept so no code path destroys without a store)
+    let destroyed = 0;
+    while (batch.length > 0) {
+      for (const { key } of batch) {
+        if (key) {
+          await runWithDeadline(
+            (signal) => storage.destroyObject({ organizationId: orgId, objectKey: key, signal }),
+            ERASE_DESTROY_DEADLINE_MS,
+            () => new DegradedError("attachment-destruction", "an object destroy exceeded its deadline; retry"),
+          );
+          destroyed += 1;
+        }
+      }
+      const ids = batch.map((r) => r.id);
+      const gone = await withOrgContext(db, { organizationId: orgId, userId: "" }, (tx) =>
+        tx
+          .delete(ATT)
+          .where(and(eq(ATT.organizationId, orgId), inArray(ATT.id, ids)))
+          .returning({ id: ATT.id }),
+      );
+      if (gone.length === 0) {
+        throw new DegradedError(
+          "attachment-destruction",
+          "attachment rows could not be deleted after their objects were destroyed; refusing to continue (the retry resumes)",
+        );
+      }
+      batch = await nextBatch();
+    }
+    return destroyed;
+  }
+
+  /**
+   * Destroy until a pass finds nothing: an upload authorized while the erase was running (a row with an object key
+   * created after an earlier pass) must have its bytes destroyed too before the structural step removes its row.
+   * Bounded: a tenant that keeps uploading through repeated passes fails the erase loudly (retryable), it does not loop.
+   */
+  async function destroyAllAttachmentObjects(orgId: string): Promise<void> {
+    for (let pass = 0; pass < ERASE_MAX_OBJECT_PASSES; pass += 1) {
+      if ((await destroyAttachmentObjects(orgId)) === 0) return;
+    }
+    throw new DegradedError(
+      "attachment-destruction",
+      "attachment objects kept appearing while the tenant was being erased; retry once uploads have stopped",
+    );
+  }
 
   return {
     async destroyTenantDek(orgId) {
@@ -106,14 +282,29 @@ export function createDrizzleMessagingEraseStore(
     },
 
     async deleteStructuralRows(orgId) {
+      // 1. Close the door (no new object can be created for this tenant), 2. wait out the URLs already minted, 3. destroy
+      // the bytes in their own short transactions (see destroyAttachmentObjects), 4. delete the rows.
+      await preflightAttachmentRemoval(orgId);
+      await blockNewUploads(orgId);
+      await assertUploadUrlsExpired(orgId);
+      await destroyAllAttachmentObjects(orgId);
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
+        // Last look, inside this transaction: a row with an object that appeared after the final pass would be removed
+        // with its bytes orphaned. Refuse (retryable) instead; the whole transaction rolls back.
+        const [late] = await tx
+          .select({ id: ATT.id })
+          .from(ATT)
+          .where(and(eq(ATT.organizationId, orgId), sql`${ATT.objectKey} IS NOT NULL`))
+          .limit(1);
+        if (late) {
+          throw new DegradedError(
+            "attachment-destruction",
+            "an attachment object appeared during the erase; retry",
+          );
+        }
         const del = async <T extends { id: string }>(run: () => Promise<T[]>): Promise<number> =>
           (await run()).length;
         const orgAlertIds = tx.select({ id: AL.id }).from(AL).where(eq(AL.organizationId, orgId));
-        const orgMessageIds = tx
-          .select({ id: MSG.id })
-          .from(MSG)
-          .where(eq(MSG.organizationId, orgId));
 
         let deleted = 0;
         // Children of alert / message first (RESTRICT-shaped parents).
@@ -123,8 +314,11 @@ export function createDrizzleMessagingEraseStore(
         deleted += await del(() =>
           tx.delete(AL).where(eq(AL.organizationId, orgId)).returning({ id: AL.id }),
         );
+        // WP 1.5: attachments carry organization_id (1075) and may be unbound (no message yet), so they are
+        // keyed on the org, not on a message subquery. Their append-only access log (no DELETE for the app role)
+        // goes with them through the composite FK's ON DELETE CASCADE, like message_revision.
         deleted += await del(() =>
-          tx.delete(ATT).where(inArray(ATT.messageId, orgMessageIds)).returning({ id: ATT.id }),
+          tx.delete(ATT).where(eq(ATT.organizationId, orgId)).returning({ id: ATT.id }),
         );
         deleted += await del(() =>
           tx.delete(RCPT).where(eq(RCPT.organizationId, orgId)).returning({ id: RCPT.id }),

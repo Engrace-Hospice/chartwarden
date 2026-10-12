@@ -16,7 +16,7 @@ import {
   sealMessageBody,
 } from "@wardenx/messaging";
 import type { MessageBodyKind } from "@wardenx/messaging";
-import { IdempotencyConflictError, NotFoundError, WardenXError } from "@wardenx/types";
+import { IdempotencyConflictError, NotFoundError, ValidationError, WardenXError } from "@wardenx/types";
 import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 
 const CH = schema.channels;
@@ -25,6 +25,25 @@ const MSG = schema.messages;
 const MR = schema.messageReceipts;
 const MEMBERSHIP = schema.memberships;
 const USER = schema.users;
+
+export function blankMessageError(): ValidationError {
+  return new ValidationError("a message needs text or at least one attachment", [
+    { field: "body", code: "REQUIRED", message: "text or an attachment is required" },
+  ]);
+}
+
+/**
+ * The one rule for what a message may be (WP 1.5): text OR at least one attachment. Returns the input with a blank body
+ * normalised to the empty string (stored and sealed like any other body), or throws. Shared by the route service and the
+ * MessagingProvider seam so no caller can create a blank message.
+ */
+export function withValidMessageContent<T extends { body: string; attachments?: readonly unknown[] | undefined }>(
+  input: T,
+): T {
+  if (input.body.trim()) return input;
+  if (!input.attachments?.length) throw blankMessageError();
+  return { ...input, body: "" };
+}
 
 /** A Drizzle transaction handle (the structural type the DbClient hands its `transaction` callback). */
 export type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];

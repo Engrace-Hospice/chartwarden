@@ -77,6 +77,24 @@ export const M36_ACTION_CATALOG: ModuleActionCatalog = [
     isPartTwoEligible: false,
   },
   {
+    action: "m36.attachment.cleared", // WP 1.5 — a pending attachment passed the malware scan
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "A message attachment passed its malware scan and became deliverable (attachmentId, channelId, scanner). Ids and the scanner name only; the filename never enters audit.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
+    action: "m36.attachment.quarantined", // WP 1.5 — a pending attachment failed the malware scan
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "A message attachment was quarantined by the malware scan (attachmentId, channelId, signature, scanner). It is never delivered to, or downloadable by, any member including the uploader. Ids and the signature name only.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
     action: "m36.membership.access_ended", // WP 1.4 — M2 revoke/offboard ended a user's channel memberships
     moduleOwner: "m36",
     defaultRetentionClass: "compliance",
