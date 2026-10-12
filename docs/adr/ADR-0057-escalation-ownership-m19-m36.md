@@ -5,10 +5,9 @@
 - **Phase:** Messaging Hub Phase 4 (WP 4.3, 4.4, 4.5); the seam contract is a Phase 0 deliverable (plan WP 0.5).
 - **Extends:** [ADR-0005](ADR-0005-manifest-single-source-of-truth.md) (seam interfaces live in `packages/types`; consumption needs no
   import edge), M19 spec §4.3 (seams) and §4.8 (crons).
-- **Related:** ADR-0056 (draft: the aggregate this seam serves), [ADR-0011](ADR-0011-ownership-inversion-rls-bypass.md) (no direct
+- **Related:** ADR-0056 (the aggregate this seam serves), [ADR-0011](ADR-0011-ownership-inversion-rls-bypass.md) (no direct
   cross-module table access), [ADR-0009](ADR-0009-phase-dr-int-tier-discipline.md).
 
-> **Number check.** Intended ordinal ADR-0057; re-check at promotion (last on `main` at drafting: ADR-0053).
 
 ## Context
 

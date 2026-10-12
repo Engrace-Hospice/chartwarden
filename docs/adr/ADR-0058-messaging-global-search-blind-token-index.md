@@ -8,11 +8,10 @@
 - **Phase:** Messaging Hub Phase 2 (WP 2.7b). Needed before Phase 2 work on global search starts.
 - **Extends:** [ADR-0038](ADR-0038-app-layer-envelope-encryption.md) (app-layer envelope encryption) and
   [ADR-0045](ADR-0045-platform-kek-custody.md) (KEK custody) for key derivation; plan `02` §6.
-- **Related:** ADR-0055 (draft: redaction and revisions - what is indexed and when it is removed),
+- **Related:** ADR-0055 (redaction and revisions - what is indexed and when it is removed),
   [ADR-0010](ADR-0010-tenancy-rls-invariants.md), [ADR-0011](ADR-0011-ownership-inversion-rls-bypass.md),
   [ADR-0051](ADR-0051-legal-hold-is-an-overlay-not-a-retention-class-flip.md) (derived data is not the record).
 
-> **Number check.** Intended ordinal ADR-0058; re-check at promotion (last on `main` at drafting: ADR-0053).
 
 ## Context
 

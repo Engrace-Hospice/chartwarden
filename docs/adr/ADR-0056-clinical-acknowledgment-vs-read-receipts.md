@@ -5,11 +5,10 @@
 - **Date:** 2026-10-11
 - **Phase:** Messaging Hub Phase 4 (WP 4.1, 4.2, 4.4, 4.5, 4.6); the `ack` retirement (WP 1.6/1.9) lands in Phase 1.
 - **Extends:** M36 spec §3.4 (`message_receipt`). Resolves audit F7.
-- **Related:** ADR-0057 (draft: escalation ownership; this ADR owns request/ack state, that one owns who is paged),
-  ADR-0055 (draft: an ack binds to a message revision), ADR-0054 (draft: realtime hints),
+- **Related:** ADR-0057 (escalation ownership; this ADR owns request/ack state, that one owns who is paged),
+  ADR-0055 (an ack binds to a message revision), ADR-0054 (realtime hints),
   [ADR-0010](ADR-0010-tenancy-rls-invariants.md), [ADR-0011](ADR-0011-ownership-inversion-rls-bypass.md).
 
-> **Number check.** Intended ordinal ADR-0056; re-check at promotion (last on `main` at drafting: ADR-0053).
 
 ## Context
 

@@ -8,11 +8,9 @@
   (the "client delivery is deferred" and "until then UI freshness is REST poll" clauses). See "What of ADR-0036 remains in force".
 - **Related:** [ADR-0005](ADR-0005-manifest-single-source-of-truth.md) (outbox/seams carry cross-module effects),
   [ADR-0004](ADR-0004-retention-and-session-conflicts.md) (session lifetimes), [ADR-0049](ADR-0049-tenant-subdomains.md)
-  (host is a consistency check, never an authorization source), ADR-0055 / ADR-0056 (draft: events this transport carries).
+  (host is a consistency check, never an authorization source), ADR-0055 / ADR-0056 (events this transport carries).
   Plan: `docs/messaging-hub/README.md` (D1, D5, D11), `docs/messaging-hub/audit/PHASE_0_AUDIT.md` §4 item 8 (spike).
 
-> **Number check.** ADR-0054 is the intended ordinal (last on `main` at drafting: ADR-0053). Re-check at promotion; a
-> collision means renumbering this file and every cross-citation in the five drafts.
 
 ## Context
 
