@@ -246,6 +246,7 @@ describe.skipIf(!DB_URL)(
         body: "edit one",
       });
       const corrupt = await send(orgA, chan2, author, "cipher to corrupt");
+      const emptied = await send(orgA, chan2, author, "cipher to empty");
 
       // The app role cannot rewrite these; tamper through the superuser connection.
       await admin.query(`UPDATE message SET body_sha256 = repeat('a',64) WHERE id=$1`, [
@@ -259,14 +260,21 @@ describe.skipIf(!DB_URL)(
         `UPDATE message SET body_cipher = set_byte(body_cipher, 20, get_byte(body_cipher, 20) # 255) WHERE id=$1`,
         [corrupt.messageId],
       );
+      // Emptying the cipher while the hash survives is tampering, not an erased tenant (the eraser blanks both).
+      await admin.query(`UPDATE message SET body_cipher = ''::bytea WHERE id=$1`, [
+        emptied.messageId,
+      ]);
 
       const result = await runHashVerifyForOrg(deps, orgA);
-      expect(result.mismatched).toBe(3);
+      expect(result.mismatched).toBe(4);
 
       const mismatches = (await auditRows("m36.integrity.hash_mismatch")).filter(
         (r) => r.context.runId === result.runId,
       );
-      expect(mismatches).toHaveLength(3);
+      expect(mismatches).toHaveLength(4);
+      expect(
+        mismatches.find((r) => r.context.messageId === emptied.messageId)?.context.computedHash,
+      ).toBe("decrypt-failed");
       const head = mismatches.find(
         (r) => r.context.messageId === m.messageId && r.resource_kind === "message",
       );

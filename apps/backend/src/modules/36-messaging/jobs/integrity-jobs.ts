@@ -60,6 +60,7 @@ const CH = schema.channels;
 
 interface RowMeta {
   readonly cipherBytes: Buffer;
+  readonly storedHash: string;
   readonly resourceKind: "message" | "message_revision";
   readonly resourceId: string;
   readonly revisionNo?: number;
@@ -80,7 +81,9 @@ function jobContext(organizationId: string, runId: string) {
  * corrupt, so it is reported as a mismatch against a sentinel rather than skipped.
  */
 function recompute(cipher: MessageBodyCipher, orgId: string, meta: RowMeta): string | null {
-  if (meta.cipherBytes.length === 0) return null;
+  // Erased means cipher AND hash both blanked (the eraser sets them together); an emptied cipher with a hash left
+  // behind is tampering and falls through to the mismatch sentinel.
+  if (meta.cipherBytes.length === 0 && meta.storedHash === "") return null;
   try {
     return messageBodySha256(cipher.open(orgId, meta.cipherBytes));
   } catch {
@@ -132,7 +135,7 @@ async function sampleRows(
       storedHash: h.bodySha256,
       legalHold: false,
     };
-    meta.set(row, { cipherBytes: h.bodyCipher, resourceKind: "message", resourceId: h.id });
+    meta.set(row, { cipherBytes: h.bodyCipher, storedHash: h.bodySha256, resourceKind: "message", resourceId: h.id });
     rows.push(row);
   }
   for (const r of revisions) {
@@ -145,6 +148,7 @@ async function sampleRows(
     };
     meta.set(row, {
       cipherBytes: r.bodyCipher,
+      storedHash: r.bodySha256,
       resourceKind: "message_revision",
       resourceId: r.id,
       revisionNo: r.revisionNo,
