@@ -224,4 +224,13 @@ export {
   mountMessagingWebhookRoutes,
   readMessagingWebhookConfig,
 } from "./delivery/webhook-mount";
-export { M36_DELIVERY_PLATFORM_JOB_ID, wireM36DeliveryTenancy } from "./delivery/wiring";
+export {
+  M36_DELIVERY_PLATFORM_JOB_ID,
+  M36_INTEGRITY_PLATFORM_JOB_ID,
+  wireM36DeliveryTenancy,
+} from "./delivery/wiring";
+export {
+  type M36IntegrityWorkerDeps,
+  registerM36IntegrityWorkers,
+  scheduleM36IntegrityJobs,
+} from "./jobs/integrity-workers";

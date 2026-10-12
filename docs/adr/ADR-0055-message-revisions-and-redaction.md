@@ -168,4 +168,19 @@ for patient-linked channels" is superseded by D8's narrower lock.
   added because nothing consumes it yet.
 - **Not in WP 1.3:** the edit lock for urgent and acknowledgment-requested messages (the columns arrive with ADR-0056 in Phase 4);
   tenant shortening of the window (needs per-tenant messaging settings); `messaging.history.read` and the history route (item 5);
-  revision verification in `runHashVerify` (WP 1.9); redaction (Phase 5).
+  redaction (Phase 5).
+
+## Implementation status (WP 1.9)
+
+- **Revision verification is done.** The nightly `messaging.hash_verify` run (04:00 UTC, `apps/backend/src/modules/36-messaging/jobs/`)
+  samples message heads and `message_revision` rows per tenant, decrypts each under the tenant DEK and compares SHA-256 to the stored
+  hash. A divergence, or a cipher that no longer authenticates, is recorded as `m36.integrity.hash_mismatch` (critical; ids and hashes
+  only, plus `revisionNo` for a revision) and the run as `m36.hash_verify.run`; the tick then fails so the DLQ alert fires. A held
+  message is still verified: a hold blocks destruction, it does not excuse tampering. Proven live as `wardenx_app`, with the tamper
+  seeded over the superuser connection (`test:m36:integrity-jobs:live`).
+- **The retention scan is scheduled but plan-only.** `messaging.retention_scan` (Sunday 02:00 UTC) selects messages past their channel's
+  window, withholds those covered by an active M4 legal hold (conservative reading: org-wide hold, or one naming the channel's patient),
+  and records `m36.retention_scan.run` with counts. It deletes nothing and files no certificate: destruction, and the message hold
+  overlay of item 9, remain the messaging retention ADR's work. The `operational` window (1 year) is provisional until that ADR.
+- A reply's `parentMessageId` must be in the same channel (422 `PARENT_MESSAGE_NOT_IN_CHANNEL`), checked in the one insert helper both
+  the route service and the provider seam use.

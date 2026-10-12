@@ -16,7 +16,7 @@ import {
   sealMessageBody,
 } from "@wardenx/messaging";
 import type { MessageBodyKind } from "@wardenx/messaging";
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 
 const CH = schema.channels;
@@ -114,6 +114,22 @@ export async function insertEncryptedMessage(
     quotedMessageId?: string | null;
   },
 ): Promise<{ messageId: string; createdAt: string }> {
+  if (args.parentMessageId) {
+    // Audit F5: a reply's parent must be in the same channel. A missing, cross-org or other-channel parent is
+    // one answer, so the check is not an existence oracle for messages in channels the sender cannot see.
+    const parent = (await tx
+      .select({ channelId: MSG.channelId })
+      .from(MSG)
+      .where(and(eq(MSG.organizationId, args.orgId), eq(MSG.id, args.parentMessageId)))
+      .limit(1)) as Array<{ channelId: string }>;
+    if (parent[0]?.channelId !== args.channelId) {
+      throw new WardenXError(
+        "PARENT_MESSAGE_NOT_IN_CHANNEL",
+        "a reply's parent message must be in the same channel",
+        422,
+      );
+    }
+  }
   const { cipher: bodyCipher, sha256 } = cipher.seal(args.orgId, args.body);
   const inserted = (await tx
     .insert(MSG)
