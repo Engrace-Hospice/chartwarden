@@ -55,7 +55,7 @@ describe("WP 1.5 recheck after a refused send", () => {
   }
 
   it.each([401, 403, 408, 429, 500, 503])(
-    "marks every chip Re-attach (not Blocked) when the status read is answered %i",
+    "leaves the chips alone when the status read is answered %i",
     async (httpStatus) => {
       const { api } = refusedSend(() => ({
         data: undefined,
@@ -67,13 +67,13 @@ describe("WP 1.5 recheck after a refused send", () => {
         expect(api.GET.mock.calls.filter(([p]) => p === STORE_PATHS.status)).toHaveLength(2),
       );
       await flush();
-      await waitFor(() => expect(inList().getAllByText("Re-attach")).toHaveLength(2));
+      expect(inList().getAllByText("Ready")).toHaveLength(2);
       expect(inList().queryByText("Blocked")).toBeNull();
       expect(textbox().value).toBe("keep me");
     },
   );
 
-  it("marks every chip Re-attach when the status read throws", async () => {
+  it("leaves the chips alone when the status read throws", async () => {
     const { api } = mountThread({
       POST: (path, init) => {
         if (path === STORE_PATHS.uploads) {
@@ -91,7 +91,7 @@ describe("WP 1.5 recheck after a refused send", () => {
     );
     await sendRefused();
     await flush();
-    await waitFor(() => expect(inList().getAllByText("Re-attach")).toHaveLength(2));
+    expect(inList().getAllByText("Ready")).toHaveLength(2);
   });
 
   it.each([404, 410])("marks a chip Blocked when its file is gone (%i)", async (httpStatus) => {

@@ -466,13 +466,15 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
     ): boolean => {
       if (generation !== generationRef.current) return false;
       const now = itemsRef.current.find((item) => item.localId === localId);
-      if (!now || now.status !== read.status || now.attachmentId !== read.attachmentId)
+      if (!now || now.status !== read.status || now.attachmentId !== read.attachmentId) {
         return false;
+      }
       patch(localId, changes);
       return true;
     };
-    const flagged = await Promise.all(
-      candidates.map(async ({ localId, attachmentId, status }) => {
+    type Outcome = "flagged" | "answered" | "unreachable";
+    const outcomes = await Promise.all(
+      candidates.map(async ({ localId, attachmentId, status }): Promise<Outcome> => {
         const controller = new AbortController();
         recheckControllers.current.set(localId, controller);
         const deadline = withRequestDeadline(controller.signal);
@@ -481,27 +483,36 @@ export function useAttachmentUploads(channelId: string): AttachmentUploads {
             params: { path: { id: attachmentId ?? "" } },
             signal: deadline.signal,
           });
+          // Only a body or a 404/410 is a definitive answer; 401/403/408/429/5xx say nothing about the file.
+          if (!result.data && ![404, 410].includes(result.response?.status ?? 0))
+            return "unreachable";
           const verdict = verdictOf(result);
           const read = { status, attachmentId };
           if (verdict === "blocked" || verdict === "gone") {
             const message = verdict === "blocked" ? BLOCKED_MESSAGE : GONE_MESSAGE;
-            if (!applyIfUnchanged(localId, read, { status: "blocked", message })) return false;
+            // A chip that changed while the read was in flight: drop the result, claim nothing.
+            if (!applyIfUnchanged(localId, read, { status: "blocked", message }))
+              return "unreachable";
             stopPolling(localId);
-            return true;
+            return "flagged";
           }
-          if (verdict === "available")
-            applyIfUnchanged(localId, read, { status: "ready", message: null });
+          if (verdict === "available") {
+            if (!applyIfUnchanged(localId, read, { status: "ready", message: null }))
+              return "unreachable";
+          }
+          return "answered";
         } catch {
-          // Status unreachable, timed out or aborted (or pending/unknown/401/403/5xx above): leave the chip.
+          return "unreachable"; // network error, timeout or abort
         } finally {
           if (recheckControllers.current.get(localId) === controller) {
             recheckControllers.current.delete(localId);
           }
         }
-        return false;
       }),
     );
-    if (generation !== generationRef.current || flagged.some(Boolean)) return;
+    // Re-attach only when every read was answered and none flagged a chip: the server refused the bind for a
+    // reason the chips do not show. Any unreachable read leaves the chips as they are (the user can Retry).
+    if (generation !== generationRef.current || outcomes.some((o) => o !== "answered")) return;
     for (const item of itemsRef.current) {
       if (item.attachmentId && (item.status === "ready" || item.status === "scanning")) {
         stopPolling(item.localId);

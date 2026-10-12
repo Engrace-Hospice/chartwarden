@@ -173,12 +173,85 @@ describe("WP 1.5 refused send that names no culprit", () => {
     expect(sendButton().disabled).toBe(false);
   });
 
-  it("gives the recheck a deadline, and still marks the chips when it times out", async () => {
+  it("leaves the chips alone when the recheck times out", async () => {
     refused((init) => hang(init));
     await sendRefused();
     await waitFor(() => expect(deadlines.length).toBeGreaterThan(0));
     await expireDeadlines();
-    await waitFor(() => expect(inList().getByText("Re-attach")).toBeTruthy());
+    await act(async () => {});
+    expect(inList().getByText("Ready")).toBeTruthy();
+    expect(inList().queryByText("Re-attach")).toBeNull();
+  });
+
+  it("leaves every chip alone when one read was answered and another was unreachable", async () => {
+    mountThread({
+      POST: (path, init) => {
+        if (path === STORE_PATHS.uploads) {
+          return authorizedWith(
+            (init.body as { fileName: string }).fileName === "a.pdf" ? "id-a" : "id-b",
+          );
+        }
+        if (path === STORE_PATHS.complete) return completed("available");
+        if (path === STORE_PATHS.messages) return envelope("ATTACHMENT_NOT_BINDABLE", "x", 422);
+        return undefined;
+      },
+      GET: (path, init) => {
+        if (path !== STORE_PATHS.status) return undefined;
+        const id = (init.params as { path: { id: string } }).path.id;
+        return id === "id-a"
+          ? { data: status("available"), error: undefined }
+          : { data: undefined, error: { error: {} }, response: { status: 503 } };
+      },
+    });
+    await attach([pdf("a.pdf"), pdf("b.pdf")]);
+    await waitFor(() => expect(inList().getAllByText("Ready")).toHaveLength(2));
+    setDraft("keep me");
+    await act(async () => {
+      fireEvent.click(sendButton());
+    });
+    await screen.findByText(/can no longer be attached/);
+    await act(async () => {});
+    expect(inList().getAllByText("Ready")).toHaveLength(2);
+    expect(inList().queryByText("Re-attach")).toBeNull();
+  });
+
+  it("drops a recheck result for a chip whose status changed while the read was in flight", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let statusReads = 0;
+    mountThread({
+      POST: (path) => {
+        if (path === STORE_PATHS.uploads) return authorizedWith(ATTACHMENT_ID);
+        if (path === STORE_PATHS.complete) return completed("scanning");
+        if (path === STORE_PATHS.messages) return envelope("ATTACHMENT_NOT_BINDABLE", "x", 422);
+        return undefined;
+      },
+      GET: (path) => {
+        if (path !== STORE_PATHS.status) return undefined;
+        statusReads += 1;
+        // Read 1 is the recheck (held open, then "blocked"); read 2 is the poll that makes the chip Ready.
+        return statusReads === 1
+          ? gate.then(() => ({ data: status("blocked"), error: undefined }))
+          : { data: status("available"), error: undefined };
+      },
+    });
+    await attach([pdf()]);
+    await waitFor(() => expect(inList().getByText("Scanning…")).toBeTruthy());
+    setDraft("keep me");
+    await act(async () => {
+      fireEvent.click(sendButton());
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(3_500));
+    await waitFor(() => expect(inList().getByText("Ready")).toBeTruthy());
+    await act(async () => {
+      release();
+    });
+    expect(inList().getByText("Ready")).toBeTruthy();
+    expect(inList().queryByText("Blocked")).toBeNull();
+    vi.useRealTimers();
   });
 });
 
