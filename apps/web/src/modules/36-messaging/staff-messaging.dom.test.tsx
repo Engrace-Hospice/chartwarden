@@ -541,8 +541,9 @@ describe("M36 patient care-team conversations", () => {
         { params: { path: { patientId: "patient-1" } } },
       ),
     );
-    await screen.findByText("Ada Lovelace · Care Team");
-    expect(screen.getByRole("button", { name: "Ada Lovelace · Care Team" })).toBeTruthy();
+    // The opened channel shows in the thread header and as an inbox row, so assert each by role.
+    await screen.findByRole("heading", { level: 2, name: "Ada Lovelace · Care Team" });
+    expect(screen.getByRole("button", { name: /Ada Lovelace · Care Team/ })).toBeTruthy();
     expect(screen.queryByRole("dialog", { name: "New conversation" })).toBeNull();
   });
 

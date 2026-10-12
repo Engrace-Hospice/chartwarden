@@ -63,6 +63,8 @@ function mount(path: string, element: JSX.Element, route: string): void {
           roles: ["idg_coordinator"],
           permissions: ["idg.read", "idg.attend", "idg.coordinate", "idg.decide", "idg.schedule"],
           isAdmin: false,
+          // 5c07d4ad7 scopes the schedule's location picker to the caller's sites.
+          orgWidePatientScope: true,
         }}
       >
         <ToastProvider>
