@@ -1,5 +1,5 @@
 // WP 1.9 — the scheduler registers the two promised cadences on the catalogued queue names, and the fan-out
-// attempts every org before failing the tick.
+// attempts every org before failing the tick. (The real-BullMQ behaviour is proved in m36-integrity-jobs.live.test.ts.)
 import {
   MESSAGING_JOB_SCHEDULES,
   MESSAGING_QUEUES,
@@ -7,17 +7,37 @@ import {
 } from "@wardenx/messaging";
 import { describe, expect, it, vi } from "vitest";
 
-type AddOpts = {
-  repeat?: { pattern?: string };
-  attempts?: number;
-  backoff?: { type?: string; delay?: number };
-};
-const added: Array<{ queue: string; opts: AddOpts }> = [];
+interface UpsertCall {
+  queue: string;
+  schedulerId: string;
+  repeat: { pattern?: string };
+  template: {
+    name?: string;
+    opts?: { attempts?: number; backoff?: { type?: string; delay?: number } };
+  };
+}
+const upserts: UpsertCall[] = [];
+const removed: Array<{ queue: string; key: string }> = [];
 vi.mock("bullmq", () => ({
   Queue: class {
     constructor(public readonly name: string) {}
-    async add(_job: string, _data: unknown, opts: AddOpts) {
-      added.push({ queue: this.name, opts });
+    async getRepeatableJobs() {
+      return [
+        { key: "legacy-hash-key", name: "scheduled", pattern: "0 4 * * *" },
+        { key: `${this.name}.schedule`, name: "scheduled", pattern: "x" },
+        { key: "someone-elses", name: "other", pattern: "x" },
+      ];
+    }
+    async removeRepeatableByKey(key: string) {
+      removed.push({ queue: this.name, key });
+      return true;
+    }
+    async upsertJobScheduler(
+      schedulerId: string,
+      repeat: UpsertCall["repeat"],
+      template: UpsertCall["template"],
+    ) {
+      upserts.push({ queue: this.name, schedulerId, repeat, template });
     }
   },
   Worker: class {},
@@ -29,27 +49,20 @@ import {
 } from "../src/modules/36-messaging/jobs/integrity-workers";
 
 describe("M36 integrity job scheduling (audit F8)", () => {
-  it("repeats hash_verify nightly and retention_scan weekly on the catalogued queue names", async () => {
+  it("upserts hash_verify nightly and retention_scan weekly on the catalogued queue names", async () => {
+    upserts.length = 0;
     await scheduleM36IntegrityJobs({});
-    expect(added).toEqual([
-      {
-        queue: MESSAGING_QUEUES.hashVerify,
-        opts: expect.objectContaining({ repeat: { pattern: MESSAGING_JOB_SCHEDULES.hashVerify } }),
-      },
-      {
-        queue: MESSAGING_QUEUES.retentionScan,
-        opts: expect.objectContaining({
-          repeat: { pattern: MESSAGING_JOB_SCHEDULES.retentionScan },
-        }),
-      },
+    expect(upserts.map((u) => [u.queue, u.repeat.pattern])).toEqual([
+      [MESSAGING_QUEUES.hashVerify, MESSAGING_JOB_SCHEDULES.hashVerify],
+      [MESSAGING_QUEUES.retentionScan, MESSAGING_JOB_SCHEDULES.retentionScan],
     ]);
     expect(MESSAGING_JOB_SCHEDULES.hashVerify).toBe("0 4 * * *");
   });
 
   it("retention_scan honours its parameter-table attempts/backoff; hash_verify runs once (a mismatch fails identically on retry)", async () => {
-    added.length = 0;
+    upserts.length = 0;
     await scheduleM36IntegrityJobs({});
-    const byQueue = new Map(added.map((a) => [a.queue, a.opts]));
+    const byQueue = new Map(upserts.map((u) => [u.queue, u.template.opts]));
     const retention = MESSAGING_QUEUE_PARAMETERS[MESSAGING_QUEUES.retentionScan];
     expect(byQueue.get(MESSAGING_QUEUES.retentionScan)).toMatchObject({
       attempts: retention.attempts,
@@ -57,6 +70,16 @@ describe("M36 integrity job scheduling (audit F8)", () => {
     });
     expect(MESSAGING_QUEUE_PARAMETERS[MESSAGING_QUEUES.hashVerify].attempts).toBe(1);
     expect(byQueue.get(MESSAGING_QUEUES.hashVerify)?.attempts).toBe(1);
+  });
+
+  it("removes a legacy repeatable (any key but its own scheduler id) before upserting, so only one schedule remains", async () => {
+    upserts.length = 0;
+    removed.length = 0;
+    await scheduleM36IntegrityJobs({});
+    expect(removed).toEqual([
+      { queue: MESSAGING_QUEUES.hashVerify, key: "legacy-hash-key" },
+      { queue: MESSAGING_QUEUES.retentionScan, key: "legacy-hash-key" },
+    ]);
   });
 
   it("attempts every org, then fails the tick with the per-org errors", async () => {

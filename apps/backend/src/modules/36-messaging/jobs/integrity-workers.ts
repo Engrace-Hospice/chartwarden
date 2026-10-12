@@ -87,10 +87,22 @@ export function registerM36IntegrityWorkers(deps: M36IntegrityWorkerDeps): Worke
   ];
 }
 
+const SCHEDULED_JOB_NAME = "scheduled";
+
+/** The one scheduler id per queue. Anything else registered under the job name is a stale (legacy) trigger. */
+export const integritySchedulerId = (queueName: string): string => `${queueName}.schedule`;
+
 /**
- * Register the repeatable triggers. Returns the `Queue`s to `close()`. Attempts/backoff come from the §4.4.1 table
- * (hash_verify is 1 attempt by design: see the table). The DLQ alert keys on `attemptsMade >= opts.attempts`, so
- * the job option must carry the table value.
+ * Register the repeatable triggers with `upsertJobScheduler`. Returns the `Queue`s to `close()`.
+ *
+ * Why not `queue.add(..., { repeat })`: BullMQ keeps the first-registered delayed job and its options, so changing
+ * attempts/backoff (or the cron) on an already-registered repeat key has no effect, and the old key keeps firing
+ * (observed against the real BullMQ 5.81 in `m36-integrity-jobs.live.test.ts`). Upserting under a fixed scheduler id
+ * is idempotent and replaces the options. A legacy `add({ repeat })` trigger left in Redis by an earlier deploy
+ * would run beside the scheduler (two runs per tick), so every other trigger under this job name is removed first.
+ *
+ * Attempts/backoff come from the §4.4.1 table (hash_verify is 1 attempt by design: see the table). The DLQ alert keys
+ * on `attemptsMade >= opts.attempts`, so the job option must carry the table value.
  */
 export async function scheduleM36IntegrityJobs(connection: ConnectionOptions): Promise<Queue[]> {
   const specs = [
@@ -101,14 +113,23 @@ export async function scheduleM36IntegrityJobs(connection: ConnectionOptions): P
   for (const { name, pattern } of specs) {
     const { attempts, backoff } = MESSAGING_QUEUE_PARAMETERS[name];
     const queue = new Queue(name, { connection });
-    await queue.add(
-      "scheduled",
-      {},
+    const schedulerId = integritySchedulerId(name);
+    for (const stale of await queue.getRepeatableJobs()) {
+      if (stale.name === SCHEDULED_JOB_NAME && stale.key !== schedulerId) {
+        await queue.removeRepeatableByKey(stale.key);
+      }
+    }
+    await queue.upsertJobScheduler(
+      schedulerId,
+      { pattern },
       {
-        repeat: { pattern },
-        removeOnComplete: true,
-        attempts,
-        backoff: { type: backoff.type, delay: backoff.baseMs },
+        name: SCHEDULED_JOB_NAME,
+        data: {},
+        opts: {
+          removeOnComplete: true,
+          attempts,
+          backoff: { type: backoff.type, delay: backoff.baseMs },
+        },
       },
     );
     queues.push(queue);

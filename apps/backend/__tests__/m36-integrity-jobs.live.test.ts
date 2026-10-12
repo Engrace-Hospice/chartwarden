@@ -17,7 +17,13 @@ import { type DbClient, createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { activeLegalHoldScopeForOrg } from "../src/modules/04-audit/legal-hold-scope";
-import { eraseTenantMessaging } from "@wardenx/messaging";
+import {
+  MESSAGING_JOB_SCHEDULES,
+  MESSAGING_QUEUES,
+  MESSAGING_QUEUE_PARAMETERS,
+  eraseTenantMessaging,
+} from "@wardenx/messaging";
+import { Queue } from "bullmq";
 import { createDrizzleMessagingEraseStore } from "../src/modules/36-messaging/erasers/messaging-eraser";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/index";
 import {
@@ -26,7 +32,11 @@ import {
   runHashVerifyForOrg,
   runRetentionScanForOrg,
 } from "../src/modules/36-messaging/jobs/integrity-jobs";
-import { hashVerifyTick } from "../src/modules/36-messaging/jobs/integrity-workers";
+import {
+  hashVerifyTick,
+  integritySchedulerId,
+  scheduleM36IntegrityJobs,
+} from "../src/modules/36-messaging/jobs/integrity-workers";
 import { createDbMessagingProvider } from "../src/modules/36-messaging/messaging-provider-db";
 import { createMessageBodyCipher } from "../src/modules/36-messaging/messaging-write-core";
 import { appRoleConnectionString } from "./_live-app-role";
@@ -536,3 +546,59 @@ describe.skipIf(!DB_URL)(
     });
   },
 );
+
+/**
+ * Real BullMQ on a real Valkey (WARDENX_TEST_REDIS_URL): re-adding an already-registered legacy `add({ repeat })`
+ * trigger with new attempts/backoff does NOT take effect, and a legacy trigger beside a scheduler would run twice.
+ * `scheduleM36IntegrityJobs` must leave exactly one schedule per queue carrying the table's options, idempotently.
+ */
+const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
+describe.skipIf(!REDIS_URL)("WP 1.9 — integrity schedules on real BullMQ", () => {
+  const url = new URL(REDIS_URL ?? "redis://localhost:6379");
+  const connection = { host: url.hostname, port: Number(url.port || 6379) };
+  const names = [MESSAGING_QUEUES.hashVerify, MESSAGING_QUEUES.retentionScan];
+  const wipe = async () => {
+    for (const name of names) {
+      const q = new Queue(name, { connection });
+      await q.obliterate({ force: true }).catch(() => undefined);
+      await q.close();
+    }
+  };
+  beforeAll(wipe);
+  afterAll(wipe);
+
+  it("a legacy repeat keeps its stale options on re-add; the scheduler replaces it with exactly one schedule, idempotently", async () => {
+    const patterns = {
+      [MESSAGING_QUEUES.hashVerify]: MESSAGING_JOB_SCHEDULES.hashVerify,
+      [MESSAGING_QUEUES.retentionScan]: MESSAGING_JOB_SCHEDULES.retentionScan,
+    } as const;
+    // The state an earlier deploy left in Redis: `add({ repeat })` with no attempts/backoff.
+    for (const name of names) {
+      const q = new Queue(name, { connection });
+      const repeat = { pattern: patterns[name] };
+      await q.add("scheduled", {}, { repeat, removeOnComplete: true });
+      await q.add("scheduled", {}, { repeat, removeOnComplete: true, attempts: 7 });
+      const delayed = await q.getDelayed();
+      expect(delayed).toHaveLength(1);
+      expect(delayed[0]?.opts.attempts).not.toBe(7); // the re-add changed nothing
+      await q.close();
+    }
+
+    for (let round = 0; round < 2; round++) {
+      const queues = await scheduleM36IntegrityJobs(connection);
+      for (const q of queues) {
+        const params =
+          MESSAGING_QUEUE_PARAMETERS[q.name as keyof typeof MESSAGING_QUEUE_PARAMETERS];
+        const repeatables = await q.getRepeatableJobs();
+        expect(repeatables.map((r) => r.key)).toEqual([integritySchedulerId(q.name)]);
+        const delayed = await q.getDelayed();
+        expect(delayed).toHaveLength(1); // one pending tick: no legacy twin
+        expect(delayed[0]?.opts).toMatchObject({
+          attempts: params.attempts,
+          backoff: { type: params.backoff.type, delay: params.backoff.baseMs },
+        });
+        await q.close();
+      }
+    }
+  });
+});
