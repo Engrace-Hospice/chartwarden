@@ -480,6 +480,71 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     ).toContain(channelId);
   });
 
+  it("a former member can no longer edit, delete or mark-read their own message", async () => {
+    const provider = createDbMessagingProvider(handle.db, { kek: KEK });
+    const service = createDbMessagingRouteService(handle.db, { kek: KEK });
+    const author = await seedUser("former-author");
+    await admin.query(
+      `INSERT INTO channel_member (organization_id, channel_id, user_id, role, source)
+       VALUES ($1,$2,$3,'member','manual')`,
+      [orgA, channelId, author],
+    );
+    const sent = await provider.sendMessage(orgA, {
+      channelId,
+      authorUserId: author,
+      body: "written while a member",
+      bodyKind: "plain",
+    });
+    // still a member: own edit works
+    await expect(
+      service.editMessage(orgA, { userId: author, messageId: sent.messageId, body: "fixed" }),
+    ).resolves.toMatchObject({ messageId: sent.messageId });
+
+    await admin.query(
+      `UPDATE channel_member SET removed_at = now() WHERE channel_id=$1 AND user_id=$2`,
+      [channelId, author],
+    );
+    await expect(
+      service.editMessage(orgA, { userId: author, messageId: sent.messageId, body: "sneaky" }),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    await expect(
+      service.deleteMessage(orgA, { userId: author, messageId: sent.messageId }),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    await expect(
+      service.markRead(orgA, { userId: author, messageId: sent.messageId }),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    // the cross-module seam applies the same rule: no history or read receipts for a former member
+    await expect(provider.listMessages(orgA, { channelId, userId: author })).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    await expect(
+      provider.markRead(orgA, { userId: author, messageId: sent.messageId }),
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    // a suspended membership is cut off the same way
+    const suspendedAuthor = await seedUser("susp-author");
+    await admin.query(
+      `INSERT INTO channel_member (organization_id, channel_id, user_id, role, source)
+       VALUES ($1,$2,$3,'member','manual')`,
+      [orgA, channelId, suspendedAuthor],
+    );
+    const sent2 = await provider.sendMessage(orgA, {
+      channelId,
+      authorUserId: suspendedAuthor,
+      body: "before suspension",
+      bodyKind: "plain",
+    });
+    await admin.query(
+      `UPDATE membership SET status='suspended' WHERE user_id=$1 AND organization_id=$2`,
+      [suspendedAuthor, orgA],
+    );
+    await expect(
+      service.deleteMessage(orgA, { userId: suspendedAuthor, messageId: sent2.messageId }),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    const stored = await admin.query(`SELECT status FROM message WHERE id=$1`, [sent2.messageId]);
+    expect(stored.rows[0].status).not.toBe("deleted");
+  });
+
   it("a cross-tenant event and a cross-tenant reader never touch or see org A's channel", async () => {
     const service = createDbMessagingRouteService(handle.db);
     const before = await channelRow();
@@ -515,8 +580,30 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     await expect(
       provider.sendMessage(orgA, { channelId, authorUserId: rn, body: "late", bodyKind: "plain" }),
     ).rejects.toMatchObject({ code: "CHANNEL_ARCHIVED" });
+    // an archived channel is read-only: the author cannot edit their own message (delete stays allowed, below)
+    const archivedMessageId = (
+      await admin.query(`SELECT id FROM message WHERE channel_id=$1 AND author_user_id=$2`, [
+        channelId,
+        rn,
+      ])
+    ).rows[0].id as string;
+    await expect(
+      service.editMessage(orgA, { userId: rn, messageId: archivedMessageId, body: "rewrite" }),
+    ).rejects.toMatchObject({ statusCode: 410 });
+    // ...but reading stays allowed: archived history is still readable by its members
+    await expect(
+      service.markRead(orgA, { userId: rn, messageId: archivedMessageId }),
+    ).resolves.not.toThrow();
     const history = await provider.listMessages(orgA, { channelId, userId: rn });
-    expect(history.messages.map((m) => m.body)).toEqual(["pre-discharge note"]);
+    const bodies = history.messages.map((m) => m.body);
+    expect(bodies).toContain("pre-discharge note");
+    expect(bodies).not.toContain("late");
+    // ...and the author can still retract (tombstone) a mistaken message after discharge
+    await expect(
+      service.deleteMessage(orgA, { userId: rn, messageId: archivedMessageId }),
+    ).resolves.not.toThrow();
+    const tomb = await admin.query(`SELECT status FROM message WHERE id=$1`, [archivedMessageId]);
+    expect(tomb.rows[0].status).toBe("deleted");
 
     // a stale assignment that appears after archive cannot add a member to the archived channel
     const late = await seedUser("late");

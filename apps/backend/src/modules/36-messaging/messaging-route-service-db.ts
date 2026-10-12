@@ -153,6 +153,7 @@ async function effectivelyVisibleChannels<T extends EffectiveChannelAccessCandid
   userId: string,
   candidates: readonly T[],
   part2Gate: Part2ChannelGate,
+  warn?: (message: string, context: Record<string, string>) => void,
 ): Promise<T[]> {
   const careTeamPatientIds = [
     ...new Set(
@@ -192,8 +193,14 @@ async function effectivelyVisibleChannels<T extends EffectiveChannelAccessCandid
           });
           if (roster.includes(userId)) currentCareTeamPatients.add(patientId);
         }
-      } catch {
+      } catch (error) {
         // An unavailable clinical/consent seam is an authorization denial, never a stale grant.
+        // Logged (ids only) so an outage is distinguishable from a genuine "not a member" 404.
+        warn?.("messaging visibility seam failed; denying access", {
+          organizationId: orgId,
+          patientId,
+          error: error instanceof Error ? error.name : "unknown",
+        });
       }
     }
   });
@@ -246,6 +253,44 @@ async function careTeamTitlesForAuthorizedChannels(
 
 function dmParticipantKey(userId: string, peerUserId: string): string {
   return [userId, peerUserId].sort().join(":");
+}
+
+/**
+ * Re-check, inside the write transaction, that the actor is still an active user with a live
+ * membership (announcement channels are org-wide). `assertMessageChannelAccess` runs before the
+ * transaction opens, so this narrows the window for a removal landing in between to the gap between
+ * this read and the write (plain READ COMMITTED reads, no row lock), rather than closing it.
+ * The Part 2 consent seam cannot run inside a transaction and is only checked up front.
+ */
+async function assertLiveMembershipInTx(
+  tx: Parameters<typeof channelOr404>[0],
+  orgId: string,
+  userId: string,
+  messageId: string,
+): Promise<void> {
+  const [row] = await tx
+    .select({ channelId: MSG.channelId, kind: CH.channelKind })
+    .from(MSG)
+    .innerJoin(CH, eq(CH.id, MSG.channelId))
+    .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, messageId)))
+    .limit(1);
+  let live = !!row && (await isActiveMessagingUser(tx, orgId, userId));
+  if (live && row!.kind !== "announcement") {
+    const [member] = await tx
+      .select({ userId: CM.userId })
+      .from(CM)
+      .where(
+        and(
+          eq(CM.organizationId, orgId),
+          eq(CM.channelId, row!.channelId),
+          eq(CM.userId, userId),
+          isNull(CM.removedAt),
+        ),
+      )
+      .limit(1);
+    live = !!member;
+  }
+  if (!live) throw new NotFoundError("message", messageId);
 }
 
 async function isActiveMessagingUser(
@@ -505,6 +550,8 @@ export function createDbMessagingRouteService(
      */
     /** GAP-065 — the M39 Part 2 consent gate on care_team visibility (default: seam-backed, fail-closed). */
     part2Gate?: Part2ChannelGate;
+    /** Operational warning sink (ids only); default: silent. */
+    warn?: (message: string, context: Record<string, string>) => void;
     outbox?: MessagingOutboxPort;
     sendEndpointVerificationCode?: (input: {
       channel: DeliveryEndpointChannel;
@@ -574,7 +621,8 @@ export function createDbMessagingRouteService(
           },
         );
         return (
-          (await effectivelyVisibleChannels(orgId, userId, [candidate], part2Gate)).length === 1
+          (await effectivelyVisibleChannels(orgId, userId, [candidate], part2Gate, opts.warn))
+            .length === 1
         );
       })())
     ) {
@@ -615,6 +663,7 @@ export function createDbMessagingRouteService(
           },
         ],
         part2Gate,
+        opts.warn,
       );
       const displayName = row.displayName?.trim() ?? "";
       if (
@@ -660,6 +709,81 @@ export function createDbMessagingRouteService(
     }
     return [...staff, ...patients];
   }
+  async function canViewChannelFor(
+    orgId: string,
+    userId: string,
+    channelId: string,
+  ): Promise<boolean> {
+    const candidate = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+      if (!(await isActiveMessagingUser(tx, orgId, userId))) return null;
+      const c = await tx
+        .select({ kind: CH.channelKind, subjectId: CH.subjectId })
+        .from(CH)
+        .where(and(eq(CH.organizationId, orgId), eq(CH.id, channelId)))
+        .limit(1);
+      if (!c[0]) return null; // unknown / cross-org → no existence oracle
+      // §4.5: announcement is org-wide; the bereavement provider-seam refinement (M16) is a later
+      // cross-module integration — until then the channel-member check is the visibility rule.
+      if (c[0].kind === "announcement") {
+        return {
+          kind: c[0].kind as ChannelKind,
+          subjectId: c[0].subjectId,
+          memberSource: null,
+        };
+      }
+      const m = await tx
+        .select({ source: CM.source })
+        .from(CM)
+        .where(
+          and(
+            eq(CM.organizationId, orgId),
+            eq(CM.channelId, channelId),
+            eq(CM.userId, userId),
+            isNull(CM.removedAt),
+          ),
+        )
+        .limit(1);
+      return {
+        kind: c[0].kind as ChannelKind,
+        subjectId: c[0].subjectId,
+        memberSource: (m[0]?.source as ChannelMemberSource | undefined) ?? null,
+      };
+    });
+    if (!candidate) return false;
+    return (
+      (await effectivelyVisibleChannels(orgId, userId, [candidate], part2Gate, opts.warn))
+        .length === 1
+    );
+  }
+
+  /**
+   * Edit/delete/mark-read act on an existing message, so the actor must still be allowed into its
+   * channel (active user, live membership, Part 2 gate). A miss is a 404, matching canViewChannel's
+   * no-existence-oracle rule; `writable` additionally refuses archived channels with 410. Delete is not
+   * `writable`: a tombstone is the only way an author can retract a mistaken PHI message after discharge.
+   */
+  async function assertMessageChannelAccess(
+    orgId: string,
+    userId: string,
+    messageId: string,
+    writable: boolean,
+  ): Promise<void> {
+    const row = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+      const rows = await tx
+        .select({ channelId: MSG.channelId, isArchived: CH.isArchived })
+        .from(MSG)
+        .innerJoin(CH, eq(CH.id, MSG.channelId))
+        .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, messageId)))
+        .limit(1);
+      return rows[0] ?? null;
+    });
+    if (!row || !(await canViewChannelFor(orgId, userId, row.channelId))) {
+      throw new NotFoundError("message", messageId);
+    }
+    if (writable && row.isArchived) {
+      throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+    }
+  }
   return {
     // ── channels & messages (§4.2; reads) ─────────────────────────────────────────────────────
     async listChannels(orgId, userId): Promise<ChannelSummary[]> {
@@ -685,7 +809,13 @@ export function createDbMessagingRouteService(
           memberSource: row.memberSource as ChannelMemberSource,
         }));
       });
-      const rows = await effectivelyVisibleChannels(orgId, userId, candidates, part2Gate);
+      const rows = await effectivelyVisibleChannels(
+        orgId,
+        userId,
+        candidates,
+        part2Gate,
+        opts.warn,
+      );
       if (rows.length === 0) return [];
       // Resolve minimum-necessary patient identity only after stale memberships and clinical access
       // have been rejected. Calls stay outside the M36 transaction because M5 owns this data and its
@@ -1071,45 +1201,7 @@ export function createDbMessagingRouteService(
       });
     },
 
-    async canViewChannel(orgId, userId, channelId): Promise<boolean> {
-      const candidate = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
-        if (!(await isActiveMessagingUser(tx, orgId, userId))) return null;
-        const c = await tx
-          .select({ kind: CH.channelKind, subjectId: CH.subjectId })
-          .from(CH)
-          .where(and(eq(CH.organizationId, orgId), eq(CH.id, channelId)))
-          .limit(1);
-        if (!c[0]) return null; // unknown / cross-org → no existence oracle
-        // §4.5: announcement is org-wide; the bereavement provider-seam refinement (M16) is a later
-        // cross-module integration — until then the channel-member check is the visibility rule.
-        if (c[0].kind === "announcement") {
-          return {
-            kind: c[0].kind as ChannelKind,
-            subjectId: c[0].subjectId,
-            memberSource: null,
-          };
-        }
-        const m = await tx
-          .select({ source: CM.source })
-          .from(CM)
-          .where(
-            and(
-              eq(CM.organizationId, orgId),
-              eq(CM.channelId, channelId),
-              eq(CM.userId, userId),
-              isNull(CM.removedAt),
-            ),
-          )
-          .limit(1);
-        return {
-          kind: c[0].kind as ChannelKind,
-          subjectId: c[0].subjectId,
-          memberSource: (m[0]?.source as ChannelMemberSource | undefined) ?? null,
-        };
-      });
-      if (!candidate) return false;
-      return (await effectivelyVisibleChannels(orgId, userId, [candidate], part2Gate)).length === 1;
-    },
+    canViewChannel: canViewChannelFor,
 
     // --- post a message: archive gate (410) → DEK-encrypt + insert + receipt fan-out (§3.4) -----
     async sendMessage(orgId, input) {
@@ -1190,6 +1282,7 @@ export function createDbMessagingRouteService(
 
     // --- edit within the window (author only): re-encrypt + re-hash, status='edited' -----------
     async editMessage(orgId, input) {
+      await assertMessageChannelAccess(orgId, input.userId, input.messageId, true);
       const references = input.references ?? [];
       validateReferenceRanges(input.body, references);
       if (references.length > 0) {
@@ -1225,6 +1318,7 @@ export function createDbMessagingRouteService(
         }
       }
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
+        await assertLiveMembershipInTx(tx, orgId, input.userId, input.messageId);
         const rows = (await tx
           .select({ authorUserId: MSG.authorUserId, status: MSG.status })
           .from(MSG)
@@ -1270,7 +1364,9 @@ export function createDbMessagingRouteService(
 
     // --- soft-delete (author only): tombstone — status='deleted', cipher RETAINED (M36-F02) ----
     async deleteMessage(orgId, input) {
+      await assertMessageChannelAccess(orgId, input.userId, input.messageId, false);
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
+        await assertLiveMembershipInTx(tx, orgId, input.userId, input.messageId);
         const rows = (await tx
           .select({ authorUserId: MSG.authorUserId, status: MSG.status })
           .from(MSG)
@@ -1294,6 +1390,7 @@ export function createDbMessagingRouteService(
     },
 
     async markRead(orgId, input) {
+      await assertMessageChannelAccess(orgId, input.userId, input.messageId, false);
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, (tx) =>
         markMessagesRead(tx, {
           orgId,
