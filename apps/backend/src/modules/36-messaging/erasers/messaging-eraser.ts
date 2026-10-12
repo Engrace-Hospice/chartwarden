@@ -27,7 +27,11 @@ import { DegradedError } from "@wardenx/types";
 import type { DataEraser } from "@wardenx/types";
 import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
-import { ERASE_DESTROY_DEADLINE_MS, ERASE_UPLOAD_URL_GRACE_MS, eraseLockName } from "../attachments/attachment-policy";
+import {
+  ERASE_DESTROY_DEADLINE_MS,
+  ERASE_UPLOAD_URL_GRACE_MS,
+  eraseLockName,
+} from "../attachments/attachment-policy";
 import type { AttachmentStoragePort } from "../attachments/attachment-ports";
 import { runWithDeadline } from "../attachments/attachment-scan-gate";
 import { ERASED_BODY_SHA256 } from "../jobs/integrity-jobs";
@@ -231,7 +235,11 @@ export function createDrizzleMessagingEraseStore(
           await runWithDeadline(
             (signal) => storage.destroyObject({ organizationId: orgId, objectKey: key, signal }),
             ERASE_DESTROY_DEADLINE_MS,
-            () => new DegradedError("attachment-destruction", "an object destroy exceeded its deadline; retry"),
+            () =>
+              new DegradedError(
+                "attachment-destruction",
+                "an object destroy exceeded its deadline; retry",
+              ),
           );
           destroyed += 1;
         }

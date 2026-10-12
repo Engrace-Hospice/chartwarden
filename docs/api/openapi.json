@@ -157515,8 +157515,43 @@
                               {
                                 "const": "system",
                                 "type": "string"
+                              },
+                              {
+                                "const": "rich",
+                                "type": "string"
                               }
                             ]
+                          },
+                          "bodyDoc": {
+                            "type": "object",
+                            "required": [
+                              "schemaVersion",
+                              "doc"
+                            ],
+                            "properties": {
+                              "schemaVersion": {
+                                "const": 1,
+                                "type": "number"
+                              },
+                              "doc": {
+                                "type": "object",
+                                "required": [
+                                  "type",
+                                  "content"
+                                ],
+                                "properties": {
+                                  "type": {
+                                    "const": "doc",
+                                    "type": "string"
+                                  },
+                                  "content": {
+                                    "maxItems": 500,
+                                    "type": "array",
+                                    "items": {}
+                                  }
+                                }
+                              }
+                            }
                           },
                           "createdAt": {
                             "type": "string"
@@ -157727,6 +157762,37 @@
                         "type": "string"
                       }
                     ]
+                  },
+                  "bodyDoc": {
+                    "type": "object",
+                    "required": [
+                      "schemaVersion",
+                      "doc"
+                    ],
+                    "properties": {
+                      "schemaVersion": {
+                        "const": 1,
+                        "type": "number"
+                      },
+                      "doc": {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "content"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "doc",
+                            "type": "string"
+                          },
+                          "content": {
+                            "maxItems": 500,
+                            "type": "array",
+                            "items": {}
+                          }
+                        }
+                      }
+                    }
                   },
                   "parentMessageId": {
                     "minLength": 1,
@@ -158018,13 +158084,41 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "body"
-                ],
                 "properties": {
                   "body": {
                     "maxLength": 8000,
                     "type": "string"
+                  },
+                  "bodyDoc": {
+                    "type": "object",
+                    "required": [
+                      "schemaVersion",
+                      "doc"
+                    ],
+                    "properties": {
+                      "schemaVersion": {
+                        "const": 1,
+                        "type": "number"
+                      },
+                      "doc": {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "content"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "doc",
+                            "type": "string"
+                          },
+                          "content": {
+                            "maxItems": 500,
+                            "type": "array",
+                            "items": {}
+                          }
+                        }
+                      }
+                    }
                   },
                   "references": {
                     "maxItems": 25,

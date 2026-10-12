@@ -27,10 +27,7 @@ export const locationStatus = pgEnum("location_status", [
 export const userStatus = pgEnum("user_status", ["created", "active", "suspended", "deactivated"]);
 
 /** Global password lifecycle state; deliberately independent from account and membership status. */
-export const credentialState = pgEnum("credential_state", [
-  "active",
-  "password_change_required",
-]);
+export const credentialState = pgEnum("credential_state", ["active", "password_change_required"]);
 
 /** M1 §3.10 — an idempotency record is either claimed-and-running or finished-with-a-cached-response. */
 export const idempotencyState = pgEnum("idempotency_state", ["pending", "complete"]);
@@ -326,7 +323,7 @@ export const channelMemberSource = pgEnum("channel_member_source", ["auto", "man
 export const messageAuthorKind = pgEnum("message_author_kind", ["user", "system"]);
 
 // `message_body_kind` — body rendering hint (§3.4).
-export const messageBodyKind = pgEnum("message_body_kind", ["plain", "markdown", "system"]);
+export const messageBodyKind = pgEnum("message_body_kind", ["plain", "markdown", "system", "rich"]);
 
 // `message_status` — message lifecycle (§2.4.2). `deleted` is a tombstone; body_cipher is
 // RETAINED until retention expiry (M36-F02 / ADR-0004 / ARCH-185), never zeroed early.

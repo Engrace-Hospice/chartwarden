@@ -30,6 +30,7 @@ import {
 import type { MemberAdminActor, MessagingRouteService } from "@wardenx/messaging";
 import { UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { resolveRichWrite } from "../rich-body-codec";
 import {
   AddMemberBodySchema,
   AlertParamsSchema,
@@ -268,17 +269,19 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(ChannelParamsSchema, request.params);
       const body = parse(SendMessageBodySchema, request.body);
+      const rich = resolveRichWrite(body);
       const result = await service.sendMessage(organizationId, {
         channelId: id,
         authorUserId: userId,
-        body: body.body ?? "",
-        bodyKind: body.bodyKind,
+        body: rich?.plainText ?? body.body ?? "",
+        bodyKind: rich ? "rich" : body.bodyKind,
+        richBody: rich?.richBody,
         parentMessageId: body.parentMessageId,
         quotedMessageId: body.quotedMessageId,
         clientMessageId: body.clientMessageId,
         attachments: body.attachments,
         correlationId: request.context.correlationId,
-        references: body.references,
+        references: rich ? rich.references : body.references,
       });
       return reply.code(201).send(result);
     },
@@ -289,11 +292,16 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     const { organizationId, userId } = actorOf(request);
     const { id } = parse(MessageParamsSchema, request.params);
     const body = parse(EditMessageBodySchema, request.body);
+    if (body.body === undefined && body.bodyDoc === undefined) {
+      throw new WardenXError("VALIDATION_FAILED", "an edit needs a body or a bodyDoc", 422);
+    }
+    const rich = resolveRichWrite(body);
     return service.editMessage(organizationId, {
       userId,
       messageId: id,
-      body: body.body,
-      references: body.references,
+      body: rich?.plainText ?? body.body ?? "",
+      richBody: rich?.richBody,
+      references: rich ? rich.references : body.references,
     });
   });
 

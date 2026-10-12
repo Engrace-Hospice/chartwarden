@@ -131,11 +131,26 @@ export const AuthorizeAttachmentBodySchema = Type.Object({
   sha256Hex: Type.String({ pattern: "^[0-9a-f]{64}$" }),
 });
 
+/**
+ * WP 2.1: the versioned structured body. The shape here is only the envelope; the closed node set, the link scheme
+ * allowlist and the depth/node/size limits are enforced by `sanitizeRichBody` (packages/types), which is the
+ * authority on every write and re-runs on every read. Additive: `body` as a plain string keeps working.
+ */
+export const RichBodySchema = Type.Object({
+  schemaVersion: Type.Literal(1),
+  doc: Type.Object({
+    type: Type.Literal("doc"),
+    content: Type.Array(Type.Unknown(), { maxItems: 500 }),
+  }),
+});
+
 export const SendMessageBodySchema = Type.Object({
   // WP 1.5: text may be absent or blank when the message carries an attachment; the service refuses a send with
   // neither (the schema cannot express "body or attachments").
   body: Type.Optional(Type.String({ maxLength: 8000 })),
   bodyKind: Type.Optional(Type.Union([Type.Literal("plain"), Type.Literal("markdown")])),
+  // WP 2.1: exclusive with `body`. Mentions are the doc's mention nodes; `references` must then be absent.
+  bodyDoc: Type.Optional(RichBodySchema),
   parentMessageId: Type.Optional(Id),
   quotedMessageId: Type.Optional(Id),
   // WP 1.2 DB backstop: a client-minted uuid, stable across retries of one composed message.
@@ -146,7 +161,9 @@ export const SendMessageBodySchema = Type.Object({
 
 export const EditMessageBodySchema = Type.Object({
   // Blank is allowed only while the message keeps an attachment (checked in the service).
-  body: Type.String({ maxLength: 8000 }),
+  // WP 2.1: exactly one of `body` and `bodyDoc` (checked in the route). An edit without `bodyDoc` stores plain text.
+  body: Type.Optional(Type.String({ maxLength: 8000 })),
+  bodyDoc: Type.Optional(RichBodySchema),
   references: Type.Optional(Type.Array(MessageReferenceInputSchema, { maxItems: 25 })),
 });
 
@@ -227,6 +244,7 @@ const MessageBodyKindSchema = Type.Union([
   Type.Literal("plain"),
   Type.Literal("markdown"),
   Type.Literal("system"),
+  Type.Literal("rich"),
 ]);
 const NotificationChannelSchema = Type.Union([
   Type.Literal("in_app"),
@@ -323,8 +341,10 @@ const ResolvedMessageSchema = Type.Object({
   channelId: Type.String(),
   authorUserId: NullableString(),
   authorDisplayName: NullableString(),
+  // For bodyKind "rich" this is the plain-text projection (never JSON, never link targets); `bodyDoc` is the document.
   body: Type.String(),
   bodyKind: MessageBodyKindSchema,
+  bodyDoc: Type.Optional(RichBodySchema),
   createdAt: Type.String(),
   parentMessageId: NullableString(),
   references: Type.Array(

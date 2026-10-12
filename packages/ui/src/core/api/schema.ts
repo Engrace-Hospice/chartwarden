@@ -61717,7 +61717,16 @@ export interface operations {
                             authorUserId: string | null;
                             authorDisplayName: string | null;
                             body: string;
-                            bodyKind: "plain" | "markdown" | "system";
+                            bodyKind: "plain" | "markdown" | "system" | "rich";
+                            bodyDoc?: {
+                                /** @constant */
+                                schemaVersion: 1;
+                                doc: {
+                                    /** @constant */
+                                    type: "doc";
+                                    content: unknown[];
+                                };
+                            };
                             createdAt: string;
                             parentMessageId: string | null;
                             references: {
@@ -61763,6 +61772,15 @@ export interface operations {
                 "application/json": {
                     body?: string;
                     bodyKind?: "plain" | "markdown";
+                    bodyDoc?: {
+                        /** @constant */
+                        schemaVersion: 1;
+                        doc: {
+                            /** @constant */
+                            type: "doc";
+                            content: unknown[];
+                        };
+                    };
                     parentMessageId?: string;
                     quotedMessageId?: string;
                     clientMessageId?: string;
@@ -61891,7 +61909,16 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    body: string;
+                    body?: string;
+                    bodyDoc?: {
+                        /** @constant */
+                        schemaVersion: 1;
+                        doc: {
+                            /** @constant */
+                            type: "doc";
+                            content: unknown[];
+                        };
+                    };
                     references?: {
                         kind: "staff" | "patient";
                         entityId: string;

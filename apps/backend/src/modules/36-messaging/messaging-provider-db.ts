@@ -42,6 +42,7 @@ import {
   withValidMessageContent,
 } from "./messaging-write-core";
 import { type Part2ChannelGate, createSeamPart2ChannelGate } from "./part2-channel-gate";
+import { decodeStoredBody } from "./rich-body-codec";
 
 const CH = schema.channels;
 const CM = schema.channelMembers;
@@ -244,7 +245,11 @@ export function createDbMessagingProvider(
             channelId: m.channelId,
             authorUserId: m.authorUserId,
             authorDisplayName: null,
-            body: m.status === "deleted" ? "" : cipher.open(orgId, m.bodyCipher),
+            body:
+              m.status === "deleted"
+                ? ""
+                : decodeStoredBody(m.bodyKind as MessageBodyKind, cipher.open(orgId, m.bodyCipher))
+                    .body,
             bodyKind: m.bodyKind as MessageBodyKind,
             createdAt: m.createdAt.toISOString(),
             parentMessageId: m.parentMessageId,

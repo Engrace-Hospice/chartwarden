@@ -16,8 +16,15 @@ import {
   sealMessageBody,
 } from "@wardenx/messaging";
 import type { MessageBodyKind } from "@wardenx/messaging";
-import { IdempotencyConflictError, NotFoundError, ValidationError, WardenXError } from "@wardenx/types";
+import {
+  IdempotencyConflictError,
+  NotFoundError,
+  type RichBody,
+  ValidationError,
+  WardenXError,
+} from "@wardenx/types";
 import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { storedBodyFor } from "./rich-body-codec";
 
 const CH = schema.channels;
 const CM = schema.channelMembers;
@@ -37,9 +44,9 @@ export function blankMessageError(): ValidationError {
  * normalised to the empty string (stored and sealed like any other body), or throws. Shared by the route service and the
  * MessagingProvider seam so no caller can create a blank message.
  */
-export function withValidMessageContent<T extends { body: string; attachments?: readonly unknown[] | undefined }>(
-  input: T,
-): T {
+export function withValidMessageContent<
+  T extends { body: string; attachments?: readonly unknown[] | undefined },
+>(input: T): T {
   if (input.body.trim()) return input;
   if (!input.attachments?.length) throw blankMessageError();
   return { ...input, body: "" };
@@ -129,6 +136,8 @@ export async function insertEncryptedMessage(
     authorUserId: string | null;
     body: string;
     bodyKind?: MessageBodyKind;
+    /** WP 2.1: a structured body. Stored as its canonical JSON under `body_kind = 'rich'`; `body` is its projection. */
+    richBody?: RichBody;
     parentMessageId?: string | null;
     quotedMessageId?: string | null;
     /** WP 1.2 DB backstop: stable across client retries; a second insert returns the original row. */
@@ -152,7 +161,8 @@ export async function insertEncryptedMessage(
       throw new WardenXError(code, `${what} message must be in the same channel`, 422);
     }
   }
-  const { cipher: bodyCipher, sha256 } = cipher.seal(args.orgId, args.body);
+  const stored = storedBodyFor(args);
+  const { cipher: bodyCipher, sha256 } = cipher.seal(args.orgId, stored.plaintext);
   const inserted = (await tx
     .insert(MSG)
     .values({
@@ -162,7 +172,7 @@ export async function insertEncryptedMessage(
       authorKind: args.authorUserId ? "user" : "system",
       bodyCipher,
       bodySha256: sha256,
-      bodyKind: args.bodyKind ?? "plain",
+      bodyKind: stored.bodyKind,
       parentMessageId: args.parentMessageId ?? null,
       quotedMessageId: args.quotedMessageId ?? null,
       clientMessageId: args.clientMessageId ?? null,

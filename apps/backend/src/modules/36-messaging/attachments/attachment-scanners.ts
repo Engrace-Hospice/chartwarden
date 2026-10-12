@@ -87,7 +87,9 @@ export function createClamdScanner(options: ClamdScannerOptions): ScanPort {
         let settled = false;
         const onAbort = () =>
           finish(() =>
-            reject(signal?.reason instanceof Error ? signal.reason : new Error("clamd scan aborted")),
+            reject(
+              signal?.reason instanceof Error ? signal.reason : new Error("clamd scan aborted"),
+            ),
           );
         const finish = (fn: () => void) => {
           if (settled) return;

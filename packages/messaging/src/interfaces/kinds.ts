@@ -153,7 +153,7 @@ export type ChannelMemberSource = "auto" | "manual";
 export type MessageAuthorKind = "user" | "system";
 
 /** Body rendering hint (§3.4). */
-export type MessageBodyKind = "plain" | "markdown" | "system";
+export type MessageBodyKind = "plain" | "markdown" | "system" | "rich";
 
 /** Message lifecycle (§2.4.2). `deleted` is a tombstone; body_cipher is retained until
  *  retention expiry (M36-F02 / ADR-0004). */

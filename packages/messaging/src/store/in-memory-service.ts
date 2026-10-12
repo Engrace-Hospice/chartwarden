@@ -9,7 +9,13 @@
 // gives isolation. The clock is injectable (`now`) and ids are a deterministic counter so route
 // tests are reproducible.
 
-import { ConflictError, ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  type RichBody,
+  WardenXError,
+} from "@wardenx/types";
 import type {
   AlertCategory,
   AlertRecipientResolver,
@@ -97,6 +103,8 @@ interface MessageRow {
   authorUserId: string | null;
   body: string;
   bodyKind: MessageBodyKind;
+  /** WP 2.1: the sanitised structured body (`body` is then its plain-text projection). */
+  richBody?: RichBody;
   createdAt: string;
   editedAt: string | null;
   deletedAt: string | null;
@@ -467,6 +475,7 @@ export function createInMemoryMessagingService(
           : null,
         body: m.deletedAt ? "" : m.body,
         bodyKind: m.bodyKind,
+        ...(m.richBody && !m.deletedAt ? { bodyDoc: m.richBody } : {}),
         createdAt: m.createdAt,
         parentMessageId: m.parentMessageId,
         references: m.references.map((reference) => ({
@@ -513,7 +522,8 @@ export function createInMemoryMessagingService(
         orgId,
         authorUserId: input.authorUserId,
         body: input.body,
-        bodyKind: input.bodyKind ?? "plain",
+        bodyKind: input.richBody ? "rich" : (input.bodyKind ?? "plain"),
+        ...(input.richBody ? { richBody: input.richBody } : {}),
         createdAt,
         editedAt: null,
         deletedAt: null,
@@ -542,6 +552,9 @@ export function createInMemoryMessagingService(
         eligibleStaff,
       );
       m.body = input.body;
+      m.richBody = input.richBody;
+      if (input.richBody) m.bodyKind = "rich";
+      else if (m.bodyKind === "rich") m.bodyKind = "plain";
       m.references = input.references ?? [];
       m.editedAt = iso();
       return { messageId: m.messageId, editedAt: m.editedAt };
