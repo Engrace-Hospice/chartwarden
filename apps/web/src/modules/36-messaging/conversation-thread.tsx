@@ -474,22 +474,32 @@ export function ConversationThread({
       JSON.stringify([channel.channelId, submitted, references]),
     );
     sendAttemptRef.current = attempt;
-    const { data, error, response } = await client.POST(
-      "/api/v1/messaging/channels/{id}/messages",
-      {
+    const postMessage = () =>
+      client.POST("/api/v1/messaging/channels/{id}/messages", {
         params: {
           path: { id: channel.channelId },
           header: { "Idempotency-Key": attempt.idempotencyKey },
         },
         body: { body: submitted, references, clientMessageId: attempt.clientMessageId },
-      },
-    );
+      });
+    let result: Awaited<ReturnType<typeof postMessage>>;
+    try {
+      result = await postMessage();
+    } catch {
+      // Network failure / aborted fetch: no response arrived, so keep the attempt for the retry.
+      if (generation !== generationRef.current) return;
+      sendInFlightRef.current = false;
+      setSending(false);
+      setSendError("Message could not be sent. Your draft has been preserved.");
+      return;
+    }
+    const { data, error, response } = result;
     if (generation !== generationRef.current) return;
     sendInFlightRef.current = false;
     setSending(false);
     // The idempotency store caches every answered response, errors included, so a retry under the
     // same key would replay the failure. Keep the key only when no response arrived (lost reply).
-    if (response && response.status >= 400 && sendAttemptRef.current === attempt)
+    if (response && response.status >= 400)
       sendAttemptRef.current = rotateIdempotencyKey(attempt);
     if (error || !data) {
       setSendError(

@@ -1210,4 +1210,46 @@ describe("M36 clinical messenger workspace", () => {
     expect(second.params.header["Idempotency-Key"]).toBe(first.params.header["Idempotency-Key"]);
     expect(second.body.clientMessageId).toBe(first.body.clientMessageId);
   });
+
+  it("retries a lost reply (rejected fetch) under the same Idempotency-Key and clientMessageId", async () => {
+    const post = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("network down"))
+      .mockResolvedValue({
+        data: { messageId: "m-1", channelId: "dm-1", createdAt: "2026-10-10T10:00:00.000Z" },
+        error: undefined,
+        response: { status: 201 },
+      });
+    const api = {
+      GET: vi.fn((path: string) =>
+        Promise.resolve(
+          path === "/api/v1/messaging/channels"
+            ? { data: { channels: [channel("dm-1", "Nurse Two")] }, error: undefined }
+            : { data: { messages: [] }, error: undefined },
+        ),
+      ),
+      POST: post,
+    } as unknown as ApiClient;
+
+    render(
+      <MemoryRouter>
+        <ApiClientProvider client={api}>
+          <SessionProvider session={ORG_ONE}>
+            <StaffMessaging />
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    const composer = await screen.findByRole("textbox", { name: "Message" });
+    fireEvent.change(composer, { target: { value: "hello", selectionStart: 5 } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    await screen.findByText(/could not be sent/);
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+
+    const [first, second] = post.mock.calls.map((call) => call[1]);
+    expect(second.params.header["Idempotency-Key"]).toBe(first.params.header["Idempotency-Key"]);
+    expect(second.body.clientMessageId).toBe(first.body.clientMessageId);
+  });
 });
