@@ -156252,8 +156252,18 @@
         "tags": [
           "36-messaging"
         ],
-        "summary": "Post to the tenant announcement channel (org_admin; 201)",
-        "parameters": [],
+        "summary": "Post to the tenant announcement channel (org_admin; 201; Idempotency-Key required)",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -157134,12 +157144,21 @@
         "tags": [
           "36-messaging"
         ],
-        "summary": "Post a message (201; CHANNEL_ARCHIVED 410)",
+        "summary": "Post a message (201; CHANNEL_ARCHIVED 410; Idempotency-Key required, replay returns the original)",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
             "schema": {
               "type": "string"
             }
@@ -157214,6 +157233,10 @@
                   "quotedMessageId": {
                     "minLength": 1,
                     "maxLength": 64,
+                    "type": "string"
+                  },
+                  "clientMessageId": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
                     "type": "string"
                   },
                   "attachments": {

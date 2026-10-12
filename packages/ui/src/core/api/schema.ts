@@ -13173,7 +13173,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Post to the tenant announcement channel (org_admin; 201) */
+        /** Post to the tenant announcement channel (org_admin; 201; Idempotency-Key required) */
         post: operations["postApiV1MessagingAnnounce"];
         delete?: never;
         options?: never;
@@ -13276,7 +13276,7 @@ export interface paths {
         /** Paginated message history (bodies decrypted for entitled readers) */
         get: operations["getApiV1MessagingChannelsByIdMessages"];
         put?: never;
-        /** Post a message (201; CHANNEL_ARCHIVED 410) */
+        /** Post a message (201; CHANNEL_ARCHIVED 410; Idempotency-Key required, replay returns the original) */
         post: operations["postApiV1MessagingChannelsByIdMessages"];
         delete?: never;
         options?: never;
@@ -61262,7 +61262,10 @@ export interface operations {
     postApiV1MessagingAnnounce: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -61515,7 +61518,10 @@ export interface operations {
     postApiV1MessagingChannelsByIdMessages: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };
@@ -61528,6 +61534,7 @@ export interface operations {
                     bodyKind?: "plain" | "markdown";
                     parentMessageId?: string;
                     quotedMessageId?: string;
+                    clientMessageId?: string;
                     attachments?: {
                         storageKey: string;
                         fileName: string;

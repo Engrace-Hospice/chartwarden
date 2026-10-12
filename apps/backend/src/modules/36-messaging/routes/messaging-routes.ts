@@ -28,7 +28,7 @@ import {
   requirePermission,
 } from "@wardenx/auth";
 import type { MemberAdminActor, MessagingRouteService } from "@wardenx/messaging";
-import { UnauthorizedError } from "@wardenx/types";
+import { UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   AddMemberBodySchema,
@@ -125,6 +125,23 @@ function actorOf(request: FastifyRequest): { organizationId: string; userId: str
   if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
   return { organizationId: ctx.organizationId, userId: ctx.userId };
 }
+
+/**
+ * WP 1.2 / ADR-0021 — a send must carry a client `Idempotency-Key` (1-128 chars) so the M1 idempotency middleware
+ * (bootstrap/plugins/idempotency.ts) can replay a retry instead of posting twice. The middleware only guards a
+ * request that HAS a key; this guard is what makes the key mandatory on the send routes.
+ */
+const REQUIRE_IDEMPOTENCY_KEY: PreHandler = async (request) => {
+  const raw = request.headers["idempotency-key"];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof value !== "string" || value.length < 1 || value.length > 128) {
+    throw new WardenXError(
+      "IDEMPOTENCY_KEY_REQUIRED",
+      "an Idempotency-Key header is required",
+      400,
+    );
+  }
+};
 
 const READ = requirePermission("messaging.read") as PreHandler;
 const SEND = requirePermission("messaging.send") as PreHandler;
@@ -246,7 +263,7 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   // --- post a message (messaging.send + channel_visibility ABAC) -----------------------------
   app.post(
     "/api/v1/messaging/channels/:id/messages",
-    { preHandler: [SEND, SEND_TO_CHANNEL] },
+    { preHandler: [SEND, SEND_TO_CHANNEL, REQUIRE_IDEMPOTENCY_KEY] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(ChannelParamsSchema, request.params);
@@ -258,6 +275,7 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
         bodyKind: body.bodyKind,
         parentMessageId: body.parentMessageId,
         quotedMessageId: body.quotedMessageId,
+        clientMessageId: body.clientMessageId,
         attachments: body.attachments,
         correlationId: request.context.correlationId,
         references: body.references,
@@ -387,15 +405,19 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   );
 
   // --- post to the tenant announcement channel (org_admin) -----------------------------------
-  app.post("/api/v1/messaging/announce", { preHandler: [ANNOUNCE] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const body = parse(AnnounceBodySchema, request.body);
-    const result = await service.announce(organizationId, {
-      authorUserId: userId,
-      body: body.body,
-    });
-    return reply.code(201).send(result);
-  });
+  app.post(
+    "/api/v1/messaging/announce",
+    { preHandler: [ANNOUNCE, REQUIRE_IDEMPOTENCY_KEY] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(AnnounceBodySchema, request.body);
+      const result = await service.announce(organizationId, {
+        authorUserId: userId,
+        body: body.body,
+      });
+      return reply.code(201).send(result);
+    },
+  );
 
   // ── notification preferences & endpoints (§4.2; SELF-only) ─────────────────────────────────
 

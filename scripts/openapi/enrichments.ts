@@ -8926,7 +8926,9 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M36MentionCandidateResponseSchema,
   },
   "POST /api/v1/messaging/channels/:id/messages": {
-    summary: "Post a message (201; CHANNEL_ARCHIVED 410)",
+    summary:
+      "Post a message (201; CHANNEL_ARCHIVED 410; Idempotency-Key required, replay returns the original)",
+    headers: IDEMPOTENCY_KEY_HEADER,
     body: M36SendMessageBodySchema,
     response: M36SendMessageResponseSchema,
   },
@@ -8962,7 +8964,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Remove a channel member (204)",
   },
   "POST /api/v1/messaging/announce": {
-    summary: "Post to the tenant announcement channel (org_admin; 201)",
+    summary: "Post to the tenant announcement channel (org_admin; 201; Idempotency-Key required)",
+    headers: IDEMPOTENCY_KEY_HEADER,
     body: M36AnnounceBodySchema,
     response: M36SendMessageResponseSchema,
   },

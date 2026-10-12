@@ -162,6 +162,11 @@ function makeServer(): { app: ReturnType<typeof buildServer>; service: Messaging
   return { app, service };
 }
 
+/** WP 1.2: the send routes require an `Idempotency-Key`; a fresh one per call is a distinct send. */
+const withKey = (headers: Record<string, string>): Record<string, string> => ({
+  ...headers,
+  "idempotency-key": crypto.randomUUID(),
+});
 const RN1 = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "clinical_rn" };
 const RN2 = { "x-test-user": "rn_2", "x-test-org": ORG, "x-test-roles": "clinical_rn" };
 const ADMIN = { "x-test-user": "admin_1", "x-test-org": ORG, "x-test-roles": "org_admin" };
@@ -245,7 +250,7 @@ describe("M36-T07 messaging route inventory", () => {
       const res = await app.inject({
         method: "POST",
         url: `/api/v1/messaging/channels/${CT}/messages`,
-        headers: RN2,
+        headers: withKey(RN2),
         payload: { body: "hello" },
       });
       expect(res.statusCode).toBe(403);
@@ -305,13 +310,61 @@ describe("M36-T07 messaging route inventory", () => {
     });
   });
 
+  describe("WP 1.2 idempotent send (Idempotency-Key required)", () => {
+    const send = (
+      app: ReturnType<typeof buildServer>,
+      headers: Record<string, string>,
+      body = "hi",
+    ) =>
+      app.inject({
+        method: "POST",
+        url: `/api/v1/messaging/channels/${CT}/messages`,
+        headers,
+        payload: { body },
+      });
+
+    it("rejects a send with no Idempotency-Key (400 IDEMPOTENCY_KEY_REQUIRED)", async () => {
+      const { app } = makeServer();
+      const res = await send(app, RN1);
+      expect(res.statusCode).toBe(400);
+      expect(JSON.stringify(res.json())).toContain("IDEMPOTENCY_KEY_REQUIRED");
+      await app.close();
+    });
+
+    it("rejects an announce with no Idempotency-Key (400)", async () => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/messaging/announce",
+        headers: ADMIN,
+        payload: { body: "all-hands" },
+      });
+      expect(res.statusCode).toBe(400);
+      await app.close();
+    });
+
+    it("replays the original response for the same key + body, and 409s a different body", async () => {
+      const { app } = makeServer();
+      const headers = withKey(RN1);
+      const first = await send(app, headers);
+      const replay = await send(app, headers);
+      expect(first.statusCode).toBe(201);
+      expect(replay.statusCode).toBe(201);
+      expect(replay.json().messageId).toBe(first.json().messageId);
+
+      const changed = await send(app, headers, "a different body");
+      expect(changed.statusCode).toBe(409);
+      await app.close();
+    });
+  });
+
   describe("§4.2 messages (post / history / read / edit / delete)", () => {
     it("a member posts a message (201) and reads it back in history", async () => {
       const { app } = makeServer();
       const post = await app.inject({
         method: "POST",
         url: `/api/v1/messaging/channels/${CT}/messages`,
-        headers: RN1,
+        headers: withKey(RN1),
         payload: { body: "morning report posted" },
       });
       expect(post.statusCode).toBe(201);
@@ -361,7 +414,7 @@ describe("M36-T07 messaging route inventory", () => {
       const valid = await app.inject({
         method: "POST",
         url: `/api/v1/messaging/channels/${channelId}/messages`,
-        headers: RN1,
+        headers: withKey(RN1),
         payload: {
           body: "Update @Nurse Two",
           references: [{ kind: "staff", entityId: "rn_2", start: 7, end: 17 }],
@@ -384,7 +437,7 @@ describe("M36-T07 messaging route inventory", () => {
       const forged = await app.inject({
         method: "POST",
         url: `/api/v1/messaging/channels/${channelId}/messages`,
-        headers: RN1,
+        headers: withKey(RN1),
         payload: {
           body: "Update @Chief Doctor",
           references: [{ kind: "staff", entityId: "rn_2", start: 7, end: 20 }],
@@ -395,7 +448,7 @@ describe("M36-T07 messaging route inventory", () => {
       const overlapping = await app.inject({
         method: "POST",
         url: `/api/v1/messaging/channels/${channelId}/messages`,
-        headers: RN1,
+        headers: withKey(RN1),
         payload: {
           body: "@Nurse Two",
           references: [
@@ -413,7 +466,7 @@ describe("M36-T07 messaging route inventory", () => {
       const post = await app.inject({
         method: "POST",
         url: `/api/v1/messaging/channels/${CT}/messages`,
-        headers: RN1,
+        headers: withKey(RN1),
         payload: { body: "original" },
       });
       const messageId = post.json().messageId as string;
@@ -444,7 +497,7 @@ describe("M36-T07 messaging route inventory", () => {
         const response = await app.inject({
           method: "POST",
           url: `/api/v1/messaging/channels/${CT}/messages`,
-          headers: RN1,
+          headers: withKey(RN1),
           payload: { body },
         });
         expect(response.statusCode).toBe(201);
@@ -531,7 +584,7 @@ describe("M36-T07 messaging route inventory", () => {
       const sent = await app.inject({
         method: "POST",
         url: `/api/v1/messaging/channels/${channelId}/messages`,
-        headers: RN2,
+        headers: withKey(RN2),
         payload: { body: "Thanks for the update\nI will follow up." },
       });
       expect(sent.statusCode).toBe(201);
@@ -658,7 +711,7 @@ describe("M36-T07 messaging route inventory", () => {
       const send = await app.inject({
         method: "POST",
         url: "/api/v1/messaging/channels/ch_archived/messages",
-        headers: RN1,
+        headers: withKey(RN1),
         payload: { body: "must not send" },
       });
       expect(send.statusCode).toBe(410);
@@ -715,7 +768,7 @@ describe("M36-T07 messaging route inventory", () => {
       const denied = await app.inject({
         method: "POST",
         url: "/api/v1/messaging/announce",
-        headers: RN1,
+        headers: withKey(RN1),
         payload: { body: "all-hands at noon" },
       });
       expect(denied.statusCode).toBe(403);
@@ -723,7 +776,7 @@ describe("M36-T07 messaging route inventory", () => {
       const ok = await app.inject({
         method: "POST",
         url: "/api/v1/messaging/announce",
-        headers: ADMIN,
+        headers: withKey(ADMIN),
         payload: { body: "all-hands at noon" },
       });
       expect(ok.statusCode).toBe(201);

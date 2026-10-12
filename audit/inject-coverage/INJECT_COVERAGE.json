@@ -488,6 +488,7 @@
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
         "apps/backend/__tests__/m36-admin-alert-deliveries.test.ts",
         "apps/backend/__tests__/m36-delivery-sweep-and-webhooks.test.ts",
+        "apps/backend/__tests__/m36-idempotent-send.live.test.ts",
         "apps/backend/__tests__/m36-transactional-email.live.test.ts",
         "apps/backend/__tests__/messaging-member-admin.test.ts",
         "apps/backend/__tests__/messaging-routes-mount.test.ts",

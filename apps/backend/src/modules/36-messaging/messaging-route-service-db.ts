@@ -1238,7 +1238,7 @@ export function createDbMessagingRouteService(
         async (tx) => {
           const ch = await channelOr404(tx, orgId, input.channelId);
           if (ch.isArchived) throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
-          const { messageId, createdAt } = await insertEncryptedMessage(tx, cipher, {
+          const { messageId, createdAt, replayed } = await insertEncryptedMessage(tx, cipher, {
             orgId,
             channelId: input.channelId,
             authorUserId: input.authorUserId,
@@ -1246,7 +1246,10 @@ export function createDbMessagingRouteService(
             bodyKind: input.bodyKind,
             parentMessageId: input.parentMessageId,
             quotedMessageId: input.quotedMessageId,
+            clientMessageId: input.clientMessageId,
           });
+          // WP 1.2: a retry of an already-committed send returns the original and emits nothing again.
+          if (replayed) return { messageId, channelId: input.channelId, createdAt };
           if (references.length > 0) {
             await tx.insert(MER).values(
               references.map((reference) => ({

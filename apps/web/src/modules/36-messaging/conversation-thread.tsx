@@ -26,7 +26,10 @@ import {
   dayLabel,
   initialsOf,
   mergeMessages,
+  rotateIdempotencyKey,
+  sendAttemptFor,
 } from "./messaging-utils";
+import type { SendAttempt } from "./messaging-utils";
 
 const MESSAGE_PAGE_SIZE = 50;
 const POLL_INTERVAL_MS = 15_000;
@@ -190,6 +193,7 @@ export function ConversationThread({
   const nearBottomRef = useRef(true);
   const initialScrollPending = useRef(false);
   const readBoundaryRef = useRef<string | null>(null);
+  const sendAttemptRef = useRef<SendAttempt | null>(null);
   const composingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mentionGenerationRef = useRef(0);
@@ -457,23 +461,35 @@ export function ConversationThread({
     const generation = generationRef.current;
     setSending(true);
     setSendError(null);
-    const { data, error } = await client.POST("/api/v1/messaging/channels/{id}/messages", {
-      params: { path: { id: channel.channelId } },
-      body: {
-        body: submitted,
-        references: draftReferences
-          .filter((reference) => reference.end <= submitted.length)
-          .map(referenceInput),
+    const references = draftReferences
+      .filter((reference) => reference.end <= submitted.length)
+      .map(referenceInput);
+    // WP 1.2: one stable id pair per composed message, reused on retry (see sendAttemptFor).
+    const attempt = sendAttemptFor(
+      sendAttemptRef.current,
+      JSON.stringify([channel.channelId, submitted, references]),
+    );
+    sendAttemptRef.current = attempt;
+    const { data, error, response } = await client.POST(
+      "/api/v1/messaging/channels/{id}/messages",
+      {
+        params: {
+          path: { id: channel.channelId },
+          header: { "Idempotency-Key": attempt.idempotencyKey },
+        },
+        body: { body: submitted, references, clientMessageId: attempt.clientMessageId },
       },
-    });
+    );
     if (generation !== generationRef.current) return;
     setSending(false);
+    if (response?.status === 409) sendAttemptRef.current = rotateIdempotencyKey(attempt);
     if (error || !data) {
       setSendError(
         apiErrorMessage(error, "Message could not be sent. Your draft has been preserved."),
       );
       return;
     }
+    sendAttemptRef.current = null;
     setDraft((current) => (current === submitted ? "" : current));
     setDraftReferences([]);
     setMentionQuery(null);

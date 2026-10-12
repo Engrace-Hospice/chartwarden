@@ -16,7 +16,7 @@ import {
   sealMessageBody,
 } from "@wardenx/messaging";
 import type { MessageBodyKind } from "@wardenx/messaging";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { IdempotencyConflictError, NotFoundError, WardenXError } from "@wardenx/types";
 import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 
 const CH = schema.channels;
@@ -112,8 +112,10 @@ export async function insertEncryptedMessage(
     bodyKind?: MessageBodyKind;
     parentMessageId?: string | null;
     quotedMessageId?: string | null;
+    /** WP 1.2 DB backstop: stable across client retries; a second insert returns the original row. */
+    clientMessageId?: string | null;
   },
-): Promise<{ messageId: string; createdAt: string }> {
+): Promise<{ messageId: string; createdAt: string; replayed: boolean }> {
   if (args.parentMessageId) {
     // Audit F5: a reply's parent must be in the same channel. A missing, cross-org or other-channel parent is
     // one answer, so the check is not an existence oracle for messages in channels the sender cannot see.
@@ -143,9 +145,14 @@ export async function insertEncryptedMessage(
       bodyKind: args.bodyKind ?? "plain",
       parentMessageId: args.parentMessageId ?? null,
       quotedMessageId: args.quotedMessageId ?? null,
+      clientMessageId: args.clientMessageId ?? null,
     })
+    // Concurrent duplicates serialize on the unique index: the loser waits for the winner's commit, then
+    // inserts nothing. A null `client_message_id` never conflicts, so unkeyed writes are unaffected.
+    .onConflictDoNothing({ target: [MSG.organizationId, MSG.authorUserId, MSG.clientMessageId] })
     .returning({ id: MSG.id, createdAt: MSG.createdAt })) as Array<{ id: string; createdAt: Date }>;
-  const messageId = inserted[0]!.id;
+  if (!inserted[0]) return replayOriginal(tx, args, sha256);
+  const messageId = inserted[0].id;
   const createdAt = inserted[0]!.createdAt;
 
   const recipients = (await activeMemberIds(tx, args.orgId, args.channelId)).filter(
@@ -161,7 +168,40 @@ export async function insertEncryptedMessage(
       })),
     );
   }
-  return { messageId, createdAt: createdAt.toISOString() };
+  return { messageId, createdAt: createdAt.toISOString(), replayed: false };
+}
+
+/**
+ * The (org, author, client_message_id) slot is taken: return the original message so the retry is a replay.
+ * A reused id for a different channel or body is a caller bug, not a retry — the same 409 the HTTP middleware
+ * gives a reused Idempotency-Key with a different body.
+ */
+async function replayOriginal(
+  tx: Tx,
+  args: {
+    orgId: string;
+    channelId: string;
+    authorUserId: string | null;
+    clientMessageId?: string | null;
+  },
+  sha256: string,
+): Promise<{ messageId: string; createdAt: string; replayed: true }> {
+  const rows = (await tx
+    .select({ id: MSG.id, createdAt: MSG.createdAt, channelId: MSG.channelId, sha: MSG.bodySha256 })
+    .from(MSG)
+    .where(
+      and(
+        eq(MSG.organizationId, args.orgId),
+        args.authorUserId ? eq(MSG.authorUserId, args.authorUserId) : isNull(MSG.authorUserId),
+        eq(MSG.clientMessageId, args.clientMessageId!),
+      ),
+    )
+    .limit(1)) as Array<{ id: string; createdAt: Date; channelId: string; sha: string }>;
+  const original = rows[0];
+  if (!original || original.channelId !== args.channelId || original.sha !== sha256) {
+    throw new IdempotencyConflictError();
+  }
+  return { messageId: original.id, createdAt: original.createdAt.toISOString(), replayed: true };
 }
 
 /**
