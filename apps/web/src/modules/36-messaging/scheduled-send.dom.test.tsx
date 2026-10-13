@@ -602,10 +602,18 @@ describe("gate: the author sees the outcome of the dispatch-time re-check", () =
   it("a still-pending row shows no 'not sent' note, and pending and blocked rows sit side by side", async () => {
     mount([pending, blocked]);
     const list = await screen.findByRole("list", { name: /scheduled messages/i });
-    const [first, second] = within(list).getAllByRole("listitem");
-    expect(first?.getAttribute("data-status")).toBe("pending");
-    expect(within(first as HTMLElement).queryByText(/^not sent:/i)).toBeNull();
-    expect(second?.getAttribute("data-status")).toBe("blocked");
-    expect(within(second as HTMLElement).getByText(/^not sent:/i)).toBeTruthy();
+    // Found by status, never by position: both rows share a send time, so list order proves nothing.
+    const rows = within(list).getAllByRole("listitem");
+    expect(rows).toHaveLength(2);
+    const pendingRow = rows.find((row) => row.getAttribute("data-status") === "pending");
+    const blockedRow = rows.find((row) => row.getAttribute("data-status") === "blocked");
+    expect(pendingRow).toBeTruthy();
+    expect(blockedRow).toBeTruthy();
+    expect(within(pendingRow as HTMLElement).queryByText(/^not sent:/i)).toBeNull();
+    expect(
+      within(pendingRow as HTMLElement).getByText("Please call the family at noon"),
+    ).toBeTruthy();
+    expect(within(blockedRow as HTMLElement).getByText(/^not sent:/i)).toBeTruthy();
+    expect(within(blockedRow as HTMLElement).getByText("Second one")).toBeTruthy();
   });
 });

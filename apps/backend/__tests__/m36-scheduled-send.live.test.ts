@@ -28,7 +28,7 @@ import { NotFoundError } from "@wardenx/types";
 import { Queue } from "bullmq";
 import { eq, sql } from "drizzle-orm";
 import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { createDbDraftService } from "../src/modules/36-messaging/drafts/draft-service-db";
 import { createDrizzleMessagingEraseStore } from "../src/modules/36-messaging/erasers/messaging-eraser";
@@ -640,6 +640,11 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
     let gatedService: ScheduledSendService;
     const patientId = "9a9a9a9a-9a9a-4a9a-8a9a-9a9a9a9a9a9a";
 
+    // The gate flag is shared mutable state: no test may inherit another's `deny`/`throw`, even after a failure.
+    beforeEach(() => {
+      part2 = "allow";
+    });
+
     beforeAll(async () => {
       careTeam = (
         await admin.query(
@@ -787,10 +792,10 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
       expect(await rows()).toHaveLength(0);
     });
 
-    it("an unreadable consent seam fails closed: nothing is delivered (the row is blocked, not retried into a send)", async () => {
+    it("an unreadable consent seam fails closed: the row is blocked (not_member), nothing is delivered, the outage is logged", async () => {
       await wipe();
+      gateWarnings.length = 0; // earlier tests may have logged the same line; only THIS dispatch may satisfy the assertion
       const hints = await sentHints();
-      part2 = "allow";
       const created = await gatedService.create(orgA, {
         userId: alice,
         channelId: careTeam,
@@ -798,17 +803,11 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
         scheduledFor: inFuture(),
       });
       part2 = "throw";
-      try {
-        await makeDue(created.id);
-        await gatedDispatcher.dispatchDueForOrg(orgA);
-        expect(
-          (await messagesIn(careTeam)).filter((m) => m.client_message_id === created.id),
-        ).toHaveLength(0);
-        expect(await sentHints()).toBe(hints);
-        expect(gateWarnings.some((w) => /denying access/.test(w))).toBe(true);
-      } finally {
-        part2 = "allow";
-      }
+      await makeDue(created.id);
+      // The dispatcher treats an unreadable seam as "cannot view": the same refusal as an explicit deny.
+      expect(await gatedDispatcher.dispatchDueForOrg(orgA)).toMatchObject({ sent: 0, blocked: 1 });
+      expect(gateWarnings.some((w) => /denying access/.test(w))).toBe(true);
+      await expectRefused(created.id, careTeam, "not_member", hints);
     });
 
     it("a still-valid scheduled message through the same gated path is delivered exactly once", async () => {

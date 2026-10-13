@@ -1,32 +1,40 @@
 // M36 Phase 2 gate (docs/messaging-hub/03-phases-0-to-3.md, "XSS corpus"): every checked-in corpus payload
-// (`XSS_CORPUS`, packages/types/src/messaging-xss-corpus.ts) is fed to EVERY place the staff web app renders
+// (`XSS_CORPUS`, packages/types/src/messaging-xss-corpus.ts) is fed to the places the staff web app renders
 // server-supplied text, and the rendered DOM must stay inert: no element built from the payload, no on* attribute,
 // no non-allowlisted URL, no page global set. rich-body-view.dom.test.tsx covers the rich renderer itself; this file
-// covers the surrounding surfaces: inbox rows, thread header, patient header, plain/markdown/rich bubbles, mention
-// chips, attachment names, pinned bar, search snippet, Members dialog, Scheduled list, notifications and banners.
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+// covers the surrounding surfaces, each reached by a real render or interaction and awaited on a payload-independent
+// marker (so an empty DOM can never pass): inbox rows, thread header, patient header (MRN chip), plain/markdown/rich
+// bubbles, mention chips, attachment names, the pinned bar, the in-conversation search result (Ctrl+F), the thread
+// panel (opened from the reply count), the Members dialog, the Scheduled list, the notifications inbox and the
+// channel-list error banner.
+// NOT covered here (no case renders them with hostile data): saved replies, read receipts, the offline banner, the
+// platform reply panel, the announcement tools. Add a case per surface before claiming them.
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { XSS_CORPUS } from "@wardenx/types";
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AlertInboxProvider } from "../../shell/alert-inbox";
+import { AlertInboxProvider, isInternalAlertDeepLink } from "../../shell/alert-inbox";
 import { type Session, SessionProvider } from "../../shell/session";
 import { ChannelMembersDialog } from "./channel-members-dialog";
 import { NotificationsInbox } from "./notifications-inbox";
 import { ScheduledMessagesDialog } from "./scheduled-messages-dialog";
 import { StaffMessaging } from "./staff-messaging";
-import { expectInert, resetXssFlag } from "./xss-assertions";
+import { controlCount, expectInert, resetXssFlag } from "./xss-assertions";
 
 vi.mock("socket.io-client", () => ({
   io: () => ({ on: () => {}, off: () => {}, close: () => {} }),
 }));
 
+const originalScrollIntoView = Element.prototype.scrollIntoView;
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
 });
 afterEach(() => {
   cleanup();
   resetXssFlag();
+  Element.prototype.scrollIntoView =
+    originalScrollIntoView as typeof Element.prototype.scrollIntoView;
 });
 
 const SESSION: Session = {
@@ -134,8 +142,20 @@ function hostileMessages(payload: string) {
   ];
 }
 
+const THREAD_MARKER = "THREAD-MARKER reply";
+
 function world(payload: string) {
   const messages = hostileMessages(payload);
+  const threadReply = {
+    ...messages[0],
+    messageId: "m-thread-reply",
+    parentMessageId: "m-plain",
+    body: THREAD_MARKER,
+    replyCount: 0,
+    pinned: false,
+    references: [],
+    attachments: [],
+  };
   return {
     GET: vi.fn((path: string) => {
       if (path === "/api/v1/messaging/channels")
@@ -163,8 +183,28 @@ function world(payload: string) {
           }),
         );
       if (path.endsWith("/pins")) return Promise.resolve(ok({ pins: messages, patientId: null }));
-      if (path.endsWith("/messages") || path.endsWith("/thread"))
-        return Promise.resolve(ok({ messages }));
+      if (path.endsWith("/search"))
+        return Promise.resolve(
+          ok({
+            results: [
+              {
+                messageId: "m-plain",
+                authorDisplayName: payload,
+                createdAt: "2026-10-10T09:00:00.000Z",
+                body: `plain ${payload}`,
+                attachments: [],
+              },
+            ],
+            scanned: 1,
+            scanCapped: false,
+            patientId: null,
+          }),
+        );
+      if (path.endsWith("/thread"))
+        return Promise.resolve(
+          ok({ root: messages[0], replies: [threadReply, ...messages.slice(1)], patientId: null }),
+        );
+      if (path.endsWith("/messages")) return Promise.resolve(ok({ messages }));
       if (path === "/api/v1/patients/{id}")
         return Promise.resolve(
           ok({ id: PATIENT, firstName: payload, lastName: payload, mrn: payload }),
@@ -177,29 +217,66 @@ function world(payload: string) {
   };
 }
 
+/**
+ * Mounts the page, waits for every payload-independent marker (composer, a plain bubble, the MRN chip, the pinned bar),
+ * then reaches the two interactive surfaces: the search result (Ctrl+F) and the thread panel (reply count).
+ */
+async function renderAndExercisePage(payload: string) {
+  const api = world(payload);
+  const view = render(
+    <MemoryRouter>
+      <ApiClientProvider client={asClient(api)}>
+        <SessionProvider session={SESSION}>
+          <StaffMessaging />
+        </SessionProvider>
+      </ApiClientProvider>
+    </MemoryRouter>,
+  );
+  const { container } = view;
+  await screen.findByRole("textbox", { name: "Message" });
+  await waitFor(() => expect(container.textContent).toContain("plain "));
+  await waitFor(() => expect(container.textContent).toContain("MRN "));
+  await screen.findByRole("navigation", { name: "Pinned messages" });
+
+  // Search snippet: Ctrl+F, a fixed query, the result list is the marker.
+  fireEvent.keyDown(document, { key: "f", ctrlKey: true });
+  const searchBox = await screen.findByRole("searchbox", { name: "Search this conversation" });
+  fireEvent.change(searchBox, { target: { value: "plain" } });
+  const results = await screen.findByRole("list", { name: "Search results" }, { timeout: 3000 });
+  expect(within(results).getByText("plain").tagName).toBe("MARK");
+
+  // Thread panel: the first reply count opens it; the fixed reply text is the marker.
+  const [openThread] = await screen.findAllByRole("button", { name: /^Open thread, / });
+  fireEvent.click(openThread as HTMLElement);
+  const panel = await screen.findByRole("complementary", { name: "Thread" });
+  await within(panel).findByText(THREAD_MARKER);
+  return { api, view, container };
+}
+
 describe("M36 staff messaging page under the XSS corpus", () => {
+  // The app's own buttons/inputs are on this page, so the element ban skips controls and their COUNT is compared with
+  // a benign render of the same flow instead: a payload that made a control would change the count.
+  let benignControls: number | undefined;
+  const benignControlCount = async (): Promise<number> => {
+    if (benignControls === undefined) {
+      await renderAndExercisePage("benign");
+      benignControls = controlCount(document.body);
+      cleanup();
+    }
+    return benignControls;
+  };
+
   it.each(XSS_CORPUS.map((entry) => [entry.id, entry.payload] as const))(
-    "%s renders inert in inbox, header, patient header, bubbles, chips, attachments and pins",
+    "%s renders inert in inbox, header, patient header, bubbles, chips, attachments, pins, search and thread panel",
     async (_id, payload) => {
-      const api = world(payload);
-      const { container } = render(
-        <MemoryRouter>
-          <ApiClientProvider client={asClient(api)}>
-            <SessionProvider session={SESSION}>
-              <StaffMessaging />
-            </SessionProvider>
-          </ApiClientProvider>
-        </MemoryRouter>,
-      );
-      await screen.findByRole("textbox", { name: "Message" });
-      await waitFor(() => expect(container.textContent).toContain("plain"));
-      await waitFor(() =>
-        expect(api.GET.mock.calls.some(([path]) => path === "/api/v1/patients/{id}")).toBe(true),
-      );
-      expectInert(document.body);
+      const expectedControls = await benignControlCount();
+      const { container } = await renderAndExercisePage(payload);
+      expectInert(document.body, { appControls: true });
+      expect(controlCount(document.body)).toBe(expectedControls);
       // The rich bubble shows its payload as text, never as markup.
       if (isPlainText(payload)) expect(container.textContent).toContain(payload.slice(0, 12));
     },
+    15_000,
   );
 });
 
@@ -207,21 +284,21 @@ describe("M36 staff messaging page under the XSS corpus", () => {
 const MARK = "<img src=x onerror=window.__xss=1>";
 describe("the payload reaches every surface as literal text", () => {
   it("page: inbox row, thread header, patient header, bubbles, pins, attachments", async () => {
-    const { container } = render(
-      <MemoryRouter>
-        <ApiClientProvider client={asClient(world(MARK))}>
-          <SessionProvider session={SESSION}>
-            <StaffMessaging />
-          </SessionProvider>
-        </ApiClientProvider>
-      </MemoryRouter>,
-    );
-    await screen.findByRole("textbox", { name: "Message" });
-    await waitFor(() => expect(container.textContent).toContain(`plain ${MARK}`));
-    const occurrences = (container.textContent ?? "").split(MARK).length - 1;
-    expect(occurrences).toBeGreaterThanOrEqual(12);
+    const { container } = await renderAndExercisePage(MARK);
+    await waitFor(() => {
+      const occurrences = (container.textContent ?? "").split(MARK).length - 1;
+      expect(occurrences).toBeGreaterThanOrEqual(12);
+    });
     expect(container.querySelectorAll("img")).toHaveLength(0);
-    expectInert(document.body);
+    expectInert(document.body, { appControls: true });
+  });
+
+  it("search result and thread panel show the payload as text too", async () => {
+    await renderAndExercisePage(MARK);
+    const results = screen.getByRole("list", { name: "Search results" });
+    expect(results.textContent).toContain(MARK);
+    const panel = screen.getByRole("complementary", { name: "Thread" });
+    expect(panel.textContent).toContain(MARK);
   });
 });
 
@@ -233,7 +310,10 @@ describe("M36 secondary surfaces under the XSS corpus", () => {
         GET: vi.fn(() =>
           Promise.resolve(
             ok({
-              members: [{ userId: "u-1", displayName: payload, role: payload, source: "manual" }],
+              members: [
+                { userId: "u-0", displayName: "Marker Member", role: "member", source: "manual" },
+                { userId: "u-1", displayName: payload, role: payload, source: "manual" },
+              ],
               staff: [{ userId: "u-2", displayName: payload, roles: [payload] }],
             }),
           ),
@@ -248,9 +328,9 @@ describe("M36 secondary surfaces under the XSS corpus", () => {
           </ApiClientProvider>
         </MemoryRouter>,
       );
-      await waitFor(() => expect(api.GET).toHaveBeenCalled());
       await screen.findByRole("heading", { name: "Members" });
-      expectInert(document.body);
+      await screen.findByText("Marker Member"); // the list loaded, so the hostile rows are in the DOM too
+      expectInert(document.body, { appControls: true });
       if (isPlainText(payload)) expect(document.body.textContent).toContain(payload);
     },
   );
@@ -259,22 +339,30 @@ describe("M36 secondary surfaces under the XSS corpus", () => {
     "%s renders inert in the Scheduled list",
     async (_id, payload) => {
       const when = new Date(Date.now() + 5 * 86_400_000).toISOString();
+      const row = {
+        id: "s-1",
+        channelId: CH,
+        parentMessageId: null,
+        body: payload,
+        scheduledFor: when,
+        timeZone: "America/Chicago",
+        status: "blocked",
+        blockedReason: payload,
+        createdAt: when,
+        updatedAt: when,
+      };
       const api = {
         GET: vi.fn(() =>
           Promise.resolve(
             ok({
               scheduledMessages: [
+                row,
                 {
-                  id: "s-1",
-                  channelId: CH,
-                  parentMessageId: null,
-                  body: payload,
-                  scheduledFor: when,
-                  timeZone: "America/Chicago",
-                  status: "blocked",
-                  blockedReason: payload,
-                  createdAt: when,
-                  updatedAt: when,
+                  ...row,
+                  id: "s-2",
+                  body: "Marker scheduled",
+                  blockedReason: null,
+                  status: "pending",
                 },
               ],
             }),
@@ -289,17 +377,64 @@ describe("M36 secondary surfaces under the XSS corpus", () => {
           <ScheduledMessagesDialog open onClose={() => {}} channelName={() => payload} />
         </ApiClientProvider>,
       );
-      await waitFor(() => expect(api.GET).toHaveBeenCalled());
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      expectInert(document.body);
+      const list = await screen.findByRole("list", { name: "Scheduled messages" });
+      await within(list).findByText("Marker scheduled");
+      expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+      expectInert(document.body, { appControls: true });
       if (isPlainText(payload)) expect(document.body.textContent).toContain(payload);
     },
   );
 
+  it("an unknown blockedReason renders the row without echoing the raw value", async () => {
+    const when = new Date(Date.now() + 5 * 86_400_000).toISOString();
+    const api = {
+      GET: vi.fn(() =>
+        Promise.resolve(
+          ok({
+            scheduledMessages: [
+              {
+                id: "s-1",
+                channelId: CH,
+                parentMessageId: null,
+                body: "Row with a reason this client does not know",
+                scheduledFor: when,
+                timeZone: "America/Chicago",
+                status: "blocked",
+                blockedReason: "RAW_UNKNOWN_REASON_CODE",
+                createdAt: when,
+                updatedAt: when,
+              },
+            ],
+          }),
+        ),
+      ),
+      POST: vi.fn(),
+      PATCH: vi.fn(),
+      DELETE: vi.fn(),
+    };
+    render(
+      <ApiClientProvider client={asClient(api)}>
+        <ScheduledMessagesDialog open onClose={() => {}} channelName={() => "Care team"} />
+      </ApiClientProvider>,
+    );
+    await screen.findByText("Row with a reason this client does not know");
+    expect(document.body.textContent).not.toContain("RAW_UNKNOWN_REASON_CODE");
+  });
+});
+
+/** Shows where the router is, so a click on a row can be asserted by what it did rather than by a global. */
+function LocationProbe() {
+  const location = useLocation();
+  return <output aria-label="router location">{location.pathname}</output>;
+}
+const SAFE_SUMMARY = "SAFE-ALERT-SUMMARY";
+const SAFE_LINK = "/patients/safe-target";
+
+describe("M36 notifications under the XSS corpus", () => {
   it.each(XSS_CORPUS.map((entry) => [entry.id, entry.payload] as const))(
-    "%s renders inert in the notifications inbox, and never becomes a link target",
+    "%s renders inert in the notifications inbox, and a hostile deepLink never becomes a link target",
     async (_id, payload) => {
-      const alert = {
+      const hostile = {
         alertId: payload,
         eventType: "m36.message.mentioned",
         category: payload,
@@ -310,29 +445,39 @@ describe("M36 secondary surfaces under the XSS corpus", () => {
         deliveryStatus: "delivered",
         readAt: null,
       };
+      const safe = { ...hostile, alertId: "a-safe", summary: SAFE_SUMMARY, deepLink: SAFE_LINK };
       const api = {
-        GET: vi.fn(() => Promise.resolve(ok({ alerts: [alert, { ...alert, alertId: "a2" }] }))),
-        POST: vi.fn(),
+        GET: vi.fn(() => Promise.resolve(ok({ alerts: [hostile, safe] }))),
+        POST: vi.fn(() => Promise.resolve(ok({}))),
       };
       render(
-        <MemoryRouter>
+        <MemoryRouter initialEntries={["/start"]}>
           <ApiClientProvider client={asClient(api)}>
             <SessionProvider session={SESSION}>
               <AlertInboxProvider>
                 <NotificationsInbox />
+                <LocationProbe />
               </AlertInboxProvider>
             </SessionProvider>
           </ApiClientProvider>
         </MemoryRouter>,
       );
-      await waitFor(() => expect(api.GET).toHaveBeenCalled());
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      expectInert(document.body);
+      await screen.findByText(SAFE_SUMMARY); // the table rendered, so the hostile row is in the DOM too
+      expect(document.querySelectorAll("tbody tr")).toHaveLength(2);
+      expectInert(document.body, { appControls: true });
       if (isPlainText(payload)) expect(document.body.textContent).toContain(payload);
-      // A hostile deepLink must not turn the row into a navigable link.
-      for (const row of Array.from(document.querySelectorAll("tr[role=link]")))
-        fireEvent.click(row);
-      expect(window.location.href).not.toMatch(/^javascript:|^data:/i);
+
+      // Only a same-origin path may become a link: the hostile row is one only if it is exactly that, and never else.
+      const links = Array.from(document.querySelectorAll("tr[role=link]"));
+      expect(links).toHaveLength(isInternalAlertDeepLink(payload) ? 2 : 1);
+
+      // The safe alert is a real link: clicking it navigates the router to its path.
+      const safeRow = screen.getByText(SAFE_SUMMARY).closest("tr") as HTMLElement;
+      expect(safeRow.getAttribute("role")).toBe("link");
+      fireEvent.click(safeRow);
+      await waitFor(() =>
+        expect(screen.getByLabelText("router location").textContent).toBe(SAFE_LINK),
+      );
     },
   );
 });
@@ -360,9 +505,10 @@ describe("M36 banners and error text under the XSS corpus", () => {
           </ApiClientProvider>
         </MemoryRouter>,
       );
-      await waitFor(() => expect(api.GET).toHaveBeenCalled());
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      expectInert(document.body);
+      const banner = await screen.findByRole("alert"); // the error banner rendered
+      expect(banner.textContent?.length).toBeGreaterThan(0);
+      expectInert(document.body, { appControls: true });
+      if (isPlainText(payload)) expect(banner.textContent).toContain(payload.slice(0, 12));
     },
   );
 });
