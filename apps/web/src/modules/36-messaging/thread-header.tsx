@@ -70,6 +70,9 @@ export function ThreadHeader({
   );
 }
 
+/** Below 1280 px the patient context overlays the conversation (06-ux-design §1). Keep in step with messaging-responsive.css. */
+const OVERLAY_CONTEXT_QUERY = "(max-width: 1279px)";
+
 export function PatientContextAside({
   patient,
   onClose,
@@ -78,10 +81,13 @@ export function PatientContextAside({
   onClose: () => void;
 }): JSX.Element {
   const closeRef = useRef<HTMLButtonElement>(null);
-  // WP 2.11: below 1280 px this is a slide-over / sheet, so it takes focus on open and hands it back to the opener.
+  // WP 2.11: opened by the user, so it takes focus (it is a slide-over / sheet below 1280 px) and hands it back on close.
   useEffect(() => {
     const opener = document.activeElement;
-    closeRef.current?.focus();
+    // Docked (>= 1280 px) it is a column beside the conversation, not an overlay: leave focus on the toggle.
+    const overlay =
+      typeof window.matchMedia !== "function" || window.matchMedia(OVERLAY_CONTEXT_QUERY).matches;
+    if (overlay) closeRef.current?.focus();
     return () => {
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
     };

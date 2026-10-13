@@ -36,7 +36,8 @@ describe("TimelineState", () => {
         onRetry={vi.fn()}
       />,
     );
-    expect(screen.getByRole("status", { busy: true })).toBeTruthy();
+    expect(screen.getByText("Loading messages").closest("[aria-busy=true]")).toBeTruthy();
+    expect(screen.getByRole("status")).toBeTruthy();
     expect(screen.queryByText("No messages yet")).toBeNull();
   });
 
@@ -74,7 +75,7 @@ describe("ConversationInbox load states", () => {
 
   it("shows a busy skeleton before the first load", () => {
     render(<ConversationInbox {...base} channels={null} error={null} errorCorrelationId={null} />);
-    expect(screen.getByRole("status", { busy: true })).toBeTruthy();
+    expect(screen.getByText("Loading conversations").closest("[aria-busy=true]")).toBeTruthy();
   });
 
   it("quotes the correlation id when the first load failed", () => {
@@ -148,6 +149,63 @@ describe("access ended while a conversation is open", () => {
     await waitFor(() =>
       expect(screen.getByText("You no longer have access to this conversation")).toBeTruthy(),
     );
+    // announced and focused, so a keyboard / screen-reader user is not dropped on <body> in silence
+    const notice = screen.getByRole("status", { name: /no longer have access/i });
+    expect(notice).toHaveFocus();
     expect(screen.queryByText(/Secret Name/)).toBeNull();
+  });
+});
+
+describe("access-ended notice does not outlive the revocation", () => {
+  it("clears when another conversation is opened", async () => {
+    const session: Session = {
+      userId: "11111111-1111-4111-8111-111111111111",
+      organizationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      organizationName: "North Hospice",
+    };
+    const row = (channelId: string, title: string, at: string) => ({
+      channelId,
+      kind: "dm",
+      title,
+      subjectId: null,
+      archivedAt: null,
+      unreadCount: 0,
+      participantRoles: [],
+      lastActivityAt: at,
+      lastMessage: null,
+    });
+    const api = {
+      GET: vi.fn((path: string, init?: { params?: { path?: { id?: string } } }) =>
+        Promise.resolve(
+          path === "/api/v1/messaging/channels"
+            ? {
+                data: {
+                  channels: [
+                    row("dm-1", "First", "2026-10-09T10:00:00.000Z"),
+                    row("dm-2", "Second", "2026-10-09T09:00:00.000Z"),
+                  ],
+                },
+                error: undefined,
+              }
+            : init?.params?.path?.id === "dm-1"
+              ? { data: undefined, error: { message: "forbidden" } }
+              : { data: { messages: [] }, error: undefined },
+        ),
+      ),
+      POST: vi.fn(() => Promise.resolve({ data: undefined, error: undefined })),
+    } as unknown as ApiClient;
+    render(
+      <MemoryRouter>
+        <ApiClientProvider client={api}>
+          <SessionProvider session={session}>
+            <StaffMessaging />
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    await screen.findByText("You no longer have access to this conversation");
+    fireEvent.click(screen.getByRole("button", { name: "Second" }));
+    await screen.findByRole("region", { name: /Conversation with Second/ });
+    expect(screen.queryByText("You no longer have access to this conversation")).toBeNull();
   });
 });

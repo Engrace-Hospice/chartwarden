@@ -19,6 +19,11 @@
 }
 
 .wx-messaging-patient-context header button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
   border: 0;
   background: transparent;
   color: var(--color-on-surface-variant);

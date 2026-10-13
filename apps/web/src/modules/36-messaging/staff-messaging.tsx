@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useLocation } from "react-router-dom";
 import { useSession } from "../../shell";
+import { AccessEndedNotice } from "./access-ended-notice";
 import { ConversationInbox } from "./conversation-inbox";
 import { ConversationThread } from "./conversation-thread";
 import { DepartmentChannelDialog } from "./department-channel-dialog";
@@ -213,6 +214,10 @@ function OrganizationStaffMessaging({
   // WP 2.2: which message the last hint named (and its parent), so an open thread panel reads only when concerned.
   const [liveHint, setLiveHint] = useState<LiveHint | null>(null);
   const activeIdRef = useRef<string | null>(null);
+  // Any way of landing on a conversation (pick, new conversation, deep link, auto-select) ends the notice.
+  useEffect(() => {
+    if (activeId !== null) setAccessEnded(false);
+  }, [activeId]);
   activeIdRef.current = activeId;
   const refreshFromHint = useCallback(async (): Promise<void> => {
     const generation = generationRef.current;
@@ -386,10 +391,7 @@ function OrganizationStaffMessaging({
           errorCorrelationId={errorCorrelationId}
           onQueryChange={setQuery}
           onFilterChange={setFilter}
-          onSelect={(channelId) => {
-            setAccessEnded(false);
-            setActiveId(channelId);
-          }}
+          onSelect={setActiveId}
           onRetry={() => void loadChannels()}
           onNewConversation={() => setNewConversationOpen(true)}
           onNewDepartment={canAnnounce ? () => setDepartmentOpen(true) : undefined}
@@ -418,10 +420,7 @@ function OrganizationStaffMessaging({
           ) : (
             <div className="wx-messaging-no-selection">
               {accessEnded ? (
-                <EmptyState
-                  title="You no longer have access to this conversation"
-                  description="Choose another conversation from the inbox."
-                />
+                <AccessEndedNotice />
               ) : (
                 <EmptyState
                   title="Select a conversation"
