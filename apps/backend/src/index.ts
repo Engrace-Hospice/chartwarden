@@ -258,6 +258,7 @@ import {
   embedderUnavailable,
   licensedSourceDenyStub,
 } from "@wardenx/terminology-loader";
+import { buildGlobalSearchRateLimit } from "./bootstrap/plugins/global-search-rate-limit";
 import {
   type RealtimeHandle,
   createRealtimeEmitter,
@@ -1387,7 +1388,20 @@ import {
   scheduleM35Jobs,
 } from "./modules/35-subscription/index";
 import { emitWithRecipientFallback } from "./modules/36-messaging/alert-recipient-fallback";
+import {
+  invalidateMessageBodyKeys,
+  setMessageBodyKeyProvider,
+  sharedRingDekCache,
+} from "./modules/36-messaging/body-key-ring";
+import {
+  M36_BODY_LEGACY_COUNT_JOB_ID,
+  assertM36BodyBootEnv,
+  countLegacyBodiesAllTenants,
+  runLegacyBodyBootCheck,
+} from "./modules/36-messaging/body-legacy-key-check";
 import { cronAlertCorrelationId } from "./modules/36-messaging/cron-alert-correlation";
+import { registerM36GlobalSearch } from "./modules/36-messaging/global-search/register";
+import { createRingSearchKeyProvider } from "./modules/36-messaging/global-search/search-key-provider";
 import {
   M36_DELIVERY_PLATFORM_JOB_ID,
   M36_INTEGRITY_PLATFORM_JOB_ID,
@@ -1406,8 +1420,8 @@ import {
   createDrizzleMembershipUserLookup,
   createDrizzleMessagingEraseStore,
   createDrizzleRoleSetMembersReader,
-  createScheduledSendDispatcher,
   createRealtimeAuditWriter,
+  createScheduledSendDispatcher,
   createSosContactCaller,
   mountMessagingRoutes,
   mountMessagingWebhookRoutes,
@@ -2461,6 +2475,11 @@ export function wireModuleSeams(
     bootstrapModule34(SLICE_MODULE_34_SEAM_DEPS);
   }
   validateModule34Seams();
+  // M36 WP 2.13 / ADR-0058 P1 — message bodies sealed under the tenant ring DEK resolve it through M34's provider.
+  // Bound lazily (resolved per use) so a DB-less slice boot keeps the fail-closed deny provider: a ring body then fails
+  // to open rather than falling back to anything. M36 cannot import M34 (M34 dependsOn M36); this is the one binding.
+  setMessageBodyKeyProvider(() => getTenantKeyProvider());
+  assertM36BodyBootEnv(process.env); // a M36_BODY_SEAL_SCHEME typo, or ring without the KEK / platform pool, stops the boot
   // ── TASK-001 ledger (production-readiness audit 2026-08-03, ARCH-003) ───────────────────────────
   // Every registrar above that STILL stands an in-memory store behind a published seam on a
   // db-present boot is recorded here, beside the wiring that chose it. A per-process Map wearing a
@@ -3212,6 +3231,27 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   if (platformDbHandle) registerPlatformJob(M36_SOLE_TENANT_JOB_ID);
   // M34 tenant shred — the identity eraser's sole-tenant subjects, resolved by the SAME rule as M36's.
   if (platformDbHandle) registerPlatformJob(M34_SHRED_SOLE_TENANT_JOB_ID);
+  // M36 WP 2.13 / ADR-0058 P1 — legacy message-body envelope rows vs MESSAGING_ENCRYPTION_KEY. A production boot with
+  // legacy rows and no usable key FAILS CLOSED (unreadable history); otherwise the count is logged. In production a count
+  // that cannot be taken is ALSO fatal (re-run db:provision-roles for the column grant BEFORE deploying); elsewhere it warns.
+  if (platformDbHandle) {
+    registerPlatformJob(M36_BODY_LEGACY_COUNT_JOB_ID);
+    await runLegacyBodyBootCheck({
+      count: () =>
+        countLegacyBodiesAllTenants({
+          platformDb: platformDbHandle.db,
+          auditBypass: m34PlatformBypassAuditor,
+          jobId: M36_BODY_LEGACY_COUNT_JOB_ID,
+        }),
+      log: console,
+    });
+  } else if (process.env.NODE_ENV === "production") {
+    // assertProductionEnv requires DATABASE_PLATFORM_URL, so this is unreachable in a validated boot; if validation is ever
+    // bypassed the legacy-row check must not silently not run.
+    throw new Error(
+      "M36 legacy message-body check cannot run in production without DATABASE_PLATFORM_URL; refusing to boot (ADR-0058 P1)",
+    );
+  }
   // audit C1 — RLS is the tenancy control, and a role with BYPASSRLS makes every policy decorative.
   // The migrator now gates that grant on WARDENX_DEV_BYPASSRLS + non-production, but a grant applied
   // by hand (or by an older migrate run against this cluster) would leave no trace at boot. Ask the
@@ -3401,6 +3441,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   const rateLimitStore = rateLimitRedisClient
     ? createRedisRateLimitStore(rateLimitRedisClient)
     : undefined;
+  // WP 2.7b / ADR-0058 P2 - the global-search limiter (active only on the cluster-wide store) and P1 ring key provider.
+  // Both are shared by the route mount and the indexer/worker; the ring cache is resolved per call (bound later at boot).
+  const m36SearchRateLimit = buildGlobalSearchRateLimit(rateLimitStore);
+  const m36SearchKeys = createRingSearchKeyProvider(() => sharedRingDekCache());
   // TASK-040B — the outbox dispatcher (below, ~worker-runner section) is constructed AFTER
   // buildServer() returns `app` (it needs `app.addHook`/`app.log`), but the readinessProbe is
   // built and passed INTO buildServer() before that. This ref lets the probe's outbox-depth check
@@ -4556,6 +4600,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             sendEndpointVerificationCode: outOfBandBinding.sendEndpointVerificationCode,
             outbox: m36OutboxPublisher,
             attachments: m36AttachmentBinding,
+            globalSearch: {
+              keys: m36SearchKeys,
+              ...(m36SearchRateLimit.rateLimit ? { rateLimit: m36SearchRateLimit.rateLimit } : {}),
+            },
+            globalSearchRateLimitActive: m36SearchRateLimit.active,
           }); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05) + WP 1.5 attachments
           // GAP-101 — the §4.9 inbound vendor webhooks (Twilio sms/voice status, Postmark event): signature-authenticated
           // (replay window + HMAC / IP allowlist + bearer), reconciling `notification_delivery`. FAIL-CLOSED: a vendor
@@ -5962,7 +6011,18 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           auditBypass: m34PlatformBypassAuditor,
           keyMaterial: m34KeyMaterial ?? m34ProvisionGateway.keyMaterial,
           storage: m34ProvisionGateway.destructionStorage,
-          outbox: m34OutboxPublisher,
+          // WP 2.13: a published dek_rotation_completed drops this process's cached message-body DEKs for the org.
+          outbox: {
+            ...m34OutboxPublisher,
+            async publish(...args: Parameters<typeof m34OutboxPublisher.publish>) {
+              const result = await m34OutboxPublisher.publish(...args);
+              const event = args[1];
+              if (event.eventName === "m34.tenant.dek_rotation_completed") {
+                invalidateMessageBodyKeys(event.organizationId ?? undefined);
+              }
+              return result;
+            },
+          },
           async destroyTenantKeyRing(input) {
             await platformDbHandle.db.transaction(async (tx) => {
               await tx.execute(
@@ -5972,6 +6032,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                 sql`SELECT m34_destroy_tenant_key_ring(${input.tenantAccountId}, ${input.destructionCertId})`,
               );
             });
+            // WP 2.13: this process must stop using a cached message-body DEK the moment the ring is destroyed (other
+            // processes keep theirs for at most one cache TTL). The input names the tenant account, so drop every cached DEK.
+            invalidateMessageBodyKeys();
           },
           destructionWorkflow: (() => {
             const workflow = createM34DestructionWorkflow();
@@ -9265,6 +9328,37 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       // one object, since createDrizzleInboundTriggerPorts's return type already satisfies both port
       // interfaces.
       const m19TriggerPorts = createDrizzleInboundTriggerPorts(dbHandle.db);
+      // WP 2.7b C2 (ADR-0058, Accepted) — global message search, writer side. Gated by data, not code: the tenant flag
+      // defaults OFF, the platform flag is absent (= OFF) and the ring key provider throws (fail closed) while no ring is bound. One call builds the indexer consumer (bound below) and the `messaging.search_maintenance`
+      // worker; the worker needs the queue connection (the platform pool is already required by this block).
+      const m36GlobalSearch = await registerM36GlobalSearch({
+        db: dbHandle.db,
+        cipher: createMessageBodyCipher(),
+        keys: m36SearchKeys,
+        // Ids and a fixed reason only; never a tag, token or body text.
+        onIndexError: (info) => app.log.warn(info, "M36 global search index write skipped"),
+        ...(queueConnection
+          ? {
+              worker: {
+                connection: queueConnection,
+                activeOrgs: buildActiveOrgEnumerator({
+                  platformDb: platformDbHandle.db,
+                  auditBypass: m34PlatformBypassAuditor,
+                  jobId: M36_INTEGRITY_PLATFORM_JOB_ID,
+                  reason: "M36 WP 2.7b search_maintenance active-org fan-out",
+                }),
+                onError: (context, err) =>
+                  app.log.error(
+                    { ...context, reason: err instanceof Error ? err.name : "unknown" },
+                    "M36 global search maintenance error",
+                  ),
+              },
+            }
+          : {}),
+      });
+      for (const w of m36GlobalSearch.workers)
+        attachDlqPromotionAlert(w, `m36:${w.name}`, dlqPromotionSink);
+      app.addHook("onClose", () => m36GlobalSearch.close());
       const outboxDispatcher = createOutboxDispatcher({
         db: dbHandle.db,
         orgs: outboxRelayOrgs,
@@ -9562,6 +9656,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                 }
               : {}),
           }),
+          // WP 2.7b C2 — committed message sent/edited/deleted events (re)write or remove the blind-token rows.
+          m36GlobalSearch.consumer,
           // FY2027 — the 42 CFR 418.24(d) election-addendum window missed: the first M6 compliance-window fact
           // that pages anyone (care team + compliance), via `m6.election_addendum.overdue`.
           buildM36AdmissionComplianceAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),

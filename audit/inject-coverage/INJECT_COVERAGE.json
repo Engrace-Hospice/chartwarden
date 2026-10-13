@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1547,
-    "coveredRoutes": 1547,
-    "directRoutesReferenced": 1464
+    "routes": 1550,
+    "coveredRoutes": 1550,
+    "directRoutesReferenced": 1467
   },
   "modules": [
     {
@@ -54,7 +54,8 @@
         "apps/backend/__tests__/m2-auditor-enrolment.live.test.ts",
         "apps/backend/__tests__/m2-auditor-redemption.live.test.ts",
         "apps/backend/__tests__/m2-auth-hardening.live.test.ts",
-        "apps/backend/__tests__/m23-dde-queue-hardening.live.test.ts"
+        "apps/backend/__tests__/m23-dde-queue-hardening.live.test.ts",
+        "apps/backend/__tests__/m36-global-search-query.test.ts"
       ],
       "directRoutesReferenced": 16
     },
@@ -483,7 +484,7 @@
     },
     {
       "module": "36-messaging",
-      "routes": 62,
+      "routes": 65,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
@@ -494,6 +495,9 @@
         "apps/backend/__tests__/m36-channel-admin.live.test.ts",
         "apps/backend/__tests__/m36-delivery-sweep-and-webhooks.test.ts",
         "apps/backend/__tests__/m36-drafts-routes.test.ts",
+        "apps/backend/__tests__/m36-global-search-query.test.ts",
+        "apps/backend/__tests__/m36-global-search-settings.live.test.ts",
+        "apps/backend/__tests__/m36-global-search.live.test.ts",
         "apps/backend/__tests__/m36-idempotent-send.live.test.ts",
         "apps/backend/__tests__/m36-message-search-routes.test.ts",
         "apps/backend/__tests__/m36-message-search.live.test.ts",
@@ -509,7 +513,7 @@
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 62
+      "directRoutesReferenced": 65
     },
     {
       "module": "37-ipu",

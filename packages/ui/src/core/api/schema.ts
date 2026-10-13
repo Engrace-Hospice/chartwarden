@@ -13595,6 +13595,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/global-search/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's global search switch with the go-live checklist and the index rebuild progress (messaging.global_search.manage) */
+        get: operations["getApiV1MessagingGlobalsearchSettings"];
+        /** Switch global search on or off for the organization (messaging.global_search.manage + a fresh step-up). ON is 409 GLOBAL_SEARCH_PREREQUISITES_UNMET naming each failing checklist item, or PURGE_IN_PROGRESS while the last switch-off purge is unfinished; OFF is always accepted and requests the token purge */
+        put: operations["putApiV1MessagingGlobalsearchSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/messages/{id}": {
         parameters: {
             query?: never;
@@ -13680,6 +13698,23 @@ export interface paths {
         head?: never;
         /** Reschedule one of the caller's scheduled messages (a blocked one becomes pending again) */
         patch: operations["patchApiV1MessagingScheduledmessagesById"];
+        trace?: never;
+    };
+    "/api/v1/messaging/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search every channel the caller may read (WP 2.7b, ADR-0058 Proposed, INERT until enabled: whole words, last word is a word beginning; blind-token index, authority re-checked per request; 403 GLOBAL_SEARCH_DISABLED / GLOBAL_SEARCH_ROLE_NOT_PERMITTED, 503 GLOBAL_SEARCH_INDEX_NOT_READY / DEGRADED, 422 bad query; `refine: true` asks the user to add a word; read-audited without the query or cursor; never cached) */
+        get: operations["getApiV1MessagingSearch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/messaging/template-admin": {
@@ -63042,6 +63077,94 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingGlobalsearchSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        changedAt: string | null;
+                        purgeRequestedAt: string | null;
+                        purgeCompletedAt: string | null;
+                        checklist: {
+                            platformEnabled: boolean;
+                            legacyBodiesMigrated: boolean;
+                            escrowAttested: boolean;
+                            rateLimitActive: boolean;
+                        };
+                        rebuild: {
+                            keyVersion: string;
+                            status: "building" | "ready" | "stale";
+                            checkpointCreatedAt: string | null;
+                            reconciledAt: string | null;
+                            changedAt: string | null;
+                            effectiveReady: boolean;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1MessagingGlobalsearchSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    enabled: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        changedAt: string | null;
+                        purgeRequestedAt: string | null;
+                        purgeCompletedAt: string | null;
+                        checklist: {
+                            platformEnabled: boolean;
+                            legacyBodiesMigrated: boolean;
+                            escrowAttested: boolean;
+                            rateLimitActive: boolean;
+                        };
+                        rebuild: {
+                            keyVersion: string;
+                            status: "building" | "ready" | "stale";
+                            checkpointCreatedAt: string | null;
+                            reconciledAt: string | null;
+                            changedAt: string | null;
+                            effectiveReady: boolean;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     deleteApiV1MessagingMessagesById: {
         parameters: {
             query?: never;
@@ -63267,6 +63390,85 @@ export interface operations {
                         blockedReason: "channel_archived" | "not_member" | "permission_revoked" | "announcement_not_permitted" | "parent_unavailable" | "dispatch_failed" | null;
                         createdAt: string;
                         updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingSearch: {
+        parameters: {
+            query: {
+                q: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        results: ({
+                            messageId: string;
+                            channelId: string;
+                            authorUserId: string | null;
+                            authorDisplayName: string | null;
+                            body: string;
+                            bodyKind: "plain" | "markdown" | "system" | "rich";
+                            bodyDoc?: {
+                                /** @constant */
+                                schemaVersion: 1;
+                                doc: {
+                                    /** @constant */
+                                    type: "doc";
+                                    content: unknown[];
+                                };
+                            };
+                            /** @constant */
+                            bodyUnreadable?: true;
+                            createdAt: string;
+                            editedAt?: string | null;
+                            parentMessageId: string | null;
+                            replyCount?: number;
+                            lastReplyAt?: string | null;
+                            reactions?: {
+                                emoji: "heart" | "thanks" | "smile" | "celebrate" | "sad" | "hug";
+                                count: number;
+                                reactedByMe: boolean;
+                            }[];
+                            pinned?: boolean;
+                            references: {
+                                kind: "staff" | "patient";
+                                entityId: string;
+                                start: number;
+                                end: number;
+                                displayLabel: string;
+                                navigable: boolean;
+                            }[];
+                            attachments?: {
+                                attachmentId: string;
+                                fileName: string;
+                                mimeType: string;
+                                byteSize: number;
+                                availability: "available" | "scanning";
+                            }[];
+                            hiddenAttachmentCount?: number;
+                        } & {
+                            archived: boolean;
+                        })[];
+                        nextCursor?: string;
+                        scanned: number;
+                        scanCapped: boolean;
+                        refine: boolean;
                     };
                 };
             };

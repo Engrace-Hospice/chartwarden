@@ -108,6 +108,48 @@ export function resolveFeatureFlags(
 const FEATURE_FLAG_READER_SYSTEM_USER_ID = "";
 
 /**
+ * ONE key read from the PLATFORM-GLOBAL (`organization_id IS NULL`) row ALONE, never merged with a tenant row.
+ * `forOrg` lets a tenant-scoped row of the same key win over the global one; a platform KILL SWITCH must not be
+ * overridable that way (ADR-0058 "Enablement and kill switches" 5), so that consumer selects the org-NULL row directly and
+ * passes just that row through {@link resolveFeatureFlags}: kill-switch, expiry, value-type, rollout and targeting
+ * semantics stay identical to every other flag. Absent row = off. A read error propagates (the caller fails closed).
+ * `contextOrgId` only supplies the RLS context (policy `feature_flag_org_read` exposes the global rows to any tenant).
+ */
+export async function readPlatformGlobalFlag(
+  db: DbClient,
+  contextOrgId: string,
+  flagKey: string,
+): Promise<{ readonly enabled: boolean; readonly updatedAt: Date | null }> {
+  const T = schema.featureFlags;
+  const rows = await withOrgContext(
+    db,
+    { organizationId: contextOrgId, userId: FEATURE_FLAG_READER_SYSTEM_USER_ID },
+    async (tx) =>
+      tx
+        .select({
+          flagKey: T.flagKey,
+          organizationId: T.organizationId,
+          valueType: T.valueType,
+          value: T.value,
+          rolloutPercent: T.rolloutPercent,
+          targeting: T.targeting,
+          killSwitchActive: T.killSwitchActive,
+          expiresAt: T.expiresAt,
+          updatedAt: T.updatedAt,
+        })
+        .from(T)
+        .where(and(eq(T.flagKey, flagKey), isNull(T.organizationId)))
+        .limit(1),
+  );
+  const row = rows[0];
+  if (!row) return { enabled: false, updatedAt: null };
+  return {
+    enabled: resolveFeatureFlags([row], new Date())[flagKey] === true,
+    updatedAt: row.updatedAt,
+  };
+}
+
+/**
  * The production `FeatureFlagReader` — the org's own flags plus the platform-global (org-NULL) ones,
  * read on the TENANT pool inside `withOrgContext` so migration 0002's `feature_flag_org_read` policy is
  * the isolation floor rather than this WHERE clause. The predicate is stated anyway: RLS is the backstop,

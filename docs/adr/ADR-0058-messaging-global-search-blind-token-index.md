@@ -1,11 +1,15 @@
 # ADR-0058 — Global message search is a per-tenant HMAC blind-token index (whole-word and prefix only), re-checked against current access at query time
 
-- **Status:** **Proposed**
-- **Gate:** a design review by the **security architect and the privacy officer** is a hard precondition to acceptance. It gates **both
-  building WP 2.7b and enabling it in production** (D10, decided 2026-10-11 by the product owner, who chose option B (D3) knowing it
-  leaks token frequency). Do not implement WP 2.7b, and do not mark this Accepted, until the review in "Design review requirement"
-  has passed and its record is linked here. WP 2.7b is additionally **blocked on the two prerequisite work packages** in "Prerequisites"
-  (key-ring migration of message bodies; per-route rate limit). In-conversation search (WP 2.7a, option A) does not depend on this ADR.
+- **Status:** **Accepted** (2026-10-13, by the user's decision in conversation: "turn ADR-0058 to accepted").
+- **Review record:** the design review by the **security architect and the privacy officer** that this ADR named as a hard precondition has
+  **NOT been recorded**. Acceptance was granted by the user (product owner) without it, and the status line does not claim otherwise.
+  The review remains the condition for the production attestations below; link its record here when it exists. D10 (decided 2026-10-11 by
+  the product owner, who chose option B (D3) knowing it leaks token frequency) is unchanged.
+- **What acceptance does not do:** it does not set `messaging.global_search_escrow_attested` or the rate-limit attestation (`globalSearchRateLimitActive`),
+  which are statements of fact about the escrow drill and the limiter and are set only when true (the escrow drill is in
+  `docs/runbooks/m36-body-key-ring.md`). The tenant switch still refuses ON until its go-live checklist passes. WP 2.7b was additionally
+  **blocked on the two prerequisite work packages** in "Prerequisites" (WP 2.13 key-ring migration of message bodies; WP 2.14 per-route
+  rate limit). In-conversation search (WP 2.7a, option A) does not depend on this ADR.
 - **Date:** 2026-10-11 (revised 2026-10-13 after design review feedback, and again 2026-10-13 to record the open-question decisions; Status unchanged)
 - **Phase:** Messaging Hub Phase 2 (WP 2.7b). Needed before Phase 2 work on global search starts.
 - **Extends:** [ADR-0038](ADR-0038-app-layer-envelope-encryption.md) (app-layer envelope encryption) and
@@ -62,6 +66,8 @@ patient-attribution mechanism; archived-channel inclusion; whether known patient
 
 ## Prerequisites (new work packages, both gate WP 2.7b)
 
+Work-package numbers in the [Messaging Hub plan](../messaging-hub/03-phases-0-to-3.md): **P1 is WP 2.13**, **P2 is WP 2.14**. "P1" and "P2" below are this ADR's labels (not Phase 1 or Phase 2).
+
 ### P1. Migrate message bodies to the M34 wrapped-DEK ring (User decision: key model option (b))
 
 **User decision (2026-10-13):** WP 2.7b is gated on first migrating `message.body_cipher` **and** `message_revision.body_cipher` from
@@ -72,7 +78,7 @@ current scheme there is no tenant key to destroy (body-crypto.ts:24,43), so it w
 `MESSAGING_ENCRYPTION_KEY` alone), tenant erasure and ring destruction do **not** shred those copies. The crypto-shred is complete
 for a tenant only once those backups have aged out or been re-wrapped (see the retirement conditions below).
 
-Scope of P1 (its own WP, number to be taken in the plan; sized as a data migration, not a code tweak):
+Scope of P1 (WP 2.13, its own WP; sized as a data migration, not a code tweak):
 
 1. A new envelope `VERSION` byte in `body-crypto.ts` (today `VERSION = 1`) that also records the DEK key-ring version, so old and new
    envelopes coexist during the migration and decrypt picks the key by envelope version.
@@ -88,6 +94,8 @@ Scope of P1 (its own WP, number to be taken in the plan; sized as a data migrati
    longer applies to bodies); update the ops runbook and `02` §6.
 6. Live tests: pre- and post-migration envelopes both open; mixed-version rows during backfill; after ring destruction every body and
    revision fails to open; rotation re-encrypts under the new version; revision rows migrate.
+
+**Status of P1 (WP 2.13, implemented on branch `feat/m36-wp213-body-key-ring`; this ADR stays Proposed):** items 1, 2, 3 and 6 are built and proved live (envelope `VERSION` byte 2 recording the ring version; reads open both schemes; new writes seal on the ring behind `M36_BODY_SEAL_SCHEME=ring`, default `legacy`; the resumable, tenant-scoped, hash-checked backfill with the revision re-seal through the audited definer function `m36_reseal_message_revision`, migration 1089; both-scheme and mixed-version live tests, revisions migrate, `body_sha256` unchanged, `hash_verify` clean). Item 4 is satisfied by M34's existing four-phase shred (module erasers, then `m34_destroy_tenant_key_ring`): after it every ring-sealed body fails to open (live test); legacy-sealed rows and their backups are not shredded until backfilled and aged out. Item 5 is **partly** done: a new DEK version seals new bodies and old ring bodies stay readable by their recorded version (live test); re-sealing existing ring rows to a newer version is NOT built, and the ops runbook section 8.3.3 and `02` section 6 are not yet edited (the operator side is `docs/runbooks/m36-body-key-ring.md`). Escrow: the restore drill is an operational precondition and is not automated; the backfill refuses to run in a production environment unless `M36_BODY_BACKFILL_ESCROW_DRILL_CONFIRMED=true`. The legacy derivation and `MESSAGING_ENCRYPTION_KEY` are untouched; retirement is a later, separately gated step.
 
 Doing P1 before launch is far cheaper than after (there is no production search to re-key). P1 is also the only way the claims in
 "Keys" and the eraser verification below are true.
@@ -168,7 +176,7 @@ for the global search route, because search is an oracle and a decrypt-cost ampl
    attachments). Indexing (inserts only) runs in a worker driven by `m36.message.sent.v1` / `m36.message.revised.v1` outbox events (**indexer work item: emit and catalog both events**; they exist only in the plan today, `02` §9, not in the event catalog or emit sites) and is therefore
    eventually consistent; the UI states that new messages may take seconds to appear. The index is derived data, never the record.
    Wire the worker's consumer factory in `apps/backend/src/index.ts` (grep for it; `arch:outbox-bindings` does not prove it is wired).
-2. **Keys (after P1).** `K_search(org, v) = HKDF-SHA256(ikm = TenantDek.key, salt = "", info = "wardenx-message-search:" || orgId || ":v" || v)`
+2. **Keys (after P1).** `K_search(org, v) = HKDF-SHA256(ikm = TenantDek.key, salt = "", info = "wardenx-message-search:" || orgId || ":" || ringVersionLabel)`
    where `TenantDek` is the unwrapped M34 DEK for key-ring version `v` and the info label is distinct from the body-encryption label,
    so the two keys are domain-separated. `v` is stored on every index row. Rotation: a new ring version, rebuild under it, query both
    during the overlap, then delete the old version's rows. **Ring destruction (P1) makes the index unusable** because `K_search` can no
@@ -452,14 +460,12 @@ padded to `N = 32` (8 dummies). Total rows `5 x 10^6 x 32 = 1.6 x 10^8` (1.2 x 1
 2. **Who and how it changes.** Only an **org administrator**: a new permission (working name `messaging.global_search.manage`,
    category `admin`, registered in `packages/auth/src/permissions/contributed.ts` and mirrored per the 0600/1086 migration pattern,
    granted by migration to `administrator` and `org_admin` as `messaging.template.manage` was in
-   `packages/db/migrations/1086_m36_message_template.sql`), **plus** an org-admin ABAC predicate (reuse an existing one if it fits;
-   `arch:abac-predicates` and `arch:abac-composed` apply), **plus** `requireStepUp("messaging.global_search.configure")` on the route.
+   `packages/db/migrations/1086_m36_message_template.sql`), **plus** [as built, 2026-10-13: no org-admin ABAC predicate; the gate is the tenant-assignable permission plus step-up] **plus** `requireStepUp("messaging.global_search.configure")` on the route.
    **Requirement:** that operation key is registered wherever step-up operation keys are enumerated for tenant tightening (the
    `tenant_step_up_policy_override.operation_key` surface, M2), so it is a named, tightenable operation; an unnamed operation
    resolves to the platform floor (`apps/backend/src/bootstrap/step-up.ts`, `STEP_UP_FLOOR_KEY`), which would work but would not
-   be tenant-tightenable. The registry location is a build-time check.
-   Every change is **audit-logged with who, when, old value and new value** (the write-audit trigger on the table and an explicit
-   domain event).
+   be tenant-tightenable. Built: step-up operation keys are free-form lower-case dotted strings (`OPERATION_KEY_PATTERN`), so nothing needs registering.
+   Every change is **audit-logged with who, when, old value and new value** (the write-audit trigger on the table; as built, no separate domain event, the trigger is the only audit).
 3. **Turning ON requires the go-live checklist**, enforced where code can enforce it and attested where it cannot: (a) the
    **leakage review record is linked in this ADR** and the Status has changed, attested by ops turning the platform flag below on;
    (b) **P1 is done** for the tenant (no `message` or `message_revision` row on the legacy envelope; checked by the route, which
@@ -721,7 +727,7 @@ residual risk. The review record is linked from this ADR before Status changes.
 
 ## Consequences
 
-- Two prerequisite WPs (P1 data migration of all message and revision ciphertext; P2 per-route rate limit) before any search code.
+- Two prerequisite WPs (P1 = WP 2.13, data migration of all message and revision ciphertext; P2 = WP 2.14, per-route rate limit) before any search code.
 - A new PHI-derived table, a worker, a rebuild job, and key-version handling to run and test.
 - Search quality is limited: no substring, no fuzzy, no stemming, no phrase; no dose search; eventual consistency; occasional
   short pages after access filtering (handled by the cursor and `scanCapped`, decision 9).
@@ -733,7 +739,7 @@ residual risk. The review record is linked from this ADR before Status changes.
 
 ## Migration / rollout
 
-1. **P1 and P2 first** (each its own WP and PR, with their own live suites). P1 starts only after the key escrow is in place and the
+1. **P1 (WP 2.13) and P2 (WP 2.14) first** (each its own WP and PR, with their own live suites). P1 starts only after the key escrow is in place and the
    restore drill has passed (P1, "Key escrow until the backfill"); global search stays off in every tenant until escrow is confirmed.
 2. After acceptance: migration for the table (check `arch:migration-numbering` against `main` first; branches collide on the next
    ordinal; manifest `ownedTables` in `.ts` and `.cjs`; mirror in `packages/db` and `packages/types`), key-derivation helper beside
@@ -771,7 +777,7 @@ residual risk. The review record is linked from this ADR before Status changes.
     seed `role_permission` for those three categories ever contains `messaging.read`.
   - **Flag and kill switch:** default OFF returns the disabled error; only an org admin with fresh step-up can change the setting
     (no permission, no org-admin, stale step-up each refused); each change writes an audit row with actor, time, old and new;
-    turning ON is refused (409) while a legacy-envelope row exists or the rebuild checkpoint is incomplete; turning OFF makes the
+    turning ON is refused (409) while a legacy-envelope row exists (the rebuild checkpoint is NOT a flip precondition, since the rebuild only runs for an ON tenant; the query path stays closed until the index is ready and reconciled after the last flip); turning OFF makes the
     next query fail, the purge deletes the tenant's token rows, and the query path still refuses when purge is held back (rows
     lingering); the platform flag off overrides tenant ON, and an absent or unreadable platform flag is OFF; an org-scoped write of
     the platform key is refused.
@@ -836,3 +842,11 @@ dropped ("Enablement and kill switches"); **tokenizer and cap parameters** with 
 `MESSAGING_ENCRYPTION_KEY` before the P1 backfill, with a restore drill and conditioned retirement (P1); **role categories**
 `patient_family`, `external_auditor` and `platform_staff` never hold `messaging.read`, enforced by a workforce-category allow-list, a
 live test and a static ratchet ("Who may call the route").
+
+## Amendment 2026-10-13: the scan-truncation signal is a coarse threshold oracle (accepted)
+
+`scanCapped` / `refine` is set when a scan limit (500 raw candidates, 100 channels, 5 rounds) ends the scan with no visible row left. The raw candidate count
+is taken before the authority filter, so the bit tells a caller (including one with no access) that MORE than the cap matches exist org-wide; 0 and 499 are
+indistinguishable. It is a term-frequency threshold, never a count, channel, row or cursor, and it is rate-limited (30/min/user, 300/min/org). It
+is the same class of leak as the head-bucket refusal that D3 option B already accepts, and it is preferred over a response that looks complete when it is not.
+The alternative (set it only when the page is non-empty) is available to the privacy officer's review. Found by the fresh review of a9a1ef5e5.

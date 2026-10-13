@@ -263,7 +263,9 @@ function buildSupportSessionProvider(deps: M34SeamRegistrationDeps): TenantSuppo
 }
 
 /** Build the MANDATORY `TenantKeyProvider` (D5) over `TenantKeyRingRepository` + the injected KEK-unwrap port. */
-function buildKeyProvider(deps: M34SeamRegistrationDeps): TenantKeyProvider {
+export function buildKeyProvider(
+  deps: Pick<M34SeamRegistrationDeps, "runInKeyRingContext" | "kekUnwrap">,
+): TenantKeyProvider {
   const loadRing = (orgId: string) =>
     deps.runInKeyRingContext(orgId, (tx) =>
       new TenantKeyRingRepository(tx).findByOrganizationId(orgId),

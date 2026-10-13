@@ -9,6 +9,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  smallint,
   text,
   timestamp,
   unique,
@@ -36,6 +37,10 @@ export const messageRevisions = pgTable(
     revisionNo: integer("revision_no").notNull(),
     bodyCipher: bytea("body_cipher").notNull(),
     bodySha256: text("body_sha256").notNull(),
+    // 1089 (WP 2.13): GENERATED from body_cipher's first byte: 0 erased, 1 legacy HKDF envelope, 2 M34 ring envelope.
+    bodyEnvelopeVersion: smallint("body_envelope_version").generatedAlwaysAs(
+      sql`CASE WHEN octet_length(body_cipher) = 0 THEN 0 ELSE get_byte(body_cipher, 0) END`,
+    ),
     bodyKind: messageBodyKind("body_kind").notNull(),
     referencesSnapshot: jsonb("references_snapshot").notNull().default(sql`'[]'::jsonb`),
     bodyWrittenAt: timestamp("body_written_at", { withTimezone: true }).notNull(),
@@ -54,6 +59,10 @@ export const messageRevisions = pgTable(
       t.id,
     ),
     byOrgIdIdx: index("message_revision_org_id_idx").on(t.organizationId, t.id),
+    // 1089: the legacy-envelope revisions only (see message_body_legacy_idx).
+    legacyBodyIdx: index("message_revision_body_legacy_idx")
+      .on(t.organizationId, t.id)
+      .where(sql`body_envelope_version = 1`),
     messageOrgFk: foreignKey({
       name: "message_revision_message_org_fk",
       columns: [t.organizationId, t.messageId],

@@ -1255,6 +1255,15 @@ import {
   DraftResponseSchema as M36DraftResponseSchema,
   SaveDraftBodySchema as M36SaveDraftBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/draft-typebox";
+import {
+  GlobalSearchQuerySchema as M36GlobalSearchQuerySchema,
+  GlobalSearchResponseSchema as M36GlobalSearchResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/global-search-typebox";
+// M36 WP 2.7b C4 tenant global search switch.
+import {
+  GlobalSearchSettingsViewSchema as M36GlobalSearchSettingsViewSchema,
+  PutGlobalSearchSettingsBodySchema as M36PutGlobalSearchSettingsBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/global-search-settings-typebox";
 // ── M36 Secure Messaging & Alerts — request + response schema imports (all M36-aliased) ──
 import {
   // request schemas (query / body) — reused as-is
@@ -9005,6 +9014,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "The channel's pinned messages, most recently pinned first (read-audited)",
     response: M36PinListResponseSchema,
   },
+  "GET /api/v1/messaging/search": {
+    summary:
+      "Search every channel the caller may read (WP 2.7b, ADR-0058 Proposed, INERT until enabled: whole words, last word is a word beginning; blind-token index, authority re-checked per request; 403 GLOBAL_SEARCH_DISABLED / GLOBAL_SEARCH_ROLE_NOT_PERMITTED, 503 GLOBAL_SEARCH_INDEX_NOT_READY / DEGRADED, 422 bad query; `refine: true` asks the user to add a word; read-audited without the query or cursor; never cached)",
+    query: M36GlobalSearchQuerySchema,
+    response: M36GlobalSearchResponseSchema,
+  },
   "GET /api/v1/messaging/channels/:id/search": {
     summary:
       "Search ONE channel's live messages (WP 2.7a, option A: decrypt-and-filter, no index; scans at most 5000 bodies per request and returns a continuation cursor; read-audited without the query text; 404 non-member, 410 archived, 422 bad query)",
@@ -9127,6 +9142,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "DELETE /api/v1/messaging/templates/personal/:id": {
     summary: "Delete one of the caller's own personal replies (204; 404 for anyone else's)",
+  },
+  "GET /api/v1/messaging/global-search/settings": {
+    summary:
+      "The organization's global search switch with the go-live checklist and the index rebuild progress (messaging.global_search.manage)",
+    response: M36GlobalSearchSettingsViewSchema,
+  },
+  "PUT /api/v1/messaging/global-search/settings": {
+    summary:
+      "Switch global search on or off for the organization (messaging.global_search.manage + a fresh step-up). ON is 409 GLOBAL_SEARCH_PREREQUISITES_UNMET naming each failing checklist item, or PURGE_IN_PROGRESS while the last switch-off purge is unfinished; OFF is always accepted and requests the token purge",
+    body: M36PutGlobalSearchSettingsBodySchema,
+    response: M36GlobalSearchSettingsViewSchema,
   },
   "GET /api/v1/messaging/template-admin": {
     summary:

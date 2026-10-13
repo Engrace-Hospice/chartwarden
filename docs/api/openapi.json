@@ -160712,6 +160712,355 @@
         }
       }
     },
+    "/api/v1/messaging/global-search/settings": {
+      "get": {
+        "operationId": "getApiV1MessagingGlobalsearchSettings",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The organization's global search switch with the go-live checklist and the index rebuild progress (messaging.global_search.manage)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "changedAt",
+                    "purgeRequestedAt",
+                    "purgeCompletedAt",
+                    "checklist",
+                    "rebuild"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "changedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "purgeRequestedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "purgeCompletedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "checklist": {
+                      "type": "object",
+                      "required": [
+                        "platformEnabled",
+                        "legacyBodiesMigrated",
+                        "escrowAttested",
+                        "rateLimitActive"
+                      ],
+                      "properties": {
+                        "platformEnabled": {
+                          "type": "boolean"
+                        },
+                        "legacyBodiesMigrated": {
+                          "type": "boolean"
+                        },
+                        "escrowAttested": {
+                          "type": "boolean"
+                        },
+                        "rateLimitActive": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "rebuild": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "keyVersion",
+                            "status",
+                            "checkpointCreatedAt",
+                            "reconciledAt",
+                            "changedAt",
+                            "effectiveReady"
+                          ],
+                          "properties": {
+                            "keyVersion": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "building",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ready",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "stale",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "checkpointCreatedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "reconciledAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "changedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "effectiveReady": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1MessagingGlobalsearchSettings",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Switch global search on or off for the organization (messaging.global_search.manage + a fresh step-up). ON is 409 GLOBAL_SEARCH_PREREQUISITES_UNMET naming each failing checklist item, or PURGE_IN_PROGRESS while the last switch-off purge is unfinished; OFF is always accepted and requests the token purge",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "changedAt",
+                    "purgeRequestedAt",
+                    "purgeCompletedAt",
+                    "checklist",
+                    "rebuild"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "changedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "purgeRequestedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "purgeCompletedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "checklist": {
+                      "type": "object",
+                      "required": [
+                        "platformEnabled",
+                        "legacyBodiesMigrated",
+                        "escrowAttested",
+                        "rateLimitActive"
+                      ],
+                      "properties": {
+                        "platformEnabled": {
+                          "type": "boolean"
+                        },
+                        "legacyBodiesMigrated": {
+                          "type": "boolean"
+                        },
+                        "escrowAttested": {
+                          "type": "boolean"
+                        },
+                        "rateLimitActive": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "rebuild": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "keyVersion",
+                            "status",
+                            "checkpointCreatedAt",
+                            "reconciledAt",
+                            "changedAt",
+                            "effectiveReady"
+                          ],
+                          "properties": {
+                            "keyVersion": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "building",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ready",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "stale",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "checkpointCreatedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "reconciledAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "changedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "effectiveReady": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "enabled"
+                ],
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/messaging/messages/{id}": {
       "delete": {
         "operationId": "deleteApiV1MessagingMessagesById",
@@ -161302,6 +161651,377 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/search": {
+      "get": {
+        "operationId": "getApiV1MessagingSearch",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Search every channel the caller may read (WP 2.7b, ADR-0058 Proposed, INERT until enabled: whole words, last word is a word beginning; blind-token index, authority re-checked per request; 403 GLOBAL_SEARCH_DISABLED / GLOBAL_SEARCH_ROLE_NOT_PERMITTED, 503 GLOBAL_SEARCH_INDEX_NOT_READY / DEGRADED, 422 bad query; `refine: true` asks the user to add a word; read-audited without the query or cursor; never cached)",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "results",
+                    "scanned",
+                    "scanCapped",
+                    "refine"
+                  ],
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "allOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "messageId",
+                              "channelId",
+                              "authorUserId",
+                              "authorDisplayName",
+                              "body",
+                              "bodyKind",
+                              "createdAt",
+                              "parentMessageId",
+                              "references"
+                            ],
+                            "properties": {
+                              "messageId": {
+                                "type": "string"
+                              },
+                              "channelId": {
+                                "type": "string"
+                              },
+                              "authorUserId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "authorDisplayName": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "body": {
+                                "type": "string"
+                              },
+                              "bodyKind": {
+                                "anyOf": [
+                                  {
+                                    "const": "plain",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "markdown",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "system",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "rich",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "bodyDoc": {
+                                "type": "object",
+                                "required": [
+                                  "schemaVersion",
+                                  "doc"
+                                ],
+                                "properties": {
+                                  "schemaVersion": {
+                                    "const": 1,
+                                    "type": "number"
+                                  },
+                                  "doc": {
+                                    "type": "object",
+                                    "required": [
+                                      "type",
+                                      "content"
+                                    ],
+                                    "properties": {
+                                      "type": {
+                                        "const": "doc",
+                                        "type": "string"
+                                      },
+                                      "content": {
+                                        "maxItems": 500,
+                                        "type": "array",
+                                        "items": {}
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "bodyUnreadable": {
+                                "const": true,
+                                "type": "boolean"
+                              },
+                              "createdAt": {
+                                "type": "string"
+                              },
+                              "editedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "parentMessageId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "replyCount": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "lastReplyAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "reactions": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "emoji",
+                                    "count",
+                                    "reactedByMe"
+                                  ],
+                                  "properties": {
+                                    "emoji": {
+                                      "anyOf": [
+                                        {
+                                          "const": "heart",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "thanks",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "smile",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "celebrate",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "sad",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "hug",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "count": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    },
+                                    "reactedByMe": {
+                                      "type": "boolean"
+                                    }
+                                  }
+                                }
+                              },
+                              "pinned": {
+                                "type": "boolean"
+                              },
+                              "references": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "kind",
+                                    "entityId",
+                                    "start",
+                                    "end",
+                                    "displayLabel",
+                                    "navigable"
+                                  ],
+                                  "properties": {
+                                    "kind": {
+                                      "anyOf": [
+                                        {
+                                          "const": "staff",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "patient",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "entityId": {
+                                      "type": "string"
+                                    },
+                                    "start": {
+                                      "type": "integer"
+                                    },
+                                    "end": {
+                                      "type": "integer"
+                                    },
+                                    "displayLabel": {
+                                      "type": "string"
+                                    },
+                                    "navigable": {
+                                      "type": "boolean"
+                                    }
+                                  }
+                                }
+                              },
+                              "attachments": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "attachmentId",
+                                    "fileName",
+                                    "mimeType",
+                                    "byteSize",
+                                    "availability"
+                                  ],
+                                  "properties": {
+                                    "attachmentId": {
+                                      "type": "string"
+                                    },
+                                    "fileName": {
+                                      "type": "string"
+                                    },
+                                    "mimeType": {
+                                      "type": "string"
+                                    },
+                                    "byteSize": {
+                                      "type": "integer"
+                                    },
+                                    "availability": {
+                                      "anyOf": [
+                                        {
+                                          "const": "available",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "scanning",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              "hiddenAttachmentCount": {
+                                "minimum": 0,
+                                "type": "integer"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "archived"
+                            ],
+                            "properties": {
+                              "archived": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    },
+                    "scanned": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "scanCapped": {
+                      "type": "boolean"
+                    },
+                    "refine": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

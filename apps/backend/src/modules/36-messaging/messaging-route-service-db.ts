@@ -182,7 +182,7 @@ interface EffectiveChannelAccessCandidate {
  * it is revalidated through the opaque CareTeamProvider seam on every effective-access decision.
  * Manual membership is an explicit audited override and remains authoritative by domain rule.
  */
-async function effectivelyVisibleChannels<T extends EffectiveChannelAccessCandidate>(
+export async function effectivelyVisibleChannels<T extends EffectiveChannelAccessCandidate>(
   orgId: string,
   userId: string,
   candidates: readonly T[],
@@ -359,7 +359,7 @@ async function assertLiveMembershipInTx(
   if (!live) throw new NotFoundError("message", messageId);
 }
 
-async function isActiveMessagingUser(
+export async function isActiveMessagingUser(
   tx: Parameters<typeof channelOr404>[0],
   orgId: string,
   userId: string,
@@ -972,7 +972,7 @@ export function createDbMessagingRouteService(
               messagePreview(
                 decodeStoredBody(
                   row.bodyKind as MessageBodyKind,
-                  cipher.open(orgId, row.bodyCipher),
+                  await cipher.open(orgId, row.bodyCipher),
                 ).body,
               ),
             );
@@ -1557,7 +1557,7 @@ export function createDbMessagingRouteService(
           bodyKind: m.bodyKind === "rich" ? "plain" : (m.bodyKind as MessageBodyKind),
           richBody: input.richBody,
         });
-        const { cipher: bodyCipher, sha256 } = cipher.seal(orgId, next.plaintext);
+        const { cipher: bodyCipher, sha256 } = await cipher.seal(orgId, next.plaintext);
         const editedAt = new Date();
         await tx
           .update(MSG)
