@@ -114,7 +114,7 @@ describe("buildActivateTenantPort", () => {
     const activate = vi.fn(async () => ({ activated: true as const }));
     const warn = vi.fn();
 
-    await buildActivateTenantPort(activate, warn)(input);
+    await expect(buildActivateTenantPort(activate, warn)(input)).resolves.toBe("activated");
 
     expect(activate).toHaveBeenCalledWith({ tenantAccountId: "t1", orgId: "o1" });
     expect(warn).not.toHaveBeenCalled();
@@ -124,7 +124,7 @@ describe("buildActivateTenantPort", () => {
     const activate = vi.fn(async () => ({ activated: false as const, reason: "BAA_NOT_EXECUTED" }));
     const warn = vi.fn();
 
-    await expect(buildActivateTenantPort(activate, warn)(input)).resolves.toBeUndefined();
+    await expect(buildActivateTenantPort(activate, warn)(input)).resolves.toBe("pending");
 
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("BAA_NOT_EXECUTED"), {
       tenantAccountId: "t1",
@@ -138,7 +138,7 @@ describe("buildActivateTenantPort", () => {
     });
     const warn = vi.fn();
 
-    await expect(buildActivateTenantPort(activate, warn)(input)).resolves.toBeUndefined();
+    await expect(buildActivateTenantPort(activate, warn)(input)).resolves.toBe("pending");
 
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("db down"), {
       tenantAccountId: "t1",
@@ -149,7 +149,7 @@ describe("buildActivateTenantPort", () => {
   it("with no activation bound it says so loudly instead of silently doing nothing", async () => {
     const warn = vi.fn();
 
-    await buildActivateTenantPort(undefined, warn)(input);
+    await expect(buildActivateTenantPort(undefined, warn)(input)).resolves.toBe("unbound");
 
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("no activation"), {
       tenantAccountId: "t1",

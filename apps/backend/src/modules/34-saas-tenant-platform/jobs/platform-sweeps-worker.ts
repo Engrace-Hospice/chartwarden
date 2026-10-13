@@ -12,6 +12,7 @@
 import { auditPlatformEvent } from "@wardenx/audit";
 import { type DbClient, schema } from "@wardenx/db";
 import {
+  type ActivationOutcome,
   type BaaExpirySweepResult,
   BaaRegisterRepository,
   type ExpiredSessionCandidate,
@@ -233,7 +234,7 @@ export function buildActivateTenantPort(
     | ((input: { tenantAccountId: string; orgId: string }) => Promise<AutoActivationResult>)
     | undefined,
   warn: ((message: string, context: Record<string, string>) => void) | undefined,
-): (input: { tenantAccountId: string; orgId: string }) => Promise<void> {
+): (input: { tenantAccountId: string; orgId: string }) => Promise<ActivationOutcome> {
   return async ({ tenantAccountId, orgId }) => {
     const context = { tenantAccountId, orgId };
     if (!activate) {
@@ -241,22 +242,22 @@ export function buildActivateTenantPort(
         "m34.onboarding_advance: all canonical steps settled but no activation is bound; activation left to platform ops",
         context,
       );
-      return;
+      return "unbound";
     }
     try {
       const result = await activate({ tenantAccountId, orgId });
-      if (!result.activated) {
-        warn?.(
-          `m34.onboarding_advance: tenant not activated yet (${result.reason}); the next sweep retries`,
-          context,
-        );
-      }
+      if (result.activated) return "activated";
+      warn?.(
+        `m34.onboarding_advance: tenant not activated yet (${result.reason}); the next sweep retries`,
+        context,
+      );
     } catch (err) {
       warn?.(
         `m34.onboarding_advance: automatic activation failed (${err instanceof Error ? err.message : String(err)}); the next sweep retries`,
         context,
       );
     }
+    return "pending";
   };
 }
 
