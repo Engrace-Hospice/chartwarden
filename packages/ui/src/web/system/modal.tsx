@@ -43,22 +43,38 @@ export function Modal({
         onClose();
         return;
       }
-      if (e.key !== "Tab" || !cardRef.current) return;
-      const nodes = Array.from(cardRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
-      if (nodes.length === 0) return;
-      const first = nodes[0];
-      const last = nodes[nodes.length - 1];
-      const active = document.activeElement;
-      // A script-focusable element inside the card (tabindex="-1" heading, the card itself) is in no Tab order, so it
-      // counts as both ends: without this, Shift+Tab from it would leave the dialog for the page behind.
-      const inList = active instanceof HTMLElement && nodes.includes(active);
-      if (e.shiftKey && (active === first || !inList)) {
-        e.preventDefault();
-        last?.focus();
-      } else if (!e.shiftKey && (active === last || !inList)) {
-        e.preventDefault();
-        first?.focus();
+      if (e.key !== "Tab" || !cardRef.current || e.defaultPrevented) return;
+      const card = cardRef.current;
+      // A nested modal's card sits inside ours: its own handler deals with events from within it.
+      if (e.target instanceof Element && e.target.closest("[data-wx-modal-card]") !== card) return;
+      const nodes = Array.from(card.querySelectorAll<HTMLElement>(FOCUSABLE));
+      if (nodes.length === 0) {
+        e.preventDefault(); // nothing to move to, and Tab must not escape behind the modal
+        return;
       }
+      const active = document.activeElement;
+      const index = active instanceof HTMLElement ? nodes.indexOf(active) : -1;
+      const step = e.shiftKey ? -1 : 1;
+      let target: HTMLElement | undefined;
+      if (index >= 0) {
+        // In the Tab order: only the real ends wrap; the browser moves everywhere else.
+        const wraps = index + step < 0 || index + step >= nodes.length;
+        if (!wraps) return;
+        target = e.shiftKey ? nodes[nodes.length - 1] : nodes[0];
+      } else if (active) {
+        // Script-focusable only (tabindex="-1" heading, the card): continue from its place in the document, so
+        // Shift+Tab from the top heading can't leave the dialog and Tab from mid-card doesn't jump to the start.
+        const before = (node: HTMLElement) =>
+          active.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_PRECEDING;
+        const after = (node: HTMLElement) =>
+          active.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING;
+        target = e.shiftKey
+          ? (nodes.filter(before).pop() ?? nodes[nodes.length - 1])
+          : (nodes.find(after) ?? nodes[0]);
+      }
+      if (!target) return;
+      e.preventDefault();
+      target.focus();
     },
     [onClose],
   );
@@ -110,6 +126,7 @@ export function Modal({
       {/* The dialog card is the focus-trap root (tabIndex -1 is programmatic-focus only). */}
       <div
         ref={cardRef}
+        data-wx-modal-card=""
         role={role}
         aria-modal="true"
         aria-label={ariaLabel}
