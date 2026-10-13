@@ -166,6 +166,7 @@ function validateReferenceRanges(body: string, references: readonly MessageRefer
 export class VisibilitySeamUnavailableError extends Error {
   constructor() {
     super("channel visibility seam unavailable");
+    this.name = "VisibilitySeamUnavailableError";
   }
 }
 
@@ -222,7 +223,9 @@ async function effectivelyVisibleChannels<T extends EffectiveChannelAccessCandid
           onUnavailable: onSeamUnavailable,
         });
         if (allowed.has(userId)) part2AllowedPatients.add(patientId);
-        if (automaticPatientIds.has(patientId)) {
+        // A denied user is out whatever the roster says: skip the call, so a roster outage cannot turn a definitive
+        // Part 2 denial into a retryable "unavailable".
+        if (allowed.has(userId) && automaticPatientIds.has(patientId)) {
           const roster = await getSeam("CareTeamProvider").careTeamMembers({
             organizationId: orgId,
             patientId,
@@ -251,6 +254,32 @@ async function effectivelyVisibleChannels<T extends EffectiveChannelAccessCandid
     if (candidate.memberSource !== "auto") return true;
     return currentCareTeamPatients.has(candidate.subjectId);
   });
+}
+
+/**
+ * The visibility decision for one candidate. A denial is `false`. With `throwOnSeamUnavailable` (a retrying caller: the
+ * scheduled-send sweep) an outage that left no definitive verdict THROWS instead, so the caller retries; a non-member
+ * is denied whatever the seam says, so only a live member's outage is worth a retry. Never loosens fail-closed.
+ */
+export async function channelVisibilityVerdict(
+  orgId: string,
+  userId: string,
+  candidate: EffectiveChannelAccessCandidate,
+  part2Gate: Part2ChannelGate,
+  warn: ((message: string, context: Record<string, string>) => void) | undefined,
+  mode: { readonly throwOnSeamUnavailable: boolean },
+): Promise<boolean> {
+  let seamUnavailable = false;
+  const visible =
+    (
+      await effectivelyVisibleChannels(orgId, userId, [candidate], part2Gate, warn, () => {
+        seamUnavailable = true;
+      })
+    ).length === 1;
+  if (!visible && seamUnavailable && candidate.memberSource && mode.throwOnSeamUnavailable) {
+    throw new VisibilitySeamUnavailableError();
+  }
+  return visible;
 }
 
 async function careTeamTitlesForAuthorizedChannels(
@@ -785,19 +814,9 @@ export function createDbMessagingRouteService(
       };
     });
     if (!candidate) return false;
-    let seamUnavailable = false;
-    const visible =
-      (
-        await effectivelyVisibleChannels(orgId, userId, [candidate], part2Gate, opts.warn, () => {
-          seamUnavailable = true;
-        })
-      ).length === 1;
-    // Opt-in for a caller that retries (the scheduled-send sweep): an outage is not "cannot view".
-    // A non-member is denied whatever the seam says, so only a live member's outage is worth a retry.
-    if (!visible && seamUnavailable && candidate.memberSource && opts.throwOnSeamUnavailable) {
-      throw new VisibilitySeamUnavailableError();
-    }
-    return visible;
+    return channelVisibilityVerdict(orgId, userId, candidate, part2Gate, opts.warn, {
+      throwOnSeamUnavailable: opts.throwOnSeamUnavailable ?? false,
+    });
   }
 
   /**

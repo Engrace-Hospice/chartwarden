@@ -8343,7 +8343,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           // Ids only: a DB/driver error can carry statement parameters, and a sealed body must never reach a log.
           onRowError: (context, err) =>
             app.log.error(
-              { ...context, reason: err instanceof Error ? err.message : "unknown" },
+              { ...context, reason: err instanceof Error ? err.name : "unknown" },
               "M36 scheduled send row failed",
             ),
         }),
