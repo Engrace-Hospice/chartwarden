@@ -157299,6 +157299,36 @@
         }
       }
     },
+    "/api/v1/messaging/channels/{id}/archive": {
+      "post": {
+        "operationId": "postApiV1MessagingChannelsByIdArchive",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Archive a discipline/location channel (org_admin only; 204, idempotent; 409 CHANNEL_LIFECYCLE_MANAGED for care_team/bereavement/on_call/announcement; 403 for a DM)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/channels/{id}/draft": {
       "delete": {
         "operationId": "deleteApiV1MessagingChannelsByIdDraft",
@@ -157669,6 +157699,104 @@
       }
     },
     "/api/v1/messaging/channels/{id}/members": {
+      "get": {
+        "operationId": "getApiV1MessagingChannelsByIdMembers",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Full active member list of a channel (messaging.manage_members + channel_member_admin; 403 for a DM)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "members"
+                  ],
+                  "properties": {
+                    "members": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "userId",
+                          "role",
+                          "source"
+                        ],
+                        "properties": {
+                          "userId": {
+                            "type": "string"
+                          },
+                          "role": {
+                            "anyOf": [
+                              {
+                                "const": "owner",
+                                "type": "string"
+                              },
+                              {
+                                "const": "member",
+                                "type": "string"
+                              },
+                              {
+                                "const": "read_only",
+                                "type": "string"
+                              },
+                              {
+                                "const": "portal_caregiver",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "source": {
+                            "anyOf": [
+                              {
+                                "const": "auto",
+                                "type": "string"
+                              },
+                              {
+                                "const": "manual",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "displayName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "post": {
         "operationId": "postApiV1MessagingChannelsByIdMembers",
         "tags": [
