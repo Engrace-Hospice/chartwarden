@@ -165,6 +165,15 @@ export const identityScreens: ScreenRegistryModule<ComponentType> = {
       screen: AuditorEnrolment,
     },
     {
+      // The same passkey screen, outside the shell: a first org_admin must register a passkey BEFORE the server will
+      // bind an org, and the shell's pre-org guard bounces every chrome screen back to /login/organization.
+      id: "identity.passkey-enrolment",
+      path: "/login/passkey",
+      title: "Register a passkey",
+      chrome: false,
+      screen: SecurityPasskeys,
+    },
+    {
       // Authenticated settings screen — register/manage WebAuthn passkeys.
       id: "identity.security-passkeys",
       path: "/security/passkeys",

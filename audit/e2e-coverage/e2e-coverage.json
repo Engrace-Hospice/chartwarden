@@ -1,6 +1,6 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 175,
+  "totalStaticWebScreens": 176,
   "e2eReachedCount": 19,
   "axeReachedCount": 167,
   "zeroE2eCoverage": [
@@ -595,6 +595,14 @@
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": true
+    },
+    {
+      "id": "identity.passkey-enrolment",
+      "module": "02-identity",
+      "path": "/login/passkey",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
     },
     {
       "id": "mdm.console",
@@ -1303,6 +1311,14 @@
       "axeReached": false
     },
     {
+      "id": "identity.passkey-enrolment",
+      "module": "02-identity",
+      "path": "/login/passkey",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
       "id": "messaging.notifications",
       "module": "36-messaging",
       "path": "/notifications",
@@ -1983,6 +1999,14 @@
       "permission": "(none)",
       "e2eReached": false,
       "axeReached": true
+    },
+    {
+      "id": "identity.passkey-enrolment",
+      "module": "02-identity",
+      "path": "/login/passkey",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
     },
     {
       "id": "mdm.console",

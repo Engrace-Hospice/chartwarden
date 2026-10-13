@@ -151,6 +151,14 @@
       "app": "web",
       "module": "02-identity",
       "moduleId": 2,
+      "id": "identity.passkey-enrolment",
+      "path": "/login/passkey",
+      "permission": "(none)"
+    },
+    {
+      "app": "web",
+      "module": "02-identity",
+      "moduleId": 2,
       "id": "identity.security-passkeys",
       "path": "/security/passkeys",
       "permission": "(none)"

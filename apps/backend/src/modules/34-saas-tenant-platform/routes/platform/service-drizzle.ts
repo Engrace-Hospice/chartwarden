@@ -27,6 +27,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import type { AlertEmitter } from "@wardenx/messaging";
 import {
   BaaRegisterRepository,
+  FIRST_ADMIN_INVITATION_TTL_DAYS,
   OnboardingRepository,
   SignupIntentRepository,
   SupportRepository,
@@ -51,6 +52,7 @@ import {
 import { type PlatformBypassAuditor, withPlatformContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, desc, eq } from "drizzle-orm";
+import { type InvitationDeliveryPort, mintInvitationToken } from "../../invitation-token";
 import type { ProvisionJobPort } from "../../jobs/provision-job-port";
 import { evaluateActivationGuards } from "./activation-guards";
 import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf, paginate } from "./concurrency";
@@ -130,6 +132,8 @@ export interface DrizzleTenantPlatformDeps {
   readonly enqueue: EnqueuePort;
   /** Reads/retries the BullMQ `tenant.provision` job (BullMQ in prod; fail-closed when no queue is configured). */
   readonly provisionJobs: ProvisionJobPort;
+  /** Emails a first-admin invitation (the provision gateway in prod; fail-closed when it is not configured). */
+  readonly invitationDelivery: InvitationDeliveryPort;
   /** Emits the mandatory `platform.bypass_invoked` audit event for every platform-context entry (F09). */
   readonly auditBypass: PlatformBypassAuditor<PlatformTx>;
   /** Catalog-validated outbox publish, over the same platform tx. */
@@ -695,19 +699,45 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       });
     },
 
-    async issueInvitation(actorUserId, args) {
+    async issueInvitation(actorMembershipId, args) {
       return inPlatformCtx("platform-ops issue invitation", async (tx) => {
         const { account } = await loadByOrgSlug(tx, args.orgSlug);
         const repo = new TenantAccountRepository(tx);
-        const expiresAt = new Date(Date.now() + (args.expiresInDays ?? 7) * 86_400_000);
+        const email = args.firstAdminEmail.trim();
+        const existing = await repo.listInvitations(account.id);
+        // A resend replaces the earlier pending link for this address: only the newest token may be redeemed.
+        for (const invite of existing) {
+          if (
+            invite.status === "pending" &&
+            invite.inviteeEmail.toLowerCase() === email.toLowerCase()
+          ) {
+            await repo.updateInvitationStatus(invite.id, { status: "revoked" });
+          }
+        }
+        const inviteeFullName =
+          existing.find((i) => i.inviteeEmail.toLowerCase() === email.toLowerCase())
+            ?.inviteeFullName ?? email;
+        const expiresAt = new Date(
+          Date.now() + (args.expiresInDays ?? FIRST_ADMIN_INVITATION_TTL_DAYS) * 86_400_000,
+        );
+        const { tokenHash, invitationUrl } = mintInvitationToken(
+          deps.invitationDelivery.acceptBaseUrl,
+        );
+        // Insert, then send, in one transaction: a failed send rolls the new row back and leaves the old link intact.
         const row = await repo.createInvitation({
           tenantAccountId: account.id,
           organizationId: account.organizationId,
-          inviteeEmail: args.firstAdminEmail,
-          inviteeFullName: args.firstAdminEmail,
-          inviterMembershipId: actorUserId,
-          tokenHash: `pending-${account.id}-${Date.now()}`,
+          inviteeEmail: email,
+          inviteeFullName,
+          inviterMembershipId: actorMembershipId,
+          tokenHash,
           status: "pending",
+          expiresAt,
+        });
+        await deps.invitationDelivery.send({
+          to: email,
+          inviteeFullName,
+          invitationUrl,
           expiresAt,
         });
         return {

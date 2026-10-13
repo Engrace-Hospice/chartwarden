@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { audit } from "@wardenx/audit";
 import type { DbClient } from "@wardenx/db";
@@ -58,6 +58,7 @@ import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from 
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { sql } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
+import { mintInvitationToken } from "../invitation-token";
 import { createTenantShredEraserCallback } from "../shred-eraser-adapter";
 import { assertM34ShredPreflight } from "../shred-preflight";
 import { createTenantExportBundleSink } from "../tenant-export-bundle-sink";
@@ -427,9 +428,9 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
         );
         if (existing) return { invitationId: existing.id };
 
-        const rawToken = randomBytes(32).toString("base64url");
-        const tokenHash = createHash("sha256").update(rawToken).digest("hex");
-        const invitationUrl = `${deps.provision.invitation.acceptBaseUrl.replace(/\/$/, "")}/${rawToken}`;
+        const { tokenHash, invitationUrl } = mintInvitationToken(
+          deps.provision.invitation.acceptBaseUrl,
+        );
         // Insert first, send second, in one transaction: a failed insert then never leaves an emailed link with no
         // row, and a failed send rolls the row back so the retry mints a fresh token (only the hash is stored).
         const created = await repo.createInvitation({

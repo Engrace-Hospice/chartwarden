@@ -56,6 +56,7 @@ function m34DsarDeriveTenantBucket(organizationId: string): string {
 import { type M34QueueName, M34_QUEUES } from "./jobs/index";
 import type { M34WorkerDeps } from "./jobs/saas-jobs";
 import type { TenantPlatformRouteService } from "./routes/platform/service";
+import type { InvitationDeliveryPort } from "./invitation-token";
 import { type ProvisionJobPort, createProvisionJobPort } from "./jobs/provision-job-port";
 import type { EnqueuePort as PlatformEnqueuePort } from "./routes/platform/service";
 import {
@@ -305,6 +306,8 @@ export function buildDrizzlePlatformService(deps: {
   enqueue: PlatformEnqueuePort;
   /** Reads/retries the `tenant.provision` job; omitted, those two routes fail closed. */
   provisionJobs?: ProvisionJobPort;
+  /** Emails first-admin invitations (the provision gateway); omitted, issuing/resending one fails closed. */
+  invitationDelivery?: InvitationDeliveryPort;
   auditBypass: PlatformBypassAuditor<PlatformTx>;
   /** #107 — the live transactional-outbox publisher (callerModule-pinned 'm34'). When omitted the lifecycle
    *  outbox stays fail-closed (the §2.5 emit throws, never a silent no-op). */
@@ -363,6 +366,15 @@ export function buildDrizzlePlatformService(deps: {
       },
       async retry() {
         throw new M34InfraPortUnbound("provisionJobs.retry", "bind the provision job port");
+      },
+    },
+    invitationDelivery: deps.invitationDelivery ?? {
+      acceptBaseUrl: "",
+      async send() {
+        throw new M34InfraPortUnbound(
+          "invitationDelivery",
+          "bind the provision gateway (M34_PROVISION_GATEWAY_URL / M34_INVITATION_ACCEPT_URL) to send invitations",
+        );
       },
     },
     auditBypass: deps.auditBypass,

@@ -21,6 +21,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { BAA_TONE, cap, lifecycleTone, statusLabel } from "./saas-status";
+import { InvitationCard } from "./invitation-card";
 import { ProvisioningCard } from "./provisioning-card";
 import { TenantTransitionDialog } from "./tenant-transition-dialog";
 
@@ -220,6 +221,7 @@ export function TenantOverview(): JSX.Element {
           <KeyRingCard tenant={tenant} onRotate={() => void rotateDek()} />
           <SupportCard tenant={tenant} />
           <ExportsCard />
+          <InvitationCard orgSlug={orgSlug} tenantAccountId={tenant.id} />
         </div>
       </div>
 
