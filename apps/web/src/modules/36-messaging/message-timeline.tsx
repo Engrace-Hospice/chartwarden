@@ -1,7 +1,7 @@
 // The scrolling message history of ConversationThread: load state, the load-older control and the message rows (moved
 // out of it unchanged in WP 2.11 to keep that file under the line ceiling). Scroll bookkeeping and loading stay in the
 // thread; this only renders what it is given.
-import type { JSX, RefObject, UIEvent } from "react";
+import type { JSX, ReactNode, RefObject, UIEvent } from "react";
 import { MessageRow } from "./message-row";
 import type { Message } from "./messaging-types";
 import { TimelineState } from "./timeline-state";
@@ -25,6 +25,8 @@ export interface MessageTimelineProps {
   onLoadOlder: () => void;
   onOpenThread: (id: string, opener: HTMLElement) => void;
   onJumpToMessage: (messageId: string) => void;
+  /** The offline outbox's "Not sent" rows, shown after the last server message. */
+  pending?: ReactNode;
 }
 
 export function MessageTimeline({
@@ -45,6 +47,7 @@ export function MessageTimeline({
   onLoadOlder,
   onOpenThread,
   onJumpToMessage,
+  pending,
 }: MessageTimelineProps): JSX.Element {
   return (
     <div
@@ -97,6 +100,7 @@ export function MessageTimeline({
           ))}
         </>
       ) : null}
+      {pending}
     </div>
   );
 }

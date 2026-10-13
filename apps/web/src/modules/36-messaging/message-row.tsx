@@ -9,7 +9,7 @@ import { absoluteTime, dayLabel, initialsOf } from "./messaging-utils";
 import { RichBodyView } from "./rich-body-view";
 import "./announcements.css";
 
-function MessageText({ message }: { message: Message }): JSX.Element {
+export function MessageText({ message }: { message: Message }): JSX.Element {
   // An attachment-only message has no text to show; the attachment list below is its content.
   if (
     !message.body &&

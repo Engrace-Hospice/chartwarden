@@ -15,6 +15,7 @@ import {
   correlationIdOf,
 } from "./messaging-utils";
 import { NewConversationDialog } from "./new-conversation-dialog";
+import { OfflineBanner } from "./offline-banner";
 import { RealtimeBanner, useRealtimeDegraded } from "./realtime-banner";
 import { ScheduledMessagesDialog } from "./scheduled-messages-dialog";
 import { useMessagingRealtime } from "./use-messaging-realtime";
@@ -387,6 +388,7 @@ function OrganizationStaffMessaging({
       ) : null}
 
       <RealtimeBanner degraded={realtimeDegraded} refreshSeconds={POLL_INTERVAL_MS / 1000} />
+      <OfflineBanner />
 
       <section
         aria-label="Conversations and messages"

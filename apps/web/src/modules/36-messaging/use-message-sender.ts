@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import type { FormEvent, MutableRefObject } from "react";
 import { apiErrorCode, toSentAttachments } from "./attachment-utils";
 import { draftToRichBody } from "./draft-to-rich-body";
+import { type SendBody, buildSendBody, referenceInput } from "./message-send-body";
 import type { Message, MessageAttachment, MessageReferenceInput } from "./messaging-types";
 import { apiErrorMessage, rotateIdempotencyKey, sendAttemptFor } from "./messaging-utils";
 import type { SendAttempt } from "./messaging-utils";
@@ -12,15 +13,6 @@ import type { AttachmentUploads } from "./use-attachment-upload";
 const SEND_FAILED_MESSAGE = "Message could not be sent. Your draft has been preserved.";
 const ATTACHMENT_NOT_BINDABLE_MESSAGE =
   "One or more files can no longer be attached. Remove them and attach again. Your draft has been preserved.";
-
-function referenceInput(reference: MessageReferenceInput) {
-  return {
-    kind: reference.kind,
-    entityId: reference.entityId,
-    start: reference.start,
-    end: reference.end,
-  };
-}
 
 /** What the thread needs to show the message it just sent. */
 export interface SentMessage {
@@ -31,6 +23,13 @@ export interface SentMessage {
   readonly bodyDoc?: RichBody;
   readonly references: readonly MessageReferenceInput[];
   readonly attachments: MessageAttachment[];
+}
+
+/** A channel message that got no response, handed to the owner's outbox. `sent.messageId` is the clientMessageId until the server confirms. */
+export interface QueuedSend {
+  readonly body: SendBody;
+  readonly idempotencyKey: string;
+  readonly sent: SentMessage;
 }
 
 interface UseMessageSenderInput {
@@ -48,6 +47,8 @@ interface UseMessageSenderInput {
   onIssued?: (submitted: string) => void;
   /** The request is over, whatever its outcome (after `onSent` on success), even if the composer has since unmounted. */
   onSettled?: (ok: boolean, submitted: string) => void;
+  /** Channel composer only: a send with no attachments that got no response becomes an outbox item instead of an error. */
+  onQueued?: (queued: QueuedSend) => void;
 }
 
 /**
@@ -70,6 +71,7 @@ export function useMessageSender({
   onSent,
   onIssued,
   onSettled,
+  onQueued,
 }: UseMessageSenderInput) {
   const client = useApiClient();
   const [sending, setSending] = useState(false);
@@ -112,30 +114,21 @@ export function useMessageSender({
     setSending(true);
     setSendError(null);
     onIssued?.(submitted);
+    const requestBody = buildSendBody({
+      submitted,
+      references,
+      richBody,
+      clientMessageId: attempt.clientMessageId,
+      parentMessageId,
+      attachmentIds,
+    });
     const postMessage = () =>
       client.POST("/api/v1/messaging/channels/{id}/messages", {
         params: {
           path: { id: channelId },
           header: { "Idempotency-Key": attempt.idempotencyKey },
         },
-        body: {
-          // WP 2.1: a formatted draft goes out as a structured body (its mentions are nodes); an unformatted one
-          // stays plain text with offset references, exactly as before. An attachment-only message omits the text
-          // entirely; the server stores an empty body.
-          ...(richBody
-            ? {
-                bodyDoc: {
-                  schemaVersion: richBody.schemaVersion,
-                  doc: { type: "doc" as const, content: [...richBody.doc.content] },
-                },
-              }
-            : { ...(submitted.trim() ? { body: submitted } : {}), references }),
-          clientMessageId: attempt.clientMessageId,
-          ...(parentMessageId ? { parentMessageId } : {}),
-          ...(attachmentIds.length > 0
-            ? { attachments: attachmentIds.map((attachmentId) => ({ attachmentId })) }
-            : {}),
-        },
+        body: requestBody,
       });
     let result: Awaited<ReturnType<typeof postMessage>>;
     try {
@@ -145,6 +138,24 @@ export function useMessageSender({
       if (generation !== generationRef.current) return;
       sendInFlightRef.current = false;
       setSending(false);
+      // Offline outbox: a plain channel message goes to the owner's "Not sent" list instead of an error. The attempt is
+      // handed over (the next message mints fresh ids); files stay on the old preserved-draft path.
+      if (onQueued && attachmentIds.length === 0) {
+        sendAttemptRef.current = null;
+        onQueued({
+          body: requestBody,
+          idempotencyKey: attempt.idempotencyKey,
+          sent: {
+            messageId: attempt.clientMessageId,
+            createdAt: new Date().toISOString(),
+            body: submitted,
+            ...(richBody ? { bodyDoc: richBody } : {}),
+            references: draftReferences,
+            attachments: [],
+          },
+        });
+        return;
+      }
       setSendError(SEND_FAILED_MESSAGE);
       onSettled?.(false, submitted);
       return;

@@ -23,6 +23,7 @@ import {
   isAccessError,
   mergeMessages,
 } from "./messaging-utils";
+import { PendingMessageList } from "./pending-message-row";
 import { PinnedMessagesBar } from "./pinned-messages-bar";
 import { PatientContextAside, ThreadHeader } from "./thread-header";
 import { ThreadPanel } from "./thread-panel";
@@ -34,6 +35,7 @@ import { useLatestPolling } from "./use-latest-polling";
 import { useMentionPicker } from "./use-mention-picker";
 import { sentMessageRow, useMessageSender } from "./use-message-sender";
 import type { SentMessage } from "./use-message-sender";
+import { useOutbox } from "./use-outbox";
 import { usePatientHeader } from "./use-patient-header";
 import { useScanningRefresh } from "./use-scanning-refresh";
 import { useServerDraft } from "./use-server-draft";
@@ -166,11 +168,9 @@ export function ConversationThread({
   });
   const { reset: panelReset } = panel;
 
-  const handleSent = (sent: SentMessage): void => {
+  /** The server confirmed `sent`: show it at the bottom. Leaves the draft alone (a queued message's draft moved on). */
+  const mergeSent = (sent: SentMessage): void => {
     latestPageIdsRef.current = new Set([...latestPageIdsRef.current, sent.messageId]);
-    setDraft((current) => (current === sent.body ? "" : current));
-    setDraftReferences([]);
-    resetMention();
     const withSentMessage = mergeMessages(messagesRef.current ?? [], [
       sentMessageRow(sent, channel.channelId, meId, meDisplayName),
     ]);
@@ -183,6 +183,18 @@ export function ConversationThread({
     });
     onMessageSent();
   };
+  const handleSent = (sent: SentMessage): void => {
+    setDraft((current) => (current === sent.body ? "" : current));
+    setDraftReferences([]);
+    resetMention();
+    mergeSent(sent);
+  };
+  const outbox = useOutbox({
+    channelId: channel.channelId,
+    generationRef,
+    onDelivered: mergeSent,
+  });
+  const { reset: outboxReset } = outbox;
   const { send, sending, sendError, clearSendError, resetSender } = useMessageSender({
     channelId: channel.channelId,
     archived: Boolean(channel.archivedAt),
@@ -191,6 +203,12 @@ export function ConversationThread({
     uploads,
     generationRef,
     onSent: handleSent,
+    onQueued: (queued) => {
+      outbox.enqueue(queued);
+      setDraft((current) => (current === queued.sent.body ? "" : current));
+      setDraftReferences([]);
+      resetMention();
+    },
   });
   // WP 2.5: the draft follows the user across reloads and devices (restore, debounced autosave, merge prompt).
   const serverDraft = useServerDraft({
@@ -385,12 +403,13 @@ export function ConversationThread({
     rereadAfterFlight.current = false;
     handledAnchor.current = anchorRef.current;
     resetSender();
+    outboxReset();
     void loadLatest();
     return () => {
       generationRef.current += 1;
     };
     // loadLatest changes identity only with the channel (or client); every other input is read through a ref.
-  }, [loadLatest, resetSender, resetMention, jumpReset, panelReset]);
+  }, [loadLatest, resetSender, outboxReset, resetMention, jumpReset, panelReset]);
 
   // A new anchor on the same channel re-reads around it without touching the draft, chips or an in-flight send.
   useEffect(() => {
@@ -567,6 +586,15 @@ export function ConversationThread({
           onLoadOlder={() => void loadOlder()}
           onOpenThread={panel.openThread}
           onJumpToMessage={jump.jumpToMessage}
+          pending={
+            <PendingMessageList
+              items={outbox.items}
+              meId={meId}
+              meDisplayName={meDisplayName}
+              onRetry={(localId) => void outbox.retry(localId)}
+              onDiscard={outbox.discard}
+            />
+          }
         />
 
         {contextOpen && patient ? (
