@@ -1119,6 +1119,10 @@ describe("M36 clinical messenger workspace", () => {
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Back to conversations" }));
     expect(screen.queryByRole("region", { name: "Conversation with Mobile colleague" })).toBeNull();
+    // Focus must land on the inbox heading, never fall to body when the thread unmounts.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Conversations" })),
+    );
     window.matchMedia = originalMatchMedia;
   });
 
