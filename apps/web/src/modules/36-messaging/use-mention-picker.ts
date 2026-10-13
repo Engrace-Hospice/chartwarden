@@ -61,6 +61,9 @@ export function useMentionPicker(input: {
     setDraftReferences(chosen.references);
     setQuery(null);
     window.requestAnimationFrame(() => {
+      // A late add must not pull focus from where the user went meanwhile; the composer or nowhere (body) is fair game.
+      const active = document.activeElement;
+      if (active && active !== document.body && active !== textarea) return;
       textarea?.focus();
       textarea?.setSelectionRange(chosen.caret, chosen.caret);
     });

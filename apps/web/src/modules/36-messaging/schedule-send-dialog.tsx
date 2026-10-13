@@ -3,7 +3,7 @@
 // request, reused when no reply arrived, rotated after any answered failure), so a lost reply followed by a retry is
 // a replay, never two scheduled copies.
 import { Button, Modal, useApiClient } from "@wardenx/ui";
-import { useRef, useState } from "react";
+import { type MutableRefObject, useRef, useState } from "react";
 import type { JSX } from "react";
 import { apiErrorCode } from "./attachment-utils";
 import { apiErrorMessage, rotateIdempotencyKey, sendAttemptFor } from "./messaging-utils";
@@ -23,7 +23,15 @@ import "./scheduled-send.css";
 
 const FAILED_MESSAGE = "The message could not be scheduled. Your text is still in the composer.";
 
+/** What outlives the dialog: the in-flight attempt (its idempotency key) and the time it was made for. */
+export interface ScheduleAttemptMemory {
+  attempt: SendAttempt | null;
+  value: string | null;
+}
+
 export interface ScheduleSendDialogProps {
+  /** Owned by the button so a close and reopen after an ambiguous failure reuses the key. */
+  memory?: MutableRefObject<ScheduleAttemptMemory>;
   open: boolean;
   channelId: string;
   /** The composer text being scheduled (plain text; sent exactly as typed). */
@@ -40,14 +48,18 @@ export function ScheduleSendDialog({
   channelId,
   text,
   hasMentions = false,
+  memory,
   onClose,
   onScheduled,
 }: ScheduleSendDialogProps): JSX.Element {
   const client = useApiClient();
-  const [value, setValue] = useState(() => defaultScheduleValue(new Date()));
+  const ownMemory = useRef<ScheduleAttemptMemory>({ attempt: null, value: null });
+  const remembered = memory ?? ownMemory;
+  const [value, setValue] = useState(
+    () => remembered.current.value ?? defaultScheduleValue(new Date()),
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const attemptRef = useRef<SendAttempt | null>(null);
   const inFlightRef = useRef(false);
   const zone = viewerTimeZone();
   const bounds = scheduleBounds(new Date());
@@ -64,10 +76,10 @@ export function ScheduleSendDialog({
     }
     const scheduledFor = picked.toISOString();
     const attempt = sendAttemptFor(
-      attemptRef.current,
+      remembered.current.attempt,
       JSON.stringify([channelId, text, scheduledFor]),
     );
-    attemptRef.current = attempt;
+    remembered.current = { attempt, value };
     inFlightRef.current = true;
     setSubmitting(true);
     setError(null);
@@ -81,14 +93,16 @@ export function ScheduleSendDialog({
         body: { body: text, scheduledFor, timeZone: zone },
       });
       // Rotate only after a definite refusal; a 5xx/408 may have committed behind the gateway, so a retry must replay.
-      if (isDefiniteRefusal(response?.status)) attemptRef.current = rotateIdempotencyKey(attempt);
+      if (isDefiniteRefusal(response?.status)) {
+        remembered.current = { attempt: rotateIdempotencyKey(attempt), value };
+      }
       if (failure || !data) {
         setError(
           scheduleErrorText(apiErrorCode(failure)) ?? apiErrorMessage(failure, FAILED_MESSAGE),
         );
         return;
       }
-      attemptRef.current = null;
+      remembered.current = { attempt: null, value: null };
       onScheduled(data.scheduledFor);
     } catch {
       // No reply arrived: keep the attempt so a retry replays instead of duplicating.
@@ -136,7 +150,12 @@ export function ScheduleSendDialog({
           />
         </label>
         {timeProblem ? (
-          <p id="wx-schedule-time-problem" className="wx-messaging-error">
+          // Typing shows the reason quietly; once Schedule was refused for it, it is an alert (inserted, so announced).
+          <p
+            id="wx-schedule-time-problem"
+            className="wx-messaging-error"
+            role={error === timeProblem ? "alert" : undefined}
+          >
             {timeProblem}
           </p>
         ) : null}

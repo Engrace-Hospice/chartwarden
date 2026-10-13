@@ -22,6 +22,7 @@ import {
   scheduleBlockReasonFor,
 } from "@wardenx/messaging";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import { NotFoundError } from "@wardenx/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { publishMessageHint } from "../message-hint-events";
 import type { MessagingOutboxPort } from "../messaging-route-service-db";
@@ -39,12 +40,21 @@ const MSG = schema.messages;
 export const SCHEDULE_BLOCKED_EVENT = "m36.message.schedule_blocked";
 /** Due rows one org tick handles; the rest wait for the next minute. */
 export const DISPATCH_BATCH_LIMIT = 100;
-/** Consecutive dependency failures (resolver / visibility) after which the rest of an org's tick is left for the next. */
+/**
+ * Consecutive dependency failures across DISTINCT senders (resolver / visibility) after which the rest of an org's tick
+ * is left for the next: one sender's rows failing is that sender, several different ones is an outage.
+ */
 export const DEPENDENCY_FAILURE_TRIP = 3;
+/** A row this far past its time counts a dependency failure as a real attempt, so a stuck row ends up blocked + notified. */
+export const OVERDUE_COUNTS_AS_ATTEMPT_MS = 15 * 60_000;
 
 /** The M3 resolver or the visibility check failed: an outage of something else, not a verdict about the row. */
 class DependencyUnavailableError extends Error {
-  constructor(readonly original: unknown) {
+  constructor(
+    readonly original: unknown,
+    /** The lookup said the user or channel does not exist: a verdict about the row, not an outage. */
+    readonly permanent: boolean,
+  ) {
     super("scheduled-send dependency unavailable");
   }
 }
@@ -81,6 +91,7 @@ interface DueRow {
   readonly id: string;
   readonly userId: string;
   readonly channelId: string;
+  readonly scheduledFor: Date;
 }
 
 export function createScheduledSendDispatcher(
@@ -93,12 +104,20 @@ export function createScheduledSendDispatcher(
     // The table's policy admits only an owner, so the no-user sweep lists through the narrow definer function (ids only).
     return withOrgContext(db, systemOrgContext(orgId), async (tx) => {
       const { rows } = await tx.execute(
-        sql`SELECT id, user_id, channel_id FROM scheduled_message_due(${orgId}::uuid, ${limit}::integer)`,
+        sql`SELECT id, user_id, channel_id, scheduled_for FROM scheduled_message_due(${orgId}::uuid, ${limit}::integer)`,
       );
-      return (rows as Array<{ id: string; user_id: string; channel_id: string }>).map((row) => ({
+      return (
+        rows as Array<{
+          id: string;
+          user_id: string;
+          channel_id: string;
+          scheduled_for: Date | string;
+        }>
+      ).map((row) => ({
         id: row.id,
         userId: row.user_id,
         channelId: row.channel_id,
+        scheduledFor: new Date(row.scheduled_for),
       }));
     });
   }
@@ -139,7 +158,7 @@ export function createScheduledSendDispatcher(
       permissions = await deps.permissionsFor(orgId, row.userId);
       canView = await deps.canViewChannel(orgId, row.userId, row.channelId);
     } catch (error) {
-      throw new DependencyUnavailableError(error);
+      throw new DependencyUnavailableError(error, error instanceof NotFoundError);
     }
     return withOrgContext(db, { organizationId: orgId, userId: row.userId }, async (tx) => {
       // Claim: still ours, still pending, still due. A cancel/reschedule/other tick that got there first leaves nothing.
@@ -220,6 +239,19 @@ export function createScheduledSendDispatcher(
     });
   }
 
+  /** The lookups said the user or channel no longer exists: block (and notify) now, no retries. */
+  async function blockPermanently(orgId: string, row: DueRow): Promise<void> {
+    await withOrgContext(db, { organizationId: orgId, userId: row.userId }, async (tx) => {
+      const [pending] = await tx
+        .select({ id: SM.id })
+        .from(SM)
+        .where(and(eq(SM.organizationId, orgId), eq(SM.id, row.id), eq(SM.status, "pending")))
+        .for("update", { skipLocked: true })
+        .limit(1);
+      if (pending) await block(tx, orgId, row, "not_member");
+    });
+  }
+
   /** An unexpected error: count it, and after the limit stop retrying and tell the sender. */
   async function recordFailure(orgId: string, row: DueRow): Promise<"failed" | "blocked"> {
     return withOrgContext(db, { organizationId: orgId, userId: row.userId }, async (tx) => {
@@ -240,22 +272,35 @@ export function createScheduledSendDispatcher(
       let sent = 0;
       let blocked = 0;
       let failed = 0;
-      let consecutiveOutages = 0;
+      // Distinct senders whose dependency lookups failed in a row: several different ones is an outage.
+      let outageSenders = new Set<string>();
       for (const row of due) {
         try {
           const outcome = await dispatchOne(orgId, row);
-          consecutiveOutages = 0;
+          outageSenders = new Set();
           if (outcome === "sent") sent += 1;
           if (outcome === "blocked") blocked += 1;
         } catch (error) {
           if (error instanceof DependencyUnavailableError) {
-            // Retry next tick, attempts untouched; a run of them means the dependency is down for everyone here.
             deps.onRowError?.(
               { organizationId: orgId, scheduledMessageId: row.id },
               error.original,
             );
-            consecutiveOutages += 1;
-            if (consecutiveOutages >= DEPENDENCY_FAILURE_TRIP) break;
+            if (error.permanent) {
+              await blockPermanently(orgId, row);
+              blocked += 1;
+              continue;
+            }
+            outageSenders.add(row.userId);
+            // Several different senders failing in a row is an outage: stop, and count nothing against anyone.
+            if (outageSenders.size >= DEPENDENCY_FAILURE_TRIP) break;
+            if (Date.now() - row.scheduledFor.getTime() > OVERDUE_COUNTS_AS_ATTEMPT_MS) {
+              // Stuck for a long time: stop pretending it is an outage, count it so it ends up blocked + notified.
+              const outcome = await recordFailure(orgId, row);
+              if (outcome === "blocked") blocked += 1;
+              else failed += 1;
+            }
+            // A fresh row: retry next tick with attempts untouched; skip it and go on with the others.
             continue;
           }
           deps.onRowError?.({ organizationId: orgId, scheduledMessageId: row.id }, error);

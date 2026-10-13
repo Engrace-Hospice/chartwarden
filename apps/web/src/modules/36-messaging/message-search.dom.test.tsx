@@ -274,7 +274,9 @@ describe("fix round 1: search", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toMatch(/could not be searched/i);
     expect(resultsText()).toContain("tiger one");
-    fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+    // One retry control, not two: the same button that said "Show more results" now says "Try again".
+    expect(screen.queryAllByRole("button", { name: /retry|try again|show more/i })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     await shows("tiger two");
     expect(resultsText()).toContain("tiger one");
   });

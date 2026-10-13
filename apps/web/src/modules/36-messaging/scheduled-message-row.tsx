@@ -1,7 +1,7 @@
 // M36 WP 2.6 — one row of the Scheduled list: what, where, when (in the viewer's zone), why it was not sent, and the
 // two things the sender can do about it: cancel, or move it to a new time (which also retries a blocked one).
 import { Button, useApiClient } from "@wardenx/ui";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { apiErrorCode } from "./attachment-utils";
 import { apiErrorMessage } from "./messaging-utils";
@@ -40,6 +40,8 @@ export function ScheduledMessageRow({
   const [editing, setEditing] = useState(false);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const rowRef = useRef<HTMLLIElement>(null);
+  const timeInputRef = useRef<HTMLInputElement>(null);
+
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,8 +77,22 @@ export function ScheduledMessageRow({
     }
   }
 
+  // Swapping the action block unmounts the button that had focus: land on the first control of the new block.
+  useEffect(() => {
+    if (editing) timeInputRef.current?.focus();
+  }, [editing]);
+  useEffect(() => {
+    if (confirmingCancel)
+      rowRef.current?.querySelector<HTMLElement>("[data-confirm-first]")?.focus();
+  }, [confirmingCancel]);
+
   async function saveTime(): Promise<void> {
-    if (!picked || validateScheduleTime(picked, new Date())) return;
+    // Re-checked against the clock now: the field may have sat open past its own minimum.
+    const stale = validateScheduleTime(picked, new Date());
+    if (!picked || stale) {
+      setError(stale);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -123,8 +139,11 @@ export function ScheduledMessageRow({
           <label>
             <span>New time</span>
             <input
+              ref={timeInputRef}
               type="datetime-local"
               value={value}
+              aria-invalid={timeProblem ? true : undefined}
+              aria-describedby={timeProblem ? `${item.id}-time-problem` : undefined}
               min={toLocalInputValue(bounds.min)}
               max={toLocalInputValue(bounds.max)}
               disabled={busy}
@@ -150,12 +169,22 @@ export function ScheduledMessageRow({
           >
             Keep current time
           </Button>
-          {timeProblem ? <span className="wx-messaging-error">{timeProblem}</span> : null}
+          {timeProblem ? (
+            <span id={`${item.id}-time-problem`} role="alert" className="wx-messaging-error">
+              {timeProblem}
+            </span>
+          ) : null}
         </div>
       ) : confirmingCancel ? (
         <div className="wx-scheduled-actions">
           <span>Cancel this scheduled message?</span>
-          <Button size="sm" disabled={busy} loading={busy} onClick={() => void cancel()}>
+          <Button
+            data-confirm-first
+            size="sm"
+            disabled={busy}
+            loading={busy}
+            onClick={() => void cancel()}
+          >
             Yes, cancel it
           </Button>
           <Button
@@ -195,7 +224,7 @@ export function ScheduledMessageRow({
           </Button>
         </div>
       )}
-      {error ? (
+      {error && error !== timeProblem ? (
         <div role="alert" className="wx-messaging-error">
           {error}
         </div>

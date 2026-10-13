@@ -108,9 +108,9 @@ CREATE POLICY "scheduled_message_due_lister" ON "scheduled_message"
   FOR SELECT TO wardenx_admin USING (status = 'pending');--> statement-breakpoint
 GRANT SELECT ("id", "organization_id", "user_id", "channel_id", "status", "scheduled_for") ON "scheduled_message" TO wardenx_admin;--> statement-breakpoint
 CREATE OR REPLACE FUNCTION scheduled_message_due(p_organization_id uuid, p_limit integer)
-RETURNS TABLE (id uuid, user_id uuid, channel_id uuid)
+RETURNS TABLE (id uuid, user_id uuid, channel_id uuid, scheduled_for timestamptz)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
-  SELECT sm.id, sm.user_id, sm.channel_id
+  SELECT sm.id, sm.user_id, sm.channel_id, sm.scheduled_for
   FROM scheduled_message sm
   WHERE sm.organization_id = p_organization_id
     AND p_organization_id = NULLIF(current_setting('app.org_id', true), '')::uuid

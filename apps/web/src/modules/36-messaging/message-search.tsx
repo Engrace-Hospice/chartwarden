@@ -301,9 +301,6 @@ export function MessageSearch({
           {state.status === "ready" && state.moreError ? (
             <div className="wx-msg-search-error" role="alert">
               <span>{state.moreError}</span>
-              <Button size="sm" tone="secondary" onClick={loadMore}>
-                Retry
-              </Button>
             </div>
           ) : null}
 
@@ -319,9 +316,11 @@ export function MessageSearch({
               <Button size="sm" tone="secondary" onClick={loadMore} disabled={state.loadingMore}>
                 {state.loadingMore
                   ? "Searching…"
-                  : state.scanCapped
-                    ? "Search older messages"
-                    : "Show more results"}
+                  : state.moreError
+                    ? "Try again"
+                    : state.scanCapped
+                      ? "Search older messages"
+                      : "Show more results"}
               </Button>
             </div>
           ) : null}

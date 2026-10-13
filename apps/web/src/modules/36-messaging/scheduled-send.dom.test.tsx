@@ -411,6 +411,85 @@ describe("fix round 1: scheduled list", () => {
   });
 });
 
+describe("fix round 2: scheduled UI", () => {
+  const channelName = (id: string) => (id === CH ? "Care team" : "Unknown conversation");
+  const list = (items: unknown[], extra: Json = {}) =>
+    api({ GET: () => ({ data: { scheduledMessages: items }, error: undefined }), ...extra });
+  const mount = (client: ReturnType<typeof api>) =>
+    render(
+      provide(
+        client,
+        <ScheduledMessagesDialog open onClose={() => {}} channelName={channelName} />,
+      ),
+    );
+
+  it("R1: entering the cancel confirm focuses 'Yes, cancel it'; entering edit focuses the time input", async () => {
+    mount(list([pending]));
+    await userEvent.click(await screen.findByRole("button", { name: /cancel scheduled message/i }));
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: /yes, cancel it/i }));
+    await userEvent.click(screen.getByRole("button", { name: /keep it/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^reschedule/i }));
+    expect(document.activeElement).toBe(screen.getByLabelText(/new time/i));
+  });
+
+  it("R2/R4: a stale time at Save is reported as an alert, and a past time shows its reason on the input", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const client = list([pending], { PATCH: () => ({ data: pending, error: undefined }) });
+      mount(client);
+      await userEvent.click(await screen.findByRole("button", { name: /^reschedule/i }));
+      const input = screen.getByLabelText(/new time/i);
+      expect(input.getAttribute("aria-describedby")).toBeNull();
+      await userEvent.clear(input);
+      await userEvent.type(input, toLocalInputValue(new Date(Date.now() - 3_600_000)));
+      expect((await screen.findByRole("alert")).textContent).toMatch(
+        /at least a couple of minutes/i,
+      );
+      expect(input.getAttribute("aria-describedby")).toBeTruthy();
+      // Valid now, stale by the time Save is pressed.
+      await userEvent.clear(input);
+      await userEvent.type(input, inputIn(1));
+      vi.setSystemTime(Date.now() + 2 * DAY_MS);
+      await userEvent.click(screen.getByRole("button", { name: /save time/i }));
+      expect((await screen.findByRole("alert")).textContent).toMatch(
+        /at least a couple of minutes/i,
+      );
+      expect(client.PATCH).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("R3: closing and reopening the dialog after an ambiguous 502 reuses the Idempotency-Key", async () => {
+    const answers = [POST_REFUSED(502), POST_REFUSED(502)];
+    const client = api({ POST: () => answers.shift() });
+    const dialog = await openDialog(client);
+    await userEvent.click(within(dialog).getByRole("button", { name: /^schedule$/i }));
+    await screen.findByRole("alert");
+    await userEvent.click(within(dialog).getByRole("button", { name: /^cancel$/i }));
+    await userEvent.click(screen.getByRole("button", { name: /schedule send/i }));
+    await userEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: /^schedule$/i }),
+    );
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(2));
+    expect(keyOf(client, 1)).toBe(keyOf(client, 0));
+  });
+
+  it("R4: a submit-time refusal is announced as an alert in the create dialog", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const dialog = await openDialog(api({}));
+      vi.setSystemTime(Date.now() + 2 * 3_600_000);
+      await userEvent.click(within(dialog).getByRole("button", { name: /^schedule$/i }));
+      expect((await within(dialog).findByRole("alert")).textContent).toMatch(
+        /at least a couple of minutes/i,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("entry point", () => {
   it("offers a Scheduled button in the inbox", async () => {
     const onShowScheduled = vi.fn();

@@ -57,6 +57,22 @@ export interface MessageSearchDeps {
   ) => HydrationContext;
 }
 
+/** The statement timeout (SQLSTATE 57014, possibly wrapped by the driver) as a typed, retryable 503; anything else as is. */
+export function searchTimeoutToError(error: unknown): unknown {
+  let current: unknown = error;
+  for (let depth = 0; depth < 4 && current && typeof current === "object"; depth += 1) {
+    if ((current as { code?: unknown }).code === "57014") {
+      return new WardenXError(
+        "SEARCH_TIMEOUT",
+        "the search took too long; narrow it with a filter or try again",
+        503,
+      );
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return error;
+}
+
 function badInput(message: string): WardenXError {
   return new WardenXError("INVALID_SEARCH_QUERY", message, 422);
 }
@@ -216,6 +232,8 @@ export function createDbMessageSearchService(deps: MessageSearchDeps): MessageSe
           scanCapped: found.more && found.matched.length < filters.limit,
           patientId: channel.kind === "care_team" ? channel.subjectId : null,
         };
+      }).catch((error: unknown) => {
+        throw searchTimeoutToError(error);
       });
     },
   };

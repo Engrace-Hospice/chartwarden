@@ -197,4 +197,85 @@ describe("WP 2.3 mention of a person outside the conversation", () => {
     const prompt = await screen.findByRole("status", { name: "Mention outside this conversation" });
     expect(prompt.textContent).toMatch(/Add Zed Newcomer to this conversation/);
   });
+
+  // Fix round 2 (R1, R4).
+  const PROMPT = { name: "Mention outside this conversation" };
+
+  it("R1: 'Not now' returns focus to the composer and the suggestions do not come back", async () => {
+    const composer = await typeMention(makeApi({ canAdd: true }));
+    fireEvent.click(await screen.findByRole("button", { name: "Not now" }));
+    expect(document.activeElement).toBe(composer);
+    expect(screen.queryByRole("option", { name: /Zed Newcomer/ })).toBeNull();
+  });
+
+  it("R1: dismissing the 'was added' notice returns focus to the composer", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const composer = await typeMention(makeApi({ canAdd: true, gate }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add to conversation" }));
+    fireEvent.change(composer, { target: { value: "other words", selectionStart: 11 } });
+    release();
+    fireEvent.click(await screen.findByRole("button", { name: "Dismiss" }));
+    expect(document.activeElement).toBe(composer);
+  });
+
+  it("R1: after a failed add focus stays inside the prompt (on Add)", async () => {
+    await typeMention(makeApi({ canAdd: true, addFails: true }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add to conversation" }));
+    await screen.findByRole("alert");
+    await waitFor(() =>
+      expect((document.activeElement as HTMLElement).textContent).toMatch(/Add to conversation/),
+    );
+  });
+
+  it("R4: the status region exists before the prompt does, and the textarea is not 'expanded' while it shows", async () => {
+    const api = makeApi({ canAdd: true });
+    render(
+      <MemoryRouter>
+        <ApiClientProvider client={api}>
+          <SessionProvider session={SESSION}>
+            <StaffMessaging />
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    const composer = (await screen.findByRole("textbox", {
+      name: "Message",
+    })) as HTMLTextAreaElement;
+    const region = screen.getByRole("status", PROMPT);
+    expect(region.textContent).toBe("");
+    fireEvent.change(composer, { target: { value: "@Zed", selectionStart: 4 } });
+    fireEvent.click(await screen.findByRole("option", { name: /Zed Newcomer/ }));
+    await screen.findByText("Add Zed Newcomer to this conversation?");
+    expect(screen.getByRole("status", PROMPT)).toBe(region);
+    expect(composer.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("R4: Escape on a prompt button dismisses the prompt and returns focus to the composer", async () => {
+    const composer = await typeMention(makeApi({ canAdd: true }));
+    const add = await screen.findByRole("button", { name: "Add to conversation" });
+    add.focus();
+    fireEvent.keyDown(add, { key: "Escape" });
+    expect(screen.queryByText("Add Zed Newcomer to this conversation?")).toBeNull();
+    expect(document.activeElement).toBe(composer);
+  });
+
+  it("R4: a late add does not pull focus away from where the user went", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const composer = await typeMention(makeApi({ canAdd: true, gate }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add to conversation" }));
+    const elsewhere = document.createElement("input");
+    document.body.appendChild(elsewhere);
+    elsewhere.focus();
+    release();
+    await waitFor(() => expect(composer.value).toContain("Zed Newcomer"));
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    expect(document.activeElement).toBe(elsewhere);
+    elsewhere.remove();
+  });
 });

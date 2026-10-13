@@ -24,6 +24,7 @@ import {
 } from "@wardenx/messaging";
 import type { ScheduledSendService } from "@wardenx/messaging";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import { NotFoundError } from "@wardenx/types";
 import { Queue } from "bullmq";
 import { eq, sql } from "drizzle-orm";
 import { Client } from "pg";
@@ -74,7 +75,9 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
   /** Mutable permission table the dispatcher consults (stands in for the M3 resolver). */
   const grants = new Map<string, Set<string>>();
   let failOpenFor: string | null = null;
-  let failResolver = false;
+  /** Per-user resolver fault injection (null = healthy). */
+  let resolverFault: ((userId: string) => Error | null) | null = null;
+  let erin: string; // a third sender, for outage patterns across distinct users
 
   async function applyMigrations() {
     const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
@@ -166,6 +169,7 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
     orgB = await seedOrg("wp26b");
     alice = await seedUser("wp26-alice@x.test", orgA);
     bob = await seedUser("wp26-bob@x.test", orgA);
+    erin = await seedUser("wp26-erin@x.test", orgA);
     carol = await seedUser("wp26-carol@x.test", orgB);
     announcement = await seedAnnouncement(orgA);
     handle = createDbClient({
@@ -201,7 +205,8 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
       outbox,
       canViewChannel: router.canViewChannel,
       permissionsFor: async (org, user) => {
-        if (failResolver) throw new Error("simulated M3 resolver outage");
+        const fault = resolverFault?.(user);
+        if (fault) throw fault;
         return grants.get(`${org}:${user}`) ?? new Set<string>();
       },
     });
@@ -644,9 +649,89 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
         );
       const own = (await list(orgA, orgA)).rows as Array<Record<string, unknown>>;
       expect(own).toHaveLength(1);
-      expect(Object.keys(own[0]!).sort()).toEqual(["channel_id", "id", "user_id"]);
+      expect(Object.keys(own[0]!).sort()).toEqual(["channel_id", "id", "scheduled_for", "user_id"]);
       // Naming another org while bound to this one yields nothing.
       expect((await list(orgB, orgA)).rows).toHaveLength(0);
+    });
+  });
+
+  describe("dependency failures vs. a stuck head of queue (fix round 2, S1)", () => {
+    const makeDueAgo = (id: string, interval: string) =>
+      admin.query(
+        `UPDATE scheduled_message SET scheduled_for = now() - interval '${interval}' WHERE id=$1`,
+        [id],
+      );
+    const gone = (userId: string) => (id: string) =>
+      id === userId ? new NotFoundError("user", id) : null;
+
+    it("three permanently failing head rows are blocked WITH a notice and do not starve a later good row", async () => {
+      await wipe();
+      const head = [await schedule(alice), await schedule(alice), await schedule(alice)];
+      for (const row of head) await makeDueAgo(row.id, "5 minutes");
+      const good = await schedule(bob);
+      await makeDue(good.id);
+      const before = (await messagesIn(dm)).length;
+      resolverFault = gone(alice);
+      try {
+        expect(await tick()).toMatchObject({ sent: 1, blocked: 3 });
+      } finally {
+        resolverFault = null;
+      }
+      expect(await messagesIn(dm)).toHaveLength(before + 1);
+      expect(await rows()).toHaveLength(3);
+      expect((await rows()).every((row) => row.status === "blocked")).toBe(true);
+      expect(await eventsOf("m36.message.schedule_blocked")).toHaveLength(3);
+    });
+
+    it("three head rows from ONE user failing transiently do not end the tick either", async () => {
+      await wipe();
+      const head = [await schedule(alice), await schedule(alice), await schedule(alice)];
+      for (const row of head) await makeDueAgo(row.id, "5 minutes");
+      const good = await schedule(bob);
+      await makeDue(good.id);
+      resolverFault = (id) => (id === alice ? new Error("flaky resolver for one user") : null);
+      try {
+        expect(await tick()).toMatchObject({ sent: 1, blocked: 0 });
+      } finally {
+        resolverFault = null;
+      }
+      expect((await rows()).filter((row) => row.status === "pending")).toHaveLength(3);
+      expect((await rows()).every((row) => row.attempts === 0)).toBe(true);
+    });
+
+    it("a row overdue past the threshold counts the failure as a real attempt and ends up blocked with a notice", async () => {
+      await wipe();
+      const stuck = await schedule(alice);
+      await makeDueAgo(stuck.id, "30 minutes");
+      resolverFault = () => new Error("resolver keeps failing for this sender");
+      try {
+        await tick();
+        expect((await rows())[0]).toMatchObject({ status: "pending", attempts: 1 });
+        await tick();
+        expect(await tick()).toMatchObject({ blocked: 1 });
+      } finally {
+        resolverFault = null;
+      }
+      expect((await rows())[0]).toMatchObject({
+        status: "blocked",
+        blocked_reason: "dispatch_failed",
+      });
+      expect(await eventsOf("m36.message.schedule_blocked")).toHaveLength(1);
+    });
+
+    it("a genuine outage across distinct users burns no attempts for fresh rows and ends the tick early", async () => {
+      await wipe();
+      const created = [await schedule(alice), await schedule(bob), await schedule(erin)];
+      for (const row of created) await makeDue(row.id);
+      resolverFault = () => new Error("M3 resolver down");
+      try {
+        for (let i = 0; i < 4; i += 1) await tick();
+      } finally {
+        resolverFault = null;
+      }
+      expect((await rows()).every((row) => row.status === "pending" && row.attempts === 0)).toBe(
+        true,
+      );
     });
   });
 
@@ -656,11 +741,11 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
       const created = await schedule(alice);
       await makeDue(created.id);
       const before = (await messagesIn(dm)).length;
-      failResolver = true;
+      resolverFault = () => new Error("simulated M3 resolver outage");
       try {
         for (let i = 0; i < 5; i += 1) await tick();
       } finally {
-        failResolver = false;
+        resolverFault = null;
       }
       expect((await rows())[0]).toMatchObject({ status: "pending", attempts: 0 });
       expect(await eventsOf("m36.message.schedule_blocked")).toHaveLength(0);

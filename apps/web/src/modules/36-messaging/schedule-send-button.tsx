@@ -1,9 +1,9 @@
 // M36 WP 2.6 — the composer's "Schedule send" control: a button beside Send that opens the dialog, and a polite status
 // line after a message was scheduled. The composer owns clearing its own draft (`onScheduled`).
 import { Button } from "@wardenx/ui";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { JSX } from "react";
-import { ScheduleSendDialog } from "./schedule-send-dialog";
+import { type ScheduleAttemptMemory, ScheduleSendDialog } from "./schedule-send-dialog";
 import { formatScheduledTime } from "./scheduled-send-utils";
 import "./scheduled-send.css";
 
@@ -28,6 +28,8 @@ export function ScheduleSendButton({
   onScheduled: () => void;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
+  // Survives closing the dialog: after an ambiguous failure, reopening for the same text and time must replay, not duplicate.
+  const memory = useRef<ScheduleAttemptMemory>({ attempt: null, value: null });
   const [confirmation, setConfirmation] = useState<string | null>(null);
   const unavailable = disabled || !text.trim() || Boolean(disabledReason);
 
@@ -54,6 +56,7 @@ export function ScheduleSendButton({
           channelId={channelId}
           text={text}
           hasMentions={hasMentions}
+          memory={memory}
           onClose={() => setOpen(false)}
           onScheduled={(scheduledFor) => {
             setOpen(false);

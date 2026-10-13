@@ -714,8 +714,10 @@ export function ConversationThread({
               value={draft}
               disabled={sending}
               aria-autocomplete="list"
-              aria-expanded={mentionQuery !== null}
-              aria-controls={mentionQuery ? "messaging-mention-suggestions" : undefined}
+              aria-expanded={mentionQuery !== null && !pendingAdd}
+              aria-controls={
+                mentionQuery && !pendingAdd ? "messaging-mention-suggestions" : undefined
+              }
               onChange={(event) => {
                 const next = event.target.value;
                 const nextReferences = reconcileReferences(draft, next, draftReferences);
@@ -745,19 +747,20 @@ export function ConversationThread({
               onInsert={insertSavedReply}
               onClosed={() => textareaRef.current?.focus()}
             />
-            {pendingAdd ? (
-              <NonMemberMentionPrompt
-                person={pendingAdd.person}
-                canAdd={canAddMention}
-                adding={mentionAdding}
-                failed={mentionAddFailed}
-                added={pendingAdd.stage === "added"}
-                onAdd={() => void addToConversation()}
-                onDismiss={dismissMentionAdd}
-              />
-            ) : mentionQuery ? (
-              <MentionMenu {...mentionMenu} />
-            ) : null}
+            <NonMemberMentionPrompt
+              person={pendingAdd?.person ?? null}
+              canAdd={canAddMention}
+              adding={mentionAdding}
+              failed={mentionAddFailed}
+              added={pendingAdd?.stage === "added"}
+              onAdd={() => void addToConversation()}
+              onDismiss={() => {
+                dismissMentionAdd();
+                setMentionQuery(null);
+                textareaRef.current?.focus();
+              }}
+            />
+            {!pendingAdd && mentionQuery ? <MentionMenu {...mentionMenu} /> : null}
             <Button
               type="submit"
               disabled={
