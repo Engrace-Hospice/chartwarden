@@ -47,6 +47,28 @@ if (typeof UndiciRequest === "function") {
   } as typeof Request;
 }
 
+// Node's experimental Web Storage defines a global `localStorage` that vitest's jsdom environment will not overwrite,
+// and without a `--localstorage-file` it is a stub with no methods (`window.localStorage.clear is not a function`).
+// An in-memory Storage is a faithful stand-in: jsdom's own localStorage is also per-test-process memory.
+function createMemoryStorage(): Storage {
+  const data = new Map<string, string>();
+  return {
+    get length() {
+      return data.size;
+    },
+    clear: () => data.clear(),
+    getItem: (key) => data.get(String(key)) ?? null,
+    key: (index) => [...data.keys()][index] ?? null,
+    removeItem: (key) => void data.delete(String(key)),
+    setItem: (key, value) => void data.set(String(key), String(value)),
+  };
+}
+if (typeof window !== "undefined" && typeof window.localStorage?.clear !== "function") {
+  const storage = createMemoryStorage();
+  Object.defineProperty(window, "localStorage", { value: storage, configurable: true });
+  Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
+}
+
 // Testing Library's default 1000 ms findBy*/waitFor timeout is shorter than a debounced lookup (the @-mention
 // candidates wait 250 ms) plus a render on a loaded machine: the M36 mention tests failed only under CPU contention,
 // never in isolation. Passing waits return immediately, so a longer ceiling costs nothing.

@@ -457,8 +457,6 @@
     color: var(--color-primary-strong);
     font-size: 0.75rem;
     font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
   }
 
   .wx-portal-auth-heading h1 {
@@ -850,8 +848,6 @@
     color: var(--color-on-surface-variant);
     font-size: 0.75rem;
     font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
   }
 
   .wx-portal-content-list {
