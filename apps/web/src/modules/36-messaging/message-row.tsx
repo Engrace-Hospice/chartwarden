@@ -6,6 +6,7 @@ import { MessageAnnotations } from "./message-annotations";
 import { MessageAttachments } from "./message-attachments";
 import type { Message } from "./messaging-types";
 import { absoluteTime, dayLabel, initialsOf } from "./messaging-utils";
+import { PollCard } from "./poll-card";
 import { RichBodyView } from "./rich-body-view";
 import "./announcements.css";
 
@@ -203,6 +204,14 @@ function MessageRowImpl({
                   <MessageText message={message} />
                 </span>
               )}
+              {message.poll && !deleted ? (
+                <PollCard
+                  channelId={message.channelId}
+                  messageId={message.messageId}
+                  poll={message.poll}
+                  canVote={canAnnotate}
+                />
+              ) : null}
               <MessageAttachments attachments={message.attachments} />
               {message.hiddenAttachmentCount ? (
                 <small className="wx-message-attachment-hidden">

@@ -1,0 +1,228 @@
+/* WP 2.10 polls: the card under a message body, the composer action and the create dialog. Flat, token-driven.
+   Results are always text; the bar is decoration and carries no meaning of its own. */
+
+.wx-poll {
+  position: relative;
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+  color: var(--color-on-surface);
+}
+
+.wx-poll-options {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.wx-poll-legend {
+  padding: 0;
+  margin-bottom: 0.15rem;
+  color: var(--color-on-surface-variant);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.wx-poll-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.15rem 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-md, 0.5rem);
+  cursor: pointer;
+}
+
+.wx-poll-option[data-chosen] {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface-lowest));
+}
+
+.wx-poll-option:has(input:focus-visible) {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.wx-poll-option:has(input:disabled) {
+  cursor: default;
+}
+
+.wx-poll-label {
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+}
+
+.wx-poll-count {
+  color: var(--color-on-surface-variant);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.wx-poll-bar {
+  grid-column: 2 / -1;
+  width: 100%;
+  height: 0.3rem;
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-surface-low);
+  overflow: hidden;
+}
+
+.wx-poll-bar::-webkit-progress-bar {
+  background: var(--color-surface-low);
+}
+
+.wx-poll-bar::-webkit-progress-value {
+  background: var(--color-primary);
+}
+
+.wx-poll-bar::-moz-progress-bar {
+  background: var(--color-primary);
+}
+
+.wx-poll-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.65rem;
+  color: var(--color-on-surface-variant);
+  font-size: 0.75rem;
+}
+
+.wx-poll-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  font-size: 0.8125rem;
+}
+
+.wx-poll-voters {
+  display: grid;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.wx-poll-voters h4 {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.wx-poll-voters ul {
+  margin: 0.15rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.wx-poll-voters p {
+  margin: 0.15rem 0 0;
+  color: var(--color-on-surface-variant);
+}
+
+.wx-poll-error {
+  color: var(--color-error-pill-fg);
+  font-size: 0.75rem;
+}
+
+.wx-poll-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Composer action: sits in the first column beside the attach and template controls. */
+.wx-message-composer > .wx-poll-create {
+  grid-column: 1;
+  display: grid;
+  justify-items: start;
+  gap: 0.25rem;
+}
+
+.wx-poll-create > [aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.wx-poll-create-status {
+  color: var(--color-on-surface-variant);
+  font-size: 0.6875rem;
+}
+
+.wx-poll-create-status:empty {
+  display: none;
+}
+
+.wx-poll-dialog {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1.25rem;
+}
+
+.wx-poll-dialog h2 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.wx-poll-dialog header p {
+  margin: 0.25rem 0 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}
+
+.wx-poll-field,
+.wx-poll-field-group {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  font-size: 0.8125rem;
+}
+
+.wx-poll-field-group legend {
+  padding: 0;
+  margin-bottom: 0.25rem;
+}
+
+.wx-poll-dialog input[type="text"] {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-low);
+  color: var(--color-on-surface);
+  font: inherit;
+}
+
+.wx-poll-option-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.wx-poll-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+fieldset.wx-poll-confirm {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}

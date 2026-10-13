@@ -154,6 +154,7 @@ import { createGlobalSearchPrerequisites as _createGlobalSearchPrerequisites } f
 import { createGlobalSearchSettingsService as _createGlobalSearchSettingsService } from "./global-search/settings-service";
 import { createDbMessagingRouteService as _createDbMessagingRouteService } from "./messaging-route-service-db";
 import type { MessagingOutboxPort } from "./messaging-route-service-db";
+import { createDbPollService as _createDbPollService } from "./polls/poll-service-db";
 import {
   buildAdminAlertDeliveriesDeps as _buildAdminAlertDeliveriesDeps,
   registerAdminAlertDeliveriesRoutes as _registerAdminAlertDeliveriesRoutes,
@@ -166,6 +167,7 @@ import {
   registerMessagingAbacPredicates as _registerMessagingAbacPredicates,
   registerMessagingRoutes as _registerMessagingRoutes,
 } from "./routes/messaging-routes";
+import { registerPollRoutes as _registerPollRoutes } from "./routes/poll-routes";
 import { registerScheduledSendRoutes as _registerScheduledSendRoutes } from "./routes/scheduled-send-routes";
 import { registerTemplateRoutes as _registerTemplateRoutes } from "./routes/template-routes";
 import { createDbScheduledSendService as _createDbScheduledSendService } from "./scheduled/scheduled-send-service-db";
@@ -205,6 +207,16 @@ export function mountMessagingRoutes(
   _registerMessagingRoutes(app, { service, announcements }); // WP 2.9
   // WP 2.5 — private encrypted drafts (own row per user + channel + thread root).
   _registerDraftRoutes(app, { service: _createDbDraftService({ db }) });
+  // WP 2.10 — polls (non-clinical, single choice, named votes); a poll is written through the message write core.
+  _registerPollRoutes(app, {
+    service: _createDbPollService({
+      db,
+      canViewChannel: service.canViewChannel,
+      ...(opts.outbox ? { outbox: opts.outbox } : {}),
+    }),
+    announcements,
+    canManageMembers: service.canManageMembers,
+  });
   // WP 2.6 — scheduled send: the QUEUEING side. The `messaging.scheduled_send` sweep sends (see ./scheduled/*).
   _registerScheduledSendRoutes(app, {
     service: _createDbScheduledSendService({ db, canViewChannel: service.canViewChannel }),
@@ -310,6 +322,11 @@ export { registerAttachmentRoutes } from "./routes/attachment-routes";
 // WP 2.8 — message templates & saved replies: Drizzle service + routes (the in-memory twin lives in @wardenx/messaging).
 export { createDbTemplateService } from "./templates/template-service-db";
 export { registerTemplateRoutes } from "./routes/template-routes";
+
+// WP 2.10 — polls: Drizzle service + routes (non-clinical; refused in patient-linked channels).
+export { createDbPollService, pollBlockedChannelKinds } from "./polls/poll-service-db";
+export type { MessagePollService } from "./polls/poll-service-db";
+export { registerPollRoutes } from "./routes/poll-routes";
 
 // WP 2.6 — scheduled send: the dispatcher (re-check at dispatch, send, delete in one transaction), its per-minute BullMQ
 // sweep, and the consumer that tells the sender a message was blocked.

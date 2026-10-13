@@ -10,6 +10,7 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { loadAttachmentViews } from "./attachments/attachment-service-db";
 import { loadMessageAnnotations } from "./message-annotations";
 import type { MessageBodyCipher, Tx } from "./messaging-write-core";
+import { loadPollViews } from "./polls/poll-views";
 import { decodeStoredBody } from "./rich-body-codec";
 
 const MSG = schema.messages;
@@ -168,6 +169,14 @@ export async function hydrateMessages(
     viewerUserId: ctx.viewerUserId,
     messageIds: liveIds,
   });
+  // WP 2.10: the poll riding on a message (counts + the viewer's own vote), one grouped read for the page.
+  const polls = await loadPollViews(tx, {
+    orgId,
+    channelId,
+    viewerUserId: ctx.viewerUserId,
+    messageIds: liveIds,
+    cipher: ctx.cipher,
+  });
   return Promise.all(
     rows.map(async (m): Promise<ResolvedMessage> => {
       const decoded: ReturnType<typeof decodeStoredBody> =
@@ -200,6 +209,7 @@ export async function hydrateMessages(
         parentMessageId: m.parentMessageId,
         reactions: annotations.reactions.get(m.id) ?? [],
         pinned: annotations.pinned.has(m.id),
+        ...(polls.has(m.id) ? { poll: polls.get(m.id) } : {}),
         replyCount: stats?.replyCount ?? 0,
         lastReplyAt: stats?.lastReplyAt ?? null,
         attachments: attachmentsByMessage.get(m.id) ?? [],

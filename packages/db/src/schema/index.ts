@@ -133,6 +133,7 @@ export * from "./messaging/message-search-tokens";
 export * from "./messaging/message-receipts";
 export * from "./messaging/message-reactions";
 export * from "./messaging/message-pins";
+export * from "./messaging/message-polls";
 export * from "./messaging/presence";
 export * from "./messaging/delivery-endpoints";
 export * from "./messaging/alert-rules";
