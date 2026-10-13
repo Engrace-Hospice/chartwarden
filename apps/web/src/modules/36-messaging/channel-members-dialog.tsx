@@ -113,6 +113,8 @@ export function ChannelMembersDialog({
     // Reset on close as well: this component stays mounted while the Modal renders nothing, so a stale list or error
     // block would otherwise render on the first frame of the next open, take the Modal's initial focus, and then be
     // replaced by the skeleton, dropping focus to <body>.
+    setRetrying(false);
+    setBusy(false);
     if (!open) return;
     void loadMembers();
     return () => {
@@ -159,7 +161,9 @@ export function ChannelMembersDialog({
     (row ?? headingRef.current)?.focus();
   }, [members]);
 
-  // After the commit of a finished first load or Retry: if the list is back and focus fell to <body>, the heading takes it.
+  // After the commit of a finished Retry (or first load): if the list is back and focus fell to <body>, the heading takes
+  // it. On a normal open the Modal has already put focus on the first control (the "Find staff" input, while the skeleton
+  // shows), so for the first load this is only a fallback.
   useEffect(() => {
     if (retrying || !retryFocusPending.current) return;
     if (members === null && loadError === null) return;

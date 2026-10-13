@@ -44,15 +44,18 @@ export function Modal({
         return;
       }
       if (e.key !== "Tab" || !cardRef.current) return;
-      const nodes = cardRef.current.querySelectorAll<HTMLElement>(FOCUSABLE);
+      const nodes = Array.from(cardRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
       if (nodes.length === 0) return;
       const first = nodes[0];
       const last = nodes[nodes.length - 1];
       const active = document.activeElement;
-      if (e.shiftKey && active === first) {
+      // A script-focusable element inside the card (tabindex="-1" heading, the card itself) is in no Tab order, so it
+      // counts as both ends: without this, Shift+Tab from it would leave the dialog for the page behind.
+      const inList = active instanceof HTMLElement && nodes.includes(active);
+      if (e.shiftKey && (active === first || !inList)) {
         e.preventDefault();
         last?.focus();
-      } else if (!e.shiftKey && active === last) {
+      } else if (!e.shiftKey && (active === last || !inList)) {
         e.preventDefault();
         first?.focus();
       }

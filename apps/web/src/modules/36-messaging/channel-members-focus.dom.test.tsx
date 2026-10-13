@@ -204,6 +204,45 @@ describe("a handoff left by a thrown reload", () => {
   });
 });
 
+describe("Shift+Tab from the heading stays inside the dialog", () => {
+  const stillInside = () => screen.getByRole("dialog").contains(document.activeElement);
+
+  it("after removing the only member", async () => {
+    let members = listOf(person("u-1", "Ann"));
+    const api = makeClient({ members: () => members });
+    api.DELETE.mockImplementation(() => {
+      members = listOf();
+      return Promise.resolve({ error: undefined });
+    });
+    render(provide(api, dialog()));
+    (await screen.findByRole("button", { name: "Remove Ann" })).focus();
+    await userEvent.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Members" })),
+    );
+    await userEvent.tab({ shift: true });
+    expect(stillInside()).toBe(true);
+    expect(document.activeElement).not.toBe(screen.getByRole("heading", { name: "Members" }));
+  });
+
+  it("after a successful Retry", async () => {
+    let calls = 0;
+    const api = makeClient({
+      members: () => {
+        calls += 1;
+        return calls === 1 ? FAILURE : listOf(person("u-1", "Ann"));
+      },
+    });
+    render(provide(api, dialog()));
+    await userEvent.click(await screen.findByRole("button", { name: "Retry" }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Members" })),
+    );
+    await userEvent.tab({ shift: true });
+    expect(stillInside()).toBe(true);
+  });
+});
+
 describe("empty list, announcements and locked controls", () => {
   it("says there are no members instead of rendering an empty list", async () => {
     render(provide(makeClient({ members: () => listOf() }), dialog()));
