@@ -39,7 +39,53 @@ function renderDialog(post: ReturnType<typeof vi.fn>): void {
   );
 }
 
+const clinicalRoles = [
+  { ...role, roleId: "rn", key: "rn", name: "Registered Nurse (RN)" },
+  { ...role, roleId: "rn-cm", key: "rn_case_manager", name: "RN Case Manager" },
+  { ...role, roleId: "md", key: "md", name: "Physician (MD/DO)" },
+  { ...role, roleId: "hospice-md", key: "hospice_physician", name: "Hospice Physician" },
+  {
+    ...role,
+    roleId: "medical-director",
+    key: "medical_director",
+    name: "Hospice Medical Director",
+  },
+  {
+    ...role,
+    roleId: "compliance",
+    key: "compliance_officer",
+    name: "Compliance Officer",
+  },
+];
+
 describe("CreateUserDialog", () => {
+  it("renders distinct role labels and keeps simultaneous selections keyed by role id", () => {
+    const post = vi.fn();
+    render(
+      <MemoryRouter>
+        <ApiClientProvider client={{ POST: post } as unknown as ApiClient}>
+          <ToastProvider>
+            <CreateUserDialog
+              open
+              organizationId="org-1"
+              roles={clinicalRoles}
+              locations={[]}
+              onClose={vi.fn()}
+              onCreated={vi.fn()}
+            />
+          </ToastProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+
+    for (const item of clinicalRoles) {
+      const checkbox = screen.getByLabelText(item.name) as HTMLInputElement;
+      fireEvent.click(checkbox);
+      expect(checkbox.checked).toBe(true);
+    }
+    expect(screen.getAllByRole("checkbox", { checked: true })).toHaveLength(clinicalRoles.length);
+  });
+
   it("creates a username-only user with authorized roles and server-generated credentials", async () => {
     const post = vi.fn(async () => ({
       data: {
