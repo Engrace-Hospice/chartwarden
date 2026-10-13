@@ -12,9 +12,11 @@
 import {
   ConflictError,
   ForbiddenError,
+  MAX_PINS_PER_CHANNEL,
   NotFoundError,
   type RichBody,
   WardenXError,
+  isMessageReactionKey,
   sanitizeRichBody,
 } from "@wardenx/types";
 import type {
@@ -58,6 +60,7 @@ import {
   assertLockedRulePatchAllowed,
   isSystemLockedEventType,
 } from "../seed";
+import { createReactionPinState } from "./in-memory-reaction-pin";
 
 // ── value-level mirrors of the §3.2 enum unions (for routing-map validation) ────────────────
 const ALERT_CATEGORIES: readonly AlertCategory[] = [
@@ -307,6 +310,8 @@ export function createInMemoryMessagingService(
     (inbox.get(key) ?? inbox.set(key, []).get(key)!).push(a.item);
   }
 
+  const reactionPins = createReactionPinState();
+
   const channelOr404 = (orgId: string, channelId: string): ChannelRow => {
     const ch = channels.get(channelId);
     if (!ch || ch.orgId !== orgId) throw new NotFoundError("channel", channelId);
@@ -421,11 +426,39 @@ export function createInMemoryMessagingService(
     return m;
   };
 
+  /** WP 2.4: the caller may use the channel (else the channel's 404) and it is not archived (410). */
+  const channelWriteAccess = async (
+    self: Pick<MessagingRouteService, "canViewChannel">,
+    orgId: string,
+    input: { userId: string; channelId: string },
+  ): Promise<void> => {
+    const channel = channelOr404(orgId, input.channelId);
+    if (!(await self.canViewChannel(orgId, input.userId, input.channelId))) {
+      throw new NotFoundError("channel", input.channelId);
+    }
+    if (channel.archivedAt) throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+  };
+
+  /** WP 2.4: a LIVE message of THIS channel; anything else (unknown, other channel, deleted) is the same 404. */
+  const liveChannelMessage = async (
+    self: Pick<MessagingRouteService, "canViewChannel">,
+    orgId: string,
+    input: { userId: string; channelId: string; messageId: string },
+  ): Promise<MessageRow> => {
+    await channelWriteAccess(self, orgId, input);
+    const m = messages.get(input.messageId);
+    if (!m || m.orgId !== orgId || m.channelId !== input.channelId || m.deletedAt) {
+      throw new NotFoundError("message", input.messageId);
+    }
+    return m;
+  };
+
   /** One stored row as a reader sees it, including the WP 2.2 reply count (live direct replies only). */
   const resolveStored = (
     orgId: string,
     m: MessageRow,
     channel: { readonly kind: ChannelKind },
+    viewerUserId: string,
   ): ResolvedMessage => {
     const replies = [...messages.values()].filter(
       (r) =>
@@ -446,6 +479,8 @@ export function createInMemoryMessagingService(
       ...(m.richBody && !m.deletedAt ? { bodyDoc: m.richBody } : {}),
       createdAt: m.createdAt,
       parentMessageId: m.parentMessageId,
+      reactions: m.deletedAt ? [] : reactionPins.summary(m.messageId, viewerUserId),
+      pinned: !m.deletedAt && reactionPins.isPinned(m.channelId, m.messageId),
       replyCount: replies.length,
       lastReplyAt:
         replies
@@ -519,7 +554,7 @@ export function createInMemoryMessagingService(
       const hasMore = rows.length > limit;
       const pageRows = rows.slice(0, limit);
       if (backward) pageRows.reverse();
-      const page = pageRows.map((m) => resolveStored(orgId, m, channel));
+      const page = pageRows.map((m) => resolveStored(orgId, m, channel, input.userId));
       return {
         messages: page,
         nextCursor:
@@ -547,14 +582,55 @@ export function createInMemoryMessagingService(
         .filter(afterCursor);
       const pageRows = replies.slice(0, limit);
       return {
-        root: resolveStored(orgId, root, channel),
-        replies: pageRows.map((m) => resolveStored(orgId, m, channel)),
+        root: resolveStored(orgId, root, channel, input.userId),
+        replies: pageRows.map((m) => resolveStored(orgId, m, channel, input.userId)),
         nextCursor:
           replies.length > limit && pageRows.length > 0
             ? encodeMessageCursor(pageRows.at(-1)!)
             : undefined,
         patientId: channel.kind === "care_team" ? (channel.subjectId ?? null) : null,
       };
+    },
+
+    // ── WP 2.4: reactions and pins ──────────────────────────────────────────────────────────────
+    async setReaction(orgId, input) {
+      if (!isMessageReactionKey(input.emoji)) {
+        throw new WardenXError("INVALID_REACTION", "unknown reaction", 422);
+      }
+      const m = await liveChannelMessage(this, orgId, input);
+      reactionPins.setReaction(m.messageId, input.emoji, input.userId, input.present);
+      return { reactions: reactionPins.summary(m.messageId, input.userId) };
+    },
+
+    async pinMessage(orgId, input) {
+      const m = await liveChannelMessage(this, orgId, input);
+      const result = reactionPins.pin(m.channelId, m.messageId, iso());
+      if (result === "capReached") {
+        throw new WardenXError(
+          "PIN_LIMIT_REACHED",
+          `a channel can pin at most ${MAX_PINS_PER_CHANNEL} messages`,
+          409,
+        );
+      }
+      return result;
+    },
+
+    async unpinMessage(orgId, input) {
+      await channelWriteAccess(this, orgId, input);
+      reactionPins.unpin(input.channelId, input.messageId);
+    },
+
+    async listPins(orgId, input) {
+      const channel = channelOr404(orgId, input.channelId);
+      if (!(await this.canViewChannel(orgId, input.userId, input.channelId))) {
+        throw new NotFoundError("channel", input.channelId);
+      }
+      const pins = reactionPins
+        .pinned(input.channelId)
+        .map((p) => messages.get(p.messageId))
+        .filter((m): m is MessageRow => !!m && m.orgId === orgId && !m.deletedAt)
+        .map((m) => resolveStored(orgId, m, channel, input.userId));
+      return { pins, patientId: channel.kind === "care_team" ? (channel.subjectId ?? null) : null };
     },
 
     async sendMessage(orgId, input) {

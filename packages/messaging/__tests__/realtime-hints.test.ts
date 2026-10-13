@@ -8,6 +8,9 @@ describe("realtime hints (ADR-0054: hints only, no PHI)", () => {
     expect(buildMessageHint("m36.message.sent", facts).kind).toBe("message.new");
     expect(buildMessageHint("m36.message.edited", facts).kind).toBe("message.edited");
     expect(buildMessageHint("m36.message.deleted", facts).kind).toBe("message.deleted");
+    // WP 2.4: a reaction or pin change; the hint says only THAT something changed, never which emoji or who
+    expect(buildMessageHint("m36.message.annotated", facts).kind).toBe("message.annotated");
+    expect(isMessageHintOutboxEvent("m36.message.annotated")).toBe(true);
   });
 
   it("carries only kind, cursor and the two ids - no body or PHI field can appear", () => {

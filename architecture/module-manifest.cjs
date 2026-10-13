@@ -233,6 +233,8 @@ exports.MODULES = [
       "delivery_endpoint",
       "message",
       "message_entity_reference",
+      "message_pin",
+      "message_reaction",
       "message_revision",
       "message_attachment",
       "attachment_access_event",

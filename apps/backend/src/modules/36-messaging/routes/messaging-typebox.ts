@@ -23,7 +23,7 @@ import type {
   NotificationPreferencesView as ServiceNotificationPreferencesView,
   ResolvedMessage as ServiceResolvedMessage,
 } from "@wardenx/messaging";
-import { ValidationError } from "@wardenx/types";
+import { MESSAGE_REACTION_KEYS, ValidationError } from "@wardenx/types";
 
 // --- shared scalars ---------------------------------------------------------------------------
 
@@ -337,7 +337,7 @@ const MessageAttachmentViewSchema = Type.Object({
   byteSize: Type.Integer(),
   availability: Type.Union([Type.Literal("available"), Type.Literal("scanning")]),
 });
-const ResolvedMessageSchema = Type.Object({
+export const ResolvedMessageSchema = Type.Object({
   messageId: Type.String(),
   channelId: Type.String(),
   authorUserId: NullableString(),
@@ -353,6 +353,17 @@ const ResolvedMessageSchema = Type.Object({
   // WP 2.2: live direct replies and the newest one's time (additive; absent on providers that do not compute it).
   replyCount: Type.Optional(Type.Integer({ minimum: 0 })),
   lastReplyAt: Type.Optional(NullableString()),
+  // WP 2.4: non-clinical reaction counts (never a sign-off) and the pin flag (additive).
+  reactions: Type.Optional(
+    Type.Array(
+      Type.Object({
+        emoji: Type.Union(MESSAGE_REACTION_KEYS.map((key) => Type.Literal(key))),
+        count: Type.Integer({ minimum: 1 }),
+        reactedByMe: Type.Boolean(),
+      }),
+    ),
+  ),
+  pinned: Type.Optional(Type.Boolean()),
   references: Type.Array(
     Type.Object({
       kind: Type.Union([Type.Literal("staff"), Type.Literal("patient")]),

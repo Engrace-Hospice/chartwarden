@@ -134,6 +134,7 @@ export type {
   ResolvedMessageReference,
 } from "./interfaces/provider";
 export type { AlertEmitter, RecipientResolver } from "./interfaces/alert-emitter";
+export type { MessageReactionPinService } from "./interfaces/reaction-pin";
 
 // ── M36-T07 route-facing application service (§4.1–4.2) — the surface the REST inventory uses ─
 export type {

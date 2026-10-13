@@ -36,6 +36,7 @@ import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap
 import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-store-db";
 import {
   ATTACHMENT_UPLOAD_TTL_SECONDS,
+  ERASE_UPLOAD_URL_GRACE_MS,
   EXPIRED_SCAN_RETRY_INTERVAL_MS,
   MAX_INLINE_SCAN_ATTEMPTS,
   MAX_OPEN_UPLOADS_PER_USER,
@@ -45,7 +46,6 @@ import {
   OBJECT_MISSING_MIN_SPAN_MS,
   ORPHAN_UPLOAD_GRACE_MS,
   QUARANTINED_UPLOAD_WINDOW_MS,
-  ERASE_UPLOAD_URL_GRACE_MS,
   SCAN_RETRY_BASE_MS,
   SCAN_RETRY_MAX_MS,
   SCAN_UNAVAILABLE_ATTEMPTS,
@@ -3710,6 +3710,12 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
           resourceId: attachmentId,
         },
         { url: "/api/v1/alerts/inbox", eventType: "alert.list_viewed", resourceId: null },
+        // WP 2.4: the pin list decrypts bodies, so it is an aggregate list read like the channel history
+        {
+          url: `/api/v1/messaging/channels/${dm}/pins`,
+          eventType: "message.list_viewed",
+          resourceId: null,
+        },
         // WP 2.2: the thread read names its root message (a missing resourceIdParam would be swallowed silently)
         {
           url: `/api/v1/messaging/channels/${dm}/messages/${rootId}/thread`,

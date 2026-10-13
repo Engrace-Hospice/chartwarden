@@ -2,6 +2,7 @@ import { Glyph } from "@wardenx/ui";
 import { memo } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { MessageAnnotations } from "./message-annotations";
 import { MessageAttachments } from "./message-attachments";
 import type { Message } from "./messaging-types";
 import { absoluteTime, dayLabel, initialsOf } from "./messaging-utils";
@@ -80,6 +81,8 @@ interface MessageRowProps {
   parentAuthor?: string | null;
   /** False in an archived channel: replies are read-only there, but an existing thread can still be opened. */
   canReply?: boolean;
+  /** WP 2.4: offer Pin/Unpin (the conversation timeline only; the thread panel does not). */
+  canPin?: boolean;
 }
 
 function pluralReplies(count: number): string {
@@ -96,6 +99,7 @@ function MessageRowImpl({
   onJumpToParent,
   parentAuthor,
   canReply = true,
+  canPin = false,
 }: MessageRowProps): JSX.Element {
   const showDay = !previous || dayLabel(previous.createdAt) !== dayLabel(message.createdAt);
   const mine = message.authorUserId === meId;
@@ -180,6 +184,9 @@ function MessageRowImpl({
                 }).format(new Date(message.createdAt))}
               </time>
             </div>
+            {!deleted ? (
+              <MessageAnnotations message={message} canAnnotate={canReply} canPin={canPin} />
+            ) : null}
             {onOpenThread && (replyCount > 0 || (canReply && !deleted)) ? (
               <div className="wx-message-thread-actions">
                 {replyCount > 0 ? (
