@@ -33,6 +33,26 @@ function keyRing(): TaxIdKeyProvider & { rotate(): void } {
 }
 
 describe("createTaxIdCipher", () => {
+  it("refuses a non-uuid org or provider-entity id, so a ':' can never make the AAD ambiguous", async () => {
+    const cipher = createTaxIdCipher(keyRing());
+    const bad = `${PE_1}:${ORG_A}`;
+
+    await expect(
+      cipher.encrypt({ organizationId: bad, providerEntityId: PE_1, plaintext: EIN }),
+    ).rejects.toThrow(/uuid/);
+    await expect(
+      cipher.encrypt({ organizationId: ORG_A, providerEntityId: bad, plaintext: EIN }),
+    ).rejects.toThrow(/uuid/);
+    const sealed = await cipher.encrypt({
+      organizationId: ORG_A,
+      providerEntityId: PE_1,
+      plaintext: EIN,
+    });
+    await expect(
+      cipher.decrypt({ organizationId: ORG_A, providerEntityId: bad, sealed }),
+    ).rejects.toThrow(/uuid/);
+  });
+
   it("round-trips the EIN and never stores it in the clear", async () => {
     const cipher = createTaxIdCipher(keyRing());
 

@@ -41,8 +41,14 @@ const NONCE_BYTES = 12;
 /** GCM tag length, pinned on decrypt: without it Node accepts a truncated (4-15 byte) tag. */
 const TAG_BYTES = 16;
 
-const aadFor = (organizationId: string, providerEntityId: string): Buffer =>
-  Buffer.from(`m2:provider_entity:tax_id:${organizationId}:${providerEntityId}`, "utf8");
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Both ids are uuids; refusing anything else keeps the ":"-joined AAD unambiguous for every future caller. */
+const aadFor = (organizationId: string, providerEntityId: string): Buffer => {
+  if (!UUID_PATTERN.test(organizationId) || !UUID_PATTERN.test(providerEntityId))
+    throw new Error("tax-id AAD requires uuid organization and provider-entity ids");
+  return Buffer.from(`m2:provider_entity:tax_id:${organizationId}:${providerEntityId}`, "utf8");
+};
 
 export function createTaxIdCipher(keys: TaxIdKeyProvider): TaxIdCipher {
   return {
