@@ -286,6 +286,7 @@ import {
   registerAuditorRedeemRoutes,
   registerIdentityErasers,
   registerIdentitySeams,
+  createTaxIdCipher,
 } from "./modules/02-identity/index";
 import {
   type ActorPermissionResolver,
@@ -4243,10 +4244,19 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             },
           });
           // GAP-115 — the M2 org-admin surface (organizations, provider entities, locations, tenant step-up
-          // overrides). The tax-id envelope cipher is NOT bound: it is the KMS-backed key ring (the same
-          // unbound port M8/M20/M32 refuse on), so `POST /provider-entities` answers 503 TAX_ID_CIPHER_UNBOUND
-          // until it is — an EIN is never stored in the clear.
-          mountOrgAdminRoutes(app, dbHandle.db, { outbox: m2OutboxPublisher });
+          // overrides). `POST /provider-entities` seals the EIN with the tax-id cipher bound below; unbound it would
+          // answer 503 TAX_ID_CIPHER_UNBOUND — an EIN is never stored in the clear.
+          mountOrgAdminRoutes(app, dbHandle.db, {
+            outbox: m2OutboxPublisher,
+            // The EIN is sealed under the tenant's own DEK from M34's key ring (resolved per call, so this is safe to
+            // build before M34 registers; until a platform KEK is bound the provider refuses and the create fails
+            // closed with a 5xx rather than storing an EIN in the clear).
+            taxIdCipher: createTaxIdCipher({
+              dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+              dekForOrgVersion: (orgId, version) =>
+                getTenantKeyProvider().dekForOrgVersion(orgId, version),
+            }),
+          });
           // M2 (ADR-0023 D2 / SecHardening §12.2/§12.4) — the device-attestation write path. This is what
           // puts rows in `device_attestation`, which is what lets the authenticate hook stamp
           // `attributes.deviceAttestation`, which is what M3's `device_attestation_valid` predicate has

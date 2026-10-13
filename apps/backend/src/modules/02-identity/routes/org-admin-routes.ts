@@ -65,7 +65,8 @@ import {
 
 /** The injected envelope cipher for `provider_entity.tax_id_encrypted` (KMS-backed in production). */
 export interface TaxIdCipherPort {
-  encrypt(plainTaxId: string): Promise<string>;
+  /** Sealed under the tenant's own DEK, so the cipher needs to know whose key to use. */
+  encrypt(input: { organizationId: string; plaintext: string }): Promise<string>;
 }
 
 export interface OrgAdminRouteDeps extends AdminRouteDeps {
@@ -227,7 +228,10 @@ export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRoute
         "the tax-id envelope cipher (KMS-backed key ring) is not bound; a provider entity cannot be created until it is",
         503,
       );
-    const taxIdEncrypted = await deps.taxIdCipher.encrypt(taxId as string);
+    const taxIdEncrypted = await deps.taxIdCipher.encrypt({
+      organizationId: orgId,
+      plaintext: taxId as string,
+    });
     const created = await store.createProviderEntity(orgId, { ...input, taxIdEncrypted });
     if ("conflict" in created)
       throw conflict(

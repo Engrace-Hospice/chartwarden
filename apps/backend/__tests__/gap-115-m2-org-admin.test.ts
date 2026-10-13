@@ -89,7 +89,7 @@ function makeServer(opts: { cipher?: boolean } = {}) {
     ],
   });
   const auditSink = createInMemoryAuditExecutor();
-  const encrypted: string[] = [];
+  const encrypted: { organizationId: string; plaintext: string }[] = [];
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   registerOrgAdminRoutes(app, {
     actors: createContextActorResolver(),
@@ -99,9 +99,9 @@ function makeServer(opts: { cipher?: boolean } = {}) {
       ? {}
       : {
           taxIdCipher: {
-            async encrypt(plain) {
-              encrypted.push(plain);
-              return `enc:${plain}`;
+            async encrypt(input) {
+              encrypted.push(input);
+              return `enc:${input.plaintext}`;
             },
           },
         }),
@@ -238,7 +238,8 @@ describe("provider entities", () => {
     expect(res.statusCode).toBe(201);
     expect(res.json()).toMatchObject({ ccn: "444444", status: "created", organizationId: "org_a" });
     expect(JSON.stringify(res.json())).not.toMatch(/tax|123456789|enc:/i);
-    expect(encrypted).toEqual(["123456789"]);
+    // The EIN is sealed under THIS tenant's key, so the route must hand the cipher the caller's org.
+    expect(encrypted).toEqual([{ organizationId: "org_a", plaintext: "123456789" }]);
     expect(auditSink.rows.some((r) => r.eventType === "m2.provider_entity.created")).toBe(true);
     await app.close();
   });
