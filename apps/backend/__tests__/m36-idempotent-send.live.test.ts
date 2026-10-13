@@ -465,7 +465,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.2 idempotent send — LIVE Postgres", () => {
       expect(res.statusCode).toBe(201);
       const row = await rowOf(res.json().messageId);
       expect(row.body_kind).toBe("rich");
-      const plaintext = plaintextOf(row);
+      const plaintext = await plaintextOf(row);
       expect(JSON.parse(plaintext)).toMatchObject({ schemaVersion: 1 });
       expect(messageBodySha256(plaintext)).toBe(row.body_sha256);
       // Encrypted at rest: the visible text is not in the stored bytes.
@@ -608,13 +608,13 @@ describe.skipIf(!DB_URL)("M36 WP 1.2 idempotent send — LIVE Postgres", () => {
       expect((await patch(user1, id, { body: looksLikeJson })).statusCode).toBe(200);
       const plain = await rowOf(id);
       expect(plain.body_kind).toBe("plain");
-      expect(plaintextOf(plain)).toBe(looksLikeJson);
+      expect(await plaintextOf(plain)).toBe(looksLikeJson);
       expect(
         (await patch(user1, id, { bodyDoc: docOf(para(text("v4", { type: "code" }))) })).statusCode,
       ).toBe(200);
       const head = await rowOf(id);
       expect(head.body_kind).toBe("rich");
-      expect(messageBodySha256(plaintextOf(head))).toBe(head.body_sha256);
+      expect(messageBodySha256(await plaintextOf(head))).toBe(head.body_sha256);
 
       const revisions = (
         await admin.query(
@@ -633,7 +633,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.2 idempotent send — LIVE Postgres", () => {
         [3, "plain"],
       ]);
       for (const revision of revisions) {
-        expect(messageBodySha256(plaintextOf(revision))).toBe(revision.body_sha256);
+        expect(messageBodySha256(await plaintextOf(revision))).toBe(revision.body_sha256);
       }
       const shown = (await read(user2, dm)).find((m) => m.messageId === id) as Json;
       expect(shown).toMatchObject({ bodyKind: "rich", body: "v4" });
@@ -679,7 +679,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.2 idempotent send — LIVE Postgres", () => {
       const id = sent.json().messageId as string;
       const hostile = JSON.stringify(docOf({ type: "html", html: "<script>1</script>" }));
       for (const garbage of ["not json", hostile]) {
-        const sealed = bodyCipher.seal(ORG_A, garbage);
+        const sealed = await bodyCipher.seal(ORG_A, garbage);
         await admin.query(`UPDATE message SET body_cipher=$2, body_sha256=$3 WHERE id=$1`, [
           id,
           sealed.cipher,

@@ -9,11 +9,15 @@
 // `message.body_cipher` bytea.
 import { type DbClient, schema } from "@wardenx/db";
 import {
+  bodyEnvelopeScheme,
   deriveOrgDek,
   loadMessagingKek,
   messageBodySha256,
   openMessageBody,
+  openMessageBodyRing,
+  ringEnvelopeVersion,
   sealMessageBody,
+  sealMessageBodyRing,
 } from "@wardenx/messaging";
 import type { MessageBodyKind } from "@wardenx/messaging";
 import {
@@ -25,6 +29,12 @@ import {
 } from "@wardenx/types";
 import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { recordAnnouncementReads } from "./announcement-receipts";
+import {
+  type MessageBodyKeyProvider,
+  type RingDekCache,
+  createRingDekCache,
+  sharedRingDekCache,
+} from "./body-key-ring";
 import { storedBodyFor } from "./rich-body-codec";
 
 const CH = schema.channels;
@@ -56,42 +66,86 @@ export function withValidMessageContent<
 /** A Drizzle transaction handle (the structural type the DbClient hands its `transaction` callback). */
 export type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
-/**
- * Per-tenant message body cipher (FB-T05). Loads the master KEK lazily (the first write) so a
- * read-only deployment without MESSAGING_ENCRYPTION_KEY still boots and serves reads; a write then
- * fails CLOSED with a clear error rather than storing plaintext. The org→DEK derivation is memoized
- * per process (deterministic HKDF, so the cache is just a CPU saver).
- */
-export interface MessageBodyCipher {
-  /** Seal a plaintext body under the tenant DEK + compute the pre-encryption integrity digest. */
-  seal(orgId: string, plaintext: string): { cipher: Buffer; sha256: string };
-  /** Decrypt a `body_cipher` bytea under the tenant DEK (entitled-reader path only). */
-  open(orgId: string, cipher: Buffer): string;
+/** Which envelope NEW writes use. `legacy` = HKDF(MESSAGING_ENCRYPTION_KEY, org); `ring` = the M34 wrapped-DEK ring. */
+export type BodySealScheme = "legacy" | "ring";
+
+/** `M36_BODY_SEAL_SCHEME` (default `legacy`: ring writes are switched on only after the read-both release soaked). */
+export function bodySealSchemeFromEnv(env: NodeJS.ProcessEnv = process.env): BodySealScheme {
+  const raw = env.M36_BODY_SEAL_SCHEME?.trim().toLowerCase();
+  if (!raw || raw === "legacy") return "legacy";
+  if (raw === "ring") return "ring";
+  throw new Error(`M36_BODY_SEAL_SCHEME must be 'legacy' or 'ring' (got '${raw}')`);
 }
 
-/** Build the lazy, per-process {@link MessageBodyCipher}. `kek` is injectable for tests. */
-export function createMessageBodyCipher(opts: { kek?: Buffer } = {}): MessageBodyCipher {
+/**
+ * Per-tenant message body cipher (FB-T05; WP 2.13 / ADR-0058 P1). READS open either envelope: the first byte of the
+ * stored bytea picks the key (1 = legacy HKDF key, 2 = M34 ring DEK of the version the envelope names). WRITES seal under
+ * the configured scheme; {@link sealRing} always seals under the ring (the backfill). The legacy KEK loads lazily (the
+ * first legacy seal/open) so a deployment without MESSAGING_ENCRYPTION_KEY still boots and serves ring rows; a legacy
+ * operation then fails CLOSED. Async because the ring DEK comes from the M34 provider (cached, see body-key-ring.ts).
+ */
+export interface MessageBodyCipher {
+  /** Seal a plaintext under the configured scheme + compute the pre-encryption integrity digest. */
+  seal(orgId: string, plaintext: string): Promise<{ cipher: Buffer; sha256: string }>;
+  /** Seal under the tenant ring DEK regardless of the configured scheme (backfill; the digest is of the plaintext). */
+  sealRing(orgId: string, plaintext: string): Promise<{ cipher: Buffer; sha256: string }>;
+  /** Decrypt a `body_cipher` bytea, either scheme (entitled-reader path only). */
+  open(orgId: string, cipher: Buffer): Promise<string>;
+}
+
+/** Build the lazy, per-process {@link MessageBodyCipher}. `kek`, `keys`, `ringCache` and `sealScheme` are injectable for tests. */
+export function createMessageBodyCipher(
+  opts: {
+    kek?: Buffer;
+    keys?: MessageBodyKeyProvider;
+    ringCache?: RingDekCache;
+    sealScheme?: BodySealScheme;
+  } = {},
+): MessageBodyCipher {
   let kek: Buffer | undefined = opts.kek;
   // biome-ignore lint/suspicious/noAssignInExpressions: idiomatic lazy memoization via ??=.
   const getKek = (): Buffer => (kek ??= loadMessagingKek());
-  const dekCache = new Map<string, Buffer>();
-  const dekFor = (orgId: string): Buffer => {
-    let dek = dekCache.get(orgId);
+  const legacyDeks = new Map<string, Buffer>();
+  const legacyDek = (orgId: string): Buffer => {
+    let dek = legacyDeks.get(orgId);
     if (!dek) {
       dek = deriveOrgDek(getKek(), orgId);
-      dekCache.set(orgId, dek);
+      legacyDeks.set(orgId, dek);
     }
     return dek;
   };
+  const ownCache = opts.keys ? createRingDekCache(opts.keys) : undefined;
+  const ring = (): RingDekCache => {
+    const cache = opts.ringCache ?? ownCache ?? sharedRingDekCache();
+    if (!cache) {
+      throw new Error(
+        "message body ring key provider is not bound (setMessageBodyKeyProvider) — fail-closed",
+      );
+    }
+    return cache;
+  };
+  const sealRing = async (orgId: string, plaintext: string) => ({
+    cipher: sealMessageBodyRing(plaintext, await ring().current(orgId), orgId),
+    sha256: messageBodySha256(plaintext),
+  });
   return {
-    seal(orgId, plaintext) {
+    sealRing,
+    async seal(orgId, plaintext) {
+      if ((opts.sealScheme ?? bodySealSchemeFromEnv()) === "ring")
+        return sealRing(orgId, plaintext);
       return {
-        cipher: sealMessageBody(plaintext, dekFor(orgId)),
+        cipher: sealMessageBody(plaintext, legacyDek(orgId)),
         sha256: messageBodySha256(plaintext),
       };
     },
-    open(orgId, cipher) {
-      return openMessageBody(cipher, dekFor(orgId));
+    async open(orgId, cipher) {
+      const scheme = bodyEnvelopeScheme(cipher);
+      if (scheme === "legacy") return openMessageBody(cipher, legacyDek(orgId));
+      if (scheme === "ring") {
+        const dek = await ring().byVersion(orgId, ringEnvelopeVersion(cipher));
+        return openMessageBodyRing(cipher, dek.key, orgId);
+      }
+      throw new Error(`message body-crypto: cannot open a ${scheme} envelope`);
     },
   };
 }
@@ -171,7 +225,7 @@ export async function insertEncryptedMessage(
     }
   }
   const stored = storedBodyFor(args);
-  const { cipher: bodyCipher, sha256 } = cipher.seal(args.orgId, stored.plaintext);
+  const { cipher: bodyCipher, sha256 } = await cipher.seal(args.orgId, stored.plaintext);
   const inserted = (await tx
     .insert(MSG)
     .values({

@@ -202,7 +202,8 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
       db: handle.db,
       cipher: {
         seal: (org, text) => cipher.seal(org, text),
-        open: (org, bytes) => {
+        sealRing: (org, text) => cipher.sealRing(org, text),
+        open: async (org, bytes) => {
           if (failOpenFor) throw new Error("simulated unseal failure");
           return cipher.open(org, bytes);
         },
@@ -440,7 +441,7 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
       const sent = all.filter((m) => m.client_message_id === created.id);
       expect(sent).toHaveLength(1);
       expect(sent[0].author_user_id).toBe(alice);
-      expect(cipher.open(orgA, sent[0].body_cipher)).toBe(SECRET);
+      expect(await cipher.open(orgA, sent[0].body_cipher)).toBe(SECRET);
       expect(await rows()).toHaveLength(0);
       const hints = await eventsOf("m36.message.sent");
       expect(hints.some((e) => e.payload.messageId === sent[0].id)).toBe(true);
@@ -797,7 +798,7 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
         (m) => m.client_message_id === created.id,
       );
       expect(delivered).toHaveLength(1);
-      expect(cipher.open(orgA, delivered[0].body_cipher)).toBe(SECRET);
+      expect(await cipher.open(orgA, delivered[0].body_cipher)).toBe(SECRET);
       expect(await rows()).toHaveLength(0);
     });
 
@@ -896,7 +897,7 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
         (m) => m.client_message_id === created.id,
       );
       expect(delivered).toHaveLength(1);
-      expect(cipher.open(orgA, delivered[0].body_cipher)).toBe(SECRET);
+      expect(await cipher.open(orgA, delivered[0].body_cipher)).toBe(SECRET);
       expect(await rows()).toHaveLength(0);
       expect(await eventsOf("m36.message.schedule_blocked")).toHaveLength(0);
     });

@@ -1385,6 +1385,7 @@ import {
   scheduleM35Jobs,
 } from "./modules/35-subscription/index";
 import { emitWithRecipientFallback } from "./modules/36-messaging/alert-recipient-fallback";
+import { setMessageBodyKeyProvider } from "./modules/36-messaging/body-key-ring";
 import { cronAlertCorrelationId } from "./modules/36-messaging/cron-alert-correlation";
 import {
   M36_DELIVERY_PLATFORM_JOB_ID,
@@ -2459,6 +2460,10 @@ export function wireModuleSeams(
     bootstrapModule34(SLICE_MODULE_34_SEAM_DEPS);
   }
   validateModule34Seams();
+  // M36 WP 2.13 / ADR-0058 P1 — message bodies sealed under the tenant ring DEK resolve it through M34's provider.
+  // Bound lazily (resolved per use) so a DB-less slice boot keeps the fail-closed deny provider: a ring body then fails
+  // to open rather than falling back to anything. M36 cannot import M34 (M34 dependsOn M36); this is the one binding.
+  setMessageBodyKeyProvider(() => getTenantKeyProvider());
   // ── TASK-001 ledger (production-readiness audit 2026-08-03, ARCH-003) ───────────────────────────
   // Every registrar above that STILL stands an in-memory store behind a published seam on a
   // db-present boot is recorded here, beside the wiring that chose it. A per-process Map wearing a

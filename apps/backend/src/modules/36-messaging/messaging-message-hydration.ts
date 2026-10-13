@@ -168,50 +168,55 @@ export async function hydrateMessages(
     viewerUserId: ctx.viewerUserId,
     messageIds: liveIds,
   });
-  return rows.map((m): ResolvedMessage => {
-    const decoded: ReturnType<typeof decodeStoredBody> =
-      m.status === "deleted"
-        ? { body: "" }
-        : decodeStoredBody(m.bodyKind as MessageBodyKind, ctx.cipher.open(orgId, m.bodyCipher));
-    // A rich body that no longer parses is not a deleted message: say so, and leave ids (never content).
-    if (decoded.unreadable) {
-      ctx.warn?.("rich message body could not be read; showing a placeholder", {
-        organizationId: orgId,
+  return Promise.all(
+    rows.map(async (m): Promise<ResolvedMessage> => {
+      const decoded: ReturnType<typeof decodeStoredBody> =
+        m.status === "deleted"
+          ? { body: "" }
+          : decodeStoredBody(
+              m.bodyKind as MessageBodyKind,
+              await ctx.cipher.open(orgId, m.bodyCipher),
+            );
+      // A rich body that no longer parses is not a deleted message: say so, and leave ids (never content).
+      if (decoded.unreadable) {
+        ctx.warn?.("rich message body could not be read; showing a placeholder", {
+          organizationId: orgId,
+          messageId: m.id,
+          channelId: m.channelId,
+        });
+      }
+      const stats = replyStats.get(m.id);
+      return {
         messageId: m.id,
         channelId: m.channelId,
-      });
-    }
-    const stats = replyStats.get(m.id);
-    return {
-      messageId: m.id,
-      channelId: m.channelId,
-      authorUserId: m.authorUserId,
-      authorDisplayName: m.authorDisplayName?.trim() || null,
-      body: decoded.body,
-      bodyKind: m.bodyKind as MessageBodyKind,
-      ...(decoded.bodyDoc ? { bodyDoc: decoded.bodyDoc } : {}),
-      ...(decoded.unreadable ? { bodyUnreadable: true as const } : {}),
-      createdAt: m.createdAt.toISOString(),
-      editedAt: visibleEditedAt(m),
-      parentMessageId: m.parentMessageId,
-      reactions: annotations.reactions.get(m.id) ?? [],
-      pinned: annotations.pinned.has(m.id),
-      replyCount: stats?.replyCount ?? 0,
-      lastReplyAt: stats?.lastReplyAt ?? null,
-      attachments: attachmentsByMessage.get(m.id) ?? [],
-      hiddenAttachmentCount: Math.max(
-        0,
-        (boundByMessage.get(m.id) ?? 0) - (attachmentsByMessage.get(m.id)?.length ?? 0),
-      ),
-      references: (referencesByMessage.get(m.id) ?? []).map((reference) => ({
-        kind: reference.kind as "staff" | "patient",
-        entityId: reference.entityId,
-        start: reference.start,
-        end: reference.end,
-        displayLabel:
-          reference.kind === "staff" ? reference.staffName?.trim() || "Staff member" : "Patient",
-        navigable: reference.kind === "patient" && ctx.channelKind === "care_team",
-      })),
-    };
-  });
+        authorUserId: m.authorUserId,
+        authorDisplayName: m.authorDisplayName?.trim() || null,
+        body: decoded.body,
+        bodyKind: m.bodyKind as MessageBodyKind,
+        ...(decoded.bodyDoc ? { bodyDoc: decoded.bodyDoc } : {}),
+        ...(decoded.unreadable ? { bodyUnreadable: true as const } : {}),
+        createdAt: m.createdAt.toISOString(),
+        editedAt: visibleEditedAt(m),
+        parentMessageId: m.parentMessageId,
+        reactions: annotations.reactions.get(m.id) ?? [],
+        pinned: annotations.pinned.has(m.id),
+        replyCount: stats?.replyCount ?? 0,
+        lastReplyAt: stats?.lastReplyAt ?? null,
+        attachments: attachmentsByMessage.get(m.id) ?? [],
+        hiddenAttachmentCount: Math.max(
+          0,
+          (boundByMessage.get(m.id) ?? 0) - (attachmentsByMessage.get(m.id)?.length ?? 0),
+        ),
+        references: (referencesByMessage.get(m.id) ?? []).map((reference) => ({
+          kind: reference.kind as "staff" | "patient",
+          entityId: reference.entityId,
+          start: reference.start,
+          end: reference.end,
+          displayLabel:
+            reference.kind === "staff" ? reference.staffName?.trim() || "Staff member" : "Patient",
+          navigable: reference.kind === "patient" && ctx.channelKind === "care_team",
+        })),
+      };
+    }),
+  );
 }

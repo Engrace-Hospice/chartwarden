@@ -240,22 +240,26 @@ export function createDbMessagingProvider(
           createdAt: Date;
           parentMessageId: string | null;
         }>;
-        const messages = rows.map(
-          (m): ResolvedMessage => ({
-            messageId: m.id,
-            channelId: m.channelId,
-            authorUserId: m.authorUserId,
-            authorDisplayName: null,
-            body:
-              m.status === "deleted"
-                ? ""
-                : decodeStoredBody(m.bodyKind as MessageBodyKind, cipher.open(orgId, m.bodyCipher))
-                    .body,
-            bodyKind: m.bodyKind as MessageBodyKind,
-            createdAt: m.createdAt.toISOString(),
-            parentMessageId: m.parentMessageId,
-            references: [],
-          }),
+        const messages = await Promise.all(
+          rows.map(
+            async (m): Promise<ResolvedMessage> => ({
+              messageId: m.id,
+              channelId: m.channelId,
+              authorUserId: m.authorUserId,
+              authorDisplayName: null,
+              body:
+                m.status === "deleted"
+                  ? ""
+                  : decodeStoredBody(
+                      m.bodyKind as MessageBodyKind,
+                      await cipher.open(orgId, m.bodyCipher),
+                    ).body,
+              bodyKind: m.bodyKind as MessageBodyKind,
+              createdAt: m.createdAt.toISOString(),
+              parentMessageId: m.parentMessageId,
+              references: [],
+            }),
+          ),
         );
         return { messages };
       });

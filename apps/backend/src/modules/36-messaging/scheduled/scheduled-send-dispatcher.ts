@@ -227,7 +227,7 @@ export function createScheduledSendDispatcher(
         orgId,
         channelId: claimed.channelId,
         authorUserId: claimed.userId,
-        body: cipher.open(orgId, claimed.bodyCipher),
+        body: await cipher.open(orgId, claimed.bodyCipher),
         bodyKind: "plain",
         parentMessageId: claimed.parentMessageId,
         // The DB backstop: a send that already committed (row survived some other way) returns the original message.

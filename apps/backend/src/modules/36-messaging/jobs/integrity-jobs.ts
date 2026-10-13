@@ -100,12 +100,16 @@ function jobContext(organizationId: string, runId: string) {
  * `null` (skipped, not a mismatch). A cipher that no longer authenticates under the tenant DEK is tampered or
  * corrupt, so it is reported as a mismatch against a sentinel rather than skipped.
  */
-function recompute(cipher: MessageBodyCipher, orgId: string, meta: RowMeta): string | null {
+async function recompute(
+  cipher: MessageBodyCipher,
+  orgId: string,
+  meta: RowMeta,
+): Promise<string | null> {
   // Erased means cipher emptied AND hash = ERASED_BODY_SHA256 (the eraser sets them together); an emptied cipher with a hash left
   // behind is tampering and falls through to the mismatch sentinel.
   if (meta.cipherBytes.length === 0 && meta.storedHash === ERASED_BODY_SHA256) return null;
   try {
-    return messageBodySha256(cipher.open(orgId, meta.cipherBytes));
+    return messageBodySha256(await cipher.open(orgId, meta.cipherBytes));
   } catch {
     return DECRYPT_FAILED;
   }
@@ -148,7 +152,7 @@ export async function runHashVerifyForOrg(
           streakKind = current.resourceKind;
           consecutiveDecryptFailures = 0;
         }
-        const computed = current ? recompute(deps.cipher, orgId, current) : null;
+        const computed = current ? await recompute(deps.cipher, orgId, current) : null;
         // An erased skip (null) neither extends nor breaks the streak; any decrypt that worked resets it.
         if (computed === DECRYPT_FAILED) consecutiveDecryptFailures += 1;
         else if (computed !== null) consecutiveDecryptFailures = 0;
