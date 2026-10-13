@@ -25,6 +25,17 @@ export function ScheduledMessagesDialog({
   const [items, setItems] = useState<ScheduledMessageItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const sequence = useRef(0);
+  const listRef = useRef<HTMLUListElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+
+  /** A removed row takes its focused button with it: focus the row now at that place, else the heading. */
+  function focusAfterRemoval(index: number): void {
+    window.requestAnimationFrame(() => {
+      const rows = listRef.current?.querySelectorAll<HTMLElement>("li");
+      const next = rows?.[Math.min(index, (rows?.length ?? 0) - 1)];
+      (next?.querySelector<HTMLElement>("button") ?? headingRef.current)?.focus();
+    });
+  }
 
   const load = useCallback(async (): Promise<void> => {
     const attempt = ++sequence.current;
@@ -57,7 +68,9 @@ export function ScheduledMessagesDialog({
     <Modal open={open} onClose={onClose} ariaLabel="Scheduled messages" width="36rem">
       <div className="wx-scheduled-dialog">
         <header>
-          <h2>Scheduled</h2>
+          <h2 ref={headingRef} tabIndex={-1}>
+            Scheduled
+          </h2>
           <p>
             Messages waiting to be sent. Each one is checked again when it is due: if you can no
             longer send to that conversation, it is not sent and you are told here.
@@ -77,15 +90,16 @@ export function ScheduledMessagesDialog({
         ) : items.length === 0 ? (
           <p className="wx-scheduled-empty">Nothing is scheduled.</p>
         ) : (
-          <ul className="wx-scheduled-list" aria-label="Scheduled messages">
+          <ul ref={listRef} className="wx-scheduled-list" aria-label="Scheduled messages">
             {items.map((item) => (
               <ScheduledMessageRow
                 key={item.id}
                 item={item}
                 channelLabel={channelName(item.channelId)}
-                onCancelled={(id) =>
-                  setItems((current) => current?.filter((i) => i.id !== id) ?? null)
-                }
+                onCancelled={(id) => {
+                  focusAfterRemoval(items.findIndex((i) => i.id === id));
+                  setItems((current) => current?.filter((i) => i.id !== id) ?? null);
+                }}
                 onRescheduled={(next) =>
                   setItems(
                     (current) =>

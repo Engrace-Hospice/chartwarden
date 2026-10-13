@@ -2,7 +2,7 @@
 // conversation only (the server decides what is viewable and returns nothing deleted), and choosing one jumps to it
 // with the same jump the pinned bar and thread links use. Not offered in an archived conversation (the server refuses
 // it there), so the browser's own find keeps working.
-import { Button, Glyph, LoadingSpinner } from "@wardenx/ui";
+import { Button, Glyph } from "@wardenx/ui";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 import type { Message } from "./messaging-types";
@@ -12,6 +12,7 @@ import {
   NO_FILTERS,
   SEARCH_MIN_CHARS,
   type SearchFilters,
+  isRangeInverted,
   isSearchable,
   useMessageSearch,
 } from "./use-message-search";
@@ -26,8 +27,19 @@ interface MessageSearchProps {
   readonly onJump: (messageId: string) => void;
 }
 
+const MODAL_OPEN = '[role="dialog"], [aria-modal="true"], dialog[open]';
+
+/**
+ * Ctrl/Cmd+F is ours only when nothing else has claimed the key: not Ctrl+Shift+F, not an event another handler already
+ * handled, not while a modal is open (the browser's find and the modal's own keys win), and not from inside the side
+ * thread panel (that is a different view than the conversation this searches).
+ */
 function isFindShortcut(event: globalThis.KeyboardEvent): boolean {
-  return (event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "f";
+  if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return false;
+  if (event.key.toLowerCase() !== "f" || event.defaultPrevented) return false;
+  if (document.querySelector(MODAL_OPEN)) return false;
+  const target = event.target;
+  return !(target instanceof Element && target.closest(".wx-thread-panel"));
 }
 
 export function MessageSearch({
@@ -64,6 +76,14 @@ export function MessageSearch({
     return () => document.removeEventListener("keydown", onKey);
   }, [archived]);
 
+  // An archived conversation is not searchable: close and forget the query rather than reopen it when it changes back.
+  useEffect(() => {
+    if (!archived) return;
+    setOpen(false);
+    setQuery("");
+    setFilters(NO_FILTERS);
+  }, [archived]);
+
   // Another conversation is a new search.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `channelId` is the trigger
   useEffect(() => {
@@ -73,7 +93,8 @@ export function MessageSearch({
   }, [channelId]);
 
   useEffect(() => {
-    if (open) inputRef.current?.focus();
+    // Never pull focus out of a modal that opened meanwhile.
+    if (open && !document.querySelector(MODAL_OPEN)) inputRef.current?.focus();
   }, [open]);
 
   const authors = useMemo(() => {
@@ -120,6 +141,7 @@ export function MessageSearch({
   const trimmed = query.trim();
   const tooShort = trimmed.length > 0 && trimmed.length < SEARCH_MIN_CHARS;
   const searchable = isSearchable(query, filters);
+  const inverted = isRangeInverted(filters);
   const nothingFound = state.status === "ready" && state.results.length === 0 && !state.nextCursor;
 
   return (
@@ -214,17 +236,18 @@ export function MessageSearch({
             </label>
           </div>
 
-          <div className="wx-msg-search-status" aria-live="polite">
-            {!searchable ? (
+          {/* biome-ignore lint/a11y/useSemanticElements: <output> allows phrasing content only; this region holds paragraphs. */}
+          <div className="wx-msg-search-status" role="status">
+            {inverted ? (
+              <p>"After" is later than "Before". Change one of the dates.</p>
+            ) : !searchable ? (
               <p>
                 {tooShort
                   ? `Type at least ${SEARCH_MIN_CHARS} characters to search.`
                   : "Search the messages you can see in this conversation."}
               </p>
             ) : state.status === "loading" ? (
-              <output>
-                <LoadingSpinner label="Searching" />
-              </output>
+              <p>Searching…</p>
             ) : nothingFound ? (
               <p>No messages match your search.</p>
             ) : state.status === "ready" && state.results.length > 0 ? (
@@ -273,6 +296,15 @@ export function MessageSearch({
                 </li>
               ))}
             </ul>
+          ) : null}
+
+          {state.status === "ready" && state.moreError ? (
+            <div className="wx-msg-search-error" role="alert">
+              <span>{state.moreError}</span>
+              <Button size="sm" tone="secondary" onClick={loadMore}>
+                Retry
+              </Button>
+            </div>
           ) : null}
 
           {state.status === "ready" && state.nextCursor ? (

@@ -17,7 +17,7 @@ const SESSION: Session = {
 };
 const NEWCOMER = "33333333-3333-4333-8333-333333333333";
 
-function makeApi(opts: { canAdd: boolean; addFails?: boolean }) {
+function makeApi(opts: { canAdd: boolean; addFails?: boolean; gate?: Promise<void> }) {
   return {
     GET: vi.fn((path: string) => {
       if (path === "/api/v1/messaging/channels") {
@@ -56,13 +56,17 @@ function makeApi(opts: { canAdd: boolean; addFails?: boolean }) {
     }),
     POST: vi.fn((path: string) => {
       if (path === "/api/v1/messaging/channels/{id}/members") {
+        if (opts.gate) return opts.gate.then(() => ({ data: undefined, error: undefined }));
         return Promise.resolve(
           opts.addFails
             ? { data: undefined, error: { message: "forbidden" } }
             : { data: undefined, error: undefined },
         );
       }
-      return Promise.resolve({ data: { messageId: "m1" }, error: undefined });
+      return Promise.resolve({
+        data: { messageId: "m1", createdAt: "2026-10-09T10:00:00.000Z" },
+        error: undefined,
+      });
     }),
   } as unknown as ApiClient & { GET: ReturnType<typeof vi.fn>; POST: ReturnType<typeof vi.fn> };
 }
@@ -126,5 +130,71 @@ describe("WP 2.3 mention of a person outside the conversation", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Add to conversation" }));
     expect((await screen.findByRole("alert")).textContent).toMatch(/could not add/i);
     expect(composer.value).toBe("@Zed");
+  });
+
+  // Fix round 1 (H1-H3, M10).
+  it("H1: text typed while the add is in flight survives, one POST, and the mention lands in the typed draft", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const api = makeApi({ canAdd: true, gate });
+    const composer = await typeMention(api);
+    fireEvent.click(await screen.findByRole("button", { name: "Add to conversation" }));
+    fireEvent.change(composer, { target: { value: "@Zed hello", selectionStart: 10 } });
+    release();
+    await waitFor(() => expect(composer.value).toContain("Zed Newcomer"));
+    expect(composer.value).toContain("hello");
+    expect(api.POST.mock.calls.filter((c) => String(c[0]).endsWith("/members"))).toHaveLength(1);
+  });
+
+  it("H1: if the typed text no longer holds the @name, the add is reported and the draft is untouched", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const api = makeApi({ canAdd: true, gate });
+    const composer = await typeMention(api);
+    fireEvent.click(await screen.findByRole("button", { name: "Add to conversation" }));
+    fireEvent.change(composer, { target: { value: "other words", selectionStart: 11 } });
+    release();
+    expect(
+      (await screen.findByRole("status", { name: "Mention outside this conversation" }))
+        .textContent,
+    ).toMatch(/Zed Newcomer was added/);
+    expect(composer.value).toBe("other words");
+  });
+
+  it("H2: while the prompt is open Tab and arrows are not swallowed, and Enter still sends", async () => {
+    const api = makeApi({ canAdd: true });
+    const composer = await typeMention(api);
+    await screen.findByText("Add Zed Newcomer to this conversation?");
+    expect(fireEvent.keyDown(composer, { key: "Tab" })).toBe(true);
+    expect(fireEvent.keyDown(composer, { key: "ArrowDown" })).toBe(true);
+    fireEvent.keyDown(composer, { key: "Enter" });
+    await waitFor(() =>
+      expect(api.POST).toHaveBeenCalledWith(
+        "/api/v1/messaging/channels/{id}/messages",
+        expect.anything(),
+      ),
+    );
+  });
+
+  it("H3: Escape dismisses the prompt, so Add can never succeed without inserting", async () => {
+    const api = makeApi({ canAdd: true });
+    const composer = await typeMention(api);
+    await screen.findByText("Add Zed Newcomer to this conversation?");
+    fireEvent.keyDown(composer, { key: "Escape" });
+    expect(screen.queryByText("Add Zed Newcomer to this conversation?")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add to conversation" })).toBeNull();
+    expect(composer.value).toBe("@Zed");
+    expect(api.POST).not.toHaveBeenCalled();
+  });
+
+  it("M10: the prompt is announced as a status", async () => {
+    const api = makeApi({ canAdd: true });
+    await typeMention(api);
+    const prompt = await screen.findByRole("status", { name: "Mention outside this conversation" });
+    expect(prompt.textContent).toMatch(/Add Zed Newcomer to this conversation/);
   });
 });

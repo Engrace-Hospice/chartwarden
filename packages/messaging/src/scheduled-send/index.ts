@@ -70,10 +70,13 @@ export interface ScheduledSendService {
   ): Promise<ScheduledMessageView>;
 }
 
+const HAS_OFFSET = /T[0-9:.]+(Z|[+-][0-9]{2}:?[0-9]{2})$/i;
+
 /** Parse and bound a requested send time. Throws a typed 422; returns the instant. */
 export function assertScheduleTime(raw: string, now: Date): Date {
   const when = new Date(raw);
-  if (Number.isNaN(when.getTime())) {
+  // An instant needs an offset: without one `Date` reads it in the SERVER's zone, a silent hours-off schedule.
+  if (!HAS_OFFSET.test(raw) || Number.isNaN(when.getTime())) {
     throw new ValidationError("scheduledFor is not a valid time", [
       { field: "scheduledFor", code: "INVALID", message: "use an ISO 8601 date and time" },
     ]);

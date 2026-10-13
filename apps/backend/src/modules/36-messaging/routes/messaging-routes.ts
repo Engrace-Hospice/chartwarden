@@ -347,13 +347,20 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(ChannelParamsSchema, request.params);
       const { q } = parse(MentionNonMemberQuerySchema, request.query);
+      // Someone who cannot add people gets no names: a directory lookup is only for an action they may take. (No
+      // per-route rate limit exists in this repo; the global authenticated tier and the 2-character minimum bound it.)
+      const canAdd = await mayAddMembers(request, reply, organizationId, id);
+      if (!canAdd) {
+        // Still the channel-visibility answer (a hidden channel is the one 404), just no names.
+        await service.searchMentionNonMembers(organizationId, userId, id, "");
+        return { people: [], canAdd };
+      }
       const people = await service.searchMentionNonMembers(
         organizationId,
         userId,
         id,
         q?.trim() ?? "",
       );
-      const canAdd = await mayAddMembers(request, reply, organizationId, id);
       return { people, canAdd };
     },
   );

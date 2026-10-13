@@ -29,6 +29,14 @@ describe("assertScheduleTime", () => {
       expect.objectContaining({ code: "SCHEDULE_TOO_FAR" }),
     );
   });
+  it("rejects a timestamp with no offset or Z: it would be read in the server's zone", () => {
+    for (const naive of ["2026-10-12T13:30:00", "2026-10-12T13:30:00.000", "2026-10-12"]) {
+      expect(() => assertScheduleTime(naive, NOW)).toThrowError(
+        expect.objectContaining({ code: "VALIDATION_FAILED" }),
+      );
+    }
+    expect(() => assertScheduleTime("2026-10-12T15:30:00+02:00", NOW)).not.toThrow();
+  });
   it("rejects an unparseable time", () => {
     expect(() => assertScheduleTime("not a date", NOW)).toThrowError(
       expect.objectContaining({ code: "VALIDATION_FAILED" }),

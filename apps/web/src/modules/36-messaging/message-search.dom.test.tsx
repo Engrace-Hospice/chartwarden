@@ -8,6 +8,7 @@ import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationThread } from "./conversation-thread";
+import { MessageSearch } from "./message-search";
 import type { ChannelSummary } from "./messaging-types";
 
 const ME = "11111111-1111-4111-8111-111111111111";
@@ -217,5 +218,146 @@ describe("WP 2.7a in-conversation search", () => {
     expect(screen.queryByRole("button", { name: /Search messages/ })).toBeNull();
     const prevented = !fireEvent.keyDown(document, { key: "f", ctrlKey: true });
     expect(prevented).toBe(false);
+  });
+});
+
+const resultsText = (): string =>
+  document.querySelector(".wx-msg-search-results")?.textContent ?? "";
+const shows = (text: string) => waitFor(() => expect(resultsText()).toContain(text));
+
+describe("fix round 1: search", () => {
+  it("M9: Ctrl+Shift+F, an already-handled key, a modal, and a focus inside the thread panel are left alone", async () => {
+    mount(() => page([]));
+    await screen.findByText("hello there");
+    expect(fireEvent.keyDown(document, { key: "f", ctrlKey: true, shiftKey: true })).toBe(true);
+    expect(screen.queryByRole("searchbox")).toBeNull();
+
+    const handled = (event: Event) => event.preventDefault();
+    document.addEventListener("keydown", handled, true);
+    fireEvent.keyDown(document, { key: "f", ctrlKey: true });
+    document.removeEventListener("keydown", handled, true);
+    expect(screen.queryByRole("searchbox")).toBeNull();
+
+    const modal = document.createElement("div");
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    document.body.appendChild(modal);
+    expect(fireEvent.keyDown(document, { key: "f", ctrlKey: true })).toBe(true);
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    modal.remove();
+
+    const aside = document.createElement("aside");
+    aside.className = "wx-thread-panel";
+    const field = document.createElement("textarea");
+    aside.appendChild(field);
+    document.body.appendChild(aside);
+    expect(fireEvent.keyDown(field, { key: "f", ctrlKey: true })).toBe(true);
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    aside.remove();
+
+    expect(fireEvent.keyDown(document, { key: "f", ctrlKey: true })).toBe(false); // still works when none apply
+    expect(await screen.findByRole("searchbox")).toBeTruthy();
+  });
+
+  it("a failed 'show more' keeps the results already loaded and offers a retry", async () => {
+    let calls = 0;
+    mount((init) => {
+      calls += 1;
+      if (!init.params.query.cursor)
+        return page([message("s1", "tiger one")], { nextCursor: "C1" });
+      return calls === 2 ? failed() : page([message("s2", "tiger two")]);
+    });
+    const box = await openWithShortcut();
+    await type(box, "tiger");
+    await shows("tiger one");
+    fireEvent.click(screen.getByRole("button", { name: "Show more results" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/could not be searched/i);
+    expect(resultsText()).toContain("tiger one");
+    fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+    await shows("tiger two");
+    expect(resultsText()).toContain("tiger one");
+  });
+
+  it("an inverted After/Before range says so and is not sent", async () => {
+    const api = mount(() => page([]));
+    const box = await openWithShortcut();
+    await type(box, "fall");
+    const before = searchCalls(api).length;
+    fireEvent.change(screen.getByLabelText("After"), { target: { value: "2026-10-10" } });
+    fireEvent.change(screen.getByLabelText("Before"), { target: { value: "2026-10-01" } });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    });
+    expect(screen.getByText(/before.*earlier than.*after|after.*later than.*before/i)).toBeTruthy();
+    expect(
+      searchCalls(api)
+        .slice(before)
+        .some(([, init]) => init.params.query.from && init.params.query.to),
+    ).toBe(false);
+  });
+
+  it("a reply for an older query never replaces a newer one", async () => {
+    const resolvers: Array<(value: SearchReply) => void> = [];
+    const api = mount(() => undefined as never);
+    api.GET.mockImplementation((path: string, init: Record<string, any>) =>
+      path === SEARCH
+        ? new Promise((resolve) => {
+            resolvers.push(resolve as never);
+            void init;
+          })
+        : Promise.resolve(
+            path === LIST
+              ? ok({ messages: [message("m1", "hello there")] })
+              : ok({ pins: [], patientId: null }),
+          ),
+    );
+    const box = await openWithShortcut();
+    await type(box, "alpha");
+    await type(box, "alphabet");
+    expect(resolvers.length).toBe(2);
+    resolvers[1]!(page([message("n", "alphabet soup")]));
+    await shows("alphabet soup");
+    resolvers[0]!(page([message("o", "stale alpha result")]));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(resultsText()).not.toContain("stale alpha");
+    expect(resultsText()).toContain("alphabet soup");
+  });
+
+  it("has one live region, not an output nested in an aria-live", async () => {
+    mount(() => page([]));
+    const box = await openWithShortcut();
+    fireEvent.change(box, { target: { value: "zz" } });
+    const region = document.querySelector(".wx-msg-search-status") as HTMLElement;
+    expect(region.querySelector("output")).toBeNull();
+    expect(region.getAttribute("aria-live") ?? region.getAttribute("role")).toBeTruthy();
+  });
+
+  it("closes and clears the search when the conversation becomes archived", async () => {
+    const api = {
+      GET: vi.fn(() => Promise.resolve(page([]))),
+    };
+    const view = (archived: boolean) => (
+      <ApiClientProvider client={api as unknown as ApiClient}>
+        <MessageSearch
+          channelId="dm-1"
+          archived={archived}
+          meId={ME}
+          messages={[]}
+          onJump={() => {}}
+        />
+      </ApiClientProvider>
+    );
+    const { rerender } = render(view(false));
+    fireEvent.keyDown(document, { key: "f", ctrlKey: true });
+    const box = (await screen.findByRole("searchbox")) as HTMLInputElement;
+    fireEvent.change(box, { target: { value: "secret words" } });
+    rerender(view(true));
+    rerender(view(false));
+    expect(screen.queryByRole("searchbox")).toBeNull(); // not silently reopened with the old query
+    fireEvent.keyDown(document, { key: "f", ctrlKey: true });
+    expect(((await screen.findByRole("searchbox")) as HTMLInputElement).value).toBe("");
   });
 });

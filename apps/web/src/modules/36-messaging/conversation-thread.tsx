@@ -104,8 +104,10 @@ export function ConversationThread({
     query: mentionQuery,
     setQuery: setMentionQuery,
     pendingAdd,
+    adding: mentionAdding,
+    addFailed: mentionAddFailed,
+    addToConversation,
     choose: chooseMention,
-    mentionAdded,
     dismissMentionAdd,
     resetMention,
     menu: mentionMenu,
@@ -454,12 +456,20 @@ export function ConversationThread({
       applyTextEdit(area, toggleWrap(area.value, area.selectionStart, area.selectionEnd, marker));
       return;
     }
+    if (pendingAdd && event.key === "Escape") {
+      // Escape closes the add prompt (unless the add is in flight) and the suggestions with it.
+      event.preventDefault();
+      dismissMentionAdd();
+      setMentionQuery(null);
+      return;
+    }
     if (mentionQuery && event.key === "Escape") {
       event.preventDefault();
       setMentionQuery(null);
       return;
     }
-    if (mentionQuery && mentionMenu.candidates.length > 0) {
+    // While the add prompt is open the (hidden) suggestions own no keys: Tab reaches the prompt's buttons, Enter sends.
+    if (mentionQuery && !pendingAdd && mentionMenu.candidates.length > 0) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         setMentionIndex((index) =>
@@ -737,10 +747,12 @@ export function ConversationThread({
             />
             {pendingAdd ? (
               <NonMemberMentionPrompt
-                channelId={channel.channelId}
-                person={pendingAdd}
+                person={pendingAdd.person}
                 canAdd={canAddMention}
-                onAdded={mentionAdded}
+                adding={mentionAdding}
+                failed={mentionAddFailed}
+                added={pendingAdd.stage === "added"}
+                onAdd={() => void addToConversation()}
                 onDismiss={dismissMentionAdd}
               />
             ) : mentionQuery ? (
@@ -761,6 +773,8 @@ export function ConversationThread({
               channelId={channel.channelId}
               text={draft}
               disabled={sending}
+              hasMentions={draftReferences.length > 0}
+              focusTargetId="messaging-composer"
               disabledReason={
                 uploads.chips.length > 0 ? "Attachments cannot be scheduled." : undefined
               }

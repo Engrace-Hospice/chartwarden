@@ -158,6 +158,44 @@ describe.skipIf(!DB_URL)("M36 WP 2.3 mentions - LIVE Postgres", () => {
       }
     });
 
+    it("never offers an external auditor or a patient/family identity, even on a name match (fix round 1, M3)", async () => {
+      for (const [name, category] of [
+        ["Zed Auditor", "external_auditor"],
+        ["Zed Family", "patient_family"],
+      ] as const) {
+        const userId = await seedUser(name, ORG_A);
+        const roleId = (
+          await admin.query(
+            `INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,$2,$2,$3,true) RETURNING id`,
+            [ORG_A, `wp23-${category}`, category],
+          )
+        ).rows[0].id as string;
+        const membershipId = (
+          await admin.query(`SELECT id FROM membership WHERE user_id=$1 AND organization_id=$2`, [
+            userId,
+            ORG_A,
+          ])
+        ).rows[0].id as string;
+        await admin.query(
+          `INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)`,
+          [ORG_A, membershipId, roleId],
+        );
+      }
+      const rows = await service.searchMentionNonMembers(ORG_A, sender, channel, "zed");
+      // The two outsiders are parked afterwards so later tests see the original cast.
+      await admin.query(
+        `UPDATE membership SET status='suspended' WHERE organization_id=$1 AND user_id IN
+           (SELECT id FROM "user" WHERE name IN ('Zed Auditor','Zed Family'))`,
+        [ORG_A],
+      );
+      expect(rows.map((r) => r.displayName)).toEqual(["Zed Newcomer"]);
+    });
+
+    it("checks the minimum length before escaping (a lone LIKE metacharacter is one character, not two)", async () => {
+      expect(await service.searchMentionNonMembers(ORG_A, sender, channel, "%")).toEqual([]);
+      expect(await service.searchMentionNonMembers(ORG_A, sender, channel, "_")).toEqual([]);
+    });
+
     it("needs two characters and treats LIKE metacharacters literally", async () => {
       expect(await service.searchMentionNonMembers(ORG_A, sender, channel, "z")).toEqual([]);
       expect(await service.searchMentionNonMembers(ORG_A, sender, channel, "  ")).toEqual([]);

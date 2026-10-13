@@ -734,13 +734,24 @@ describe("M36-T07 messaging route inventory", () => {
         headers,
       });
 
-    it("offers names only, never members, self, suspended or foreign-org people", async () => {
-      const res = await nonMembers(RN1, "One");
+    it("offers names only, never members, self, suspended or foreign-org people (to someone who can add)", async () => {
+      const { app, service } = makeServer();
+      await service.addMember(ORG, {
+        channelId: CT,
+        userId: "lead_1",
+        actor: { kind: "user", userId: "admin_1", roles: ["org_admin"], locationIds: [] },
+      });
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/messaging/channels/${CT}/mention-non-members?q=One`,
+        headers: LEAD,
+      });
+      await app.close();
       expect(res.statusCode).toBe(200);
       const body = res.json();
+      expect(body.canAdd).toBe(true);
       expect(body.people.map((p: { displayName: string }) => p.displayName).sort()).toEqual([
         "Admin One",
-        "Lead One",
       ]);
       expect(Object.keys(body.people[0]).sort()).toEqual(["displayName", "entityId"]);
       expect(JSON.stringify(body)).not.toMatch(/Foreign|Suspended|Nurse One/);
@@ -751,12 +762,9 @@ describe("M36-T07 messaging route inventory", () => {
       expect(res.json().people).toEqual([]);
     });
 
-    it("a sender without member-management authority gets canAdd=false", async () => {
+    it("a sender without member-management authority gets no names at all, only canAdd=false", async () => {
       const res = await nonMembers(RN1, "Nurse");
-      expect(res.json()).toEqual({
-        people: [expect.objectContaining({ entityId: "rn_2", displayName: "Nurse Two" })],
-        canAdd: false,
-      });
+      expect(res.json()).toEqual({ people: [], canAdd: false });
     });
 
     it("a non-member of the channel is refused like any hidden channel", async () => {

@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ConversationInbox } from "./conversation-inbox";
 import { ScheduleSendButton } from "./schedule-send-button";
 import { ScheduledMessagesDialog } from "./scheduled-messages-dialog";
+import { toLocalInputValue } from "./scheduled-send-utils";
 
 const CH = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 type Json = Record<string, any>;
@@ -27,17 +28,22 @@ const provide = (client: ReturnType<typeof api>, ui: React.ReactElement) => (
   <ApiClientProvider client={client as unknown as ApiClient}>{ui}</ApiClientProvider>
 );
 
+// Dates are relative to now: the picker only offers the next 30 days, so a fixed calendar date goes stale.
+const DAY_MS = 86_400_000;
+const inDays = (days: number): Date => new Date(Date.now() + days * DAY_MS);
+const inputIn = (days: number): string => toLocalInputValue(inDays(days));
+
 const pending = {
   id: "s-1",
   channelId: CH,
   parentMessageId: null,
   body: "Please call the family at noon",
-  scheduledFor: "2030-01-05T18:00:00.000Z",
+  scheduledFor: inDays(5).toISOString(),
   timeZone: "America/Chicago",
   status: "pending" as const,
   blockedReason: null,
-  createdAt: "2030-01-01T00:00:00.000Z",
-  updatedAt: "2030-01-01T00:00:00.000Z",
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
 };
 const blocked = {
   ...pending,
@@ -132,11 +138,8 @@ describe("ScheduleSendButton", () => {
     const dialog = screen.getByRole("dialog");
     const input = within(dialog).getByLabelText(/send at/i);
     await userEvent.clear(input);
-    expect(within(dialog).getByRole("button", { name: /^schedule$/i })).toHaveProperty(
-      "disabled",
-      true,
-    );
-    await userEvent.type(input, "2030-01-05T09:30");
+    expect(within(dialog).getByText(/pick a date and time/i)).toBeTruthy();
+    await userEvent.type(input, inputIn(3));
     await userEvent.click(within(dialog).getByRole("button", { name: /^schedule$/i }));
     await userEvent.click(within(dialog).getByRole("button", { name: /scheduling/i }));
     expect(client.POST).toHaveBeenCalledTimes(1);
@@ -212,6 +215,8 @@ describe("ScheduledMessagesDialog", () => {
       ),
     );
     await userEvent.click(await screen.findByRole("button", { name: /cancel scheduled message/i }));
+    expect(client.DELETE).not.toHaveBeenCalled(); // an inline confirm comes first
+    await userEvent.click(screen.getByRole("button", { name: /yes, cancel it/i }));
     await waitFor(() => expect(screen.queryByText("Please call the family at noon")).toBeNull());
     expect(client.DELETE).toHaveBeenCalledWith(
       "/api/v1/messaging/scheduled-messages/{id}",
@@ -234,13 +239,175 @@ describe("ScheduledMessagesDialog", () => {
     await userEvent.click(await screen.findByRole("button", { name: /reschedule/i }));
     const input = screen.getByLabelText(/new time/i);
     await userEvent.clear(input);
-    await userEvent.type(input, "2030-01-06T10:00");
+    await userEvent.type(input, inputIn(6));
     await userEvent.click(screen.getByRole("button", { name: /save time/i }));
     await waitFor(() => expect(screen.queryByText(/no longer a member/i)).toBeNull());
     const [path, init] = client.PATCH.mock.calls[0] as [string, Json];
     expect(path).toBe("/api/v1/messaging/scheduled-messages/{id}");
     expect(init.params.path.id).toBe("s-2");
-    expect(new Date(init.body.scheduledFor).getFullYear()).toBe(2030);
+    expect(new Date(init.body.scheduledFor).getTime()).toBeGreaterThan(Date.now());
+  });
+});
+
+const POST_REFUSED = (status: number, code = "X") => ({
+  data: undefined,
+  error: { error: { code, message: "no" } },
+  response: { status },
+});
+
+async function openDialog(client: ReturnType<typeof api>, extra: Json = {}) {
+  render(
+    provide(
+      client,
+      <ScheduleSendButton channelId={CH} text="hello" onScheduled={() => {}} {...extra} />,
+    ),
+  );
+  await userEvent.click(screen.getByRole("button", { name: /schedule send/i }));
+  return screen.getByRole("dialog");
+}
+const keyOf = (client: ReturnType<typeof api>, call: number): string =>
+  (client.POST.mock.calls[call] as [string, Json])[1].params.header["Idempotency-Key"];
+
+describe("fix round 1: schedule dialog", () => {
+  it("M2: warns that mentions will not notify when the draft carries mentions", async () => {
+    const dialog = await openDialog(api({}), { hasMentions: true });
+    expect(within(dialog).getByText(/mentions won't notify/i)).toBeTruthy();
+  });
+
+  it("M2: no mention warning without mentions", async () => {
+    const dialog = await openDialog(api({}));
+    expect(within(dialog).queryByText(/mentions won't notify/i)).toBeNull();
+  });
+
+  it("M5: the idempotency key is reused after a 502 and rotated after a 422", async () => {
+    const answers = [POST_REFUSED(502), POST_REFUSED(502), POST_REFUSED(422), POST_REFUSED(422)];
+    const client = api({ POST: () => answers.shift() });
+    const dialog = await openDialog(client);
+    const submit = () =>
+      userEvent.click(within(dialog).getByRole("button", { name: /^schedule$/i }));
+    await submit();
+    await screen.findByRole("alert");
+    await submit();
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(2));
+    expect(keyOf(client, 1)).toBe(keyOf(client, 0));
+    await submit(); // third: 422
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(3));
+    expect(keyOf(client, 2)).toBe(keyOf(client, 0)); // the 502 did not rotate it
+    await submit(); // fourth, after the definite refusal
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(4));
+    expect(keyOf(client, 3)).not.toBe(keyOf(client, 2));
+  });
+
+  it("M6: a past time is refused with a message and nothing is sent", async () => {
+    const client = api({});
+    const dialog = await openDialog(client);
+    const input = within(dialog).getByLabelText(/send at/i);
+    await userEvent.clear(input);
+    await userEvent.type(input, toLocalInputValue(new Date(Date.now() - 3_600_000)));
+    expect(within(dialog).getByText(/at least a couple of minutes/i)).toBeTruthy();
+    await userEvent.click(within(dialog).getByRole("button", { name: /^schedule$/i }));
+    expect(client.POST).not.toHaveBeenCalled();
+  });
+
+  it("M6: more than 30 days ahead is refused with a message", async () => {
+    const dialog = await openDialog(api({}));
+    const input = within(dialog).getByLabelText(/send at/i);
+    await userEvent.clear(input);
+    await userEvent.type(input, inputIn(45));
+    expect(within(dialog).getByText(/within the next 30 days/i)).toBeTruthy();
+  });
+
+  it("M6: a time that went stale while the dialog sat open is refused at submit", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const client = api({});
+      const dialog = await openDialog(client);
+      vi.setSystemTime(Date.now() + 2 * 3_600_000); // the suggested hour-ahead default is now in the past
+      await userEvent.click(within(dialog).getByRole("button", { name: /^schedule$/i }));
+      expect(await within(dialog).findByText(/at least a couple of minutes/i)).toBeTruthy();
+      expect(client.POST).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("M8: after scheduling, focus returns to the composer", async () => {
+    const client = api({ POST: () => ({ data: pending, error: undefined }) });
+    render(
+      provide(
+        client,
+        <>
+          <textarea aria-label="Message" id="messaging-composer" />
+          <ScheduleSendButton
+            channelId={CH}
+            text="hello"
+            onScheduled={() => {}}
+            focusTargetId="messaging-composer"
+          />
+        </>,
+      ),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /schedule send/i }));
+    await userEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: /^schedule$/i }),
+    );
+    await waitFor(() => expect(document.activeElement?.id).toBe("messaging-composer"));
+  });
+});
+
+describe("fix round 1: scheduled list", () => {
+  const channelName = (id: string) => (id === CH ? "Care team" : "Unknown conversation");
+  const list = (items: unknown[], extra: Json = {}) =>
+    api({ GET: () => ({ data: { scheduledMessages: items }, error: undefined }), ...extra });
+  const mount = (client: ReturnType<typeof api>) =>
+    render(
+      provide(
+        client,
+        <ScheduledMessagesDialog open onClose={() => {}} channelName={channelName} />,
+      ),
+    );
+
+  it("M7: rescheduling a blocked (past-time) row seeds a valid future time", async () => {
+    const past = { ...blocked, scheduledFor: new Date(Date.now() - 3_600_000).toISOString() };
+    mount(list([past]));
+    await userEvent.click(await screen.findByRole("button", { name: /reschedule to retry/i }));
+    const input = screen.getByLabelText(/new time/i) as HTMLInputElement;
+    expect(input.value >= input.min && input.value <= input.max).toBe(true);
+  });
+
+  it("M8: row buttons name the conversation and the time", async () => {
+    mount(list([pending]));
+    const button = await screen.findByRole("button", { name: /^reschedule/i });
+    expect(button.getAttribute("aria-label")).toMatch(/Care team/);
+    const cancel = screen.getByRole("button", { name: /cancel scheduled message/i });
+    expect(cancel.getAttribute("aria-label")).toMatch(/Care team/);
+  });
+
+  it("M8: Keep it leaves the row, and after a confirmed cancel focus moves to the next row", async () => {
+    const second = { ...pending, id: "s-9", body: "Another" };
+    mount(
+      list([pending, second], { DELETE: () => ({ data: { cancelled: true }, error: undefined }) }),
+    );
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /cancel scheduled message/i }))[0]!,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /keep it/i }));
+    expect(screen.getByText("Please call the family at noon")).toBeTruthy();
+    await userEvent.click(screen.getAllByRole("button", { name: /cancel scheduled message/i })[0]!);
+    await userEvent.click(screen.getByRole("button", { name: /yes, cancel it/i }));
+    await waitFor(() => expect(screen.queryByText("Please call the family at noon")).toBeNull());
+    await waitFor(() =>
+      expect(document.activeElement?.closest("li")?.textContent).toContain("Another"),
+    );
+  });
+
+  it("M8: after Keep current time focus returns to the row's Reschedule button", async () => {
+    mount(list([pending]));
+    await userEvent.click(await screen.findByRole("button", { name: /^reschedule/i }));
+    await userEvent.click(screen.getByRole("button", { name: /keep current time/i }));
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute("aria-label")).toMatch(/^Reschedule/),
+    );
   });
 });
 

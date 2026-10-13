@@ -15,7 +15,7 @@ export function toLocalInputValue(date: Date): string {
 
 /** The instant a datetime-local value means in the viewer's time zone, or null when empty/malformed. */
 export function fromLocalInputValue(value: string): Date | null {
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(value)) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 }
@@ -37,6 +37,31 @@ export function defaultScheduleValue(now: Date): string {
   target.setSeconds(0, 0);
   target.setMinutes(Math.ceil(target.getMinutes() / 5) * 5);
   return toLocalInputValue(target);
+}
+
+/** Why `picked` cannot be scheduled right now (against the clock passed in), or null when it can. */
+export function validateScheduleTime(picked: Date | null, now: Date): string | null {
+  if (!picked) return "Pick a date and time.";
+  const { min, max } = scheduleBounds(now);
+  if (picked.getTime() < min.getTime()) return scheduleErrorText("SCHEDULE_TOO_SOON");
+  if (picked.getTime() > max.getTime()) return scheduleErrorText("SCHEDULE_TOO_FAR");
+  return null;
+}
+
+/** The input value to start from when moving a row: its current time if that is still schedulable, else a default. */
+export function rescheduleSeedValue(scheduledFor: string, now: Date): string {
+  const current = new Date(scheduledFor);
+  return validateScheduleTime(current, now) === null
+    ? toLocalInputValue(current)
+    : defaultScheduleValue(now);
+}
+
+/**
+ * Whether a failed create/reschedule was a DEFINITE refusal (the server did not store it), so its idempotency key may
+ * be rotated. A 5xx, 408 or a lost reply may have committed behind a gateway: the key is kept so a retry replays.
+ */
+export function isDefiniteRefusal(status: number | undefined): boolean {
+  return status !== undefined && status >= 400 && status < 500 && status !== 408;
 }
 
 /** A readable time in the viewer's own zone, with the zone named. */

@@ -22,7 +22,7 @@ import {
   scheduleBlockReasonFor,
 } from "@wardenx/messaging";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { publishMessageHint } from "../message-hint-events";
 import type { MessagingOutboxPort } from "../messaging-route-service-db";
 import {
@@ -39,6 +39,15 @@ const MSG = schema.messages;
 export const SCHEDULE_BLOCKED_EVENT = "m36.message.schedule_blocked";
 /** Due rows one org tick handles; the rest wait for the next minute. */
 export const DISPATCH_BATCH_LIMIT = 100;
+/** Consecutive dependency failures (resolver / visibility) after which the rest of an org's tick is left for the next. */
+export const DEPENDENCY_FAILURE_TRIP = 3;
+
+/** The M3 resolver or the visibility check failed: an outage of something else, not a verdict about the row. */
+class DependencyUnavailableError extends Error {
+  constructor(readonly original: unknown) {
+    super("scheduled-send dependency unavailable");
+  }
+}
 
 export interface ScheduledSendDispatcherDeps {
   readonly db: DbClient;
@@ -81,20 +90,17 @@ export function createScheduledSendDispatcher(
 
   async function listDue(orgId: string, limit: number): Promise<DueRow[]> {
     // System actor, no owner: lists ids and owners only (never the cipher). Each row is then handled under its owner.
-    return withOrgContext(db, systemOrgContext(orgId), (tx) =>
-      tx
-        .select({ id: SM.id, userId: SM.userId, channelId: SM.channelId })
-        .from(SM)
-        .where(
-          and(
-            eq(SM.organizationId, orgId),
-            eq(SM.status, "pending"),
-            sql`${SM.scheduledFor} <= now()`,
-          ),
-        )
-        .orderBy(asc(SM.scheduledFor), asc(SM.id))
-        .limit(limit),
-    );
+    // The table's policy admits only an owner, so the no-user sweep lists through the narrow definer function (ids only).
+    return withOrgContext(db, systemOrgContext(orgId), async (tx) => {
+      const { rows } = await tx.execute(
+        sql`SELECT id, user_id, channel_id FROM scheduled_message_due(${orgId}::uuid, ${limit}::integer)`,
+      );
+      return (rows as Array<{ id: string; user_id: string; channel_id: string }>).map((row) => ({
+        id: row.id,
+        userId: row.user_id,
+        channelId: row.channel_id,
+      }));
+    });
   }
 
   /** Flip a row to blocked and tell the sender (one event, same transaction). */
@@ -125,8 +131,16 @@ export function createScheduledSendDispatcher(
 
   async function dispatchOne(orgId: string, row: DueRow): Promise<RowOutcome> {
     // Decisions that need other services come first, outside the transaction (they open their own).
-    const permissions = await deps.permissionsFor(orgId, row.userId);
-    const canView = await deps.canViewChannel(orgId, row.userId, row.channelId);
+    // A failure here says nothing about this message: it must not count toward its attempts (a few minutes of resolver
+    // or DB trouble would otherwise block every due row as dispatch_failed).
+    let permissions: ReadonlySet<string>;
+    let canView: boolean;
+    try {
+      permissions = await deps.permissionsFor(orgId, row.userId);
+      canView = await deps.canViewChannel(orgId, row.userId, row.channelId);
+    } catch (error) {
+      throw new DependencyUnavailableError(error);
+    }
     return withOrgContext(db, { organizationId: orgId, userId: row.userId }, async (tx) => {
       // Claim: still ours, still pending, still due. A cancel/reschedule/other tick that got there first leaves nothing.
       const [claimed] = await tx
@@ -226,12 +240,24 @@ export function createScheduledSendDispatcher(
       let sent = 0;
       let blocked = 0;
       let failed = 0;
+      let consecutiveOutages = 0;
       for (const row of due) {
         try {
           const outcome = await dispatchOne(orgId, row);
+          consecutiveOutages = 0;
           if (outcome === "sent") sent += 1;
           if (outcome === "blocked") blocked += 1;
         } catch (error) {
+          if (error instanceof DependencyUnavailableError) {
+            // Retry next tick, attempts untouched; a run of them means the dependency is down for everyone here.
+            deps.onRowError?.(
+              { organizationId: orgId, scheduledMessageId: row.id },
+              error.original,
+            );
+            consecutiveOutages += 1;
+            if (consecutiveOutages >= DEPENDENCY_FAILURE_TRIP) break;
+            continue;
+          }
           deps.onRowError?.({ organizationId: orgId, scheduledMessageId: row.id }, error);
           // The failed transaction rolled back, so the row is untouched: count the failure in a fresh one.
           const outcome = await recordFailure(orgId, row);

@@ -10,10 +10,12 @@
 -- DELETEs it. A re-check that fails flips it to `blocked` with a reason code and the sender is notified; the sender can
 -- reschedule (back to `pending`) or cancel it. Nothing is ever sent from a `blocked` row.
 --
--- Isolation: org policy AND owner. A request always runs with `app.user_id` set, so it sees only its own user's rows. The
--- dispatcher's per-org sweep runs with NO user bound to LIST due rows (it reads ids and times, never the cipher) and then
--- processes each row under its owner's context. A bug that forgets `user_id = ...` in a request therefore still cannot
--- return a colleague's row. Deletion on a channel or tenant erase rides the composite channel FK (ON DELETE CASCADE),
+-- Isolation: org policy AND owner, STRICT. A row is visible to wardenx_app only when `app.user_id` is set AND is the row's
+-- owner: a context with no user (a relay tick, a worker, a bug that forgets to bind one) reads, updates and deletes
+-- NOTHING, and so can never reach a sealed body_cipher. The dispatcher's per-org sweep needs to LIST due rows with no
+-- user bound; it does that through the narrow SECURITY DEFINER `scheduled_message_due` below (ids only, never the
+-- cipher, pinned to the bound org; the ADR-0010 D2/D3 pattern of 0194) and then processes each row under its owner's
+-- context. A bug that forgets `user_id = ...` in a request therefore still cannot return a colleague's row. Deletion on a channel or tenant erase rides the composite channel FK (ON DELETE CASCADE),
 -- the eraser's explicit delete, and wardenx_destruction.
 --
 -- Audit: INSERT, UPDATE and DELETE (low volume: a human schedules, reschedules, cancels or has one sent). The cipher is
@@ -61,8 +63,7 @@ ALTER TABLE "scheduled_message" FORCE ROW LEVEL SECURITY;--> statement-breakpoin
 CREATE POLICY "scheduled_message_owner_isolation" ON "scheduled_message"
   FOR ALL TO wardenx_app
   USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid
-         AND (NULLIF(current_setting('app.user_id', true), '') IS NULL
-              OR user_id = NULLIF(current_setting('app.user_id', true), '')::uuid))
+         AND user_id = NULLIF(current_setting('app.user_id', true), '')::uuid)
   WITH CHECK (organization_id = nullif(current_setting('app.org_id', true), '')::uuid
               AND user_id = NULLIF(current_setting('app.user_id', true), '')::uuid);--> statement-breakpoint
 -- Identity, owner and the sealed body are not updatable; only the schedule, the state and the retry counter move.
@@ -99,6 +100,28 @@ ALTER FUNCTION audit_phi_write_scheduled_message() OWNER TO wardenx_audit_writer
 CREATE TRIGGER "trg_audit_scheduled_message"
   AFTER INSERT OR UPDATE OR DELETE ON scheduled_message
   FOR EACH ROW EXECUTE FUNCTION audit_phi_write_scheduled_message();--> statement-breakpoint
+
+-- The sweep's lister. Owned by wardenx_admin, which gets a policy for PENDING rows and a COLUMN grant that excludes
+-- body_cipher, so the function can return nothing more than it selects. EXECUTE only for wardenx_app. It answers only for
+-- the org the session is bound to (a caller cannot name another tenant), and a NULL org matches nothing.
+CREATE POLICY "scheduled_message_due_lister" ON "scheduled_message"
+  FOR SELECT TO wardenx_admin USING (status = 'pending');--> statement-breakpoint
+GRANT SELECT ("id", "organization_id", "user_id", "channel_id", "status", "scheduled_for") ON "scheduled_message" TO wardenx_admin;--> statement-breakpoint
+CREATE OR REPLACE FUNCTION scheduled_message_due(p_organization_id uuid, p_limit integer)
+RETURNS TABLE (id uuid, user_id uuid, channel_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
+  SELECT sm.id, sm.user_id, sm.channel_id
+  FROM scheduled_message sm
+  WHERE sm.organization_id = p_organization_id
+    AND p_organization_id = NULLIF(current_setting('app.org_id', true), '')::uuid
+    AND sm.status = 'pending'
+    AND sm.scheduled_for <= now()
+  ORDER BY sm.scheduled_for, sm.id
+  LIMIT LEAST(GREATEST(p_limit, 0), 500);
+$$;--> statement-breakpoint
+ALTER FUNCTION scheduled_message_due(uuid, integer) OWNER TO wardenx_admin;--> statement-breakpoint
+REVOKE ALL ON FUNCTION scheduled_message_due(uuid, integer) FROM PUBLIC;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION scheduled_message_due(uuid, integer) TO wardenx_app;--> statement-breakpoint
 
 GRANT SELECT, DELETE ON "scheduled_message" TO wardenx_destruction;--> statement-breakpoint
 CREATE POLICY "scheduled_message_destruction" ON "scheduled_message"

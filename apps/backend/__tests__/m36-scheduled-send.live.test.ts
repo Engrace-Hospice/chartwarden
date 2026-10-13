@@ -23,9 +23,9 @@ import {
   eraseTenantMessaging,
 } from "@wardenx/messaging";
 import type { ScheduledSendService } from "@wardenx/messaging";
-import { withOrgContext } from "@wardenx/tenancy";
+import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { Queue } from "bullmq";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
@@ -74,6 +74,7 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
   /** Mutable permission table the dispatcher consults (stands in for the M3 resolver). */
   const grants = new Map<string, Set<string>>();
   let failOpenFor: string | null = null;
+  let failResolver = false;
 
   async function applyMigrations() {
     const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
@@ -199,7 +200,10 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
       },
       outbox,
       canViewChannel: router.canViewChannel,
-      permissionsFor: async (org, user) => grants.get(`${org}:${user}`) ?? new Set<string>(),
+      permissionsFor: async (org, user) => {
+        if (failResolver) throw new Error("simulated M3 resolver outage");
+        return grants.get(`${org}:${user}`) ?? new Set<string>();
+      },
     });
   }, 180_000);
 
@@ -612,6 +616,57 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
         blocked_reason: "dispatch_failed",
       });
       expect(await eventsOf("m36.message.schedule_blocked")).toHaveLength(1);
+    });
+  });
+
+  describe("a request-less (no user) context (fix round 1, M4)", () => {
+    it("can neither read a sealed body nor update nor delete anyone's row", async () => {
+      await wipe();
+      await schedule(alice);
+      await schedule(bob);
+      const asSystem = <T>(fn: (tx: any) => Promise<T>) =>
+        withOrgContext(handle.db, systemOrgContext(orgA), fn);
+      expect(await asSystem((tx) => tx.select().from(schema.scheduledMessages))).toHaveLength(0);
+      await asSystem((tx) => tx.update(schema.scheduledMessages).set({ attempts: 2 }));
+      await asSystem((tx) => tx.delete(schema.scheduledMessages));
+      const left = await rows();
+      expect(left).toHaveLength(2);
+      expect(left.every((row) => row.attempts === 0)).toBe(true);
+    });
+
+    it("the sweep's narrow lister still sees due rows, and only id/owner/channel, only for its own org", async () => {
+      await wipe();
+      const created = await schedule(alice);
+      await makeDue(created.id);
+      const list = (org: string, ctx: string) =>
+        withOrgContext(handle.db, systemOrgContext(ctx), (tx) =>
+          tx.execute(sql`SELECT * FROM scheduled_message_due(${org}::uuid, 10)`),
+        );
+      const own = (await list(orgA, orgA)).rows as Array<Record<string, unknown>>;
+      expect(own).toHaveLength(1);
+      expect(Object.keys(own[0]!).sort()).toEqual(["channel_id", "id", "user_id"]);
+      // Naming another org while bound to this one yields nothing.
+      expect((await list(orgB, orgA)).rows).toHaveLength(0);
+    });
+  });
+
+  describe("dependency outages (fix round 1, M1)", () => {
+    it("a resolver outage never burns the row's attempts; it sends once the dependency recovers", async () => {
+      await wipe();
+      const created = await schedule(alice);
+      await makeDue(created.id);
+      const before = (await messagesIn(dm)).length;
+      failResolver = true;
+      try {
+        for (let i = 0; i < 5; i += 1) await tick();
+      } finally {
+        failResolver = false;
+      }
+      expect((await rows())[0]).toMatchObject({ status: "pending", attempts: 0 });
+      expect(await eventsOf("m36.message.schedule_blocked")).toHaveLength(0);
+      expect(await tick()).toMatchObject({ sent: 1 });
+      expect(await messagesIn(dm)).toHaveLength(before + 1);
+      expect(await rows()).toHaveLength(0);
     });
   });
 

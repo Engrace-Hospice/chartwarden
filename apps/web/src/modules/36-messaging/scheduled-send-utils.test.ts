@@ -16,6 +16,9 @@ describe("local datetime input helpers", () => {
     expect(toLocalInputValue(date)).toBe("2026-10-12T14:05");
     expect(fromLocalInputValue("2026-10-12T14:05")?.getTime()).toBe(date.getTime());
   });
+  it("accepts HH:mm:ss values (M6)", () => {
+    expect(fromLocalInputValue("2026-10-12T14:05:30")?.getSeconds()).toBe(30);
+  });
   it("rejects an empty or malformed input", () => {
     expect(fromLocalInputValue("")).toBeNull();
     expect(fromLocalInputValue("tomorrow")).toBeNull();

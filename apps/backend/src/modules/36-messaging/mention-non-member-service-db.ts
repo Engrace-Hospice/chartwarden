@@ -13,6 +13,8 @@ import { and, asc, eq, isNull, sql } from "drizzle-orm";
 const CH = schema.channels;
 const CM = schema.channelMembers;
 const MEMBERSHIP = schema.memberships;
+const MEMBERSHIP_ROLE = schema.membershipRoles;
+const ROLE = schema.roles;
 const USER = schema.users;
 
 export const MENTION_NON_MEMBER_MIN_QUERY = 2;
@@ -29,12 +31,11 @@ export function createDbMentionNonMemberSearch(deps: {
       if (!(await canViewChannel(orgId, userId, channelId))) {
         throw new NotFoundError("channel", channelId);
       }
+      // The length is judged on what the user typed; escaping must not turn one character into two.
+      const typed = query.trim().slice(0, MAX_QUERY_LENGTH);
+      if (typed.length < MENTION_NON_MEMBER_MIN_QUERY) return [];
       // Escape LIKE metacharacters so the query is a literal substring.
-      const needle = query
-        .trim()
-        .slice(0, MAX_QUERY_LENGTH)
-        .replace(/[\\%_]/g, "\\$&");
-      if (needle.length < MENTION_NON_MEMBER_MIN_QUERY) return [];
+      const needle = typed.replace(/[\\%_]/g, "\\$&");
       return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
         const [channel] = await tx
           .select({ kind: CH.channelKind })
@@ -54,6 +55,15 @@ export function createDbMentionNonMemberSearch(deps: {
               eq(USER.status, "active"),
               sql`${USER.id} <> ${userId}::uuid`,
               sql`${USER.name} ILIKE ${`%${needle}%`}`,
+              // Staff only: an external auditor or a patient/family identity is never offered, nor can be added from here.
+              sql`NOT EXISTS (
+                SELECT 1 FROM ${MEMBERSHIP_ROLE}
+                INNER JOIN ${ROLE} ON ${ROLE.id} = ${MEMBERSHIP_ROLE.roleId}
+                WHERE ${MEMBERSHIP_ROLE.organizationId} = ${orgId}::uuid
+                  AND ${MEMBERSHIP_ROLE.membershipId} = ${MEMBERSHIP.id}
+                  AND ${ROLE.category} IN ('external_auditor', 'patient_family', 'platform_staff')
+                  AND (${MEMBERSHIP_ROLE.expiresAt} IS NULL OR ${MEMBERSHIP_ROLE.expiresAt} > now())
+              )`,
               sql`NOT EXISTS (
                 SELECT 1 FROM ${CM}
                 WHERE ${CM.organizationId} = ${orgId}::uuid

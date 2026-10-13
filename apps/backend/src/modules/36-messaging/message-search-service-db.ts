@@ -44,6 +44,7 @@ const USER = schema.users;
 
 /** Rows fetched per round trip; small enough that an early page-full exit wastes little. */
 const SCAN_BATCH_SIZE = 500;
+const SEARCH_STATEMENT_TIMEOUT_MS = "5000";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface MessageSearchDeps {
@@ -183,6 +184,11 @@ export function createDbMessageSearchService(deps: MessageSearchDeps): MessageSe
         throw new NotFoundError("channel", input.channelId);
       }
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
+        // No per-route rate limit exists in this repo, so one search cannot hold a connection past this (the scan is
+        // already capped per request; this bounds a slow plan or a loaded database).
+        await tx.execute(
+          sql`SELECT set_config('statement_timeout', ${SEARCH_STATEMENT_TIMEOUT_MS}, true)`,
+        );
         const [channel] = await tx
           .select({ kind: CH.channelKind, subjectId: CH.subjectId, isArchived: CH.isArchived })
           .from(CH)

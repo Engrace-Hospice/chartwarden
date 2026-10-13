@@ -12,6 +12,8 @@ export function ScheduleSendButton({
   text,
   disabled = false,
   disabledReason,
+  hasMentions = false,
+  focusTargetId,
   onScheduled,
 }: {
   channelId: string;
@@ -19,6 +21,10 @@ export function ScheduleSendButton({
   disabled?: boolean;
   /** Why scheduling is unavailable right now (shown as the button's title). */
   disabledReason?: string;
+  /** The draft carries @mentions (they will not notify when scheduled). */
+  hasMentions?: boolean;
+  /** Where focus goes after a successful schedule (the composer): the dialog's own return target is now empty. */
+  focusTargetId?: string;
   onScheduled: () => void;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
@@ -47,11 +53,15 @@ export function ScheduleSendButton({
           open
           channelId={channelId}
           text={text}
+          hasMentions={hasMentions}
           onClose={() => setOpen(false)}
           onScheduled={(scheduledFor) => {
             setOpen(false);
             setConfirmation(`Message scheduled for ${formatScheduledTime(scheduledFor)}.`);
             onScheduled();
+            if (focusTargetId) {
+              window.requestAnimationFrame(() => document.getElementById(focusTargetId)?.focus());
+            }
           }}
         />
       ) : null}

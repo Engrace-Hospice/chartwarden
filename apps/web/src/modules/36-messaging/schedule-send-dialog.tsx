@@ -12,9 +12,11 @@ import {
   defaultScheduleValue,
   formatScheduledTime,
   fromLocalInputValue,
+  isDefiniteRefusal,
   scheduleBounds,
   scheduleErrorText,
   toLocalInputValue,
+  validateScheduleTime,
   viewerTimeZone,
 } from "./scheduled-send-utils";
 import "./scheduled-send.css";
@@ -27,6 +29,8 @@ export interface ScheduleSendDialogProps {
   /** The composer text being scheduled (plain text; sent exactly as typed). */
   text: string;
   onClose: () => void;
+  /** The draft carries @mentions: a scheduled message is plain text and notifies nobody. */
+  hasMentions?: boolean;
   /** The server accepted it; `scheduledFor` is the instant it will go out. */
   onScheduled: (scheduledFor: string) => void;
 }
@@ -35,6 +39,7 @@ export function ScheduleSendDialog({
   open,
   channelId,
   text,
+  hasMentions = false,
   onClose,
   onScheduled,
 }: ScheduleSendDialogProps): JSX.Element {
@@ -47,9 +52,16 @@ export function ScheduleSendDialog({
   const zone = viewerTimeZone();
   const bounds = scheduleBounds(new Date());
   const picked = fromLocalInputValue(value);
+  const timeProblem = validateScheduleTime(picked, new Date());
 
   async function submit(): Promise<void> {
-    if (inFlightRef.current || !picked) return;
+    if (inFlightRef.current) return;
+    // Re-checked against the clock NOW: the dialog may have sat open past the suggested time.
+    const problem = validateScheduleTime(picked, new Date());
+    if (problem || !picked) {
+      setError(problem);
+      return;
+    }
     const scheduledFor = picked.toISOString();
     const attempt = sendAttemptFor(
       attemptRef.current,
@@ -68,7 +80,8 @@ export function ScheduleSendDialog({
         params: { path: { id: channelId }, header: { "Idempotency-Key": attempt.idempotencyKey } },
         body: { body: text, scheduledFor, timeZone: zone },
       });
-      if (response && response.status >= 400) attemptRef.current = rotateIdempotencyKey(attempt);
+      // Rotate only after a definite refusal; a 5xx/408 may have committed behind the gateway, so a retry must replay.
+      if (isDefiniteRefusal(response?.status)) attemptRef.current = rotateIdempotencyKey(attempt);
       if (failure || !data) {
         setError(
           scheduleErrorText(apiErrorCode(failure)) ?? apiErrorMessage(failure, FAILED_MESSAGE),
@@ -100,6 +113,11 @@ export function ScheduleSendDialog({
             The message is sent at the time you choose, as long as you can still send to this
             conversation then. Mentions and attachments are not included.
           </p>
+          {hasMentions ? (
+            <p className="wx-schedule-warning">
+              Mentions won't notify anyone when a message is scheduled: it is sent as plain text.
+            </p>
+          ) : null}
         </header>
         <label className="wx-schedule-field">
           <span>Send at</span>
@@ -109,14 +127,24 @@ export function ScheduleSendDialog({
             min={toLocalInputValue(bounds.min)}
             max={toLocalInputValue(bounds.max)}
             disabled={submitting}
-            onChange={(event) => setValue(event.target.value)}
+            aria-invalid={timeProblem ? true : undefined}
+            aria-describedby={timeProblem ? "wx-schedule-time-problem" : undefined}
+            onChange={(event) => {
+              setValue(event.target.value);
+              setError(null);
+            }}
           />
         </label>
+        {timeProblem ? (
+          <p id="wx-schedule-time-problem" className="wx-messaging-error">
+            {timeProblem}
+          </p>
+        ) : null}
         <p className="wx-schedule-zone">
           Your time zone: <strong>{zone}</strong>
           {picked ? <> · {formatScheduledTime(picked.toISOString())}</> : null}
         </p>
-        {error ? (
+        {error && error !== timeProblem ? (
           <div role="alert" className="wx-messaging-error">
             {error}
           </div>
@@ -125,11 +153,7 @@ export function ScheduleSendDialog({
           <Button tone="secondary" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>
-          <Button
-            onClick={() => void submit()}
-            disabled={!picked || submitting}
-            loading={submitting}
-          >
+          <Button onClick={() => void submit()} disabled={submitting} loading={submitting}>
             {submitting ? "Scheduling…" : "Schedule"}
           </Button>
         </footer>
