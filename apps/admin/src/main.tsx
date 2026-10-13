@@ -16,6 +16,7 @@ import { medicareBillingAdminScreens } from "./modules/23-billing-medicare";
 import { aiPlatformAdminScreens } from "./modules/32-ai-platform";
 import { saasPlatformAdminScreens } from "./modules/34-saas-platform";
 import { subscriptionAdminScreens } from "./modules/35-subscription-billing";
+import { messagingAdminScreens } from "./modules/36-messaging";
 import { adminAuthScreens } from "./shell/auth-screens";
 import { createAdminRegistry } from "./shell/registry";
 import { adminSystemScreens } from "./shell/system-pages";
@@ -32,6 +33,7 @@ registry.register(adminAuthScreens); // M1 shell — the console's own login flo
 registry.register(opsAdminScreens); // WX-PR-020 (OPS-004) operator recovery — outbox status
 registry.register(saasPlatformAdminScreens); // M34 §5.1 platform-ops control plane (migrated from apps/web)
 registry.register(subscriptionAdminScreens); // M35 §5.2 subscription-billing (M35A-T04)
+registry.register(messagingAdminScreens); // M36 §4.1 platform-ops (alert deliveries, channel members, integrity)
 registry.register(aiPlatformAdminScreens); // M32 §5.1 AI Safety Owner console (GAP-049)
 registry.register(medicareBillingAdminScreens); // M23 §4.1 #42 platform CMS wage-index load (GAP-144)
 

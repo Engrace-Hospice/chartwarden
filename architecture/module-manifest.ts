@@ -273,6 +273,7 @@ export const MODULES: ModuleDef[] = [
       "packages/messaging",
       "apps/backend/src/modules/36-messaging",
       "apps/web/src/modules/36-messaging",
+      "apps/admin/src/modules/36-messaging",
     ],
     dependsOn: [1, 2, 3, 4],
     ownedTables: [

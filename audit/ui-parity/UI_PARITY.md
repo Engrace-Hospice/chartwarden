@@ -5,8 +5,8 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 43 module screen-sets registered · 335 screens wired across web/portal/admin.
-- **admin**: 35 screen(s)
+**Coverage:** 113 documented screen specs · 44 module screen-sets registered · 338 screens wired across web/portal/admin.
+- **admin**: 38 screen(s)
 - **portal**: 18 screen(s)
 - **web**: 282 screen(s)
 
@@ -346,6 +346,9 @@
 | admin | 35-subscription-billing | `admin.revenue` | `/admin/revenue` | `revenue.admin.read` | ✅ |
 | admin | 35-subscription-billing | `admin.usage` | `/admin/usage/:organizationId` | `usage.admin.read` | ✅ |
 | admin | 35-subscription-billing | `admin.webhooks` | `/admin/webhooks/stripe` | `stripe.admin.read` | ✅ |
+| admin | 36-messaging | `admin.messaging.alert-deliveries` | `/admin/messaging/alert-deliveries` | `messaging.admin.read` | ✅ |
+| admin | 36-messaging | `admin.messaging.channel-members` | `/admin/messaging/channels/:id/members` | `messaging.manage_members` | ✅ |
+| admin | 36-messaging | `admin.messaging.integrity` | `/admin/messaging/integrity` | `audit.read` | ✅ |
 | portal | 31-portal | `portal.sign-in` | `/` | `(none)` | ✅ |
 | portal | 31-portal | `portal.accept-invitation` | `/accept-invitation` | `(none)` | ✅ |
 | portal | 31-portal | `portal.signed-in` | `/signed-in` | `(none)` | ✅ |
