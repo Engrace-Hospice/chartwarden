@@ -341,11 +341,10 @@ export function NotificationsInbox(): JSX.Element {
                       <td className="wx-notif-td">
                         <div className="wx-notif-with-state">
                           {unread ? (
-                            <span
-                              aria-label="Unread"
-                              title="Unread"
-                              className="wx-notif-unread-dot"
-                            />
+                            <>
+                              <span aria-hidden="true" className="wx-notif-unread-dot" />
+                              <span className="wx-sr-only">Unread</span>
+                            </>
                           ) : null}
 
                           <NotificationCell alert={alert} />

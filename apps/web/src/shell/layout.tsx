@@ -4,6 +4,7 @@ import {
   EmptyState,
   Glyph,
   InlineAlert,
+  SkipLink,
   setSearchTerm,
   useDisclosureDismiss,
   useOffCanvasNav,
@@ -120,6 +121,7 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   }
   return (
     <div className="wx-shell">
+      <SkipLink targetId="wx-main" />
       {navOpen ? (
         // biome-ignore lint/a11y/useKeyWithClickEvents: a dismiss backdrop, not a control.
         <div className="wx-nav-backdrop" onClick={() => setNavOpen(false)} />
@@ -191,7 +193,7 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
             <ActorMenu session={session} />
           </div>
         </header>
-        <main className="wx-main wx-no-scrollbar" ref={mainRef} tabIndex={-1}>
+        <main id="wx-main" className="wx-main wx-no-scrollbar" ref={mainRef} tabIndex={-1}>
           <ModuleNavigationTabs sections={sections} pathname={pathname} />
           <Outlet />
         </main>
@@ -324,7 +326,7 @@ function TopNavSearch(): JSX.Element {
  * "Sign out instead" escape hatch, so a user finishing a shift on a shared clinical workstation had
  * no direct in-app way to end their session).
  */
-function ActorMenu({ session }: { session: Session | null }): JSX.Element {
+export function ActorMenu({ session }: { session: Session | null }): JSX.Element {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -362,6 +364,8 @@ function ActorMenu({ session }: { session: Session | null }): JSX.Element {
         className="wx-actor-trigger"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
+        // The name text is display:none below 768px, so the button names itself (label-in-name keeps the visible name).
+        aria-label={`${displayName}${role ? `, ${role}` : ""}, account menu`}
       >
         <span className="wx-actor-avatar" aria-hidden>
           {getInitials(displayName)}

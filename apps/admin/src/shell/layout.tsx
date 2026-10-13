@@ -1,4 +1,11 @@
-import { Glyph, InlineAlert, useDisclosureDismiss, useOffCanvasNav, useTheme } from "@wardenx/ui";
+import {
+  Glyph,
+  InlineAlert,
+  SkipLink,
+  useDisclosureDismiss,
+  useOffCanvasNav,
+  useTheme,
+} from "@wardenx/ui";
 // apps/admin/src/shell — the Platform-Ops console frame in the clinical app's 2026-09-25 redesign: a full-height
 // sidebar (brand + grouped nav, admin-nav.ts) beside a column holding the top bar and the routed screen. The markup
 // and `wx-shell` classes match apps/web/src/shell/layout.tsx; the rules live in packages/ui/src/web/styles/app-shell.css,
@@ -43,6 +50,7 @@ export function AdminLayout({ sections }: { sections: readonly AdminNavSection[]
 
   return (
     <div className="wx-shell">
+      <SkipLink targetId="wx-main" />
       {navOpen ? (
         // biome-ignore lint/a11y/useKeyWithClickEvents: a dismiss backdrop, not a control.
         <div className="wx-nav-backdrop" onClick={() => setNavOpen(false)} />
@@ -114,7 +122,7 @@ export function AdminLayout({ sections }: { sections: readonly AdminNavSection[]
             <ActorMenu session={session} />
           </div>
         </header>
-        <main className="wx-main wx-no-scrollbar" ref={mainRef} tabIndex={-1}>
+        <main id="wx-main" className="wx-main wx-no-scrollbar" ref={mainRef} tabIndex={-1}>
           <Outlet />
         </main>
       </div>
@@ -123,7 +131,7 @@ export function AdminLayout({ sections }: { sections: readonly AdminNavSection[]
 }
 
 /** The signed-in operator, with Sign out (the console had no way to end a session). */
-function ActorMenu({ session }: { session: Session | null }): JSX.Element {
+export function ActorMenu({ session }: { session: Session | null }): JSX.Element {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -157,6 +165,8 @@ function ActorMenu({ session }: { session: Session | null }): JSX.Element {
         className="wx-actor-trigger"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
+        // The name text is display:none below 768px, so the button names itself (label-in-name keeps the visible name).
+        aria-label={`${displayName}, Platform operations, account menu`}
       >
         <span className="wx-actor-avatar" aria-hidden>
           {initials(displayName)}

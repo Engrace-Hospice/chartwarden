@@ -1,6 +1,6 @@
 import { BACKGROUND_REQUEST_HEADERS, useApiClient } from "@wardenx/ui";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { JSX, KeyboardEvent, UIEvent } from "react";
+import type { JSX, KeyboardEvent, RefObject, UIEvent } from "react";
 import { sendBlockedReason } from "./attachment-utils";
 import { applyTextEdit, detectMac, insertText } from "./composer-format";
 import { handleComposerKeyDown } from "./composer-keys";
@@ -67,6 +67,8 @@ export interface ConversationThreadProps {
   outbox?: Outbox;
   /** An archive / unarchive succeeded: re-read the channel list. */
   onChannelChanged?: () => unknown;
+  /** Receives focus when the user opens this conversation from the inbox on a narrow screen. */
+  headingRef?: RefObject<HTMLHeadingElement>;
 }
 
 export function ConversationThread(props: ConversationThreadProps): JSX.Element {
@@ -97,6 +99,7 @@ function ConversationThreadView({
   canAnnounce = false,
   canManageMembers = false,
   onChannelChanged,
+  headingRef,
 }: ConversationThreadProps & { outbox: Outbox }): JSX.Element {
   const client = useApiClient();
   const tools = useAnnouncementTools(channel, canAnnounce, canManageMembers, onChannelChanged);
@@ -572,6 +575,7 @@ function ConversationThreadView({
         onBack={onBack}
         onToggleContext={() => setContextOpen((open) => !open)}
         onShowMembers={tools.onShowMembers}
+        headingRef={headingRef}
       />
       {tools.dialogs}
       <MessageSearch

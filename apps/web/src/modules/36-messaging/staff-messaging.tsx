@@ -18,6 +18,7 @@ import { NewConversationDialog } from "./new-conversation-dialog";
 import { OfflineBanner } from "./offline-banner";
 import { RealtimeBanner, useRealtimeDegraded } from "./realtime-banner";
 import { ScheduledMessagesDialog } from "./scheduled-messages-dialog";
+import { useFocusThreadAfterPick } from "./use-focus-thread-after-pick";
 import { useMessagingRealtime } from "./use-messaging-realtime";
 import { useOutbox } from "./use-outbox";
 import { type LiveHint, POLL_INTERVAL_MS, pushLiveHint } from "./use-thread";
@@ -147,6 +148,13 @@ function OrganizationStaffMessaging({
     focusInboxAfterNotice.current = false;
     inboxHeadingRef.current?.focus();
   }, [accessEnded, activeId]);
+  const threadHeadingRef = useRef<HTMLHeadingElement>(null);
+  const pickConversation = useFocusThreadAfterPick({
+    activeId,
+    narrow,
+    headingRef: threadHeadingRef,
+    setActiveId,
+  });
   const [newConversationOpen, setNewConversationOpen] = useState(false);
   const [departmentOpen, setDepartmentOpen] = useState(false);
   const [scheduledOpen, setScheduledOpen] = useState(requestedScheduled);
@@ -413,7 +421,7 @@ function OrganizationStaffMessaging({
           errorCorrelationId={errorCorrelationId}
           onQueryChange={setQuery}
           onFilterChange={setFilter}
-          onSelect={setActiveId}
+          onSelect={pickConversation}
           onRetry={() => void loadChannels()}
           onNewConversation={() => setNewConversationOpen(true)}
           onNewDepartment={canAnnounce ? () => setDepartmentOpen(true) : undefined}
@@ -425,6 +433,7 @@ function OrganizationStaffMessaging({
               key={`${organizationId}:${activeChannel.channelId}`}
               channel={activeChannel}
               outbox={outbox}
+              headingRef={threadHeadingRef}
               meId={userId}
               meDisplayName={userDisplayName}
               onBack={() => {

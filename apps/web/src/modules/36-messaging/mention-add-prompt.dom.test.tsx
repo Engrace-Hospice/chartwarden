@@ -88,6 +88,41 @@ async function typeMention(api: ApiClient) {
 }
 
 describe("WP 2.3 mention of a person outside the conversation", () => {
+  it("points aria-activedescendant at the highlighted mention option", async () => {
+    render(
+      <MemoryRouter>
+        <ApiClientProvider client={makeApi({ canAdd: true })}>
+          <SessionProvider session={SESSION}>
+            <StaffMessaging />
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    const box = (await screen.findByRole("textbox", { name: "Message" })) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "@Zed", selectionStart: 4 } });
+    const option = await screen.findByRole("option", { name: /Zed Newcomer/ });
+    expect(option.id).not.toBe("");
+    expect(box.getAttribute("aria-activedescendant")).toBe(option.id);
+  });
+
+  it("drops aria-activedescendant while suggestions reload (no options are rendered then)", async () => {
+    render(
+      <MemoryRouter>
+        <ApiClientProvider client={makeApi({ canAdd: true })}>
+          <SessionProvider session={SESSION}>
+            <StaffMessaging />
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    const box = (await screen.findByRole("textbox", { name: "Message" })) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "@Zed", selectionStart: 4 } });
+    await screen.findByRole("option", { name: /Zed Newcomer/ });
+    fireEvent.change(box, { target: { value: "@Zedd", selectionStart: 5 } });
+    expect(screen.getByText("Searching…")).toBeTruthy();
+    expect(box.hasAttribute("aria-activedescendant")).toBe(false);
+  });
+
   it("marks the person as not in the conversation and, for a member-admin, offers to add them", async () => {
     const api = makeApi({ canAdd: true });
     const composer = await typeMention(api);
@@ -250,7 +285,7 @@ describe("WP 2.3 mention of a person outside the conversation", () => {
     fireEvent.click(await screen.findByRole("option", { name: /Zed Newcomer/ }));
     await screen.findByText("Add Zed Newcomer to this conversation?");
     expect(screen.getByRole("status", PROMPT)).toBe(region);
-    expect(composer.getAttribute("aria-expanded")).toBe("false");
+    expect(composer.getAttribute("aria-controls")).toBeNull();
   });
 
   it("R4: Escape on a prompt button dismisses the prompt and returns focus to the composer", async () => {

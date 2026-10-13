@@ -10,6 +10,9 @@ interface MentionMenuProps {
   readonly onRetry: () => void;
 }
 
+/** DOM id of the nth suggestion; the composer's aria-activedescendant points at it. */
+export const mentionOptionId = (index: number): string => `messaging-mention-option-${index}`;
+
 /** The composer's @-mention suggestion popup. Focus stays in the textarea; arrow keys drive the active option. */
 export function MentionMenu({
   loading,
@@ -45,6 +48,7 @@ export function MentionMenu({
             // biome-ignore lint/a11y/useSemanticElements: a native option cannot render the required staff/patient detail markup
             type="button"
             role="option"
+            id={mentionOptionId(index)}
             tabIndex={-1}
             aria-selected={index === activeIndex}
             className={index === activeIndex ? "is-active" : undefined}
