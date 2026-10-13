@@ -355,7 +355,19 @@ describe("useServerDraft review fixes (Tranche B)", () => {
     expect(api.PUT).not.toHaveBeenCalled();
   });
 
-  it("I1: the unmount flush is sent when the identity is unchanged (control)", async () => {
+  it("I1: leaving a slot flushes its pending text when the identity is unchanged (control for I2)", async () => {
+    sessionNow = sessionOf("user-a");
+    const api = makeApi();
+    const { view } = setup(api, "");
+    await flush();
+    view.rerender({ text: "typed" });
+    view.rerender({ text: "", parent: "root-1" }); // the same slot-switch path as I2
+    await flush();
+    expect(api.PUT).toHaveBeenCalledTimes(1);
+    view.unmount();
+  });
+
+  it("I1b: the unmount flush is sent when the identity is unchanged", async () => {
     sessionNow = sessionOf("user-a");
     const api = makeApi();
     const { view } = setup(api, "");
@@ -378,6 +390,61 @@ describe("useServerDraft review fixes (Tranche B)", () => {
     view.unmount();
     await flush();
     expect(api.PUT).not.toHaveBeenCalled();
+  });
+
+  it("I3: a composer that stays mounted never sends its armed debounce under a different identity", async () => {
+    sessionNow = sessionOf("user-a");
+    const api = makeApi();
+    const { view } = setup(api, "");
+    await flush();
+    view.rerender({ text: "user A private text" });
+    sessionNow = sessionOf("user-b");
+    view.rerender({ text: "user A private text" }); // same slot, no unmount
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
+    expect(api.PUT).not.toHaveBeenCalled();
+  });
+
+  it("I4: a save queued behind an in-flight one is dropped when the identity changed meanwhile", async () => {
+    sessionNow = sessionOf("user-a");
+    const api = makeApi();
+    let release: () => void = () => undefined;
+    api.PUT.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () =>
+            resolve({
+              data: { draft: serverDraft({ body: "one", revision: 1, deviceId: "d" }) },
+              error: undefined,
+              response: { status: 200 },
+            });
+        }),
+    );
+    const { view } = setup(api, "");
+    await flush();
+    view.rerender({ text: "one" });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1); // PUT #1 is in flight
+    expect(api.PUT).toHaveBeenCalledTimes(1);
+    view.rerender({ text: "one two" });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1); // save #2 is queued behind it
+    sessionNow = sessionOf("user-b");
+    view.rerender({ text: "one two" });
+    release();
+    await flush();
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
+    expect(api.PUT).toHaveBeenCalledTimes(1);
+  });
+
+  it("I5: an identity unknown while the session loaded is adopted, so a legitimate draft still flushes", async () => {
+    sessionNow = null; // session still loading when the slot opened
+    const api = makeApi();
+    const { view } = setup(api, "");
+    await flush();
+    sessionNow = sessionOf("user-a");
+    view.rerender({ text: "typed after load" });
+    view.rerender({ text: "", parent: "root-1" });
+    await flush();
+    expect(api.PUT).toHaveBeenCalledTimes(1);
+    view.unmount();
   });
 
   it("M4: a 5xx on discarding the server copy is a failed save, not success", async () => {

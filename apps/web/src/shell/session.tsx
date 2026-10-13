@@ -23,6 +23,10 @@ let activeIdentity = "";
  * "org:user" of the session the app is rendering NOW ("" when signed out), readable outside React. A component that
  * is being unmounted no longer re-renders, so it cannot learn from context that the identity changed under it;
  * this is how its cleanup finds out (updated in a layout effect, which runs before passive-effect cleanups).
+ * Assumes ONE session provider tree per document: app.tsx mounts one ActorSessionProvider, and the dev-only
+ * clinical-preview.tsx / cop27-preview.tsx harnesses mount their own single SessionProvider as the sole root. It is
+ * deliberately NOT cleared when the provider unmounts: the unmounting tree's own effect cleanups (the draft flush)
+ * run after the provider's layout cleanup and must still see who was signed in. A new provider overwrites it on mount.
  */
 export const currentSessionIdentity = (): string => activeIdentity;
 

@@ -1,6 +1,8 @@
 // WP 2.6 — pure helpers for the scheduled-send UI: the native datetime-local input format, the window the picker
 // offers, and the plain-language texts for server refusals and blocked reasons.
 
+import type { ScheduledMessageItem } from "./scheduled-send-types";
+
 /** The server minimum is 1 minute; offer 2 so a time picked "now" is still valid when the request lands. */
 export const SCHEDULE_MIN_LEAD_MINUTES = 2;
 export const SCHEDULE_MAX_DAYS = 30;
@@ -103,23 +105,24 @@ export function scheduleErrorText(code: string | null): string | null {
   }
 }
 
-/** Why a scheduled message was not sent. Generic: names no channel, patient or content. */
-export function blockedReasonText(reason: string | null | undefined): string {
-  switch (reason) {
-    case "channel_archived":
-      return "Not sent: the conversation is closed.";
-    case "not_member":
-      return "Not sent: you are no longer a member of the conversation.";
-    case "permission_revoked":
-      return "Not sent: you no longer have permission to send messages.";
-    case "announcement_not_permitted":
-      return "Not sent: only administrators can post announcements.";
-    case "parent_unavailable":
-      return "Not sent: the message it replies to is no longer available.";
-    case "dispatch_failed":
-      return "Not sent: it could not be delivered. You can retry or cancel it.";
-    default:
-      // A code this client does not know (a newer server): a generic note, never the raw code.
-      return "This message could not be sent. Reschedule it to try again.";
-  }
+type KnownBlockedReason = NonNullable<ScheduledMessageItem["blockedReason"]>;
+
+/** Typed as a full record so a reason added to the server type cannot ship without its text. */
+const BLOCKED_REASON_TEXT: Readonly<Record<KnownBlockedReason, string>> = {
+  channel_archived: "Not sent: the conversation is closed.",
+  not_member: "Not sent: you are no longer a member of the conversation.",
+  permission_revoked: "Not sent: you no longer have permission to send messages.",
+  announcement_not_permitted: "Not sent: only administrators can post announcements.",
+  parent_unavailable: "Not sent: the message it replies to is no longer available.",
+  dispatch_failed: "Not sent: it could not be delivered. You can retry or cancel it.",
+};
+
+/**
+ * Why a scheduled message was not sent. Generic: names no channel, patient or content. A code this client does not
+ * know (a newer server) gets a generic note, never the raw code.
+ */
+export function blockedReasonText(reason: string): string {
+  return Object.hasOwn(BLOCKED_REASON_TEXT, reason)
+    ? BLOCKED_REASON_TEXT[reason as KnownBlockedReason]
+    : "This message could not be sent. Reschedule it to try again.";
 }

@@ -139,6 +139,15 @@ export function useServerDraft(args: {
   const [saveFailed, setSaveFailed] = useState(false);
   const [saveGaveUp, setSaveGaveUp] = useState(false);
   const pendingRef = useRef<Snapshot | null>(null);
+  // The identity this slot was opened under. The shared client sends as whoever is signed in NOW, so nothing (the
+  // debounce, a queued or retried save, the unmount flush) may be sent after the identity changed: it would land in
+  // the new user's draft slot. "" means the session was still loading at open; it adopts the first real identity.
+  const slotIdentityRef = useRef("");
+  const identityUnchanged = useCallback((): boolean => {
+    const current = currentSessionIdentity();
+    if (slotIdentityRef.current === "" && current !== "") slotIdentityRef.current = current;
+    return slotIdentityRef.current === current;
+  }, []);
 
   const latestRef = useRef<Snapshot>({ body: text, references });
   latestRef.current = { body: text, references };
@@ -195,6 +204,7 @@ export function useServerDraft(args: {
     (snapshot: Snapshot, generation: number): Promise<void> => {
       const run = async (): Promise<void> => {
         if (generation !== generationRef.current) return;
+        if (!identityUnchanged()) return; // never write a draft under a different identity
         const key = keyOf(snapshot);
         if (key === syncedKeyRef.current) return;
         try {
@@ -262,16 +272,14 @@ export function useServerDraft(args: {
         enqueue(() => run().finally(resolve));
       });
     },
-    [client, channelId, parentMessageId, enqueue, readServer, armRetry],
+    [client, channelId, parentMessageId, enqueue, readServer, armRetry, identityUnchanged],
   );
   saveRef.current = save;
 
   // Open / switch: forget the previous composer's bookkeeping, then restore this one's draft.
   // biome-ignore lint/correctness/useExhaustiveDependencies: channelId/parentMessageId ARE the reset triggers (readServer and save already close over them)
   useEffect(() => {
-    // The identity this slot was opened under. The shared client sends as whoever is signed in NOW, so a flush that
-    // outlives an identity change must not be sent: it would land in the new user's draft slot.
-    const slotIdentity = currentSessionIdentity();
+    slotIdentityRef.current = currentSessionIdentity();
     const generation = ++generationRef.current;
     revisionRef.current = 0;
     syncedKeyRef.current = null;
@@ -320,7 +328,7 @@ export function useServerDraft(args: {
           pending?.body.trim() &&
           loadedRef.current &&
           !suspendedRef.current &&
-          slotIdentity === currentSessionIdentity() && // never write a draft under a different identity
+          identityUnchanged() && // never write a draft under a different identity
           keyOf(pending) !== syncedKeyRef.current
         ) {
           // Read now: the next slot's effect resets revisionRef synchronously right after this cleanup.
@@ -342,7 +350,7 @@ export function useServerDraft(args: {
         }
       }
     };
-  }, [channelId, parentMessageId, readServer, save]);
+  }, [channelId, parentMessageId, readServer, save, identityUnchanged]);
 
   /** (Re)arm the quiet-period save for whatever the composer holds now. */
   const schedule = useCallback((): void => {
@@ -360,10 +368,10 @@ export function useServerDraft(args: {
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
       pendingRef.current = null;
-      if (suspendedRef.current) return;
+      if (suspendedRef.current || !identityUnchanged()) return;
       void save(latestRef.current, generation);
     }, DRAFT_SAVE_DEBOUNCE_MS);
-  }, [save]);
+  }, [save, identityUnchanged]);
   scheduleRef.current = schedule;
 
   // Local change: empty -> discard now; otherwise save after a quiet period.

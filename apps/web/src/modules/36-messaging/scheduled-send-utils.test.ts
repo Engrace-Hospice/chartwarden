@@ -63,8 +63,8 @@ describe("messages", () => {
       expect(blockedReasonText(reason).length).toBeGreaterThan(10);
     }
   });
-  it("gives an unrecognised or missing reason a generic note that never echoes the code", () => {
-    for (const reason of ["RAW_UNKNOWN_REASON_CODE", "", null, undefined]) {
+  it("gives an unrecognised or missing or hostile reason a generic note that never echoes the code", () => {
+    for (const reason of ["RAW_UNKNOWN_REASON_CODE", "", "constructor", "__proto__"]) {
       expect(blockedReasonText(reason)).toBe(
         "This message could not be sent. Reschedule it to try again.",
       );

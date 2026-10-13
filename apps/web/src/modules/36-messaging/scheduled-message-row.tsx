@@ -130,7 +130,9 @@ export function ScheduledMessageRow({
       </div>
       <p className="wx-scheduled-body">{preview(item.body)}</p>
       {blocked ? (
-        <output className="wx-scheduled-blocked">{blockedReasonText(item.blockedReason)}</output>
+        <output className="wx-scheduled-blocked">
+          {blockedReasonText(item.blockedReason ?? "")}
+        </output>
       ) : null}
       {editing ? (
         <div className="wx-scheduled-edit">
