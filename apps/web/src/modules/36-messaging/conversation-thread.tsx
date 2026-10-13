@@ -115,7 +115,7 @@ export function ConversationThread({
   const timelineRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<Message[] | null>(null);
   const generationRef = useRef(0);
-  const [patient, setPatient] = usePatientHeader(channel, generationRef);
+  const [patient, setPatient] = usePatientHeader(channel);
   const latestInFlight = useRef(false);
   const handledAnchor = useRef(anchorMessageId);
   // A hint that lands while a read is in flight may postdate that read: read once more when it settles.
