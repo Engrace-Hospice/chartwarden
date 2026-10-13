@@ -62,7 +62,7 @@ export function AlertRules(): JSX.Element {
       setData((rows) => rows.map((r) => (r.key === key ? { key, rule: next } : r)));
     put({ ...rule, ...patch });
     setPending((p) => new Set(p).add(key));
-    setBanner(null);
+    if (pending.size === 0) setBanner(null);
     const res = await client.PATCH("/api/v1/alert-rules/{id}", {
       params: { path: { id: rule.ruleId } },
       body: patch,
@@ -75,7 +75,9 @@ export function AlertRules(): JSX.Element {
     });
     if (result.ok) {
       put(result.data);
-      setBanner({ ok: true, message: `Updated ${humanize(rule.eventType)}.` });
+      setBanner((b) =>
+        b && !b.ok ? b : { ok: true, message: `Updated ${humanize(rule.eventType)}.` },
+      );
     } else {
       put(rule);
       setBanner({ ok: false, message: `${result.message} The change was undone.` });

@@ -30,6 +30,15 @@ export function toReadResult<T>(
   return { kind: "ok", data };
 }
 
+/** A failed in-place refresh keeps the data already on screen instead of replacing it with the error state. */
+function keepOnSilentError<T>(
+  silent: boolean,
+  prev: LoadState<T>,
+  next: LoadState<T>,
+): LoadState<T> {
+  return silent && next.kind === "error" && prev.kind === "ok" ? prev : next;
+}
+
 /**
  * Run `read` on mount and whenever it changes. `reload` goes back to the loading state; `refresh` refetches in
  * place (the current view stays mounted, so focus is not lost); `setData` applies a functional update to ready
@@ -49,10 +58,10 @@ export function useLoad<T>(read: () => Promise<ReadResult<T>>): {
       if (!silent) setState({ kind: "loading" });
       read().then(
         (result) => {
-          if (isCurrent()) setState(result);
+          if (isCurrent()) setState((prev) => keepOnSilentError(silent, prev, result));
         },
         () => {
-          if (isCurrent()) setState({ kind: "error" });
+          if (isCurrent()) setState((prev) => keepOnSilentError(silent, prev, { kind: "error" }));
         },
       );
     },
@@ -81,9 +90,10 @@ export function useRestoreFocus(
   useEffect(() => {
     if (was.current && !pending) {
       const active = document.activeElement;
-      const lost = !active || active === document.body || (active as HTMLInputElement).disabled;
+      const lost = !active || active === document.body || active.matches(":disabled");
       const previous = captured.current;
-      if (lost) (previous?.isConnected ? previous : fallback?.())?.focus();
+      const usable = previous?.isConnected && !previous.matches(":disabled");
+      if (lost) (usable ? previous : fallback?.())?.focus();
     }
     was.current = pending;
   });
