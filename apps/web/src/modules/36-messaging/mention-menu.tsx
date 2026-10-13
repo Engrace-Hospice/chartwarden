@@ -47,8 +47,8 @@ export function MentionMenu({
           <button
             // biome-ignore lint/a11y/useSemanticElements: a native option cannot render the required staff/patient detail markup
             type="button"
-            id={mentionOptionId(index)}
             role="option"
+            id={mentionOptionId(index)}
             tabIndex={-1}
             aria-selected={index === activeIndex}
             className={index === activeIndex ? "is-active" : undefined}
