@@ -31,10 +31,11 @@ export function NonMemberMentionPrompt({
   onAdd,
   onDismiss,
 }: NonMemberMentionPromptProps): JSX.Element {
-  const box = useRef<HTMLElement>(null);
+  // The Add button is the first child of the actions row (the shared Button takes no ref under React 18).
+  const addActions = useRef<HTMLDivElement>(null);
   // A failed add disables-then-enables the Add button, which drops focus: put it back on Add.
   useEffect(() => {
-    if (failed) box.current?.querySelector<HTMLElement>("button")?.focus();
+    if (failed) (addActions.current?.firstElementChild as HTMLElement | null)?.focus();
   }, [failed]);
   // The live region is always in the page, so its text is announced when it fills in (a region inserted with its text is not).
   return (
@@ -52,7 +53,6 @@ export function NonMemberMentionPrompt({
     const who = person as NonMemberOption;
     return (
       <section
-        ref={box}
         className="wx-mention-menu wx-mention-add"
         aria-label="Add to conversation"
         onKeyDown={(event) => {
@@ -84,7 +84,7 @@ export function NonMemberMentionPrompt({
                 Could not add {who.displayName}. Check your access and try again.
               </span>
             ) : null}
-            <div className="wx-mention-add-actions">
+            <div ref={addActions} className="wx-mention-add-actions">
               <Button type="button" size="sm" onClick={onAdd} loading={adding} disabled={adding}>
                 Add to conversation
               </Button>

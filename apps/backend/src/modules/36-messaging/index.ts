@@ -196,7 +196,7 @@ export function mountMessagingRoutes(
   _registerDraftRoutes(app, { service: _createDbDraftService({ db }) });
   // WP 2.6 — scheduled send: the QUEUEING side. The `messaging.scheduled_send` sweep sends (see ./scheduled/*).
   _registerScheduledSendRoutes(app, {
-    service: _createDbScheduledSendService({ db }),
+    service: _createDbScheduledSendService({ db, canViewChannel: service.canViewChannel }),
     announcements,
   });
   // WP 1.5 — attachment authorize/complete/access. The visibility rule is the route service's own, so an attachment

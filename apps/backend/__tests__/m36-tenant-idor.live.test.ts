@@ -587,6 +587,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       service: createDbScheduledSendService({
         db: handle.db,
         cipher: createMessageBodyCipher({ kek: KEK }),
+        canViewChannel: service.canViewChannel,
       }),
       announcements: createDbAnnouncementService(handle.db),
     });

@@ -39,6 +39,8 @@ export interface ScheduledSendServiceDeps {
   readonly cipher?: MessageBodyCipher;
   /** Scheduled messages (pending + blocked) one user may hold (default 50). */
   readonly maxPerUser?: number;
+  /** The route service's visibility rule: a blocked row is only revived for a sender who can still see its channel. */
+  readonly canViewChannel: (orgId: string, userId: string, channelId: string) => Promise<boolean>;
   /** Injectable clock (tests). */
   readonly now?: () => Date;
 }
@@ -178,6 +180,24 @@ export function createDbScheduledSendService(deps: ScheduledSendServiceDeps): Sc
 
   const reschedule: ScheduledSendService["reschedule"] = async (orgId, input) => {
     const when = assertScheduleTime(input.scheduledFor, clock());
+    // A blocked row went back to pending on a bare PATCH: the dispatcher would re-block it and tell the sender again.
+    // Re-verify the way create does (visibility), and answer the one 404 an unknown row gets.
+    const [current] = await withOrgContext(
+      db,
+      { organizationId: orgId, userId: input.userId },
+      (tx) =>
+        tx
+          .select({ channelId: SM.channelId, status: SM.status })
+          .from(SM)
+          .where(
+            and(eq(SM.organizationId, orgId), eq(SM.userId, input.userId), eq(SM.id, input.id)),
+          )
+          .limit(1),
+    );
+    if (current?.status === "blocked") {
+      const visible = await deps.canViewChannel(orgId, input.userId, current.channelId);
+      if (!visible) throw new NotFoundError("scheduled_message", input.id);
+    }
     return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
       // Lock first: a dispatcher that claimed the row finishes (and deletes it) before this sees it, so a reschedule
       // can never resurrect a message that already went out.

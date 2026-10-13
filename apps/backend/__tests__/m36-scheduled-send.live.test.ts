@@ -192,7 +192,12 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
     router = createDbMessagingRouteService(handle.db, { kek: KEK, outbox: outbox as never });
     dm = (await router.openDm(orgA, alice, bob)).channelId;
     cipher = createMessageBodyCipher({ kek: KEK });
-    service = createDbScheduledSendService({ db: handle.db, cipher, maxPerUser: 3 });
+    service = createDbScheduledSendService({
+      db: handle.db,
+      cipher,
+      maxPerUser: 3,
+      canViewChannel: router.canViewChannel,
+    });
     dispatcher = createScheduledSendDispatcher({
       db: handle.db,
       cipher: {
@@ -655,6 +660,33 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
     });
   });
 
+  describe("rescheduling a blocked row re-verifies access (fix round 3)", () => {
+    it("refuses with a 404 once the sender lost the channel, and leaves the row blocked", async () => {
+      await wipe();
+      const created = await schedule(alice);
+      await makeDue(created.id);
+      await admin.query(
+        "UPDATE channel_member SET removed_at=now() WHERE channel_id=$1 AND user_id=$2",
+        [dm, alice],
+      );
+      try {
+        expect(await tick()).toMatchObject({ blocked: 1 });
+        await expect(
+          service.reschedule(orgA, { userId: alice, id: created.id, scheduledFor: inFuture() }),
+        ).rejects.toMatchObject({ statusCode: 404 });
+        expect((await rows())[0]).toMatchObject({
+          status: "blocked",
+          blocked_reason: "not_member",
+        });
+      } finally {
+        await admin.query(
+          "UPDATE channel_member SET removed_at=NULL WHERE channel_id=$1 AND user_id=$2",
+          [dm, alice],
+        );
+      }
+    });
+  });
+
   describe("dependency failures vs. a stuck head of queue (fix round 2, S1)", () => {
     const makeDueAgo = (id: string, interval: string) =>
       admin.query(
@@ -719,6 +751,22 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
       expect(await eventsOf("m36.message.schedule_blocked")).toHaveLength(1);
     });
 
+    it("a long outage across distinct users burns no attempts even for rows far past the overdue threshold", async () => {
+      await wipe();
+      const created = [await schedule(alice), await schedule(bob), await schedule(erin)];
+      for (const row of created) await makeDueAgo(row.id, "40 minutes");
+      resolverFault = () => new Error("M3 resolver down for a long time");
+      try {
+        for (let i = 0; i < 4; i += 1) await tick();
+      } finally {
+        resolverFault = null;
+      }
+      expect((await rows()).every((row) => row.status === "pending" && row.attempts === 0)).toBe(
+        true,
+      );
+      expect(await eventsOf("m36.message.schedule_blocked")).toHaveLength(0);
+    });
+
     it("a genuine outage across distinct users burns no attempts for fresh rows and ends the tick early", async () => {
       await wipe();
       const created = [await schedule(alice), await schedule(bob), await schedule(erin)];
@@ -763,7 +811,11 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
       const chanC = await seedAnnouncement(orgC);
       const chanC2 = await seedAnnouncement(orgC);
       for (const channelId of [chanC, chanC2]) {
-        await createDbScheduledSendService({ db: handle.db, cipher }).create(orgC, {
+        await createDbScheduledSendService({
+          db: handle.db,
+          cipher,
+          canViewChannel: router.canViewChannel,
+        }).create(orgC, {
           userId: dave,
           channelId,
           body: "c",

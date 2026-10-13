@@ -408,12 +408,13 @@ describe.skipIf(!DB_URL)("M36 WP 2.7a in-conversation search - LIVE Postgres", (
       const res = await search(u1, room, `q=${term}&limit=5`);
       expect(res.statusCode).toBe(200);
       const events = await rows(
-        `SELECT context::text AS context, actor_user_id FROM audit_event WHERE organization_id=$1 AND event_type='message.list_viewed'`,
+        `SELECT context::text AS context, actor_user_id, resource_id FROM audit_event WHERE organization_id=$1 AND event_type='message.list_viewed'`,
         [ORG],
       );
       expect(events).toHaveLength(1);
       expect(events[0]!.actor_user_id).toBe(u1);
       expect(events[0]!.context).not.toContain(term);
+      expect(events[0]!.resource_id).toBe(room); // the channel is the resource; the query text still is not
       const context = JSON.parse(events[0]!.context as string);
       expect(context.count).toBe(1);
       expect(context.filter).toMatchObject({ q: "[omitted]", id: room });

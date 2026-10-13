@@ -274,6 +274,10 @@ export function createScheduledSendDispatcher(
       let failed = 0;
       // Distinct senders whose dependency lookups failed in a row: several different ones is an outage.
       let outageSenders = new Set<string>();
+      // Overdue rows whose lookups failed: counted as attempts only AFTER the loop, and only if no outage tripped it
+      // (during an outage everything is failing, and counting would progressively block rows for nobody's fault).
+      const overdueFailures: DueRow[] = [];
+      let tripped = false;
       for (const row of due) {
         try {
           const outcome = await dispatchOne(orgId, row);
@@ -293,18 +297,26 @@ export function createScheduledSendDispatcher(
             }
             outageSenders.add(row.userId);
             // Several different senders failing in a row is an outage: stop, and count nothing against anyone.
-            if (outageSenders.size >= DEPENDENCY_FAILURE_TRIP) break;
+            if (outageSenders.size >= DEPENDENCY_FAILURE_TRIP) {
+              tripped = true;
+              break;
+            }
             if (Date.now() - row.scheduledFor.getTime() > OVERDUE_COUNTS_AS_ATTEMPT_MS) {
-              // Stuck for a long time: stop pretending it is an outage, count it so it ends up blocked + notified.
-              const outcome = await recordFailure(orgId, row);
-              if (outcome === "blocked") blocked += 1;
-              else failed += 1;
+              overdueFailures.push(row);
             }
             // A fresh row: retry next tick with attempts untouched; skip it and go on with the others.
             continue;
           }
           deps.onRowError?.({ organizationId: orgId, scheduledMessageId: row.id }, error);
           // The failed transaction rolled back, so the row is untouched: count the failure in a fresh one.
+          const outcome = await recordFailure(orgId, row);
+          if (outcome === "blocked") blocked += 1;
+          else failed += 1;
+        }
+      }
+      if (!tripped) {
+        // No outage pattern: a row stuck this long is stuck on its own. Count it so it ends up blocked + notified.
+        for (const row of overdueFailures) {
           const outcome = await recordFailure(orgId, row);
           if (outcome === "blocked") blocked += 1;
           else failed += 1;

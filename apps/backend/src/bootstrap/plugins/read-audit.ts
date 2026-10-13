@@ -209,6 +209,9 @@ export function applyReadAuditCoverage(
             await auditListRead(tx, auditCtx, {
               resourceKind: cfg.resourceKind,
               count: rowCount(payload),
+              ...(cfg.resourceIdParam && params[cfg.resourceIdParam]
+                ? { resourceId: params[cfg.resourceIdParam] }
+                : {}),
               // A list scoped by a path param (one channel's search) records that param in the filter, since a
               // list event carries no resource id of its own.
               filter: {

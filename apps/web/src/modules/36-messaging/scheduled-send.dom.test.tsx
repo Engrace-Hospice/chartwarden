@@ -432,6 +432,46 @@ describe("fix round 2: scheduled UI", () => {
     expect(document.activeElement).toBe(screen.getByLabelText(/new time/i));
   });
 
+  it("round 3: leaving the confirm (Keep it) or the editor (Save time) lands on the row's Reschedule button, not body", async () => {
+    const moved = { ...pending, scheduledFor: inDays(6).toISOString() };
+    mount(list([pending], { PATCH: () => ({ data: moved, error: undefined }) }));
+    await userEvent.click(await screen.findByRole("button", { name: /cancel scheduled message/i }));
+    await userEvent.click(screen.getByRole("button", { name: /keep it/i }));
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute("aria-label")).toMatch(/^Reschedule/),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /^reschedule/i }));
+    const input = screen.getByLabelText(/new time/i);
+    await userEvent.clear(input);
+    await userEvent.type(input, inputIn(6));
+    await userEvent.click(screen.getByRole("button", { name: /save time/i }));
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute("aria-label")).toMatch(/^Reschedule/),
+    );
+  });
+
+  it("round 3: saving a time that moves the row down the list keeps focus on that row's Reschedule button", async () => {
+    const other = {
+      ...pending,
+      id: "s-7",
+      body: "Later one",
+      scheduledFor: inDays(7).toISOString(),
+    };
+    const moved = { ...pending, scheduledFor: inDays(20).toISOString() };
+    mount(list([pending, other], { PATCH: () => ({ data: moved, error: undefined }) }));
+    const first = (await screen.findAllByRole("button", { name: /^reschedule/i }))[0]!;
+    await userEvent.click(first);
+    const input = screen.getByLabelText(/new time/i);
+    await userEvent.clear(input);
+    await userEvent.type(input, inputIn(20));
+    await userEvent.click(screen.getByRole("button", { name: /save time/i }));
+    await waitFor(() => {
+      const active = document.activeElement as HTMLElement;
+      expect(active.getAttribute("aria-label")).toMatch(/^Reschedule/);
+      expect(active.closest("li")?.textContent).toContain("Please call the family");
+    });
+  });
+
   it("R2/R4: a stale time at Save is reported as an alert, and a past time shows its reason on the input", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
