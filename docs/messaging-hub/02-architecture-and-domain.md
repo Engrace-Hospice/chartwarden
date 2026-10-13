@@ -134,12 +134,12 @@ Bodies are encrypted at rest under tenant DEKs, so a plain DB index would either
 | C. Plaintext `tsvector` table under same RLS | Fast, simple | Plaintext PHI beyond the cipher column; wider blast radius |
 
 **Decision (D3): global search is required; use option B.** Sequence: (1) ship **A** for in-conversation search first (Phase 2.7a);
-(2) build **B** as work package 2.7b after a design review covering: HMAC key per tenant derived from the tenant DEK hierarchy and rotated
+(2) build **B** as work package 2.7b after a design review ([ADR-0058](../adr/ADR-0058-messaging-global-search-blind-token-index.md), Proposed) and **after two prerequisite WPs**: migrating `message.body_cipher` and `message_revision.body_cipher` from HKDF-from-`MESSAGING_ENCRYPTION_KEY` (`body-crypto.ts`; no key row exists to destroy, so no real shred or rotation today) to the M34 wrapped-DEK ring, and a per-route rate limit (only the global SD-055 limiter exists). The review covers: HMAC key per tenant derived from the **M34 tenant DEK** (after that migration) and rotated
 with it; tokenisation (word + prefix n-grams; no raw trigram of short strings); padding/bucketing to blunt frequency leakage; no
 phrase/proximity ranking server-side (rank client-side after decrypt); index entries deleted on redaction and tenant erasure; index rebuilt
 from ciphertext by a resumable job. Whatever is chosen: candidate ids from the index are **re-filtered by current membership/patient access**
 at query time, bodies are decrypted only after that check, and every result page writes a read audit. Known limit: B supports whole-word and
-prefix queries, not arbitrary substring — state this in the UI.
+prefix queries, not arbitrary substring — state this in the UI. If the review rejects B, the fallback is a bounded multi-channel A (member channels only, hard channel cap), not no global search.
 
 ## 7. API additions (prefix `/api/v1/messaging`; idempotency + audit + TypeBox on all)
 
@@ -161,10 +161,10 @@ Each new route registers a permission key in M3, gets OpenAPI enrichment, and pa
 | Proposed ADR | Decides | Needed before |
 |---|---|---|
 | Realtime transport ([ADR-0054](../adr/ADR-0054-realtime-transport-socketio-valkey.md), Accepted) | Socket.IO vs native WS/SSE; auth handshake; room recompute on `permissions.changed`; reconnect protocol; scale-out via Valkey | Phase 1 |
-| Message revisions & redaction ([ADR-0055](../adr/ADR-0055-message-revisions-and-redaction.md), Proposed) | Revision table, who may redact, interaction with retained cipher and legal hold | Phase 1 |
+| Message revisions & redaction ([ADR-0055](../adr/ADR-0055-message-revisions-and-redaction.md), Accepted (2026-10-11)) | Revision table, who may redact, interaction with retained cipher and legal hold | Phase 1 |
 | Clinical acknowledgment vs receipts ([ADR-0056](../adr/ADR-0056-clinical-acknowledgment-vs-read-receipts.md), Proposed) | New `message_acknowledgment_*` aggregate; fate of `message_receipt.ack` | Phase 4 (draft in Phase 0) |
 | Escalation ownership (M36↔M19) ([ADR-0057](../adr/ADR-0057-escalation-ownership-m19-m36.md), Proposed) | `EscalationRouter` seam; tiers/rosters stay in M19; M36 holds request/ack state | Phase 4 |
-| Messaging search ([ADR-0058](../adr/ADR-0058-messaging-global-search-blind-token-index.md), Proposed) | §6 | Phase 2 |
+| Messaging search ([ADR-0058](../adr/ADR-0058-messaging-global-search-blind-token-index.md), Proposed) | §6; key-ring migration of message bodies and a per-route rate limit are prerequisites | Phase 2 |
 | Chart promotion | Per-target contracts (M8 note, M7 proposal, M14 item); never orders | Phase 3 |
 | Messaging legal hold & retention | Overlay pattern (ADR-0051) applied to `message`; retention-scan behaviour | Phase 5 (earlier if the scan is live) |
 | AI in messaging | Allowed M32 capabilities, human-in-the-loop rules, PHI boundary | Phase 6 |
