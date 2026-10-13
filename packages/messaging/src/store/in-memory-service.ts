@@ -62,6 +62,13 @@ import {
 } from "../member-admin";
 import type { QuietHoursConfig, RoutingMap } from "../resolution";
 import {
+  SEARCH_MAX_SCAN_PER_REQUEST,
+  assertSearchHasCriteria,
+  bodyMatchesTerms,
+  normalizeSearchText,
+  searchPageSize,
+} from "../search/message-search";
+import {
   PLATFORM_DEFAULT_ALERT_RULES,
   SYSTEM_LOCKED_EVENT_TYPES,
   assertLockedRulePatchAllowed,
@@ -649,6 +656,55 @@ export function createInMemoryMessagingService(
       return { pins, patientId: channel.kind === "care_team" ? (channel.subjectId ?? null) : null };
     },
 
+    async searchMessages(orgId, input) {
+      const channel = channelOr404(orgId, input.channelId);
+      if (!(await this.canViewChannel(orgId, input.userId, input.channelId))) {
+        throw new NotFoundError("channel", input.channelId);
+      }
+      if (channel.archivedAt)
+        throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+      const terms = assertSearchHasCriteria(input);
+      const limit = searchPageSize(input.limit);
+      const cursor = input.cursor ? decodeMessageCursor(input.cursor) : null;
+      const fromMs = input.from ? Date.parse(input.from) : null;
+      const toMs = input.to ? Date.parse(input.to) : null;
+      const candidates = [...messages.values()]
+        .filter((m) => m.orgId === orgId && m.channelId === input.channelId && !m.deletedAt)
+        .sort(messageOrder)
+        .reverse()
+        .filter(
+          (m) =>
+            !cursor ||
+            (m.createdAt.localeCompare(cursor[0]) || m.messageId.localeCompare(cursor[1])) < 0,
+        );
+      const results: ResolvedMessage[] = [];
+      let scanned = 0;
+      let last: MessageRow | undefined;
+      let more = false;
+      for (const m of candidates) {
+        if (results.length >= limit || scanned >= SEARCH_MAX_SCAN_PER_REQUEST) {
+          more = true;
+          break;
+        }
+        scanned += 1;
+        last = m;
+        const at = Date.parse(m.createdAt);
+        if (input.senderUserId && m.authorUserId !== input.senderUserId) continue;
+        if ((fromMs !== null && at < fromMs) || (toMs !== null && at >= toMs)) continue;
+        if (terms.length > 0 && !bodyMatchesTerms(normalizeSearchText(m.body), terms)) continue;
+        const resolved = resolveStored(orgId, m, channel, input.userId);
+        if (input.hasAttachment && (resolved.attachments?.length ?? 0) === 0) continue;
+        results.push(resolved);
+      }
+      return {
+        results,
+        ...(more && last ? { nextCursor: encodeMessageCursor(last) } : {}),
+        scanned,
+        scanCapped: more && results.length < limit,
+        patientId: channel.kind === "care_team" ? (channel.subjectId ?? null) : null,
+      };
+    },
+
     async sendMessage(orgId, input) {
       const ch = channelOr404(orgId, input.channelId);
       if (ch.archivedAt) {
@@ -814,6 +870,26 @@ export function createInMemoryMessagingService(
             ]
           : [];
       return [...staff, ...patient];
+    },
+
+    async searchMentionNonMembers(orgId, userId, channelId, query) {
+      const channel = channelOr404(orgId, channelId);
+      if (!(await this.canViewChannel(orgId, userId, channelId))) {
+        throw new NotFoundError("channel", channelId);
+      }
+      const needle = query.trim().toLowerCase();
+      if (channel.kind === "dm" || channel.kind === "announcement" || needle.length < 2) return [];
+      return [...eligibleStaff.values()]
+        .filter(
+          (member) =>
+            member.orgId === orgId &&
+            member.userId !== userId &&
+            !channel.members.has(member.userId) &&
+            (member.status ?? "active") === "active" &&
+            member.displayName.toLowerCase().includes(needle),
+        )
+        .slice(0, 10)
+        .map((member) => ({ entityId: member.userId, displayName: member.displayName }));
     },
 
     async openDm(orgId, userId, peerUserId) {

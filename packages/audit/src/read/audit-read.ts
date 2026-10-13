@@ -48,6 +48,8 @@ export interface PhiListReadInput {
   readonly count: number;
   /** The filter/query that produced the list — metadata only; redacted before write. */
   readonly filter?: Record<string, unknown>;
+  /** The container the list is scoped to when the route names one (e.g. a channel id): the event's resource id. */
+  readonly resourceId?: string;
   /** Patient scope when the list is patient-bound (e.g. one patient's encounters). */
   readonly patientId?: string;
   readonly severity?: AuditSeverity;
@@ -100,6 +102,7 @@ export async function auditListRead(
   await auditRead(tx, ctx, {
     eventType: `${input.resourceKind}.list_viewed`,
     resourceKind: input.resourceKind,
+    ...(input.resourceId ? { resourceId: input.resourceId } : {}),
     severity: input.severity ?? "info",
     context: compactContext({
       count: input.count,

@@ -114,6 +114,20 @@ function resolvePatientId(
   return undefined;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const OMITTED_FILTER_VALUE = "[omitted]";
+
+/** The query as recorded on a list-read audit row: `omit`ted keys keep their name but lose their value. */
+export function listAuditFilter(
+  query: unknown,
+  omit: readonly string[] | undefined,
+): Record<string, unknown> | undefined {
+  if (!query || typeof query !== "object") return undefined;
+  const filter = { ...(query as Record<string, unknown>) };
+  for (const key of omit ?? []) if (key in filter) filter[key] = OMITTED_FILTER_VALUE;
+  return filter;
+}
+
 /** Row count for a list read — an `items` array (cursor-page convention), a bare array, or the first array property. */
 function rowCount(payload: unknown): number {
   if (Array.isArray(payload)) return payload.length;
@@ -193,10 +207,25 @@ export function applyReadAuditCoverage(
         { organizationId: ctx.organizationId, userId: ctx.userId || "" },
         async (tx) => {
           if (cfg.list) {
+            const rawListId =
+              cfg.listResourceId && cfg.resourceIdParam ? params[cfg.resourceIdParam] : undefined;
+            // Only a well-formed uuid ever reaches the resource_id column (a loose param schema must not fail the insert).
+            const listResourceId = rawListId && UUID_RE.test(rawListId) ? rawListId : undefined;
             await auditListRead(tx, auditCtx, {
               resourceKind: cfg.resourceKind,
               count: rowCount(payload),
-              filter: request.query as Record<string, unknown> | undefined,
+              ...(listResourceId ? { resourceId: listResourceId } : {}),
+              // An opted-in list whose param is not a uuid keeps it here instead of as the resource id. Every other list
+              // route's filter is the request query alone, exactly as before.
+              filter: {
+                ...listAuditFilter(request.query, cfg.filterOmit),
+                ...(cfg.listResourceId &&
+                cfg.resourceIdParam &&
+                params[cfg.resourceIdParam] &&
+                !listResourceId
+                  ? { [cfg.resourceIdParam]: params[cfg.resourceIdParam] }
+                  : {}),
+              },
               patientId,
             });
           } else {

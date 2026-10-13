@@ -50,6 +50,7 @@ import {
   ListThreadQuerySchema,
   MemberParamsSchema,
   MentionCandidateQuerySchema,
+  MentionNonMemberQuerySchema,
   MessageParamsSchema,
   OpenDmBodySchema,
   PatientConversationParamsSchema,
@@ -62,6 +63,7 @@ import {
   parse,
 } from "./messaging-typebox";
 import { registerReactionPinRoutes } from "./reaction-pin-routes";
+import { registerMessageSearchRoutes } from "./search-routes";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -289,6 +291,15 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     announcementOnly: announceGuard,
   });
 
+  // --- WP 2.7a: in-conversation search (own file; the channel's guards, read-audited) -------------
+  registerMessageSearchRoutes(app, service, {
+    read: READ,
+    send: SEND,
+    viewChannel: VIEW_CHANNEL,
+    sendToChannel: SEND_TO_CHANNEL,
+    announcementOnly: announceGuard,
+  });
+
   // Structured autocomplete is scoped to a channel whose effective visibility has already been
   // revalidated. Patient results are intentionally limited by the service to the linked care-team
   // patient; this route never acts as a general patient directory.
@@ -318,6 +329,55 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
       };
     },
   );
+
+  // WP 2.3: colleagues who are NOT in this conversation, for the composer's "Add <name>?" prompt. Names only; the
+  // lookup never reveals thread content and a mention of a non-member is never persisted (sendMessage refuses it).
+  // `canAdd` mirrors the member-management route's two checks, so the UI only offers what addMember will accept.
+  app.get(
+    "/api/v1/messaging/channels/:id/mention-non-members",
+    {
+      preHandler: [SEND, SEND_TO_CHANNEL],
+      config: {
+        auditRead: {
+          none: "minimum-necessary staff names for the composer add-member prompt; no message or patient data",
+        },
+      },
+    },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(ChannelParamsSchema, request.params);
+      const { q } = parse(MentionNonMemberQuerySchema, request.query);
+      // Someone who cannot add people gets no names: a directory lookup is only for an action they may take. (No
+      // per-route rate limit exists in this repo; the global authenticated tier and the 2-character minimum bound it.)
+      const canAdd = await mayAddMembers(request, reply, organizationId, id);
+      if (!canAdd) {
+        // Still the channel-visibility answer (a hidden channel is the one 404), just no names.
+        await service.searchMentionNonMembers(organizationId, userId, id, "");
+        return { people: [], canAdd };
+      }
+      const people = await service.searchMentionNonMembers(
+        organizationId,
+        userId,
+        id,
+        q?.trim() ?? "",
+      );
+      return { people, canAdd };
+    },
+  );
+
+  async function mayAddMembers(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    organizationId: string,
+    channelId: string,
+  ): Promise<boolean> {
+    try {
+      await MANAGE_MEMBERS(request, reply);
+    } catch {
+      return false;
+    }
+    return service.canManageMembers(organizationId, memberAdminActorOf(request.context), channelId);
+  }
 
   // --- post a message (messaging.send + channel_visibility ABAC) -----------------------------
   app.post(

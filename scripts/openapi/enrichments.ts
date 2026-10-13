@@ -1253,6 +1253,14 @@ import {
   DraftResponseSchema as M36DraftResponseSchema,
   SaveDraftBodySchema as M36SaveDraftBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/draft-typebox";
+import {
+  CancelScheduledResponseSchema as M36CancelScheduledResponseSchema,
+  CreateScheduledBodySchema as M36CreateScheduledBodySchema,
+  RescheduleBodySchema as M36RescheduleBodySchema,
+  ScheduledListQuerySchema as M36ScheduledListQuerySchema,
+  ScheduledListResponseSchema as M36ScheduledListResponseSchema,
+  ScheduledMessageViewSchema as M36ScheduledMessageViewSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/scheduled-send-typebox";
 // ── M36 Secure Messaging & Alerts — request + response schema imports (all M36-aliased) ──
 import {
   // request schemas (query / body) — reused as-is
@@ -1278,6 +1286,8 @@ import {
   ListThreadQuerySchema as M36ListThreadQuerySchema,
   MentionCandidateQuerySchema as M36MentionCandidateQuerySchema,
   MentionCandidateResponseSchema as M36MentionCandidateResponseSchema,
+  MentionNonMemberQuerySchema as M36MentionNonMemberQuerySchema,
+  MentionNonMemberResponseSchema as M36MentionNonMemberResponseSchema,
   MessageListResponseSchema as M36MessageListResponseSchema,
   NotificationPreferencesResponseSchema as M36NotificationPreferencesResponseSchema,
   OpenCareTeamConversationResponseSchema as M36OpenCareTeamConversationResponseSchema,
@@ -1297,6 +1307,10 @@ import {
   PinResponseSchema as M36PinResponseSchema,
   SetReactionResponseSchema as M36SetReactionResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/reaction-pin-typebox";
+import {
+  SearchMessagesQuerySchema as M36SearchMessagesQuerySchema,
+  SearchMessagesResponseSchema as M36SearchMessagesResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/search-typebox";
 // M36 WP 2.8 message templates & saved replies.
 import {
   CreateTemplateBodySchema as M36CreateTemplateBodySchema,
@@ -8980,6 +8994,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "The channel's pinned messages, most recently pinned first (read-audited)",
     response: M36PinListResponseSchema,
   },
+  "GET /api/v1/messaging/channels/:id/search": {
+    summary:
+      "Search ONE channel's live messages (WP 2.7a, option A: decrypt-and-filter, no index; scans at most 5000 bodies per request and returns a continuation cursor; read-audited without the query text; 404 non-member, 410 archived, 422 bad query)",
+    query: M36SearchMessagesQuerySchema,
+    response: M36SearchMessagesResponseSchema,
+  },
   "GET /api/v1/messaging/channels/:id/draft": {
     summary:
       "The caller's own unsent draft for a channel (or a thread root via parentMessageId); null when none (WP 2.5; never another user's)",
@@ -8996,10 +9016,37 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Discard the caller's draft (idempotent, 204)",
     query: M36DraftQuerySchema,
   },
+  "POST /api/v1/messaging/channels/:id/scheduled-messages": {
+    summary:
+      "Schedule a message for later (WP 2.6; Idempotency-Key required; 1 minute to 30 days ahead; announcement channel needs messaging.announce; 409 SCHEDULE_LIMIT_REACHED at 50). Re-checked at dispatch.",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    body: M36CreateScheduledBodySchema,
+    response: M36ScheduledMessageViewSchema,
+  },
+  "GET /api/v1/messaging/scheduled-messages": {
+    summary: "The caller's own scheduled messages (pending and blocked), soonest first; never anyone else's",
+    query: M36ScheduledListQuerySchema,
+    response: M36ScheduledListResponseSchema,
+  },
+  "PATCH /api/v1/messaging/scheduled-messages/:id": {
+    summary: "Reschedule one of the caller's scheduled messages (a blocked one becomes pending again)",
+    body: M36RescheduleBodySchema,
+    response: M36ScheduledMessageViewSchema,
+  },
+  "DELETE /api/v1/messaging/scheduled-messages/:id": {
+    summary: "Cancel a scheduled message before dispatch (idempotent; cancelled=false when nothing was left to cancel)",
+    response: M36CancelScheduledResponseSchema,
+  },
   "GET /api/v1/messaging/channels/:id/mention-candidates": {
     summary: "Search staff and the linked patient eligible for a structured reference",
     query: M36MentionCandidateQuerySchema,
     response: M36MentionCandidateResponseSchema,
+  },
+  "GET /api/v1/messaging/channels/:id/mention-non-members": {
+    summary:
+      "Search colleagues who are not in this conversation (names only; canAdd tells whether the caller may add them)",
+    query: M36MentionNonMemberQuerySchema,
+    response: M36MentionNonMemberResponseSchema,
   },
   "POST /api/v1/messaging/channels/:id/messages": {
     summary:

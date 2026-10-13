@@ -135,6 +135,24 @@ export type {
 } from "./interfaces/provider";
 export type { AlertEmitter, RecipientResolver } from "./interfaces/alert-emitter";
 export type { MessageReactionPinService } from "./interfaces/reaction-pin";
+export {
+  SEARCH_DEFAULT_PAGE_SIZE,
+  SEARCH_MAX_PAGE_SIZE,
+  SEARCH_MAX_QUERY_LENGTH,
+  SEARCH_MAX_SCAN_PER_REQUEST,
+  SEARCH_MAX_TERMS,
+  SEARCH_MIN_QUERY_LENGTH,
+  assertSearchHasCriteria,
+  bodyMatchesTerms,
+  normalizeSearchText,
+  parseSearchQuery,
+  searchPageSize,
+} from "./search/message-search";
+export type {
+  MessageSearchInput,
+  MessageSearchResult,
+  MessageSearchService,
+} from "./search/message-search";
 
 // ── M36-T07 route-facing application service (§4.1–4.2) — the surface the REST inventory uses ─
 export type {
@@ -152,6 +170,7 @@ export type {
   DmEligibleStaffMember,
   CareTeamConversation,
   MentionCandidate,
+  MentionNonMember,
   AlertInboxItem,
 } from "./interfaces/route-service";
 export {
@@ -173,6 +192,26 @@ export {
   isEmptyDraft,
 } from "./drafts";
 export type { DraftKey, DraftView, MessageDraftService, SaveDraftInput } from "./drafts";
+// WP 2.6 scheduled send (pure rules + service interface shared with the backend's Drizzle impl and dispatcher).
+export {
+  DEFAULT_MAX_SCHEDULED_PER_USER,
+  MAX_DISPATCH_ATTEMPTS,
+  MAX_SCHEDULED_BODY_LENGTH,
+  MAX_SCHEDULE_HORIZON_MS,
+  MIN_SCHEDULE_LEAD_MS,
+  SCHEDULE_BLOCK_REASONS,
+  assertScheduleTime,
+  normalizeScheduleTimeZone,
+  scheduleBlockReasonFor,
+  scheduleBlockedMessage,
+} from "./scheduled-send";
+export type {
+  CreateScheduledMessageInput,
+  ScheduleBlockReason,
+  ScheduledMessageStatus,
+  ScheduledMessageView,
+  ScheduledSendService,
+} from "./scheduled-send";
 // WP 2.9 — announcement receipts + department channels (its own service; the in-memory slice implements both).
 export { RECEIPT_LIST_LIMIT } from "./interfaces/announcement-service";
 export type {

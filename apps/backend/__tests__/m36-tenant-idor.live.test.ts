@@ -75,8 +75,10 @@ import {
   channelMemberAdminPredicate,
   registerMessagingRoutes,
 } from "../src/modules/36-messaging/routes/messaging-routes";
+import { registerScheduledSendRoutes } from "../src/modules/36-messaging/routes/scheduled-send-routes";
 import { registerTemplateRoutes } from "../src/modules/36-messaging/routes/template-routes";
 import { registerMessagingWebhookRoutes } from "../src/modules/36-messaging/routes/webhook-routes";
+import { createDbScheduledSendService } from "../src/modules/36-messaging/scheduled/scheduled-send-service-db";
 import { createDbConsentEvaluator } from "../src/modules/39-consent/index";
 import { appRoleConnectionString } from "./_live-app-role";
 
@@ -104,16 +106,25 @@ const ROUTES: Record<string, Verdict> = {
   "GET /api/v1/messaging/channels/:id/messages": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/messages/:messageId/thread": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/mention-candidates": { kind: "idor" },
+  // WP 2.3: names of colleagues outside the channel; same channel gate, same random-id answer for everyone else.
+  "GET /api/v1/messaging/channels/:id/mention-non-members": { kind: "idor" },
   // WP 2.4 reactions and pins: channel-scoped, every refusal is the 404 a random id gets.
   "PUT /api/v1/messaging/channels/:id/messages/:messageId/reactions/:emoji": { kind: "idor" },
   "DELETE /api/v1/messaging/channels/:id/messages/:messageId/reactions/:emoji": { kind: "idor" },
   "PUT /api/v1/messaging/channels/:id/messages/:messageId/pin": { kind: "idor" },
   "DELETE /api/v1/messaging/channels/:id/messages/:messageId/pin": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/pins": { kind: "idor" },
+  "GET /api/v1/messaging/channels/:id/search": { kind: "idor" },
   // WP 2.5 drafts: the id is a channel's; a draft is also private to its author inside the channel (asserted below).
   "GET /api/v1/messaging/channels/:id/draft": { kind: "idor" },
   "PUT /api/v1/messaging/channels/:id/draft": { kind: "idor" },
   "DELETE /api/v1/messaging/channels/:id/draft": { kind: "idor" },
+  // WP 2.6 scheduled send: create is channel-scoped; the others take the row id of the caller's OWN scheduled message (a
+  // colleague's or another tenant's id answers as a random id; asserted below).
+  "POST /api/v1/messaging/channels/:id/scheduled-messages": { kind: "idor" },
+  "GET /api/v1/messaging/scheduled-messages": { kind: "scoped" },
+  "PATCH /api/v1/messaging/scheduled-messages/:id": { kind: "scoped" },
+  "DELETE /api/v1/messaging/scheduled-messages/:id": { kind: "scoped" },
   "POST /api/v1/messaging/channels/:id/messages": { kind: "idor" },
   "PATCH /api/v1/messaging/messages/:id": { kind: "idor" },
   "DELETE /api/v1/messaging/messages/:id": { kind: "idor" },
@@ -187,6 +198,10 @@ const REGISTRAR_FILES = [
   "attachment-routes.ts",
   "draft-routes.ts",
   "draft-typebox.ts", // schemas only
+  "scheduled-send-routes.ts",
+  "search-routes.ts", // WP 2.7a in-conversation search
+  "search-typebox.ts", // schemas only
+  "scheduled-send-typebox.ts", // schemas only
   "messaging-routes.ts",
   "messaging-typebox.ts", // schemas only
   "reaction-pin-routes.ts", // mounted by registerMessagingRoutes
@@ -208,6 +223,7 @@ function registeredRoutes(): string[] {
   registerMessagingRoutes(probe, { service: {} as never, announcements: {} as never });
   registerAttachmentRoutes(probe, { service: {} as never });
   registerDraftRoutes(probe, { service: {} as never });
+  registerScheduledSendRoutes(probe, { service: {} as never, announcements: {} as never });
   registerAdminAlertDeliveriesRoutes(probe, {} as never);
   registerTemplateRoutes(probe, { service: {} as never });
   registerMessagingWebhookRoutes(probe, { publicBaseUrl: "https://x.test" } as never);
@@ -344,6 +360,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     if (attackers.has(who.name)) exercisedByAttacker.add(route);
     const needsKey =
       route === "POST /api/v1/messaging/channels/:id/messages" ||
+      route === "POST /api/v1/messaging/channels/:id/scheduled-messages" ||
       route === "POST /api/v1/messaging/attachments/uploads" ||
       route === "POST /api/v1/messaging/attachments/:id/complete" ||
       route === "POST /api/v1/messaging/announce";
@@ -369,6 +386,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     "message_receipt",
     "message_attachment",
     "message_draft",
+    "scheduled_message",
     "attachment_access_event",
     "message_entity_reference",
     "message_reaction",
@@ -565,6 +583,14 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         cipher: createMessageBodyCipher({ kek: KEK }),
       }),
     });
+    registerScheduledSendRoutes(app, {
+      service: createDbScheduledSendService({
+        db: handle.db,
+        cipher: createMessageBodyCipher({ kek: KEK }),
+        canViewChannel: service.canViewChannel,
+      }),
+      announcements: createDbAnnouncementService(handle.db),
+    });
     /** Upload + complete a file as `who` straight through the service (the fixture, not an attack). */
     const makeAttachment = async (who: Who, channelId: string, text: string, scan = true) => {
       const bytes = new TextEncoder().encode(`%PDF-1.4\n${text}\n%%EOF`);
@@ -725,6 +751,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       "GET /api/v1/messaging/channels/:id",
       "GET /api/v1/messaging/channels/:id/messages",
       "GET /api/v1/messaging/channels/:id/mention-candidates",
+      "GET /api/v1/messaging/channels/:id/mention-non-members",
     ];
     it("legitimate members read (the attacks below are not vacuous)", async () => {
       for (const ch of [dmA, locA]) {
@@ -740,6 +767,17 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         }
       });
     }
+    it("GET search (WP 2.7a) with a real query: members search, everyone else gets a random id's answer", async () => {
+      const route = "GET /api/v1/messaging/channels/:id/search";
+      const query = "?q=attack";
+      const ok = await call(route, u2, { id: dmA }, undefined, {}, query);
+      expect(ok.statusCode).toBe(200);
+      for (const attacker of [bUser, outsider]) {
+        for (const id of [dmA, locA, careTeamA]) {
+          await expectNoOracle(route, attacker, { id }, undefined, query);
+        }
+      }
+    });
     it("POST send (incl. a reply) into A's channels", async () => {
       const route = "POST /api/v1/messaging/channels/:id/messages";
       for (const attacker of [bUser, outsider]) {
@@ -815,6 +853,57 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       }
       const kept = await call("GET /api/v1/messaging/channels/:id/draft", u1, { id: dmA });
       expect(kept.json().draft.body).toBe("WP25-private-draft");
+    });
+  });
+
+  describe("scheduled-send routes (WP 2.6): private to their author, no oracle for a foreign id", () => {
+    const CREATE = "POST /api/v1/messaging/channels/:id/scheduled-messages";
+    const when = () => new Date(Date.now() + 3_600_000).toISOString();
+    const scheduleBody = () => ({ body: "WP26-private-scheduled", scheduledFor: when() });
+    it("a member schedules and lists their own; a fellow member never sees it or can touch it", async () => {
+      const made = await call(CREATE, u1, { id: dmA }, scheduleBody());
+      expect(made.statusCode).toBe(201);
+      const id = made.json().id as string;
+      const own = await call("GET /api/v1/messaging/scheduled-messages", u1);
+      expect(own.json().scheduledMessages.map((m: { id: string }) => m.id)).toContain(id);
+      const peer = await call("GET /api/v1/messaging/scheduled-messages", u2);
+      expect(peer.json()).toEqual({ scheduledMessages: [] });
+      // a peer's cancel and reschedule answer as they do for a random id, and leave the row alone
+      for (const who of [u2, bUser, outsider]) {
+        attackers.add(who.name);
+        const real = await call("DELETE /api/v1/messaging/scheduled-messages/:id", who, { id });
+        const random = await call("DELETE /api/v1/messaging/scheduled-messages/:id", who, {
+          id: randomUUID(),
+        });
+        expect(shape(real), `${who.name} cancel`).toBe(shape(random));
+        const moved = await call(
+          "PATCH /api/v1/messaging/scheduled-messages/:id",
+          who,
+          { id },
+          { scheduledFor: when() },
+        );
+        const movedRandom = await call(
+          "PATCH /api/v1/messaging/scheduled-messages/:id",
+          who,
+          { id: randomUUID() },
+          { scheduledFor: when() },
+        );
+        expect(moved.statusCode, `${who.name} reschedule`).toBe(404);
+        expect(shape(moved)).toBe(shape(movedRandom));
+        expectNoLeak(moved.body, who, `${who.name} reschedule`);
+      }
+      const still = await call("GET /api/v1/messaging/scheduled-messages", u1);
+      expect(still.json().scheduledMessages.map((m: { id: string }) => m.id)).toContain(id);
+      expect(
+        (await call("DELETE /api/v1/messaging/scheduled-messages/:id", u1, { id })).json(),
+      ).toEqual({ cancelled: true });
+    });
+    it("org B and the in-org non-member cannot schedule into a channel, exactly like a random channel id", async () => {
+      for (const attacker of [bUser, outsider]) {
+        for (const id of [dmA, locA]) {
+          await expectNoOracle(CREATE, attacker, { id }, scheduleBody());
+        }
+      }
     });
   });
 

@@ -422,6 +422,14 @@ export const DmStaffSearchResponseSchema = Type.Object({
     }),
   ),
 });
+export const MentionNonMemberQuerySchema = Type.Object({
+  q: Type.Optional(Type.String({ maxLength: 100 })),
+});
+export const MentionNonMemberResponseSchema = Type.Object({
+  people: Type.Array(Type.Object({ entityId: Type.String(), displayName: Type.String() })),
+  /** True only when the caller may add members to this channel (permission AND channel-scoped authority). */
+  canAdd: Type.Boolean(),
+});
 export const MentionCandidateResponseSchema = Type.Object({
   candidates: Type.Array(
     Type.Object({

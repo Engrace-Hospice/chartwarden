@@ -68,6 +68,45 @@ describe("read-audit emission (preSerialization)", () => {
     expect(captured[0].resourceId).toBe("p1");
   });
 
+  describe("list events and resourceIdParam (fix round 4)", () => {
+    const CHANNEL = "11111111-1111-4111-8111-111111111111";
+    const listApp = (flags: Record<string, unknown>) => {
+      const app = makeApp();
+      app.get(
+        "/api/v1/things/:id/items",
+        {
+          config: {
+            auditRead: { resourceKind: "thing_line", list: true, resourceIdParam: "id", ...flags },
+          },
+        },
+        async () => ({ items: [{ id: "a" }] }),
+      );
+      return app;
+    };
+    it("a list route WITHOUT the opt-in keeps an empty resource id, as every other module's list rows did", async () => {
+      await listApp({}).inject({ method: "GET", url: `/api/v1/things/${CHANNEL}/items` });
+      expect(captured[0].eventType).toBe("thing_line.list_viewed");
+      expect(captured[0].resourceId ?? "").toBe("");
+      // main recorded only the request query here; the path param must not start appearing in the filter.
+      expect(captured[0].context?.filter ?? {}).not.toHaveProperty("id");
+    });
+    it("with listResourceId the uuid param is the event's resource id", async () => {
+      await listApp({ listResourceId: true }).inject({
+        method: "GET",
+        url: `/api/v1/things/${CHANNEL}/items`,
+      });
+      expect(captured[0].resourceId).toBe(CHANNEL);
+    });
+    it("a param that is not a uuid never becomes the resource id (it stays in the filter)", async () => {
+      await listApp({ listResourceId: true }).inject({
+        method: "GET",
+        url: "/api/v1/things/not-a-uuid/items",
+      });
+      expect(captured[0].resourceId ?? "").toBe("");
+      expect(captured[0].context).toMatchObject({ filter: { id: "not-a-uuid" } });
+    });
+  });
+
   it("emits <kind>.list_viewed with a row count for a list read", async () => {
     const app = makeApp();
     app.get(

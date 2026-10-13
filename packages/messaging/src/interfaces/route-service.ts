@@ -18,6 +18,7 @@
 import type { RichBody } from "@wardenx/types";
 import type { MemberAdminActor } from "../member-admin";
 import type { QuietHoursConfig, RoutingMap } from "../resolution";
+import type { MessageSearchService } from "../search/message-search";
 import type {
   AlertCategory,
   AlertRecipientResolver,
@@ -159,6 +160,12 @@ export interface CareTeamConversation {
   readonly archived: boolean;
 }
 
+/** WP 2.3: an active colleague who is NOT in the conversation. Name only: no role, email or thread content. */
+export interface MentionNonMember {
+  readonly entityId: string;
+  readonly displayName: string;
+}
+
 export interface MentionCandidate {
   readonly kind: "staff" | "patient";
   readonly entityId: string;
@@ -172,7 +179,7 @@ export interface MentionCandidate {
  * M1 error handler renders (NOT_FOUND 404, CHANNEL_ARCHIVED 410, CHANNEL_NOT_VISIBLE 403,
  * SYSTEM_LOCKED 403, INVALID_RESOLVER 422, INVALID_ROUTING_MAP 422, VACATION_FORWARD_* 409).
  */
-export interface MessagingRouteService extends MessageReactionPinService {
+export interface MessagingRouteService extends MessageReactionPinService, MessageSearchService {
   // ── channels & messages (§4.2) ──────────────────────────────────────────────────────────
   /** Channels the user is an active member of (§4.2 GET /channels). */
   listChannels(orgId: string, userId: string): Promise<ChannelSummary[]>;
@@ -285,6 +292,17 @@ export interface MessagingRouteService extends MessageReactionPinService {
     channelId: string,
     query: string,
   ): Promise<readonly MentionCandidate[]>;
+  /**
+   * WP 2.3: active colleagues matching `query` (at least 2 characters, else empty) who are not members of the
+   * channel, so the composer can offer "Add <name> to this conversation?". Names only; 404 for a channel the
+   * caller cannot see; always empty for a direct message or the announcement channel. Never grants access.
+   */
+  searchMentionNonMembers(
+    orgId: string,
+    userId: string,
+    channelId: string,
+    query: string,
+  ): Promise<readonly MentionNonMember[]>;
   /** Add a manual member (admin override on auto channels — audited) (§4.2). The service itself
    *  enforces `mayManageChannelMembers` for `input.actor` (FORBIDDEN otherwise) and records the
    *  actor on the write-audit trail. */

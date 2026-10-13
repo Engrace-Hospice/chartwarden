@@ -34,6 +34,12 @@ export interface RouteReadAuditEmit {
    * `patientIdParam` when omitted — a patient-scoped read is accounted against the patient.
    */
   readonly resourceIdParam?: string;
+  /**
+   * For a LIST read only: record `resourceIdParam`'s value (when it is a uuid) as the event's resource id. Opt-in, because
+   * most list routes' param is a PARENT id under a CHILD `resourceKind`, which would mislabel the row; set it only when the
+   * param names the container the `resourceKind` itself lives in (a channel's messages under `message`).
+   */
+  readonly listResourceId?: boolean;
   /** Field names the route surfaces — recorded in context, NEVER the values (§2.3). */
   readonly fields?: readonly string[];
   /**
@@ -41,6 +47,11 @@ export interface RouteReadAuditEmit {
    * event (count + filter) via `auditListRead`, not one `<kind>.viewed` per row (§3.4).
    */
   readonly list?: boolean;
+  /**
+   * Query-string keys whose VALUES must not reach the audit row (a free-text search term is message content, not
+   * metadata). The key stays, with its value replaced, so the row still shows that the filter was used.
+   */
+  readonly filterOmit?: readonly string[];
 }
 
 /** An explicit, justified waiver: the route surfaces no accountable PHI (e.g. aggregate counts). */

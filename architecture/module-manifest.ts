@@ -289,6 +289,7 @@ export const MODULES: ModuleDef[] = [
       "message_reaction",
       "message_revision",
       "message_draft",
+      "scheduled_message",
       "message_attachment",
       "attachment_access_event",
       "messaging_erase_block",
