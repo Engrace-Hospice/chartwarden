@@ -228,6 +228,19 @@ export function createDbPollService(deps: PollServiceDeps): MessagePollService {
     async getPoll(orgId, input) {
       await assertMember(orgId, input.userId, input.channelId);
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
+        // A deleted message is a tombstone: its options and voters are no longer readable (404, like a random id).
+        const [state] = await tx
+          .select({ status: MSG.status })
+          .from(MSG)
+          .where(
+            and(
+              eq(MSG.organizationId, orgId),
+              eq(MSG.channelId, input.channelId),
+              eq(MSG.id, input.messageId),
+            ),
+          )
+          .limit(1);
+        if (!state || state.status === "deleted") throw new NotFoundError("poll", input.messageId);
         const view = await viewOf(tx, orgId, input);
         return { ...view, voters: await loadPollVoters(tx, { orgId, pollId: view.pollId }) };
       });

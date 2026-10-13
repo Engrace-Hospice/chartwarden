@@ -48,6 +48,11 @@ export const messagePolls = pgTable(
       foreignColumns: [messages.organizationId, messages.channelId, messages.id],
     }).onDelete("cascade"),
     onePollPerMessage: unique("message_poll_message_unique").on(t.organizationId, t.messageId),
+    channelMessageIdx: index("message_poll_channel_message_idx").on(
+      t.organizationId,
+      t.channelId,
+      t.messageId,
+    ),
     orgIdIdUnique: unique("message_poll_org_id_id_unique").on(t.organizationId, t.id),
     closedShape: check(
       "message_poll_closed_shape",

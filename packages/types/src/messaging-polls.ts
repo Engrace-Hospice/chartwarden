@@ -23,7 +23,11 @@ export interface PollView {
   readonly closedAt: string | null;
   readonly totalVotes: number;
   readonly myOptionId: string | null;
-  /** True when this viewer may close the poll (its author, or a channel manager). */
+  /**
+   * True when this viewer is the poll's author and it is open. Message reads cannot cheaply know whether the viewer
+   * is a channel manager, so a manager is NOT reflected here: the close route still lets a manager close (403 for
+   * anyone else), but the web card offers Close to the author only.
+   */
   readonly canClose: boolean;
   readonly options: readonly PollOptionView[];
 }
@@ -42,12 +46,19 @@ export interface PollDetailView extends PollView {
 /** Control characters (incl. line breaks and tabs): a poll label is one line. */
 // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control characters is the purpose
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g;
+/** Zero-width and bidirectional control characters: invisible, so they could spoof a label or hide a duplicate. */
+const INVISIBLE_FORMATTING = /[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g;
 /** Anything that reads as an HTML tag or comment. Labels render as text, but no markup is stored at all. */
 const MARKUP = /<\s*\/?\s*[a-z!?][^>]*>?/i;
 
 /** NFC, control characters to a space, runs of whitespace collapsed, trimmed. Plain text out, never markup. */
 export function normalisePollText(raw: string): string {
-  return raw.normalize("NFC").replace(CONTROL_CHARACTERS, " ").replace(/\s+/g, " ").trim();
+  return raw
+    .normalize("NFC")
+    .replace(INVISIBLE_FORMATTING, "")
+    .replace(CONTROL_CHARACTERS, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export type PollTextProblem = "blank" | "too_long" | "markup";

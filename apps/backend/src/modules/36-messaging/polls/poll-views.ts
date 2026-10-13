@@ -57,9 +57,10 @@ export async function loadPollViews(tx: Tx, input: PollViewInput): Promise<Map<s
   const countByOption = new Map(counts.map((c) => [c.optionId, Number(c.n)]));
   const myOption = new Set(counts.filter((c) => c.mine === true).map((c) => c.optionId));
   const labels = new Map<string, string>();
-  for (const option of options) {
-    labels.set(option.id, await input.cipher.open(input.orgId, option.labelCipher));
-  }
+  const opened = await Promise.all(
+    options.map((option) => input.cipher.open(input.orgId, option.labelCipher)),
+  );
+  options.forEach((option, index) => labels.set(option.id, opened[index] ?? ""));
   for (const poll of polls) {
     const views: PollOptionView[] = options
       .filter((o) => o.pollId === poll.id)

@@ -22,7 +22,7 @@
 -- only). The option table carries its own function that scrubs label_cipher from the images, so an option's
 -- ciphertext is never copied into audit_event (same rule as 1085's draft trigger).
 --
--- Index coverage (test:fk-indexes:live): message edge led by the unique (org, message_id) key; option -> poll led by
+-- Index coverage (test:fk-indexes:live): message edge led by message_poll_channel_message_idx (the FK's own column order); option -> poll led by
 -- the (org, poll_id, id) key; vote -> option led by message_poll_vote_option_idx; poll-level vote reads are led by
 -- the (org, poll_id, user_id) unique key. User edges point at the soft-deleted `user` parent (exempt).
 
@@ -42,6 +42,9 @@ CREATE TABLE "message_poll" (
   CONSTRAINT "message_poll_org_id_id_unique" UNIQUE ("organization_id", "id"),
   CONSTRAINT "message_poll_closed_shape" CHECK ((closed_at IS NULL) = (closed_by_user_id IS NULL))
 );--> statement-breakpoint
+
+CREATE INDEX "message_poll_channel_message_idx"
+  ON "message_poll" ("organization_id", "channel_id", "message_id");--> statement-breakpoint
 
 CREATE TABLE "message_poll_option" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -150,4 +153,23 @@ END $$;--> statement-breakpoint
 ALTER FUNCTION audit_phi_write_message_poll_option() OWNER TO wardenx_audit_writer;--> statement-breakpoint
 CREATE TRIGGER "trg_audit_message_poll_option"
   AFTER INSERT OR UPDATE OR DELETE ON message_poll_option
-  FOR EACH ROW EXECUTE FUNCTION audit_phi_write_message_poll_option();
+  FOR EACH ROW EXECUTE FUNCTION audit_phi_write_message_poll_option();--> statement-breakpoint
+
+-- Defence in depth: the service locks the poll row (a vote takes FOR SHARE, a close the exclusive lock), but the
+-- database also refuses a vote that is inserted or changed on a closed poll, whoever the caller is. SECURITY INVOKER:
+-- it reads message_poll under the caller's own RLS context. FOR SHARE makes it serialise with a concurrent close.
+CREATE OR REPLACE FUNCTION message_poll_vote_open_check() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM message_poll
+    WHERE organization_id = NEW.organization_id AND id = NEW.poll_id AND closed_at IS NOT NULL
+    FOR SHARE
+  ) THEN
+    RAISE EXCEPTION 'poll % is closed', NEW.poll_id USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$;--> statement-breakpoint
+CREATE TRIGGER "trg_message_poll_vote_open"
+  BEFORE INSERT OR UPDATE ON message_poll_vote
+  FOR EACH ROW EXECUTE FUNCTION message_poll_vote_open_check();

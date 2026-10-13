@@ -50,4 +50,14 @@ describe("checkPollInput", () => {
       problems: [{ field: "options", problem: "duplicate" }],
     });
   });
+
+  it("strips zero-width and bidi characters so they cannot spoof a label or hide a duplicate", () => {
+    const hidden = String.fromCharCode(0x200b, 0x202e, 0x2066, 0xfeff);
+    expect(normalisePollText(`Pi${hidden}zza`)).toBe("Pizza");
+    expect(check("Q", ["Pizza", `Pi${hidden}zza`])).toEqual({
+      ok: false,
+      problems: [{ field: "options", problem: "duplicate" }],
+    });
+    expect(check(hidden, ["a", "b"]).ok).toBe(false);
+  });
 });

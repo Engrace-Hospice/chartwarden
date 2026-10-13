@@ -308,6 +308,60 @@ describe.skipIf(!DB_URL)("WP 2.10 - message polls - LIVE Postgres", () => {
     ).rejects.toMatchObject({ code: "INVALID_POLL_OPTION", statusCode: 422 });
   });
 
+  it("a deleted message's poll is a 404 for every member: no options, no named voters", async () => {
+    const made = await create();
+    await polls.vote(orgA, {
+      userId: bob,
+      channelId: chan,
+      messageId: made.messageId,
+      optionId: made.poll.options[0]!.optionId,
+    });
+    await admin.query("UPDATE message SET status='deleted' WHERE id=$1", [made.messageId]);
+    for (const userId of [alice, bob, dave]) {
+      await expect(
+        polls.getPoll(orgA, { userId, channelId: chan, messageId: made.messageId }),
+      ).rejects.toMatchObject({ statusCode: 404 });
+    }
+  });
+
+  it("the database refuses a vote inserted or changed on a closed poll, even around the service", async () => {
+    const made = await create();
+    const [first, second] = made.poll.options.map((o) => o.optionId);
+    await polls.vote(orgA, {
+      userId: bob,
+      channelId: chan,
+      messageId: made.messageId,
+      optionId: first!,
+    });
+    await polls.closePoll(orgA, {
+      userId: alice,
+      channelId: chan,
+      messageId: made.messageId,
+      canManage: false,
+    });
+    const asApp = (statement: string) =>
+      withOrgContext(handle.db, { organizationId: orgA, userId: dave }, (tx) =>
+        tx.execute(sql.raw(statement)),
+      );
+    await expect(
+      asApp(
+        `INSERT INTO message_poll_vote (organization_id, poll_id, option_id, user_id)
+         VALUES ('${orgA}','${made.poll.pollId}','${first}','${dave}')`,
+      ),
+    ).rejects.toThrow();
+    await expect(
+      asApp(
+        `UPDATE message_poll_vote SET option_id='${second}', updated_at=now()
+         WHERE poll_id='${made.poll.pollId}' AND user_id='${bob}'`,
+      ),
+    ).rejects.toThrow();
+    const stored = await admin.query(
+      "SELECT option_id FROM message_poll_vote WHERE poll_id=$1 ORDER BY user_id",
+      [made.poll.pollId],
+    );
+    expect(stored.rows.map((r) => r.option_id)).toEqual([first]);
+  });
+
   it("a removed member can neither read nor vote", async () => {
     const made = await create();
     const target = { userId: dave, channelId: chan, messageId: made.messageId };
