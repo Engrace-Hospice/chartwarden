@@ -13561,6 +13561,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/presence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ids of channel members currently present / typing (poll; ids only, no names; 403 PRESENCE_DISABLED when the tenant flag is off; a non-member gets what a random channel id gets) */
+        get: operations["getApiV1MessagingChannelsByIdPresence"];
+        put?: never;
+        /** Heartbeat / typing marker for the caller in a channel (ephemeral ids with a short TTL, never stored in Postgres; at most one write per 3 s per user per channel, extra calls are 204 no-ops; 403 PRESENCE_DISABLED when the tenant flag is off, and the channel guard's refusal for a non-member, removed member or other tenant) */
+        post: operations["postApiV1MessagingChannelsByIdPresence"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/channels/{id}/scheduled-messages": {
         parameters: {
             query?: never;
@@ -63126,6 +63144,61 @@ export interface operations {
                         };
                     };
                 };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingChannelsByIdPresence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        present: string[];
+                        typing: string[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingChannelsByIdPresence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    typing?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

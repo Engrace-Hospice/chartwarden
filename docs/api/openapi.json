@@ -160747,6 +160747,105 @@
         }
       }
     },
+    "/api/v1/messaging/channels/{id}/presence": {
+      "get": {
+        "operationId": "getApiV1MessagingChannelsByIdPresence",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Ids of channel members currently present / typing (poll; ids only, no names; 403 PRESENCE_DISABLED when the tenant flag is off; a non-member gets what a random channel id gets)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "present",
+                    "typing"
+                  ],
+                  "properties": {
+                    "present": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "typing": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1MessagingChannelsByIdPresence",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Heartbeat / typing marker for the caller in a channel (ephemeral ids with a short TTL, never stored in Postgres; at most one write per 3 s per user per channel, extra calls are 204 no-ops; 403 PRESENCE_DISABLED when the tenant flag is off, and the channel guard's refusal for a non-member, removed member or other tenant)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {
+                  "typing": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/messaging/channels/{id}/scheduled-messages": {
       "post": {
         "operationId": "postApiV1MessagingChannelsByIdScheduledmessages",
