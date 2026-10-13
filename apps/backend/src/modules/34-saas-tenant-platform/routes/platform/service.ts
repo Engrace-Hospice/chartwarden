@@ -273,6 +273,13 @@ export interface StatusTransitionArgs {
 }
 
 /** The §4.1 platform-ops route service the handlers compose over. */
+export interface ProvisionStatusView {
+  tenantAccountId: string;
+  orgSlug: string;
+  tenantStatus: string;
+  job: { state: string; attemptsMade: number; failedReason: string | null };
+}
+
 export interface TenantPlatformRouteService {
   // ── tenants (§4.1) ──
   listTenants(
@@ -305,6 +312,13 @@ export interface TenantPlatformRouteService {
     actorMembershipId: string,
     args: { reason: string },
   ): Promise<{ tenantAccountId: string; jobId: string }>;
+  /** The tenant's `tenant.provision` job state (queued / running / failed / …) next to its lifecycle status. */
+  getProvisionStatus(orgSlug: string): Promise<ProvisionStatusView>;
+  /** Re-run a FAILED `tenant.provision` job for a tenant still in `provisioning` (spec §7.7 manual intervention). */
+  retryProvision(
+    orgSlug: string,
+    actorMembershipId: string,
+  ): Promise<{ tenantAccountId: string; state: string }>;
   // ── tenant-invitations (§4.1) ──
   listInvitations(
     filter: { status?: string },
@@ -797,6 +811,24 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
         targetVersion,
       });
       return { tenantAccountId: r.id, jobId };
+    },
+    async getProvisionStatus(orgSlug) {
+      const r = loadTenant(orgSlug);
+      // The in-memory slice runs no queue, so there is never a job to report.
+      return {
+        tenantAccountId: r.id,
+        orgSlug,
+        tenantStatus: r.status,
+        job: { state: "missing", attemptsMade: 0, failedReason: null },
+      };
+    },
+    async retryProvision(orgSlug) {
+      loadTenant(orgSlug);
+      throw new WardenXError(
+        "PROVISION_JOB_MISSING",
+        "no provisioning job exists to retry in this slice",
+        409,
+      );
     },
     async listInvitations(filter, cursor, limit) {
       const rows = desc(

@@ -19,6 +19,7 @@ import { Signups } from "./signups";
 import { SupportSessions } from "./support-sessions";
 import { TenantExportQueue } from "./tenant-export-queue";
 import { TenantInventory } from "./tenant-inventory";
+import { TenantOnboarding } from "./tenant-onboarding";
 import { TenantOverview } from "./tenant-overview";
 
 export const saasPlatformAdminScreens: ScreenRegistryModule<ComponentType> = {
@@ -40,6 +41,14 @@ export const saasPlatformAdminScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Platform",
       requiredPermission: "tenant.read_platform",
       screen: TenantOverview,
+    },
+    {
+      id: "saas.tenant-onboarding",
+      path: "/tenants/:orgSlug/onboarding",
+      title: "Tenant onboarding",
+      navGroup: "Platform",
+      requiredPermission: "onboarding.read_platform",
+      screen: TenantOnboarding,
     },
     {
       id: "saas.support-sessions",

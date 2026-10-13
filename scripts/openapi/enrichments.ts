@@ -1187,6 +1187,8 @@ import {
   SignupIntentListResponseSchema as M34SignupIntentListResponseSchema,
   StartSessionAckSchema as M34StartSessionAckSchema,
   StartSessionRequest as M34StartSessionRequest,
+  ProvisionRetryAckSchema as M34ProvisionRetryAckSchema,
+  ProvisionStatusViewSchema as M34ProvisionStatusViewSchema,
   StatusTransitionRequest as M34StatusTransitionRequest,
   SupportSessionEventListResponseSchema as M34SupportSessionEventListResponseSchema,
   SupportSessionListQuerySchema as M34SupportSessionListQuerySchema,
@@ -8793,6 +8795,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Apply a lifecycle status transition (eleven-state machine; step-up)",
     body: M34StatusTransitionRequest,
     response: M34TenantStatusAckSchema,
+  },
+  "GET /api/v1/platform/tenants/:orgSlug/provision-status": {
+    summary: "A tenant's lifecycle status next to its tenant.provision job state (queued/running/failed/…)",
+    response: M34ProvisionStatusViewSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/provision/retry": {
+    summary: "Re-run a failed tenant.provision job for a tenant still in provisioning (step-up)",
+    response: M34ProvisionRetryAckSchema,
   },
   "POST /api/v1/platform/tenants/:orgSlug/offboard": {
     summary: "Initiate offboarding cascade (step-up)",

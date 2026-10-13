@@ -157,6 +157,26 @@ export function registerTenantPlatformRoutes(
     },
   );
 
+  // 4a — provisioning progress: the lifecycle status next to the `tenant.provision` job state (read; no step-up).
+  app.get(
+    "/api/v1/platform/tenants/:orgSlug/provision-status",
+    { preHandler: [READ, ABAC_READ] },
+    async (request) => {
+      actorOf(request);
+      return service.getProvisionStatus(orgSlugOf(request));
+    },
+  );
+
+  // 4b — re-run a FAILED provision job for a tenant still in `provisioning` (step-up; spec §7.7).
+  app.post(
+    "/api/v1/platform/tenants/:orgSlug/provision/retry",
+    { preHandler: [PROVISION, ABAC_PROVISION, STEPUP_PROVISION] },
+    async (request, reply) => {
+      const { membershipId } = actorOf(request);
+      return reply.code(202).send(await service.retryProvision(orgSlugOf(request), membershipId));
+    },
+  );
+
   // 5 — initiate offboarding (step-up; active|suspended|at_risk → offboarding_initiated cascade). §4.1.
   app.post(
     "/api/v1/platform/tenants/:orgSlug/offboard",

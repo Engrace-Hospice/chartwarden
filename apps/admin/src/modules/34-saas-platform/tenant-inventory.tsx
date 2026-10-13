@@ -60,6 +60,9 @@ interface TenantPage {
   hasMore: boolean;
 }
 
+/** How often the list refreshes while a tenant is still provisioning. */
+const PROVISIONING_POLL_MS = 5000;
+
 export function TenantInventory(): JSX.Element {
   const client = useApiClient();
   const [params, setParams] = useSearchParams();
@@ -75,30 +78,51 @@ export function TenantInventory(): JSX.Element {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    const isCurrent = guard();
-    setLoading(true);
-    setError(null);
-    const query: NonNullable<paths["/api/v1/platform/tenants"]["get"]["parameters"]["query"]> = {
-      limit: PAGE_LIMIT,
-    };
-    if (status) query.status = status as typeof query.status;
-    if (appliedSearch) query.search = appliedSearch;
-    const { data, error: err } = await client.GET("/api/v1/platform/tenants", {
-      params: { query },
-    });
-    if (!isCurrent()) return;
-    if (err) {
-      setError("Tenant inventory unavailable.");
-      setLoaded(false);
+  const load = useCallback(
+    async (silent = false) => {
+      const isCurrent = guard();
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+      }
+      const query: NonNullable<paths["/api/v1/platform/tenants"]["get"]["parameters"]["query"]> = {
+        limit: PAGE_LIMIT,
+      };
+      if (status) query.status = status as typeof query.status;
+      if (appliedSearch) query.search = appliedSearch;
+      // A rejected request (offline) must settle like an error response, never leave the spinner or an unhandled rejection.
+      const result = await client
+        .GET("/api/v1/platform/tenants", { params: { query } })
+        .catch(() => null);
+      if (!isCurrent()) {
+        // A foreground load superseded by a newer request must not leave its spinner up.
+        if (!silent) setLoading(false);
+        return;
+      }
+      const { data, error: err } = result ?? { data: undefined, error: true };
+      if (err) {
+        // A background refresh that fails keeps the rows already shown rather than blanking the list.
+        if (silent) return;
+        setError("Tenant inventory unavailable.");
+        setLoaded(false);
+        setLoading(false);
+        return;
+      }
+      const page = data as unknown as TenantPage | undefined;
+      setItems((page?.items ?? []) as TenantSummary[]);
+      setLoaded(true);
       setLoading(false);
-      return;
-    }
-    const page = data as unknown as TenantPage | undefined;
-    setItems((page?.items ?? []) as TenantSummary[]);
-    setLoaded(true);
-    setLoading(false);
-  }, [client, guard, status, appliedSearch]);
+    },
+    [client, guard, status, appliedSearch],
+  );
+
+  // A tenant mid-provisioning changes state without any action here, so refresh quietly until none is.
+  const anyProvisioning = items.some((t) => t.status === "provisioning");
+  useEffect(() => {
+    if (!anyProvisioning) return;
+    const id = setInterval(() => void load(true), PROVISIONING_POLL_MS);
+    return () => clearInterval(id);
+  }, [anyProvisioning, load]);
 
   // Load on mount + whenever the status filter changes; the search applies on submit (Enter / Search).
   useEffect(() => {

@@ -19,7 +19,11 @@ import {
 // The redesign frame: a page head (identity + lifecycle pill + shred) over the five flat cards.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { BAA_TONE, cap, lifecycleTone, statusLabel } from "./saas-status";
+import { InvitationCard } from "./invitation-card";
+import { ProvisioningCard } from "./provisioning-card";
+import { TenantTransitionDialog } from "./tenant-transition-dialog";
 
 interface StatusEvent {
   id: string;
@@ -68,7 +72,9 @@ export function TenantOverview(): JSX.Element {
   const [tenant, setTenant] = useState<TenantOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
   const [shredOpen, setShredOpen] = useState(false);
+  const [transitionOpen, setTransitionOpen] = useState(false);
   // The ceremony used to send `destructionCertificateId: ""` and a canned reason, then ignore the
   // result — so the shred failed validation every time and the console reported success anyway
   // (#29). These are the operator inputs the TODO in this file always said it needed.
@@ -78,22 +84,29 @@ export function TenantOverview(): JSX.Element {
   const [shredBusy, setShredBusy] = useState(false);
 
   const guard = useRequestGuard();
-  const load = useCallback(async () => {
-    const isCurrent = guard();
-    setLoading(true);
-    setError(null);
-    const { data, error: err } = await client.GET("/api/v1/platform/tenants/{orgSlug}", {
-      params: { path: { orgSlug } },
-    });
-    if (!isCurrent()) return;
-    if (err) {
-      setError("Tenant not found.");
+  const load = useCallback(
+    async (silent = false) => {
+      const isCurrent = guard();
+      // A silent refresh keeps the page (and any open dialog or polling card) mounted instead of swapping in a spinner.
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+      }
+      const { data, error: err } = await client.GET("/api/v1/platform/tenants/{orgSlug}", {
+        params: { path: { orgSlug } },
+      });
+      if (!isCurrent()) return;
+      if (err) {
+        if (silent) return;
+        setError("Tenant not found.");
+        setLoading(false);
+        return;
+      }
+      setTenant(data as unknown as TenantOverview);
       setLoading(false);
-      return;
-    }
-    setTenant(data as unknown as TenantOverview);
-    setLoading(false);
-  }, [client, guard, orgSlug]);
+    },
+    [client, guard, orgSlug],
+  );
 
   useEffect(() => {
     void load();
@@ -202,14 +215,35 @@ export function TenantOverview(): JSX.Element {
           </div>
         </header>
 
+        {tenant.status === "provisioning" ? (
+          <ProvisioningCard key={orgSlug} orgSlug={orgSlug} onChanged={() => void load(true)} />
+        ) : null}
+
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <LifecycleCard tenant={tenant} />
-          <OnboardingCard tenant={tenant} />
+          <LifecycleCard tenant={tenant} onTransition={() => setTransitionOpen(true)} />
+          <OnboardingCard
+            tenant={tenant}
+            onOpen={() => navigate(`/tenants/${encodeURIComponent(tenant.orgSlug)}/onboarding`)}
+          />
           <KeyRingCard tenant={tenant} onRotate={() => void rotateDek()} />
           <SupportCard tenant={tenant} />
           <ExportsCard />
+          <InvitationCard orgSlug={orgSlug} tenantAccountId={tenant.id} />
         </div>
       </div>
+
+      <TenantTransitionDialog
+        open={transitionOpen}
+        orgSlug={orgSlug}
+        tenantName={tenant.legalBusinessName}
+        fromStatus={tenant.status}
+        onClose={() => setTransitionOpen(false)}
+        onDone={() => {
+          setTransitionOpen(false);
+          toast.show("Tenant status updated.", { tone: "success" });
+          void load(true);
+        }}
+      />
 
       {/* §5.2 Card 1 / §6 D10 — the shred is irreversible: confirm-by-typing the legal business name. */}
       <CeremonyModal
@@ -304,13 +338,16 @@ function Card({
 }
 
 // ── Card 1 — Lifecycle: current status + last status event + Transition CTA ──────────────────────────
-function LifecycleCard({ tenant }: { tenant: TenantOverview }): JSX.Element {
+function LifecycleCard({
+  tenant,
+  onTransition,
+}: { tenant: TenantOverview; onTransition: () => void }): JSX.Element {
   const ev = tenant.latestStatusEvent;
   return (
     <Card
       title="Lifecycle"
       cta={
-        <Button tone="secondary" size="sm">
+        <Button tone="secondary" size="sm" onClick={onTransition}>
           Transition status
         </Button>
       }
@@ -339,14 +376,17 @@ function LifecycleCard({ tenant }: { tenant: TenantOverview }): JSX.Element {
 }
 
 // ── Card 2 — Onboarding: eleven-step progress + Open onboarding CTA ───────────────────────────────────
-function OnboardingCard({ tenant }: { tenant: TenantOverview }): JSX.Element {
+function OnboardingCard({
+  tenant,
+  onOpen,
+}: { tenant: TenantOverview; onOpen: () => void }): JSX.Element {
   const { totalTasks, doneTasks, currentStep } = tenant.onboarding;
   const pct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
   return (
     <Card
       title="Onboarding"
       cta={
-        <Button tone="secondary" size="sm">
+        <Button tone="secondary" size="sm" onClick={onOpen}>
           Open onboarding
         </Button>
       }

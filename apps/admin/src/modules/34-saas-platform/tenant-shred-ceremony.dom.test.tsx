@@ -15,6 +15,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { TenantOverview } from "./tenant-overview";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -95,7 +96,12 @@ function makeFetch(shredStatus: number) {
         ),
       );
     }
-    const payload = call.method === "GET" ? TENANT : { accepted: true };
+    // The overview also lists the tenant's first-admin invitations; answer that read with an empty page.
+    const payload = call.path.endsWith("/tenant-invitations")
+      ? { items: [], nextCursor: null, hasMore: false }
+      : call.method === "GET"
+        ? TENANT
+        : { accepted: true };
     return Promise.resolve(
       new Response(JSON.stringify(payload), {
         status: call.method === "GET" ? 200 : 202,
@@ -112,7 +118,9 @@ function mount(shredStatus = 202) {
       client={createApiClient({ baseUrl: "http://localhost", fetch: makeFetch(shredStatus) })}
     >
       <ToastProvider>
-        <TenantOverview />
+        <MemoryRouter initialEntries={["/tenants/cedar-ridge"]}>
+          <TenantOverview />
+        </MemoryRouter>
       </ToastProvider>
     </ApiClientProvider>,
   );

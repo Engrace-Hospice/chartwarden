@@ -10,6 +10,7 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // authoritative enforcer; this only gates nav visibility.
 import { lazy } from "react";
 import type { ComponentType } from "react";
+const AgencySetup = lazy(() => import("./agency-setup").then((m) => ({ default: m.AgencySetup })));
 const Account = lazy(() => import("./account").then((m) => ({ default: m.Account })));
 const Onboarding = lazy(() => import("./onboarding").then((m) => ({ default: m.Onboarding })));
 const SupportGrants = lazy(() =>
@@ -27,6 +28,15 @@ export const saasScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Admin",
       requiredPermission: "tenant.read_own",
       screen: Account,
+    },
+    {
+      id: "saas.agency-setup",
+      path: "/admin/setup",
+      title: "Agency setup",
+      navGroup: "Admin",
+      // The routes it calls gate on `org.manage` (M2 org-admin surface), the key the setup writes need.
+      requiredPermission: "org.manage",
+      screen: AgencySetup,
     },
     {
       id: "saas.onboarding",
