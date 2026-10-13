@@ -1,0 +1,55 @@
+/* Queued ("Not sent") channel messages: use-outbox / pending-message-row. Unlayered, like the other messaging css. */
+
+/* A dashed outline (not a border: the bubble keeps the box of a delivered one) on a plain surface, full opacity. */
+/* Specificity above `.wx-message-row.is-mine .wx-message-bubble`, or the solid primary bubble wins. */
+.wx-message-row.is-mine.wx-pending-row .wx-message-bubble {
+  background: var(--color-surface-lowest);
+  color: var(--color-on-surface);
+  outline: 1px dashed var(--color-error-pill-fg);
+  outline-offset: -1px;
+}
+
+.wx-message-row.is-mine.wx-pending-row .wx-message-bubble time {
+  color: var(--color-muted);
+}
+
+.wx-pending-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+}
+
+.wx-pending-label,
+.wx-pending-error {
+  color: var(--color-error-pill-fg);
+}
+
+.wx-pending-label.is-sending {
+  color: var(--color-muted);
+}
+
+.wx-pending-action {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--color-error-pill-fg);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-error-pill-fg);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.wx-pending-action[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.wx-pending-action:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}

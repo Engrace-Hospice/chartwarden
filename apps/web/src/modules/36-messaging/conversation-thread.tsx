@@ -4,6 +4,7 @@ import type { JSX, KeyboardEvent, UIEvent } from "react";
 import { sendBlockedReason } from "./attachment-utils";
 import { applyTextEdit, detectMac, insertText } from "./composer-format";
 import { handleComposerKeyDown } from "./composer-keys";
+import { deferUntilLoaded } from "./defer-until-loaded";
 import { ThreadComposer } from "./message-composer";
 import { MessageSearch } from "./message-search";
 import { MessageTimeline } from "./message-timeline";
@@ -23,6 +24,7 @@ import {
   isAccessError,
   mergeMessages,
 } from "./messaging-utils";
+import { PendingMessageList } from "./pending-message-row";
 import { PinnedMessagesBar } from "./pinned-messages-bar";
 import { PatientContextAside, ThreadHeader } from "./thread-header";
 import { ThreadPanel } from "./thread-panel";
@@ -34,6 +36,7 @@ import { useLatestPolling } from "./use-latest-polling";
 import { useMentionPicker } from "./use-mention-picker";
 import { sentMessageRow, useMessageSender } from "./use-message-sender";
 import type { SentMessage } from "./use-message-sender";
+import { type Outbox, useBindOutboxThread, useOutbox } from "./use-outbox";
 import { usePatientHeader } from "./use-patient-header";
 import { useScanningRefresh } from "./use-scanning-refresh";
 import { useServerDraft } from "./use-server-draft";
@@ -60,9 +63,24 @@ export interface ConversationThreadProps {
   /** WP 2.9: the viewer holds messaging.announce / messaging.manage_members (the server enforces both). */
   canAnnounce?: boolean;
   canManageMembers?: boolean;
+  /** The org-level outbox (it outlives this thread); without one the thread keeps its own. */
+  outbox?: Outbox;
 }
 
-export function ConversationThread({
+export function ConversationThread(props: ConversationThreadProps): JSX.Element {
+  return props.outbox ? (
+    <ConversationThreadView {...props} outbox={props.outbox} />
+  ) : (
+    <Own {...props} />
+  );
+}
+
+const Own = (props: ConversationThreadProps): JSX.Element => (
+  <ConversationThreadView {...props} outbox={useOutbox()} />
+);
+
+function ConversationThreadView({
+  outbox,
   channel,
   meId,
   meDisplayName,
@@ -76,7 +94,7 @@ export function ConversationThread({
   liveHint = null,
   canAnnounce = false,
   canManageMembers = false,
-}: ConversationThreadProps): JSX.Element {
+}: ConversationThreadProps & { outbox: Outbox }): JSX.Element {
   const client = useApiClient();
   const tools = useAnnouncementTools(channel, canAnnounce, canManageMembers);
   const [messages, setMessages] = useState<Message[] | null>(null);
@@ -166,11 +184,10 @@ export function ConversationThread({
   });
   const { reset: panelReset } = panel;
 
-  const handleSent = (sent: SentMessage): void => {
+  /** The server confirmed `sent`: show it at the bottom. Leaves the draft alone (a queued message's draft moved on). */
+  const mergeSent = (sent: SentMessage): void => {
+    if (deferUntilLoaded(messagesRef, rereadAfterFlight, onMessageSent)) return;
     latestPageIdsRef.current = new Set([...latestPageIdsRef.current, sent.messageId]);
-    setDraft((current) => (current === sent.body ? "" : current));
-    setDraftReferences([]);
-    resetMention();
     const withSentMessage = mergeMessages(messagesRef.current ?? [], [
       sentMessageRow(sent, channel.channelId, meId, meDisplayName),
     ]);
@@ -183,6 +200,17 @@ export function ConversationThread({
     });
     onMessageSent();
   };
+  const handleSent = (sent: SentMessage): void => {
+    setDraft((current) => (current === sent.body ? "" : current));
+    setDraftReferences([]);
+    resetMention();
+    mergeSent(sent);
+  };
+  const focusComposer = useCallback(() => {
+    textareaRef.current?.focus();
+    if (document.activeElement !== textareaRef.current) timelineRef.current?.focus();
+  }, []);
+  useBindOutboxThread(outbox, channel.channelId, mergeSent);
   const { send, sending, sendError, clearSendError, resetSender } = useMessageSender({
     channelId: channel.channelId,
     archived: Boolean(channel.archivedAt),
@@ -191,6 +219,14 @@ export function ConversationThread({
     uploads,
     generationRef,
     onSent: handleSent,
+    hasQueuedAhead: () => outbox.hasQueued(channel.channelId),
+    onQueued: (queued, stillOpen) => {
+      outbox.enqueue(channel.channelId, queued);
+      if (!stillOpen) return;
+      setDraft((current) => (current === queued.sent.body ? "" : current));
+      setDraftReferences([]);
+      resetMention();
+    },
   });
   // WP 2.5: the draft follows the user across reloads and devices (restore, debounced autosave, merge prompt).
   const serverDraft = useServerDraft({
@@ -567,6 +603,18 @@ export function ConversationThread({
           onLoadOlder={() => void loadOlder()}
           onOpenThread={panel.openThread}
           onJumpToMessage={jump.jumpToMessage}
+          pending={
+            <PendingMessageList
+              items={outbox.itemsFor(channel.channelId)}
+              delivered={outbox.deliveredFor(channel.channelId)}
+              channelId={channel.channelId}
+              onFocusComposer={focusComposer}
+              meId={meId}
+              meDisplayName={meDisplayName}
+              onRetry={(localId) => void outbox.retry(localId)}
+              onDiscard={outbox.discard}
+            />
+          }
         />
 
         {contextOpen && patient ? (

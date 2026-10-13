@@ -1249,8 +1249,9 @@ describe("M36 clinical messenger workspace", () => {
     fireEvent.change(composer, { target: { value: "hello", selectionStart: 5 } });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
-    await screen.findByText(/could not be sent/);
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    // A thrown fetch on a plain channel message is queued ("Not sent"); Retry replays it under the same ids.
+    await screen.findByText("Not sent");
+    fireEvent.click(screen.getByRole("button", { name: "Retry sending message" }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
 
     const [first, second] = post.mock.calls.map((call) => call[1]);
