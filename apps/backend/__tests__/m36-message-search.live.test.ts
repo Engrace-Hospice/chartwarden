@@ -417,7 +417,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7a in-conversation search - LIVE Postgres", (
       expect(events[0]!.resource_id).toBe(room); // the channel is the resource; the query text still is not
       const context = JSON.parse(events[0]!.context as string);
       expect(context.count).toBe(1);
-      expect(context.filter).toMatchObject({ q: "[omitted]", id: room });
+      expect(context.filter).toMatchObject({ q: "[omitted]" });
     });
   });
 

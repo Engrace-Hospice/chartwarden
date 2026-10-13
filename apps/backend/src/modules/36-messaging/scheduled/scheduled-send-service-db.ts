@@ -180,34 +180,25 @@ export function createDbScheduledSendService(deps: ScheduledSendServiceDeps): Sc
 
   const reschedule: ScheduledSendService["reschedule"] = async (orgId, input) => {
     const when = assertScheduleTime(input.scheduledFor, clock());
-    // A blocked row went back to pending on a bare PATCH: the dispatcher would re-block it and tell the sender again.
-    // Re-verify the way create does (visibility), and answer the one 404 an unknown row gets.
-    const [current] = await withOrgContext(
-      db,
-      { organizationId: orgId, userId: input.userId },
-      (tx) =>
-        tx
-          .select({ channelId: SM.channelId, status: SM.status })
-          .from(SM)
-          .where(
-            and(eq(SM.organizationId, orgId), eq(SM.userId, input.userId), eq(SM.id, input.id)),
-          )
-          .limit(1),
-    );
-    if (current?.status === "blocked") {
-      const visible = await deps.canViewChannel(orgId, input.userId, current.channelId);
-      if (!visible) throw new NotFoundError("scheduled_message", input.id);
-    }
     return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
       // Lock first: a dispatcher that claimed the row finishes (and deletes it) before this sees it, so a reschedule
-      // can never resurrect a message that already went out.
+      // can never resurrect a message that already went out. Status and the visibility check are read under the SAME
+      // lock, so a row cannot be blocked or unblocked between the check and the update.
       const [held] = await tx
-        .select({ id: SM.id })
+        .select({ id: SM.id, channelId: SM.channelId, status: SM.status })
         .from(SM)
         .where(and(eq(SM.organizationId, orgId), eq(SM.userId, input.userId), eq(SM.id, input.id)))
         .limit(1)
         .for("update");
       if (!held) throw new NotFoundError("scheduled_message", input.id);
+      // A blocked row went back to pending on a bare PATCH: the dispatcher would re-block it and tell the sender again.
+      // Re-verify the way create does (visibility), and answer the one 404 an unknown row gets.
+      if (
+        held.status === "blocked" &&
+        !(await deps.canViewChannel(orgId, input.userId, held.channelId))
+      ) {
+        throw new NotFoundError("scheduled_message", input.id);
+      }
       const [updated] = await tx
         .update(SM)
         .set({

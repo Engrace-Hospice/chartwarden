@@ -47,6 +47,11 @@ export const DISPATCH_BATCH_LIMIT = 100;
 export const DEPENDENCY_FAILURE_TRIP = 3;
 /** A row this far past its time counts a dependency failure as a real attempt, so a stuck row ends up blocked + notified. */
 export const OVERDUE_COUNTS_AS_ATTEMPT_MS = 15 * 60_000;
+/**
+ * Past this, a dependency failure counts as an attempt even while an outage pattern holds: a head of queue that fails
+ * deterministically for several senders at once would otherwise trip every tick, never be counted, and stall the org.
+ */
+export const OVERDUE_HARD_CAP_MS = 60 * 60_000;
 
 /** The M3 resolver or the visibility check failed: an outage of something else, not a verdict about the row. */
 class DependencyUnavailableError extends Error {
@@ -297,12 +302,12 @@ export function createScheduledSendDispatcher(
             }
             outageSenders.add(row.userId);
             // Several different senders failing in a row is an outage: stop, and count nothing against anyone.
+            if (Date.now() - row.scheduledFor.getTime() > OVERDUE_COUNTS_AS_ATTEMPT_MS) {
+              overdueFailures.push(row);
+            }
             if (outageSenders.size >= DEPENDENCY_FAILURE_TRIP) {
               tripped = true;
               break;
-            }
-            if (Date.now() - row.scheduledFor.getTime() > OVERDUE_COUNTS_AS_ATTEMPT_MS) {
-              overdueFailures.push(row);
             }
             // A fresh row: retry next tick with attempts untouched; skip it and go on with the others.
             continue;
@@ -314,13 +319,13 @@ export function createScheduledSendDispatcher(
           else failed += 1;
         }
       }
-      if (!tripped) {
-        // No outage pattern: a row stuck this long is stuck on its own. Count it so it ends up blocked + notified.
-        for (const row of overdueFailures) {
-          const outcome = await recordFailure(orgId, row);
-          if (outcome === "blocked") blocked += 1;
-          else failed += 1;
-        }
+      // No outage pattern: a row stuck this long is stuck on its own. Count it so it ends up blocked + notified.
+      // During an outage only rows past the hard cap are counted, so a poison head still heals.
+      for (const row of overdueFailures) {
+        if (tripped && Date.now() - row.scheduledFor.getTime() <= OVERDUE_HARD_CAP_MS) continue;
+        const outcome = await recordFailure(orgId, row);
+        if (outcome === "blocked") blocked += 1;
+        else failed += 1;
       }
       return { sent, blocked, failed };
     },

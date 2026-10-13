@@ -114,6 +114,7 @@ function resolvePatientId(
   return undefined;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const OMITTED_FILTER_VALUE = "[omitted]";
 
 /** The query as recorded on a list-read audit row: `omit`ted keys keep their name but lose their value. */
@@ -206,17 +207,19 @@ export function applyReadAuditCoverage(
         { organizationId: ctx.organizationId, userId: ctx.userId || "" },
         async (tx) => {
           if (cfg.list) {
+            const rawListId =
+              cfg.listResourceId && cfg.resourceIdParam ? params[cfg.resourceIdParam] : undefined;
+            // Only a well-formed uuid ever reaches the resource_id column (a loose param schema must not fail the insert).
+            const listResourceId = rawListId && UUID_RE.test(rawListId) ? rawListId : undefined;
             await auditListRead(tx, auditCtx, {
               resourceKind: cfg.resourceKind,
               count: rowCount(payload),
-              ...(cfg.resourceIdParam && params[cfg.resourceIdParam]
-                ? { resourceId: params[cfg.resourceIdParam] }
-                : {}),
-              // A list scoped by a path param (one channel's search) records that param in the filter, since a
-              // list event carries no resource id of its own.
+              ...(listResourceId ? { resourceId: listResourceId } : {}),
+              // A list scoped by a path param (one channel's search) records that param in the filter unless it became
+              // the event's resource id, since a list event otherwise carries no resource id of its own.
               filter: {
                 ...listAuditFilter(request.query, cfg.filterOmit),
-                ...(cfg.resourceIdParam && params[cfg.resourceIdParam]
+                ...(cfg.resourceIdParam && params[cfg.resourceIdParam] && !listResourceId
                   ? { [cfg.resourceIdParam]: params[cfg.resourceIdParam] }
                   : {}),
               },

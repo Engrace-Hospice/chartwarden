@@ -33,6 +33,7 @@ export function registerMessageSearchRoutes(
           resourceKind: "message",
           list: true,
           resourceIdParam: "id",
+          listResourceId: true,
           patientIdPayloadPath: "patientId",
           filterOmit: ["q"],
         },

@@ -27,6 +27,7 @@ const TERM = "zebrafish";
 interface CapturedRow {
   eventType: string;
   resourceKind: string;
+  resourceId?: string;
   patientId?: string;
   context?: Record<string, unknown>;
 }
@@ -173,7 +174,8 @@ describe("GET /channels/:id/search", () => {
     const row = captured.find((r) => r.eventType === "message.list_viewed");
     expect(row).toBeDefined();
     expect(JSON.stringify(row)).toContain("patient_x");
-    expect(row?.context?.filter).toEqual({ q: "[omitted]", limit: 5, id: CH });
+    expect(row?.context?.filter).toEqual({ q: "[omitted]", limit: 5 });
+    expect(row?.resourceId).toBe(CH); // the channel is the event's resource id
     expect(JSON.stringify(captured)).not.toContain(TERM);
     await app.close();
   });

@@ -34,6 +34,12 @@ export interface RouteReadAuditEmit {
    * `patientIdParam` when omitted — a patient-scoped read is accounted against the patient.
    */
   readonly resourceIdParam?: string;
+  /**
+   * For a LIST read only: record `resourceIdParam`'s value (when it is a uuid) as the event's resource id. Opt-in, because
+   * most list routes' param is a PARENT id under a CHILD `resourceKind`, which would mislabel the row; set it only when the
+   * param names the container the `resourceKind` itself lives in (a channel's messages under `message`).
+   */
+  readonly listResourceId?: boolean;
   /** Field names the route surfaces — recorded in context, NEVER the values (§2.3). */
   readonly fields?: readonly string[];
   /**
