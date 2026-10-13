@@ -127,6 +127,25 @@
     height: 100dvh;
     background: var(--color-background);
   }
+  /* Skip link (SkipLink): off-screen until it takes focus, then a pill over the top-left of the shell. */
+  .wx-skip-link {
+    position: fixed;
+    top: 0.5rem;
+    left: 0.5rem;
+    z-index: 100;
+    padding: 0.625rem 1rem;
+    border-radius: var(--radius-sm, 0.25rem);
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    font-weight: 600;
+    transform: translateY(-200%);
+  }
+  .wx-skip-link:focus {
+    transform: none;
+    outline: 2px solid var(--color-on-primary);
+    outline-offset: -4px;
+    text-decoration: none;
+  }
   /* ---- Sidebar: brand + curated primary nav (primary-nav.ts), full viewport height ---- */
   .wx-sidebar {
     display: flex;

@@ -108,6 +108,8 @@ export type {
 } from "./system/sensitivity";
 export { AiSuggestionCard, DerivedBadge } from "./system/provenance";
 export type { AiSuggestionCardProps, DerivedBadgeProps } from "./system/provenance";
+export { SkipLink } from "./system/skip-link";
+export type { SkipLinkProps } from "./system/skip-link";
 export { Glyph } from "./system/glyphs";
 export type { GlyphName, GlyphProps } from "./system/glyphs";
 export { ConfirmDialog } from "./system/confirm-dialog";

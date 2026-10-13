@@ -4,6 +4,7 @@ import {
   EmptyState,
   Glyph,
   InlineAlert,
+  SkipLink,
   setSearchTerm,
   useDisclosureDismiss,
   useOffCanvasNav,
@@ -120,6 +121,7 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   }
   return (
     <div className="wx-shell">
+      <SkipLink targetId="wx-main" />
       {navOpen ? (
         // biome-ignore lint/a11y/useKeyWithClickEvents: a dismiss backdrop, not a control.
         <div className="wx-nav-backdrop" onClick={() => setNavOpen(false)} />
@@ -191,7 +193,7 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
             <ActorMenu session={session} />
           </div>
         </header>
-        <main className="wx-main wx-no-scrollbar" ref={mainRef} tabIndex={-1}>
+        <main id="wx-main" className="wx-main wx-no-scrollbar" ref={mainRef} tabIndex={-1}>
           <ModuleNavigationTabs sections={sections} pathname={pathname} />
           <Outlet />
         </main>
