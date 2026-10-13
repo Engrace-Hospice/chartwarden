@@ -310,6 +310,10 @@ const ChannelMemberViewSchema = Type.Object({
   /** WP 2.9: so a member list can show who is in a department channel. */
   displayName: Type.Optional(NullableString()),
 });
+/** GET /channels/:id/members: the FULL active member list (admin screen), not the detail's embedded list. */
+export const ChannelMembersResponseSchema = Type.Object({
+  members: Type.Array(ChannelMemberViewSchema),
+});
 export const ChannelDetailResponseSchema = Type.Object({
   channelId: Type.String(),
   kind: ChannelKindSchema,

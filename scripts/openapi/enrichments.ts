@@ -1268,6 +1268,7 @@ import {
   // §4.2 response DTOs (added this task, pinned by Conforms to the route-service views)
   AlertInboxResponseSchema as M36AlertInboxResponseSchema,
   AlertRuleListResponseSchema as M36AlertRuleListResponseSchema,
+  ChannelMembersResponseSchema as M36ChannelMembersResponseSchema,
   AlertRulePatchSchema as M36AlertRulePatchSchema,
   AlertRuleResponseSchema as M36AlertRuleResponseSchema,
   AnnounceBodySchema as M36AnnounceBodySchema,
@@ -9024,17 +9025,20 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M36ScheduledMessageViewSchema,
   },
   "GET /api/v1/messaging/scheduled-messages": {
-    summary: "The caller's own scheduled messages (pending and blocked), soonest first; never anyone else's",
+    summary:
+      "The caller's own scheduled messages (pending and blocked), soonest first; never anyone else's",
     query: M36ScheduledListQuerySchema,
     response: M36ScheduledListResponseSchema,
   },
   "PATCH /api/v1/messaging/scheduled-messages/:id": {
-    summary: "Reschedule one of the caller's scheduled messages (a blocked one becomes pending again)",
+    summary:
+      "Reschedule one of the caller's scheduled messages (a blocked one becomes pending again)",
     body: M36RescheduleBodySchema,
     response: M36ScheduledMessageViewSchema,
   },
   "DELETE /api/v1/messaging/scheduled-messages/:id": {
-    summary: "Cancel a scheduled message before dispatch (idempotent; cancelled=false when nothing was left to cancel)",
+    summary:
+      "Cancel a scheduled message before dispatch (idempotent; cancelled=false when nothing was left to cancel)",
     response: M36CancelScheduledResponseSchema,
   },
   "GET /api/v1/messaging/channels/:id/mention-candidates": {
@@ -9155,6 +9159,15 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/messaging/patients/:patientId/care-team-channel": {
     summary: "Open or provision an authorized patient care-team conversation",
     response: M36OpenCareTeamConversationResponseSchema,
+  },
+  "GET /api/v1/messaging/channels/:id/members": {
+    summary:
+      "Full active member list of a channel (messaging.manage_members + channel_member_admin; 403 for a DM)",
+    response: M36ChannelMembersResponseSchema,
+  },
+  "POST /api/v1/messaging/channels/:id/archive": {
+    summary:
+      "Archive a discipline/location channel (org_admin only; 204, idempotent; 409 CHANNEL_LIFECYCLE_MANAGED for care_team/bereavement/on_call/announcement; 403 for a DM)",
   },
   "POST /api/v1/messaging/channels/:id/members": {
     summary: "Add a manual member (admin override on auto channels; 204)",

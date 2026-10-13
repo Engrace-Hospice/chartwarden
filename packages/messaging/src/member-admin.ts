@@ -4,6 +4,7 @@
 // channels" (`location_membership`). The permission alone is NOT enough: a holder could otherwise add
 // themselves to any care_team channel, and because channel visibility is a membership check that is a
 // PHI read grant. This pure rule is shared by the route predicate and both service implementations.
+import { ForbiddenError, WardenXError } from "@wardenx/types";
 import type { ChannelKind } from "./interfaces/kinds";
 
 /** Who is administering members. Internal/system callers pass the explicit `system` marker — it is
@@ -65,5 +66,26 @@ export async function mayManageChannelMembersResolved(
     return mayManageChannelMembers(actor, channel, await resolve(channel.subjectId));
   } catch {
     return false; // fail closed: an unbound/unreadable siting seam never grants access
+  }
+}
+
+/** Channel kinds an admin may archive by hand. The others are not the admin's to close: `dm` is private,
+ *  `announcement` is the tenant's one broadcast channel, and `care_team` / `bereavement` / `on_call` are driven by
+ *  the M5/M6/M16/M19 lifecycle (a manual archive would be silently reopened by the next assignment event). */
+export const ADMIN_ARCHIVABLE_CHANNEL_KINDS: readonly string[] = ["discipline", "location"];
+
+/** The archive decision both service implementations share: org_admin only (else 403), a `dm` is 403, and any
+ *  other lifecycle-managed kind is 409. Throws; returns when the archive may proceed. */
+export function assertMayArchiveChannel(actor: MemberAdminActor, kind: ChannelKind | string): void {
+  if (actor.kind !== "user" || !actor.roles.includes(ORG_ADMIN_ROLE)) {
+    throw new ForbiddenError("only an org admin may archive a channel");
+  }
+  if (kind === "dm") throw new ForbiddenError("a direct message cannot be archived");
+  if (!ADMIN_ARCHIVABLE_CHANNEL_KINDS.includes(kind)) {
+    throw new WardenXError(
+      "CHANNEL_LIFECYCLE_MANAGED",
+      "this channel's archive state follows its source record",
+      409,
+    );
   }
 }
