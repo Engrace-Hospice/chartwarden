@@ -41,23 +41,46 @@ const ok = (messageId: string, channelId = "dm-1") => ({
 
 function mountStaff(...steps: Step[]) {
   const queue = [...steps];
+  // What the server holds: a delivered message comes back when its channel is loaded again.
+  const served: Record<string, unknown>[] = [];
   const api = {
-    GET: vi.fn((path: string) =>
+    GET: vi.fn((path: string, init?: { params?: { path?: { id?: string } } }) =>
       Promise.resolve(
         path === "/api/v1/messaging/channels"
           ? {
               data: { channels: [channel("dm-1", "Nurse One"), channel("dm-2", "Nurse Two")] },
               error: undefined,
             }
-          : { data: { messages: [] }, error: undefined },
+          : {
+              data: { messages: served.filter((m) => m.channelId === init?.params?.path?.id) },
+              error: undefined,
+            },
       ),
     ),
-    POST: vi.fn((path: string) => {
+    POST: vi.fn((path: string, init: Record<string, any>) => {
       if (path !== MESSAGES) return Promise.resolve({ data: {}, error: undefined });
       const step = queue.shift();
-      return step === OFFLINE
-        ? Promise.reject(new TypeError("Failed to fetch"))
-        : Promise.resolve(step ?? ok("m-default"));
+      if (step === OFFLINE) return Promise.reject(new TypeError("Failed to fetch"));
+      const reply = Promise.resolve(step ?? ok("m-default"));
+      reply.then(
+        (value: any) => {
+          if (!value?.data?.messageId) return;
+          served.push({
+            messageId: value.data.messageId,
+            channelId: init.params.path.id,
+            authorUserId: SESSION.userId,
+            authorDisplayName: "You",
+            body: init.body.body,
+            bodyKind: "plain",
+            createdAt: value.data.createdAt,
+            parentMessageId: null,
+            references: [],
+            attachments: [],
+          });
+        },
+        () => {},
+      );
+      return reply;
     }),
   };
   render(
@@ -114,6 +137,8 @@ describe("the outbox across channel switches (production keys)", () => {
     });
 
     await waitFor(() => expect(screen.queryByText("Not sent")).toBeNull());
+    expect(posts(api)).toHaveLength(2);
+    expect(document.querySelector('[data-message-id="m-1"]')?.textContent).toContain("hello team");
     const [first, second] = posts(api);
     expect(second![1].params.header["Idempotency-Key"]).toBe(
       first![1].params.header["Idempotency-Key"],
@@ -158,7 +183,7 @@ describe("the outbox across channel switches (production keys)", () => {
     const gate = new Promise((resolve) => {
       release = resolve;
     });
-    mountStaff(OFFLINE, gate);
+    const api = mountStaff(OFFLINE, gate);
     await open("Nurse One");
     await send("hello team");
     await screen.findByText("Not sent");
@@ -172,7 +197,9 @@ describe("the outbox across channel switches (production keys)", () => {
     });
 
     await waitFor(() => expect(guardActive()).toBe(false));
+    expect(posts(api)).toHaveLength(2);
     await open("Nurse One");
+    expect(await screen.findByText("hello team")).toBeTruthy();
     expect(screen.queryByText("Not sent")).toBeNull();
   });
 
@@ -181,15 +208,18 @@ describe("the outbox across channel switches (production keys)", () => {
     const gate = new Promise((_resolve, reject) => {
       fail = () => reject(new TypeError("Failed to fetch"));
     });
-    mountStaff(gate);
+    const api = mountStaff(gate);
     await open("Nurse One");
     await send("hello team");
     await open("Nurse Two");
+    fireEvent.change(box(), { target: { value: "draft for two" } });
 
     await act(async () => {
       fail();
     });
 
+    expect(box().value).toBe("draft for two");
+    expect(posts(api)).toHaveLength(1);
     await open("Nurse One");
     expect(await screen.findByText("Not sent")).toBeTruthy();
     expect(screen.getByText("hello team")).toBeTruthy();

@@ -592,8 +592,8 @@ describe("followers, focus claims and transitions", () => {
     const second = live();
     await retry();
 
-    expect(first).toBe("Retry failed, attempt 1: Server hiccup");
-    expect(second).toBe("Retry failed, attempt 2: Server hiccup");
+    expect(first).toBe("Retry failed for message 1 of 1, attempt 1: Server hiccup");
+    expect(second).toBe("Retry failed for message 1 of 1, attempt 2: Server hiccup");
     expect(live()).toBe("Message not sent: You can no longer post here");
   });
 

@@ -321,6 +321,96 @@ describe("the online drain", () => {
   });
 });
 
+describe("the drain's reach", () => {
+  it("does not POST after unmount: a drain in flight stops before the next channel", async () => {
+    const gate = deferred();
+    const { result, rerender, unmount, post } = mount([() => gate.promise, reply(ok("srv-B"))]);
+    act(() => result.current.enqueue(queued("a1")));
+    rerender({ id: "B" });
+    act(() => result.current.enqueue(queued("b1")));
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+    });
+    expect(post).toHaveBeenCalledTimes(1);
+    unmount();
+
+    await act(async () => {
+      gate.resolve(ok("srv-A"));
+    });
+
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends an item queued while the drain was already running", async () => {
+    const gate = deferred();
+    const { result, post } = mount([() => gate.promise, reply(ok("srv-2"))]);
+    act(() => result.current.enqueue(queued("m1")));
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+    });
+    act(() => result.current.enqueue(queued("m2")));
+
+    await act(async () => {
+      gate.resolve(ok("srv-1"));
+    });
+
+    expect(post.mock.calls.map(([, init]) => init.body.clientMessageId)).toEqual(["m1", "m2"]);
+    expect(result.current.items).toHaveLength(0);
+  });
+
+  it("does not drop a drain requested while one is running", async () => {
+    const gate = deferred();
+    const { result, post } = mount([() => gate.promise, reply(ok("srv-2"))]);
+    act(() => result.current.enqueue(queued("m1")));
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+    });
+    act(() => result.current.enqueue(queued("m2")));
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+    });
+
+    await act(async () => {
+      gate.resolve(ok("srv-1"));
+    });
+
+    expect(post).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("a drain requested while another runs", () => {
+  it("is not lost: a second pass sends what the scoped drain did not look at", async () => {
+    const gate = deferred();
+    const { result, rerender, post } = mount([
+      reply(answered(500)),
+      () => gate.promise,
+      reply(ok("srv-B")),
+    ]);
+    act(() => result.current.enqueue(queued("a1")));
+    act(() => result.current.enqueue(queued("a2")));
+    await act(async () => {
+      await result.current.retry("a1");
+    });
+    act(() => result.current.discard("a1"));
+    expect(post).toHaveBeenCalledTimes(2);
+    rerender({ id: "B" });
+    act(() => result.current.enqueue(queued("b1")));
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+    });
+
+    await act(async () => {
+      gate.resolve(ok("srv-A"));
+    });
+
+    expect(post.mock.calls.map(([, init]) => init.body.clientMessageId)).toEqual([
+      "a1",
+      "a2",
+      "b1",
+    ]);
+  });
+});
+
 describe("the lifted owner", () => {
   it("removes a delivered item without merging it when no thread is bound to its channel", async () => {
     const post = vi.fn(() => Promise.resolve(ok("srv-1")));

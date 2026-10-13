@@ -1,11 +1,16 @@
 /* Queued ("Not sent") channel messages: use-outbox / pending-message-row. Unlayered, like the other messaging css. */
 
 /* A dashed outline (not a border: the bubble keeps the box of a delivered one) on a plain surface, full opacity. */
-.wx-pending-row .wx-message-bubble {
+/* Specificity above `.wx-message-row.is-mine .wx-message-bubble`, or the solid primary bubble wins. */
+.wx-message-row.is-mine.wx-pending-row .wx-message-bubble {
   background: var(--color-surface-lowest);
   color: var(--color-on-surface);
   outline: 1px dashed var(--color-error-pill-fg);
   outline-offset: -1px;
+}
+
+.wx-message-row.is-mine.wx-pending-row .wx-message-bubble time {
+  color: var(--color-muted);
 }
 
 .wx-pending-meta {

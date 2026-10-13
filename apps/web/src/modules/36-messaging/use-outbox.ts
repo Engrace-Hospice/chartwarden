@@ -76,6 +76,7 @@ export function useOutbox() {
   const [deliveredBy, setDeliveredBy] = useState<Readonly<Record<string, number>>>({});
   const queuesRef = useRef<Queues>({});
   const drainingRef = useRef(false);
+  const drainAgainRef = useRef(false);
   const mountedRef = useRef(true);
   const threadRef = useRef<{ channelId: string; merge: MergeHandler } | null>(null);
 
@@ -183,6 +184,7 @@ export function useOutbox() {
 
   const attempt = useCallback(
     async (localId: string): Promise<AttemptOutcome> => {
+      if (!mountedRef.current) return "skipped";
       const item = findItem(queuesRef.current, localId);
       if (!item || item.status === "sending" || item.permanent) return "skipped";
       patch(localId, { status: "sending", error: undefined });
@@ -199,23 +201,39 @@ export function useOutbox() {
 
   /**
    * Oldest first, one at a time. No response stops everything (still offline); anything else that is not a delivery
-   * stops only that channel, so a later message never overtakes the one that failed. `only` limits it to one channel.
+   * stops only that channel, so a later message never overtakes the one that failed. `only` limits the first pass to
+   * one channel. Each channel's queue is re-read before every send (an item queued meanwhile is picked up), and a drain
+   * requested while one runs sets a flag that makes it go round again instead of being dropped.
    */
   const drain = useCallback(
     async (only?: string): Promise<void> => {
-      if (drainingRef.current) return;
+      if (!mountedRef.current) return;
+      if (drainingRef.current) {
+        drainAgainRef.current = true;
+        return;
+      }
       drainingRef.current = true;
+      const tried = new Set<string>();
+      let scope = only;
       try {
-        for (const [channelId, items] of Object.entries(queuesRef.current)) {
-          if (only && channelId !== only) continue;
-          for (const { localId } of items) {
-            const current = findItem(queuesRef.current, localId);
-            if (!current || current.permanent) continue;
-            const outcome = await attempt(localId);
-            if (outcome === "offline") return;
-            if (outcome !== "delivered") break;
+        do {
+          drainAgainRef.current = false;
+          for (const channelId of Object.keys(queuesRef.current)) {
+            if (scope && channelId !== scope) continue;
+            for (;;) {
+              if (!mountedRef.current) return;
+              const next = (queuesRef.current[channelId] ?? NO_ITEMS).find(
+                (item) => !item.permanent,
+              );
+              if (!next || tried.has(next.localId)) break;
+              tried.add(next.localId);
+              const outcome = await attempt(next.localId);
+              if (outcome === "offline") return;
+              if (outcome !== "delivered") break;
+            }
           }
-        }
+          scope = undefined;
+        } while (drainAgainRef.current && mountedRef.current);
       } finally {
         drainingRef.current = false;
       }

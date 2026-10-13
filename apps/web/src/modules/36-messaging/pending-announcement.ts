@@ -43,7 +43,7 @@ function nextState(
   if (waiting > previous.count) {
     return { ...base, text: `Message not sent (${waiting} waiting)` };
   }
-  for (const item of items) {
+  for (const [index, item] of items.entries()) {
     const count = item.failCount ?? 0;
     if (!item.error || count <= (previous.failures[item.localId] ?? count)) continue;
     return {
@@ -51,7 +51,7 @@ function nextState(
       failures: { ...failures, [item.localId]: count },
       text: item.permanent
         ? `Message not sent: ${item.error}`
-        : `Retry failed, attempt ${count}: ${item.error}`,
+        : `Retry failed for message ${index + 1} of ${waiting}, attempt ${count}: ${item.error}`,
     };
   }
   if (waiting < previous.count) return { ...base, text: "" };

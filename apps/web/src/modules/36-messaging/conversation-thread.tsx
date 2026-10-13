@@ -185,6 +185,8 @@ function ConversationThreadView({
 
   /** The server confirmed `sent`: show it at the bottom. Leaves the draft alone (a queued message's draft moved on). */
   const mergeSent = (sent: SentMessage): void => {
+    // Not loaded yet: the load carries it (merging now would disable the initial scroll).
+    if (messagesRef.current === null) return void onMessageSent();
     latestPageIdsRef.current = new Set([...latestPageIdsRef.current, sent.messageId]);
     const withSentMessage = mergeMessages(messagesRef.current ?? [], [
       sentMessageRow(sent, channel.channelId, meId, meDisplayName),
@@ -204,7 +206,10 @@ function ConversationThreadView({
     resetMention();
     mergeSent(sent);
   };
-  const focusComposer = useCallback(() => textareaRef.current?.focus(), []);
+  const focusComposer = useCallback(() => {
+    textareaRef.current?.focus();
+    if (document.activeElement !== textareaRef.current) timelineRef.current?.focus();
+  }, []);
   useBindOutboxThread(outbox, channel.channelId, mergeSent);
   const { send, sending, sendError, clearSendError, resetSender } = useMessageSender({
     channelId: channel.channelId,
