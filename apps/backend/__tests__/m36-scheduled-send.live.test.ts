@@ -28,7 +28,7 @@ import { NotFoundError } from "@wardenx/types";
 import { Queue } from "bullmq";
 import { eq, sql } from "drizzle-orm";
 import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { createDbDraftService } from "../src/modules/36-messaging/drafts/draft-service-db";
 import { createDrizzleMessagingEraseStore } from "../src/modules/36-messaging/erasers/messaging-eraser";
@@ -626,6 +626,205 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
         blocked_reason: "dispatch_failed",
       });
       expect(await eventsOf("m36.message.schedule_blocked")).toHaveLength(1);
+    });
+  });
+
+  // Phase 2 gate "scheduled recheck" (docs/messaging-hub/03-phases-0-to-3.md): the remaining dispatch-time clauses -
+  // a deactivated author, the Part 2 / patient-consent gate - plus the author-visible outcome and "no content leaks".
+  describe("gate: re-check at delivery, author-visible outcome, nothing delivered or leaked", () => {
+    const gateWarnings: string[] = [];
+    let part2: "allow" | "deny" | "throw" = "allow";
+    let careTeam: string;
+    let gated: ReturnType<typeof createDbMessagingRouteService>;
+    let gatedDispatcher: ScheduledSendDispatcher;
+    let gatedService: ScheduledSendService;
+    const patientId = "9a9a9a9a-9a9a-4a9a-8a9a-9a9a9a9a9a9a";
+
+    // The gate flag is shared mutable state: no test may inherit another's `deny`/`throw`, even after a failure.
+    beforeEach(() => {
+      part2 = "allow";
+    });
+
+    beforeAll(async () => {
+      careTeam = (
+        await admin.query(
+          `INSERT INTO channel (organization_id, channel_kind, subject_id, title, retention_class)
+           VALUES ($1,'care_team',$2,'gate care team','care_related') RETURNING id`,
+          [orgA, patientId],
+        )
+      ).rows[0].id as string;
+      await admin.query(
+        `INSERT INTO channel_member (organization_id, channel_id, user_id, role, source)
+         VALUES ($1,$2,$3,'member','manual')`,
+        [orgA, careTeam, alice],
+      );
+      const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M36_OUTBOX_EVENTS]));
+      const outbox = {
+        publish: (tx: unknown, e: Record<string, unknown>) =>
+          publisher.publish(tx as never, { ...e, callerModule: "m36" } as never),
+      };
+      gated = createDbMessagingRouteService(handle.db, {
+        kek: KEK,
+        outbox: outbox as never,
+        warn: (m) => gateWarnings.push(m),
+        part2Gate: {
+          allowedUserIds: async ({ userIds }) => {
+            if (part2 === "throw") throw new Error("M39 consent evaluator unavailable");
+            return new Set(part2 === "allow" ? userIds : []);
+          },
+        },
+      });
+      gatedService = createDbScheduledSendService({
+        db: handle.db,
+        cipher,
+        maxPerUser: 3,
+        canViewChannel: gated.canViewChannel,
+      });
+      gatedDispatcher = createScheduledSendDispatcher({
+        db: handle.db,
+        cipher,
+        outbox,
+        canViewChannel: gated.canViewChannel,
+        permissionsFor: async (org, user) => grants.get(`${org}:${user}`) ?? new Set<string>(),
+      });
+    });
+
+    const sentHints = async () => (await eventsOf("m36.message.sent")).length;
+
+    /** Not delivered, no content in any event, the author sees `blocked` + reason, a colleague sees nothing. */
+    async function expectRefused(
+      id: string,
+      channelId: string,
+      reason: string,
+      hintsBefore: number,
+    ) {
+      const msgs = (await messagesIn(channelId)).filter((m) => m.client_message_id === id);
+      expect(msgs).toHaveLength(0);
+      expect(await sentHints()).toBe(hintsBefore);
+      const blockedEvents = await eventsOf("m36.message.schedule_blocked");
+      expect(blockedEvents).toHaveLength(1);
+      expect(blockedEvents[0].payload).toMatchObject({ scheduledMessageId: id, reason });
+      expect(JSON.stringify(blockedEvents)).not.toContain("morphine");
+      const mine = await gatedService.listMine(orgA, { userId: alice });
+      expect(mine).toHaveLength(1);
+      expect(mine[0]).toMatchObject({ id, status: "blocked", blockedReason: reason });
+      expect(await gatedService.listMine(orgA, { userId: bob })).toHaveLength(0);
+    }
+
+    it("a deactivated author: blocked with not_member, nothing delivered, author sees the state", async () => {
+      await wipe();
+      const hints = await sentHints();
+      const created = await schedule(alice);
+      await admin.query(`UPDATE "user" SET status='suspended' WHERE id=$1`, [alice]);
+      try {
+        await makeDue(created.id);
+        expect(await gatedDispatcher.dispatchDueForOrg(orgA)).toMatchObject({
+          sent: 0,
+          blocked: 1,
+        });
+        await expectRefused(created.id, dm, "not_member", hints);
+      } finally {
+        await admin.query(`UPDATE "user" SET status='active' WHERE id=$1`, [alice]);
+      }
+    });
+
+    it("a revoked organization membership: blocked with not_member, nothing delivered", async () => {
+      await wipe();
+      const hints = await sentHints();
+      const created = await schedule(alice);
+      await admin.query(
+        `UPDATE membership SET status='revoked' WHERE user_id=$1 AND organization_id=$2`,
+        [alice, orgA],
+      );
+      try {
+        await makeDue(created.id);
+        expect(await gatedDispatcher.dispatchDueForOrg(orgA)).toMatchObject({
+          sent: 0,
+          blocked: 1,
+        });
+        await expectRefused(created.id, dm, "not_member", hints);
+      } finally {
+        await admin.query(
+          `UPDATE membership SET status='active' WHERE user_id=$1 AND organization_id=$2`,
+          [alice, orgA],
+        );
+      }
+    });
+
+    it("a Part 2 / consent gate that now denies: blocked, nothing delivered; the same row sends once the gate admits", async () => {
+      await wipe();
+      const hints = await sentHints();
+      part2 = "allow";
+      const created = await gatedService.create(orgA, {
+        userId: alice,
+        channelId: careTeam,
+        body: SECRET,
+        scheduledFor: inFuture(),
+        timeZone: "America/Chicago",
+      });
+      part2 = "deny"; // consent revoked / SUD flag raised between scheduling and send time
+      await makeDue(created.id);
+      expect(await gatedDispatcher.dispatchDueForOrg(orgA)).toMatchObject({ sent: 0, blocked: 1 });
+      await expectRefused(created.id, careTeam, "not_member", hints);
+      // a blocked row is not swept again
+      expect(await gatedDispatcher.dispatchDueForOrg(orgA)).toMatchObject({ sent: 0, blocked: 0 });
+      expect(await eventsOf("m36.message.schedule_blocked")).toHaveLength(1);
+
+      // access restored: reschedule delivers exactly once, and a retried tick cannot repeat it
+      part2 = "allow";
+      await gatedService.reschedule(orgA, {
+        userId: alice,
+        id: created.id,
+        scheduledFor: inFuture(),
+      });
+      await makeDue(created.id);
+      const [a, b] = await Promise.all([
+        gatedDispatcher.dispatchDueForOrg(orgA),
+        gatedDispatcher.dispatchDueForOrg(orgA),
+      ]);
+      expect(a.sent + b.sent).toBe(1);
+      expect(await gatedDispatcher.dispatchDueForOrg(orgA)).toMatchObject({ sent: 0 });
+      const delivered = (await messagesIn(careTeam)).filter(
+        (m) => m.client_message_id === created.id,
+      );
+      expect(delivered).toHaveLength(1);
+      expect(cipher.open(orgA, delivered[0].body_cipher)).toBe(SECRET);
+      expect(await rows()).toHaveLength(0);
+    });
+
+    it("an unreadable consent seam fails closed: the row is blocked (not_member), nothing is delivered, the outage is logged", async () => {
+      await wipe();
+      gateWarnings.length = 0; // earlier tests may have logged the same line; only THIS dispatch may satisfy the assertion
+      const hints = await sentHints();
+      const created = await gatedService.create(orgA, {
+        userId: alice,
+        channelId: careTeam,
+        body: SECRET,
+        scheduledFor: inFuture(),
+      });
+      part2 = "throw";
+      await makeDue(created.id);
+      // The dispatcher treats an unreadable seam as "cannot view": the same refusal as an explicit deny.
+      expect(await gatedDispatcher.dispatchDueForOrg(orgA)).toMatchObject({ sent: 0, blocked: 1 });
+      expect(gateWarnings.some((w) => /denying access/.test(w))).toBe(true);
+      await expectRefused(created.id, careTeam, "not_member", hints);
+    });
+
+    it("a still-valid scheduled message through the same gated path is delivered exactly once", async () => {
+      await wipe();
+      const created = await gatedService.create(orgA, {
+        userId: alice,
+        channelId: careTeam,
+        body: SECRET,
+        scheduledFor: inFuture(),
+      });
+      await makeDue(created.id);
+      expect(await gatedDispatcher.dispatchDueForOrg(orgA)).toMatchObject({ sent: 1, blocked: 0 });
+      expect(await gatedDispatcher.dispatchDueForOrg(orgA)).toMatchObject({ sent: 0, blocked: 0 });
+      expect(
+        (await messagesIn(careTeam)).filter((m) => m.client_message_id === created.id),
+      ).toHaveLength(1);
+      expect(await eventsOf("m36.message.schedule_blocked")).toHaveLength(0);
     });
   });
 
