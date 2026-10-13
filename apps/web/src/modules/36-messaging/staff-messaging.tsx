@@ -238,6 +238,11 @@ function OrganizationStaffMessaging({
     if (generation !== generationRef.current) return;
     await loadChannels(true);
   }, [loadChannels]);
+  // An in-flight poll may predate the archive POST, so wait it out and read again rather than coalescing onto it.
+  const refreshAfterChange = useCallback(async (): Promise<boolean> => {
+    if (channelLoadInFlight.current) await channelLoadInFlight.current;
+    return loadChannels(true);
+  }, [loadChannels]);
   const realtimeConnected = useMessagingRealtime(
     useCallback(
       (hint) => {
@@ -431,6 +436,7 @@ function OrganizationStaffMessaging({
               realtimeConnected={realtimeConnected}
               canAnnounce={canAnnounce}
               canManageMembers={canManageMembers}
+              onChannelChanged={refreshAfterChange}
               anchorMessageId={
                 activeChannel.channelId === requestedChannelId ? requestedMessageId : null
               }
