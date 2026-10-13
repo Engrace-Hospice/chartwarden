@@ -141,9 +141,11 @@ export {
 
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
+import { createDbAnnouncementService as _createDbAnnouncementService } from "./announcement-service-db";
 import type { AttachmentStoragePort, ScanPort } from "./attachments/attachment-ports";
 import { createAttachmentService as _createAttachmentService } from "./attachments/attachment-service-db";
 import type { EndpointVerificationSender } from "./delivery/transport-binding";
+import { createDbDraftService as _createDbDraftService } from "./drafts/draft-service-db";
 import { createDbMessagingRouteService as _createDbMessagingRouteService } from "./messaging-route-service-db";
 import type { MessagingOutboxPort } from "./messaging-route-service-db";
 import {
@@ -152,10 +154,13 @@ import {
   registerMessagingAdminPredicates as _registerMessagingAdminPredicates,
 } from "./routes/admin-alert-deliveries-routes";
 import { registerAttachmentRoutes as _registerAttachmentRoutes } from "./routes/attachment-routes";
+import { registerDraftRoutes as _registerDraftRoutes } from "./routes/draft-routes";
 import {
   registerMessagingAbacPredicates as _registerMessagingAbacPredicates,
   registerMessagingRoutes as _registerMessagingRoutes,
 } from "./routes/messaging-routes";
+import { registerTemplateRoutes as _registerTemplateRoutes } from "./routes/template-routes";
+import { createDbTemplateService as _createDbTemplateService } from "./templates/template-service-db";
 
 /**
  * Mount the M36 messaging REST routes (channels / messages / notification preferences + endpoints /
@@ -183,7 +188,9 @@ export function mountMessagingRoutes(
       : {}),
   });
   _registerMessagingAbacPredicates(service); // idempotent — single-owner registry, re-boot-safe
-  _registerMessagingRoutes(app, { service });
+  _registerMessagingRoutes(app, { service, announcements: _createDbAnnouncementService(db) }); // WP 2.9
+  // WP 2.5 — private encrypted drafts (own row per user + channel + thread root).
+  _registerDraftRoutes(app, { service: _createDbDraftService({ db }) });
   // WP 1.5 — attachment authorize/complete/access. The visibility rule is the route service's own, so an attachment
   // is exactly as reachable as the channel it was posted in. Without storage the routes answer a typed 503.
   if (opts.attachments) {
@@ -197,6 +204,8 @@ export function mountMessagingRoutes(
       }),
     });
   }
+  // WP 2.8 — message templates and saved replies (personal + shared + platform overlay).
+  _registerTemplateRoutes(app, { service: _createDbTemplateService(db) });
   // GAP-165 — the platform-ops cross-tenant delivery drill (§4.1 `messaging.admin.read`): own predicate, own
   // SECURITY DEFINER reader (0474), audited per read. Not tenant-scoped, so it takes the pooled handle directly.
   _registerMessagingAdminPredicates();
@@ -266,3 +275,7 @@ export {
   scheduleM36AttachmentScanJobs,
 } from "./attachments/attachment-scan-worker";
 export { registerAttachmentRoutes } from "./routes/attachment-routes";
+
+// WP 2.8 — message templates & saved replies: Drizzle service + routes (the in-memory twin lives in @wardenx/messaging).
+export { createDbTemplateService } from "./templates/template-service-db";
+export { registerTemplateRoutes } from "./routes/template-routes";

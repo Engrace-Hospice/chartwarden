@@ -11,7 +11,8 @@ export const REALTIME_HINT_EVENT = "hint" as const;
 export type MessageHintKind =
   | typeof MESSAGING_SERVER_EVENTS.messageNew
   | typeof MESSAGING_SERVER_EVENTS.messageEdited
-  | typeof MESSAGING_SERVER_EVENTS.messageDeleted;
+  | typeof MESSAGING_SERVER_EVENTS.messageDeleted
+  | typeof MESSAGING_SERVER_EVENTS.messageAnnotated;
 
 export interface RealtimeHint {
   readonly kind: MessageHintKind;
@@ -29,6 +30,7 @@ const KIND_BY_OUTBOX_EVENT = {
   "m36.message.sent": MESSAGING_SERVER_EVENTS.messageNew,
   "m36.message.edited": MESSAGING_SERVER_EVENTS.messageEdited,
   "m36.message.deleted": MESSAGING_SERVER_EVENTS.messageDeleted,
+  "m36.message.annotated": MESSAGING_SERVER_EVENTS.messageAnnotated,
 } as const;
 
 export type MessageHintOutboxEvent = keyof typeof KIND_BY_OUTBOX_EVENT;

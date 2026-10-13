@@ -27,10 +27,15 @@ import {
   requireAbac,
   requirePermission,
 } from "@wardenx/auth";
-import type { MemberAdminActor, MessagingRouteService } from "@wardenx/messaging";
+import type {
+  AnnouncementService,
+  MemberAdminActor,
+  MessagingRouteService,
+} from "@wardenx/messaging";
 import { UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveRichWrite } from "../rich-body-codec";
+import { announcementSendGuard, registerAnnouncementRoutes } from "./announcement-routes";
 import {
   AddMemberBodySchema,
   AlertParamsSchema,
@@ -43,7 +48,6 @@ import {
   EndpointParamsSchema,
   ListMessagesQuerySchema,
   ListThreadQuerySchema,
-  ThreadParamsSchema,
   MemberParamsSchema,
   MentionCandidateQuerySchema,
   MessageParamsSchema,
@@ -53,9 +57,11 @@ import {
   ReadBodySchema,
   RegisterEndpointBodySchema,
   SendMessageBodySchema,
+  ThreadParamsSchema,
   VerifyEndpointBodySchema,
   parse,
 } from "./messaging-typebox";
+import { registerReactionPinRoutes } from "./reaction-pin-routes";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -71,6 +77,8 @@ export const CHANNEL_MEMBER_ADMIN_PREDICATE = "channel_member_admin";
 export interface MessagingRouteDeps {
   /** The §4.1–4.2 application service (in-memory in the slice; Drizzle/Valkey in prod). */
   service: MessagingRouteService;
+  /** WP 2.9: announcement receipts, department channels and the org_admin-only announcement send guard. */
+  announcements: AnnouncementService;
 }
 
 /**
@@ -169,6 +177,16 @@ const SEND_TO_CHANNEL = requireAbac("messaging.send", CHANNEL_VISIBILITY_PREDICA
 
 export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRouteDeps): void {
   const { service } = deps;
+  // WP 2.9: sending into the announcement channel stays org_admin-only on this route too.
+  // Required, not optional: a missing service would silently leave the announcement channel open to every member.
+  if (!deps.announcements) {
+    throw new Error(
+      "registerMessagingRoutes: `announcements` is required (the announcement send guard fails closed)",
+    );
+  }
+  const announceGuard = announcementSendGuard(deps.announcements);
+  const announcementGuards = [announceGuard];
+  registerAnnouncementRoutes(app, deps.announcements);
 
   // ── channels & messages (§4.2) ───────────────────────────────────────────────────────────
 
@@ -262,6 +280,15 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     },
   );
 
+  // --- WP 2.4: reactions and pins (own file; the channel's guards, no sign-off affordance) ---------
+  registerReactionPinRoutes(app, service, {
+    read: READ,
+    send: SEND,
+    viewChannel: VIEW_CHANNEL,
+    sendToChannel: SEND_TO_CHANNEL,
+    announcementOnly: announceGuard,
+  });
+
   // Structured autocomplete is scoped to a channel whose effective visibility has already been
   // revalidated. Patient results are intentionally limited by the service to the linked care-team
   // patient; this route never acts as a general patient directory.
@@ -295,7 +322,9 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   // --- post a message (messaging.send + channel_visibility ABAC) -----------------------------
   app.post(
     "/api/v1/messaging/channels/:id/messages",
-    { preHandler: [SEND, SEND_TO_CHANNEL, REQUIRE_IDEMPOTENCY_KEY] },
+    {
+      preHandler: [SEND, SEND_TO_CHANNEL, ...announcementGuards, REQUIRE_IDEMPOTENCY_KEY],
+    },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(ChannelParamsSchema, request.params);

@@ -30,6 +30,7 @@ import type {
   MessageBodyKind,
 } from "./kinds";
 import type { AttachmentInput, MessageReferenceInput, ResolvedMessage } from "./provider";
+import type { MessageReactionPinService } from "./reaction-pin";
 
 /** Minimum authorized last-message projection for the conversation inbox. */
 export interface ChannelLastMessage {
@@ -62,6 +63,8 @@ export interface ChannelMemberView {
   readonly userId: string;
   readonly role: ChannelMemberRole;
   readonly source: ChannelMemberSource;
+  /** WP 2.9: the member's name, for the member list. */
+  readonly displayName?: string | null;
 }
 
 /** Channel detail + recent members (§4.2 GET /channels/:id). */
@@ -169,7 +172,7 @@ export interface MentionCandidate {
  * M1 error handler renders (NOT_FOUND 404, CHANNEL_ARCHIVED 410, CHANNEL_NOT_VISIBLE 403,
  * SYSTEM_LOCKED 403, INVALID_RESOLVER 422, INVALID_ROUTING_MAP 422, VACATION_FORWARD_* 409).
  */
-export interface MessagingRouteService {
+export interface MessagingRouteService extends MessageReactionPinService {
   // ── channels & messages (§4.2) ──────────────────────────────────────────────────────────
   /** Channels the user is an active member of (§4.2 GET /channels). */
   listChannels(orgId: string, userId: string): Promise<ChannelSummary[]>;

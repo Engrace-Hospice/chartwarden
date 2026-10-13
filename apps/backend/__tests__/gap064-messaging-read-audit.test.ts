@@ -97,7 +97,7 @@ function makeServer() {
     authenticate: headerAuth,
     security: { rateLimitEnabled: false },
   });
-  registerMessagingRoutes(app, { service });
+  registerMessagingRoutes(app, { service, announcements: service });
   return { app, service };
 }
 const RN1 = { "x-test-user": "rn_1" };

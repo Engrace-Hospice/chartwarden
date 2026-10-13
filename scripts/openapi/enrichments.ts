@@ -1248,6 +1248,11 @@ import {
   AlertDeliveriesQuerySchema as M36AlertDeliveriesQuerySchema,
   AlertDeliveriesResponseSchema as M36AlertDeliveriesResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/admin-alert-deliveries-routes";
+import {
+  DraftQuerySchema as M36DraftQuerySchema,
+  DraftResponseSchema as M36DraftResponseSchema,
+  SaveDraftBodySchema as M36SaveDraftBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/draft-typebox";
 // ── M36 Secure Messaging & Alerts — request + response schema imports (all M36-aliased) ──
 import {
   // request schemas (query / body) — reused as-is
@@ -1258,6 +1263,10 @@ import {
   AlertRulePatchSchema as M36AlertRulePatchSchema,
   AlertRuleResponseSchema as M36AlertRuleResponseSchema,
   AnnounceBodySchema as M36AnnounceBodySchema,
+  AttachmentAccessResponseSchema as M36AttachmentAccessResponseSchema,
+  AttachmentStatusResponseSchema as M36AttachmentStatusResponseSchema,
+  AuthorizeAttachmentBodySchema as M36AuthorizeAttachmentBodySchema,
+  AuthorizeAttachmentResponseSchema as M36AuthorizeAttachmentResponseSchema,
   ChannelDetailResponseSchema as M36ChannelDetailResponseSchema,
   ChannelListResponseSchema as M36ChannelListResponseSchema,
   DeliveryEndpointResponseSchema as M36DeliveryEndpointResponseSchema,
@@ -1265,13 +1274,8 @@ import {
   DmStaffSearchResponseSchema as M36DmStaffSearchResponseSchema,
   EditMessageBodySchema as M36EditMessageBodySchema,
   EditMessageResponseSchema as M36EditMessageResponseSchema,
-  AttachmentAccessResponseSchema as M36AttachmentAccessResponseSchema,
-  AttachmentStatusResponseSchema as M36AttachmentStatusResponseSchema,
-  AuthorizeAttachmentBodySchema as M36AuthorizeAttachmentBodySchema,
-  AuthorizeAttachmentResponseSchema as M36AuthorizeAttachmentResponseSchema,
   ListMessagesQuerySchema as M36ListMessagesQuerySchema,
   ListThreadQuerySchema as M36ListThreadQuerySchema,
-  ThreadResponseSchema as M36ThreadResponseSchema,
   MentionCandidateQuerySchema as M36MentionCandidateQuerySchema,
   MentionCandidateResponseSchema as M36MentionCandidateResponseSchema,
   MessageListResponseSchema as M36MessageListResponseSchema,
@@ -1285,8 +1289,30 @@ import {
   RegisterEndpointBodySchema as M36RegisterEndpointBodySchema,
   SendMessageBodySchema as M36SendMessageBodySchema,
   SendMessageResponseSchema as M36SendMessageResponseSchema,
+  ThreadResponseSchema as M36ThreadResponseSchema,
   VerifyEndpointBodySchema as M36VerifyEndpointBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/messaging-typebox";
+import {
+  PinListResponseSchema as M36PinListResponseSchema,
+  PinResponseSchema as M36PinResponseSchema,
+  SetReactionResponseSchema as M36SetReactionResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/reaction-pin-typebox";
+// M36 WP 2.8 message templates & saved replies.
+import {
+  CreateTemplateBodySchema as M36CreateTemplateBodySchema,
+  PutOverlayBodySchema as M36PutOverlayBodySchema,
+  TemplateAdminResponseSchema as M36TemplateAdminResponseSchema,
+  TemplateListResponseSchema as M36TemplateListResponseSchema,
+  TemplateViewSchema as M36TemplateViewSchema,
+  UpdateTemplateBodySchema as M36UpdateTemplateBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/template-typebox";
+
+// M36 WP 2.9 — announcement receipts + department channels.
+import {
+  AnnouncementReceiptsResponseSchema as M36AnnouncementReceiptsResponseSchema,
+  CreateDepartmentChannelBodySchema as M36CreateDepartmentChannelBodySchema,
+  CreateDepartmentChannelResponseSchema as M36CreateDepartmentChannelResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/announcement-typebox";
 
 // M38 Clinical Terminology Service — response DTOs (all M38-aliased).
 // Merge these named imports into scripts/openapi/enrichments.ts. NOTE: an existing import already
@@ -8932,6 +8958,44 @@ Object.assign(ROUTE_ENRICHMENTS, {
     query: M36ListThreadQuerySchema,
     response: M36ThreadResponseSchema,
   },
+  // WP 2.4 reactions & pins (channel_visibility ABAC; every refusal is the 404 a random id gets)
+  "PUT /api/v1/messaging/channels/:id/messages/:messageId/reactions/:emoji": {
+    summary:
+      "Add the caller's non-clinical reaction (idempotent; NOT an acknowledgement and writes no receipt; 422 unknown key, 410 archived, 404 deleted/other-channel message)",
+    response: M36SetReactionResponseSchema,
+  },
+  "DELETE /api/v1/messaging/channels/:id/messages/:messageId/reactions/:emoji": {
+    summary: "Remove the caller's reaction (idempotent)",
+    response: M36SetReactionResponseSchema,
+  },
+  "PUT /api/v1/messaging/channels/:id/messages/:messageId/pin": {
+    summary:
+      "Pin a message in its channel (idempotent; audited; 409 PIN_LIMIT_REACHED at 20 pins; 410 archived)",
+    response: M36PinResponseSchema,
+  },
+  "DELETE /api/v1/messaging/channels/:id/messages/:messageId/pin": {
+    summary: "Unpin a message (idempotent; audited with the actor; 204)",
+  },
+  "GET /api/v1/messaging/channels/:id/pins": {
+    summary: "The channel's pinned messages, most recently pinned first (read-audited)",
+    response: M36PinListResponseSchema,
+  },
+  "GET /api/v1/messaging/channels/:id/draft": {
+    summary:
+      "The caller's own unsent draft for a channel (or a thread root via parentMessageId); null when none (WP 2.5; never another user's)",
+    query: M36DraftQuerySchema,
+    response: M36DraftResponseSchema,
+  },
+  "PUT /api/v1/messaging/channels/:id/draft": {
+    summary:
+      "Autosave the caller's draft (revision + device checked; a blank body discards; 409 DRAFT_CONFLICT when another device wrote since baseRevision)",
+    body: M36SaveDraftBodySchema,
+    response: M36DraftResponseSchema,
+  },
+  "DELETE /api/v1/messaging/channels/:id/draft": {
+    summary: "Discard the caller's draft (idempotent, 204)",
+    query: M36DraftQuerySchema,
+  },
   "GET /api/v1/messaging/channels/:id/mention-candidates": {
     summary: "Search staff and the linked patient eligible for a structured reference",
     query: M36MentionCandidateQuerySchema,
@@ -8977,6 +9041,60 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Short-lived signed download URL (120 s) for a clean attachment; current channel members only; one attachment_access_event per open; Cache-Control: no-store",
     response: M36AttachmentAccessResponseSchema,
   },
+  // WP 2.8 message templates & saved replies (plain non-clinical text; PHI lint on every save)
+  "GET /api/v1/messaging/templates": {
+    summary:
+      "The caller's saved-reply picker: platform templates (tenant overlay applied, disabled ones omitted), the organization's shared templates and the caller's own personal replies (messaging.send)",
+    response: M36TemplateListResponseSchema,
+  },
+  "GET /api/v1/messaging/templates/:id": {
+    summary:
+      "One template from the caller's picker; any id that is not theirs to read is the 404 a random id gets",
+    response: M36TemplateViewSchema,
+  },
+  "POST /api/v1/messaging/templates/personal": {
+    summary:
+      "Save a personal reply, private to the caller (201; 422 TEMPLATE_PHI_DETECTED names the field and reason code, never the text; 409 TEMPLATE_TITLE_TAKEN or TEMPLATE_LIMIT_REACHED; Idempotency-Key required)",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    body: M36CreateTemplateBodySchema,
+    response: M36TemplateViewSchema,
+  },
+  "PATCH /api/v1/messaging/templates/personal/:id": {
+    summary: "Edit one of the caller's own personal replies (422 PHI lint; 404 for anyone else's)",
+    body: M36UpdateTemplateBodySchema,
+    response: M36TemplateViewSchema,
+  },
+  "DELETE /api/v1/messaging/templates/personal/:id": {
+    summary: "Delete one of the caller's own personal replies (204; 404 for anyone else's)",
+  },
+  "GET /api/v1/messaging/template-admin": {
+    summary:
+      "Template administration view: the platform wording and required phrases, this organization's overlay on each, and its shared templates (messaging.template.manage)",
+    response: M36TemplateAdminResponseSchema,
+  },
+  "POST /api/v1/messaging/template-admin/shared": {
+    summary:
+      "Author a shared template every sender in the organization sees (messaging.template.manage; 422 PHI lint; 409 title taken or limit; Idempotency-Key required)",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    body: M36CreateTemplateBodySchema,
+    response: M36TemplateViewSchema,
+  },
+  "PATCH /api/v1/messaging/template-admin/shared/:id": {
+    summary: "Edit a shared template (messaging.template.manage; 422 PHI lint)",
+    body: M36UpdateTemplateBodySchema,
+    response: M36TemplateViewSchema,
+  },
+  "DELETE /api/v1/messaging/template-admin/shared/:id": {
+    summary: "Delete a shared template (204; messaging.template.manage)",
+  },
+  "PUT /api/v1/messaging/template-admin/platform/:id/overlay": {
+    summary:
+      "Re-word or disable a platform template for this organization (204). An overlay can never loosen the platform floor: a body that drops a required phrase is 422 TEMPLATE_FLOOR_VIOLATION; text is held to the PHI lint (422 TEMPLATE_PHI_DETECTED)",
+    body: M36PutOverlayBodySchema,
+  },
+  "DELETE /api/v1/messaging/template-admin/platform/:id/overlay": {
+    summary: "Remove this organization's overlay, restoring the platform text (204)",
+  },
   "POST /api/v1/messaging/dm": {
     summary: "Open or find a 1:1 DM channel (idempotent; 200/201)",
     body: M36OpenDmBodySchema,
@@ -9003,6 +9121,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
     headers: IDEMPOTENCY_KEY_HEADER,
     body: M36AnnounceBodySchema,
     response: M36SendMessageResponseSchema,
+  },
+  "GET /api/v1/messaging/announcements/:messageId/receipts": {
+    summary:
+      "Who has read one announcement: counts plus capped reader / unread lists (messaging.announce; 404 outside the announcement channel)",
+    response: M36AnnouncementReceiptsResponseSchema,
+  },
+  "POST /api/v1/messaging/department-channels": {
+    summary:
+      "Find-or-create a discipline or location department channel (messaging.announce; 201 created, 200 found, 404 foreign subject)",
+    body: M36CreateDepartmentChannelBodySchema,
+    response: M36CreateDepartmentChannelResponseSchema,
   },
 
   // notification preferences & endpoints (§4.2; SELF-only)

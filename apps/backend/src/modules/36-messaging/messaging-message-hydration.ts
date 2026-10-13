@@ -8,6 +8,7 @@ import { schema } from "@wardenx/db";
 import type { MessageBodyKind, ResolvedMessage } from "@wardenx/messaging";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { loadAttachmentViews } from "./attachments/attachment-service-db";
+import { loadMessageAnnotations } from "./message-annotations";
 import type { MessageBodyCipher, Tx } from "./messaging-write-core";
 import { decodeStoredBody } from "./rich-body-codec";
 
@@ -147,6 +148,13 @@ export async function hydrateMessages(
   const boundByMessage = new Map(boundRows.map((row) => [row.messageId, Number(row.n)]));
   // WP 2.2: reply count + last reply time, one grouped query for the page.
   const replyStats = await loadReplyStats(tx, orgId, channelId, messageIds);
+  // WP 2.4: reaction counts + pin flag, one grouped read each for the page.
+  const annotations = await loadMessageAnnotations(tx, {
+    orgId,
+    channelId,
+    viewerUserId: ctx.viewerUserId,
+    messageIds: liveIds,
+  });
   return rows.map((m): ResolvedMessage => {
     const decoded: ReturnType<typeof decodeStoredBody> =
       m.status === "deleted"
@@ -172,6 +180,8 @@ export async function hydrateMessages(
       ...(decoded.unreadable ? { bodyUnreadable: true as const } : {}),
       createdAt: m.createdAt.toISOString(),
       parentMessageId: m.parentMessageId,
+      reactions: annotations.reactions.get(m.id) ?? [],
+      pinned: annotations.pinned.has(m.id),
       replyCount: stats?.replyCount ?? 0,
       lastReplyAt: stats?.lastReplyAt ?? null,
       attachments: attachmentsByMessage.get(m.id) ?? [],

@@ -1,4 +1,4 @@
-import type { MessageReferenceInput } from "./messaging-types";
+import type { MentionCandidate, MessageReferenceInput } from "./messaging-types";
 
 export function reconcileReferences(
   previous: string,
@@ -43,4 +43,33 @@ export function activeMentionQuery(
     return null;
   }
   return { query, start };
+}
+
+/** Put the chosen candidate's `@name` token over the active query and record its reference (overlapping ones drop). */
+export function insertMention(input: {
+  draft: string;
+  references: readonly MessageReferenceInput[];
+  query: { query: string; start: number };
+  cursor: number;
+  candidate: MentionCandidate;
+}): { draft: string; references: MessageReferenceInput[]; caret: number } {
+  const { draft, references, query, cursor, candidate } = input;
+  const token = `@${candidate.displayName}`;
+  const caret = query.start + token.length;
+  return {
+    draft: `${draft.slice(0, query.start)}${token}${draft.slice(cursor)}`,
+    caret,
+    references: [
+      ...references.filter(
+        (reference) => reference.end <= query.start || reference.start >= cursor,
+      ),
+      {
+        kind: candidate.kind,
+        entityId: candidate.entityId,
+        start: query.start,
+        end: caret,
+        displayLabel: candidate.displayName,
+      },
+    ],
+  };
 }

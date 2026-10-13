@@ -1,4 +1,4 @@
-import type { RichBody } from "@wardenx/types";
+import type { MessageReactionSummary, RichBody } from "@wardenx/types";
 
 export type ChannelKind =
   | "care_team"
@@ -46,6 +46,10 @@ export interface Message {
   replyCount?: number;
   lastReplyAt?: string | null;
   references: MessageReference[];
+  /** WP 2.4: non-clinical reactions (counts + whether the viewer reacted). NEVER a sign-off. */
+  reactions?: MessageReactionSummary[];
+  /** WP 2.4: pinned in its channel. */
+  pinned?: boolean;
   /** WP 1.5: absent on older payloads. `scanning` is only ever listed to the uploader. */
   attachments?: MessageAttachment[];
   /** Files this viewer cannot see yet (scanning for others, or withheld): a bare count, no detail. */

@@ -158,7 +158,7 @@ function makeServer(): { app: ReturnType<typeof buildServer>; service: Messaging
   registerAbacRegistry(registry);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerMessagingRoutes(app, { service });
+  registerMessagingRoutes(app, { service, announcements: service });
   return { app, service };
 }
 

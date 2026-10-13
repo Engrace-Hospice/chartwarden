@@ -2,10 +2,12 @@ import { Glyph } from "@wardenx/ui";
 import { memo } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { MessageAnnotations } from "./message-annotations";
 import { MessageAttachments } from "./message-attachments";
 import type { Message } from "./messaging-types";
 import { absoluteTime, dayLabel, initialsOf } from "./messaging-utils";
 import { RichBodyView } from "./rich-body-view";
+import "./announcements.css";
 
 function MessageText({ message }: { message: Message }): JSX.Element {
   // An attachment-only message has no text to show; the attachment list below is its content.
@@ -80,6 +82,12 @@ interface MessageRowProps {
   parentAuthor?: string | null;
   /** False in an archived channel: replies are read-only there, but an existing thread can still be opened. */
   canReply?: boolean;
+  /** Reactions and pins are allowed wherever the channel is writable, even when sending is not (announcements need messaging.announce to send/reply, not to react). Defaults to canReply. */
+  canAnnotate?: boolean;
+  /** WP 2.4: offer Pin/Unpin (the conversation timeline only; the thread panel does not). */
+  canPin?: boolean;
+  /** WP 2.9: open who has read this announcement (only passed for a sender of announcements). */
+  onShowReceipts?: (messageId: string) => void;
 }
 
 function pluralReplies(count: number): string {
@@ -96,6 +104,9 @@ function MessageRowImpl({
   onJumpToParent,
   parentAuthor,
   canReply = true,
+  canAnnotate = canReply,
+  canPin = false,
+  onShowReceipts,
 }: MessageRowProps): JSX.Element {
   const showDay = !previous || dayLabel(previous.createdAt) !== dayLabel(message.createdAt);
   const mine = message.authorUserId === meId;
@@ -180,6 +191,19 @@ function MessageRowImpl({
                 }).format(new Date(message.createdAt))}
               </time>
             </div>
+            {!deleted ? (
+              <MessageAnnotations message={message} canAnnotate={canAnnotate} canPin={canPin} />
+            ) : null}
+            {onShowReceipts && !deleted ? (
+              <button
+                type="button"
+                className="wx-message-receipts-button"
+                aria-label={`Read receipts for the announcement from ${message.authorDisplayName || "staff member"}`}
+                onClick={() => onShowReceipts(message.messageId)}
+              >
+                Read receipts
+              </button>
+            ) : null}
             {onOpenThread && (replyCount > 0 || (canReply && !deleted)) ? (
               <div className="wx-message-thread-actions">
                 {replyCount > 0 ? (

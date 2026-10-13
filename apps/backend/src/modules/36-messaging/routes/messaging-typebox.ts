@@ -23,7 +23,7 @@ import type {
   NotificationPreferencesView as ServiceNotificationPreferencesView,
   ResolvedMessage as ServiceResolvedMessage,
 } from "@wardenx/messaging";
-import { ValidationError } from "@wardenx/types";
+import { MESSAGE_REACTION_KEYS, ValidationError } from "@wardenx/types";
 
 // --- shared scalars ---------------------------------------------------------------------------
 
@@ -31,7 +31,7 @@ import { ValidationError } from "@wardenx/types";
  *  slice's deterministic ids and production uuids both route. */
 const Id = Type.String({ minLength: 1, maxLength: 64 });
 // A canonical uuid (no `format: "uuid"`: that format is not registered with TypeBox at runtime here).
-const UUID_PATTERN =
+export const UUID_PATTERN =
   "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
 const ChannelKindSchema = Type.Union(CHANNEL_KINDS.map((k) => Type.Literal(k)));
 const SeveritySchema = Type.Union([
@@ -307,6 +307,8 @@ const ChannelMemberViewSchema = Type.Object({
   userId: Type.String(),
   role: MemberRoleSchema,
   source: MemberSourceSchema,
+  /** WP 2.9: so a member list can show who is in a department channel. */
+  displayName: Type.Optional(NullableString()),
 });
 export const ChannelDetailResponseSchema = Type.Object({
   channelId: Type.String(),
@@ -337,7 +339,7 @@ const MessageAttachmentViewSchema = Type.Object({
   byteSize: Type.Integer(),
   availability: Type.Union([Type.Literal("available"), Type.Literal("scanning")]),
 });
-const ResolvedMessageSchema = Type.Object({
+export const ResolvedMessageSchema = Type.Object({
   messageId: Type.String(),
   channelId: Type.String(),
   authorUserId: NullableString(),
@@ -353,6 +355,17 @@ const ResolvedMessageSchema = Type.Object({
   // WP 2.2: live direct replies and the newest one's time (additive; absent on providers that do not compute it).
   replyCount: Type.Optional(Type.Integer({ minimum: 0 })),
   lastReplyAt: Type.Optional(NullableString()),
+  // WP 2.4: non-clinical reaction counts (never a sign-off) and the pin flag (additive).
+  reactions: Type.Optional(
+    Type.Array(
+      Type.Object({
+        emoji: Type.Union(MESSAGE_REACTION_KEYS.map((key) => Type.Literal(key))),
+        count: Type.Integer({ minimum: 1 }),
+        reactedByMe: Type.Boolean(),
+      }),
+    ),
+  ),
+  pinned: Type.Optional(Type.Boolean()),
   references: Type.Array(
     Type.Object({
       kind: Type.Union([Type.Literal("staff"), Type.Literal("patient")]),

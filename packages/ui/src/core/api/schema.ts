@@ -13181,6 +13181,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/announcements/{messageId}/receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who has read one announcement: counts plus capped reader / unread lists (messaging.announce; 404 outside the announcement channel) */
+        get: operations["getApiV1MessagingAnnouncementsByMessageIdReceipts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/attachments/{id}": {
         parameters: {
             query?: never;
@@ -13283,6 +13300,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's own unsent draft for a channel (or a thread root via parentMessageId); null when none (WP 2.5; never another user's) */
+        get: operations["getApiV1MessagingChannelsByIdDraft"];
+        /** Autosave the caller's draft (revision + device checked; a blank body discards; 409 DRAFT_CONFLICT when another device wrote since baseRevision) */
+        put: operations["putApiV1MessagingChannelsByIdDraft"];
+        post?: never;
+        /** Discard the caller's draft (idempotent, 204) */
+        delete: operations["deleteApiV1MessagingChannelsByIdDraft"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/channels/{id}/members": {
         parameters: {
             query?: never;
@@ -13352,6 +13388,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/pin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Pin a message in its channel (idempotent; audited; 409 PIN_LIMIT_REACHED at 20 pins; 410 archived) */
+        put: operations["putApiV1MessagingChannelsByIdMessagesByMessageIdPin"];
+        post?: never;
+        /** Unpin a message (idempotent; audited with the actor; 204) */
+        delete: operations["deleteApiV1MessagingChannelsByIdMessagesByMessageIdPin"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/reactions/{emoji}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Add the caller's non-clinical reaction (idempotent; NOT an acknowledgement and writes no receipt; 422 unknown key, 410 archived, 404 deleted/other-channel message) */
+        put: operations["putApiV1MessagingChannelsByIdMessagesByMessageIdReactionsByEmoji"];
+        post?: never;
+        /** Remove the caller's reaction (idempotent) */
+        delete: operations["deleteApiV1MessagingChannelsByIdMessagesByMessageIdReactionsByEmoji"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/channels/{id}/messages/{messageId}/thread": {
         parameters: {
             query?: never;
@@ -13363,6 +13435,40 @@ export interface paths {
         get: operations["getApiV1MessagingChannelsByIdMessagesByMessageIdThread"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/channels/{id}/pins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The channel's pinned messages, most recently pinned first (read-audited) */
+        get: operations["getApiV1MessagingChannelsByIdPins"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/department-channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Find-or-create a discipline or location department channel (messaging.announce; 201 created, 200 found, 404 foreign subject) */
+        post: operations["postApiV1MessagingDepartmentchannels"];
         delete?: never;
         options?: never;
         head?: never;
@@ -13453,6 +13559,145 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/template-admin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Template administration view: the platform wording and required phrases, this organization's overlay on each, and its shared templates (messaging.template.manage) */
+        get: operations["getApiV1MessagingTemplateadmin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/template-admin/platform/{id}/overlay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Re-word or disable a platform template for this organization (204). An overlay can never loosen the platform floor: a body that drops a required phrase is 422 TEMPLATE_FLOOR_VIOLATION; text is held to the PHI lint (422 TEMPLATE_PHI_DETECTED) */
+        put: operations["putApiV1MessagingTemplateadminPlatformByIdOverlay"];
+        post?: never;
+        /** Remove this organization's overlay, restoring the platform text (204) */
+        delete: operations["deleteApiV1MessagingTemplateadminPlatformByIdOverlay"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/template-admin/shared": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Author a shared template every sender in the organization sees (messaging.template.manage; 422 PHI lint; 409 title taken or limit; Idempotency-Key required) */
+        post: operations["postApiV1MessagingTemplateadminShared"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/template-admin/shared/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a shared template (204; messaging.template.manage) */
+        delete: operations["deleteApiV1MessagingTemplateadminSharedById"];
+        options?: never;
+        head?: never;
+        /** Edit a shared template (messaging.template.manage; 422 PHI lint) */
+        patch: operations["patchApiV1MessagingTemplateadminSharedById"];
+        trace?: never;
+    };
+    "/api/v1/messaging/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's saved-reply picker: platform templates (tenant overlay applied, disabled ones omitted), the organization's shared templates and the caller's own personal replies (messaging.send) */
+        get: operations["getApiV1MessagingTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/templates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One template from the caller's picker; any id that is not theirs to read is the 404 a random id gets */
+        get: operations["getApiV1MessagingTemplatesById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/templates/personal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save a personal reply, private to the caller (201; 422 TEMPLATE_PHI_DETECTED names the field and reason code, never the text; 409 TEMPLATE_TITLE_TAKEN or TEMPLATE_LIMIT_REACHED; Idempotency-Key required) */
+        post: operations["postApiV1MessagingTemplatesPersonal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/templates/personal/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete one of the caller's own personal replies (204; 404 for anyone else's) */
+        delete: operations["deleteApiV1MessagingTemplatesPersonalById"];
+        options?: never;
+        head?: never;
+        /** Edit one of the caller's own personal replies (422 PHI lint; 404 for anyone else's) */
+        patch: operations["patchApiV1MessagingTemplatesPersonalById"];
         trace?: never;
     };
     "/api/v1/metrics/route-efficiency": {
@@ -61379,6 +61624,46 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingAnnouncementsByMessageIdReceipts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        messageId: string;
+                        channelId: string;
+                        sentAt: string;
+                        recipientCount: number;
+                        readCount: number;
+                        readers: {
+                            userId: string;
+                            displayName: string;
+                            readAt: string;
+                        }[];
+                        unread: {
+                            userId: string;
+                            displayName: string;
+                        }[];
+                        truncated: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1MessagingAttachmentsById: {
         parameters: {
             query?: never;
@@ -61612,9 +61897,129 @@ export interface operations {
                             userId: string;
                             role: "owner" | "member" | "read_only" | "portal_caregiver";
                             source: "auto" | "manual";
+                            displayName?: string | null;
                         }[];
                     };
                 };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingChannelsByIdDraft: {
+        parameters: {
+            query?: {
+                parentMessageId?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        draft: {
+                            channelId: string;
+                            parentMessageId: string | null;
+                            body: string;
+                            references: {
+                                kind: "staff" | "patient";
+                                entityId: string;
+                                start: number;
+                                end: number;
+                            }[];
+                            revision: number;
+                            deviceId: string;
+                            updatedAt: string;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1MessagingChannelsByIdDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    parentMessageId?: string;
+                    body: string;
+                    references?: {
+                        kind: "staff" | "patient";
+                        entityId: string;
+                        start: number;
+                        end: number;
+                    }[];
+                    deviceId: string;
+                    baseRevision: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        draft: {
+                            channelId: string;
+                            parentMessageId: string | null;
+                            body: string;
+                            references: {
+                                kind: "staff" | "patient";
+                                entityId: string;
+                                start: number;
+                                end: number;
+                            }[];
+                            revision: number;
+                            deviceId: string;
+                            updatedAt: string;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MessagingChannelsByIdDraft: {
+        parameters: {
+            query?: {
+                parentMessageId?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -61750,6 +62155,12 @@ export interface operations {
                             parentMessageId: string | null;
                             replyCount?: number;
                             lastReplyAt?: string | null;
+                            reactions?: {
+                                emoji: "heart" | "thanks" | "smile" | "celebrate" | "sad" | "hug";
+                                count: number;
+                                reactedByMe: boolean;
+                            }[];
+                            pinned?: boolean;
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
@@ -61835,6 +62246,120 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    putApiV1MessagingChannelsByIdMessagesByMessageIdPin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        pinnedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MessagingChannelsByIdMessagesByMessageIdPin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1MessagingChannelsByIdMessagesByMessageIdReactionsByEmoji: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                messageId: string;
+                emoji: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        reactions: {
+                            emoji: "heart" | "thanks" | "smile" | "celebrate" | "sad" | "hug";
+                            count: number;
+                            reactedByMe: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MessagingChannelsByIdMessagesByMessageIdReactionsByEmoji: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                messageId: string;
+                emoji: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        reactions: {
+                            emoji: "heart" | "thanks" | "smile" | "celebrate" | "sad" | "hug";
+                            count: number;
+                            reactedByMe: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1MessagingChannelsByIdMessagesByMessageIdThread: {
         parameters: {
             query?: {
@@ -61879,6 +62404,12 @@ export interface operations {
                             parentMessageId: string | null;
                             replyCount?: number;
                             lastReplyAt?: string | null;
+                            reactions?: {
+                                emoji: "heart" | "thanks" | "smile" | "celebrate" | "sad" | "hug";
+                                count: number;
+                                reactedByMe: boolean;
+                            }[];
+                            pinned?: boolean;
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
@@ -61918,6 +62449,12 @@ export interface operations {
                             parentMessageId: string | null;
                             replyCount?: number;
                             lastReplyAt?: string | null;
+                            reactions?: {
+                                emoji: "heart" | "thanks" | "smile" | "celebrate" | "sad" | "hug";
+                                count: number;
+                                reactedByMe: boolean;
+                            }[];
+                            pinned?: boolean;
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
@@ -61937,6 +62474,110 @@ export interface operations {
                         }[];
                         nextCursor?: string;
                         patientId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingChannelsByIdPins: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        pins: {
+                            messageId: string;
+                            channelId: string;
+                            authorUserId: string | null;
+                            authorDisplayName: string | null;
+                            body: string;
+                            bodyKind: "plain" | "markdown" | "system" | "rich";
+                            bodyDoc?: {
+                                /** @constant */
+                                schemaVersion: 1;
+                                doc: {
+                                    /** @constant */
+                                    type: "doc";
+                                    content: unknown[];
+                                };
+                            };
+                            /** @constant */
+                            bodyUnreadable?: true;
+                            createdAt: string;
+                            parentMessageId: string | null;
+                            replyCount?: number;
+                            lastReplyAt?: string | null;
+                            reactions?: {
+                                emoji: "heart" | "thanks" | "smile" | "celebrate" | "sad" | "hug";
+                                count: number;
+                                reactedByMe: boolean;
+                            }[];
+                            pinned?: boolean;
+                            references: {
+                                kind: "staff" | "patient";
+                                entityId: string;
+                                start: number;
+                                end: number;
+                                displayLabel: string;
+                                navigable: boolean;
+                            }[];
+                            attachments?: {
+                                attachmentId: string;
+                                fileName: string;
+                                mimeType: string;
+                                byteSize: number;
+                                availability: "available" | "scanning";
+                            }[];
+                            hiddenAttachmentCount?: number;
+                        }[];
+                        patientId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingDepartmentchannels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    kind: "discipline" | "location";
+                    subjectId: string;
+                    title?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        channelId: string;
+                        created: boolean;
                     };
                 };
             };
@@ -62126,6 +62767,374 @@ export interface operations {
                         kind: "care_team";
                         patientId: string;
                         archived: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingTemplateadmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        platform: {
+                            id: string;
+                            templateKey: string;
+                            category: "scheduling" | "administrative" | "logistics" | "confirmation" | "general";
+                            floorTitle: string;
+                            floorBody: string;
+                            requiredPhrases: string[];
+                            overlay: {
+                                title: string | null;
+                                body: string | null;
+                                isEnabled: boolean;
+                                updatedAt: string;
+                            } | null;
+                        }[];
+                        shared: {
+                            id: string;
+                            scope: "platform" | "org" | "personal";
+                            templateKey: string | null;
+                            category: "scheduling" | "administrative" | "logistics" | "confirmation" | "general";
+                            title: string;
+                            body: string;
+                            customized: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1MessagingTemplateadminPlatformByIdOverlay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    title: string | null;
+                    body: string | null;
+                    isEnabled: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MessagingTemplateadminPlatformByIdOverlay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingTemplateadminShared: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    title: string;
+                    body: string;
+                    category: "scheduling" | "administrative" | "logistics" | "confirmation" | "general";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        scope: "platform" | "org" | "personal";
+                        templateKey: string | null;
+                        category: "scheduling" | "administrative" | "logistics" | "confirmation" | "general";
+                        title: string;
+                        body: string;
+                        customized: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MessagingTemplateadminSharedById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1MessagingTemplateadminSharedById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    title?: string;
+                    body?: string;
+                    category?: "scheduling" | "administrative" | "logistics" | "confirmation" | "general";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        scope: "platform" | "org" | "personal";
+                        templateKey: string | null;
+                        category: "scheduling" | "administrative" | "logistics" | "confirmation" | "general";
+                        title: string;
+                        body: string;
+                        customized: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            scope: "platform" | "org" | "personal";
+                            templateKey: string | null;
+                            category: "scheduling" | "administrative" | "logistics" | "confirmation" | "general";
+                            title: string;
+                            body: string;
+                            customized: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingTemplatesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        scope: "platform" | "org" | "personal";
+                        templateKey: string | null;
+                        category: "scheduling" | "administrative" | "logistics" | "confirmation" | "general";
+                        title: string;
+                        body: string;
+                        customized: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingTemplatesPersonal: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    title: string;
+                    body: string;
+                    category: "scheduling" | "administrative" | "logistics" | "confirmation" | "general";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        scope: "platform" | "org" | "personal";
+                        templateKey: string | null;
+                        category: "scheduling" | "administrative" | "logistics" | "confirmation" | "general";
+                        title: string;
+                        body: string;
+                        customized: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MessagingTemplatesPersonalById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1MessagingTemplatesPersonalById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    title?: string;
+                    body?: string;
+                    category?: "scheduling" | "administrative" | "logistics" | "confirmation" | "general";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        scope: "platform" | "org" | "personal";
+                        templateKey: string | null;
+                        category: "scheduling" | "administrative" | "logistics" | "confirmation" | "general";
+                        title: string;
+                        body: string;
+                        customized: boolean;
                     };
                 };
             };

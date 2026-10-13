@@ -24,6 +24,8 @@ export interface ConversationInboxProps {
   onSelect: (channelId: string) => void;
   onRetry: () => void;
   onNewConversation: () => void;
+  /** WP 2.9: offered only to someone who may create department channels. */
+  onNewDepartment?: () => void;
 }
 
 export function ConversationInbox({
@@ -38,6 +40,7 @@ export function ConversationInbox({
   onSelect,
   onRetry,
   onNewConversation,
+  onNewDepartment,
 }: ConversationInboxProps): JSX.Element {
   function moveFocus(event: KeyboardEvent<HTMLUListElement>): void {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -58,9 +61,21 @@ export function ConversationInbox({
           <h2>Conversations</h2>
           <span>{channels?.length ?? 0}</span>
         </div>
-        <Button size="sm" onClick={onNewConversation} aria-label="New conversation">
-          <Glyph name="plus" size={15} /> New
-        </Button>
+        <div className="wx-messaging-inbox-actions">
+          {onNewDepartment ? (
+            <Button
+              size="sm"
+              tone="secondary"
+              onClick={onNewDepartment}
+              aria-label="New department channel"
+            >
+              <Glyph name="users" size={15} /> Department
+            </Button>
+          ) : null}
+          <Button size="sm" onClick={onNewConversation} aria-label="New conversation">
+            <Glyph name="plus" size={15} /> New
+          </Button>
+        </div>
       </header>
 
       <div className="wx-messaging-inbox-tools">

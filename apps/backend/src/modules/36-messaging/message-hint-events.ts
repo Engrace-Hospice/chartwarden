@@ -21,6 +21,7 @@ export const M36_MESSAGE_HINT_EVENTS = {
   sent: "m36.message.sent",
   edited: "m36.message.edited",
   deleted: "m36.message.deleted",
+  annotated: "m36.message.annotated",
 } as const;
 
 export type MessageHintKind = keyof typeof M36_MESSAGE_HINT_EVENTS;

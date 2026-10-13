@@ -53,24 +53,29 @@ import {
   createDrizzleCareTeamStore,
   createDrizzlePatientReaderStore,
 } from "../src/modules/05-patient/seams/drizzle-stores";
+import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import type { AttachmentStoragePort } from "../src/modules/36-messaging/attachments/attachment-ports";
 import { createBuiltinScanner } from "../src/modules/36-messaging/attachments/attachment-scanners";
 import { createAttachmentService } from "../src/modules/36-messaging/attachments/attachment-service-db";
+import { createDbDraftService } from "../src/modules/36-messaging/drafts/draft-service-db";
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
 import {
   channelHintAudience,
   createDbMessagingProvider,
 } from "../src/modules/36-messaging/messaging-provider-db";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
+import { createMessageBodyCipher } from "../src/modules/36-messaging/messaging-write-core";
 import { buildM36MessageHintConsumer } from "../src/modules/36-messaging/outbox-consumers/message-hints";
 import { registerAdminAlertDeliveriesRoutes } from "../src/modules/36-messaging/routes/admin-alert-deliveries-routes";
 import { registerAttachmentRoutes } from "../src/modules/36-messaging/routes/attachment-routes";
+import { registerDraftRoutes } from "../src/modules/36-messaging/routes/draft-routes";
 import {
   CHANNEL_MEMBER_ADMIN_PREDICATE,
   CHANNEL_VISIBILITY_PREDICATE,
   channelMemberAdminPredicate,
   registerMessagingRoutes,
 } from "../src/modules/36-messaging/routes/messaging-routes";
+import { registerTemplateRoutes } from "../src/modules/36-messaging/routes/template-routes";
 import { registerMessagingWebhookRoutes } from "../src/modules/36-messaging/routes/webhook-routes";
 import { createDbConsentEvaluator } from "../src/modules/39-consent/index";
 import { appRoleConnectionString } from "./_live-app-role";
@@ -91,12 +96,24 @@ const A_NAME_TOKEN = "WP17-ORG-A-PERSON";
 type Verdict =
   | { readonly kind: "idor" | "scoped" }
   | { readonly kind: "excluded"; readonly reason: string };
+const TEMPLATE_SUITE =
+  "WP 2.8: org/owner isolation, random-id 404 parity and RLS are asserted in m36-message-templates.live";
 const ROUTES: Record<string, Verdict> = {
   "GET /api/v1/messaging/channels": { kind: "scoped" },
   "GET /api/v1/messaging/channels/:id": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/messages": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/messages/:messageId/thread": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/mention-candidates": { kind: "idor" },
+  // WP 2.4 reactions and pins: channel-scoped, every refusal is the 404 a random id gets.
+  "PUT /api/v1/messaging/channels/:id/messages/:messageId/reactions/:emoji": { kind: "idor" },
+  "DELETE /api/v1/messaging/channels/:id/messages/:messageId/reactions/:emoji": { kind: "idor" },
+  "PUT /api/v1/messaging/channels/:id/messages/:messageId/pin": { kind: "idor" },
+  "DELETE /api/v1/messaging/channels/:id/messages/:messageId/pin": { kind: "idor" },
+  "GET /api/v1/messaging/channels/:id/pins": { kind: "idor" },
+  // WP 2.5 drafts: the id is a channel's; a draft is also private to its author inside the channel (asserted below).
+  "GET /api/v1/messaging/channels/:id/draft": { kind: "idor" },
+  "PUT /api/v1/messaging/channels/:id/draft": { kind: "idor" },
+  "DELETE /api/v1/messaging/channels/:id/draft": { kind: "idor" },
   "POST /api/v1/messaging/channels/:id/messages": { kind: "idor" },
   "PATCH /api/v1/messaging/messages/:id": { kind: "idor" },
   "DELETE /api/v1/messaging/messages/:id": { kind: "idor" },
@@ -112,6 +129,9 @@ const ROUTES: Record<string, Verdict> = {
   "POST /api/v1/messaging/channels/:id/members": { kind: "idor" },
   "DELETE /api/v1/messaging/channels/:id/members/:userId": { kind: "idor" },
   "POST /api/v1/messaging/announce": { kind: "scoped" },
+  // WP 2.9: the id is an announcement message's / a location or role id in the body.
+  "GET /api/v1/messaging/announcements/:messageId/receipts": { kind: "idor" },
+  "POST /api/v1/messaging/department-channels": { kind: "idor" },
   "GET /api/v1/notifications/preferences": { kind: "scoped" },
   "PUT /api/v1/notifications/preferences": { kind: "idor" },
   "POST /api/v1/notifications/endpoints": { kind: "scoped" },
@@ -124,6 +144,27 @@ const ROUTES: Record<string, Verdict> = {
   "GET /api/v1/admin/messaging/alert-deliveries": {
     kind: "excluded",
     reason: "platform_ops, deliberately cross-tenant; a tenant admin is refused (asserted below)",
+  },
+  // WP 2.8 message templates: attacked in their own live suite (m36-message-templates.live), which owns the matrix.
+  "GET /api/v1/messaging/templates": { kind: "excluded", reason: TEMPLATE_SUITE },
+  "GET /api/v1/messaging/templates/:id": { kind: "excluded", reason: TEMPLATE_SUITE },
+  "POST /api/v1/messaging/templates/personal": { kind: "excluded", reason: TEMPLATE_SUITE },
+  "PATCH /api/v1/messaging/templates/personal/:id": { kind: "excluded", reason: TEMPLATE_SUITE },
+  "DELETE /api/v1/messaging/templates/personal/:id": { kind: "excluded", reason: TEMPLATE_SUITE },
+  "GET /api/v1/messaging/template-admin": { kind: "excluded", reason: TEMPLATE_SUITE },
+  "POST /api/v1/messaging/template-admin/shared": { kind: "excluded", reason: TEMPLATE_SUITE },
+  "PATCH /api/v1/messaging/template-admin/shared/:id": { kind: "excluded", reason: TEMPLATE_SUITE },
+  "DELETE /api/v1/messaging/template-admin/shared/:id": {
+    kind: "excluded",
+    reason: TEMPLATE_SUITE,
+  },
+  "PUT /api/v1/messaging/template-admin/platform/:id/overlay": {
+    kind: "excluded",
+    reason: TEMPLATE_SUITE,
+  },
+  "DELETE /api/v1/messaging/template-admin/platform/:id/overlay": {
+    kind: "excluded",
+    reason: TEMPLATE_SUITE,
   },
   "POST /webhooks/twilio/sms-status": {
     kind: "excluded",
@@ -141,9 +182,18 @@ const ROUTES: Record<string, Verdict> = {
 /** The registrar files under routes/ - a new file must be classified here, then mounted in `registeredRoutes`. */
 const REGISTRAR_FILES = [
   "admin-alert-deliveries-routes.ts",
+  "announcement-routes.ts",
+  "announcement-typebox.ts", // schemas only
   "attachment-routes.ts",
+  "draft-routes.ts",
+  "draft-typebox.ts", // schemas only
   "messaging-routes.ts",
   "messaging-typebox.ts", // schemas only
+  "reaction-pin-routes.ts", // mounted by registerMessagingRoutes
+  "reaction-pin-typebox.ts", // schemas only
+  "template-routes.ts",
+  "template-typebox.ts", // schemas only
+  "uuid-params.ts", // preHandler helper, no routes
   "webhook-routes.ts",
 ];
 
@@ -155,9 +205,11 @@ function registeredRoutes(): string[] {
       if (m !== "HEAD" && m !== "OPTIONS") seen.add(`${m} ${route.url}`);
     }
   });
-  registerMessagingRoutes(probe, { service: {} as never });
+  registerMessagingRoutes(probe, { service: {} as never, announcements: {} as never });
   registerAttachmentRoutes(probe, { service: {} as never });
+  registerDraftRoutes(probe, { service: {} as never });
   registerAdminAlertDeliveriesRoutes(probe, {} as never);
+  registerTemplateRoutes(probe, { service: {} as never });
   registerMessagingWebhookRoutes(probe, { publicBaseUrl: "https://x.test" } as never);
   return [...seen].sort();
 }
@@ -316,8 +368,11 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     "message_revision",
     "message_receipt",
     "message_attachment",
+    "message_draft",
     "attachment_access_event",
     "message_entity_reference",
+    "message_reaction",
+    "message_pin",
     "delivery_endpoint",
     "user_notification_preferences",
     "alert_rule",
@@ -470,7 +525,10 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       security: { rateLimitEnabled: false },
       idempotencyStore: createDbIdempotencyStore(handle.db),
     });
-    registerMessagingRoutes(app, { service });
+    registerMessagingRoutes(app, {
+      service,
+      announcements: createDbAnnouncementService(handle.db),
+    });
     const blobs = new Map<string, Uint8Array>();
     const fakeStorage: AttachmentStoragePort = {
       presignUpload: async ({ objectKey }) => ({
@@ -501,6 +559,12 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       canViewChannel: service.canViewChannel,
     });
     registerAttachmentRoutes(app, { service: attachmentService });
+    registerDraftRoutes(app, {
+      service: createDbDraftService({
+        db: handle.db,
+        cipher: createMessageBodyCipher({ kek: KEK }),
+      }),
+    });
     /** Upload + complete a file as `who` straight through the service (the fixture, not an attack). */
     const makeAttachment = async (who: Who, channelId: string, text: string, scan = true) => {
       const bytes = new TextEncoder().encode(`%PDF-1.4\n${text}\n%%EOF`);
@@ -704,6 +768,53 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         for (const o of ownIds) expect(ids).toContain(o);
         expectNoLeak(res.body, who, `list ${who.name}`);
       }
+    });
+  });
+
+  describe("draft routes (WP 2.5): org B and an in-org non-member get the answer for a nonexistent id", () => {
+    const draftBody = { body: "WP25-private-draft", deviceId: "dev-1", baseRevision: 0 };
+    it("a member saves and reads their own draft, and a fellow member never sees it (attacks are not vacuous)", async () => {
+      const saved = await call(
+        "PUT /api/v1/messaging/channels/:id/draft",
+        u1,
+        { id: dmA },
+        draftBody,
+      );
+      expect(saved.statusCode).toBe(200);
+      const own = await call("GET /api/v1/messaging/channels/:id/draft", u1, { id: dmA });
+      expect(own.json().draft.body).toBe("WP25-private-draft");
+      const peer = await call("GET /api/v1/messaging/channels/:id/draft", u2, { id: dmA });
+      expect(peer.statusCode).toBe(200);
+      expect(peer.json()).toEqual({ draft: null });
+      // the peer's delete leaves it alone
+      await call("DELETE /api/v1/messaging/channels/:id/draft", u2, { id: dmA });
+      const still = await call("GET /api/v1/messaging/channels/:id/draft", u1, { id: dmA });
+      expect(still.json().draft.body).toBe("WP25-private-draft");
+    });
+    it("org B and the in-org non-member are refused exactly like a random channel id", async () => {
+      for (const attacker of [bUser, outsider]) {
+        for (const id of [dmA, locA]) {
+          await expectNoOracle("GET /api/v1/messaging/channels/:id/draft", attacker, { id });
+          await expectNoOracle(
+            "PUT /api/v1/messaging/channels/:id/draft",
+            attacker,
+            { id },
+            draftBody,
+          );
+        }
+      }
+    });
+    it("DELETE of one's own draft answers 204 for any channel id alike (no oracle) and never touches another user's draft", async () => {
+      // Discarding one's OWN draft needs no channel access (a user who lost the channel can still clear it), so the
+      // answer is the same 204 for a real channel, a stranger's channel and a random id; the owner filter keeps it safe.
+      for (const attacker of [bUser, outsider]) {
+        for (const id of [dmA, locA, randomUUID()]) {
+          const res = await call("DELETE /api/v1/messaging/channels/:id/draft", attacker, { id });
+          expect(res.statusCode, `${attacker.name} ${id}`).toBe(204);
+        }
+      }
+      const kept = await call("GET /api/v1/messaging/channels/:id/draft", u1, { id: dmA });
+      expect(kept.json().draft.body).toBe("WP25-private-draft");
     });
   });
 
@@ -1089,6 +1200,273 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     });
   });
 
+  describe("reactions & pins (WP 2.4): the channel's access rule, non-clinical, audited, never an acknowledgement", () => {
+    const REACT = "PUT /api/v1/messaging/channels/:id/messages/:messageId/reactions/:emoji";
+    const UNREACT = "DELETE /api/v1/messaging/channels/:id/messages/:messageId/reactions/:emoji";
+    const PIN = "PUT /api/v1/messaging/channels/:id/messages/:messageId/pin";
+    const UNPIN = "DELETE /api/v1/messaging/channels/:id/messages/:messageId/pin";
+    const PINS = "GET /api/v1/messaging/channels/:id/pins";
+    let rp: string; // private: u1, u2 active; `outsider` removed
+    let rpArchived: string;
+    let m1: string;
+    let m2: string;
+    let archivedMsg: string;
+    const mk = async (channelId: string, body: string) =>
+      (await service.sendMessage(orgA, { channelId, authorUserId: u1.userId, body })).messageId;
+    const channelOf = async (title: string, archived = false) => {
+      const id = (
+        await admin.query(
+          `INSERT INTO channel (organization_id, channel_kind, subject_id, title, retention_class)
+           VALUES ($1,'location',$2,$3,'care_related') RETURNING id`,
+          [orgA, randomUUID(), title],
+        )
+      ).rows[0].id as string;
+      for (const w of [u1, u2]) {
+        await admin.query(
+          `INSERT INTO channel_member (organization_id, channel_id, user_id, role, source)
+           VALUES ($1,$2,$3,'member','manual')`,
+          [orgA, id, w.userId],
+        );
+      }
+      await admin.query(
+        `INSERT INTO channel_member (organization_id, channel_id, user_id, role, source, removed_at)
+         VALUES ($1,$2,$3,'member','manual',now())`,
+        [orgA, id, outsider.userId],
+      );
+      return { id, archived };
+    };
+    const rows = async <T = Record<string, unknown>>(sql: string, params: unknown[] = []) =>
+      (await admin.query(sql, params)).rows as T[];
+    const listed = async (who: Who, channelId = rp) =>
+      (await call("GET /api/v1/messaging/channels/:id/messages", who, { id: channelId })).json()
+        .messages as Array<{
+        messageId: string;
+        pinned?: boolean;
+        reactions?: Array<{ emoji: string; count: number; reactedByMe: boolean }>;
+      }>;
+
+    beforeAll(async () => {
+      rp = (await channelOf("WP24 reactions")).id;
+      rpArchived = (await channelOf("WP24 archived")).id;
+      m1 = await mk(rp, `${SECRET_BODY} pinned`);
+      m2 = await mk(rp, "second");
+      archivedMsg = await mk(rpArchived, "before archive");
+      await admin.query(`UPDATE channel SET is_archived = true WHERE id = $1`, [rpArchived]);
+    });
+
+    it("outsiders and org B get the 404 of a random id on every route (incl. a real message of ANOTHER channel)", async () => {
+      for (const attacker of [bUser, outsider]) {
+        for (const channelId of [rp, dmA, locA]) {
+          const messageId = channelId === rp ? m1 : channelId === dmA ? msgDmA : msgLocA;
+          await expectNoOracle(REACT, attacker, { id: channelId, messageId, emoji: "heart" });
+          await expectNoOracle(UNREACT, attacker, { id: channelId, messageId, emoji: "heart" });
+          await expectNoOracle(PIN, attacker, { id: channelId, messageId });
+          await expectNoOracle(UNPIN, attacker, { id: channelId, messageId });
+          await expectNoOracle(PINS, attacker, { id: channelId });
+        }
+      }
+    });
+
+    it("a member cannot reach a message of ANOTHER channel (or another org) through a channel they may use", async () => {
+      attackers.add(u1.name);
+      for (const foreign of [msgDmA, m1]) {
+        const channelId = foreign === m1 ? locA : rp;
+        for (const [route, extra] of [
+          [REACT, { emoji: "heart" }],
+          [PIN, {}],
+        ] as const) {
+          const real = await call(route, u1, { id: channelId, messageId: foreign, ...extra });
+          const ctl = await call(route, u1, { id: channelId, messageId: randomUUID(), ...extra });
+          expect(real.statusCode, real.body).toBe(404);
+          expect(shape(real)).toBe(shape(ctl));
+        }
+      }
+      expect(
+        await rows(`SELECT 1 FROM message_reaction WHERE message_id = ANY($1)`, [[msgDmA]]),
+      ).toEqual([]);
+    });
+
+    it("reacting is idempotent, counts per emoji, flags the viewer's own, and writes nothing to receipts", async () => {
+      const receiptsBefore = await rows(
+        `SELECT status, count(*)::int AS n FROM message_receipt GROUP BY 1 ORDER BY 1`,
+      );
+      for (const [who, emoji] of [
+        [u2, "heart"],
+        [u2, "heart"],
+        [u1, "heart"],
+        [u1, "thanks"],
+      ] as const) {
+        const res = await call(REACT, who, { id: rp, messageId: m1, emoji });
+        expect(res.statusCode, res.body).toBe(200);
+      }
+      const seenByU2 = (await listed(u2)).find((m) => m.messageId === m1);
+      expect(seenByU2?.reactions).toEqual([
+        { emoji: "heart", count: 2, reactedByMe: true },
+        { emoji: "thanks", count: 1, reactedByMe: false },
+      ]);
+      expect((await listed(u1)).find((m) => m.messageId === m1)?.reactions?.[1]?.reactedByMe).toBe(
+        true,
+      );
+      expect(await rows(`SELECT 1 FROM message_reaction WHERE message_id = $1`, [m1])).toHaveLength(
+        3,
+      );
+      // never an acknowledgement: receipts are exactly what they were
+      expect(
+        await rows(`SELECT status, count(*)::int AS n FROM message_receipt GROUP BY 1 ORDER BY 1`),
+      ).toEqual(receiptsBefore);
+      const removed = await call(UNREACT, u1, { id: rp, messageId: m1, emoji: "thanks" });
+      expect(removed.json().reactions).toEqual([{ emoji: "heart", count: 2, reactedByMe: true }]);
+      expect((await call(UNREACT, u1, { id: rp, messageId: m1, emoji: "thanks" })).statusCode).toBe(
+        200,
+      );
+    });
+
+    it("an unknown reaction key is a 422 and the CHECK refuses one written directly", async () => {
+      const res = await call(REACT, u2, { id: rp, messageId: m1, emoji: "thumbs_up" });
+      expect(res.statusCode, res.body).toBe(422);
+      await expect(
+        admin.query(
+          `INSERT INTO message_reaction (organization_id, channel_id, message_id, user_id, emoji) VALUES ($1,$2,$3,$4,'thumbs_up')`,
+          [orgA, rp, m1, u2.userId],
+        ),
+      ).rejects.toThrow(/message_reaction_emoji_check/);
+    });
+
+    it("the database refuses a reaction or pin whose channel is not the message's channel", async () => {
+      for (const table of ["message_reaction", "message_pin"]) {
+        const [cols, vals] =
+          table === "message_reaction"
+            ? ["user_id, emoji", `'${u2.userId}', 'heart'`]
+            : ["pinned_by_user_id", `'${u2.userId}'`];
+        await expect(
+          admin.query(
+            `INSERT INTO ${table} (organization_id, channel_id, message_id, ${cols}) VALUES ($1,$2,$3,${vals})`,
+            [orgA, locA, m2],
+          ),
+        ).rejects.toThrow(/_message_channel_fk/);
+      }
+    });
+
+    it("pin and unpin are idempotent, audited with the ACTOR, hinted, and listed newest first", async () => {
+      const hintsBefore = Number(
+        (
+          await rows<{ n: number }>(
+            `SELECT count(*)::int AS n FROM outbox_event WHERE event_type = 'm36.message.annotated'`,
+          )
+        )[0]!.n,
+      );
+      expect((await call(PIN, u2, { id: rp, messageId: m1 })).statusCode).toBe(200);
+      expect((await call(PIN, u1, { id: rp, messageId: m1 })).statusCode).toBe(200); // repeat: no-op
+      expect((await call(PIN, u1, { id: rp, messageId: m2 })).statusCode).toBe(200);
+      const pins = await call(PINS, u2, { id: rp });
+      expect(pins.statusCode, pins.body).toBe(200);
+      expect(pins.json().pins.map((p: { messageId: string }) => p.messageId)).toEqual([m2, m1]);
+      expect(pins.json().pins[1].body).toContain(SECRET_BODY);
+      expect(
+        (await listed(u1))
+          .filter((m) => m.pinned)
+          .map((m) => m.messageId)
+          .sort(),
+      ).toEqual([m1, m2].sort());
+      // one row per message; the first pinner stays
+      expect(
+        await rows(`SELECT pinned_by_user_id FROM message_pin WHERE message_id = $1`, [m1]),
+      ).toEqual([{ pinned_by_user_id: u2.userId }]);
+      // outbox: one hint per CHANGE (two pins), ids only
+      const hints = await rows<{ payload: Record<string, unknown> }>(
+        `SELECT payload FROM outbox_event WHERE event_type = 'm36.message.annotated' ORDER BY created_at`,
+      );
+      expect(hints.length - hintsBefore).toBe(2);
+      expect(JSON.stringify(hints.at(-1)!.payload)).not.toContain(SECRET_BODY);
+      expect((await call(UNPIN, u1, { id: rp, messageId: m1 })).statusCode).toBe(204);
+      expect((await call(UNPIN, u1, { id: rp, messageId: m1 })).statusCode).toBe(204); // repeat: no-op
+      const audit = await rows<{ event_type: string; actor_user_id: string | null }>(
+        `SELECT event_type, actor_user_id FROM audit_event WHERE resource_kind = 'message_pin' ORDER BY created_at, id`,
+      );
+      expect(audit.map((a) => [a.event_type, a.actor_user_id])).toEqual([
+        ["message_pin.insert", u2.userId],
+        ["message_pin.insert", u1.userId],
+        ["message_pin.delete", u1.userId], // the UNPINNER, not the original pinner
+      ]);
+      expect((await call(UNPIN, u1, { id: rp, messageId: m2 })).statusCode).toBe(204);
+    });
+
+    it("caps pins per channel with a 409 and refuses a tombstoned message (404) and an archived channel (410)", async () => {
+      await admin.query(`DELETE FROM message_pin WHERE channel_id = $1`, [rp]);
+      const ids: string[] = [];
+      for (let i = 0; i < 20; i++) ids.push(await mk(rp, `cap ${i}`));
+      for (const id of ids)
+        expect((await call(PIN, u1, { id: rp, messageId: id })).statusCode).toBe(200);
+      const over = await call(PIN, u1, { id: rp, messageId: m2 });
+      expect(over.statusCode, over.body).toBe(409);
+      expect(over.json().error?.code ?? over.json().code).toBe("PIN_LIMIT_REACHED");
+      // a deleted message leaves the pin list and takes no new reaction
+      await service.deleteMessage(orgA, { userId: u1.userId, messageId: ids[0]! });
+      const after = await call(PINS, u2, { id: rp });
+      expect(after.json().pins.map((p: { messageId: string }) => p.messageId)).not.toContain(
+        ids[0],
+      );
+      expect(
+        (await call(REACT, u2, { id: rp, messageId: ids[0]!, emoji: "heart" })).statusCode,
+      ).toBe(404);
+      expect((await call(PIN, u1, { id: rpArchived, messageId: archivedMsg })).statusCode).toBe(
+        410,
+      );
+      expect(
+        (await call(REACT, u1, { id: rpArchived, messageId: archivedMsg, emoji: "heart" }))
+          .statusCode,
+      ).toBe(410);
+      expect((await call(UNPIN, u1, { id: rpArchived, messageId: archivedMsg })).statusCode).toBe(
+        410,
+      );
+    });
+
+    it("a member removed from the channel loses reactions and pins at once", async () => {
+      for (const [route, params] of [
+        [REACT, { id: rp, messageId: m1, emoji: "heart" }],
+        [PIN, { id: rp, messageId: m1 }],
+        [PINS, { id: rp }],
+      ] as const) {
+        const res = await call(route, outsider, params);
+        expect(res.statusCode, `${route}: ${res.body}`).toBeGreaterThanOrEqual(400);
+        expect(res.body).not.toContain(SECRET_BODY);
+      }
+    });
+
+    it("as the real app role: no UPDATE on either table, and another tenant's session sees none of A's rows", async () => {
+      const c = new Client({ connectionString: appUrl });
+      await c.connect();
+      try {
+        await c.query("BEGIN");
+        await c.query("SELECT set_config('app.org_id', $1, true)", [orgA]);
+        await expect(c.query(`UPDATE message_reaction SET emoji = 'hug'`)).rejects.toThrow(
+          /permission denied/,
+        );
+        await c.query("ROLLBACK");
+        await c.query("BEGIN");
+        await c.query("SELECT set_config('app.org_id', $1, true)", [orgB]);
+        for (const t of ["message_reaction", "message_pin"]) {
+          expect(
+            (
+              await c.query(`SELECT count(*)::int AS n FROM ${t} WHERE organization_id = $1`, [
+                orgA,
+              ])
+            ).rows[0].n,
+          ).toBe(0);
+        }
+        await expect(
+          c.query(
+            `INSERT INTO message_pin (organization_id, channel_id, message_id, pinned_by_user_id) VALUES ($1,$2,$3,$4)`,
+            [orgA, rp, m2, u1.userId],
+          ),
+        ).rejects.toThrow(/row-level security/);
+      } finally {
+        await c.query("ROLLBACK").catch(() => undefined);
+        await c.end();
+      }
+    });
+  });
+
   describe("dm, staff directory, care-team channel", () => {
     it("org B cannot open a DM with an org A user, same answer as for a random user", async () => {
       attackers.add(bUser.name);
@@ -1135,6 +1513,78 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       expect(real.statusCode).toBeGreaterThanOrEqual(400);
       expect(shape(real)).toBe(shape(ctl));
       attackers.delete(adminA.name);
+    });
+  });
+
+  describe("announcement receipts and department channels (WP 2.9)", () => {
+    const receiptsRoute = "GET /api/v1/messaging/announcements/:messageId/receipts";
+    const departmentRoute = "POST /api/v1/messaging/department-channels";
+    it("org B admin and an in-org non-admin get a random id's answer for A's announcement receipts", async () => {
+      const posted = await call("POST /api/v1/messaging/announce", adminA, {}, { body: "wp29" });
+      expect(posted.statusCode).toBe(201);
+      const messageId = posted.json().messageId as string;
+      expect((await call(receiptsRoute, adminA, { messageId })).statusCode).toBe(200);
+      await expectNoOracle(receiptsRoute, adminB, { messageId });
+      await expectNoOracle(receiptsRoute, outsider, { messageId });
+    });
+    it("org B admin cannot create a department channel for A's location or A's role", async () => {
+      const provider = (
+        await admin.query(
+          `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+             VALUES ($1,'CCN-WP29','WP29 Provider','NPI-WP29','\\x00','12-31') RETURNING id`,
+          [orgA],
+        )
+      ).rows[0].id as string;
+      const location = (
+        await admin.query(
+          `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone, status)
+             VALUES ($1,'WP29 Loc','1 St','Town','OR','97000','America/Los_Angeles','active') RETURNING id`,
+          [provider],
+        )
+      ).rows[0].id as string;
+      const role = (
+        await admin.query(
+          `INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,'wp29-role','WP29 Role','clinical_staff',true) RETURNING id`,
+          [orgA],
+        )
+      ).rows[0].id as string;
+      attackers.add(adminB.name);
+      const before = await fingerprint();
+      for (const [kind, subjectId] of [
+        ["location", location],
+        ["discipline", role],
+      ] as const) {
+        const real = await call(departmentRoute, adminB, {}, { kind, subjectId });
+        const ctl = await call(departmentRoute, adminB, {}, { kind, subjectId: randomUUID() });
+        expect(real.statusCode, kind).toBe(404);
+        expect(shape(real), kind).toBe(shape(ctl));
+        expectNoLeak(real.body, adminB, kind);
+      }
+      // A non-admin of A is refused before any lookup, so a real and a random subject are indistinguishable.
+      attackers.add(outsider.name);
+      const denied = await call(
+        departmentRoute,
+        outsider,
+        {},
+        { kind: "location", subjectId: location },
+      );
+      const deniedCtl = await call(
+        departmentRoute,
+        outsider,
+        {},
+        { kind: "location", subjectId: randomUUID() },
+      );
+      expect(denied.statusCode).toBe(403);
+      expect(shape(denied)).toBe(shape(deniedCtl));
+      expect(await fingerprint()).toEqual(before);
+      // The owner org can create it (the attacks above are not vacuous).
+      const owner = await call(
+        departmentRoute,
+        adminA,
+        {},
+        { kind: "location", subjectId: location },
+      );
+      expect(owner.statusCode).toBe(201);
     });
   });
 
@@ -1344,6 +1794,12 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
           { token: "000000" },
         ],
         ["DELETE /api/v1/notifications/endpoints/:id", bUser, { id: endpointA }],
+        [
+          "PUT /api/v1/messaging/channels/:id/draft",
+          bUser,
+          { id: dmA },
+          { body: "x", deviceId: "d", baseRevision: 0 },
+        ],
         ["POST /api/v1/alerts/:id/read", bUser, { id: alertA }],
         ["PATCH /api/v1/alert-rules/:id", adminB, { id: ruleA }, { enabled: true }],
       ];
@@ -1400,6 +1856,8 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       "message",
       "message_revision",
       "message_receipt",
+      "message_reaction",
+      "message_pin",
     ];
     it.each(orgScoped)(
       "SELECT on %s returns no org A rows (and the table is non-empty for A)",

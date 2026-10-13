@@ -27,7 +27,11 @@ import { DegradedError } from "@wardenx/types";
 import type { DataEraser } from "@wardenx/types";
 import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
-import { ERASE_DESTROY_DEADLINE_MS, ERASE_UPLOAD_URL_GRACE_MS, eraseLockName } from "../attachments/attachment-policy";
+import {
+  ERASE_DESTROY_DEADLINE_MS,
+  ERASE_UPLOAD_URL_GRACE_MS,
+  eraseLockName,
+} from "../attachments/attachment-policy";
 import type { AttachmentStoragePort } from "../attachments/attachment-ports";
 import { runWithDeadline } from "../attachments/attachment-scan-gate";
 import { ERASED_BODY_SHA256 } from "../jobs/integrity-jobs";
@@ -104,12 +108,15 @@ export function createDrizzleMessagingEraseStore(
   const MSG = schema.messages;
   const RCPT = schema.messageReceipts;
   const ATT = schema.messageAttachments;
+  const DRAFT = schema.messageDrafts;
   const EB = schema.messagingEraseBlocks;
   const AL = schema.alerts;
   const ND = schema.notificationDeliveries;
   const RO = schema.tenantAlertRoutingOverride;
   const TPL = schema.notificationTemplate;
   const TPLO = schema.tenantNotificationTemplateOverlay;
+  const MTPL = schema.messageTemplates;
+  const MTPLO = schema.tenantMessageTemplateOverlays;
   const PRES = schema.presence;
   const DE = schema.deliveryEndpoints;
   const UNP = schema.userNotificationPreferences;
@@ -231,7 +238,11 @@ export function createDrizzleMessagingEraseStore(
           await runWithDeadline(
             (signal) => storage.destroyObject({ organizationId: orgId, objectKey: key, signal }),
             ERASE_DESTROY_DEADLINE_MS,
-            () => new DegradedError("attachment-destruction", "an object destroy exceeded its deadline; retry"),
+            () =>
+              new DegradedError(
+                "attachment-destruction",
+                "an object destroy exceeded its deadline; retry",
+              ),
           );
           destroyed += 1;
         }
@@ -320,6 +331,11 @@ export function createDrizzleMessagingEraseStore(
         deleted += await del(() =>
           tx.delete(ATT).where(eq(ATT.organizationId, orgId)).returning({ id: ATT.id }),
         );
+        // WP 2.5: private drafts (sealed under the tenant DEK) go with the tenant. Visible here only on the
+        // destruction connection (RLS pins app-role reads to the owner); the channel FK cascade below is the backstop.
+        deleted += await del(() =>
+          tx.delete(DRAFT).where(eq(DRAFT.organizationId, orgId)).returning({ id: DRAFT.id }),
+        );
         deleted += await del(() =>
           tx.delete(RCPT).where(eq(RCPT.organizationId, orgId)).returning({ id: RCPT.id }),
         );
@@ -344,6 +360,14 @@ export function createDrizzleMessagingEraseStore(
         );
         deleted += await del(() =>
           tx.delete(TPL).where(eq(TPL.organizationId, orgId)).returning({ id: TPL.id }),
+        );
+        // WP 2.8: the tenant's saved replies, shared templates and overlays (platform templates carry no organization_id
+        // and are never matched). The overlay goes first only for readability: its FK points at the platform rows.
+        deleted += await del(() =>
+          tx.delete(MTPLO).where(eq(MTPLO.organizationId, orgId)).returning({ id: MTPLO.id }),
+        );
+        deleted += await del(() =>
+          tx.delete(MTPL).where(eq(MTPL.organizationId, orgId)).returning({ id: MTPL.id }),
         );
         return { deleted };
       });

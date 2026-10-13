@@ -11,12 +11,17 @@ import { useEffect, useRef, useState } from "react";
 import type { JSX, KeyboardEvent, MutableRefObject } from "react";
 import { AttachButton, AttachmentChips } from "./attachment-composer";
 import { sendBlockedReason } from "./attachment-utils";
+import { DraftSyncNotice, escapeKeepsMine } from "./draft-conflict-prompt";
 import { MessageRow } from "./message-row";
 import { useAttachmentUploads } from "./use-attachment-upload";
 import { sentMessageRow, useMessageSender } from "./use-message-sender";
 import type { SentMessage } from "./use-message-sender";
+import { useServerDraft } from "./use-server-draft";
 import { type LiveHint, useThread } from "./use-thread";
 import "./thread-panel.css";
+
+/** A stable empty list: the reply composer has no mention chips, and a fresh `[]` each render would re-run the autosave effect. */
+const NO_REFERENCES: readonly never[] = [];
 
 export interface ThreadPanelProps {
   channelId: string;
@@ -115,6 +120,16 @@ export function ThreadPanel({
     },
   });
   const held = sending || sendInFlight;
+  // WP 2.5: this root's reply draft follows the user across reloads and devices (text only; no mention chips here).
+  const serverDraft = useServerDraft({
+    channelId,
+    parentMessageId: rootId,
+    text: draft,
+    references: NO_REFERENCES,
+    // A reply being sent owns its text: closing the panel mid-send must not save it back as a draft.
+    suspended: held,
+    hydrate: (text) => changeDraft(text),
+  });
 
   // Announce replies from other people that arrive after the thread was first shown (a polite live region).
   const seenRef = useRef<Set<string> | null>(null);
@@ -175,6 +190,7 @@ export function ThreadPanel({
   function handleComposerKey(event: KeyboardEvent<HTMLTextAreaElement>): void {
     // While an IME is composing, every key belongs to the IME.
     if (composingRef.current || event.nativeEvent.isComposing) return;
+    if (escapeKeepsMine(event, serverDraft)) return;
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       if (!held) void send();
@@ -294,61 +310,68 @@ export function ThreadPanel({
           This conversation is archived. Replies are read only.
         </output>
       ) : status === "ready" ? (
-        <form
-          className="wx-message-composer"
-          onSubmit={(event) => {
-            if (held) event.preventDefault();
-            else void send(event);
-          }}
-        >
-          <label htmlFor="messaging-thread-composer" className="sr-only">
-            Reply in thread
-          </label>
-          <textarea
-            ref={textareaRef}
-            id="messaging-thread-composer"
-            rows={1}
-            placeholder="Reply…"
-            value={draft}
-            // readOnly, not disabled: a disabled control drops focus, and Escape would stop reaching the panel.
-            readOnly={sending}
-            onChange={(event) => {
-              changeDraft(event.target.value);
-              if (sendError) clearSendError();
+        <>
+          <DraftSyncNotice sync={serverDraft} />
+          <form
+            className="wx-message-composer"
+            onSubmit={(event) => {
+              if (held) event.preventDefault();
+              else void send(event);
             }}
-            onKeyDown={handleComposerKey}
-            onCompositionStart={() => {
-              composingRef.current = true;
-            }}
-            onCompositionEnd={() => {
-              composingRef.current = false;
-            }}
-          />
-          <AttachmentChips uploads={uploads} disabled={sending} attachButtonRef={attachButtonRef} />
-          <AttachButton uploads={uploads} disabled={sending} buttonRef={attachButtonRef} />
-          <Button
-            type="submit"
-            disabled={
-              held || (!draft.trim() && uploads.sendableIds.length === 0) || uploads.blocksSend
-            }
-            loading={sending}
-            aria-label="Send reply"
           >
-            <Glyph name="send" size={16} /> <span>Reply</span>
-          </Button>
-          {sendInFlight && !sending ? (
-            <div className="wx-send-hint">Your previous reply is still being sent.</div>
-          ) : null}
-          {sendHint ? <div className="wx-send-hint">{sendHint}</div> : null}
-          {sendError ? (
-            <div role="alert" className="wx-composer-error">
-              {sendError}{" "}
-              <button type="submit" disabled={sending}>
-                Retry
-              </button>
-            </div>
-          ) : null}
-        </form>
+            <label htmlFor="messaging-thread-composer" className="sr-only">
+              Reply in thread
+            </label>
+            <textarea
+              ref={textareaRef}
+              id="messaging-thread-composer"
+              rows={1}
+              placeholder="Reply…"
+              value={draft}
+              // readOnly, not disabled: a disabled control drops focus, and Escape would stop reaching the panel.
+              readOnly={sending}
+              onChange={(event) => {
+                changeDraft(event.target.value);
+                if (sendError) clearSendError();
+              }}
+              onKeyDown={handleComposerKey}
+              onCompositionStart={() => {
+                composingRef.current = true;
+              }}
+              onCompositionEnd={() => {
+                composingRef.current = false;
+              }}
+            />
+            <AttachmentChips
+              uploads={uploads}
+              disabled={sending}
+              attachButtonRef={attachButtonRef}
+            />
+            <AttachButton uploads={uploads} disabled={sending} buttonRef={attachButtonRef} />
+            <Button
+              type="submit"
+              disabled={
+                held || (!draft.trim() && uploads.sendableIds.length === 0) || uploads.blocksSend
+              }
+              loading={sending}
+              aria-label="Send reply"
+            >
+              <Glyph name="send" size={16} /> <span>Reply</span>
+            </Button>
+            {sendInFlight && !sending ? (
+              <div className="wx-send-hint">Your previous reply is still being sent.</div>
+            ) : null}
+            {sendHint ? <div className="wx-send-hint">{sendHint}</div> : null}
+            {sendError ? (
+              <div role="alert" className="wx-composer-error">
+                {sendError}{" "}
+                <button type="submit" disabled={sending}>
+                  Retry
+                </button>
+              </div>
+            ) : null}
+          </form>
+        </>
       ) : null}
     </aside>
   );

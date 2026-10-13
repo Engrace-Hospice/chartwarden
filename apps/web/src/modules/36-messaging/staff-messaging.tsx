@@ -5,6 +5,7 @@ import { useLocation } from "react-router-dom";
 import { useSession } from "../../shell";
 import { ConversationInbox } from "./conversation-inbox";
 import { ConversationThread } from "./conversation-thread";
+import { DepartmentChannelDialog } from "./department-channel-dialog";
 import type { ChannelSummary, ConversationFilter } from "./messaging-types";
 import { channelKindLabel, channelLabel } from "./messaging-utils";
 import { NewConversationDialog } from "./new-conversation-dialog";
@@ -74,6 +75,8 @@ export function StaffMessaging(): JSX.Element {
       organizationName={session?.organizationName ?? "Active organization"}
       userId={userId}
       userDisplayName={session?.displayName ?? "You"}
+      canAnnounce={session?.permissions?.includes("messaging.announce") ?? false}
+      canManageMembers={session?.permissions?.includes("messaging.manage_members") ?? false}
       requestedChannelId={requestedChannelId}
       requestedMessageId={requestedMessageId}
     />
@@ -88,6 +91,8 @@ function OrganizationStaffMessaging({
   organizationName,
   userId,
   userDisplayName,
+  canAnnounce,
+  canManageMembers,
   requestedChannelId,
   requestedMessageId,
 }: {
@@ -95,6 +100,8 @@ function OrganizationStaffMessaging({
   organizationName: string;
   userId: string;
   userDisplayName: string;
+  canAnnounce: boolean;
+  canManageMembers: boolean;
   requestedChannelId: string | null;
   requestedMessageId: string | null;
 }): JSX.Element {
@@ -105,6 +112,7 @@ function OrganizationStaffMessaging({
   const [error, setError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [newConversationOpen, setNewConversationOpen] = useState(false);
+  const [departmentOpen, setDepartmentOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ConversationFilter>("all");
   const generationRef = useRef(0);
@@ -251,6 +259,7 @@ function OrganizationStaffMessaging({
       }
       setActiveId(channelId);
       setNewConversationOpen(false);
+      setDepartmentOpen(false);
       return true;
     },
     [loadChannels],
@@ -318,6 +327,15 @@ function OrganizationStaffMessaging({
         onCreated={openConversation}
       />
 
+      {canAnnounce ? (
+        <DepartmentChannelDialog
+          key={departmentOpen ? "open" : "closed"}
+          open={departmentOpen}
+          onClose={() => setDepartmentOpen(false)}
+          onCreated={openConversation}
+        />
+      ) : null}
+
       <main className={`wx-messaging-layout ${activeChannel ? "has-active-thread" : ""}`}>
         <ConversationInbox
           channels={channels}
@@ -331,6 +349,7 @@ function OrganizationStaffMessaging({
           onSelect={setActiveId}
           onRetry={() => void loadChannels()}
           onNewConversation={() => setNewConversationOpen(true)}
+          onNewDepartment={canAnnounce ? () => setDepartmentOpen(true) : undefined}
         />
         <div className="wx-messaging-active-pane">
           {activeChannel ? (
@@ -346,6 +365,8 @@ function OrganizationStaffMessaging({
               liveToken={liveToken}
               liveHint={liveHint}
               realtimeConnected={realtimeConnected}
+              canAnnounce={canAnnounce}
+              canManageMembers={canManageMembers}
               anchorMessageId={
                 activeChannel.channelId === requestedChannelId ? requestedMessageId : null
               }

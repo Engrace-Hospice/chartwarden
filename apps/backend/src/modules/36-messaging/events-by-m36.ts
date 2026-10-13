@@ -96,6 +96,21 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m36.message.annotated",
+    moduleOwner: "m36",
+    description:
+      "A message's reactions or pin changed (WP 2.4). PHI-free realtime hint source (ADR-0054): ids and one timestamp only - not which emoji, not who. Published in the same transaction as the write; the realtime consumer turns it into a Socket.IO hint and the client re-reads over REST. A reaction is not a sign-off and this event is never a delivery or read signal.",
+    payloadSchema: Type.Object({
+      organizationId: id,
+      channelId: id,
+      messageId: id,
+      parentMessageId: Type.Optional(id),
+      at: isoInstant,
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m36.message.mentioned",
     moduleOwner: "m36",
     description:

@@ -134,6 +134,7 @@ export type {
   ResolvedMessageReference,
 } from "./interfaces/provider";
 export type { AlertEmitter, RecipientResolver } from "./interfaces/alert-emitter";
+export type { MessageReactionPinService } from "./interfaces/reaction-pin";
 
 // ── M36-T07 route-facing application service (§4.1–4.2) — the surface the REST inventory uses ─
 export type {
@@ -161,6 +162,27 @@ export {
   type PatientLocationResolver,
   type MemberAdminActor,
 } from "./member-admin";
+// WP 2.5 server-side drafts (interface + conflict rule shared with the backend's Drizzle impl).
+export {
+  MAX_DRAFT_BODY_LENGTH,
+  MAX_DRAFT_REFERENCES,
+  assertDraftWithinLimits,
+  createInMemoryDraftService,
+  decideDraftSave,
+  draftConflictError,
+  isEmptyDraft,
+} from "./drafts";
+export type { DraftKey, DraftView, MessageDraftService, SaveDraftInput } from "./drafts";
+// WP 2.9 — announcement receipts + department channels (its own service; the in-memory slice implements both).
+export { RECEIPT_LIST_LIMIT } from "./interfaces/announcement-service";
+export type {
+  AnnouncementReader,
+  AnnouncementReceiptPerson,
+  AnnouncementReceiptView,
+  AnnouncementService,
+  CreateDepartmentChannelInput,
+  DepartmentChannelKind,
+} from "./interfaces/announcement-service";
 export { createInMemoryMessagingService } from "./store/in-memory-service";
 export type {
   InMemoryMessagingSeed,
@@ -388,3 +410,6 @@ export type {
   VendorCallbackKind,
   VendorTransition,
 } from "./dispatch";
+
+// ── M36 WP 2.8 message templates & saved replies: model, PHI lint, platform seed, in-memory service ─
+export * from "./templates";
