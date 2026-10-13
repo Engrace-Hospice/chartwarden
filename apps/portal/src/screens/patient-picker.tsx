@@ -1,4 +1,4 @@
-import { StatusPill, useApiClient } from "@wardenx/ui";
+import { Glyph, StatusPill, useApiClient } from "@wardenx/ui";
 // @wardenx/portal — §5.1 Patient selector (`/patient-picker`). A portal session is scoped to the patients its ACCOUNT is
 // granted — never to the signed-in user — and works on ONE at a time (D2). This lists the account's live grants
 // (GET /portal/sessions/patients: the lay label, the relationship the grant came from and how many areas of care it
@@ -58,7 +58,8 @@ export function PortalPatientPicker(): JSX.Element {
   return (
     <PortalPage
       title="Who are you here for?"
-      subtitle="Choose the person whose care you'd like to see."
+      subtitle="Choose a patient to open their secure care information."
+      width="reading"
     >
       <PortalLoadState
         loading={loading}
@@ -78,11 +79,12 @@ export function PortalPatientPicker(): JSX.Element {
               aria-describedby={`patient-access-${p.grantId}`}
               onClick={() => void enter(p.patientId)}
             >
+              <span className="wx-portal-patient-option__avatar" aria-hidden="true">
+                <Glyph name="user" size={24} />
+              </span>
               <span className="wx-portal-patient-option__copy">
                 <strong>{p.layPatientLabel}</strong>
-                <span id={`patient-access-${p.grantId}`}>
-                  {`${humanize(p.grantKind)} · ${p.scopeSet.length} area${p.scopeSet.length === 1 ? "" : "s"} of access`}
-                </span>
+                <span id={`patient-access-${p.grantId}`}>Access as {humanize(p.grantKind)}</span>
               </span>
               <StatusPill
                 tone={selecting === p.patientId ? "progress" : "neutral"}

@@ -66,7 +66,11 @@ export function PortalAccount(): JSX.Element {
   }
 
   return (
-    <PortalPage title="Account & security" subtitle="Your sign-in and access settings.">
+    <PortalPage
+      title="Account & security"
+      subtitle="Your sign-in and access settings."
+      width="reading"
+    >
       <PortalLoadState
         loading={loading}
         error={error}

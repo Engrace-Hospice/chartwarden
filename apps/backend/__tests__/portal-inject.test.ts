@@ -732,7 +732,7 @@ function makeServer(
     "MedicationOrderProvider",
     fakeMedicationOrderProvider as unknown as MedicationOrderProvider,
   );
-  const messagingCalls = { sendMessage: 0 };
+  const messagingCalls = { sendMessage: 0, listMessages: 0, lastListInput: null as unknown };
   const fakeMessagingProvider = {
     async syncCareTeamChannel() {
       if (opts.careTeamSyncThrows) throw new Error("care-team roster reconcile failed");
@@ -744,6 +744,20 @@ function makeServer(
     async sendMessage() {
       messagingCalls.sendMessage += 1;
       return { messageId: "msg-1" };
+    },
+    async listMessages(_orgId: string, input: unknown) {
+      messagingCalls.listMessages += 1;
+      messagingCalls.lastListInput = input;
+      return {
+        messages: [
+          {
+            messageId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            authorUserId: "caregiver_user",
+            body: "Synthetic portal message",
+            createdAt: NOW,
+          },
+        ],
+      };
     },
   };
   registerSeam("MessagingProvider", fakeMessagingProvider);
@@ -1059,6 +1073,37 @@ describe("M31 route smoke — the M1 boundary", () => {
     expect(messagingCalls.sendMessage).toBe(1);
     await app.close();
   });
+
+  it("resolves portal history from the session patient and returns a narrow M36 projection", async () => {
+    const { app, messagingCalls } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/portal/messages/history?cursor=opaque&limit=12&channelId=attacker-choice",
+      headers: CAREGIVER,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(messagingCalls.listMessages).toBe(1);
+    expect(messagingCalls.lastListInput).toMatchObject({
+      channelId: "channel-1",
+      userId: "caregiver_user",
+      cursor: "opaque",
+      limit: 12,
+      direction: "backward",
+    });
+    expect(res.json()).toEqual({
+      messages: [
+        {
+          messageId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          body: "Synthetic portal message",
+          sentAt: NOW,
+          direction: "outgoing",
+          senderLabel: "You",
+        },
+      ],
+    });
+    expect(res.body).not.toContain("authorUserId");
+    await app.close();
+  });
 });
 
 // ── one legitimately-authorized 2xx call per route (the bulk of the file) ──────────────────────────────
@@ -1219,6 +1264,13 @@ const ROUTE_CASES: readonly RouteCase[] = [
     label: "20 GET /portal/messages/channel",
     method: "GET",
     url: "/api/v1/portal/messages/channel",
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
+  {
+    label: "20b GET /portal/messages/history",
+    method: "GET",
+    url: "/api/v1/portal/messages/history?limit=30",
     headers: CAREGIVER,
     expectStatus: 200,
   },

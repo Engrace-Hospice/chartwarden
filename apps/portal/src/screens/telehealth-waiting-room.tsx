@@ -1,4 +1,4 @@
-import { Button, InlineAlert, StatusPill, useApiClient } from "@wardenx/ui";
+import { Button, Glyph, InlineAlert, StatusPill, useApiClient } from "@wardenx/ui";
 // @wardenx/portal — §5.1 Telehealth waiting room (`/p/:patientId/visits/:visitId/telehealth`). Pre-visit
 // checklist (consent reaffirm, audio test), then "Join" calls POST /portal/telehealth/visits/:id/join, which
 // the backend telehealth adapter (M31-T05) answers with a short-lived vendor token + join URL. Two-party
@@ -29,7 +29,8 @@ export function TelehealthWaitingRoom(): JSX.Element {
   const [joining, setJoining] = useState(false);
 
   async function join(): Promise<void> {
-    if (!visitId) return;
+    // The disabled button is presentation only; the action itself must also enforce acknowledgement.
+    if (!visitId || !consented) return;
     setJoining(true);
     setError(null);
     const res = await client.POST("/api/v1/portal/telehealth/visits/{visitId}/join", {
@@ -51,45 +52,51 @@ export function TelehealthWaitingRoom(): JSX.Element {
   if (ticket) {
     const embedUrl = telehealthEmbedUrl(ticket);
     return (
-      <PortalPage title="Video visit" subtitle="You're connected to your care team.">
-        <PortalCard heading="In the visit">
-          <p className="wx-portal-body-copy">
-            The video runs inside this secure window.{" "}
-            {ticket.recordingActive ? (
-              <StatusPill tone="warning" label="Recording" />
-            ) : (
-              <StatusPill tone="neutral" label="Not recording" />
-            )}
-          </p>
-          {/* GAP-053: the vendor's hosted room runs in a frame; the token travels in the frame url and the
+      <PortalPage
+        title="Video visit"
+        subtitle="You're connected to your care team."
+        width="workspace"
+      >
+        <div className="wx-portal-telehealth-room">
+          <PortalCard heading="In the visit">
+            <p className="wx-portal-body-copy">
+              The video runs inside this secure window.{" "}
+              {ticket.recordingActive ? (
+                <StatusPill tone="warning" label="Recording" />
+              ) : (
+                <StatusPill tone="neutral" label="Not recording" />
+              )}
+            </p>
+            {/* GAP-053: the vendor's hosted room runs in a frame; the token travels in the frame url and the
               join url is never rendered as a link that would bypass our PHI boundary. The vendor room carries the
               mute / camera / chat / participant controls. */}
-          {embedUrl ? (
-            <iframe
-              title="Video visit"
-              aria-label="Video area"
-              src={embedUrl}
-              allow={TELEHEALTH_FRAME_ALLOW}
-              referrerPolicy="no-referrer"
-              className="wx-portal-video-frame"
-            />
-          ) : (
-            <InlineAlert tone="error">
-              The video room could not be opened. Leave and try joining again, or call your care
-              team.
-            </InlineAlert>
-          )}
-          {ticket.audioOnlyFallbackActive ? (
-            <p className="wx-portal-supporting-copy">
-              Audio-only mode is on because of a limited connection.
-            </p>
-          ) : null}
-          <div className="wx-portal-actions">
-            <Button tone="secondary" onClick={() => void leave()}>
-              Leave visit
-            </Button>
-          </div>
-        </PortalCard>
+            {embedUrl ? (
+              <iframe
+                title="Video visit"
+                aria-label="Video area"
+                src={embedUrl}
+                allow={TELEHEALTH_FRAME_ALLOW}
+                referrerPolicy="no-referrer"
+                className="wx-portal-video-frame"
+              />
+            ) : (
+              <InlineAlert tone="error">
+                The video room could not be opened. Leave and try joining again, or call your care
+                team.
+              </InlineAlert>
+            )}
+            {ticket.audioOnlyFallbackActive ? (
+              <p className="wx-portal-supporting-copy">
+                Audio-only mode is on because of a limited connection.
+              </p>
+            ) : null}
+            <div className="wx-portal-actions">
+              <Button tone="secondary" onClick={() => void leave()}>
+                Leave visit
+              </Button>
+            </div>
+          </PortalCard>
+        </div>
       </PortalPage>
     );
   }
@@ -97,32 +104,40 @@ export function TelehealthWaitingRoom(): JSX.Element {
   return (
     <PortalPage
       title="Telehealth waiting room"
-      subtitle="A few checks before your care team joins."
+      subtitle="Prepare your space and confirm your acknowledgement before connecting."
+      width="reading"
     >
-      <PortalCard heading="Before you join">
-        <ul className="wx-portal-content-list">
-          <li>Find a quiet, private spot with a steady connection.</li>
-          <li>Your microphone and camera will be requested when you join.</li>
-          <li>If video won't connect, you can switch to audio-only.</li>
-        </ul>
-        <label className="wx-portal-check-row">
-          <input
-            type="checkbox"
-            checked={consented}
-            onChange={(e) => setConsented(e.target.checked)}
-          />
-          <span>
-            I understand this visit may be recorded with consent, and I agree to take part in a
-            telehealth visit for my loved one.
-          </span>
-        </label>
-        {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
-        <div className="wx-portal-actions">
-          <Button loading={joining} disabled={!consented} onClick={() => void join()}>
-            {joining ? "Connecting…" : "Join visit"}
-          </Button>
-        </div>
-      </PortalCard>
+      <div className="wx-portal-telehealth-waiting">
+        <PortalCard heading="Before you join">
+          <div className="wx-portal-telehealth-intro" aria-hidden="true">
+            <span>
+              <Glyph name="video" size={24} />
+            </span>
+          </div>
+          <ul className="wx-portal-content-list">
+            <li>Find a quiet, private spot with a steady connection.</li>
+            <li>Your microphone and camera will be requested when you join.</li>
+            <li>If video won't connect, you can switch to audio-only.</li>
+          </ul>
+          <label className="wx-portal-check-row">
+            <input
+              type="checkbox"
+              checked={consented}
+              onChange={(e) => setConsented(e.target.checked)}
+            />
+            <span>
+              I understand this visit may be recorded with consent, and I agree to take part in a
+              telehealth visit for my loved one.
+            </span>
+          </label>
+          {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
+          <div className="wx-portal-actions">
+            <Button loading={joining} disabled={!consented} onClick={() => void join()}>
+              {joining ? "Connecting…" : "Join visit"}
+            </Button>
+          </div>
+        </PortalCard>
+      </div>
     </PortalPage>
   );
 }

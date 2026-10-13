@@ -13,11 +13,12 @@ function json(data: unknown): Response {
   });
 }
 
-function fixtureClient() {
+function fixtureClient(requests: string[] = []) {
   return createApiClient({
     baseUrl: "http://localhost",
     fetch: async (input) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
+      requests.push(`${input instanceof Request ? input.method : "GET"} ${url.pathname}`);
       if (url.pathname === "/api/v1/portal/visits/upcoming") {
         return json({
           items: [
@@ -36,6 +37,7 @@ function fixtureClient() {
       if (url.pathname === "/api/v1/portal/messages/channel") {
         return json({ channelId: "33333333-3333-4333-8333-333333333333", lastReadPointer: null });
       }
+      if (url.pathname === "/api/v1/portal/messages/history") return json({ messages: [] });
       if (url.pathname === "/api/v1/portal/documents") {
         return json({
           items: [
@@ -96,13 +98,13 @@ describe("portal priority screens", () => {
     document.documentElement.classList.remove("dark");
   });
 
-  it("keeps visit information labelled when the table becomes mobile cards", async () => {
+  it("presents the next visit as a patient-facing card", async () => {
     window.history.pushState({}, "", `/p/${PATIENT_ID}/visits`);
     render(<PortalApp client={fixtureClient()} />);
 
-    const when = await screen.findByRole("cell", { name: /2026-10-14/ });
-    expect(when.getAttribute("data-label")).toBe("When");
-    expect(screen.getByRole("link", { name: "Join" }).getAttribute("href")).toContain(
+    expect(await screen.findByRole("heading", { name: "Registered Nurse" })).toBeTruthy();
+    expect(screen.getByText("Telehealth")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Join video visit" }).getAttribute("href")).toContain(
       "/telehealth",
     );
   });
@@ -111,7 +113,7 @@ describe("portal priority screens", () => {
     window.history.pushState({}, "", `/p/${PATIENT_ID}/messages`);
     render(<PortalApp client={fixtureClient()} />);
 
-    const composer = await screen.findByRole("textbox", { name: /Write to your care team/ });
+    const composer = await screen.findByRole("textbox", { name: /Message your care team/ });
     expect(composer.getAttribute("aria-describedby")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
   });
@@ -156,17 +158,28 @@ describe("portal priority screens", () => {
     expect(screen.getByRole("button", { name: "Submit request" })).toBeDisabled();
   });
 
-  it("requires telehealth consent before enabling the join action", () => {
+  it("requires telehealth consent before enabling and submitting the join action", async () => {
+    const requests: string[] = [];
     window.history.pushState(
       {},
       "",
       `/p/${PATIENT_ID}/visits/88888888-8888-4888-8888-888888888888/telehealth`,
     );
-    render(<PortalApp client={fixtureClient()} />);
+    render(<PortalApp client={fixtureClient(requests)} />);
 
     const join = screen.getByRole("button", { name: "Join visit" });
     expect(join).toBeDisabled();
+    fireEvent.click(join);
+    expect(requests.some((request) => request.includes("/telehealth/"))).toBe(false);
     fireEvent.click(screen.getByRole("checkbox"));
     expect(join).not.toBeDisabled();
+    fireEvent.click(join);
+    await waitFor(() =>
+      expect(
+        requests.some((request) =>
+          request.includes("/portal/telehealth/visits/88888888-8888-4888-8888-888888888888/join"),
+        ),
+      ).toBe(true),
+    );
   });
 });

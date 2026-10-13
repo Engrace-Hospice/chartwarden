@@ -26,10 +26,11 @@ import type {
 } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { bindAttachmentsInTx } from "./attachments/attachment-service-db";
 import { assertMemberCategoryAllowed, excludedMemberUserIds } from "./member-category-gate";
+import { decodeCursor, encodeCursor } from "./message-cursor";
 import { publishMessageHint } from "./message-hint-events";
 import {
   type MessagingOutboxPort,
@@ -218,6 +219,16 @@ export function createDbMessagingProvider(
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
         await channelOr404(tx, orgId, input.channelId);
         const limit = Math.min(Math.max(input.limit ?? 50, 1), 200);
+        const backward = input.direction === "backward";
+        const cursor = input.cursor ? decodeCursor(input.cursor) : null;
+        const where = [eq(MSG.organizationId, orgId), eq(MSG.channelId, input.channelId)];
+        if (cursor) {
+          where.push(
+            backward
+              ? sql`(${MSG.createdAt}, ${MSG.id}) < (${cursor.createdAt}, ${cursor.id})`
+              : sql`(${MSG.createdAt}, ${MSG.id}) > (${cursor.createdAt}, ${cursor.id})`,
+          );
+        }
         const rows = (await tx
           .select({
             id: MSG.id,
@@ -230,9 +241,12 @@ export function createDbMessagingProvider(
             parentMessageId: MSG.parentMessageId,
           })
           .from(MSG)
-          .where(and(eq(MSG.organizationId, orgId), eq(MSG.channelId, input.channelId)))
-          .orderBy(asc(MSG.createdAt), asc(MSG.id))
-          .limit(limit)) as Array<{
+          .where(and(...where))
+          .orderBy(
+            backward ? desc(MSG.createdAt) : asc(MSG.createdAt),
+            backward ? desc(MSG.id) : asc(MSG.id),
+          )
+          .limit(limit + 1)) as Array<{
           id: string;
           channelId: string;
           authorUserId: string | null;
@@ -242,28 +256,34 @@ export function createDbMessagingProvider(
           createdAt: Date;
           parentMessageId: string | null;
         }>;
-        const messages = await Promise.all(
-          rows.map(
-            async (m): Promise<ResolvedMessage> => ({
-              messageId: m.id,
-              channelId: m.channelId,
-              authorUserId: m.authorUserId,
-              authorDisplayName: null,
-              body:
-                m.status === "deleted"
-                  ? ""
-                  : decodeStoredBody(
-                      m.bodyKind as MessageBodyKind,
-                      await cipher.open(orgId, m.bodyCipher),
-                    ).body,
-              bodyKind: m.bodyKind as MessageBodyKind,
-              createdAt: m.createdAt.toISOString(),
-              parentMessageId: m.parentMessageId,
-              references: [],
-            }),
-          ),
+        const hasMore = rows.length > limit;
+        const pageRows = rows.slice(0, limit);
+        if (backward) pageRows.reverse();
+        const messages = pageRows.map(
+          (m): ResolvedMessage => ({
+            messageId: m.id,
+            channelId: m.channelId,
+            authorUserId: m.authorUserId,
+            authorDisplayName: null,
+            body:
+              m.status === "deleted"
+                ? ""
+                : decodeStoredBody(m.bodyKind as MessageBodyKind, cipher.open(orgId, m.bodyCipher))
+                    .body,
+            bodyKind: m.bodyKind as MessageBodyKind,
+            createdAt: m.createdAt.toISOString(),
+            parentMessageId: m.parentMessageId,
+            references: [],
+          }),
         );
-        return { messages };
+        const cursorRow = backward ? pageRows[0] : pageRows.at(-1);
+        return {
+          messages,
+          nextCursor:
+            hasMore && cursorRow
+              ? encodeCursor(cursorRow.createdAt.toISOString(), cursorRow.id)
+              : undefined,
+        };
       });
     },
 

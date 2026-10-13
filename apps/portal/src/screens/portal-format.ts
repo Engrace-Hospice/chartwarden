@@ -22,6 +22,67 @@ export function stamp(iso: string | null | undefined): string {
   return iso.slice(0, 16).replace("T", " ");
 }
 
+/** Format an ISO instant in browser-local time unless an authoritative timezone is supplied. */
+export function formatPortalInstant(
+  iso: string | null | undefined,
+  options: { locale?: string; timeZone?: string } = {},
+): string | null {
+  if (!iso || /^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  const instant = new Date(iso);
+  if (!Number.isFinite(instant.getTime())) return null;
+  try {
+    return new Intl.DateTimeFormat(options.locale ?? "en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: options.timeZone,
+    }).format(instant);
+  } catch {
+    return null;
+  }
+}
+
+export function formatPortalVisitDate(
+  iso: string | null | undefined,
+  options: { locale?: string; timeZone?: string } = {},
+): string | null {
+  if (!iso || /^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  const instant = new Date(iso);
+  if (!Number.isFinite(instant.getTime())) return null;
+  try {
+    return new Intl.DateTimeFormat(options.locale ?? "en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      timeZone: options.timeZone,
+    }).format(instant);
+  } catch {
+    return null;
+  }
+}
+
+export function formatPortalVisitTime(
+  iso: string | null | undefined,
+  options: { locale?: string; timeZone?: string } = {},
+): string | null {
+  if (!iso || /^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  const instant = new Date(iso);
+  if (!Number.isFinite(instant.getTime())) return null;
+  try {
+    return new Intl.DateTimeFormat(options.locale ?? "en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: options.timeZone,
+    }).format(instant);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Map a lifecycle/status token → a Lantern StatusPill tone. The portal never shows a raw enum, so an
  * unknown token falls back to neutral rather than leaking the wire value with alarming styling.
