@@ -51,6 +51,15 @@ const IDLE: GlobalSearchState = {
   moreFailure: null,
 };
 
+/** A page appended after the first can repeat a message the index returned earlier; keep the first occurrence. */
+function appendUnique(
+  current: readonly GlobalSearchHit[],
+  incoming: readonly GlobalSearchHit[],
+): readonly GlobalSearchHit[] {
+  const seen = new Set(current.map((hit) => hit.messageId));
+  return [...current, ...incoming.filter((hit) => !seen.has(hit.messageId))];
+}
+
 export const isGlobalSearchable = (query: string): boolean =>
   query.trim().length >= GLOBAL_SEARCH_MIN_CHARS;
 
@@ -104,7 +113,7 @@ export function useGlobalSearch(query: string, enabled: boolean) {
         if (error || !data) return fail(failureOf(response?.status, error, response));
         setState((s) => ({
           status: "ready",
-          results: cursor ? [...s.results, ...data.results] : data.results,
+          results: cursor ? appendUnique(s.results, data.results) : data.results,
           nextCursor: data.nextCursor ?? null,
           scanCapped: data.scanCapped,
           refine: data.refine,
@@ -122,7 +131,13 @@ export function useGlobalSearch(query: string, enabled: boolean) {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `retryTick` re-issues the same search on demand
   useEffect(() => {
-    if (!enabled || !isGlobalSearchable(query)) {
+    if (!enabled) {
+      // Closing the panel forgets a refusal: reopening asks the server again.
+      setRefused(false);
+      setState(IDLE);
+      return;
+    }
+    if (!isGlobalSearchable(query)) {
       setState(IDLE);
       return;
     }

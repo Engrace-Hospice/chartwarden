@@ -162,6 +162,7 @@ function OrganizationStaffMessaging({
   const [searchAnchor, setSearchAnchor] = useState<{ channelId: string; messageId: string } | null>(
     null,
   );
+  const focusThreadAfterSearch = useRef(false);
   const [scheduledOpen, setScheduledOpen] = useState(requestedScheduled);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ConversationFilter>("all");
@@ -327,10 +328,20 @@ function OrganizationStaffMessaging({
     [loadChannels],
   );
 
+  // Leaving the conversation a hit opened ends its anchor, so coming back later does not jump to it again.
+  useEffect(() => {
+    setSearchAnchor((current) => (current && current.channelId !== activeId ? null : current));
+  }, [activeId]);
+
   const openSearchHit = useCallback(
     async (channelId: string, messageId: string): Promise<boolean> => {
+      // Cleared first so choosing the same hit again is a new anchor (the thread ignores an unchanged one).
+      setSearchAnchor(null);
       const opened = await openConversation(channelId);
-      if (opened) setSearchAnchor({ channelId, messageId });
+      if (opened) {
+        focusThreadAfterSearch.current = true;
+        setSearchAnchor({ channelId, messageId });
+      }
       return opened;
     },
     [openConversation],
@@ -380,6 +391,14 @@ function OrganizationStaffMessaging({
   }, [channels, filter, query]);
 
   const activeChannel = channels?.find((channel) => channel.channelId === activeId) ?? null;
+
+  // After a search hit opens a conversation, the thread heading takes focus (the panel that had it has closed).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `searchAnchor` is the trigger
+  useEffect(() => {
+    if (!focusThreadAfterSearch.current || !activeChannel) return;
+    focusThreadAfterSearch.current = false;
+    threadHeadingRef.current?.focus();
+  }, [searchAnchor, activeChannel]);
 
   return (
     <div className="wx-messaging-page">

@@ -65,6 +65,7 @@ export function GlobalSearch({ channelName, onOpenHit }: GlobalSearchProps): JSX
   const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const openingRef = useRef(false);
   const { state, retry, loadMore } = useGlobalSearch(query, open);
 
   useEffect(() => {
@@ -96,12 +97,22 @@ export function GlobalSearch({ channelName, onOpenHit }: GlobalSearchProps): JSX
     else (index === 0 ? inputRef.current : links()[index - 1])?.focus();
   };
   const onPick = (event: MouseEvent, channelId: string, messageId: string): void => {
+    // Ctrl/Cmd/Shift/Alt-click and middle-click keep the browser's own link behaviour.
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)
+      return;
     event.preventDefault();
+    if (openingRef.current) return;
+    openingRef.current = true;
     setOpenFailed(false);
-    void onOpenHit(channelId, messageId).then((opened) => {
-      if (opened) close(false);
-      else setOpenFailed(true);
-    });
+    void onOpenHit(channelId, messageId)
+      .then((opened) => {
+        if (opened) close(false);
+        else setOpenFailed(true);
+      })
+      .catch(() => setOpenFailed(true))
+      .finally(() => {
+        openingRef.current = false;
+      });
   };
 
   const canRetry =

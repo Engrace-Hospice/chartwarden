@@ -292,15 +292,16 @@ describe("global search panel", () => {
 
   it("never puts the query in the URL or in browser storage, and sends it only as the request", async () => {
     const before = window.location.href;
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    const pushState = vi.spyOn(window.history, "pushState");
+    const replaceState = vi.spyOn(window.history, "replaceState");
     const { GET } = mount(() => page([hit("m1", "secretword here")]));
     await typeAndWait(await open(), "secretword");
     await screen.findByRole("link");
     expect(window.location.href).toBe(before);
     expect(window.location.href).not.toContain("secretword");
-    for (const store of [window.localStorage, window.sessionStorage]) {
-      // The test environment's storage may be a stub; whatever it holds must not contain the query.
-      expect(JSON.stringify(Object.entries(store ?? {}))).not.toContain("secretword");
-    }
+    const written = [...setItem.mock.calls, ...pushState.mock.calls, ...replaceState.mock.calls];
+    expect(JSON.stringify(written)).not.toContain("secretword");
     expect(GET.mock.calls[0]![1].params.query.q).toBe("secretword");
     expect(screen.getByRole("link").getAttribute("href")).not.toContain("secretword");
   });
@@ -333,6 +334,115 @@ describe("global search panel", () => {
       expect(alertText()).toBe("That conversation is no longer available to you."),
     );
     expect(screen.getByRole("search")).toBeTruthy();
+  });
+});
+
+describe("global search paging, refusal and click hardening", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const withMore = (over: (init: SearchInit) => Promise<Reply> | Reply) => (init: SearchInit) =>
+    init.params.query.cursor ? over(init) : page([hit("m1", "first hospice")], { nextCursor: "C" });
+
+  it("aborts an in-flight Load more when the query changes", async () => {
+    const signals: AbortSignal[] = [];
+    mount(
+      withMore((init) => {
+        signals.push(init.signal);
+        return new Promise<Reply>(() => {});
+      }),
+    );
+    const box = await open();
+    await typeAndWait(box, "hosp");
+    fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+    await waitFor(() => expect(signals).toHaveLength(1));
+    fireEvent.change(box, { target: { value: "hospi" } });
+    expect(signals[0]!.aborted).toBe(true);
+  });
+
+  it("aborts an in-flight Load more on close", async () => {
+    const signals: AbortSignal[] = [];
+    mount(
+      withMore((init) => {
+        signals.push(init.signal);
+        return new Promise<Reply>(() => {});
+      }),
+    );
+    const box = await open();
+    await typeAndWait(box, "hosp");
+    fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+    await waitFor(() => expect(signals).toHaveLength(1));
+    fireEvent.keyDown(box, { key: "Escape" });
+    expect(signals[0]!.aborted).toBe(true);
+  });
+
+  it("shows the not-turned-on message when Load more is refused with 403", async () => {
+    mount(withMore(() => reply(403)));
+    await typeAndWait(await open(), "hosp");
+    fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+    await waitFor(() =>
+      expect(alertText()).toContain("Search is not turned on for your organisation."),
+    );
+  });
+
+  it("forgets a 403 when the panel is closed, so reopening asks the server again", async () => {
+    let calls = 0;
+    const { GET } = mount(() => {
+      calls += 1;
+      return calls === 1 ? reply(403) : page([hit("m1", "hospice")]);
+    });
+    const box = await open();
+    await typeAndWait(box, "hosp");
+    await waitFor(() => expect(alertText()).toContain("not turned on"));
+    fireEvent.keyDown(box, { key: "Escape" });
+    await typeAndWait(await open(), "hosp");
+    await screen.findByRole("link");
+    expect(GET).toHaveBeenCalledTimes(2);
+  });
+
+  it("drops a message repeated on a later page", async () => {
+    mount(withMore(() => page([hit("m1", "first hospice"), hit("m2", "second hospice")])));
+    await typeAndWait(await open(), "hosp");
+    fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+    await screen.findByText("second hospice");
+    expect(screen.getAllByRole("link")).toHaveLength(2);
+  });
+
+  it.each([
+    ["ctrl", { ctrlKey: true }],
+    ["meta", { metaKey: true }],
+    ["middle", { button: 1 }],
+  ])("leaves a %s-click to the browser", async (_name, init) => {
+    const onOpenHit = vi.fn(() => Promise.resolve(true));
+    mount(() => page([hit("m1", "hospice")]), onOpenHit);
+    await typeAndWait(await open(), "hosp");
+    const link = await screen.findByRole("link");
+    let prevented = true;
+    const record = (event: Event): void => {
+      prevented = event.defaultPrevented;
+      event.preventDefault(); // keep jsdom from attempting a real navigation
+    };
+    document.addEventListener("click", record);
+    fireEvent.click(link, init);
+    document.removeEventListener("click", record);
+    expect(prevented).toBe(false);
+    expect(onOpenHit).not.toHaveBeenCalled();
+  });
+
+  it("opens a hit once when it is clicked twice quickly", async () => {
+    let finish: (v: boolean) => void = () => {};
+    const onOpenHit = vi.fn(
+      () =>
+        new Promise<boolean>((r) => {
+          finish = r;
+        }),
+    );
+    mount(() => page([hit("m1", "hospice")]), onOpenHit);
+    await typeAndWait(await open(), "hosp");
+    const link = await screen.findByRole("link");
+    fireEvent.click(link);
+    fireEvent.click(link);
+    expect(onOpenHit).toHaveBeenCalledTimes(1);
+    await act(async () => finish(true));
   });
 });
 
