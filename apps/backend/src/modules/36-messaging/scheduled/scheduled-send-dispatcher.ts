@@ -52,6 +52,9 @@ export const OVERDUE_COUNTS_AS_ATTEMPT_MS = 15 * 60_000;
  * deterministically for several senders at once would otherwise trip every tick, never be counted, and stall the org.
  */
 export const OVERDUE_HARD_CAP_MS = 60 * 60_000;
+// DELIBERATE TRADE-OFF: during a LONG outage, a row more than OVERDUE_HARD_CAP_MS late is counted and, after the attempt
+// limit, blocked (dispatch_failed, sender notified, who can reschedule it). The alternative, never counting while an
+// outage pattern holds, lets a deterministically failing head of queue stall the whole org forever.
 
 /** The M3 resolver or the visibility check failed: an outage of something else, not a verdict about the row. */
 class DependencyUnavailableError extends Error {

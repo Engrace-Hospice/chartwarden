@@ -87,6 +87,8 @@ describe("read-audit emission (preSerialization)", () => {
       await listApp({}).inject({ method: "GET", url: `/api/v1/things/${CHANNEL}/items` });
       expect(captured[0].eventType).toBe("thing_line.list_viewed");
       expect(captured[0].resourceId ?? "").toBe("");
+      // main recorded only the request query here; the path param must not start appearing in the filter.
+      expect(captured[0].context?.filter ?? {}).not.toHaveProperty("id");
     });
     it("with listResourceId the uuid param is the event's resource id", async () => {
       await listApp({ listResourceId: true }).inject({

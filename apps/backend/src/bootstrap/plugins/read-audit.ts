@@ -215,11 +215,14 @@ export function applyReadAuditCoverage(
               resourceKind: cfg.resourceKind,
               count: rowCount(payload),
               ...(listResourceId ? { resourceId: listResourceId } : {}),
-              // A list scoped by a path param (one channel's search) records that param in the filter unless it became
-              // the event's resource id, since a list event otherwise carries no resource id of its own.
+              // An opted-in list whose param is not a uuid keeps it here instead of as the resource id. Every other list
+              // route's filter is the request query alone, exactly as before.
               filter: {
                 ...listAuditFilter(request.query, cfg.filterOmit),
-                ...(cfg.resourceIdParam && params[cfg.resourceIdParam] && !listResourceId
+                ...(cfg.listResourceId &&
+                cfg.resourceIdParam &&
+                params[cfg.resourceIdParam] &&
+                !listResourceId
                   ? { [cfg.resourceIdParam]: params[cfg.resourceIdParam] }
                   : {}),
               },

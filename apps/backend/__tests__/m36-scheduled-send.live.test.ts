@@ -783,20 +783,19 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
       expect(await eventsOf("m36.message.schedule_blocked")).toHaveLength(3);
     });
 
-    it("poison rows 90 minutes overdue behind a tripped tick still reach the attempt limit and block WITH notices", async () => {
+    it("rows overdue by 15-60 minutes behind a tripped tick are NOT counted (only past the hard cap)", async () => {
       await wipe();
       const created = [await schedule(alice), await schedule(bob), await schedule(erin)];
-      for (const row of created) await makeDueAgo(row.id, "90 minutes");
-      resolverFault = () => new Error("deterministic failure for every sender");
+      for (const row of created) await makeDueAgo(row.id, "30 minutes");
+      resolverFault = () => new Error("outage");
       try {
-        for (let i = 0; i < 3; i += 1) await tick();
+        for (let i = 0; i < 4; i += 1) await tick();
       } finally {
         resolverFault = null;
       }
-      const left = await rows();
-      expect(left.every((row) => row.status === "blocked")).toBe(true);
-      expect(left.every((row) => row.blocked_reason === "dispatch_failed")).toBe(true);
-      expect(await eventsOf("m36.message.schedule_blocked")).toHaveLength(3);
+      expect((await rows()).every((row) => row.status === "pending" && row.attempts === 0)).toBe(
+        true,
+      );
     });
 
     it("a genuine outage across distinct users burns no attempts for fresh rows and ends the tick early", async () => {
