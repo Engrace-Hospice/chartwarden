@@ -1292,6 +1292,11 @@ import {
   PinResponseSchema as M36PinResponseSchema,
   SetReactionResponseSchema as M36SetReactionResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/reaction-pin-typebox";
+import {
+  DraftQuerySchema as M36DraftQuerySchema,
+  DraftResponseSchema as M36DraftResponseSchema,
+  SaveDraftBodySchema as M36SaveDraftBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/draft-typebox";
 
 // M38 Clinical Terminology Service — response DTOs (all M38-aliased).
 // Merge these named imports into scripts/openapi/enrichments.ts. NOTE: an existing import already
@@ -8958,6 +8963,22 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/messaging/channels/:id/pins": {
     summary: "The channel's pinned messages, most recently pinned first (read-audited)",
     response: M36PinListResponseSchema,
+  },
+  "GET /api/v1/messaging/channels/:id/draft": {
+    summary:
+      "The caller's own unsent draft for a channel (or a thread root via parentMessageId); null when none (WP 2.5; never another user's)",
+    query: M36DraftQuerySchema,
+    response: M36DraftResponseSchema,
+  },
+  "PUT /api/v1/messaging/channels/:id/draft": {
+    summary:
+      "Autosave the caller's draft (revision + device checked; a blank body discards; 409 DRAFT_CONFLICT when another device wrote since baseRevision)",
+    body: M36SaveDraftBodySchema,
+    response: M36DraftResponseSchema,
+  },
+  "DELETE /api/v1/messaging/channels/:id/draft": {
+    summary: "Discard the caller's draft (idempotent, 204)",
+    query: M36DraftQuerySchema,
   },
   "GET /api/v1/messaging/channels/:id/mention-candidates": {
     summary: "Search staff and the linked patient eligible for a structured reference",

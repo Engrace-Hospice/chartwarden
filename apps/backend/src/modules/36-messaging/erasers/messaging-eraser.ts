@@ -27,7 +27,11 @@ import { DegradedError } from "@wardenx/types";
 import type { DataEraser } from "@wardenx/types";
 import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
-import { ERASE_DESTROY_DEADLINE_MS, ERASE_UPLOAD_URL_GRACE_MS, eraseLockName } from "../attachments/attachment-policy";
+import {
+  ERASE_DESTROY_DEADLINE_MS,
+  ERASE_UPLOAD_URL_GRACE_MS,
+  eraseLockName,
+} from "../attachments/attachment-policy";
 import type { AttachmentStoragePort } from "../attachments/attachment-ports";
 import { runWithDeadline } from "../attachments/attachment-scan-gate";
 import { ERASED_BODY_SHA256 } from "../jobs/integrity-jobs";
@@ -104,6 +108,7 @@ export function createDrizzleMessagingEraseStore(
   const MSG = schema.messages;
   const RCPT = schema.messageReceipts;
   const ATT = schema.messageAttachments;
+  const DRAFT = schema.messageDrafts;
   const EB = schema.messagingEraseBlocks;
   const AL = schema.alerts;
   const ND = schema.notificationDeliveries;
@@ -231,7 +236,11 @@ export function createDrizzleMessagingEraseStore(
           await runWithDeadline(
             (signal) => storage.destroyObject({ organizationId: orgId, objectKey: key, signal }),
             ERASE_DESTROY_DEADLINE_MS,
-            () => new DegradedError("attachment-destruction", "an object destroy exceeded its deadline; retry"),
+            () =>
+              new DegradedError(
+                "attachment-destruction",
+                "an object destroy exceeded its deadline; retry",
+              ),
           );
           destroyed += 1;
         }
@@ -319,6 +328,11 @@ export function createDrizzleMessagingEraseStore(
         // goes with them through the composite FK's ON DELETE CASCADE, like message_revision.
         deleted += await del(() =>
           tx.delete(ATT).where(eq(ATT.organizationId, orgId)).returning({ id: ATT.id }),
+        );
+        // WP 2.5: private drafts (sealed under the tenant DEK) go with the tenant. Visible here only on the
+        // destruction connection (RLS pins app-role reads to the owner); the channel FK cascade below is the backstop.
+        deleted += await del(() =>
+          tx.delete(DRAFT).where(eq(DRAFT.organizationId, orgId)).returning({ id: DRAFT.id }),
         );
         deleted += await del(() =>
           tx.delete(RCPT).where(eq(RCPT.organizationId, orgId)).returning({ id: RCPT.id }),

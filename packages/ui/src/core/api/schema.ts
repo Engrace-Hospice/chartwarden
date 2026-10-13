@@ -13283,6 +13283,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's own unsent draft for a channel (or a thread root via parentMessageId); null when none (WP 2.5; never another user's) */
+        get: operations["getApiV1MessagingChannelsByIdDraft"];
+        /** Autosave the caller's draft (revision + device checked; a blank body discards; 409 DRAFT_CONFLICT when another device wrote since baseRevision) */
+        put: operations["putApiV1MessagingChannelsByIdDraft"];
+        post?: never;
+        /** Discard the caller's draft (idempotent, 204) */
+        delete: operations["deleteApiV1MessagingChannelsByIdDraft"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/channels/{id}/members": {
         parameters: {
             query?: never;
@@ -61668,6 +61687,125 @@ export interface operations {
                         }[];
                     };
                 };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingChannelsByIdDraft: {
+        parameters: {
+            query?: {
+                parentMessageId?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        draft: {
+                            channelId: string;
+                            parentMessageId: string | null;
+                            body: string;
+                            references: {
+                                kind: "staff" | "patient";
+                                entityId: string;
+                                start: number;
+                                end: number;
+                            }[];
+                            revision: number;
+                            deviceId: string;
+                            updatedAt: string;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1MessagingChannelsByIdDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    parentMessageId?: string;
+                    body: string;
+                    references?: {
+                        kind: "staff" | "patient";
+                        entityId: string;
+                        start: number;
+                        end: number;
+                    }[];
+                    deviceId: string;
+                    baseRevision: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        draft: {
+                            channelId: string;
+                            parentMessageId: string | null;
+                            body: string;
+                            references: {
+                                kind: "staff" | "patient";
+                                entityId: string;
+                                start: number;
+                                end: number;
+                            }[];
+                            revision: number;
+                            deviceId: string;
+                            updatedAt: string;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MessagingChannelsByIdDraft: {
+        parameters: {
+            query?: {
+                parentMessageId?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

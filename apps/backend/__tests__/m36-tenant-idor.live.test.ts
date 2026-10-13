@@ -56,15 +56,18 @@ import {
 import type { AttachmentStoragePort } from "../src/modules/36-messaging/attachments/attachment-ports";
 import { createBuiltinScanner } from "../src/modules/36-messaging/attachments/attachment-scanners";
 import { createAttachmentService } from "../src/modules/36-messaging/attachments/attachment-service-db";
+import { createDbDraftService } from "../src/modules/36-messaging/drafts/draft-service-db";
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
 import {
   channelHintAudience,
   createDbMessagingProvider,
 } from "../src/modules/36-messaging/messaging-provider-db";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
+import { createMessageBodyCipher } from "../src/modules/36-messaging/messaging-write-core";
 import { buildM36MessageHintConsumer } from "../src/modules/36-messaging/outbox-consumers/message-hints";
 import { registerAdminAlertDeliveriesRoutes } from "../src/modules/36-messaging/routes/admin-alert-deliveries-routes";
 import { registerAttachmentRoutes } from "../src/modules/36-messaging/routes/attachment-routes";
+import { registerDraftRoutes } from "../src/modules/36-messaging/routes/draft-routes";
 import {
   CHANNEL_MEMBER_ADMIN_PREDICATE,
   CHANNEL_VISIBILITY_PREDICATE,
@@ -103,6 +106,10 @@ const ROUTES: Record<string, Verdict> = {
   "PUT /api/v1/messaging/channels/:id/messages/:messageId/pin": { kind: "idor" },
   "DELETE /api/v1/messaging/channels/:id/messages/:messageId/pin": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/pins": { kind: "idor" },
+  // WP 2.5 drafts: the id is a channel's; a draft is also private to its author inside the channel (asserted below).
+  "GET /api/v1/messaging/channels/:id/draft": { kind: "idor" },
+  "PUT /api/v1/messaging/channels/:id/draft": { kind: "idor" },
+  "DELETE /api/v1/messaging/channels/:id/draft": { kind: "idor" },
   "POST /api/v1/messaging/channels/:id/messages": { kind: "idor" },
   "PATCH /api/v1/messaging/messages/:id": { kind: "idor" },
   "DELETE /api/v1/messaging/messages/:id": { kind: "idor" },
@@ -148,6 +155,8 @@ const ROUTES: Record<string, Verdict> = {
 const REGISTRAR_FILES = [
   "admin-alert-deliveries-routes.ts",
   "attachment-routes.ts",
+  "draft-routes.ts",
+  "draft-typebox.ts", // schemas only
   "messaging-routes.ts",
   "messaging-typebox.ts", // schemas only
   "reaction-pin-routes.ts", // mounted by registerMessagingRoutes
@@ -165,6 +174,7 @@ function registeredRoutes(): string[] {
   });
   registerMessagingRoutes(probe, { service: {} as never });
   registerAttachmentRoutes(probe, { service: {} as never });
+  registerDraftRoutes(probe, { service: {} as never });
   registerAdminAlertDeliveriesRoutes(probe, {} as never);
   registerMessagingWebhookRoutes(probe, { publicBaseUrl: "https://x.test" } as never);
   return [...seen].sort();
@@ -324,6 +334,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     "message_revision",
     "message_receipt",
     "message_attachment",
+    "message_draft",
     "attachment_access_event",
     "message_entity_reference",
     "message_reaction",
@@ -511,6 +522,12 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       canViewChannel: service.canViewChannel,
     });
     registerAttachmentRoutes(app, { service: attachmentService });
+    registerDraftRoutes(app, {
+      service: createDbDraftService({
+        db: handle.db,
+        cipher: createMessageBodyCipher({ kek: KEK }),
+      }),
+    });
     /** Upload + complete a file as `who` straight through the service (the fixture, not an attack). */
     const makeAttachment = async (who: Who, channelId: string, text: string, scan = true) => {
       const bytes = new TextEncoder().encode(`%PDF-1.4\n${text}\n%%EOF`);
@@ -713,6 +730,42 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         for (const f of foreign) expect(ids).not.toContain(f);
         for (const o of ownIds) expect(ids).toContain(o);
         expectNoLeak(res.body, who, `list ${who.name}`);
+      }
+    });
+  });
+
+  describe("draft routes (WP 2.5): org B and an in-org non-member get the answer for a nonexistent id", () => {
+    const draftBody = { body: "WP25-private-draft", deviceId: "dev-1", baseRevision: 0 };
+    it("a member saves and reads their own draft, and a fellow member never sees it (attacks are not vacuous)", async () => {
+      const saved = await call(
+        "PUT /api/v1/messaging/channels/:id/draft",
+        u1,
+        { id: dmA },
+        draftBody,
+      );
+      expect(saved.statusCode).toBe(200);
+      const own = await call("GET /api/v1/messaging/channels/:id/draft", u1, { id: dmA });
+      expect(own.json().draft.body).toBe("WP25-private-draft");
+      const peer = await call("GET /api/v1/messaging/channels/:id/draft", u2, { id: dmA });
+      expect(peer.statusCode).toBe(200);
+      expect(peer.json()).toEqual({ draft: null });
+      // the peer's delete leaves it alone
+      await call("DELETE /api/v1/messaging/channels/:id/draft", u2, { id: dmA });
+      const still = await call("GET /api/v1/messaging/channels/:id/draft", u1, { id: dmA });
+      expect(still.json().draft.body).toBe("WP25-private-draft");
+    });
+    it("org B and the in-org non-member are refused exactly like a random channel id", async () => {
+      for (const attacker of [bUser, outsider]) {
+        for (const id of [dmA, locA]) {
+          await expectNoOracle("GET /api/v1/messaging/channels/:id/draft", attacker, { id });
+          await expectNoOracle(
+            "PUT /api/v1/messaging/channels/:id/draft",
+            attacker,
+            { id },
+            draftBody,
+          );
+          await expectNoOracle("DELETE /api/v1/messaging/channels/:id/draft", attacker, { id });
+        }
       }
     });
   });
@@ -1621,6 +1674,13 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
           { token: "000000" },
         ],
         ["DELETE /api/v1/notifications/endpoints/:id", bUser, { id: endpointA }],
+        [
+          "PUT /api/v1/messaging/channels/:id/draft",
+          bUser,
+          { id: dmA },
+          { body: "x", deviceId: "d", baseRevision: 0 },
+        ],
+        ["DELETE /api/v1/messaging/channels/:id/draft", outsider, { id: dmA }],
         ["POST /api/v1/alerts/:id/read", bUser, { id: alertA }],
         ["PATCH /api/v1/alert-rules/:id", adminB, { id: ruleA }, { enabled: true }],
       ];

@@ -325,8 +325,9 @@ describe("M36 messaging organization switching", () => {
           });
         }
         const requestedChannelId = options?.params?.path?.id;
-        // WP 2.4: the pinned-messages bar reads /pins for the open channel; this counter is about message loads.
-        if (requestedChannelId && !path.endsWith("/pins")) messageLoads.push(requestedChannelId);
+        // WP 2.4/2.5: the pinned-messages bar (/pins) and the own-draft read (/draft) are separate GETs on the same
+        // channel id; this counter is about message loads only.
+        if (requestedChannelId && !path.endsWith("/pins") && !path.endsWith("/draft")) messageLoads.push(requestedChannelId);
         return Promise.resolve({ data: { messages: [] }, error: undefined });
       }),
       POST: vi.fn(() => oldSend.promise),

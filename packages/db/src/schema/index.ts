@@ -123,6 +123,7 @@ export * from "./messaging/channel-members";
 export * from "./messaging/messages";
 export * from "./messaging/message-entity-references";
 export * from "./messaging/message-revisions";
+export * from "./messaging/message-drafts";
 export * from "./messaging/message-attachments";
 export * from "./messaging/attachment-access-events";
 export * from "./messaging/messaging-erase-blocks";

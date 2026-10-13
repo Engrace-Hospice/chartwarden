@@ -162,6 +162,17 @@ export {
   type PatientLocationResolver,
   type MemberAdminActor,
 } from "./member-admin";
+// WP 2.5 server-side drafts (interface + conflict rule shared with the backend's Drizzle impl).
+export {
+  MAX_DRAFT_BODY_LENGTH,
+  MAX_DRAFT_REFERENCES,
+  assertDraftWithinLimits,
+  createInMemoryDraftService,
+  decideDraftSave,
+  draftConflictError,
+  isEmptyDraft,
+} from "./drafts";
+export type { DraftKey, DraftView, MessageDraftService, SaveDraftInput } from "./drafts";
 export { createInMemoryMessagingService } from "./store/in-memory-service";
 export type {
   InMemoryMessagingSeed,
