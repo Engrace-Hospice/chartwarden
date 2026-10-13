@@ -23,7 +23,7 @@ import { DegradedError } from "@wardenx/types";
  * GCM authentication failure. It is a 503-class DegradedError carrying the cause.
  */
 export class BodyKeyUnavailableError extends DegradedError {
-  constructor(readonly cause: unknown) {
+  constructor(override readonly cause: unknown) {
     super(
       "message-body-key",
       `body key unavailable: ${cause instanceof Error ? cause.message : String(cause)}`,

@@ -5962,7 +5962,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               const result = await m34OutboxPublisher.publish(...args);
               const event = args[1];
               if (event.eventName === "m34.tenant.dek_rotation_completed") {
-                invalidateMessageBodyKeys(event.organizationId);
+                invalidateMessageBodyKeys(event.organizationId ?? undefined);
               }
               return result;
             },

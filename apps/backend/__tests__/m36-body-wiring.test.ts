@@ -144,6 +144,50 @@ describe("key outage is distinguishable from a GCM failure", () => {
   });
 });
 
+describe("fail-closed: no write or read proceeds on a key, envelope or scheme problem", () => {
+  const good = createRingDekCache({
+    dekForOrg: async () => ({ version: "v1", key: Buffer.alloc(32, 5) }),
+    dekForOrgVersion: async () => ({ version: "v1", key: Buffer.alloc(32, 5) }),
+  });
+
+  it("a ring seal whose key lookup fails rejects: it never falls back to the legacy envelope", async () => {
+    const down = createRingDekCache({
+      dekForOrg: async () => {
+        throw new Error("down");
+      },
+      dekForOrgVersion: async () => {
+        throw new Error("down");
+      },
+    });
+    const c = createMessageBodyCipher({
+      kek: Buffer.alloc(32, 1),
+      ringCache: down,
+      sealScheme: "ring",
+    });
+    await expect(c.seal(ORG, "x")).rejects.toBeInstanceOf(BodyKeyUnavailableError);
+  });
+
+  it("an erased, unknown-version or malformed envelope never opens to a default value", async () => {
+    const c = createMessageBodyCipher({ ringCache: good });
+    await expect(c.open(ORG, Buffer.alloc(0))).rejects.toThrow(/erased/);
+    await expect(c.open(ORG, Buffer.from([9, 1, 2, 3]))).rejects.toThrow(/unknown/);
+    await expect(c.open(ORG, Buffer.from([2, 1, 0x76]))).rejects.toThrow(/malformed/);
+  });
+
+  it("an invalid M36_BODY_SEAL_SCHEME makes seal reject instead of choosing a scheme", async () => {
+    const saved = process.env.M36_BODY_SEAL_SCHEME;
+    process.env.M36_BODY_SEAL_SCHEME = "rign";
+    try {
+      const c = createMessageBodyCipher({ kek: Buffer.alloc(32, 1), ringCache: good });
+      await expect(c.seal(ORG, "x")).rejects.toThrow(/legacy' or 'ring/);
+    } finally {
+      if (saved === undefined) process.env.M36_BODY_SEAL_SCHEME = undefined as unknown as string;
+      if (saved === undefined) Reflect.deleteProperty(process.env, "M36_BODY_SEAL_SCHEME");
+      else process.env.M36_BODY_SEAL_SCHEME = saved;
+    }
+  });
+});
+
 describe("wiring: the calls exist where they must (source-level regression guards)", () => {
   const index = src("src/index.ts");
   it("index.ts validates the seal scheme, runs the legacy boot check and binds the key provider", () => {
@@ -160,7 +204,7 @@ describe("wiring: the calls exist where they must (source-level regression guard
     expect(inval).toBeGreaterThan(call);
     expect(inval - call).toBeLessThan(900);
     expect(index).toMatch(
-      /dek_rotation_completed"\)\s*\{\s*invalidateMessageBodyKeys\(event\.organizationId\)/,
+      /dek_rotation_completed"\)\s*\{\s*invalidateMessageBodyKeys\(event\.organizationId/,
     );
   });
 
