@@ -9223,6 +9223,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         db: dbHandle.db,
         cipher: createMessageBodyCipher(),
         keys: createUnavailableSearchKeyProvider(),
+        // Ids and a fixed reason only; never a tag, token or body text.
+        onIndexError: (info) => app.log.warn(info, "M36 global search index write skipped"),
         ...(queueConnection
           ? {
               worker: {

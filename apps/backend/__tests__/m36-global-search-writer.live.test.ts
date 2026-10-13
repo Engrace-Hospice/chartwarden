@@ -793,6 +793,204 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C2 global search index writer - LIVE Postg
     });
   });
 
+  // ── re-verification keeps 'ready'; flips; expiry; locks; no leaks ────────────────────────────────
+  describe("re-verification, flips and failure hygiene", () => {
+    const BULK = 450;
+    const BULK_TEXT = "bulk sample text for the synthetic set";
+    const rowsFor = async (text: string) => paddedSize((await realTagsOf(ORG_A, text)).length);
+    const buildingEvents = async () =>
+      Number(
+        (
+          await admin.query(
+            `SELECT count(*)::int AS n FROM audit_event
+              WHERE organization_id=$1 AND event_type='message_search_index_state.update'
+                AND after->>'status'='building'`,
+            [ORG_A],
+          )
+        ).rows[0].n,
+      );
+    const stateRow = async () =>
+      (
+        await admin.query(
+          `SELECT status, reconciled_at FROM message_search_index_state WHERE organization_id=$1`,
+          [ORG_A],
+        )
+      ).rows[0];
+    const untilReady = async (deps: ReconcileDeps) => {
+      let result = await reconcileOrg(deps, ORG_A);
+      for (let i = 0; i < 20 && result.state !== "ready"; i += 1)
+        result = await reconcileOrg(deps, ORG_A);
+      expect(result.state).toBe("ready");
+    };
+    async function readyBulkTenant(): Promise<ReconcileDeps> {
+      await enableSearch(ORG_A);
+      const sealed = cipher.seal(ORG_A, BULK_TEXT);
+      await admin.query(
+        `INSERT INTO message (channel_id, organization_id, author_user_id, author_kind, body_cipher, body_sha256, body_kind)
+         SELECT $1,$2,$3,'user',$4,$5,'plain' FROM generate_series(1,$6)`,
+        [channelA, ORG_A, userA, sealed.cipher, sealed.sha256, BULK],
+      );
+      const deps = reconcileDeps({ batchSize: 200 });
+      await untilReady(deps);
+      expect(await totalRows(ORG_A)).toBe(BULK * (await rowsFor(BULK_TEXT)));
+      return deps;
+    }
+
+    it("a 24 h expiry re-verifies WITHOUT ever leaving ready (no 'building' write), and refreshes reconciled_at", async () => {
+      const deps = await readyBulkTenant();
+      const baseline = await buildingEvents();
+      expect(baseline).toBeGreaterThan(0); // the audit trail does record a 'building' write, so the zero below is meaningful
+      await admin.query(
+        `UPDATE message_search_index_state SET reconciled_at = now() - interval '25 hours' WHERE organization_id=$1`,
+        [ORG_A],
+      );
+      const before = (await stateRow()).reconciled_at as Date;
+      const result = await reconcileOrg(deps, ORG_A);
+      expect(result).toEqual({ state: "ready", indexed: 0, removed: 0 });
+      const after = await stateRow();
+      expect(after.status).toBe("ready");
+      expect((after.reconciled_at as Date).getTime()).toBeGreaterThan(before.getTime());
+      expect(await buildingEvents()).toBe(baseline);
+    }, 120_000);
+
+    it("real drift found by the re-verify DOES demote to building, then the sweep repairs it", async () => {
+      const deps = await readyBulkTenant();
+      const baseline = await buildingEvents();
+      const victim = (
+        await admin.query(`SELECT id FROM message ORDER BY created_at, id OFFSET 300 LIMIT 1`)
+      ).rows[0].id as string;
+      await admin.query(`DELETE FROM message_search_token WHERE message_id=$1`, [victim]);
+      await admin.query(
+        `UPDATE message_search_index_state SET reconciled_at = now() - interval '25 hours' WHERE organization_id=$1`,
+        [ORG_A],
+      );
+      const demoted = await reconcileOrg({ ...deps, maxBatches: 0 }, ORG_A);
+      expect(demoted.state).toBe("building");
+      expect((await stateRow()).status).toBe("building");
+      expect(await buildingEvents()).toBeGreaterThan(baseline);
+      await untilReady(deps);
+      expect(await rowCount(victim)).toBe(await rowsFor(BULK_TEXT));
+    }, 120_000);
+
+    it("a flip WITHOUT bumping changed_at is not re-verified (documents the C4 dependency)", async () => {
+      await enableSearch(ORG_A);
+      const deps = reconcileDeps();
+      await sendMessage(ORG_A, "morphine");
+      await untilReady(deps);
+      await admin.query(
+        `UPDATE tenant_messaging_search_setting SET enabled=false WHERE organization_id=$1`,
+        [ORG_A],
+      );
+      const sentWhileOff = await sendMessage(ORG_A, "haloperidol agitation");
+      await admin.query(
+        `UPDATE tenant_messaging_search_setting SET enabled=true WHERE organization_id=$1`,
+        [ORG_A],
+      );
+      expect(await reconcileOrg(deps, ORG_A)).toEqual({ state: "ready", indexed: 0, removed: 0 });
+      expect(await rowCount(sentWhileOff)).toBe(0); // missed, and still trusted: the route MUST bump changed_at
+    });
+
+    it("a flip WITH changed_at bumped invalidates ready: drift is found, repaired, ready again", async () => {
+      await enableSearch(ORG_A);
+      const deps = reconcileDeps();
+      await sendMessage(ORG_A, "morphine");
+      await untilReady(deps);
+      await setTenantFlag(ORG_A, false);
+      const sentWhileOff = await sendMessage(ORG_A, "haloperidol agitation");
+      await setTenantFlag(ORG_A, true); // bumps changed_at
+      const result = await reconcileOrg(deps, ORG_A);
+      if (result.state !== "ready") await untilReady(deps);
+      expect(await rowCount(sentWhileOff)).toBe(await rowsFor("haloperidol agitation"));
+      expect((await stateRow()).status).toBe("ready");
+    });
+
+    it("an OFF update waits for an in-flight index write to commit, and the write lands before the OFF", async () => {
+      await enableSearch(ORG_A);
+      const id = await sendMessage(ORG_A, "morphine given");
+      let release: () => void = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let entered: () => void = () => {};
+      const reachedBody = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const real = createBodyReader(cipher);
+      const indexing = createIndexWriter(
+        writerDeps({
+          bodies: {
+            async read(org, body) {
+              entered();
+              await gate;
+              return real.read(org, body);
+            },
+          },
+        }),
+      ).indexMessage(ORG_A, id);
+      await reachedBody;
+      const admin2 = new Client({ connectionString: appRoleUrl(DB_URL as string) });
+      await admin2.connect();
+      try {
+        await admin2.query("BEGIN");
+        await admin2.query(
+          `SELECT set_config('app.org_id', $1, true), set_config('app.user_id', $2, true)`,
+          [ORG_A, userA],
+        );
+        let flipped = false;
+        const flip = admin2
+          .query(
+            `UPDATE tenant_messaging_search_setting SET enabled=false, purge_requested_at=now(), changed_at=now() WHERE organization_id=$1`,
+            [ORG_A],
+          )
+          .finally(() => {
+            flipped = true;
+          });
+        await sleep(400);
+        expect(flipped).toBe(false);
+        release();
+        expect(await indexing).toBe("indexed");
+        await flip;
+        await admin2.query("COMMIT");
+        expect(await rowCount(id)).toBe(16);
+        expect((await purgeOrgIfRequested(handle.db, ORG_A)).state).toBe("completed");
+        expect(await rowCount(id)).toBe(0);
+      } finally {
+        await admin2.end();
+      }
+    });
+
+    it("skipped_stale is reported through onError with ids and a fixed reason only; no body, token or tag in any error", async () => {
+      await enableSearch(ORG_A);
+      const sentinel = "zyxwvutsr";
+      const id = await sendMessage(ORG_A, `${sentinel} quixotic`);
+      await admin.query(`UPDATE message SET body_sha256 = repeat('a', 64) WHERE id=$1`, [id]);
+      const reports: unknown[] = [];
+      const outcome = await createIndexWriter(
+        writerDeps({ onError: (info) => reports.push(info) }),
+      ).indexMessage(ORG_A, id);
+      expect(outcome).toBe("skipped_stale");
+      expect(reports).toEqual([
+        { organizationId: ORG_A, messageId: id, reason: "digest_mismatch" },
+      ]);
+      expect(await rowCount(id)).toBe(0);
+
+      const tagValues = (await realTagsOf(ORG_A, sentinel)).map(String);
+      const failure = await createIndexWriter(
+        writerDeps({ keys: createUnavailableSearchKeyProvider() }),
+      )
+        .indexMessage(ORG_A, id)
+        .catch((error: unknown) => error as Error);
+      const dump = JSON.stringify([
+        reports,
+        String((failure as Error).message),
+        (failure as Error).stack,
+      ]);
+      expect(dump).not.toContain(sentinel);
+      expect(dump).not.toContain("quixotic");
+      for (const tag of tagValues) expect(dump).not.toContain(`"tag":${tag}`);
+    });
+  });
+
   // ── OFF purge ─────────────────────────────────────────────────────────────────────────────────────
   describe("OFF purge", () => {
     async function indexedTenant() {

@@ -12,7 +12,7 @@ import type { ConnectionOptions, Queue, Worker } from "bullmq";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import type { M36IntegrityWorkerDeps } from "../jobs/integrity-workers";
 import type { MessageBodyCipher } from "../messaging-write-core";
-import { type IndexWriter, createIndexWriter } from "./index-writer";
+import { type IndexWriter, type IndexWriterDeps, createIndexWriter } from "./index-writer";
 import { buildM36MessageSearchIndexerConsumer } from "./indexer-consumer";
 import {
   registerGlobalSearchMaintenanceWorker,
@@ -29,6 +29,7 @@ export interface RegisterGlobalSearchDeps {
   /** Production: `createUnavailableSearchKeyProvider()` until P1 lands. */
   readonly keys: SearchKeyProvider;
   readonly isRedactedOrPending?: IsRedactedOrPending;
+  readonly onIndexError?: IndexWriterDeps["onError"];
   /** Absent on a boot without a queue connection or platform pool: only the consumer is built then. */
   readonly worker?: {
     readonly connection: ConnectionOptions;
@@ -56,6 +57,7 @@ export async function registerM36GlobalSearch(
     keys: deps.keys,
     platformFlag,
     isRedactedOrPending: deps.isRedactedOrPending ?? neverRedacted,
+    ...(deps.onIndexError ? { onError: deps.onIndexError } : {}),
   };
   const writer = createIndexWriter(writerDeps);
   const reconcile: ReconcileDeps = {

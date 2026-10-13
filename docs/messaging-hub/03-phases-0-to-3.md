@@ -93,6 +93,8 @@ reconnect reconciliation, restore consistency) pass; a restore drill proves DB +
 
 **Phase 2 gate:** XSS corpus, edit-indicator/revision, scheduled recheck, search-ACL, keyboard-only, and draft-isolation acceptance tests pass.
 
+> **WP 2.7b C4 requirement (tracked from C2).** The tenant settings route that flips `messaging.global_search_enabled` MUST set `tenant_messaging_search_setting.changed_at = now()` on every flip (ON and OFF). The index reconciler trusts a `ready` index only while `reconciled_at >= changed_at` (and the platform row's `updated_at`) and re-verifies it otherwise, without leaving `ready` unless it finds real drift; a flip that does not bump `changed_at` is not re-verified before the 24 h recheck. The same route sets `purge_requested_at` (and clears `purge_completed_at`) when turning OFF. No migration is needed (1092 is reserved for the C4 permission). Pinned by `m36-global-search-writer.live.test.ts`.
+
 > **Phase 2 gate and WP 2.7b.** The gate stays **open** while WP 2.7b is skipped or deferred: the search-ACL acceptance test covers both 2.7a and 2.7b, so shipping 2.7a alone does not close it. 2.7b is blocked on ADR-0058 acceptance (design review) and its prerequisite WPs P1 (message-body key-ring migration) and P2 (per-route rate limit). The bounded multi-channel option-A fallback (ADR-0058 Alternatives) does **not** close the global-search ACL gate unless the reviewers accept it as the Phase 2 scope (Proposed default, for security/privacy reviewers to confirm).
 
 > **Implementation status (WP 2.1):** done for the web staff composer and the M36 API; the Phase 2 gate is NOT marked (the XSS corpus is this WP's share of it; edit-indicator, search-ACL, keyboard-only and draft isolation belong to other WPs).

@@ -119,17 +119,23 @@ async function predecessorOf(
   return row ? { createdAtText: row.created_at, messageId: row.id } : null;
 }
 
-/** The first message whose index state disagrees with its eligibility, or null for zero drift. */
-async function findFirstDrift(
+/** The first message whose index state disagrees with its eligibility, or null for zero drift. Runs in the caller's tx. */
+async function findFirstDriftInTx(
   deps: ReconcileDeps,
+  tx: Tx,
   organizationId: string,
   keyVersion: string,
 ): Promise<Position | null> {
   const isRedactedOrPending = deps.isRedactedOrPending ?? neverRedacted;
   let after: Position | null = null;
   for (;;) {
-    const page: ScanRow[] = await withOrgContext(deps.db, { organizationId, userId: "" }, (tx) =>
-      scan(tx, organizationId, keyVersion, after, VERIFY_PAGE_SIZE, true),
+    const page: ScanRow[] = await scan(
+      tx,
+      organizationId,
+      keyVersion,
+      after,
+      VERIFY_PAGE_SIZE,
+      true,
     );
     for (const row of page) {
       const eligible = isEligibleForIndex(row, isRedactedOrPending);
@@ -147,6 +153,34 @@ async function inTenantTx<T>(
   fn: (tx: Tx) => Promise<T>,
 ): Promise<T> {
   return withOrgContext(db, { organizationId, userId: "" }, fn);
+}
+
+/**
+ * The final drift check and the `ready` write in ONE transaction. Zero drift: status 'ready', reconciled_at = now. Drift:
+ * status 'building' with the checkpoint just before the first drifting message, so the next run resumes there.
+ */
+async function verifyAndFinish(
+  deps: ReconcileDeps,
+  organizationId: string,
+  keyVersion: string,
+): Promise<"ready" | "building"> {
+  const outcome = await inTenantTx(deps.db, organizationId, async (tx) => {
+    const drift = await findFirstDriftInTx(deps, tx, organizationId, keyVersion);
+    if (drift) {
+      await setIndexStatus(tx, organizationId, keyVersion, "building");
+      await saveCheckpoint(
+        tx,
+        organizationId,
+        keyVersion,
+        await predecessorOf(tx, organizationId, drift),
+      );
+      return "building" as const;
+    }
+    await setIndexStatus(tx, organizationId, keyVersion, "ready", { reconciledNow: true });
+    return "ready" as const;
+  });
+  if (outcome === "ready") await refreshIndexStats(deps.db, organizationId, keyVersion);
+  return outcome;
 }
 
 function stillValid(
@@ -189,8 +223,17 @@ export async function reconcileOrg(
   ) {
     return { state: "ready", indexed: 0, removed: 0 };
   }
-  if (state.status !== "building") {
-    // A previously trusted (or stale) index must be re-proved: restart the sweep from the beginning.
+  if (state.status === "ready") {
+    // Expired or invalidated by a flag change: re-VERIFY while it stays 'ready' (a daily recheck must not take search
+    // down for hours); only real drift demotes it, with the checkpoint set just before the drift so the sweep resumes there.
+    if ((await verifyAndFinish(deps, organizationId, keyVersion)) === "ready") {
+      return { state: "ready", indexed: 0, removed: 0 };
+    }
+    state = await inTenantTx(deps.db, organizationId, (tx) =>
+      ensureIndexState(tx, organizationId, keyVersion),
+    );
+  } else if (state.status === "stale") {
+    // Explicitly marked stale: restart the sweep from the beginning.
     await inTenantTx(deps.db, organizationId, async (tx) => {
       await setIndexStatus(tx, organizationId, keyVersion, "building");
       await saveCheckpoint(tx, organizationId, keyVersion, null);
@@ -232,21 +275,5 @@ export async function reconcileOrg(
   }
   if (!reachedEnd) return { state: "building", indexed, removed };
 
-  const drift = await findFirstDrift(deps, organizationId, keyVersion);
-  if (drift) {
-    await inTenantTx(deps.db, organizationId, async (tx) =>
-      saveCheckpoint(
-        tx,
-        organizationId,
-        keyVersion,
-        await predecessorOf(tx, organizationId, drift),
-      ),
-    );
-    return { state: "building", indexed, removed };
-  }
-  await inTenantTx(deps.db, organizationId, (tx) =>
-    setIndexStatus(tx, organizationId, keyVersion, "ready", { reconciledNow: true }),
-  );
-  await refreshIndexStats(deps.db, organizationId, keyVersion);
-  return { state: "ready", indexed, removed };
+  return { state: await verifyAndFinish(deps, organizationId, keyVersion), indexed, removed };
 }

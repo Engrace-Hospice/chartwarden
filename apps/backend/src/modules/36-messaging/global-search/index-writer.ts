@@ -38,6 +38,14 @@ export interface IndexWriterDeps {
   readonly keys: SearchKeyProvider;
   readonly platformFlag: PlatformSearchFlag;
   readonly isRedactedOrPending?: IsRedactedOrPending;
+  /** Ids and a fixed reason only: never a tag, a token or any body content. */
+  readonly onError?: (info: IndexWriterErrorInfo) => void;
+}
+
+export interface IndexWriterErrorInfo {
+  readonly organizationId: string;
+  readonly messageId: string;
+  readonly reason: "digest_mismatch";
 }
 
 export interface IndexWriter {
@@ -54,7 +62,7 @@ export function createIndexWriter(deps: IndexWriterDeps): IndexWriter {
       const keyVersion = await deps.keys.activeVersion(organizationId);
       const key = await deps.keys.tagKey(organizationId, keyVersion);
       return withOrgContext(deps.db, { organizationId, userId: "" }, async (tx) => {
-        const setting = await readTenantSearchSettingInTx(tx, organizationId, { lockShare: true });
+        const setting = await readTenantSearchSettingInTx(tx, organizationId, { lock: "share" });
         if (!setting.enabled) return "skipped_off";
 
         const rows = await tx
@@ -78,6 +86,7 @@ export function createIndexWriter(deps: IndexWriterDeps): IndexWriter {
         if (body.sha256 !== row.bodySha256) {
           // The opened body is not the one the row's digest names (tamper, or a half-applied re-wrap): index nothing.
           await deleteSearchTokens(tx, organizationId, messageId);
+          deps.onError?.({ organizationId, messageId, reason: "digest_mismatch" });
           return "skipped_stale";
         }
 

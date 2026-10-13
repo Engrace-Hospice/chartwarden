@@ -1,6 +1,12 @@
 // WP 2.7b C2 (ADR-0058 decision 1) - reads `tenant_messaging_search_setting` (M36-owned, org-scoped). No cache: a flip takes
-// effect on the next call. A tenant with no row is OFF. The tx-scoped reader can take a FOR SHARE lock on the row so an
-// in-flight index write blocks the admin's OFF update until it commits (the purge then starts after the last insert).
+// effect on the next call. A tenant with no row is OFF. The tx-scoped reader can lock the row: FOR SHARE for an index write
+// (it blocks the admin's OFF update until it commits, so the purge starts after the last insert) and FOR UPDATE for the purge
+// (taking SHARE and then upgrading would deadlock two replicas).
+//
+// C4 REQUIREMENT (tracked in docs/messaging-hub/03-phases-0-to-3.md under 2.7b): the settings route MUST set
+// `changed_at = now()` on EVERY enabled flip (OFF->ON and ON->OFF). Reconcile treats a `ready` index as trustworthy only
+// while `reconciled_at >= changed_at`; a flip that leaves `changed_at` alone is never re-verified before the 24 h recheck.
+// (No migration: the column exists. `m36-global-search-writer.live.test.ts` pins both behaviours.)
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { eq } from "drizzle-orm";
@@ -25,7 +31,7 @@ const ABSENT: TenantSearchSetting = {
 export async function readTenantSearchSettingInTx(
   tx: Tx,
   organizationId: string,
-  opts: { readonly lockShare?: boolean } = {},
+  opts: { readonly lock?: "share" | "update" } = {},
 ): Promise<TenantSearchSetting> {
   const base = tx
     .select({
@@ -37,7 +43,7 @@ export async function readTenantSearchSettingInTx(
     .from(SETTING)
     .where(eq(SETTING.organizationId, organizationId))
     .limit(1);
-  const rows = await (opts.lockShare ? base.for("share") : base);
+  const rows = await (opts.lock ? base.for(opts.lock) : base);
   return rows[0] ?? ABSENT;
 }
 

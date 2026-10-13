@@ -26,8 +26,8 @@ export async function purgeOrgIfRequested(
   let deleted = 0;
   for (let batch = 0; batch < maxBatches; batch += 1) {
     const step = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-      // The setting row is locked for the whole step: an admin turning the flag back ON waits for it.
-      const setting = await readTenantSearchSettingInTx(tx, organizationId, { lockShare: true });
+      // FOR UPDATE for the whole step (not SHARE then UPDATE: two replicas would deadlock on the upgrade); an admin flip waits.
+      const setting = await readTenantSearchSettingInTx(tx, organizationId, { lock: "update" });
       if (setting.enabled || !setting.purgeRequestedAt || setting.purgeCompletedAt) {
         return { done: true as const, n: 0, active: false };
       }
