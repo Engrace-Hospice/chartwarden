@@ -134,6 +134,14 @@ function OrganizationStaffMessaging({
   const [errorCorrelationId, setErrorCorrelationId] = useState<string | null>(null);
   // WP 2.11: set when the open conversation was revoked, so the pane says so (never the title); cleared on the next pick.
   const [accessEnded, setAccessEnded] = useState(false);
+  // Leaving the access-ended notice hands focus to the inbox heading once the inbox is shown again.
+  const inboxHeadingRef = useRef<HTMLHeadingElement>(null);
+  const focusInboxAfterNotice = useRef(false);
+  useEffect(() => {
+    if (accessEnded || !focusInboxAfterNotice.current) return;
+    focusInboxAfterNotice.current = false;
+    inboxHeadingRef.current?.focus();
+  }, [accessEnded]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [newConversationOpen, setNewConversationOpen] = useState(false);
   const [departmentOpen, setDepartmentOpen] = useState(false);
@@ -380,11 +388,15 @@ function OrganizationStaffMessaging({
 
       <RealtimeBanner degraded={realtimeDegraded} refreshSeconds={POLL_INTERVAL_MS / 1000} />
 
-      <main className={`wx-messaging-layout ${activeChannel ? "has-active-thread" : ""}`}>
+      <section
+        aria-label="Conversations and messages"
+        className={`wx-messaging-layout ${activeChannel ? "has-active-thread" : ""} ${accessEnded && !activeChannel ? "access-ended" : ""}`}
+      >
         <ConversationInbox
           channels={channels}
           visibleChannels={visibleChannels}
           activeId={activeId}
+          headingRef={inboxHeadingRef}
           query={query}
           filter={filter}
           error={error}
@@ -420,7 +432,12 @@ function OrganizationStaffMessaging({
           ) : (
             <div className="wx-messaging-no-selection">
               {accessEnded ? (
-                <AccessEndedNotice />
+                <AccessEndedNotice
+                  onBack={() => {
+                    focusInboxAfterNotice.current = true;
+                    setAccessEnded(false);
+                  }}
+                />
               ) : (
                 <EmptyState
                   title="Select a conversation"
@@ -430,7 +447,7 @@ function OrganizationStaffMessaging({
             </div>
           )}
         </div>
-      </main>
+      </section>
     </div>
   );
 }

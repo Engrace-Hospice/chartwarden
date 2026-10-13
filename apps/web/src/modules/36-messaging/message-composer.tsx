@@ -148,6 +148,7 @@ export function ThreadComposer({
         {!pendingAdd && mentionQuery ? <MentionMenu {...mentionMenu} /> : null}
         <Button
           type="submit"
+          size="lg"
           disabled={
             sending || (!draft.trim() && uploads.sendableIds.length === 0) || uploads.blocksSend
           }

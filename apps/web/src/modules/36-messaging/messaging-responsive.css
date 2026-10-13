@@ -62,8 +62,10 @@
     height: 100%;
   }
 
+  /* .access-ended: the revoked-access notice lives in the active pane, so it replaces the inbox like a thread (D2). */
   .wx-messaging-layout.has-active-thread .wx-messaging-inbox,
-  .wx-messaging-layout:not(.has-active-thread) .wx-messaging-active-pane {
+  .wx-messaging-layout.access-ended .wx-messaging-inbox,
+  .wx-messaging-layout:not(.has-active-thread):not(.access-ended) .wx-messaging-active-pane {
     display: none;
   }
 
@@ -73,6 +75,11 @@
 
   .wx-messaging-back {
     display: inline-flex;
+  }
+
+  /* The access-ended notice's Back sits at the start, above the centred empty state. */
+  .wx-messaging-no-selection > .wx-messaging-back {
+    align-self: flex-start;
   }
 
   .wx-messaging-thread-header {
@@ -125,5 +132,12 @@
 
   .wx-message-composer > small {
     display: none;
+  }
+
+  /* D5: the Schedule button keeps its text label, so it must size to it instead of the 2.75rem icon width (height and padding come from the Button's size prop, inline). */
+  .wx-message-composer .wx-schedule-send .wx-button {
+    width: auto;
+    min-width: 2.75rem;
+    white-space: nowrap;
   }
 }

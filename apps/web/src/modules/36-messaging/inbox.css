@@ -16,15 +16,18 @@
 .wx-messaging-inbox-header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: 0.5rem 0.75rem;
   min-height: 4rem;
-  padding: 0.75rem 1rem;
+  /* 0.5rem keeps a 2.875rem (lg) button within the 4rem min-height, so the header aligns with the thread header. */
+  padding: 0.5rem 1rem;
   border-bottom: 1px solid var(--color-card-border);
 }
 
 .wx-messaging-inbox-header > div {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: 0.5rem;
 }

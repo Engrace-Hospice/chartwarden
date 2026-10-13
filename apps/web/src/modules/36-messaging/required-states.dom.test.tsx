@@ -209,3 +209,102 @@ describe("access-ended notice does not outlive the revocation", () => {
     expect(screen.queryByText("You no longer have access to this conversation")).toBeNull();
   });
 });
+
+describe("access-ended notice on narrow screens (WP 2.11 D2)", () => {
+  it("keeps the active pane showing the notice, and Back returns to the inbox", async () => {
+    const session: Session = {
+      userId: "11111111-1111-4111-8111-111111111111",
+      organizationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      organizationName: "North Hospice",
+    };
+    const api = {
+      GET: vi.fn((path: string) =>
+        Promise.resolve(
+          path === "/api/v1/messaging/channels"
+            ? {
+                data: {
+                  channels: [
+                    {
+                      channelId: "dm-1",
+                      kind: "dm",
+                      title: "First",
+                      subjectId: null,
+                      archivedAt: null,
+                      unreadCount: 0,
+                      participantRoles: [],
+                      lastActivityAt: "2026-10-09T10:00:00.000Z",
+                      lastMessage: null,
+                    },
+                  ],
+                },
+                error: undefined,
+              }
+            : { data: undefined, error: { message: "forbidden" } },
+        ),
+      ),
+      POST: vi.fn(() => Promise.resolve({ data: undefined, error: undefined })),
+    } as unknown as ApiClient;
+    const { container } = render(
+      <MemoryRouter>
+        <ApiClientProvider client={api}>
+          <SessionProvider session={session}>
+            <StaffMessaging />
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    await screen.findByText("You no longer have access to this conversation");
+    // The <768px CSS hides the inbox on `.access-ended` and the active pane only without it.
+    const layout = container.querySelector(".wx-messaging-layout");
+    expect(layout?.classList.contains("access-ended")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Back to conversations" }));
+    expect(screen.queryByText("You no longer have access to this conversation")).toBeNull();
+    expect(layout?.classList.contains("access-ended")).toBe(false);
+    // Focus must land on a stable inbox target, not fall to <body>.
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Conversations" }));
+  });
+
+  it("sizes the inbox header actions with the Button's own size prop (inline styles beat CSS)", async () => {
+    const api = {
+      GET: vi.fn(() => Promise.resolve({ data: { channels: [] }, error: undefined })),
+      POST: vi.fn(),
+    } as unknown as ApiClient;
+    render(
+      <MemoryRouter>
+        <ApiClientProvider client={api}>
+          <SessionProvider
+            session={{ userId: "u", organizationId: "o", organizationName: "N" } as Session}
+          >
+            <StaffMessaging />
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    for (const name of ["New conversation", "Scheduled messages"]) {
+      const button = await screen.findByRole("button", { name });
+      expect(Number.parseFloat(button.style.minHeight)).toBeGreaterThanOrEqual(2.75);
+    }
+  });
+
+  it("does not nest a second main landmark", () => {
+    const { container } = render(
+      <MemoryRouter>
+        <ApiClientProvider
+          client={
+            {
+              GET: vi.fn(() => Promise.resolve({ data: { channels: [] } })),
+            } as unknown as ApiClient
+          }
+        >
+          <SessionProvider
+            session={{ userId: "u", organizationId: "o", organizationName: "N" } as Session}
+          >
+            <StaffMessaging />
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    expect(container.querySelector("main")).toBeNull();
+  });
+});
