@@ -6,6 +6,7 @@ import type { ComponentType } from "react";
 import { AlertDeliveries } from "./alert-deliveries";
 import { ChannelMembers } from "./channel-members";
 import { IntegrityTile } from "./integrity-tile";
+import { settingsScreens } from "./settings";
 
 export const messagingAdminScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 36,
@@ -35,5 +36,6 @@ export const messagingAdminScreens: ScreenRegistryModule<ComponentType> = {
       requiredPermission: "audit.read",
       screen: IntegrityTile as ComponentType,
     },
+    ...settingsScreens,
   ],
 };

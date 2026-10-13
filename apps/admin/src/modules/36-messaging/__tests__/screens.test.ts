@@ -6,13 +6,13 @@ import { messagingAdminScreens } from "../screens";
 const CATALOG_KEYS = new Set(allPermissionMirrorRows().map((r) => r.key));
 
 describe("M36 admin screen registry", () => {
-  it("declares M36 with three bound screens, unique ids and paths", () => {
+  it("declares M36 with six bound screens, unique ids and paths", () => {
     expect(messagingAdminScreens.moduleId).toBe(36);
-    expect(messagingAdminScreens.screens).toHaveLength(3);
+    expect(messagingAdminScreens.screens).toHaveLength(6);
     const ids = messagingAdminScreens.screens.map((s) => s.id);
     const paths = messagingAdminScreens.screens.map((s) => s.path);
-    expect(new Set(ids).size).toBe(3);
-    expect(new Set(paths).size).toBe(3);
+    expect(new Set(ids).size).toBe(6);
+    expect(new Set(paths).size).toBe(6);
     for (const s of messagingAdminScreens.screens) expect(typeof s.screen).toBe("function");
   });
 

@@ -1,8 +1,5 @@
 // apps/admin/src/modules/36-messaging — channel-member API module.
-// POST/DELETE /api/v1/messaging/channels/:id/members[/:userId] are in the generated client. The LIST read,
-// GET /api/v1/messaging/channels/:id/members -> 200 { members: [...] }, is built concurrently on the backend and is
-// not in packages/ui/src/core/api/schema.ts yet, so it goes through a one-method structural type instead of the
-// typed path table. ponytail: once `client:gen` includes the route, swap `ListClient` for `client.GET` directly.
+// Member list/add/remove over the generated client.
 import type { ApiClient } from "@wardenx/ui";
 import { type ReadResult, toReadResult } from "./ui";
 
@@ -16,21 +13,13 @@ export interface ChannelMember {
   readonly displayName?: string | null;
 }
 
-interface ListClient {
-  GET(
-    path: string,
-    init: { params: { path: { id: string } } },
-  ): Promise<{ data?: { members: ChannelMember[] }; error?: unknown; response: Response }>;
-}
-
 export async function listMembers(
   client: ApiClient,
   channelId: string,
 ): Promise<ReadResult<readonly ChannelMember[]>> {
-  const { data, error, response } = await (client as unknown as ListClient).GET(
-    "/api/v1/messaging/channels/{id}/members",
-    { params: { path: { id: channelId } } },
-  );
+  const { data, error, response } = await client.GET("/api/v1/messaging/channels/{id}/members", {
+    params: { path: { id: channelId } },
+  });
   const result = toReadResult(response.status, data, Boolean(error));
   return result.kind === "ok" ? { kind: "ok", data: result.data.members } : result;
 }
