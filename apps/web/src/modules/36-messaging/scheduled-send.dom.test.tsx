@@ -562,3 +562,50 @@ describe("entry point", () => {
     expect(onShowScheduled).toHaveBeenCalledTimes(1);
   });
 });
+
+// Phase 2 gate "scheduled recheck": what the author sees once the dispatcher re-checked at send time and refused.
+describe("gate: the author sees the outcome of the dispatch-time re-check", () => {
+  const channelName = (id: string) => (id === CH ? "Care team" : "Unknown conversation");
+  const reasons = [
+    ["channel_archived", /conversation is closed/i],
+    ["not_member", /no longer a member/i],
+    ["permission_revoked", /no longer have permission/i],
+    ["announcement_not_permitted", /only administrators can post announcements/i],
+    ["parent_unavailable", /message it replies to is no longer available/i],
+    ["dispatch_failed", /could not be delivered/i],
+  ] as const;
+  const mount = (items: unknown[]) =>
+    render(
+      provide(
+        api({ GET: () => ({ data: { scheduledMessages: items }, error: undefined }) }),
+        <ScheduledMessagesDialog open onClose={() => {}} channelName={channelName} />,
+      ),
+    );
+
+  it.each(reasons)(
+    "a %s row says it was NOT sent, why, and offers retry or cancel",
+    async (reason, text) => {
+      mount([{ ...pending, id: `s-${reason}`, status: "blocked", blockedReason: reason }]);
+      expect(await screen.findByText(text)).toBeTruthy();
+      expect(screen.getByText(/^not sent:/i)).toBeTruthy();
+      expect(screen.getByRole("button", { name: /reschedule to retry/i })).toBeTruthy();
+      expect(screen.getByRole("button", { name: /cancel scheduled message/i })).toBeTruthy();
+    },
+  );
+
+  it("a blocked reason names no patient, channel or content (the text is generic)", async () => {
+    mount([{ ...pending, status: "blocked", blockedReason: "not_member" }]);
+    const note = (await screen.findByText(/^not sent:/i)).textContent ?? "";
+    expect(note).not.toMatch(/care team|family|noon/i);
+  });
+
+  it("a still-pending row shows no 'not sent' note, and pending and blocked rows sit side by side", async () => {
+    mount([pending, blocked]);
+    const list = await screen.findByRole("list", { name: /scheduled messages/i });
+    const [first, second] = within(list).getAllByRole("listitem");
+    expect(first?.getAttribute("data-status")).toBe("pending");
+    expect(within(first as HTMLElement).queryByText(/^not sent:/i)).toBeNull();
+    expect(second?.getAttribute("data-status")).toBe("blocked");
+    expect(within(second as HTMLElement).getByText(/^not sent:/i)).toBeTruthy();
+  });
+});
