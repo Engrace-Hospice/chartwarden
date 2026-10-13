@@ -151,7 +151,7 @@ describe("access ended while a conversation is open", () => {
     );
     // announced and focused, so a keyboard / screen-reader user is not dropped on <body> in silence
     const notice = screen.getByRole("status", { name: /no longer have access/i });
-    expect(notice).toHaveFocus();
+    expect(document.activeElement).toBe(notice);
     expect(screen.queryByText(/Secret Name/)).toBeNull();
   });
 });
