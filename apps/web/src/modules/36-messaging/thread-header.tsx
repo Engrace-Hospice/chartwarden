@@ -1,7 +1,7 @@
 // The conversation header and the patient-context pane of ConversationThread (moved out of it unchanged in WP 2.2 to
 // keep that file under the line ceiling).
 import { Glyph } from "@wardenx/ui";
-import type { JSX } from "react";
+import { type JSX, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import type { ChannelSummary, PatientHeaderInfo } from "./messaging-types";
 import { initialsOf } from "./messaging-utils";
@@ -77,15 +77,27 @@ export function PatientContextAside({
   patient: PatientHeaderInfo;
   onClose: () => void;
 }): JSX.Element {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  // WP 2.11: below 1280 px this is a slide-over / sheet, so it takes focus on open and hands it back to the opener.
+  useEffect(() => {
+    const opener = document.activeElement;
+    closeRef.current?.focus();
+    return () => {
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
+    };
+  }, []);
   return (
     <aside
       id="messaging-patient-context"
       className="wx-messaging-patient-context"
       aria-label="Patient context"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") onClose();
+      }}
     >
       <header>
         <strong>Patient context</strong>
-        <button type="button" onClick={onClose} aria-label="Close patient context">
+        <button ref={closeRef} type="button" onClick={onClose} aria-label="Close patient context">
           <Glyph name="close" size={17} />
         </button>
       </header>

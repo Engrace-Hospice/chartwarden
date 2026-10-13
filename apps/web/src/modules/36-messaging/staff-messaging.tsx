@@ -7,7 +7,7 @@ import { ConversationInbox } from "./conversation-inbox";
 import { ConversationThread } from "./conversation-thread";
 import { DepartmentChannelDialog } from "./department-channel-dialog";
 import type { ChannelSummary, ConversationFilter } from "./messaging-types";
-import { channelKindLabel, channelLabel } from "./messaging-utils";
+import { NARROW_MESSAGING_QUERY, channelKindLabel, channelLabel } from "./messaging-utils";
 import { NewConversationDialog } from "./new-conversation-dialog";
 import { ScheduledMessagesDialog } from "./scheduled-messages-dialog";
 import { useMessagingRealtime } from "./use-messaging-realtime";
@@ -27,13 +27,14 @@ const MAX_CHANNEL_POLL_INTERVAL_MS = 60_000;
 const REALTIME_CHANNEL_POLL_INTERVAL_MS = 120_000;
 
 function useNarrowMessagingLayout(): boolean {
-  const query = "(max-width: 760px)";
   const [narrow, setNarrow] = useState(() =>
-    typeof window.matchMedia === "function" ? window.matchMedia(query).matches : false,
+    typeof window.matchMedia === "function"
+      ? window.matchMedia(NARROW_MESSAGING_QUERY).matches
+      : false,
   );
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
-    const media = window.matchMedia(query);
+    const media = window.matchMedia(NARROW_MESSAGING_QUERY);
     const update = (): void => setNarrow(media.matches);
     update();
     media.addEventListener("change", update);

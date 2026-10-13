@@ -1,6 +1,6 @@
 /* Responsive @media blocks. Moved out of staff-messaging.css unchanged (WP 2.11); import order preserves the original cascade. */
 
-@media (max-width: 1000px) {
+@media (max-width: 1279px) {
   .wx-messaging-layout {
     grid-template-columns: 18rem minmax(0, 1fr);
   }
@@ -16,9 +16,19 @@
   .wx-messaging-context-toggle svg {
     color: var(--color-primary);
   }
+
+  /* WP 2.11: context is a right slide-over over the conversation, not a column. */
+  .wx-messaging-patient-context {
+    position: absolute;
+    inset: 0 0 0 auto;
+    z-index: 4;
+    width: min(20rem, 88%);
+    box-shadow: var(--shadow-ambient);
+    overflow-y: auto;
+  }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .wx-messaging-page {
     min-height: 32rem;
   }
@@ -95,8 +105,8 @@
     position: absolute;
     inset: 0 0 0 auto;
     z-index: 4;
-    width: min(19rem, 88%);
-    box-shadow: var(--shadow-ambient);
+    width: 100%;
+    box-shadow: none;
   }
 
   .wx-message-composer {

@@ -124,3 +124,7 @@ export function isAccessError(error: unknown): boolean {
     serialized.includes("not found")
   );
 }
+
+/** WP 2.11: below 768 px the workspace is one pane at a time (06-ux-design §1). Keep in step with the 767px blocks in
+ * messaging-responsive.css. */
+export const NARROW_MESSAGING_QUERY = "(max-width: 767px)";
