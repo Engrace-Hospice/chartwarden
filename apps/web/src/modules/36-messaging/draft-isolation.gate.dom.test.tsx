@@ -423,6 +423,8 @@ describe("draft isolation: users and organisations on one browser", () => {
     );
     expect(leakedIntoBox, "the new user's composer re-hydrated the old user's text").toBe(false);
     expect(visibleText()).not.toContain("first user's private text");
+    // The old text was never sent at all, under either identity.
+    expect(fake.putKeys).toEqual([]);
   });
 
   it("G8: an organisation switch and a sign-out leave no draft text in the DOM, the server slots or browser storage", async () => {

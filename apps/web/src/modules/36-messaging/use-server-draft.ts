@@ -9,8 +9,8 @@
 //     instead of overwriting it. Last writer wins per device, so a tab never conflicts with itself.
 // A failed save never touches the composer; `saveFailed` only drives a small status line and clears on the next success.
 import { useApiClient } from "@wardenx/ui";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { currentSessionIdentity } from "../../shell/session";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { currentSessionIdentity, useSession } from "../../shell/session";
 import type { MessageReferenceInput } from "./messaging-types";
 
 export const DRAFT_SAVE_DEBOUNCE_MS = 1500;
@@ -143,6 +143,17 @@ export function useServerDraft(args: {
   // debounce, a queued or retried save, the unmount flush) may be sent after the identity changed: it would land in
   // the new user's draft slot. "" means the session was still loading at open; it adopts the first real identity.
   const slotIdentityRef = useRef("");
+  // Adopt the first real identity EAGERLY (from the context this render sees; the module-level one is only updated by
+  // the provider's layout effect, which runs after this one) and never overwrite a known one. Documented ceiling:
+  // after a genuine in-page identity change a composer that stays mounted stays inert until its slot changes (safe;
+  // identity changes are full page loads today).
+  const session = useSession();
+  const contextIdentity = session ? `${session.organizationId}:${session.userId}` : "";
+  useLayoutEffect(() => {
+    if (slotIdentityRef.current === "" && contextIdentity !== "") {
+      slotIdentityRef.current = contextIdentity;
+    }
+  }, [contextIdentity]);
   const identityUnchanged = useCallback((): boolean => {
     const current = currentSessionIdentity();
     if (slotIdentityRef.current === "" && current !== "") slotIdentityRef.current = current;
@@ -237,7 +248,7 @@ export function useServerDraft(args: {
           if (generation !== generationRef.current) return;
           if (result.response?.status === 409) {
             const server = await readServer();
-            if (generation !== generationRef.current) return;
+            if (generation !== generationRef.current || !identityUnchanged()) return;
             if (!server || server.body === snapshot.body) {
               // Already identical (or gone): adopt the server's revision and carry on; nothing to merge.
               revisionRef.current = server?.revision ?? 0;
@@ -298,7 +309,7 @@ export function useServerDraft(args: {
       } catch {
         // Offline or refused: the composer still works; the first save will say if the server is unreachable.
       }
-      if (generation !== generationRef.current) return;
+      if (generation !== generationRef.current || !identityUnchanged()) return;
       loadedRef.current = true;
       if (server) {
         revisionRef.current = server.revision;

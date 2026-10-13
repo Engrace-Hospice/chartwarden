@@ -447,6 +447,75 @@ describe("useServerDraft review fixes (Tranche B)", () => {
     view.unmount();
   });
 
+  it("I6: a draft read for user A that lands after an in-page swap to B is not hydrated into the composer", async () => {
+    sessionNow = sessionOf("user-a");
+    const api = makeApi();
+    let land: () => void = () => undefined;
+    api.GET.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          land = () =>
+            resolve({
+              data: { draft: serverDraft({ body: "A's private draft" }) },
+              error: undefined,
+              response: { status: 200 },
+            });
+        }),
+    );
+    const { view, hydrate } = setup(api, "");
+    await flush();
+    sessionNow = sessionOf("user-b");
+    view.rerender({ text: "" }); // same slot, still mounted
+    land();
+    await flush();
+    expect(hydrate).not.toHaveBeenCalled();
+  });
+
+  it("I7: a 409 whose follow-up read resolves after an in-page swap raises no merge prompt", async () => {
+    sessionNow = sessionOf("user-a");
+    const api = makeApi();
+    api.PUT.mockImplementationOnce(async () => ({
+      data: undefined,
+      error: { error: { code: "CONFLICT" } },
+      response: { status: 409 },
+    }));
+    const { view, hydrate } = setup(api, "");
+    await flush();
+    let land: () => void = () => undefined;
+    api.GET.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          land = () =>
+            resolve({
+              data: { draft: serverDraft({ body: "A's other-device draft" }) },
+              error: undefined,
+              response: { status: 200 },
+            });
+        }),
+    );
+    view.rerender({ text: "A typed this" });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1); // PUT 409 under A, the follow-up read is in flight
+    sessionNow = sessionOf("user-b");
+    view.rerender({ text: "A typed this" });
+    land();
+    await flush();
+    expect(view.result.current.conflict).toBeNull();
+    expect(hydrate).not.toHaveBeenCalled();
+  });
+
+  it("I8: an identity that becomes known after open is adopted at once, so A then B inside one debounce sends nothing", async () => {
+    sessionNow = null; // loading when the slot opened
+    const api = makeApi();
+    const { view } = setup(api, "");
+    await flush();
+    sessionNow = sessionOf("user-a");
+    view.rerender({ text: "A typed this" });
+    sessionNow = sessionOf("user-b");
+    view.rerender({ text: "A typed this" });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
+    expect(api.PUT).not.toHaveBeenCalled();
+  });
+
   it("M4: a 5xx on discarding the server copy is a failed save, not success", async () => {
     const api = makeApi(serverDraft());
     const { view } = setup(api, "text");

@@ -25,8 +25,8 @@ let activeIdentity = "";
  * this is how its cleanup finds out (updated in a layout effect, which runs before passive-effect cleanups).
  * Assumes ONE session provider tree per document: app.tsx mounts one ActorSessionProvider, and the dev-only
  * clinical-preview.tsx / cop27-preview.tsx harnesses mount their own single SessionProvider as the sole root. It is
- * deliberately NOT cleared when the provider unmounts: the unmounting tree's own effect cleanups (the draft flush)
- * run after the provider's layout cleanup and must still see who was signed in. A new provider overwrites it on mount.
+ * deliberately NOT cleared when the provider unmounts: the unmounting tree's passive-effect cleanups (the draft
+ * flush) run after any layout cleanup, so clearing here would blind them to who was signed in. A new provider overwrites it on mount.
  */
 export const currentSessionIdentity = (): string => activeIdentity;
 
