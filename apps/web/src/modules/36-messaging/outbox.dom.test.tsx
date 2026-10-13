@@ -507,6 +507,11 @@ describe("the first send", () => {
 
 describe("a delivery while the first load is in flight", () => {
   it("shows the message once the load lands, although the first GET predates the commit", async () => {
+    const SCROLL_HEIGHT = 777;
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get: () => SCROLL_HEIGHT,
+    });
     let releaseFirstLoad!: (value: unknown) => void;
     const firstLoad = new Promise((resolve) => {
       releaseFirstLoad = resolve;
@@ -566,6 +571,11 @@ describe("a delivery while the first load is in flight", () => {
       ),
     );
     expect(screen.queryByText("Not sent")).toBeNull();
+    expect(document.querySelectorAll('[data-message-id="m-9"]')).toHaveLength(1);
+    // The first load still scrolled to the bottom (merging early would have disabled that).
+    expect(screen.getByLabelText("Message history").scrollTop).toBe(SCROLL_HEIGHT);
+    // biome-ignore lint/performance/noDelete: restores the jsdom default
+    delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
   });
 });
 

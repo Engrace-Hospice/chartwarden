@@ -413,6 +413,27 @@ describe("a head discarded while it was sending", () => {
   });
 });
 
+describe("a head discarded while it was sending, answered", () => {
+  it("lets the followers go when that send ends with an answered failure", async () => {
+    const gate = deferred();
+    const { result, post } = mount([() => gate.promise, reply(ok("srv-2"))]);
+    act(() => result.current.enqueue(queued("m1")));
+    act(() => result.current.enqueue(queued("m2")));
+    let attempt!: Promise<unknown>;
+    act(() => {
+      attempt = result.current.retry("m1");
+    });
+    act(() => result.current.discard("m1"));
+
+    await act(async () => {
+      gate.resolve(answered(500));
+      await attempt;
+    });
+
+    expect(post.mock.calls.map(([, init]) => init.body.clientMessageId)).toEqual(["m1", "m2"]);
+  });
+});
+
 describe("the lifted owner", () => {
   it("removes a delivered item without merging it when no thread is bound to its channel", async () => {
     const post = vi.fn(() => Promise.resolve(ok("srv-1")));
