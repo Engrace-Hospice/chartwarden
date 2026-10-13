@@ -26,15 +26,17 @@
 
 | # | Topic | Decision | Where |
 |---|---|---|---|
-| 1 | Pre-join history | **User decision:** a member may find messages sent before they joined. Search is exactly as strict as the history read path, no stricter, no looser. The privacy officer is informed, not asked. | Access control; row 14 |
+| 1 | Pre-join history | **User decision:** a member may find messages sent before they joined. For workforce members search is exactly as strict as the history read path, no stricter, no looser (the three excluded role categories are deliberately stricter, row 13). The privacy officer is informed, not asked; the consequences are listed in "Pre-join history". | Access control; row 14 |
 | 2 | Flag owner | **M36** owns `messaging.global_search_enabled`; default OFF; org-admin only, step-up, audited; go-live checklist; OFF purges tokens; an ops-owned platform kill switch overrides ON. | Enablement and kill switches |
 | 3 | Tokenizer and caps | Exact initial values (NFKC, diacritic folding, min token 3, max 40, ID-like rule, stop words, `T = 19`, cap 500, budget 200 / 3 s, padding floor 16, limits 30/300 fail-closed). Tunable by config, each to be re-validated by measurement. | Decision 3, 4, 9; "Parameter values and the T arithmetic" |
 | 4 | Key escrow | `MESSAGING_ENCRYPTION_KEY` is escrowed (Shamir 2-of-3, three custodian roles, separate failure domain) and a restore drill passes before the P1 backfill; retirement only after backfill verification. Global search stays off everywhere until escrow is confirmed. | P1 |
-| 5 | Role categories | `patient_family`, `external_auditor`, `platform_staff` never hold `messaging.read`; the route also requires a workforce-category allow-list; live test plus a static ratchet. | Access control; row 13 |
+| 5 | Role categories | `patient_family`, `external_auditor`, `platform_staff` never hold `messaging.read`; the route also requires a workforce-category allow-list (six categories; `external_collaborator`, `volunteer`, `temporary_special` are off it by default); live test plus a static ratchet. | Access control; row 13 |
 
 **Remaining genuinely open** (for the reviewers, see "Open questions"): the leakage analysis itself and confirmation of `T` and the other
-parameters; the redaction marker (ADR-0055); the patient-attribution mechanism; archived-channel inclusion; whether known patient-name
-tokens are excluded; whether `external_collaborator` belongs on the role-category allow-list.
+parameters (including the heavy-tail candidate bound and the prefix-hierarchy leakage); the redaction marker (ADR-0055); the
+patient-attribution mechanism; archived-channel inclusion; whether known patient-name tokens are excluded; whether
+`external_collaborator`, `volunteer` and `temporary_special` are added to the role-category allow-list (off it by default); how
+`patient_family` identities receive roles; and the privacy officer's risk-analysis coverage of the pre-join-history decision.
 
 ## Context
 
@@ -65,7 +67,10 @@ tokens are excluded; whether `external_collaborator` belongs on the role-categor
 **User decision (2026-10-13):** WP 2.7b is gated on first migrating `message.body_cipher` **and** `message_revision.body_cipher` from
 HKDF-from-`MESSAGING_ENCRYPTION_KEY` to the M34 wrapped-DEK ring (`TenantKeyProvider`), giving a real crypto-shred and real rotation.
 The earlier draft's claim that "destroying the tenant key makes the index unusable by construction" is **withdrawn**: under the
-current scheme there is no tenant key to destroy (body-crypto.ts:24,43), so it was false. After P1 it becomes true, and only then.
+current scheme there is no tenant key to destroy (body-crypto.ts:24,43), so it was false. After P1 it becomes true, and only then,
+**with one qualification:** while backups that contain legacy-wrapped ciphertext still exist (they are readable with
+`MESSAGING_ENCRYPTION_KEY` alone), tenant erasure and ring destruction do **not** shred those copies. The crypto-shred is complete
+for a tenant only once those backups have aged out or been re-wrapped (see the retirement conditions below).
 
 Scope of P1 (its own WP, number to be taken in the plan; sized as a data migration, not a code tweak):
 
@@ -100,7 +105,11 @@ replacement for it:
   a `.env` file outside the SOPS-encrypted production file. Access to the secret is **two-person controlled and audited** (the secret
   manager's access log is the record).
 - **One sealed offline escrow copy**, split **Shamir 2-of-3** between three named custodian **roles**: the security officer
-  (`hipaa_security_officer`), the CTO, and a break-glass vault. Any two reconstruct the key; no single role can. The escrow lives in
+  (`hipaa_security_officer`), the CTO, and a break-glass vault. Any two reconstruct the key; no single role can. **Independence
+  requirements (the split is worth nothing without them):** the three holders are **three distinct natural persons**, and the
+  security officer and the CTO are never the same person; the vault is opened only under **dual control by someone other than the
+  two named officers**, so neither officer can open it alone and thereby hold two shares; **a restore re-drill is run on every
+  custodian change and at least annually.** The escrow lives in
   a **different failure domain** from the primary (different site and different custodians from the SOPS age-key envelopes in
   runbook §8.4, which it must not share a single point of loss with). It extends the runbook §8.3.3 practice of keeping
   `M34_TENANT_KEK` in the sealed off-site envelope; the runbook gets a matching checklist line (a P1 deliverable).
@@ -110,7 +119,17 @@ replacement for it:
   environment, decrypt a sampled, production-shaped message body and revision (a copy, never the live rows), and confirm the
   plaintext matches `body_sha256`. No backfill starts without a passing drill on record.
 - **No rotation during the backfill window.** The legacy derivation is a pure function of the key and the org id, so rotating it
-  mid-migration would strand the un-migrated rows.
+  mid-migration would strand the un-migrated rows. **Exception: a suspected or confirmed compromise of `MESSAGING_ENCRYPTION_KEY`**
+  triggers an **expedited backfill** (priority and resources raised, the incident process of the runbook applies, the key
+  retained read-only until the backfill and retirement conditions are met) rather than waiting out the window.
+- **P1 moves the single point of loss, so the same standard applies to `M34_TENANT_KEK` and the `tenant_key_ring` rows (P1
+  precondition).** After the backfill every message body is only as recoverable as the KEK that wraps the tenant DEKs. ADR-0045 §1
+  holds `M34_TENANT_KEK` the same way (the deployment's secret manager, injected as an environment variable), and runbook §8.3.3
+  already says that losing it without a retired copy is unrecoverable and that it belongs in the sealed off-site envelope beside
+  `SOPS_AGE_KEY`. Nothing here changes that custody. P1 adds, as a precondition of enabling search: the Shamir 2-of-3 escrow and the
+  independence requirements above for `M34_TENANT_KEK` (and its retired entries, ADR-0045 §5), a recorded restore drill that
+  unwraps a sampled production-shaped tenant DEK from a restored `tenant_key_ring` row and decrypts a sampled message, and backup
+  and restore coverage of `tenant_key_ring` itself.
 - **Retirement of the legacy derivation and destruction of the key** happen only after **all** of: (a) the backfill is verified
   complete by count (zero rows still on the legacy envelope version) **and** hash-verify; (b) a **post-backfill `hash_verify` run is
   clean**; (c) backups that contain legacy-wrapped data have aged out of retention or been re-wrapped; then the destruction of the
@@ -158,12 +177,14 @@ for the global search route, because search is an oracle and a decrypt-cost ampl
 3. **Tokenisation (server-side, deterministic). Decided 2026-10-13 (user, delegated to the lead engineer's judgement); initial values,
    tunable by config, each re-validated by the leakage review with a measurement.** The pipeline, in this order (the query is tokenised
    by the identical code):
+   0. **Chunk and filter ID-like first, on the NFKC form before lowercasing** (case is part of the ID-like test, rule (b) below):
+      split on whitespace and drop every ID-like chunk. Then, for the surviving chunks:
    1. **Normalise:** Unicode NFKC, then lowercase with the locale-independent `String.prototype.toLowerCase` (never a locale-aware
       call, so "I" does not become dotless-i on a Turkish server).
    2. **Fold diacritics (English launch tokenizer):** NFD, strip combining marks (`\p{M}`), recompose. "café" and "cafe" are one token.
       The folding is part of the pluggable tokeniser, so other languages can choose differently without changing the index shape.
-   3. **Split into chunks** on whitespace, then drop any chunk that is **ID-like** (definition below). Then **split each remaining chunk
-      on non-letters** (`\P{L}`): digits and punctuation are separators, so no indexed token ever contains a digit.
+   3. **Split each remaining chunk on non-letters** (`\P{L}`): digits and punctuation are separators, so no indexed token ever
+      contains a digit. (The ID-like definition is below; it ran in step 0.)
    4. **Length bounds:** tokens shorter than **3** are dropped (minimum indexed token length 3); tokens longer than **40** are
       **dropped, not truncated** (a truncated 40-character stem would be a stable fingerprint of a long identifier-like string).
    5. **Stop words:** drop the stop-word list below.
@@ -171,7 +192,10 @@ for the global search route, because search is an oracle and a decrypt-cost ampl
    **"ID-like" (Decided; reviewers confirm).** A chunk is ID-like, and is not indexed at all, if any of these hold: (a) it matches a
    UUID, an email address, a URL (`scheme://` or `www.`), a phone-number shape (7 or more digits once separators are removed), or an
    MRN-like shape (an alphabetic prefix of 2-4 letters directly followed by 5 or more digits, or any run of 6 or more digits); (b) it
-   is 20 or more characters drawn only from `[a-f0-9]` (hex), or from the base32 alphabet, or from the base64/base64url alphabet; (c) it
+   is 20 or more characters drawn only from `[a-f0-9]` (hex) **and contains at least one digit**, or is 20 or more characters of the
+   base32 or base64/base64url alphabet **and contains at least one digit, or mixes upper and lower case, or contains `_`, `-`, `+`,
+   `/` or `=`** (so a long letter-only word such as `esophagogastroduodenoscopy`, 26 letters, is **not** ID-like and is indexed; the
+   40-character maximum then applies to letter-only strings, which keeps the cap meaningful); (c) it
    has two or more letter-to-digit or digit-to-letter transitions (`a1b2`, `hba1c`, `abc123def`), which is the shape of codes and
    identifiers rather than of dosage or unit text. A chunk with at most **one** transition and fewer than 6 digits (`5mg`, `15mg`,
    `covid19`, `b12`) is not ID-like: its digits are simply separators. The rule is deliberately over-inclusive: an unindexed word is
@@ -317,7 +341,8 @@ experiment in "Design review requirement").
 | Minimum indexed token length | 3 | Equals the minimum prefix length; removes `mg`, `ms`, `ml`, `iv` and `no`, the most-leaked and least-useful terms. |
 | Maximum token length | 40, longer tokens dropped (not truncated) | No identifier-like string is fingerprinted by a truncated stem. |
 | Minimum query prefix length | 3 | Matches the shortest prefix tag. |
-| Prefix tag lengths | 3 to min(len, 12) | As before. |
+| Prefix tag lengths | every length 3 to min(len, 12) (initial); reviewers may move to 3, 5, 8, 12 | Every length keeps prefix queries exact at any typed length; see the prefix-hierarchy row in the leakage table. |
+| Head-bucket refusal | `HEAD_BUCKET_ROWS = 5,000`, `MAX_PAGES_PER_QUERY = 5` | Bounds the heavy-tail case; see the tail bound above. |
 | Stop words | the 101-word English list in decision 3; negations and clinical words stay indexed | Cuts the highest-frequency function words; `not` is kept because "not eating" is a clinical query. |
 | ID-like | decision 3 (digits, UUID/email/URL/phone/MRN shapes, 20+ hex/base32/base64, two or more letter-digit transitions) | Over-inclusive on purpose: a miss is cheaper than a leaked identifier. |
 | HMAC tag width `T` | **19 bits** | See the arithmetic below; **the most leakage-relevant knob, reviewers must confirm.** |
@@ -354,10 +379,37 @@ padded to `N = 32` (8 dummies). Total rows `5 x 10^6 x 32 = 1.6 x 10^8` (1.2 x 1
   yields about 50.04 (0.07% false) and no masking.
 - **Multi-word queries are close to exact.** A random message holds a given bucket with probability `305 / 5 x 10^6 = 6.1 x 10^-5`;
   for two words the expected false candidates are `5 x 10^6 x (6.1 x 10^-5)^2 = 0.019` per query.
-- **Against the cap.** `T = 19` is the **smallest** `T` for which a typical single-word candidate set (355 for `m = 50`) stays under
-  `CANDIDATE_CAP = 500`; `T = 18` already exceeds it. So `T = 19` is the strongest masking that does not break the cap for this
-  tenant. It fits the 200-body decrypt budget only through the cursor (a page examines up to 200 of about 355 candidates and
+- **Against the cap, mean case only.** For the **mean** bucket (305 rows), `T = 19` is the smallest `T` for which a typical
+  single-word candidate set (355 for `m = 50`) stays under `CANDIDATE_CAP = 500`; `T = 18` already exceeds it. This holds **only for
+  the mean**: row frequencies are heavy-tailed, so the mean says nothing about a bucket that holds a head tag (next bullet). The
+  mean case fits the 200-body decrypt budget only through the cursor (a page examines up to 200 of about 355 candidates and
   returns `nextCursor` / `scanCapped`), which is the designed behaviour, not a failure.
+- **Tail bound: P(candidates > cap).** A rare word that shares a bucket with a head tag inherits that tag's whole message set: a
+  tag in 10^6 messages makes about 10^6 candidates, nearly all false, far beyond the 500 cap and the 200-body budget. The
+  probability that a given bucket holds at least one tag with at least `h` rows is `1 - e^(-H/B)` with `H` the number of such tags
+  (assumed counts, a Zipf-shaped tenant; **to be measured, not trusted**): for about `H = 5,000` head tags of 10^5 or more rows,
+  `1 - e^(-5000/524288)` = **0.95%** of buckets, so about 1% of rare-word single-term queries; for about `H = 3 x 10^4` tags of 500
+  or more rows (anything that alone can fill the cap), `1 - e^(-3e4/524288)` = **5.6%**. At `T = 18` these are 1.9% and 10.8%; at
+  `T = 16` they are 7.4% and 36.7%, which is the real price of more masking. So single-term queries on a rare word will hit the
+  cap for roughly 1% to 6% of words at `T = 19`, and **those queries are unusable as designed unless the product handles them**.
+- **What the product does for such a query (decided, deterministic, never an unbounded decrypt).** The query path never decrypts
+  more than `DECRYPT_BUDGET` per request nor chases a cursor chain beyond `MAX_PAGES_PER_QUERY = 5` (at most 1,000 bodies per
+  logical query; Decided initial value, tunable). When the candidate set reaches `CANDIDATE_CAP` and the pages examined so far have
+  produced fewer than a page of verified results, the response is a fixed **refine-your-query** result: the verified results found
+  so far (possibly none), `scanCapped: true`, `refine: true`, and no `nextCursor`; the UI says "too many possible matches, add
+  another word". The same deterministic response for the same state, so it is not a new oracle beyond what the candidate count
+  already shows the user.
+- **Mitigation recorded (initial decision): a per-tenant head-bucket set and a second-term requirement.** A statistics job (run with
+  the rebuild and nightly) records the buckets whose row count exceeds `HEAD_BUCKET_ROWS = 5,000` (10 x the cap; initial,
+  tunable) per `(organization_id, key_version)`, as bucket numbers only (no plaintext and no token list). A **single-term query**
+  whose tag falls in a head bucket is refused up front with the same refine-your-query response and costs no decrypts; a query of
+  two or more terms proceeds, because the AND-intersection is close to exact (0.019 false candidates above), provided at least one
+  term is not in a head bucket. Alternatives considered: (a) a per-tenant frequency stop-word list that removes head tags from the
+  index entirely (it also removes the strongest frequency signal, but makes common clinical words unsearchable even in combination,
+  so it is recorded as a **reviewer option**, not the initial decision); (b) raising `T` (rejected: worse masking trade, above).
+- **Acceptance item (leakage experiment and go-live):** **measure `P(candidates > CANDIDATE_CAP)` on a production-shaped corpus**
+  for single-term and two-term queries, at the chosen `T`, and compare it with the 1% to 6% estimate above; the go-live checklist
+  fails if the measured single-term rate, after the head-bucket refusal, leaves a typical clinical vocabulary query unusable.
 - **Dummies** add about 76 +/- 9 rows to every bucket (Poisson), so even a tag alone in its bucket is not read exactly.
 - **What `T` cannot do.** A word in 10^6 messages sits in a bucket with about 10^6 rows at any `T`; the head of the frequency
   distribution stays identifiable by rank, and padding does not change that. Truncation protects the long tail (rare words, which
@@ -365,7 +417,11 @@ padded to `N = 32` (8 dummies). Total rows `5 x 10^6 x 32 = 1.6 x 10^8` (1.2 x 1
 - **Sizing across tenants.** The reference tenant is large. `T` is stored with each `(organization_id, key_version)` and chosen at
   (re)build as `T = clamp(round(log2(D_org / 0.75)), 12, 20)`, which gives 19 for `D = 4 x 10^5` and 16 for a tenant ten times
   smaller, keeping `D/B` near 0.75 and rows per bucket in the low hundreds. The platform default when `D_org` is not yet known is 19.
-  The sizing rule is a proposal inside this decided value and is among the things the reviewers confirm.
+  The sizing rule is a proposal inside this decided value and is among the things the reviewers confirm. **Rebuild trigger:** `T`
+  is fixed between rebuilds but `D_org` grows, so the nightly statistics job measures `D_org` and raises an alert and schedules a
+  rebuild at a new `T` when `D_org / B` exceeds 1.5 (twice the 0.75 target) **or** `D_org` has grown more than 2x since the last
+  build (initial thresholds, tunable). A rebuild at a new `T` follows the key-rotation overlap rules (query both, then delete the
+  old rows).
 
 ### Enablement and kill switches (Decided 2026-10-13, user, delegated to the lead engineer's judgement)
 
@@ -398,6 +454,10 @@ padded to `N = 32` (8 dummies). Total rows `5 x 10^6 x 32 = 1.6 x 10^8` (1.2 x 1
    granted by migration to `administrator` and `org_admin` as `messaging.template.manage` was in
    `packages/db/migrations/1086_m36_message_template.sql`), **plus** an org-admin ABAC predicate (reuse an existing one if it fits;
    `arch:abac-predicates` and `arch:abac-composed` apply), **plus** `requireStepUp("messaging.global_search.configure")` on the route.
+   **Requirement:** that operation key is registered wherever step-up operation keys are enumerated for tenant tightening (the
+   `tenant_step_up_policy_override.operation_key` surface, M2), so it is a named, tightenable operation; an unnamed operation
+   resolves to the platform floor (`apps/backend/src/bootstrap/step-up.ts`, `STEP_UP_FLOOR_KEY`), which would work but would not
+   be tenant-tightenable. The registry location is a build-time check.
    Every change is **audit-logged with who, when, old value and new value** (the write-audit trigger on the table and an explicit
    domain event).
 3. **Turning ON requires the go-live checklist**, enforced where code can enforce it and attested where it cannot: (a) the
@@ -409,13 +469,24 @@ padded to `N = 32` (8 dummies). Total rows `5 x 10^6 x 32 = 1.6 x 10^8` (1.2 x 1
 4. **Turning OFF** stops queries **immediately**: the query path reads the flag on every request (no cache, as search responses are
    not cached) and the indexer stops inserting for that tenant. A purge job then **deletes the tenant's token rows**: asynchronous,
    batched, idempotent and resumable, with completion audited. **The query path refuses even if rows linger**, so a slow or failed
-   purge never leaves search answering. Turning back ON needs the checklist again and a full rebuild.
+   purge never leaves search answering. Turning back ON needs the checklist again and a full rebuild. **While a flag (tenant or
+   platform) is OFF, the same-transaction delete and redaction hooks (decision 6) keep running unconditionally**: they never
+   consult the flag, so a message deleted or redacted during the OFF period cannot be resurrected into the index. Before querying
+   resumes after any OFF-then-ON (tenant or platform), **outbox replay and a reconciliation pass are required**: the indexer
+   replays the `m36.message.sent.v1` / `revised.v1` events missed while off, and a reconciliation compares the index's message
+   set with the eligible (non-deleted, non-redacted, non-pending-redaction) messages, repairing both missing and stale entries.
+   The query path stays closed until reconciliation reports zero drift.
 5. **Platform kill switch (ops-owned):** `messaging.global_search_platform_enabled`, a platform-global `feature_flag` key read through
    `FeatureFlagReaderPort`. Search runs for a tenant only if the tenant flag **and** the platform flag are both true; an absent or
    unreadable platform key is OFF (fail-closed). When ops turns it off, queries and indexing stop everywhere at once; token rows are
    **kept** (so a transient incident can be reversed without a rebuild) unless ops runs the same purge. Because a tenant-scoped row
-   would win over the platform row, **this key must never be written tenant-scoped**: a follow-up makes M34's `FeatureFlagAdmin`
-   upsert refuse an org-scoped write for it, with a test. The platform flag also carries the production-enablement gate: ops does
+   would win over the platform row, **this key must never be able to override the kill switch from a tenant row**. **Requirement
+   (with a test):** the query path **and** the indexer read this one key **directly from the org-NULL platform row** (a dedicated
+   read of `feature_flag` where `organization_id IS NULL` and `flag_key` is the key, honouring `kill_switch_active` and the
+   value), **not** through the merged `forOrg` map, so a tenant-scoped `feature_flag` row for the same key, written by a seed, a
+   migration or plain SQL, can never turn search on when the platform row is off or absent. The test inserts such a tenant row and
+   asserts search stays refused. Defence in depth: a follow-up makes M34's `FeatureFlagAdmin` upsert refuse an org-scoped write for
+   it, also with a test. The platform flag also carries the production-enablement gate: ops does
    not turn it on until the leakage test has passed.
 6. **The patient-name flag stays dropped for v1** (see decision 3).
 
@@ -447,11 +518,30 @@ current member sees the channel's whole history, including messages sent before 
 
 **User decision (2026-10-13): whole-history visibility for a member is intended**, including messages sent before they joined a care-team
 or DM channel; it is the existing behaviour of the history read path. Consequently: **a message is findable if and only if the user can
-currently read it through the history path** (`canViewChannelFor` and `effectivelyVisibleChannels` as they stand). Search must be
-neither stricter nor looser than history read; a member added after messages were sent finds the older messages. The privacy officer
+currently read it through the history path** (`canViewChannelFor` and `effectivelyVisibleChannels` as they stand). **For workforce
+members** search must be neither stricter nor looser than history read (the three excluded role categories are deliberately
+stricter, see "Who may call the route"); a member added after messages were sent finds the older messages. The privacy officer
 is **informed** of this decision (it is recorded in the design review input), **not asked** to decide it. If a future decision narrows
 history visibility, it changes the history read path for all of messaging and search follows it with no search-specific rule; the
 verification case `pre-join-history-matches-history-read` pins the equivalence in both directions.
+
+**Consequences of the decision (documented for the privacy officer and the risk analysis; the decision is not reversed here):**
+
+- A **newly added or auto-synced care-team member can search all earlier history**, including content from before they joined the
+  channel or the care team. Search makes that history **discoverable** (a word query across every channel they belong to), where
+  before it required opening and scrolling each channel.
+- A **re-added member also reads the gap while they were removed**, because re-adding resets `joined_at` and no read path
+  filters by it: `ensureDmMember` updates the removed row with `joinedAt: new Date()` and clears `removedAt`
+  (`apps/backend/src/modules/36-messaging/messaging-route-service-db.ts` line 505), and the admin `addMember` inserts a fresh row
+  (same file, ~line 1842). Messages sent between removal and re-adding are therefore visible and searchable.
+- The **Part 2 gate is evaluated per channel at the current time** (`part2Gate.allowedUserIds`); there is no per-message consent
+  period, so a message sent under an earlier consent state is searchable under the present one.
+- A **legal hold does not change visibility** (decision 6: it preserves the cipher, never discoverability).
+- **Discovery is audited only as an aggregate plus one attributed read per patient on a result page** ("Read audit"); there is no
+  record of which individual messages were surfaced.
+- The decision sits next to HIPAA's **minimum-necessary** standard and role-based access (45 CFR 164.502(b) and 164.514(d)).
+  The privacy officer is informed of it, and **the HIPAA risk-analysis record required by "Design review requirement" item 3 must
+  cover this decision, not only the new derived store.**
 
 **Archived channels (Proposed default, for security/privacy reviewers to confirm).** Global search includes archived channels for
 users who are **current members** (or any active user for an archived `announcement`), read-only, with each result marked
@@ -475,10 +565,14 @@ messages (support access goes through the audited break-glass path elsewhere).
 1. The global search route requires `messaging.read` **and** a **role-category allow-list** of workforce categories, evaluated from the
    caller's active `membership_role` rows (with the `expires_at` test, as `mention-non-member-service-db.ts` line 64 does): the caller
    must hold at least one active role in the allow-list **and none** in the three excluded categories (deny wins). The list is derived
-   from `RoleCategory` in `packages/auth/src/roles/templates.ts` (lines 22-34, twelve values) minus the three: `clinical_staff`,
-   `clinical_leadership`, `operations`, `admin_executive`, `billing_finance`, `compliance_quality`, `volunteer`,
-   `external_collaborator`, `temporary_special`. (Whether `external_collaborator` belongs on it is left to the reviewers; the
-   instruction was to exclude only the three.)
+   from `RoleCategory` in `packages/auth/src/roles/templates.ts` (lines 22-34, twelve values) minus the three excluded ones **and
+   minus three more that are off the list by default** (Decided 2026-10-13, the stricter and safer default): the initial allow-list
+   is `clinical_staff`, `clinical_leadership`, `operations`, `admin_executive`, `billing_finance`, `compliance_quality`.
+   `external_collaborator`, `volunteer` and `temporary_special` are **not** on it unless the reviewers add them. Reason: global search
+   turns a member's whole reachable history, across every channel and patient they belong to, into one queryable surface; for
+   categories whose access is intentionally narrow, short-lived or external, that cross-patient discovery is a larger step than
+   reading one channel at a time. Those users keep `messaging.read` for the channels they belong to; they simply do not get the
+   global search route.
 2. **Live test** (`non-staff-identities-zero`, table row 13): an identity holding each of the three categories, **even if a tenant
    mistakenly granted its role `messaging.read`**, is refused by the route.
 3. **Static ratchet test** (unit, no database): fails if any of the three categories is ever granted `messaging.read`, in the role
@@ -506,7 +600,13 @@ messages (support access goes through the audited break-glass path elsewhere).
   or `packages/db/src`; the value exists only in the `role_category` enum (`packages/db/migrations/0008_authorization_m3_tables.sql`
   line 4). How family identities receive roles **could not be determined from this repo**, so no grant is found, but absence of a
   grant is not proven; the live test and the ratchet are required for that reason.
-- M36 never adds the three categories to channels: `mention-non-member-service-db.ts` line 64 excludes them from the offered members.
+- **The member picker excludes the three categories; nothing else was found to.** `mention-non-member-service-db.ts` line 64
+  filters only the "Add <name>?" **picker**. The add-member path itself, `addMember` (`messaging-route-service-db.ts` ~lines
+  1825-1857), checks `assertMayManageMembers` and `assertActiveMessagingUser` (lines 343-352), and `isActiveMessagingUser` tests only
+  active org membership and active user status (~lines 322-341); **no role-category check was found in that path**. So it is not
+  established that these identities can never be added to a channel. The real controls are the **route allow-list, the live test and
+  the static ratchet** above. A verification item (below) covers the add-member path, and closing it (refusing the three categories
+  in `addMember`) is a recommended follow-up, not a prerequisite for this ADR.
 
 ### Channel state by user state
 
@@ -527,7 +627,7 @@ Every row maps to a live test in the new suite `test:m36:global-search:live` (re
 | 10 | `care_team`, **access ended** (patient discharged / user off the care team) | `memberSource = 'auto'` member no longer on the roster | Zero | `CareTeamProvider.careTeamMembers` | `auto-member-off-roster-zero` |
 | 11 | `care_team`, access ended | `memberSource = 'manual'` member | Results while the manual membership and Part 2 hold | `candidate.memberSource !== 'auto'` returns true | `manual-member-survives-roster-change` |
 | 12 | `announcement` | Any active user, no membership row | Results | org-wide rule | `announcement-org-wide` |
-| 13 | Any | Identity with role category `patient_family`, `external_auditor` or `platform_staff` | Zero (decided; see "Who may call the route") | the route refuses these categories before any search runs; M36 never adds them to channels (`mention-non-member-service-db.ts` line 64 excludes the three categories) | `non-staff-identities-zero` |
+| 13 | Any | Identity with role category `patient_family`, `external_auditor` or `platform_staff` | Zero (decided; see "Who may call the route") | the route refuses these categories before any search runs; the member **picker** excludes them (`mention-non-member-service-db.ts` line 64) but no category check was found in the add-member path, so the route allow-list is the control | `non-staff-identities-zero` |
 | 14 | Any | Member, message sent **before** they joined | Results (**User decision**: findable iff readable through the history path) | no `joined_at` filter on any read path; decided, see "Pre-join history" | `pre-join-history-matches-history-read` |
 | 15 | Any | Other tenant | Zero, tags differ | per-tenant key, RLS | `cross-tenant-collision` |
 | 16 | Message `deleted` | Anyone | Never | prefilter and step 8.5 | `deleted-never-returned` |
@@ -575,6 +675,7 @@ and the resulting requirements:
 | Application compromise (code execution with KEK) | everything: bodies and keys | none new - already game over for bodies | Index adds no capability beyond bodies |
 | Authorised insider using the UI to probe | whether a word occurs in channels they may already read | results restricted to current access; per-user and per-org rate limit (P2); read audit | Probing within permitted scope reveals only permitted content |
 | Patient names typed in messages | with no patient-name flag in v1, a name is indexed like any other word | none specific; ordinary tag protections | Names are the highest-value token for frequency and auxiliary-vocabulary attacks (the adversary can build a name list from outside data). **Proposed default, for security/privacy reviewers to confirm:** the reviewers decide between "index names" (current) and "exclude known patient-name tokens" from the index (at the cost of not finding messages by patient name) |
+| Prefix-hierarchy attack (database snapshot) | prefix tags form **nested message sets**: set(`mor`) is a superset of set(`morp`), and so on down to set(`morphine`). For head words the chain survives truncation and dummy noise, so the observer learns the word's **length** (prefix tags stop at 12) and **where words diverge** (where a nested chain splits), which sharply narrows a dictionary match | every prefix length is a separate tag under one key; truncation to `T` bits and dummies blur only the tail, not the head | **Initial decision:** keep every prefix length 3 to min(len, 12) (the arithmetic and golden cases are verified for it) and record the chain as a **residual leakage and a reviewer input**. Options for the reviewers: (a) fewer prefix lengths, `3, 5, 8, 12`, which halves the chain resolution but makes a typed prefix of 4, 6, 7, 9 to 11 characters unanswerable by tag, so those queries need post-decrypt filtering and generate more false candidates; (b) no prefix tags for head words (identified by the head-bucket statistics), which removes the chain for exactly the words where it is strongest but makes a head word findable only whole |
 | Cross-tenant | nothing | distinct keys per tenant; RLS; cross-tenant collision test | Compromised KEK defeats all tenants |
 
 The honest summary: option B trades a reduced blast radius for a database-only compromise (no plaintext copy exists, unlike C) against
@@ -591,7 +692,8 @@ or changing each "Proposed default" **and each "Decided 2026-10-13" parameter** 
 `T`, the single most leakage-relevant knob, and re-run the arithmetic on real tenant statistics; they also see, as inputs, the
 user's pre-join-history decision, the escrow arrangement in P1, the flag and kill-switch design and the role-category rule); (2) a
 measured experiment on synthetic hospice notes estimating how many top-N words an auxiliary-vocabulary frequency attack recovers
-at the chosen `T` and the chosen tokenizer parameters (minimum token length, stop words, ID-like rule, caps), which also serves as the **production-enablement leakage test** (D10) and must pass before any tenant is enabled; (3) a record of the HIPAA risk-analysis entry for the new PHI-derived store; (4) product-owner acceptance of the
+at the chosen `T` and the chosen tokenizer parameters (minimum token length, stop words, ID-like rule, caps), which also serves as the **production-enablement leakage test** (D10) and must pass before any tenant is enabled; (3) a record of the HIPAA risk-analysis entry for the new PHI-derived store **and covering the user's pre-join-history decision
+(see "Pre-join history": consequences) and the prefix-hierarchy residual leakage**; (4) product-owner acceptance of the
 residual risk. The review record is linked from this ADR before Status changes.
 
 ## Alternatives considered
@@ -662,7 +764,9 @@ residual risk. The review record is linked from this ADR before Status changes.
     finds nothing; the set of messages findable equals the set the history read path returns, in both directions
     (`pre-join-history-matches-history-read`).
   - **Role categories:** identities holding each of `patient_family`, `external_auditor`, `platform_staff` are refused even when
-    their role was granted `messaging.read`; a workforce identity is allowed; a user with both an allowed and an excluded active role
+    their role was granted `messaging.read`; a workforce identity in an allow-listed category is allowed; an identity whose only
+    role is `external_collaborator`, `volunteer` or `temporary_special` is refused for global search (and still reads its own
+    channels); a user with both an allowed and an excluded active role
     is refused (`non-staff-identities-zero`). **Static ratchet** (unit): no role template, floor, external-auditor grant list or
     seed `role_permission` for those three categories ever contains `messaging.read`.
   - **Flag and kill switch:** default OFF returns the disabled error; only an org admin with fresh step-up can change the setting
@@ -673,6 +777,20 @@ residual risk. The review record is linked from this ADR before Status changes.
     the platform key is refused.
   - **Escrow:** the restore drill record exists before the P1 backfill starts; with legacy rows present and the key missing, boot
     fails closed (`check:boot:platform`); a post-backfill `hash_verify` is clean before the key is retired.
+  - **Kill switch source:** insert a tenant-scoped `feature_flag` row for `messaging.global_search_platform_enabled` with the
+    platform row off or absent; the query path and the indexer both still refuse (they read the org-NULL row directly, not
+    `forOrg`). OFF-then-ON: queries stay refused until outbox replay and reconciliation report zero drift; a message deleted or
+    redacted while OFF is absent from the index after turning ON.
+  - **Add-member path:** a test attempts `addMember` for an identity holding each of the three excluded categories and records the
+    actual behaviour (today expected: allowed, as no category check was found); the route allow-list test (row 13) must pass
+    regardless. If a follow-up adds the refusal, the test flips to asserting it.
+  - **Escrow independence:** the custodian record shows three distinct natural persons and a dual-control vault procedure; a
+    re-drill is on record after each custodian change and yearly; the same drill exists for `M34_TENANT_KEK`.
+  - **Tail bound:** `P(candidates > CANDIDATE_CAP)` is measured on a production-shaped corpus for single-term and two-term queries;
+    a single-term query in a head bucket returns the refine-your-query response without decrypting; no query decrypts more than
+    `MAX_PAGES_PER_QUERY x DECRYPT_BUDGET` bodies.
+  - **Tokenizer additions:** `esophagogastroduodenoscopy` is indexed; a 20+ character hex string with a digit, a mixed-case
+    base64-like string and a UUID are not; a 41-letter word is dropped.
   - **Parameters:** the leakage experiment is run at the chosen `T = 19` and tokenizer parameters; a unit test recomputes the
     "Parameter values and the T arithmetic" table from its stated assumptions so the document and the constants cannot drift; the
     measured false-candidate rate on a synthetic tenant is within the 500 cap for a typical single-word query.
@@ -694,8 +812,13 @@ What is genuinely still open, all for the reviewers (the items the user answered
 - **Redaction marker** (ADR-0055): the step 8.5 check reads whatever marker the redaction WP defines; decision 7 depends on it.
 - **Archived channels** in global search (Proposed default in "Access control"), and whether known patient-name tokens are excluded
   from the index (Proposed default: not excluded in v1; see the leakage table).
-- **Role-category allow-list:** whether `external_collaborator` (and `volunteer`, `temporary_special`) belong on the allow-list, and
-  how `patient_family` identities receive roles (not determinable from this repo; the live test and the ratchet cover it).
+- **Role-category allow-list:** whether `external_collaborator`, `volunteer` and `temporary_special` are added to it (they are off it
+  by default), how `patient_family` identities receive roles (not determinable from this repo; the live test and the ratchet cover
+  it), and whether `addMember` should refuse the three excluded categories.
+- **Heavy-tail handling and prefix hierarchy:** whether the initial head-bucket refusal is enough or a per-tenant frequency
+  stop-word list is wanted; whether prefix lengths move to `3, 5, 8, 12` or head words lose their prefix tags.
+- **Privacy-officer input:** the consequences of the pre-join-history decision ("Pre-join history") are covered by the risk-analysis
+  record; the decision itself is not open.
 - **Follow-up work items, not open decisions:** the M34 `FeatureFlagAdmin` guard against a tenant-scoped row for the platform kill
   switch key; the runbook checklist lines for the escrow and for "search tags are not logged".
 
