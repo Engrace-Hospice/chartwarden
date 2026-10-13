@@ -842,3 +842,11 @@ dropped ("Enablement and kill switches"); **tokenizer and cap parameters** with 
 `MESSAGING_ENCRYPTION_KEY` before the P1 backfill, with a restore drill and conditioned retirement (P1); **role categories**
 `patient_family`, `external_auditor` and `platform_staff` never hold `messaging.read`, enforced by a workforce-category allow-list, a
 live test and a static ratchet ("Who may call the route").
+
+## Amendment 2026-10-13: the scan-truncation signal is a coarse threshold oracle (accepted)
+
+`scanCapped` / `refine` is set when a scan limit (500 raw candidates, 100 channels, 5 rounds) ends the scan with no visible row left. The raw candidate count
+is taken before the authority filter, so the bit tells a caller (including one with no access) that MORE than the cap matches exist org-wide; 0 and 499 are
+indistinguishable. It is a term-frequency threshold, never a count, channel, row or cursor, and it is rate-limited (30/min/user, 300/min/org). It
+is the same class of leak as the head-bucket refusal that D3 option B already accepts, and it is preferred over a response that looks complete when it is not.
+The alternative (set it only when the page is non-empty) is available to the privacy officer's review. Found by the fresh review of a9a1ef5e5.
