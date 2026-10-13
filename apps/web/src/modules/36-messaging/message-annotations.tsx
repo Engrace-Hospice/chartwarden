@@ -19,10 +19,16 @@ interface View {
 
 const BASE = "/api/v1/messaging/channels/{id}/messages/{messageId}";
 
-function failureCopy(status: number | undefined): string {
+type Kind = "reaction" | "pin";
+
+function failureCopy(status: number | undefined, kind: Kind): string {
   if (status === 410) return "This conversation is archived and read only.";
   if (status === 404 || status === 403) return "This message is no longer available.";
-  if (status === 409) return "This conversation already has the most pinned messages it can hold.";
+  if (status === 409) {
+    return kind === "pin"
+      ? "This conversation already has the most pinned messages it can hold."
+      : "That reaction could not be saved right now. Try again.";
+  }
   return "That did not work. Try again.";
 }
 
@@ -71,6 +77,7 @@ export function MessageAnnotations({
   }, [pickerOpen]);
 
   async function run(
+    kind: Kind,
     work: () => Promise<{ ok: true; note: string } | { ok: false; status?: number }>,
   ) {
     if (busyRef.current) return;
@@ -81,12 +88,12 @@ export function MessageAnnotations({
       const result = await work();
       if (result.ok) setAnnouncement(result.note);
       else {
-        const text = failureCopy(result.status);
+        const text = failureCopy(result.status, kind);
         setFailure(text);
         setAnnouncement(text);
       }
     } catch {
-      const text = failureCopy(undefined);
+      const text = failureCopy(undefined, kind);
       setFailure(text);
       setAnnouncement(text);
     } finally {
@@ -97,7 +104,7 @@ export function MessageAnnotations({
 
   function toggleReaction(emoji: Reactions[number]["emoji"], present: boolean): Promise<void> {
     const label = paletteEntry(emoji)?.label ?? emoji;
-    return run(async () => {
+    return run("reaction", async () => {
       const params = { params: { path: { ...path, emoji } } };
       const { data, error, response } = present
         ? await client.PUT(`${BASE}/reactions/{emoji}`, params)
@@ -109,7 +116,7 @@ export function MessageAnnotations({
   }
 
   function togglePin(pin: boolean): Promise<void> {
-    return run(async () => {
+    return run("pin", async () => {
       const params = { params: { path } };
       const { error, response } = pin
         ? await client.PUT(`${BASE}/pin`, params)
@@ -151,8 +158,11 @@ export function MessageAnnotations({
             aria-label={`${entry.label}, ${count}${
               reaction.reactedByMe ? ", including yours" : ""
             }. ${canAnnotate ? (reaction.reactedByMe ? "Remove your reaction" : "Add your reaction") : "Read only"}`}
-            disabled={!canAnnotate || busy}
-            onClick={() => void toggleReaction(reaction.emoji, !reaction.reactedByMe)}
+            aria-disabled={!canAnnotate || busy}
+            onClick={() => {
+              if (!canAnnotate || busyRef.current) return;
+              void toggleReaction(reaction.emoji, !reaction.reactedByMe);
+            }}
           >
             <span aria-hidden="true">{entry.glyph}</span>
             <span aria-hidden="true">{reaction.count}</span>
@@ -169,8 +179,11 @@ export function MessageAnnotations({
             aria-expanded={pickerOpen}
             aria-label="Add a reaction"
             title={REACTION_NOT_ACK_COPY}
-            disabled={busy}
-            onClick={() => setPickerOpen((open) => !open)}
+            aria-disabled={busy}
+            onClick={() => {
+              if (busyRef.current) return;
+              setPickerOpen((open) => !open);
+            }}
           >
             <span aria-hidden="true">+</span>
           </button>
@@ -206,8 +219,11 @@ export function MessageAnnotations({
           type="button"
           className="wx-pin-toggle"
           aria-label={view.pinned ? "Unpin this message" : "Pin this message"}
-          disabled={busy}
-          onClick={() => void togglePin(!view.pinned)}
+          aria-disabled={busy}
+          onClick={() => {
+            if (busyRef.current) return;
+            void togglePin(!view.pinned);
+          }}
         >
           {view.pinned ? "Unpin" : "Pin"}
         </button>

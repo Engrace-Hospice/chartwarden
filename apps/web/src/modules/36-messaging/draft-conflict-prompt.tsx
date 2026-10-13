@@ -1,7 +1,8 @@
 // WP 2.5: the merge prompt shown when this draft was changed on another device since this one last saw it. Inline
-// above the composer (not a modal: the user can still read the conversation), announced as an alert dialog, focus lands
-// on the first action, Tab stays among the three actions, and Escape keeps the user's own text (never discards it).
-import { useEffect, useRef } from "react";
+// above the composer (not a modal: the user can still read the conversation), announced as an alert. It never takes
+// focus from the composer the user is typing in (that would swallow the next keystrokes); it only moves focus to its
+// first action when focus is somewhere else. Tab stays natural and Escape keeps the user's own text (never discards it).
+import { useEffect, useId, useRef } from "react";
 import type { DraftConflict, DraftResolution, ServerDraftSync } from "./use-server-draft";
 import "./draft-conflict.css";
 
@@ -10,6 +11,16 @@ const PREVIEW_LENGTH = 240;
 function preview(body: string): string {
   const flat = body.replace(/\s+/g, " ").trim();
   return flat.length > PREVIEW_LENGTH ? `${flat.slice(0, PREVIEW_LENGTH)}…` : flat;
+}
+
+/** True when the user is typing in a text field (or an editable region) right now. */
+function isTyping(element: Element | null): boolean {
+  if (!(element instanceof HTMLElement)) return false;
+  return (
+    element instanceof HTMLTextAreaElement ||
+    element instanceof HTMLInputElement ||
+    element.isContentEditable
+  );
 }
 
 export interface DraftConflictPromptProps {
@@ -23,21 +34,26 @@ export function DraftConflictPrompt({
 }: DraftConflictPromptProps): JSX.Element {
   const firstActionRef = useRef<HTMLButtonElement>(null);
   const previouslyFocused = useRef<Element | null>(null);
+  const movedFocus = useRef(false);
+  const titleId = useId();
+  const bodyId = useId();
 
   useEffect(() => {
     previouslyFocused.current = document.activeElement;
+    if (isTyping(previouslyFocused.current)) return;
+    movedFocus.current = true;
     firstActionRef.current?.focus();
     return () => {
       const target = previouslyFocused.current;
-      if (target instanceof HTMLElement && target.isConnected) target.focus();
+      if (movedFocus.current && target instanceof HTMLElement && target.isConnected) target.focus();
     };
   }, []);
 
   return (
     <div
-      role="alertdialog"
-      aria-labelledby="wx-draft-conflict-title"
-      aria-describedby="wx-draft-conflict-body"
+      role="alert"
+      aria-labelledby={titleId}
+      aria-describedby={bodyId}
       className="wx-draft-conflict"
       onKeyDown={(event) => {
         if (event.key !== "Escape") return;
@@ -45,10 +61,10 @@ export function DraftConflictPrompt({
         onResolve("mine");
       }}
     >
-      <p id="wx-draft-conflict-title" className="wx-draft-conflict-title">
+      <p id={titleId} className="wx-draft-conflict-title">
         This draft changed on another device
       </p>
-      <div id="wx-draft-conflict-body" className="wx-draft-conflict-body">
+      <div id={bodyId} className="wx-draft-conflict-body">
         <p>
           <span>Here: </span>
           {preview(conflict.mine.body)}
@@ -80,7 +96,7 @@ export function DraftSyncNotice({ sync }: { sync: ServerDraftSync }): JSX.Elemen
   if (!sync.saveFailed) return null;
   return (
     <output className="wx-draft-status">
-      Draft not saved yet. Your text is kept here; we will retry as you type.
+      Draft not saved yet. Your text is kept here; we are retrying.
     </output>
   );
 }

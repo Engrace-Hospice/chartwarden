@@ -41,20 +41,32 @@ function PlatformReplyRow({
     setPending(true);
     setError(null);
     // Text identical to the platform's is stored as "keep the platform text", so a later platform update still flows.
-    const failure = await writes.save(item.id, {
-      title: title.trim() === item.floorTitle ? null : title,
-      body: body.trim() === item.floorBody ? null : body,
-      isEnabled: enabled,
-    });
-    setPending(false);
+    let failure: string | null;
+    try {
+      failure = await writes.save(item.id, {
+        title: title.trim() === item.floorTitle ? null : title,
+        body: body.trim() === item.floorBody ? null : body,
+        isEnabled: enabled,
+      });
+    } catch {
+      failure = "This could not be saved. Check your connection and try again.";
+    } finally {
+      setPending(false);
+    }
     if (failure) setError(failure);
     else setEditing(false);
   }
 
   async function reset(): Promise<void> {
     setPending(true);
-    const failure = await writes.reset(item.id);
-    setPending(false);
+    let failure: string | null;
+    try {
+      failure = await writes.reset(item.id);
+    } catch {
+      failure = "This could not be removed. Check your connection and try again.";
+    } finally {
+      setPending(false);
+    }
     setConfirmReset(false);
     if (failure) setError(failure);
     else {
@@ -108,9 +120,13 @@ function PlatformReplyRow({
             <input
               type="checkbox"
               checked={enabled}
+              disabled={item.requiredPhrases.length > 0}
               onChange={(event) => setEnabled(event.target.checked)}
             />{" "}
             Available to staff in the composer
+            {item.requiredPhrases.length > 0
+              ? " (always on: this template carries required wording)"
+              : ""}
           </label>
           {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
           <div className="wx-saved-reply-form-actions">

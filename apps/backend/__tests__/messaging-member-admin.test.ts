@@ -139,7 +139,7 @@ function makeServer() {
   registry.register(CHANNEL_MEMBER_ADMIN_PREDICATE, channelMemberAdminPredicate(service));
   registerAbacRegistry(registry);
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerMessagingRoutes(app, { service });
+  registerMessagingRoutes(app, { service, announcements: service as never });
   return { app, service };
 }
 

@@ -83,7 +83,7 @@ function makeServer() {
   });
   registerAbacRegistry(registry);
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerMessagingRoutes(app, { service });
+  registerMessagingRoutes(app, { service, announcements: service });
   return app;
 }
 

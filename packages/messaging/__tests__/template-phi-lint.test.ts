@@ -30,6 +30,26 @@ describe("lintTemplateText: rejects direct identifiers", () => {
     ["honorific plus name", "Please tell Mrs. Alvarez I called", "HONORIFIC_NAME"],
     ["honorific plus name without a dot", "Please tell Mr Nguyen I called", "HONORIFIC_NAME"],
     ["merge placeholder", "Hello {{patient_name}}", "PLACEHOLDER"],
+    // Tranche B hardening: non-ASCII digits, separators between digits, look-alike letters, unspaced labels, bare hosts.
+    [
+      "Arabic-Indic digits",
+      "Account \u0668\u0668\u0667\u0667\u0666\u0666\u0665\u0665",
+      "LONG_NUMBER",
+    ],
+    [
+      "Devanagari digits",
+      "Account \u096E\u096E\u096D\u096D\u096C\u096C\u096B\u096B",
+      "LONG_NUMBER",
+    ],
+    ["digits split by commas", "Account 8877,6655 is overdue", "LONG_NUMBER"],
+    ["digits split by slashes", "Account 88/77/66/55 is overdue", "LONG_NUMBER"],
+    ["digits split by mixed separators", "Account 8877 / 66 - 55", "LONG_NUMBER"],
+    ["SSN split by commas", "ssn 123,45,6789", "SSN"],
+    ["Cyrillic M in the honorific", "Please tell \u041Crs. Alvarez I called", "HONORIFIC_NAME"],
+    ["Cyrillic letters in MRN", "\u041CRN: AB12", "IDENTIFIER_LABEL"],
+    ["MRN with no separator", "MRN12345 is on file", "IDENTIFIER_LABEL"],
+    ["bare domain with a path", "See example.com/p/abc", "URL"],
+    ["bare host name", "See portal.example.org", "URL"],
   ];
   it.each(rejected)("%s", (_label, text, code) => {
     expect(lintTemplateText(text)).toContain(code);
@@ -67,10 +87,20 @@ describe("lintTemplateText: accepts ordinary non-clinical replies", () => {
 });
 
 describe("lintTemplateText: known misses (documented limits, not guarantees)", () => {
-  it("does not catch a bare first name, a diagnosis, a drug or spelled-out digits", () => {
+  it("still does not catch a bare first name, a diagnosis, a drug or spelled-out digits", () => {
     expect(lintTemplateText("Tell Maria her morphine dose changed")).toEqual([]);
     expect(lintTemplateText("Patient has end stage COPD")).toEqual([]);
     expect(lintTemplateText("one two three four five six seven")).toEqual([]);
+  });
+});
+
+describe("lintTemplateText: deliberate over-rejection (the price of collapsing separators)", () => {
+  // Honest list: ordinary text that the hardened rules refuse. A user rewords it; a PHI leak is the worse error.
+  it.each([
+    ["a counted list that adds up to six digits", "Steps 1, 2, 3, 4, 5, 6", "LONG_NUMBER"],
+    ["a file name that looks like a host", "Send it to notes.net", "URL"],
+  ])("%s", (_label, text, code) => {
+    expect(lintTemplateText(text)).toContain(code);
   });
 });
 

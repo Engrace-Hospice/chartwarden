@@ -2,7 +2,15 @@
  * WP 2.5 server drafts in the web client: restore on open, debounced autosave, discard on empty, thread-root scoping,
  * and the cross-device merge prompt (keep mine / use theirs / combine) with keyboard focus.
  */
-import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -46,10 +54,12 @@ function makeApi(initial: Record<string, unknown> | null = null) {
   return api;
 }
 
+const NO_REFS: MessageReferenceInput[] = [];
 interface HookProps {
   text: string;
   refs?: MessageReferenceInput[];
   parent?: string | null;
+  suspended?: boolean;
 }
 
 function setup(api: ReturnType<typeof makeApi>, initialText = "") {
@@ -63,7 +73,8 @@ function setup(api: ReturnType<typeof makeApi>, initialText = "") {
         channelId: "ch-1",
         parentMessageId: props.parent ?? null,
         text: props.text,
-        references: props.refs ?? [],
+        references: props.refs ?? NO_REFS,
+        suspended: props.suspended,
         hydrate,
       }),
     { wrapper, initialProps: { text: initialText } },
@@ -220,6 +231,140 @@ describe("useServerDraft", () => {
   });
 });
 
+const conflictingPut = () =>
+  vi.fn(async () => ({
+    data: undefined,
+    error: { error: { code: "DRAFT_CONFLICT" } },
+    response: { status: 409 },
+  }));
+
+describe("useServerDraft review fixes (Tranche B)", () => {
+  async function openConflict(
+    api: ReturnType<typeof makeApi>,
+    view: ReturnType<typeof setup>["view"],
+  ) {
+    api.PUT.mockImplementationOnce(conflictingPut());
+    api.GET.mockImplementation(async () => ({
+      data: { draft: serverDraft() },
+      error: undefined,
+      response: { status: 200 },
+    }));
+    view.rerender({ text: "mine" });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
+    expect(view.result.current.conflict).not.toBeNull();
+  }
+
+  it("H1: emptying the composer (a send) while the merge prompt is open discards, clears the prompt, and never re-saves the sent text", async () => {
+    const api = makeApi();
+    const { view } = setup(api);
+    await flush();
+    await openConflict(api, view);
+    view.rerender({ text: "" });
+    await flush();
+    expect(view.result.current.conflict).toBeNull();
+    expect(api.DELETE).toHaveBeenCalledTimes(1);
+    api.PUT.mockClear();
+    act(() => view.result.current.resolve("mine"));
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
+    expect(api.PUT).not.toHaveBeenCalled();
+  });
+
+  it("H1/M6: text typed while the prompt is open is what Keep mine saves, and the prompt shows it", async () => {
+    const api = makeApi();
+    const { view } = setup(api);
+    await flush();
+    await openConflict(api, view);
+    view.rerender({ text: "mine, and more" });
+    await flush();
+    expect(view.result.current.conflict?.mine.body).toBe("mine, and more");
+    act(() => view.result.current.resolve("mine"));
+    await flush();
+    expect(api.PUT.mock.calls.at(-1)?.[1].body).toMatchObject({
+      body: "mine, and more",
+      baseRevision: 4,
+    });
+  });
+
+  it("M6: a 409 raised for older text reports the latest text as mine", async () => {
+    const api = makeApi();
+    const { view } = setup(api);
+    await flush();
+    let release: (() => void) | undefined;
+    api.PUT.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () =>
+            resolve({ data: undefined, error: { error: {} }, response: { status: 409 } });
+        }),
+    );
+    api.GET.mockImplementation(async () => ({
+      data: { draft: serverDraft() },
+      error: undefined,
+      response: { status: 200 },
+    }));
+    view.rerender({ text: "old" });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
+    view.rerender({ text: "old plus newer" });
+    await act(async () => {
+      release?.();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(view.result.current.conflict?.mine.body).toBe("old plus newer");
+  });
+
+  it("H3: nothing is saved or flushed for a send in flight", async () => {
+    const api = makeApi();
+    const { view } = setup(api, "");
+    await flush();
+    view.rerender({ text: "being sent", suspended: true });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
+    expect(api.PUT).not.toHaveBeenCalled();
+    view.rerender({ text: "being sent", suspended: true });
+    view.unmount();
+    await flush();
+    expect(api.PUT).not.toHaveBeenCalled();
+  });
+
+  it("H3: a pending save is not flushed on unmount while a send is in flight", async () => {
+    const api = makeApi();
+    const { view } = setup(api, "");
+    await flush();
+    view.rerender({ text: "typed" });
+    view.rerender({ text: "typed", suspended: true });
+    view.unmount();
+    await flush();
+    expect(api.PUT).not.toHaveBeenCalled();
+  });
+
+  it("M4: a 5xx on discarding the server copy is a failed save, not success", async () => {
+    const api = makeApi(serverDraft());
+    const { view } = setup(api, "text");
+    await flush();
+    api.DELETE.mockImplementationOnce((async () => ({
+      data: undefined,
+      error: { error: { code: "INTERNAL" } },
+      response: { status: 500 },
+    })) as never);
+    view.rerender({ text: "" });
+    await flush();
+    expect(view.result.current.saveFailed).toBe(true);
+  });
+
+  it("M5: a failed autosave is retried on its own, without another keystroke", async () => {
+    const api = makeApi();
+    const { view } = setup(api);
+    await flush();
+    api.PUT.mockRejectedValueOnce(new Error("offline"));
+    view.rerender({ text: "abc" });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
+    expect(view.result.current.saveFailed).toBe(true);
+    expect(api.PUT).toHaveBeenCalledTimes(1);
+    await tick(60_000);
+    expect(api.PUT).toHaveBeenCalledTimes(2);
+    expect(view.result.current.saveFailed).toBe(false);
+  });
+});
+
 describe("DraftConflictPrompt", () => {
   const conflict = {
     server: {
@@ -235,7 +380,7 @@ describe("DraftConflictPrompt", () => {
     vi.useRealTimers();
     const onResolve = vi.fn();
     render(<DraftConflictPrompt conflict={conflict} onResolve={onResolve} />);
-    expect(screen.getByRole("alertdialog", { name: /changed on another device/i })).toBeTruthy();
+    expect(screen.getByRole("alert", { name: /changed on another device/i })).toBeTruthy();
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Keep mine" }));
     fireEvent.click(screen.getByRole("button", { name: "Use theirs" }));
     fireEvent.click(screen.getByRole("button", { name: "Combine both" }));
@@ -245,7 +390,27 @@ describe("DraftConflictPrompt", () => {
     vi.useRealTimers();
     const onResolve = vi.fn();
     render(<DraftConflictPrompt conflict={conflict} onResolve={onResolve} />);
-    fireEvent.keyDown(screen.getByRole("alertdialog"), { key: "Escape" });
+    fireEvent.keyDown(screen.getByRole("alert"), { key: "Escape" });
     await waitFor(() => expect(onResolve).toHaveBeenCalledWith("mine"));
+  });
+  it("H2: does not steal focus from a composer the user is typing in", () => {
+    vi.useRealTimers();
+    const area = document.createElement("textarea");
+    document.body.appendChild(area);
+    area.focus();
+    render(<DraftConflictPrompt conflict={conflict} onResolve={vi.fn()} />);
+    expect(document.activeElement).toBe(area);
+    area.remove();
+  });
+  it("M12: two prompts do not share element ids", () => {
+    vi.useRealTimers();
+    render(
+      <>
+        <DraftConflictPrompt conflict={conflict} onResolve={vi.fn()} />
+        <DraftConflictPrompt conflict={conflict} onResolve={vi.fn()} />
+      </>,
+    );
+    const ids = Array.from(document.querySelectorAll("[id]")).map((n) => n.id);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 });

@@ -194,7 +194,7 @@ describe("WP 2.4 reactions", () => {
       { archivedAt: "2026-10-01T00:00:00.000Z" },
     );
     const chip = await screen.findByRole("button", { name: /^Heart, 1 reaction/ });
-    expect((chip as HTMLButtonElement).disabled).toBe(true);
+    expect(chip.getAttribute("aria-disabled")).toBe("true");
     expect(screen.queryByRole("button", { name: "Add a reaction" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Pin this message" })).toBeNull();
   });
@@ -240,5 +240,69 @@ describe("WP 2.4 pins", () => {
     mount({ messages: [message("m1")] });
     await screen.findByText("body of m1");
     expect(screen.queryByRole("navigation", { name: "Pinned messages" })).toBeNull();
+  });
+});
+
+describe("Tranche B review fixes (reactions and pins)", () => {
+  const pending = () => {
+    let release: (() => void) | undefined;
+    const promise = new Promise((resolve) => {
+      release = () =>
+        resolve({
+          data: { reactions: [], pinnedAt: "x" },
+          error: undefined,
+          response: { status: 200 },
+        });
+    });
+    return { promise, release: () => release?.() };
+  };
+
+  it("M7: a control that is busy stays focusable (aria-disabled), so focus is not dropped to the page", async () => {
+    const gate = pending();
+    mount({ messages: [message("m1")], put: () => gate.promise });
+    const pin = await screen.findByRole("button", { name: "Pin this message" });
+    pin.focus();
+    fireEvent.click(pin);
+    await waitFor(() => expect(pin.getAttribute("aria-disabled")).toBe("true"));
+    expect((pin as HTMLButtonElement).disabled).toBe(false);
+    expect(document.activeElement).toBe(pin);
+    gate.release();
+    await screen.findByRole("button", { name: "Unpin this message" });
+  });
+
+  it("M7: a second click while a request is in flight does nothing", async () => {
+    const gate = pending();
+    const api = mount({ messages: [message("m1")], put: () => gate.promise });
+    const pin = await screen.findByRole("button", { name: "Pin this message" });
+    fireEvent.click(pin);
+    fireEvent.click(pin);
+    expect(api.PUT).toHaveBeenCalledTimes(1);
+    gate.release();
+    await screen.findByRole("button", { name: "Unpin this message" });
+  });
+
+  it("a 409 on a reaction does not claim the pin limit was reached", async () => {
+    mount({
+      messages: [message("m1")],
+      put: () => ({ data: undefined, error: { code: "X" }, response: { status: 409 } }),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Add a reaction" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Heart" }));
+    expect((await screen.findByRole("alert")).textContent).not.toMatch(/pinned/i);
+  });
+
+  it("a failed refresh keeps the pinned list that was already shown", async () => {
+    const pinned = message("m1", { pinned: true });
+    const api = mount({ messages: [pinned], pins: [pinned] });
+    await screen.findByRole("button", { name: "Pinned messages (1)" });
+    api.GET.mockImplementation(((path: string) =>
+      Promise.resolve(
+        path === PINS
+          ? { data: undefined, error: { code: "X" }, response: { status: 500 } }
+          : { data: { messages: [pinned] }, error: undefined, response: { status: 200 } },
+      )) as never);
+    fireEvent.click(await screen.findByRole("button", { name: "Unpin this message" }));
+    await screen.findByText("Pinned messages could not be loaded.");
+    expect(screen.getByRole("button", { name: "Pinned messages (1)" })).toBeTruthy();
   });
 });

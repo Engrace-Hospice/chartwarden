@@ -355,6 +355,20 @@ describe.skipIf(!DB_URL)("WP 2.5 - message drafts - LIVE Postgres", () => {
     const dave = await seedUser("wp25-dave@x.test", orgC);
     const chanC = await seedChannel(orgC, "news c");
     const chanC2 = await seedChannel(orgC, "news c2");
+    // WP 2.4 annotations ride the message's composite FK (ON DELETE CASCADE): the tenant erase removes them with it.
+    const annotated = await createDbMessagingRouteService(handle.db, { kek: KEK }).sendMessage(
+      orgC,
+      { channelId: chanC, authorUserId: dave, body: "root", bodyKind: "plain" },
+    );
+    await admin.query(
+      `INSERT INTO message_reaction (organization_id, channel_id, message_id, user_id, emoji) VALUES ($1,$2,$3,$4,'heart')`,
+      [orgC, chanC, annotated.messageId, dave],
+    );
+    await admin.query(
+      `INSERT INTO message_pin (organization_id, channel_id, message_id, pinned_by_user_id) VALUES ($1,$2,$3,$4)`,
+      [orgC, chanC, annotated.messageId, dave],
+    );
+
     await drafts.saveDraft(orgC, {
       userId: dave,
       channelId: chanC,
@@ -371,20 +385,6 @@ describe.skipIf(!DB_URL)("WP 2.5 - message drafts - LIVE Postgres", () => {
     });
     await save(alice); // org A must survive org C's erase
     expect(await draftRows(orgC)).toHaveLength(2);
-
-    // WP 2.4 annotations ride the message's composite FK (ON DELETE CASCADE): the tenant erase removes them with it.
-    const annotated = await createDbMessagingRouteService(handle.db, { kek: KEK }).sendMessage(
-      orgC,
-      { channelId: chanC, authorUserId: dave, body: "root", bodyKind: "plain" },
-    );
-    await admin.query(
-      `INSERT INTO message_reaction (organization_id, channel_id, message_id, user_id, emoji) VALUES ($1,$2,$3,$4,'heart')`,
-      [orgC, chanC, annotated.messageId, dave],
-    );
-    await admin.query(
-      `INSERT INTO message_pin (organization_id, channel_id, message_id, pinned_by_user_id) VALUES ($1,$2,$3,$4)`,
-      [orgC, chanC, annotated.messageId, dave],
-    );
 
     // a channel's removal cascades (composite FK) even through the app-role-invisible rows
     await admin.query("DELETE FROM channel WHERE id=$1", [chanC2]);

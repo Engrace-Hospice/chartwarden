@@ -655,7 +655,9 @@ describe.skipIf(!DB_URL)("M36 WP 2.8 message templates - LIVE Postgres", () => {
     });
 
     it("disabling hides a platform template from that org only; deleting the overlay brings it back", async () => {
-      const put = await call("PUT", overlayUrl, boss, ORG_A, {
+      const loose = PLATFORM_MESSAGE_TEMPLATES.find((t) => t.requiredPhrases.length === 0)!;
+      const looseUrl = `/api/v1/messaging/template-admin/platform/${loose.id}/overlay`;
+      const put = await call("PUT", looseUrl, boss, ORG_A, {
         title: null,
         body: null,
         isEnabled: false,
@@ -667,10 +669,19 @@ describe.skipIf(!DB_URL)("M36 WP 2.8 message templates - LIVE Postgres", () => {
             id: string;
           }>
         ).map((i) => i.id);
-      expect(await ids(alice, ORG_A)).not.toContain(emergency.id);
-      expect(await ids(carol, ORG_B)).toContain(emergency.id);
-      expect((await call("DELETE", overlayUrl, boss, ORG_A)).statusCode).toBe(204);
-      expect(await ids(alice, ORG_A)).toContain(emergency.id);
+      expect(await ids(alice, ORG_A)).not.toContain(loose.id);
+      expect(await ids(carol, ORG_B)).toContain(loose.id);
+      expect((await call("DELETE", looseUrl, boss, ORG_A)).statusCode).toBe(204);
+      expect(await ids(alice, ORG_A)).toContain(loose.id);
+    });
+
+    it("the emergency template (required wording) cannot be switched off", async () => {
+      const put = await call("PUT", overlayUrl, boss, ORG_A, {
+        title: null,
+        body: null,
+        isEnabled: false,
+      });
+      expect(put.statusCode).toBe(422);
     });
 
     it("an overlay can only target a platform template; the answer for any other id is a random id's 404", async () => {

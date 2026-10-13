@@ -211,18 +211,76 @@ describe("Saved replies screen: a template manager", () => {
     ).toBeTruthy();
   });
 
-  it("can hide a platform template from staff", async () => {
+  it("B7: a platform template with required wording cannot be hidden from staff", async () => {
     const { calls } = mount({ manager: true });
     await screen.findByText("Org reminder");
     fireEvent.click(screen.getByRole("button", { name: "Customize After hours and emergencies" }));
     const form = screen.getByRole("form", { name: "Customize After hours and emergencies" });
-    fireEvent.click(within(form).getByRole("checkbox", { name: /available to staff/i }));
-    fireEvent.click(within(form).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
-    expect(calls.find((c) => c.method === "PUT")?.init.body).toEqual({
-      title: null,
-      body: null,
-      isEnabled: false,
+    const toggle = within(form).getByRole("checkbox", { name: /available to staff/i });
+    expect((toggle as HTMLInputElement).disabled).toBe(true);
+    expect((toggle as HTMLInputElement).checked).toBe(true);
+    expect(calls.some((c) => c.method === "PUT")).toBe(false);
+  });
+});
+
+describe("Saved replies screen review fixes (Tranche B)", () => {
+  it("M9: a rejected create shows an error, keeps the text and lets the user submit again", async () => {
+    let fail = true;
+    const { calls } = mount({
+      write: () => (fail ? Promise.reject(new Error("network down")) : undefined),
     });
+    await screen.findByText("Thanks");
+    fill(/^Title/, "Running late");
+    fill(/^Reply text/, "Back in ten minutes.");
+    fireEvent.click(screen.getByRole("button", { name: "Add reply" }));
+    await screen.findByText(/could not be saved/i);
+    expect((screen.getAllByLabelText(/^Title/).at(-1) as HTMLInputElement).value).toBe(
+      "Running late",
+    );
+    fail = false;
+    fireEvent.click(screen.getByRole("button", { name: "Add reply" }));
+    await waitFor(() => expect(calls.filter((c) => c.method === "POST")).toHaveLength(2));
+  });
+
+  it("M10: a retry after a lost reply carries the same Idempotency-Key, and a new reply gets a new one", async () => {
+    let fail = true;
+    const { calls } = mount({
+      write: () => (fail ? Promise.reject(new Error("network down")) : undefined),
+    });
+    await screen.findByText("Thanks");
+    fill(/^Title/, "Running late");
+    fill(/^Reply text/, "Back in ten minutes.");
+    fireEvent.click(screen.getByRole("button", { name: "Add reply" }));
+    await screen.findByText(/could not be saved/i);
+    fail = false;
+    fireEvent.click(screen.getByRole("button", { name: "Add reply" }));
+    await waitFor(() => expect(calls.filter((c) => c.method === "POST")).toHaveLength(2));
+    const [first, second] = calls.filter((c) => c.method === "POST");
+    expect(second?.init.params.header["Idempotency-Key"]).toBe(
+      first?.init.params.header["Idempotency-Key"],
+    );
+    await waitFor(() =>
+      expect((screen.getAllByLabelText(/^Title/).at(-1) as HTMLInputElement).value).toBe(""),
+    );
+    fill(/^Title/, "Another");
+    fill(/^Reply text/, "Different text.");
+    fireEvent.click(screen.getByRole("button", { name: "Add reply" }));
+    await waitFor(() => expect(calls.filter((c) => c.method === "POST")).toHaveLength(3));
+    const third = calls.filter((c) => c.method === "POST")[2];
+    expect(third?.init.params.header["Idempotency-Key"]).not.toBe(
+      first?.init.params.header["Idempotency-Key"],
+    );
+  });
+
+  it("M9: a rejected delete is reported in the dialog and the dialog is not stuck pending", async () => {
+    mount({ write: () => Promise.reject(new Error("network down")) });
+    await screen.findByText("Thanks");
+    fireEvent.click(screen.getByRole("button", { name: "Delete Thanks" }));
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await within(dialog).findByText(/could not delete this reply/i);
+    expect(
+      (within(dialog).getByRole("button", { name: "Delete" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 });

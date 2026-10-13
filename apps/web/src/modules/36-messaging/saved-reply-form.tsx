@@ -20,7 +20,7 @@ export interface SavedReplyFormProps {
   readonly submitLabel: string;
   readonly initial?: ReplyDraft;
   /** Resolves to null on success, or the text to show. */
-  readonly onSubmit: (draft: ReplyDraft) => Promise<string | null>;
+  readonly onSubmit: (draft: ReplyDraft, idempotencyKey: string) => Promise<string | null>;
   readonly onCancel?: () => void;
 }
 
@@ -37,6 +37,14 @@ export function SavedReplyForm({
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const inFlight = useRef(false);
+  // One Idempotency-Key per attempt: a retry of the same content after a lost reply carries the key again (the server
+  // dedupes it); it is dropped when the content changes or the server has answered, so a new reply gets a new key.
+  const attemptKey = useRef<string | null>(null);
+
+  function change(next: ReplyDraft): void {
+    attemptKey.current = null;
+    setDraft(next);
+  }
 
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault();
@@ -44,11 +52,19 @@ export function SavedReplyForm({
     inFlight.current = true;
     setPending(true);
     setError(null);
-    const failure = await onSubmit(draft);
-    inFlight.current = false;
-    setPending(false);
-    if (failure) setError(failure);
-    else if (initial === EMPTY) setDraft(EMPTY);
+    attemptKey.current ??= crypto.randomUUID();
+    try {
+      const failure = await onSubmit(draft, attemptKey.current);
+      attemptKey.current = null;
+      if (failure) setError(failure);
+      else if (initial === EMPTY) setDraft(EMPTY);
+    } catch {
+      // No answer at all: keep the key so a retry of this same content dedupes.
+      setError("This could not be saved. Check your connection and try again.");
+    } finally {
+      inFlight.current = false;
+      setPending(false);
+    }
   }
 
   return (
@@ -62,15 +78,13 @@ export function SavedReplyForm({
         value={draft.title}
         maxLength={120}
         required
-        onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+        onChange={(event) => change({ ...draft, title: event.target.value })}
       />
       <SelectField
         label="Category"
         value={draft.category}
         options={CATEGORY_OPTIONS}
-        onChange={(event) =>
-          setDraft({ ...draft, category: event.target.value as TemplateCategory })
-        }
+        onChange={(event) => change({ ...draft, category: event.target.value as TemplateCategory })}
       />
       <TextAreaField
         label="Reply text"
@@ -79,7 +93,7 @@ export function SavedReplyForm({
         rows={4}
         maxLength={2000}
         required
-        onChange={(event) => setDraft({ ...draft, body: event.target.value })}
+        onChange={(event) => change({ ...draft, body: event.target.value })}
       />
       {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
       <div className="wx-saved-reply-form-actions">

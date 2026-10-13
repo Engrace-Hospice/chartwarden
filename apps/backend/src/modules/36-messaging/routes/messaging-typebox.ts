@@ -31,7 +31,7 @@ import { MESSAGE_REACTION_KEYS, ValidationError } from "@wardenx/types";
  *  slice's deterministic ids and production uuids both route. */
 const Id = Type.String({ minLength: 1, maxLength: 64 });
 // A canonical uuid (no `format: "uuid"`: that format is not registered with TypeBox at runtime here).
-const UUID_PATTERN =
+export const UUID_PATTERN =
   "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
 const ChannelKindSchema = Type.Union(CHANNEL_KINDS.map((k) => Type.Literal(k)));
 const SeveritySchema = Type.Union([

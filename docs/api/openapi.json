@@ -157320,8 +157320,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
-              "maxLength": 64,
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
               "type": "string"
             }
           }
@@ -157358,8 +157357,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
-              "maxLength": 64,
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
               "type": "string"
             }
           }
@@ -157604,8 +157602,7 @@
                 ],
                 "properties": {
                   "parentMessageId": {
-                    "minLength": 1,
-                    "maxLength": 64,
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
                     "type": "string"
                   },
                   "body": {

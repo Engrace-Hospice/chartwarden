@@ -117,13 +117,13 @@ export function DepartmentChannelDialog({
           <p>A shared channel for one location or discipline. Add its members once it is open.</p>
         </header>
         <div className="wx-department-form">
-          <div role="tablist" aria-label="Department type" className="wx-conversation-type-tabs">
+          {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would add default border and padding to the existing toggle row */}
+          <div role="group" aria-label="Department type" className="wx-conversation-type-tabs">
             {(["location", "discipline"] as const).map((option) => (
               <button
                 key={option}
                 type="button"
-                role="tab"
-                aria-selected={kind === option}
+                aria-pressed={kind === option}
                 disabled={creating}
                 onClick={() => setKind(option)}
               >

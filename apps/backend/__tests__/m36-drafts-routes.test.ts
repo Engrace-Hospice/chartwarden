@@ -17,7 +17,8 @@ import { CHANNEL_VISIBILITY_PREDICATE } from "../src/modules/36-messaging/index"
 import { registerDraftRoutes } from "../src/modules/36-messaging/routes/draft-routes";
 
 const ORG = "org_a";
-const CH = "ch_loc";
+const CH = "aaaaaaaa-aaaa-4aaa-8aaa-00000000c4c4";
+const ROOT = "bbbbbbbb-bbbb-4bbb-8bbb-00000000d0d0";
 
 interface CapturedRow {
   eventType: string;
@@ -140,9 +141,9 @@ describe("draft routes", () => {
     await app.close();
   });
 
-  it("refuses a user who cannot see the channel (read, write and delete)", async () => {
+  it("refuses a user who cannot see the channel to read or write; deleting their own draft is always allowed (B12)", async () => {
     const app = makeServer();
-    for (const method of ["GET", "PUT", "DELETE"] as const) {
+    for (const method of ["GET", "PUT"] as const) {
       const res = await app.inject({
         method,
         url: url(),
@@ -151,6 +152,8 @@ describe("draft routes", () => {
       });
       expect(res.statusCode).toBe(403);
     }
+    const del = await app.inject({ method: "DELETE", url: url(), headers: as("rn_3") });
+    expect(del.statusCode).toBe(204);
     await app.close();
   });
 
@@ -180,11 +183,11 @@ describe("draft routes", () => {
   it("keeps a thread-root draft apart from the channel draft", async () => {
     const app = makeServer();
     await put(app, "rn_1", save);
-    await put(app, "rn_1", { ...save, parentMessageId: "m_1", body: "reply" });
+    await put(app, "rn_1", { ...save, parentMessageId: ROOT, body: "reply" });
     const channel = await app.inject({ method: "GET", url: url(), headers: as("rn_1") });
     const thread = await app.inject({
       method: "GET",
-      url: url("?parentMessageId=m_1"),
+      url: url(`?parentMessageId=${ROOT}`),
       headers: as("rn_1"),
     });
     expect(channel.json().draft.body).toBe("hello");

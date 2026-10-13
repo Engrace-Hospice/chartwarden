@@ -34,6 +34,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-store-db";
+import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import {
   ATTACHMENT_UPLOAD_TTL_SECONDS,
   ERASE_UPLOAD_URL_GRACE_MS,
@@ -497,7 +498,10 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
       security: { rateLimitEnabled: false },
       idempotencyStore,
     });
-    registerMessagingRoutes(app, { service: routeService });
+    registerMessagingRoutes(app, {
+      service: routeService,
+      announcements: createDbAnnouncementService(handle.db),
+    });
     registerAttachmentRoutes(app, { service: attachments });
   }, 180_000);
 
@@ -3659,7 +3663,10 @@ describe.skipIf(!DB_URL)("M36 WP 1.5 attachments — LIVE Postgres", () => {
         security: { rateLimitEnabled: false },
         idempotencyStore: createDbIdempotencyStore(handle.db),
       });
-      registerMessagingRoutes(auditApp, { service: routeService });
+      registerMessagingRoutes(auditApp, {
+        service: routeService,
+        announcements: createDbAnnouncementService(handle.db),
+      });
       registerAttachmentRoutes(auditApp, { service: attachments });
       await auditApp.ready();
     });

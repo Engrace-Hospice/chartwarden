@@ -17,8 +17,8 @@ import {
   isEmptyDraft,
 } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError } from "@wardenx/types";
-import { type SQL, and, eq, isNull } from "drizzle-orm";
+import { NotFoundError, WardenXError } from "@wardenx/types";
+import { type SQL, and, eq, isNull, sql } from "drizzle-orm";
 import { type MessageBodyCipher, createMessageBodyCipher } from "../messaging-write-core";
 
 const DRAFT = schema.messageDrafts;
@@ -34,7 +34,12 @@ export interface DraftServiceDeps {
   readonly db: DbClient;
   /** Injectable for tests; defaults to the process-wide lazy KEK loader (fails closed without MESSAGING_ENCRYPTION_KEY). */
   readonly cipher?: MessageBodyCipher;
+  /** Drafts one user may hold across all channels and thread roots (default 200). */
+  readonly maxPerUser?: number;
 }
+
+/** A draft is scratch space, not storage: bound how many one user can accumulate. */
+export const DEFAULT_MAX_DRAFTS_PER_USER = 200;
 
 function isUniqueViolation(error: unknown): boolean {
   const code = (error as { code?: string; cause?: { code?: string } } | null) ?? null;
@@ -44,6 +49,7 @@ function isUniqueViolation(error: unknown): boolean {
 export function createDbDraftService(deps: DraftServiceDeps): MessageDraftService {
   const { db } = deps;
   const cipher = deps.cipher ?? createMessageBodyCipher();
+  const maxPerUser = deps.maxPerUser ?? DEFAULT_MAX_DRAFTS_PER_USER;
 
   const slot = (orgId: string, key: DraftKey): SQL | undefined =>
     and(
@@ -87,8 +93,20 @@ export function createDbDraftService(deps: DraftServiceDeps): MessageDraftServic
     async saveDraft(orgId, input: SaveDraftInput) {
       assertDraftWithinLimits(input);
       if (isEmptyDraft(input)) {
-        await deleteDraft(orgId, input);
-        return null;
+        // A blank save is a discard, but it still answers to the conflict rule: a stale device's blank autosave must
+        // not silently erase a newer draft from another device. The explicit DELETE route is the unconditional discard.
+        return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
+          const [held] = await tx
+            .select()
+            .from(DRAFT)
+            .where(slot(orgId, input))
+            .limit(1)
+            .for("update");
+          if (!held) return null;
+          if (decideDraftSave(held, input) === "conflict") throw draftConflictError();
+          await tx.delete(DRAFT).where(slot(orgId, input));
+          return null;
+        });
       }
       const sealed = cipher.seal(
         orgId,
@@ -105,7 +123,7 @@ export function createDbDraftService(deps: DraftServiceDeps): MessageDraftServic
             if (input.parentMessageId) {
               // A thread draft needs a live root in THIS channel (the composite FK is the backstop, this is the 404).
               const [root] = await tx
-                .select({ id: MSG.id })
+                .select({ id: MSG.id, status: MSG.status, parentMessageId: MSG.parentMessageId })
                 .from(MSG)
                 .where(
                   and(
@@ -115,7 +133,10 @@ export function createDbDraftService(deps: DraftServiceDeps): MessageDraftServic
                   ),
                 )
                 .limit(1);
-              if (!root) throw new NotFoundError("message", input.parentMessageId);
+              // The root must be live and itself a root (replies of replies are not a thing, WP 2.2).
+              if (!root || root.status === "deleted" || root.parentMessageId !== null) {
+                throw new NotFoundError("message", input.parentMessageId);
+              }
             }
             const [current] = await tx
               .select()
@@ -125,6 +146,23 @@ export function createDbDraftService(deps: DraftServiceDeps): MessageDraftServic
               .for("update");
             if (decideDraftSave(current ?? null, input) === "conflict") throw draftConflictError();
             if (!current) {
+              // Serialise a user's first-saves so the cap cannot be raced past, then count (this user only: RLS).
+              await tx.execute(
+                sql`SELECT pg_advisory_xact_lock(hashtextextended(${`draft:${orgId}:${input.userId}`}, 36))`,
+              );
+              const [{ n }] = (await tx
+                .select({ n: sql<number>`count(*)::int` })
+                .from(DRAFT)
+                .where(and(eq(DRAFT.organizationId, orgId), eq(DRAFT.userId, input.userId)))) as [
+                { n: number },
+              ];
+              if (Number(n) >= maxPerUser) {
+                throw new WardenXError(
+                  "DRAFT_LIMIT_REACHED",
+                  `at most ${maxPerUser} drafts can be kept; send or discard one first`,
+                  409,
+                );
+              }
               const [created] = await tx
                 .insert(DRAFT)
                 .values({

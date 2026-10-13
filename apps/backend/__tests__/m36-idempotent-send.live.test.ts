@@ -35,6 +35,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-store-db";
+import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
 import { CHANNEL_VISIBILITY_PREDICATE } from "../src/modules/36-messaging/index";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
@@ -107,7 +108,10 @@ describe.skipIf(!DB_URL)("M36 WP 1.2 idempotent send — LIVE Postgres", () => {
       security: { rateLimitEnabled: false },
       idempotencyStore: store,
     });
-    registerMessagingRoutes(server, { service });
+    registerMessagingRoutes(server, {
+      service,
+      announcements: createDbAnnouncementService(handle.db),
+    });
     return server;
   }
 

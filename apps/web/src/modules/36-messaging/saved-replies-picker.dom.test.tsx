@@ -192,3 +192,43 @@ describe("saved reply picker", () => {
     expect(button.disabled).toBe(false);
   });
 });
+
+describe("saved reply picker review fixes (Tranche B)", () => {
+  it("M8: the active option is scrolled into view as the arrow keys move", async () => {
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    mount(ok);
+    const search = await openPicker();
+    await screen.findAllByRole("option");
+    scroll.mockClear();
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(scroll).toHaveBeenCalled();
+  });
+
+  it("M8: Escape closes the picker from any element inside it, not only the search box", async () => {
+    mount(ok);
+    const box = await composer();
+    await openPicker();
+    const option = (await screen.findAllByRole("option"))[0] as HTMLElement;
+    fireEvent.keyDown(option, { key: "Escape" });
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(document.activeElement).toBe(box);
+  });
+
+  it("M8: moving focus out of the picker (Tab away) closes it", async () => {
+    mount(ok);
+    const box = await composer();
+    const search = await openPicker();
+    await screen.findAllByRole("option");
+    fireEvent.blur(search, { relatedTarget: box });
+    expect(screen.queryByRole("combobox")).toBeNull();
+  });
+
+  it("M8: the toggle names the popover it controls", async () => {
+    mount(ok);
+    await openPicker();
+    const toggle = screen.getByRole("button", { name: /saved replies/i });
+    const popover = screen.getByRole("dialog", { name: "Saved replies" });
+    expect(toggle.getAttribute("aria-controls")).toBe(popover.id);
+  });
+});

@@ -46,9 +46,9 @@ ALTER TABLE "message_draft" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "message_draft" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY "message_draft_owner_isolation" ON "message_draft"
   FOR ALL TO wardenx_app
-  USING (organization_id = current_setting('app.org_id', true)::uuid
+  USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid
          AND user_id = NULLIF(current_setting('app.user_id', true), '')::uuid)
-  WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid
+  WITH CHECK (organization_id = nullif(current_setting('app.org_id', true), '')::uuid
               AND user_id = NULLIF(current_setting('app.user_id', true), '')::uuid);--> statement-breakpoint
 -- A rewrite may change the sealed body, revision, device and timestamp only; identity columns are not updatable.
 GRANT SELECT, INSERT, DELETE ON "message_draft" TO wardenx_app;--> statement-breakpoint
@@ -88,5 +88,5 @@ CREATE TRIGGER "trg_audit_message_draft"
 GRANT SELECT, DELETE ON "message_draft" TO wardenx_destruction;--> statement-breakpoint
 CREATE POLICY "message_draft_destruction" ON "message_draft"
   FOR ALL TO wardenx_destruction
-  USING (organization_id = current_setting('app.org_id', true)::uuid)
-  WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);
+  USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid)
+  WITH CHECK (organization_id = nullif(current_setting('app.org_id', true), '')::uuid);

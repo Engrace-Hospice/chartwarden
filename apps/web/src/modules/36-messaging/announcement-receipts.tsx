@@ -24,6 +24,12 @@ interface Receipts {
 
 const READ_AT = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
+/** A read time the browser cannot parse renders as nothing rather than throwing out of the whole list. */
+function formatReadAt(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : READ_AT.format(date);
+}
+
 export function AnnouncementReceiptsDialog({
   messageId,
   onClose,
@@ -121,7 +127,7 @@ function ReceiptLists({ receipts }: { receipts: Receipts }): JSX.Element {
             {receipts.readers.map((person) => (
               <li key={person.userId}>
                 <span>{person.displayName}</span>
-                <time dateTime={person.readAt}>{READ_AT.format(new Date(person.readAt))}</time>
+                <time dateTime={person.readAt}>{formatReadAt(person.readAt)}</time>
               </li>
             ))}
           </ul>

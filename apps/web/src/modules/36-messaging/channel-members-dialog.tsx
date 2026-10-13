@@ -33,7 +33,9 @@ export function ChannelMembersDialog({
   const [candidates, setCandidates] = useState<DmStaffMember[]>([]);
   const [candidateId, setCandidateId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [candidateError, setCandidateError] = useState(false);
   const sequence = useRef(0);
+  const candidateSequence = useRef(0);
 
   const loadMembers = useCallback(async (): Promise<void> => {
     const attempt = ++sequence.current;
@@ -72,12 +74,25 @@ export function ChannelMembersDialog({
   useEffect(() => {
     if (!open) return;
     const timer = window.setTimeout(() => {
+      // Only the newest search may write: a slow older answer must not replace the one the user is looking at.
+      const attempt = ++candidateSequence.current;
       void client
         .GET("/api/v1/messaging/dm/staff", { params: { query: { q: query.trim() || undefined } } })
-        .then(({ data }) => setCandidates((data?.staff ?? []) as DmStaffMember[]))
-        .catch(() => setCandidates([]));
+        .then(({ data, error }) => {
+          if (attempt !== candidateSequence.current) return;
+          setCandidateError(Boolean(error) || !data);
+          setCandidates(error ? [] : ((data?.staff ?? []) as DmStaffMember[]));
+        })
+        .catch(() => {
+          if (attempt !== candidateSequence.current) return;
+          setCandidateError(true);
+          setCandidates([]);
+        });
     }, 250);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      candidateSequence.current += 1;
+    };
   }, [client, open, query]);
 
   const memberIds = new Set((members ?? []).map((member) => member.userId));
@@ -189,6 +204,11 @@ export function ChannelMembersDialog({
             Add
           </Button>
         </div>
+        {candidateError ? (
+          <div role="alert" className="wx-messaging-error">
+            Staff could not be searched. Try again.
+          </div>
+        ) : null}
         {actionError ? (
           <div role="alert" className="wx-messaging-error">
             {actionError}

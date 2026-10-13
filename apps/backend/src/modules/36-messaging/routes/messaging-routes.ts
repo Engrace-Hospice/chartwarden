@@ -78,7 +78,7 @@ export interface MessagingRouteDeps {
   /** The §4.1–4.2 application service (in-memory in the slice; Drizzle/Valkey in prod). */
   service: MessagingRouteService;
   /** WP 2.9: announcement receipts, department channels and the org_admin-only announcement send guard. */
-  announcements?: AnnouncementService;
+  announcements: AnnouncementService;
 }
 
 /**
@@ -178,8 +178,15 @@ const SEND_TO_CHANNEL = requireAbac("messaging.send", CHANNEL_VISIBILITY_PREDICA
 export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRouteDeps): void {
   const { service } = deps;
   // WP 2.9: sending into the announcement channel stays org_admin-only on this route too.
-  const announcementGuards = deps.announcements ? [announcementSendGuard(deps.announcements)] : [];
-  if (deps.announcements) registerAnnouncementRoutes(app, deps.announcements);
+  // Required, not optional: a missing service would silently leave the announcement channel open to every member.
+  if (!deps.announcements) {
+    throw new Error(
+      "registerMessagingRoutes: `announcements` is required (the announcement send guard fails closed)",
+    );
+  }
+  const announceGuard = announcementSendGuard(deps.announcements);
+  const announcementGuards = [announceGuard];
+  registerAnnouncementRoutes(app, deps.announcements);
 
   // ── channels & messages (§4.2) ───────────────────────────────────────────────────────────
 
@@ -279,6 +286,7 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     send: SEND,
     viewChannel: VIEW_CHANNEL,
     sendToChannel: SEND_TO_CHANNEL,
+    announcementOnly: announceGuard,
   });
 
   // Structured autocomplete is scoped to a channel whose effective visibility has already been

@@ -193,6 +193,7 @@ const REGISTRAR_FILES = [
   "reaction-pin-typebox.ts", // schemas only
   "template-routes.ts",
   "template-typebox.ts", // schemas only
+  "uuid-params.ts", // preHandler helper, no routes
   "webhook-routes.ts",
 ];
 
@@ -800,9 +801,20 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
             { id },
             draftBody,
           );
-          await expectNoOracle("DELETE /api/v1/messaging/channels/:id/draft", attacker, { id });
         }
       }
+    });
+    it("DELETE of one's own draft answers 204 for any channel id alike (no oracle) and never touches another user's draft", async () => {
+      // Discarding one's OWN draft needs no channel access (a user who lost the channel can still clear it), so the
+      // answer is the same 204 for a real channel, a stranger's channel and a random id; the owner filter keeps it safe.
+      for (const attacker of [bUser, outsider]) {
+        for (const id of [dmA, locA, randomUUID()]) {
+          const res = await call("DELETE /api/v1/messaging/channels/:id/draft", attacker, { id });
+          expect(res.statusCode, `${attacker.name} ${id}`).toBe(204);
+        }
+      }
+      const kept = await call("GET /api/v1/messaging/channels/:id/draft", u1, { id: dmA });
+      expect(kept.json().draft.body).toBe("WP25-private-draft");
     });
   });
 
@@ -1788,7 +1800,6 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
           { id: dmA },
           { body: "x", deviceId: "d", baseRevision: 0 },
         ],
-        ["DELETE /api/v1/messaging/channels/:id/draft", outsider, { id: dmA }],
         ["POST /api/v1/alerts/:id/read", bUser, { id: alertA }],
         ["PATCH /api/v1/alert-rules/:id", adminB, { id: ruleA }, { enabled: true }],
       ];

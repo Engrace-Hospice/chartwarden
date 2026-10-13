@@ -14,6 +14,8 @@ import type { MessageReferenceInput } from "./messaging-types";
 
 export const DRAFT_SAVE_DEBOUNCE_MS = 1500;
 const DRAFT_PATH = "/api/v1/messaging/channels/{id}/draft";
+const RETRY_BASE_MS = 3000;
+const RETRY_MAX_MS = 30_000;
 const DEVICE_KEY = "wx-messaging-draft-device";
 
 export interface DraftContent {
@@ -109,10 +111,13 @@ export function useServerDraft(args: {
   parentMessageId?: string | null;
   text: string;
   references: readonly MessageReferenceInput[];
+  /** A send of this composer's text is in flight: nothing is saved or flushed (the server deletes the draft on send). */
+  suspended?: boolean;
   /** Put a restored draft into the composer (only ever called while the composer is empty). */
   hydrate: (text: string, references: MessageReferenceInput[]) => void;
 }): ServerDraftSync {
   const { channelId, text, references } = args;
+  const suspended = args.suspended ?? false;
   const parentMessageId = args.parentMessageId ?? null;
   const client = useApiClient();
   const [conflict, setConflict] = useState<DraftConflict | null>(null);
@@ -130,6 +135,14 @@ export function useServerDraft(args: {
   const queueRef = useRef<Promise<void>>(Promise.resolve());
   const generationRef = useRef(0);
   const conflictRef = useRef<DraftConflict | null>(null);
+  const suspendedRef = useRef(suspended);
+  suspendedRef.current = suspended;
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const failuresRef = useRef(0);
+  const scheduleRef = useRef<() => void>(() => undefined);
+  const saveRef = useRef<(snapshot: Snapshot, generation: number) => Promise<void>>(
+    async () => undefined,
+  );
 
   const readServer = useCallback(async (): Promise<WireDraft | null> => {
     const { data } = await client.GET(DRAFT_PATH, {
@@ -143,6 +156,19 @@ export function useServerDraft(args: {
     queueRef.current = queueRef.current.then(work, work).catch(() => undefined);
   }, []);
 
+  /** Retry a failed save on its own with a growing delay (the status line promises it). */
+  const armRetry = useCallback((generation: number): void => {
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    const delay = Math.min(RETRY_BASE_MS * 2 ** failuresRef.current, RETRY_MAX_MS);
+    failuresRef.current += 1;
+    retryTimerRef.current = setTimeout(() => {
+      retryTimerRef.current = null;
+      if (generation !== generationRef.current || suspendedRef.current) return;
+      if (conflictRef.current) return;
+      void saveRef.current(latestRef.current, generation);
+    }, delay);
+  }, []);
+
   const save = useCallback(
     (snapshot: Snapshot, generation: number): Promise<void> => {
       const run = async (): Promise<void> => {
@@ -152,12 +178,15 @@ export function useServerDraft(args: {
         try {
           if (!snapshot.body.trim()) {
             if (revisionRef.current > 0) {
-              await client.DELETE(DRAFT_PATH, {
+              const removed = await client.DELETE(DRAFT_PATH, {
                 params: { path: { id: channelId }, query: draftQuery(parentMessageId) },
               });
+              const status = removed.response?.status ?? 0;
+              if (removed.error || status >= 400) throw new Error("draft discard failed");
             }
             revisionRef.current = 0;
             syncedKeyRef.current = key;
+            failuresRef.current = 0;
             setSaveFailed(false);
             return;
           }
@@ -179,11 +208,14 @@ export function useServerDraft(args: {
               // Already identical (or gone): adopt the server's revision and carry on; nothing to merge.
               revisionRef.current = server?.revision ?? 0;
               syncedKeyRef.current = server ? key : null;
+              // Text typed while the request was in flight still needs its own save.
+              if (keyOf(latestRef.current) !== key) scheduleRef.current();
               return;
             }
+            if (!latestRef.current.body.trim()) return; // emptied meanwhile: the change effect discards
             const next: DraftConflict = {
               server: { ...server, references: withLabels(server.body, server.references) },
-              mine: snapshot,
+              mine: latestRef.current,
             };
             conflictRef.current = next;
             setConflict(next);
@@ -193,17 +225,21 @@ export function useServerDraft(args: {
           if (result.error || !saved) throw new Error("draft save failed");
           revisionRef.current = saved.revision;
           syncedKeyRef.current = key;
+          failuresRef.current = 0;
           setSaveFailed(false);
         } catch {
-          if (generation === generationRef.current) setSaveFailed(true);
+          if (generation !== generationRef.current) return;
+          setSaveFailed(true);
+          armRetry(generation);
         }
       };
       return new Promise<void>((resolve) => {
         enqueue(() => run().finally(resolve));
       });
     },
-    [client, channelId, parentMessageId, enqueue, readServer],
+    [client, channelId, parentMessageId, enqueue, readServer, armRetry],
   );
+  saveRef.current = save;
 
   // Open / switch: forget the previous composer's bookkeeping, then restore this one's draft.
   // biome-ignore lint/correctness/useExhaustiveDependencies: channelId/parentMessageId ARE the reset triggers (readServer and save already close over them)
@@ -213,6 +249,9 @@ export function useServerDraft(args: {
     syncedKeyRef.current = null;
     loadedRef.current = false;
     conflictRef.current = null;
+    failuresRef.current = 0;
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    retryTimerRef.current = null;
     setConflict(null);
     setSaveFailed(false);
     void (async () => {
@@ -237,25 +276,25 @@ export function useServerDraft(args: {
       }
     })();
     return () => {
-      // Leaving this composer: flush what is pending against ITS channel/root, then invalidate.
+      // Leaving this composer: flush what is pending against ITS channel/root, then invalidate. A send in flight
+      // owns the text (the server drops the draft with the message), so it is never flushed back as a draft.
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
       if (timerRef.current) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
-        if (loadedRef.current) void save(latestRef.current, generation);
+        if (loadedRef.current && !suspendedRef.current) void save(latestRef.current, generation);
       }
     };
   }, [channelId, parentMessageId, readServer, save]);
 
-  // Local change: empty -> discard now; otherwise save after a quiet period.
-  // `references` is not read in the body but a change in it (same text) must still schedule a save.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: see above
-  useEffect(() => {
-    if (!loadedRef.current && !text) return;
-    if (conflictRef.current) return; // the user is choosing; do not race the prompt
-    const snapshot = latestRef.current;
+  /** (Re)arm the quiet-period save for whatever the composer holds now. */
+  const schedule = useCallback((): void => {
     const generation = generationRef.current;
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = null;
+    if (suspendedRef.current) return;
+    const snapshot = latestRef.current;
     if (!snapshot.body.trim()) {
       void save(snapshot, generation);
       return;
@@ -263,12 +302,36 @@ export function useServerDraft(args: {
     if (keyOf(snapshot) === syncedKeyRef.current) return;
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
+      if (suspendedRef.current) return;
       void save(latestRef.current, generation);
     }, DRAFT_SAVE_DEBOUNCE_MS);
-    return () => {
-      // A newer change replaces the timer; a leave is flushed by the open/switch effect's cleanup.
-    };
-  }, [text, references, save]);
+  }, [save]);
+  scheduleRef.current = schedule;
+
+  // Local change: empty -> discard now; otherwise save after a quiet period.
+  // `references` is not read in the body but a change in it (same text) must still schedule a save.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see above
+  useEffect(() => {
+    if (!loadedRef.current && !text) return;
+    const open = conflictRef.current;
+    if (open) {
+      if (!latestRef.current.body.trim()) {
+        // The composer was emptied (a send, or cleared) while the prompt was open: nothing is left to merge. Drop the
+        // prompt and discard the server copy rather than ever re-saving the text that is gone.
+        conflictRef.current = null;
+        setConflict(null);
+        revisionRef.current = open.server.revision;
+        syncedKeyRef.current = null;
+      } else {
+        // The prompt is not modal: keep "mine" the text that is in the composer now.
+        const next = { ...open, mine: latestRef.current };
+        conflictRef.current = next;
+        setConflict(next);
+        return; // the user is choosing; do not race the prompt
+      }
+    }
+    schedule();
+  }, [text, references, schedule, suspended]);
 
   const resolve = useCallback(
     (choice: DraftResolution): void => {
@@ -283,8 +346,9 @@ export function useServerDraft(args: {
         hydrateRef.current(current.server.body, [...current.server.references]);
         return;
       }
-      const chosen =
-        choice === "both" ? mergeDraftBodies(current.mine, current.server) : current.mine;
+      const mine = latestRef.current;
+      if (!mine.body.trim()) return; // nothing of mine left: the change effect already discards
+      const chosen = choice === "both" ? mergeDraftBodies(mine, current.server) : mine;
       if (choice === "both") hydrateRef.current(chosen.body, [...chosen.references]);
       syncedKeyRef.current = null;
       void save({ body: chosen.body, references: chosen.references }, generation);

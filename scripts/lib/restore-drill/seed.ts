@@ -32,6 +32,7 @@ import {
   createS3TenantStorageProvisioner,
   deriveTenantBucket,
 } from "../../../apps/backend/src/modules/22-documents";
+import { createDbAnnouncementService } from "../../../apps/backend/src/modules/36-messaging/announcement-service-db";
 import { createBuiltinScanner } from "../../../apps/backend/src/modules/36-messaging/attachments/attachment-scanners";
 import { createAttachmentService } from "../../../apps/backend/src/modules/36-messaging/attachments/attachment-service-db";
 import { M36_OUTBOX_EVENTS } from "../../../apps/backend/src/modules/36-messaging/events-by-m36";
@@ -206,7 +207,10 @@ export async function createWorld(cfg: WorldConfig): Promise<World> {
     security: { rateLimitEnabled: false },
     idempotencyStore,
   });
-  registerMessagingRoutes(app, { service: routeService });
+  registerMessagingRoutes(app, {
+    service: routeService,
+    announcements: createDbAnnouncementService(handle.db),
+  });
   registerAttachmentRoutes(app, { service: attachments });
 
   const headers = (userId: string, orgId: string) => ({

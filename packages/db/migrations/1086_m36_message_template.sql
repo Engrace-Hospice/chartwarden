@@ -93,25 +93,25 @@ ALTER TABLE "message_template" ENABLE ROW LEVEL SECURITY;--> statement-breakpoin
 ALTER TABLE "message_template" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY "message_template_read" ON "message_template"
   FOR SELECT TO wardenx_app
-  USING ("scope" = 'platform' OR "organization_id" = current_setting('app.org_id', true)::uuid);--> statement-breakpoint
+  USING ("scope" = 'platform' OR "organization_id" = nullif(current_setting('app.org_id', true), '')::uuid);--> statement-breakpoint
 CREATE POLICY "message_template_insert" ON "message_template"
   FOR INSERT TO wardenx_app
-  WITH CHECK ("scope" IN ('org', 'personal') AND "organization_id" = current_setting('app.org_id', true)::uuid);--> statement-breakpoint
+  WITH CHECK ("scope" IN ('org', 'personal') AND "organization_id" = nullif(current_setting('app.org_id', true), '')::uuid);--> statement-breakpoint
 CREATE POLICY "message_template_update" ON "message_template"
   FOR UPDATE TO wardenx_app
-  USING ("scope" IN ('org', 'personal') AND "organization_id" = current_setting('app.org_id', true)::uuid)
-  WITH CHECK ("scope" IN ('org', 'personal') AND "organization_id" = current_setting('app.org_id', true)::uuid);--> statement-breakpoint
+  USING ("scope" IN ('org', 'personal') AND "organization_id" = nullif(current_setting('app.org_id', true), '')::uuid)
+  WITH CHECK ("scope" IN ('org', 'personal') AND "organization_id" = nullif(current_setting('app.org_id', true), '')::uuid);--> statement-breakpoint
 CREATE POLICY "message_template_delete" ON "message_template"
   FOR DELETE TO wardenx_app
-  USING ("scope" IN ('org', 'personal') AND "organization_id" = current_setting('app.org_id', true)::uuid);--> statement-breakpoint
+  USING ("scope" IN ('org', 'personal') AND "organization_id" = nullif(current_setting('app.org_id', true), '')::uuid);--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON "message_template" TO wardenx_app;--> statement-breakpoint
 
 ALTER TABLE "tenant_message_template_overlay" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "tenant_message_template_overlay" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY "tenant_message_template_overlay_org_isolation" ON "tenant_message_template_overlay"
   FOR ALL TO wardenx_app
-  USING ("organization_id" = current_setting('app.org_id', true)::uuid)
-  WITH CHECK ("organization_id" = current_setting('app.org_id', true)::uuid);--> statement-breakpoint
+  USING ("organization_id" = nullif(current_setting('app.org_id', true), '')::uuid)
+  WITH CHECK ("organization_id" = nullif(current_setting('app.org_id', true), '')::uuid);--> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE, DELETE ON "tenant_message_template_overlay" TO wardenx_app;--> statement-breakpoint
 
 -- ── write audit (body scrubbed) ──────────────────────────────────────────────────────────────────────────────
@@ -184,13 +184,13 @@ CREATE TRIGGER "trg_audit_tenant_message_template_overlay"
 GRANT SELECT, DELETE ON "message_template" TO wardenx_destruction;--> statement-breakpoint
 CREATE POLICY "message_template_destruction" ON "message_template"
   FOR ALL TO wardenx_destruction
-  USING ("organization_id" = current_setting('app.org_id', true)::uuid)
-  WITH CHECK ("organization_id" = current_setting('app.org_id', true)::uuid);--> statement-breakpoint
+  USING ("organization_id" = nullif(current_setting('app.org_id', true), '')::uuid)
+  WITH CHECK ("organization_id" = nullif(current_setting('app.org_id', true), '')::uuid);--> statement-breakpoint
 GRANT SELECT, DELETE ON "tenant_message_template_overlay" TO wardenx_destruction;--> statement-breakpoint
 CREATE POLICY "tenant_message_template_overlay_destruction" ON "tenant_message_template_overlay"
   FOR ALL TO wardenx_destruction
-  USING ("organization_id" = current_setting('app.org_id', true)::uuid)
-  WITH CHECK ("organization_id" = current_setting('app.org_id', true)::uuid);--> statement-breakpoint
+  USING ("organization_id" = nullif(current_setting('app.org_id', true), '')::uuid)
+  WITH CHECK ("organization_id" = nullif(current_setting('app.org_id', true), '')::uuid);--> statement-breakpoint
 
 -- ── permission: who may author shared templates and overlay platform ones (1060/1067's pattern) ──────────────────
 -- Granted to the two full-catalog admin roles only. Personal saved replies need no new key: any sender (messaging.send).

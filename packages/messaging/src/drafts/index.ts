@@ -80,6 +80,13 @@ export function assertDraftWithinLimits(input: Pick<SaveDraftInput, "body" | "re
       { field: "body", code: "TOO_LONG", message: `at most ${MAX_DRAFT_BODY_LENGTH} characters` },
     ]);
   }
+  for (const reference of input.references ?? []) {
+    if (!(reference.start < reference.end && reference.end <= input.body.length)) {
+      throw new ValidationError("invalid reference", [
+        { field: "references", code: "BAD_SPAN", message: "a reference must lie inside the text" },
+      ]);
+    }
+  }
   if ((input.references?.length ?? 0) > MAX_DRAFT_REFERENCES) {
     throw new ValidationError("too many references", [
       { field: "references", code: "TOO_MANY", message: `at most ${MAX_DRAFT_REFERENCES}` },
@@ -99,12 +106,12 @@ export function createInMemoryDraftService(): MessageDraftService {
     async saveDraft(orgId, input) {
       assertDraftWithinLimits(input);
       const k = keyOf(orgId, input);
+      const current = rows.get(k) ?? null;
+      if (decideDraftSave(current, input) === "conflict") throw draftConflictError();
       if (isEmptyDraft(input)) {
         rows.delete(k);
         return null;
       }
-      const current = rows.get(k) ?? null;
-      if (decideDraftSave(current, input) === "conflict") throw draftConflictError();
       const next: DraftView = {
         channelId: input.channelId,
         parentMessageId: input.parentMessageId ?? null,

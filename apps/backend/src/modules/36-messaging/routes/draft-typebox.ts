@@ -1,13 +1,17 @@
 // apps/backend/src/modules/36-messaging/routes/draft-typebox.ts — WP 2.5 draft request/response schemas (kept apart
 // from draft-routes.ts so the OpenAPI emitter imports schemas only, not the auth stack).
 import { Type } from "@sinclair/typebox";
+import { UUID_PATTERN } from "./messaging-typebox";
 
 const Id = Type.String({ minLength: 1, maxLength: 64 });
 
-export const DraftQuerySchema = Type.Object({ parentMessageId: Type.Optional(Id) });
+/** A thread root is a message uuid: a malformed one is a 422 here, never a cast error in the service. */
+const RootId = Type.String({ pattern: UUID_PATTERN });
+
+export const DraftQuerySchema = Type.Object({ parentMessageId: Type.Optional(RootId) });
 
 export const SaveDraftBodySchema = Type.Object({
-  parentMessageId: Type.Optional(Id),
+  parentMessageId: Type.Optional(RootId),
   // The service enforces the 8000-character ceiling (422) and treats a blank body as a discard.
   body: Type.String({ maxLength: 100_000 }),
   references: Type.Optional(

@@ -26,6 +26,14 @@ type Failure = { error?: unknown } | undefined;
 const outcome = (result: Failure, fallback: string): string | null =>
   result?.error ? savedReplyErrorText(result.error, fallback) : null;
 
+/**
+ * One write's answer as text-or-null. A request that gets no answer at all rejects: the CALLERS (the form, the delete
+ * dialog, the platform panel) catch that, because only they know whether a retry may reuse the Idempotency-Key.
+ */
+async function attempt(work: () => Promise<Failure>, fallback: string): Promise<string | null> {
+  return outcome(await work(), fallback);
+}
+
 export function SavedReplies(): JSX.Element {
   const client = useApiClient();
   const mine = useSavedReplies(true);
@@ -59,29 +67,38 @@ export function SavedReplies(): JSX.Element {
 
   const personalWrites = useMemo<ReplyWrites>(
     () => ({
-      create: async (draft: ReplyDraft) => {
-        const result = await client.POST("/api/v1/messaging/templates/personal", {
-          params: { header: { "Idempotency-Key": crypto.randomUUID() } },
-          body: draft,
-        });
-        const failure = outcome(result, "Could not save this reply.");
+      create: async (draft: ReplyDraft, idempotencyKey: string) => {
+        const failure = await attempt(
+          () =>
+            client.POST("/api/v1/messaging/templates/personal", {
+              params: { header: { "Idempotency-Key": idempotencyKey } },
+              body: draft,
+            }),
+          "Could not save this reply.",
+        );
         if (!failure) refresh();
         return failure;
       },
       update: async (id, draft) => {
-        const result = await client.PATCH("/api/v1/messaging/templates/personal/{id}", {
-          params: { path: { id } },
-          body: draft,
-        });
-        const failure = outcome(result, "Could not save this reply.");
+        const failure = await attempt(
+          () =>
+            client.PATCH("/api/v1/messaging/templates/personal/{id}", {
+              params: { path: { id } },
+              body: draft,
+            }),
+          "Could not save this reply.",
+        );
         if (!failure) refresh();
         return failure;
       },
       remove: async (id) => {
-        const result = await client.DELETE("/api/v1/messaging/templates/personal/{id}", {
-          params: { path: { id } },
-        });
-        const failure = outcome(result, "Could not delete this reply.");
+        const failure = await attempt(
+          () =>
+            client.DELETE("/api/v1/messaging/templates/personal/{id}", {
+              params: { path: { id } },
+            }),
+          "Could not delete this reply.",
+        );
         if (!failure) refresh();
         return failure;
       },
@@ -91,29 +108,38 @@ export function SavedReplies(): JSX.Element {
 
   const sharedWrites = useMemo<ReplyWrites>(
     () => ({
-      create: async (draft: ReplyDraft) => {
-        const result = await client.POST("/api/v1/messaging/template-admin/shared", {
-          params: { header: { "Idempotency-Key": crypto.randomUUID() } },
-          body: draft,
-        });
-        const failure = outcome(result, "Could not save this template.");
+      create: async (draft: ReplyDraft, idempotencyKey: string) => {
+        const failure = await attempt(
+          () =>
+            client.POST("/api/v1/messaging/template-admin/shared", {
+              params: { header: { "Idempotency-Key": idempotencyKey } },
+              body: draft,
+            }),
+          "Could not save this template.",
+        );
         if (!failure) refresh();
         return failure;
       },
       update: async (id, draft) => {
-        const result = await client.PATCH("/api/v1/messaging/template-admin/shared/{id}", {
-          params: { path: { id } },
-          body: draft,
-        });
-        const failure = outcome(result, "Could not save this template.");
+        const failure = await attempt(
+          () =>
+            client.PATCH("/api/v1/messaging/template-admin/shared/{id}", {
+              params: { path: { id } },
+              body: draft,
+            }),
+          "Could not save this template.",
+        );
         if (!failure) refresh();
         return failure;
       },
       remove: async (id) => {
-        const result = await client.DELETE("/api/v1/messaging/template-admin/shared/{id}", {
-          params: { path: { id } },
-        });
-        const failure = outcome(result, "Could not delete this template.");
+        const failure = await attempt(
+          () =>
+            client.DELETE("/api/v1/messaging/template-admin/shared/{id}", {
+              params: { path: { id } },
+            }),
+          "Could not delete this template.",
+        );
         if (!failure) refresh();
         return failure;
       },
@@ -127,20 +153,25 @@ export function SavedReplies(): JSX.Element {
         id: string,
         overlay: { title: string | null; body: string | null; isEnabled: boolean },
       ) => {
-        const result = await client.PUT("/api/v1/messaging/template-admin/platform/{id}/overlay", {
-          params: { path: { id } },
-          body: overlay,
-        });
-        const failure = outcome(result, "Could not save this customization.");
+        const failure = await attempt(
+          () =>
+            client.PUT("/api/v1/messaging/template-admin/platform/{id}/overlay", {
+              params: { path: { id } },
+              body: overlay,
+            }),
+          "Could not save this customization.",
+        );
         if (!failure) refresh();
         return failure;
       },
       reset: async (id: string) => {
-        const result = await client.DELETE(
-          "/api/v1/messaging/template-admin/platform/{id}/overlay",
-          { params: { path: { id } } },
+        const failure = await attempt(
+          () =>
+            client.DELETE("/api/v1/messaging/template-admin/platform/{id}/overlay", {
+              params: { path: { id } },
+            }),
+          "Could not remove this customization.",
         );
-        const failure = outcome(result, "Could not remove this customization.");
         if (!failure) refresh();
         return failure;
       },

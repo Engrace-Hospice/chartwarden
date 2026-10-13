@@ -333,3 +333,11 @@ describe("M36 WP 2.9 department channels", () => {
     await app.close();
   });
 });
+
+describe("B8: the announcement guard fails closed", () => {
+  it("registerMessagingRoutes refuses to mount without an announcement service", () => {
+    const service = createInMemoryMessagingService();
+    const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+    expect(() => registerMessagingRoutes(app, { service } as never)).toThrow(/announcements/);
+  });
+});

@@ -66,44 +66,46 @@ export function PinnedMessagesBar({
     };
   }, [client, channelId, signature, version]);
 
-  if (failed) {
-    return (
-      <output className="wx-pinned-bar wx-pinned-bar-error">
-        Pinned messages could not be loaded.
-      </output>
-    );
-  }
-  if (pins.length === 0) return null;
+  // A failed refresh never throws away the list that is already on screen.
+  const notice = failed ? (
+    <output className="wx-pinned-bar wx-pinned-bar-error">
+      Pinned messages could not be loaded.
+    </output>
+  ) : null;
+  if (pins.length === 0) return notice;
 
   return (
-    <nav className="wx-pinned-bar" aria-label="Pinned messages">
-      <button
-        type="button"
-        className="wx-pinned-bar-toggle"
-        aria-expanded={open}
-        aria-controls={listId}
-        onClick={() => setOpen((value) => !value)}
-      >
-        Pinned messages ({pins.length})
-      </button>
-      {open ? (
-        <ul id={listId} className="wx-pinned-bar-list">
-          {pins.map((pin) => (
-            <li key={pin.messageId}>
-              <button
-                type="button"
-                onClick={() => {
-                  setOpen(false);
-                  onJump(pin.messageId);
-                }}
-              >
-                <strong>{pin.authorDisplayName || "Staff member"}</strong>
-                <span>{preview(pin)}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </nav>
+    <>
+      {notice}
+      <nav className="wx-pinned-bar" aria-label="Pinned messages">
+        <button
+          type="button"
+          className="wx-pinned-bar-toggle"
+          aria-expanded={open}
+          aria-controls={listId}
+          onClick={() => setOpen((value) => !value)}
+        >
+          Pinned messages ({pins.length})
+        </button>
+        {open ? (
+          <ul id={listId} className="wx-pinned-bar-list">
+            {pins.map((pin) => (
+              <li key={pin.messageId}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    onJump(pin.messageId);
+                  }}
+                >
+                  <strong>{pin.authorDisplayName || "Staff member"}</strong>
+                  <span>{preview(pin)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </nav>
+    </>
   );
 }

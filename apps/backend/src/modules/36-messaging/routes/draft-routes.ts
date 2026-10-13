@@ -16,6 +16,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { DraftQuerySchema, SaveDraftBodySchema } from "./draft-typebox";
 import { CHANNEL_VISIBILITY_PREDICATE } from "./messaging-routes";
 import { ChannelParamsSchema, parse } from "./messaging-typebox";
+import { requireUuidParams } from "./uuid-params";
 
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
@@ -23,6 +24,7 @@ const READ = requirePermission("messaging.read") as PreHandler;
 const SEND = requirePermission("messaging.send") as PreHandler;
 const VIEW_CHANNEL = requireAbac("messaging.read", CHANNEL_VISIBILITY_PREDICATE) as PreHandler;
 const SEND_TO_CHANNEL = requireAbac("messaging.send", CHANNEL_VISIBILITY_PREDICATE) as PreHandler;
+const CHANNEL_ID = requireUuidParams("id");
 
 export interface DraftRouteDeps {
   readonly service: MessageDraftService;
@@ -40,7 +42,7 @@ export function registerDraftRoutes(app: FastifyInstance, deps: DraftRouteDeps):
   app.get(
     "/api/v1/messaging/channels/:id/draft",
     {
-      preHandler: [READ, VIEW_CHANNEL],
+      preHandler: [CHANNEL_ID, READ, VIEW_CHANNEL],
       // A resourceIdParam is required (else the read event's resource id is empty and the audit insert is swallowed).
       config: { auditRead: { resourceKind: "message_draft", resourceIdParam: "id" } },
     },
@@ -59,7 +61,7 @@ export function registerDraftRoutes(app: FastifyInstance, deps: DraftRouteDeps):
 
   app.put(
     "/api/v1/messaging/channels/:id/draft",
-    { preHandler: [SEND, SEND_TO_CHANNEL] },
+    { preHandler: [CHANNEL_ID, SEND, SEND_TO_CHANNEL] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(ChannelParamsSchema, request.params);
@@ -71,7 +73,9 @@ export function registerDraftRoutes(app: FastifyInstance, deps: DraftRouteDeps):
 
   app.delete(
     "/api/v1/messaging/channels/:id/draft",
-    { preHandler: [SEND, SEND_TO_CHANNEL] },
+    // Discarding one's OWN draft needs no channel access: a user who lost the channel must still be able to remove
+    // what they typed there. Reading and writing stay gated; the service keys on the request user and RLS pins the owner.
+    { preHandler: [CHANNEL_ID, SEND] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(ChannelParamsSchema, request.params);

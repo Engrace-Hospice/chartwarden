@@ -184,16 +184,6 @@ export function ConversationThread({
     });
     onMessageSent();
   };
-  // WP 2.5: the draft follows the user across reloads and devices (restore, debounced autosave, merge prompt).
-  const serverDraft = useServerDraft({
-    channelId: channel.channelId,
-    text: draft,
-    references: draftReferences,
-    hydrate: (text, references) => {
-      setDraft(text);
-      setDraftReferences(references);
-    },
-  });
   const { send, sending, sendError, clearSendError, resetSender } = useMessageSender({
     channelId: channel.channelId,
     archived: Boolean(channel.archivedAt),
@@ -202,6 +192,17 @@ export function ConversationThread({
     uploads,
     generationRef,
     onSent: handleSent,
+  });
+  // WP 2.5: the draft follows the user across reloads and devices (restore, debounced autosave, merge prompt).
+  const serverDraft = useServerDraft({
+    channelId: channel.channelId,
+    text: draft,
+    references: draftReferences,
+    suspended: sending,
+    hydrate: (text, references) => {
+      setDraft(text);
+      setDraftReferences(references);
+    },
   });
 
   useLayoutEffect(() => {

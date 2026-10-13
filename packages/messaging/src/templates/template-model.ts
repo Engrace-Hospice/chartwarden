@@ -16,6 +16,7 @@ import {
   type PhiFindingCode,
   lintTemplateText,
   normalizeForLint,
+  stripInvisibleCharacters,
 } from "./phi-lint";
 
 export { PHI_LINT_VERSION };
@@ -84,7 +85,8 @@ function shapeError(field: "title" | "body", message: string): WardenXError {
 }
 
 function checkOne(field: "title" | "body", raw: string, max: number): string {
-  const text = raw.trim();
+  // What is stored and shown is what was linted: invisible bidi/zero-width characters never reach a row.
+  const text = stripInvisibleCharacters(raw).trim();
   if (text.length === 0) throw shapeError(field, `${field} must not be empty`);
   if (text.length > max) throw shapeError(field, `${field} must be at most ${max} characters`);
   const codes = lintTemplateText(text);
@@ -154,7 +156,9 @@ export function effectiveForOrg(
   const views: TemplateView[] = [];
   for (const base of platform) {
     const overlay = byTemplate.get(base.id);
-    if (overlay && !overlay.isEnabled) continue;
+    // A template with required wording (the emergency floor) is never hidden, even by an overlay stored before
+    // that was refused at write time.
+    if (overlay && !overlay.isEnabled && base.requiredPhrases.length === 0) continue;
     const title = overlay?.title && passesLint(overlay.title) ? overlay.title : null;
     const body =
       overlay?.body && passesLint(overlay.body) && !overlayViolatesFloor(base, overlay)
@@ -224,6 +228,20 @@ export function prepareOverlay(
   const body =
     overlay.body === null ? null : checkOne("body", overlay.body, TEMPLATE_LIMITS.bodyMax);
   assertOverlayRespectsFloor(platform, { body });
+  if (!overlay.isEnabled && platform.requiredPhrases.length > 0) {
+    throw new WardenXError(
+      "TEMPLATE_FLOOR_VIOLATION",
+      "This template carries required platform wording and cannot be hidden.",
+      422,
+      [
+        {
+          field: "isEnabled",
+          code: "FLOOR_PROTECTED",
+          message: "this template cannot be turned off",
+        },
+      ],
+    );
+  }
   return { title, body, isEnabled: overlay.isEnabled };
 }
 

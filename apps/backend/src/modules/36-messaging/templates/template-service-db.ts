@@ -159,6 +159,12 @@ export function createDbTemplateService(db: DbClient): TemplateService {
     input: TemplateInput,
   ): Promise<TemplateView> {
     const fields = prepareTemplate(input);
+    // Serialise creates per owner (shared: per organisation) so concurrent requests cannot all pass the cap check.
+    const lockKey =
+      scope === "org" ? actor.organizationId : `${actor.organizationId}:${actor.userId}`;
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`template:${scope}:${lockKey}`}, 36))`,
+    );
     const existing = await (scope === "org" ? sharedRows(tx, actor) : personalRows(tx, actor));
     const limit = scope === "org" ? TEMPLATE_LIMITS.sharedPerOrg : TEMPLATE_LIMITS.personalPerUser;
     if (existing.length >= limit) throw limitReachedError();

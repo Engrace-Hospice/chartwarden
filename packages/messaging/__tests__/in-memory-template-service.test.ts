@@ -181,10 +181,21 @@ describe("shared templates and the platform overlay", () => {
 
   it("disabling hides a platform template from that org's pickers; deleting the overlay restores it", async () => {
     const svc = createInMemoryTemplateService();
-    await svc.putOverlay(alice, emergency.id, { title: null, body: null, isEnabled: false });
-    expect((await svc.list(alice)).some((i) => i.id === emergency.id)).toBe(false);
-    expect((await svc.list(carol)).some((i) => i.id === emergency.id)).toBe(true);
-    await svc.deleteOverlay(alice, emergency.id);
+    const loose = PLATFORM_MESSAGE_TEMPLATES.find((t) => t.requiredPhrases.length === 0)!;
+    await svc.putOverlay(alice, loose.id, { title: null, body: null, isEnabled: false });
+    expect((await svc.list(alice)).some((i) => i.id === loose.id)).toBe(false);
+    expect((await svc.list(carol)).some((i) => i.id === loose.id)).toBe(true);
+    await svc.deleteOverlay(alice, loose.id);
+    expect((await svc.list(alice)).some((i) => i.id === loose.id)).toBe(true);
+  });
+
+  it("B7: the emergency template (required wording) cannot be switched off", async () => {
+    const svc = createInMemoryTemplateService();
+    await rejects(
+      svc.putOverlay(alice, emergency.id, { title: null, body: null, isEnabled: false }),
+      "TEMPLATE_FLOOR_VIOLATION",
+      422,
+    );
     expect((await svc.list(alice)).some((i) => i.id === emergency.id)).toBe(true);
   });
 

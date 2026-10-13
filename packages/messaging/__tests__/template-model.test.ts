@@ -5,6 +5,7 @@ import {
   TEMPLATE_LIMITS,
   effectiveForOrg,
   overlayViolatesFloor,
+  prepareOverlay,
   validateTemplateText,
 } from "../src/templates/template-model";
 
@@ -101,9 +102,40 @@ describe("effectiveForOrg", () => {
     expect(view).toMatchObject({ body: floor.body, customized: false });
   });
   it("omits a template the tenant disabled", () => {
-    expect(effectiveForOrg([floor], [{ ...overlayOk, isEnabled: false }])).toEqual([]);
+    const loose = { ...floor, requiredPhrases: [] };
+    expect(effectiveForOrg([loose], [{ ...overlayOk, isEnabled: false }])).toEqual([]);
   });
   it("an overlay for an unknown template is ignored", () => {
     expect(effectiveForOrg([floor], [{ ...overlayOk, templateId: "zzz" }])).toHaveLength(1);
+  });
+});
+
+describe("Tranche B review fixes (template model)", () => {
+  it("B11: stores the text it linted, without bidi or zero-width characters", () => {
+    expect(validateTemplateText({ title: "Hel‮lo​", body: "Thanks,⁦ re­ceived." })).toEqual({
+      title: "Hello",
+      body: "Thanks, received.",
+    });
+  });
+
+  it("B7: an overlay cannot disable a template that carries required wording", () => {
+    expect(() => prepareOverlay(floor, { title: null, body: null, isEnabled: false })).toThrow(
+      expect.objectContaining({ statusCode: 422, code: "TEMPLATE_FLOOR_VIOLATION" }),
+    );
+  });
+
+  it("B7: an overlay may still disable a template with no required wording", () => {
+    const loose = { ...floor, requiredPhrases: [] };
+    expect(prepareOverlay(loose, { title: null, body: null, isEnabled: false }).isEnabled).toBe(
+      false,
+    );
+  });
+
+  it("B7: a disabled overlay stored before the rule is ignored for a floor-protected template", () => {
+    const views = effectiveForOrg(
+      [floor],
+      [{ templateId: "p1", title: null, body: null, isEnabled: false }],
+    );
+    expect(views.map((v) => v.id)).toEqual(["p1"]);
   });
 });

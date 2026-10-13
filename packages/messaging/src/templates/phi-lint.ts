@@ -13,7 +13,7 @@
 // "contains no PHI".
 
 /** Bump when a rule is added or tightened; recorded so an operator can tell which rule set accepted a row. */
-export const PHI_LINT_VERSION = 1;
+export const PHI_LINT_VERSION = 2;
 
 export type PhiFindingCode =
   | "DATE"
@@ -37,6 +37,11 @@ const RULES: ReadonlyArray<readonly [PhiFindingCode, RegExp]> = [
   ["PLACEHOLDER", /\{\{|\}\}|<%|%>|\$\{/],
   ["EMAIL", /[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+/i],
   ["URL", /\b(?:https?:\/\/|www\.)\S+/i],
+  // A bare host ("portal.example.org", "example.com/p/abc"): a common TLD, or any host followed by a path.
+  [
+    "URL",
+    /\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|org|net|edu|gov|io|us|info|biz|app|health|care|med)\b(?:\/\S*)?|\b[a-z0-9-]+(?:\.[a-z0-9-]+)+\/\S+/i,
+  ],
   ["IP_ADDRESS", /\b(?:\d{1,3}\.){3}\d{1,3}\b/],
   ["SSN", /\b\d{3}[-\s]\d{2}[-\s]\d{4}\b/],
   ["PHONE", /(?:\+?1[\s.-]?)?(?:\(\d{3}\)|\b\d{3})[\s.-]?\d{3}[\s.-]\d{4}\b/],
@@ -52,8 +57,6 @@ const RULES: ReadonlyArray<readonly [PhiFindingCode, RegExp]> = [
       "i",
     ),
   ],
-  // Six or more digits, allowing one space, dot or hyphen between neighbours (so a split account number is caught).
-  ["LONG_NUMBER", /\d(?:[\s.-]?\d){5,}/],
   [
     "IDENTIFIER_LABEL",
     new RegExp(
@@ -61,7 +64,9 @@ const RULES: ReadonlyArray<readonly [PhiFindingCode, RegExp]> = [
         "policy(?: number| no\\.?)?|insurance id|medicare(?: id| number)?|medicaid(?: id| number)?|" +
         "patient id|account(?: number| no\\.?)|date of birth|birth ?date)\\b" +
         // a label counts only when a value follows: ":"/"#"/"=" then anything, or a token containing a digit
-        "(?:\\s*[:#=]\\s*\\S|\\s+#?\\s*\\S*\\d)",
+        "(?:\\s*[:#=]\\s*\\S|\\s+#?\\s*\\S*\\d)" +
+        // or the label runs straight into its value with no separator at all ("MRN12345", "DOBAB12")
+        "|\\b(?:mrn|ssn|dob)[a-z]{0,3}\\d",
       "i",
     ),
   ],
@@ -81,20 +86,101 @@ const RULES: ReadonlyArray<readonly [PhiFindingCode, RegExp]> = [
 ];
 
 // Zero-width, bidi and soft-hyphen characters would let "88​77..." slip past a digit rule.
-const INVISIBLE = /[­​-‏‪-‮⁠-⁤﻿]/g;
+const INVISIBLE = /[\u00AD\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\uFEFF]/g;
 // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control characters is the point
 const CONTROL = /[\u0000-\u0008\u000B-\u001F\u007F]/g;
 
-/** NFKC (fullwidth digits to ASCII), invisible characters removed, control characters to spaces. */
-export function normalizeForLint(text: string): string {
-  return text.normalize("NFKC").replace(INVISIBLE, "").replace(CONTROL, " ");
+/** Remove zero-width, bidi and soft-hyphen characters: what is STORED and shown must be what was linted. */
+export function stripInvisibleCharacters(text: string): string {
+  return text.replace(INVISIBLE, "");
 }
+
+// Letters from other scripts that read as Latin ones ("\u041Crs." for "Mrs."). Applied before keyword matching.
+const CONFUSABLES: Readonly<Record<string, string>> = {
+  "\u0410": "A",
+  "\u0412": "B",
+  "\u0415": "E",
+  "\u041A": "K",
+  "\u041C": "M",
+  "\u041D": "H",
+  "\u041E": "O",
+  "\u0420": "P",
+  "\u0421": "C",
+  "\u0422": "T",
+  "\u0425": "X",
+  "\u0423": "Y",
+  "\u0406": "I",
+  "\u0408": "J",
+  "\u0405": "S",
+  "\u0430": "a",
+  "\u0432": "b",
+  "\u0435": "e",
+  "\u043A": "k",
+  "\u043C": "m",
+  "\u043D": "h",
+  "\u043E": "o",
+  "\u0440": "p",
+  "\u0441": "c",
+  "\u0442": "t",
+  "\u0445": "x",
+  "\u0443": "y",
+  "\u0456": "i",
+  "\u0458": "j",
+  "\u0455": "s",
+  "\u0391": "A",
+  "\u0392": "B",
+  "\u0395": "E",
+  "\u0396": "Z",
+  "\u0397": "H",
+  "\u0399": "I",
+  "\u039A": "K",
+  "\u039C": "M",
+  "\u039D": "N",
+  "\u039F": "O",
+  "\u03A1": "P",
+  "\u03A4": "T",
+  "\u03A5": "Y",
+  "\u03A7": "X",
+  "\u03BF": "o",
+  "\u03B1": "a",
+  "\u03BD": "v",
+  "\u03C1": "p",
+  "\u03C4": "t",
+  "\u03B9": "i",
+  "\u03BA": "k",
+};
+const CONFUSABLE_CHARS = new RegExp(`[${Object.keys(CONFUSABLES).join("")}]`, "g");
+
+/** Any Unicode decimal digit (Arabic-Indic, Devanagari, ...) to its ASCII digit; NFKC alone leaves these as they are. */
+function asciiDigits(text: string): string {
+  return text.replace(/\p{Nd}/gu, (ch) => {
+    let start = ch.codePointAt(0) as number;
+    // Decimal digit runs are contiguous blocks whose length is a multiple of ten: the offset in the block is the value.
+    while (start > 0 && /\p{Nd}/u.test(String.fromCodePoint(start - 1))) start -= 1;
+    return String(((ch.codePointAt(0) as number) - start) % 10);
+  });
+}
+
+/** NFKC, invisible characters removed, control characters to spaces, other-script digits to ASCII. */
+export function normalizeForLint(text: string): string {
+  return asciiDigits(text.normalize("NFKC").replace(INVISIBLE, "").replace(CONTROL, " "));
+}
+
+/** The text the digit rules see: separators sitting between two digits ("88/77, 66 - 55") are removed. */
+const collapseDigitRuns = (text: string): string => text.replace(/(?<=\d)[\s.,/-]+(?=\d)/g, "");
 
 /** The distinct finding codes for `text`, sorted. Empty means "nothing this lint recognises", not "no PHI". */
 export function lintTemplateText(text: string): PhiFindingCode[] {
-  const normalized = normalizeForLint(text);
+  const normalized = normalizeForLint(text).replace(
+    CONFUSABLE_CHARS,
+    (ch) => CONFUSABLES[ch] ?? ch,
+  );
+  const collapsed = collapseDigitRuns(normalized);
   const found = new Set<PhiFindingCode>();
   for (const [code, pattern] of RULES) if (pattern.test(normalized)) found.add(code);
+  // Six or more digits once the separators are gone, or exactly nine (an SSN written with odd separators).
+  if (/\d{6,}/.test(collapsed)) found.add("LONG_NUMBER");
+  if (/(?<!\d)\d{9}(?!\d)/.test(collapsed)) found.add("SSN");
   return [...found].sort();
 }
 

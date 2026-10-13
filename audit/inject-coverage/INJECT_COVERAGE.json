@@ -498,6 +498,7 @@
         "apps/backend/__tests__/m36-message-templates.test.ts",
         "apps/backend/__tests__/m36-rich-body.test.ts",
         "apps/backend/__tests__/m36-tenant-idor.live.test.ts",
+        "apps/backend/__tests__/m36-tranche-b-review.live.test.ts",
         "apps/backend/__tests__/m36-transactional-email.live.test.ts",
         "apps/backend/__tests__/messaging-member-admin.test.ts",
         "apps/backend/__tests__/messaging-routes-mount.test.ts",

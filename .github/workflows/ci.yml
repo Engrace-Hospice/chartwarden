@@ -748,6 +748,7 @@ jobs:
           # WP 2.5 - drafts: sealed at rest, never visible to another user or tenant, conflicts, audit scrub, erase.
           - { name: "M36 Drafts", scripts: "test:m36:drafts:live" }
           - { name: "M36 Message templates", scripts: "test:m36:templates:live" }
+          - { name: "M36 Tranche B review fixes", scripts: "test:m36:review:live" }
           - { name: "GAP-173 M40 license + grief RLS", scripts: "test:gap-173:live" }
           - { name: "M31 prefs + uploads", scripts: "test:gap-031:live" }
           - { name: "M30 CAHPS export + M2 auditor link", scripts: "test:gap-087:live" }

@@ -9,7 +9,7 @@ import { SavedReplyForm } from "./saved-reply-form";
 
 export interface ReplyWrites {
   /** Each resolves to null on success or the text to show. */
-  readonly create: (draft: ReplyDraft) => Promise<string | null>;
+  readonly create: (draft: ReplyDraft, idempotencyKey: string) => Promise<string | null>;
   readonly update: (id: string, draft: ReplyDraft) => Promise<string | null>;
   readonly remove: (id: string) => Promise<string | null>;
 }
@@ -37,8 +37,14 @@ export function SavedReplySection({
   async function confirmDelete(): Promise<void> {
     if (!deleting) return;
     setDeletePending(true);
-    const failure = await writes.remove(deleting.id);
-    setDeletePending(false);
+    let failure: string | null;
+    try {
+      failure = await writes.remove(deleting.id);
+    } catch {
+      failure = "Could not delete this reply. Check your connection and try again.";
+    } finally {
+      setDeletePending(false);
+    }
     if (failure) setDeleteError(failure);
     else {
       setDeleting(null);

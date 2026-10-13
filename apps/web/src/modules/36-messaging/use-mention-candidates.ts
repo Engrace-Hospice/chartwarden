@@ -59,6 +59,12 @@ export function useMentionCandidates(input: {
                 ),
           );
           setActiveIndex(0);
+        })
+        .catch(() => {
+          if (generation !== generationRef.current) return;
+          setLoading(false);
+          setError(true);
+          setCandidates([]);
         });
     }, MENTION_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);

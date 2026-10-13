@@ -12,6 +12,7 @@ import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { ChannelParamsSchema, parse } from "./messaging-typebox";
 import { PinParamsSchema, ReactionParamsSchema } from "./reaction-pin-typebox";
+import { requireUuidParams } from "./uuid-params";
 
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
@@ -21,6 +22,8 @@ export interface ChannelGuards {
   readonly send: PreHandler;
   readonly viewChannel: PreHandler;
   readonly sendToChannel: PreHandler;
+  /** In an announcement channel the caller needs messaging.announce; any other channel passes untouched. */
+  readonly announcementOnly: PreHandler;
 }
 
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
@@ -34,7 +37,10 @@ export function registerReactionPinRoutes(
   service: MessagingRouteService,
   guards: ChannelGuards,
 ): void {
-  const write = [guards.send, guards.sendToChannel];
+  const ids = requireUuidParams("id", "messageId");
+  // Reactions stay open to every member who can write in the channel; pinning an announcement follows the send rule.
+  const write = [ids, guards.send, guards.sendToChannel];
+  const pinWrite = [ids, guards.send, guards.sendToChannel, guards.announcementOnly];
 
   app.put(
     "/api/v1/messaging/channels/:id/messages/:messageId/reactions/:emoji",
@@ -70,7 +76,7 @@ export function registerReactionPinRoutes(
 
   app.put(
     "/api/v1/messaging/channels/:id/messages/:messageId/pin",
-    { preHandler: write },
+    { preHandler: pinWrite },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const p = parse(PinParamsSchema, request.params);
@@ -84,7 +90,7 @@ export function registerReactionPinRoutes(
 
   app.delete(
     "/api/v1/messaging/channels/:id/messages/:messageId/pin",
-    { preHandler: write },
+    { preHandler: pinWrite },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const p = parse(PinParamsSchema, request.params);
@@ -100,7 +106,7 @@ export function registerReactionPinRoutes(
   app.get(
     "/api/v1/messaging/channels/:id/pins",
     {
-      preHandler: [guards.read, guards.viewChannel],
+      preHandler: [requireUuidParams("id"), guards.read, guards.viewChannel],
       config: {
         auditRead: {
           resourceKind: "message",

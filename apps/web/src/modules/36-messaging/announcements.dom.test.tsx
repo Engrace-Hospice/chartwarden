@@ -197,7 +197,7 @@ describe("DepartmentChannelDialog", () => {
         <DepartmentChannelDialog open onClose={() => {}} onCreated={() => Promise.resolve(true)} />,
       ),
     );
-    await userEvent.click(await screen.findByRole("tab", { name: "Discipline" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Discipline" }));
     expect(await screen.findByRole("option", { name: "Social Work" })).toBeTruthy();
     expect(screen.queryByRole("option", { name: "Billing Clerk" })).toBeNull();
     expect(screen.queryByRole("option", { name: "Retired RN" })).toBeNull();
@@ -330,5 +330,88 @@ describe("ChannelMembersDialog", () => {
     await waitFor(() => expect(screen.getByRole("option", { name: "Nurse Two" })).toBeTruthy());
     await userEvent.click(screen.getByRole("button", { name: "Add" }));
     expect((await screen.findByRole("alert")).textContent).toContain("Not permitted");
+  });
+});
+
+describe("Tranche B review fixes (departments, members, receipts)", () => {
+  it("M11: the department type is a pair of toggle buttons (aria-pressed), not a tablist", async () => {
+    const api = client({
+      GET: (path: string) =>
+        path === "/api/v1/locations"
+          ? { data: { items: [{ id: LOCATION_ID, name: "North Campus" }], nextCursor: null } }
+          : { data: { roles: [] } },
+    });
+    render(
+      provide(
+        api,
+        <DepartmentChannelDialog open onClose={() => {}} onCreated={() => Promise.resolve(true)} />,
+      ),
+    );
+    const location = await screen.findByRole("button", { name: "Location" });
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(location.getAttribute("aria-pressed")).toBe("true");
+    await userEvent.click(screen.getByRole("button", { name: "Discipline" }));
+    expect(screen.getByRole("button", { name: "Discipline" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(location.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("a failed staff search is shown, not swallowed", async () => {
+    const api = client({
+      GET: (path: string) =>
+        path === "/api/v1/messaging/dm/staff"
+          ? { data: undefined, error: { error: { message: "nope" } } }
+          : { data: { members: [] }, error: undefined },
+    });
+    render(
+      provide(
+        api,
+        <ChannelMembersDialog channelId="ch-1" channelTitle="North" open onClose={() => {}} />,
+      ),
+    );
+    expect(await screen.findByText(/staff could not be searched/i)).toBeTruthy();
+  });
+
+  it("an older staff search answer cannot overwrite a newer one", async () => {
+    const resolvers: Array<(value: unknown) => void> = [];
+    const api = client({
+      GET: (path: string) =>
+        path === "/api/v1/messaging/dm/staff"
+          ? new Promise((resolve) => resolvers.push(resolve))
+          : { data: { members: [] }, error: undefined },
+    });
+    render(
+      provide(
+        api,
+        <ChannelMembersDialog channelId="ch-1" channelTitle="North" open onClose={() => {}} />,
+      ),
+    );
+    await waitFor(() => expect(resolvers).toHaveLength(1));
+    await userEvent.type(screen.getByLabelText("Find staff"), "ann");
+    await waitFor(() => expect(resolvers).toHaveLength(2));
+    resolvers[1]?.({
+      data: { staff: [{ userId: "u-new", displayName: "Newer Match", roles: [] }] },
+    });
+    await screen.findByRole("option", { name: "Newer Match" });
+    resolvers[0]?.({
+      data: { staff: [{ userId: "u-old", displayName: "Older Match", roles: [] }] },
+    });
+    await waitFor(() => expect(screen.queryByRole("option", { name: "Older Match" })).toBeNull());
+    expect(screen.getByRole("option", { name: "Newer Match" })).toBeTruthy();
+  });
+
+  it("an unreadable read time does not break the receipts list", async () => {
+    const api = client({
+      GET: () => ({
+        data: {
+          ...RECEIPTS,
+          readers: [{ userId: "u-1", displayName: "Nurse One", readAt: "not-a-date" }],
+        },
+        error: undefined,
+      }),
+    });
+    render(provide(api, <AnnouncementReceiptsDialog messageId="m-1" onClose={() => {}} />));
+    expect(await screen.findByText("Nurse One")).toBeTruthy();
   });
 });

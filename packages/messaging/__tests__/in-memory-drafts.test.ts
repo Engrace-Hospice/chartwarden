@@ -102,6 +102,42 @@ describe("in-memory draft service", () => {
     expect(await s.getDraft(ORG, { userId: "u1", channelId: CH })).toBeNull();
   });
 
+  it("B5: a blank save from a stale device is a conflict and keeps the newer draft; delete discards", async () => {
+    const s = createInMemoryDraftService();
+    await s.saveDraft(ORG, { userId: "u1", ...base, body: "from A" });
+    await s.saveDraft(ORG, {
+      userId: "u1",
+      ...base,
+      deviceId: "dev_b",
+      baseRevision: 1,
+      body: "from B",
+    });
+    await expect(
+      s.saveDraft(ORG, { userId: "u1", ...base, baseRevision: 1, body: "   " }),
+    ).rejects.toMatchObject({ code: "DRAFT_CONFLICT", statusCode: 409 });
+    expect((await s.getDraft(ORG, { userId: "u1", channelId: CH }))?.body).toBe("from B");
+    await s.deleteDraft(ORG, { userId: "u1", channelId: CH });
+    expect(await s.getDraft(ORG, { userId: "u1", channelId: CH })).toBeNull();
+  });
+
+  it("rejects a reference whose span is empty, reversed or beyond the text (422)", async () => {
+    const s = createInMemoryDraftService();
+    for (const [start, end] of [
+      [3, 3],
+      [5, 2],
+      [0, 99],
+    ] as const) {
+      await expect(
+        s.saveDraft(ORG, {
+          userId: "u1",
+          ...base,
+          body: "hi @Ann",
+          references: [{ kind: "staff", entityId: "a", start, end }],
+        }),
+      ).rejects.toMatchObject({ statusCode: 422 });
+    }
+  });
+
   it("deletes idempotently", async () => {
     const s = createInMemoryDraftService();
     await s.saveDraft(ORG, { userId: "u1", ...base, body: "x" });

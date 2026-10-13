@@ -299,9 +299,10 @@ describe("platform overlay (admin)", () => {
 
   it("disabling hides the template from the picker", async () => {
     const app = makeServer();
+    const loose = PLATFORM_MESSAGE_TEMPLATES.find((t) => t.requiredPhrases.length === 0)!;
     await app.inject({
       method: "PUT",
-      url: overlayUrl,
+      url: `/api/v1/messaging/template-admin/platform/${loose.id}/overlay`,
       headers: as("admin_1"),
       payload: { title: null, body: null, isEnabled: false },
     });
@@ -310,7 +311,25 @@ describe("platform overlay (admin)", () => {
       url: "/api/v1/messaging/templates",
       headers: as("rn_1"),
     });
-    expect(res.json().items.map((i: { id: string }) => i.id)).not.toContain(emergency.id);
+    expect(res.json().items.map((i: { id: string }) => i.id)).not.toContain(loose.id);
+    await app.close();
+  });
+
+  it("B7: the emergency template cannot be hidden: 422, and it stays in the picker", async () => {
+    const app = makeServer();
+    const put = await app.inject({
+      method: "PUT",
+      url: overlayUrl,
+      headers: as("admin_1"),
+      payload: { title: null, body: null, isEnabled: false },
+    });
+    expect(put.statusCode).toBe(422);
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/messaging/templates",
+      headers: as("rn_1"),
+    });
+    expect(res.json().items.map((i: { id: string }) => i.id)).toContain(emergency.id);
     await app.close();
   });
 });

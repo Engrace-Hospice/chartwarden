@@ -99,14 +99,6 @@ export function ThreadPanel({
     if (!inserted) announce("Reply sent. Load more replies to see it.");
     onReplySent(rootId, sent.createdAt);
   };
-  // WP 2.5: this root's reply draft follows the user across reloads and devices (text only; no mention chips here).
-  const serverDraft = useServerDraft({
-    channelId,
-    parentMessageId: rootId,
-    text: draft,
-    references: NO_REFERENCES,
-    hydrate: (text) => changeDraft(text),
-  });
   const { send, sending, sendError, clearSendError } = useMessageSender({
     channelId,
     parentMessageId: rootId,
@@ -128,6 +120,16 @@ export function ThreadPanel({
     },
   });
   const held = sending || sendInFlight;
+  // WP 2.5: this root's reply draft follows the user across reloads and devices (text only; no mention chips here).
+  const serverDraft = useServerDraft({
+    channelId,
+    parentMessageId: rootId,
+    text: draft,
+    references: NO_REFERENCES,
+    // A reply being sent owns its text: closing the panel mid-send must not save it back as a draft.
+    suspended: held,
+    hydrate: (text) => changeDraft(text),
+  });
 
   // Announce replies from other people that arrive after the thread was first shown (a polite live region).
   const seenRef = useRef<Set<string> | null>(null);
