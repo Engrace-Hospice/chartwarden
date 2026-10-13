@@ -157,9 +157,26 @@
 }
 
 .wx-message-bubble time {
-  align-self: flex-end;
   color: var(--color-muted);
   font-size: 0.625rem;
+}
+
+/* Sent time, then the "Edited" marker when there is one (a div: `.wx-message-bubble > span` would force pre-wrap and
+   break-anywhere onto it). Items wrap whole; colour and size are set here so the label's words match the timestamp. */
+.wx-message-meta {
+  align-self: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0 0.4em;
+  align-items: baseline;
+  color: var(--color-muted);
+  font-size: 0.625rem;
+  white-space: nowrap;
+}
+
+.wx-message-row.is-mine .wx-message-meta {
+  color: color-mix(in srgb, var(--color-on-primary) 90%, transparent);
 }
 
 .wx-message-row.is-mine .wx-message-bubble time {

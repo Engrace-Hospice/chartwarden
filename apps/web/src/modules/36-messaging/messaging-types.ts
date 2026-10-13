@@ -41,6 +41,8 @@ export interface Message {
   /** WP 2.1: a stored rich body that cannot be read back; show a distinct placeholder, not 'deleted'. */
   bodyUnreadable?: boolean;
   createdAt: string;
+  /** WP 1.3: when a live message was last edited; absent/null = never edited (or deleted). */
+  editedAt?: string | null;
   parentMessageId: string | null;
   /** WP 2.2: live direct replies (deleted ones excluded) and the newest one's time. Absent on older payloads. */
   replyCount?: number;

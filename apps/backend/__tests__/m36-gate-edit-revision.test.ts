@@ -1,15 +1,15 @@
 // Phase 2 gate "edit indicator and revision" (docs/messaging-hub/03-phases-0-to-3.md, ADR-0055).
-// Non-live tripwires for the clauses the DB-backed suites cannot prove because the surface does not exist yet.
-// `it.fails` passes while the gap is open and FAILS the day the gap closes, forcing this file to be turned
-// into a real assertion. The proven clauses (revision append-only, window, author-only) live in
-// m36-channel-membership-lifecycle.live.test.ts.
+// Non-live checks for the clauses the DB-backed suites cannot prove: the read DTO carries `editedAt`, and the
+// revision-history read permission (`messaging.history.read`) is DELIBERATELY absent: deferred to Phase 5 by
+// ADR-0055 items 5 and 7. Adding it must force someone to revisit this file. The proven clauses (revision
+// append-only, window, author-only, editedAt on every read path) live in m36-channel-membership-lifecycle.live.test.ts.
 //
-// An `it.fails` goes green on ANY thrown error, so everything that could throw for another reason (reading the tree,
-// a renamed schema) is done at module level or in a normal control test: a broken scan turns the file red, and only
-// the one assertion on the gap itself can make a tripwire green.
+// The scan is made at module level and its reach is proven by the control tests, so an empty or broken scan turns
+// the file red instead of making the "absent" assertions vacuously true.
 import { readFileSync, readdirSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { M36_CONTRIBUTED_PERMISSIONS, allPermissionMirrorRows } from "@wardenx/auth";
 import { describe, expect, it } from "vitest";
 import { ResolvedMessageSchema } from "../src/modules/36-messaging/routes/messaging-typebox";
 
@@ -34,17 +34,23 @@ describe("M36 gate: the tripwire scans are real", () => {
     expect(moduleSources.some((source) => source.text.includes("messaging.read"))).toBe(true);
   });
 
+  it("the permission catalog scan sees the module's real keys", () => {
+    expect(Object.keys(M36_CONTRIBUTED_PERMISSIONS)).toContain("messaging.read");
+  });
+
   it("the read DTO schema exposes properties to inspect", () => {
     expect(Object.keys(ResolvedMessageSchema.properties)).toContain("messageId");
   });
 });
 
-describe("M36 gate: edit indicator and revision (open gaps)", () => {
-  it.fails("a read DTO carries the edited marker (time) so readers can show 'edited'", () => {
+describe("M36 gate: edit indicator and revision", () => {
+  it("a read DTO carries the edited marker (time) so readers can show 'edited'", () => {
     expect(Object.keys(ResolvedMessageSchema.properties)).toContain("editedAt");
   });
 
-  it.fails("a revision-history read route and permission exist (ADR-0055 item 5)", () => {
-    expect(moduleSources.some((source) => source.text.includes(HISTORY_PERMISSION))).toBe(true);
+  it("messaging.history.read is deliberately absent: deferred to Phase 5 by ADR-0055 items 5 and 7", () => {
+    expect(moduleSources.some((source) => source.text.includes(HISTORY_PERMISSION))).toBe(false);
+    expect(Object.keys(M36_CONTRIBUTED_PERMISSIONS)).not.toContain(HISTORY_PERMISSION);
+    expect(allPermissionMirrorRows().map((row) => row.key)).not.toContain(HISTORY_PERMISSION);
   });
 });

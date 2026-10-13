@@ -166,6 +166,7 @@ for patient-linked channels" is superseded by D8's narrower lock.
   only path that removes a body early.
 - The existing `m36.message.edited` event is kept (it already feeds the hint consumer); a separate `m36.message.revised.v1` was not
   added because nothing consumes it yet.
+- The read DTO carries an optional `editedAt` (live edited messages only; no revision count). **Phase 5 acceptance criterion:** redaction must hide it (`visibleEditedAt` returns null for a redacted message).
 - **Not in WP 1.3:** the edit lock for urgent and acknowledgment-requested messages (the columns arrive with ADR-0056 in Phase 4);
   tenant shortening of the window (needs per-tenant messaging settings); `messaging.history.read` and the history route (item 5);
   redaction (Phase 5).

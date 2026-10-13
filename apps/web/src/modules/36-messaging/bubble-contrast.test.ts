@@ -48,3 +48,59 @@ describe("own-bubble timestamp contrast", () => {
     expect(((hi ?? 0) + 0.05) / ((lo ?? 0) + 0.05)).toBeGreaterThanOrEqual(MIN_RATIO);
   });
 });
+
+describe("edited label contrast", () => {
+  // The "Edited" marker lives in `.wx-message-meta` beside the timestamp, which owns its colour and size. The label
+  // itself must not override either, and the wrapper must keep the timestamp's muted colour and size.
+  const ruleBody = (selector: string): string => {
+    const escaped = selector.replace(/\./g, "\\.");
+    const match = new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`).exec(css);
+    if (!match?.[1]) throw new Error(`rule ${selector} not found in message-list.css`);
+    return match[1];
+  };
+  const contrast = (a: readonly number[], b: readonly number[]): number => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return ((hi ?? 0) + 0.05) / ((lo ?? 0) + 0.05);
+  };
+
+  it("sets the muted colour and the timestamp size on the wrapper", () => {
+    const body = ruleBody(".wx-message-meta");
+    expect(body).toMatch(/color:\s*var\(--color-muted\)/);
+    expect(body).toMatch(/font-size:\s*0\.625rem/);
+  });
+
+  it("does not let a dedicated label rule override colour, opacity or size", () => {
+    expect(css).not.toMatch(/\.wx-message-edited[^{]*\{[^}]*\b(color|opacity|font-size)\s*:/);
+  });
+
+  it.each(THEMES)(
+    "muted token is at least 4.5:1 on the incoming bubble ($name theme)",
+    ({ from }) => {
+      const bubble = hex(token("--color-surface-lowest", from));
+      expect(contrast(hex(token("--color-muted", from)), bubble)).toBeGreaterThanOrEqual(MIN_RATIO);
+    },
+  );
+
+  it.each(THEMES)("own-bubble wrapper colour is at least 4.5:1 ($name theme)", ({ from }) => {
+    const rule = /\.wx-message-row\.is-mine \.wx-message-meta\s*\{[^}]*?on-primary\)\s*(\d+)%/.exec(
+      css,
+    );
+    expect(rule).not.toBeNull();
+    const alpha = Number(rule?.[1]) / 100;
+    const bubble = hex(token("--color-primary", from));
+    const text = hex(token("--color-on-primary", from));
+    const blended = bubble.map((p, i) => (text[i] ?? 0) * alpha + p * (1 - alpha));
+    expect(contrast(blended, bubble)).toBeGreaterThanOrEqual(MIN_RATIO);
+  });
+
+  it("keeps the wrapper a div outside `.wx-message-bubble > span`, wrapping by item", () => {
+    const row = readFileSync("apps/web/src/modules/36-messaging/message-row.tsx", "utf8");
+    expect(row).toMatch(/<div className="wx-message-meta">/);
+    expect(row).not.toMatch(/<span className="wx-message-meta"/);
+    const body = ruleBody(".wx-message-meta");
+    expect(body).toMatch(/flex-wrap:\s*wrap/);
+    expect(body).toMatch(/justify-content:\s*flex-end/);
+    // the rule this guards against still exists (otherwise the div requirement is moot)
+    expect(css).toMatch(/\.wx-message-bubble > span\s*\{[^}]*overflow-wrap:\s*anywhere/);
+  });
+});

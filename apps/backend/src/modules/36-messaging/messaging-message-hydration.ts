@@ -26,6 +26,7 @@ export const MESSAGE_ROW_COLUMNS = {
   bodyCipher: MSG.bodyCipher,
   bodyKind: MSG.bodyKind,
   status: MSG.status,
+  editedAt: MSG.editedAt,
   createdAt: MSG.createdAt,
   createdAtMicros: sql<string>`${MSG.createdAt}::text`,
   parentMessageId: MSG.parentMessageId,
@@ -39,8 +40,20 @@ export interface MessageRow {
   readonly bodyCipher: Buffer;
   readonly bodyKind: string;
   readonly status: string;
+  readonly editedAt: Date | null;
   readonly createdAt: Date;
   readonly parentMessageId: string | null;
+}
+
+/**
+ * WP 1.3: the "edited" marker time for a read. Only a live edited message carries it: a tombstone shows nothing.
+ * Phase 5 (ADR-0055 redaction) MUST also return null here for a redacted message so redaction hides the indicator.
+ */
+export function visibleEditedAt(row: {
+  readonly status: string;
+  readonly editedAt: Date | null;
+}): string | null {
+  return row.status === "edited" && row.editedAt ? row.editedAt.toISOString() : null;
 }
 
 export interface HydrationContext {
@@ -179,6 +192,7 @@ export async function hydrateMessages(
       ...(decoded.bodyDoc ? { bodyDoc: decoded.bodyDoc } : {}),
       ...(decoded.unreadable ? { bodyUnreadable: true as const } : {}),
       createdAt: m.createdAt.toISOString(),
+      editedAt: visibleEditedAt(m),
       parentMessageId: m.parentMessageId,
       reactions: annotations.reactions.get(m.id) ?? [],
       pinned: annotations.pinned.has(m.id),

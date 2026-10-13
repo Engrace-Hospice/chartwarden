@@ -62358,6 +62358,7 @@ export interface operations {
                             /** @constant */
                             bodyUnreadable?: true;
                             createdAt: string;
+                            editedAt?: string | null;
                             parentMessageId: string | null;
                             replyCount?: number;
                             lastReplyAt?: string | null;
@@ -62607,6 +62608,7 @@ export interface operations {
                             /** @constant */
                             bodyUnreadable?: true;
                             createdAt: string;
+                            editedAt?: string | null;
                             parentMessageId: string | null;
                             replyCount?: number;
                             lastReplyAt?: string | null;
@@ -62652,6 +62654,7 @@ export interface operations {
                             /** @constant */
                             bodyUnreadable?: true;
                             createdAt: string;
+                            editedAt?: string | null;
                             parentMessageId: string | null;
                             replyCount?: number;
                             lastReplyAt?: string | null;
@@ -62724,6 +62727,7 @@ export interface operations {
                             /** @constant */
                             bodyUnreadable?: true;
                             createdAt: string;
+                            editedAt?: string | null;
                             parentMessageId: string | null;
                             replyCount?: number;
                             lastReplyAt?: string | null;
@@ -62850,6 +62854,7 @@ export interface operations {
                             /** @constant */
                             bodyUnreadable?: true;
                             createdAt: string;
+                            editedAt?: string | null;
                             parentMessageId: string | null;
                             replyCount?: number;
                             lastReplyAt?: string | null;

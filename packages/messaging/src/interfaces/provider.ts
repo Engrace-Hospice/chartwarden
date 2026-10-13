@@ -65,6 +65,8 @@ export interface ResolvedMessage {
   /** WP 2.1: a rich body that is stored but no longer parses; `body` is then empty and the UI says so. */
   readonly bodyUnreadable?: true;
   readonly createdAt: string; // ISO-8601
+  /** WP 1.3: when a live message was last edited; null/absent means never edited (or deleted). */
+  readonly editedAt?: string | null;
   readonly parentMessageId: string | null;
   /** WP 2.2: live (not deleted) direct replies. Absent on providers that do not compute it; 0 means none. */
   readonly replyCount?: number;
