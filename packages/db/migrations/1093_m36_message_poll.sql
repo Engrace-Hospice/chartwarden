@@ -157,15 +157,21 @@ CREATE TRIGGER "trg_audit_message_poll_option"
 
 -- Defence in depth: the service locks the poll row (a vote takes FOR SHARE, a close the exclusive lock), but the
 -- database also refuses a vote that is inserted or changed on a closed poll, whoever the caller is. SECURITY INVOKER:
--- it reads message_poll under the caller's own RLS context. FOR SHARE makes it serialise with a concurrent close.
+-- it reads message_poll under the caller's own RLS context. The poll row is locked FOR SHARE UNCONDITIONALLY (no
+-- closed_at predicate): with a predicate, a concurrent uncommitted close would not match the vote's snapshot, FOR SHARE
+-- would neither wait nor lock, and the vote would slip through. Without one the lock waits for the close to commit and
+-- re-reads the row (READ COMMITTED), so closed_at is then visible. A missing row fails closed.
 CREATE OR REPLACE FUNCTION message_poll_vote_open_check() RETURNS trigger
 LANGUAGE plpgsql AS $$
+DECLARE v_found boolean; v_closed timestamptz;
 BEGIN
-  IF EXISTS (
-    SELECT 1 FROM message_poll
-    WHERE organization_id = NEW.organization_id AND id = NEW.poll_id AND closed_at IS NOT NULL
-    FOR SHARE
-  ) THEN
+  SELECT true, closed_at INTO v_found, v_closed FROM message_poll
+  WHERE organization_id = NEW.organization_id AND id = NEW.poll_id
+  FOR SHARE;
+  IF v_found IS NOT TRUE THEN
+    RAISE EXCEPTION 'poll % not found', NEW.poll_id USING ERRCODE = 'check_violation';
+  END IF;
+  IF v_closed IS NOT NULL THEN
     RAISE EXCEPTION 'poll % is closed', NEW.poll_id USING ERRCODE = 'check_violation';
   END IF;
   RETURN NEW;

@@ -362,6 +362,47 @@ describe.skipIf(!DB_URL)("WP 2.10 - message polls - LIVE Postgres", () => {
     expect(stored.rows.map((r) => r.option_id)).toEqual([first]);
   });
 
+  it("a vote racing an uncommitted close waits for it and is then refused (the trigger lock has no predicate)", async () => {
+    const made = await create();
+    const optionId = made.poll.options[0]!.optionId;
+    const closer = new Client({ connectionString: DB_URL });
+    const voter = new Client({ connectionString: DB_URL });
+    await closer.connect();
+    await voter.connect();
+    try {
+      await closer.query("BEGIN");
+      await closer.query(
+        "UPDATE message_poll SET closed_at = now(), closed_by_user_id = $2 WHERE id = $1",
+        [made.poll.pollId, alice],
+      );
+      let settled = false;
+      const insert = voter
+        .query(
+          `INSERT INTO message_poll_vote (organization_id, poll_id, option_id, user_id)
+           VALUES ($1,$2,$3,$4)`,
+          [orgA, made.poll.pollId, optionId, bob],
+        )
+        .then(
+          () => "inserted",
+          () => "refused",
+        )
+        .finally(() => {
+          settled = true;
+        });
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(settled).toBe(false); // blocked on the close's row lock, not sailing through
+      await closer.query("COMMIT");
+      expect(await insert).toBe("refused");
+    } finally {
+      await closer.end();
+      await voter.end();
+    }
+    const rows = await admin.query("SELECT 1 FROM message_poll_vote WHERE poll_id=$1", [
+      made.poll.pollId,
+    ]);
+    expect(rows.rows).toHaveLength(0);
+  });
+
   it("a removed member can neither read nor vote", async () => {
     const made = await create();
     const target = { userId: dave, channelId: chan, messageId: made.messageId };
