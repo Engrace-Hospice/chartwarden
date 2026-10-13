@@ -9130,7 +9130,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "PUT /api/v1/messaging/global-search/settings": {
     summary:
-      "Switch global search on or off for the organization (messaging.global_search.manage + a fresh step-up). ON is 409 GLOBAL_SEARCH_PREREQUISITES_UNMET naming each failing checklist item; OFF is always accepted and requests the token purge",
+      "Switch global search on or off for the organization (messaging.global_search.manage + a fresh step-up). ON is 409 GLOBAL_SEARCH_PREREQUISITES_UNMET naming each failing checklist item, or PURGE_IN_PROGRESS while the last switch-off purge is unfinished; OFF is always accepted and requests the token purge",
     body: M36PutGlobalSearchSettingsBodySchema,
     response: M36GlobalSearchSettingsViewSchema,
   },

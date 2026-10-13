@@ -123,6 +123,11 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C4 global search settings - LIVE Postgres"
       [org, key, JSON.stringify(value)],
     );
   }
+  const completePurge = () =>
+    admin.query(
+      `UPDATE tenant_messaging_search_setting SET purge_completed_at=now() WHERE organization_id=$1 AND purge_requested_at IS NOT NULL`,
+      [ORG_A],
+    );
   const allAttested = async () => {
     await setPlatformFlag(GLOBAL_SEARCH_PLATFORM_FLAG_KEY, true);
     await setPlatformFlag(GLOBAL_SEARCH_ESCROW_FLAG_KEY, true);
@@ -451,6 +456,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C4 global search settings - LIVE Postgres"
     it("OFF->ON and ON->OFF each advance changed_at and write who/when/old/new; a repeated ON writes nothing", async () => {
       await allAttested();
       await put(appLimited, false);
+      await completePurge();
       const t0 = (await setting(ORG_A))?.changed_at as Date;
       expect((await put(appLimited, true)).statusCode).toBe(200);
       const t1 = (await setting(ORG_A))?.changed_at as Date;
@@ -467,6 +473,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C4 global search settings - LIVE Postgres"
         `SELECT actor_user_id, before->>'enabled' AS old_enabled, after->>'enabled' AS new_enabled
            FROM audit_event
           WHERE organization_id=$1 AND event_type='tenant_messaging_search_setting.update'
+            AND before->>'enabled' IS DISTINCT FROM after->>'enabled'
           ORDER BY created_at, id`,
         [ORG_A],
       );
@@ -567,6 +574,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C4 global search settings - LIVE Postgres"
 
       // OFF then ON again: the old `ready` row survives (no purge ran) but predates the new changed_at.
       await put(appLimited, false);
+      await completePurge();
       expect((await put(appLimited, true)).statusCode).toBe(200);
       const reOn = (await get(appLimited)).json().rebuild;
       expect(reOn.status).toBe("ready");
@@ -605,21 +613,33 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C4 global search settings - LIVE Postgres"
       expect(res.json().checklist.legacyBodiesMigrated).toBe(true);
     });
 
-    it("a re-ON while the purge is incomplete keeps purge_requested_at and leaves purge_completed_at NULL", async () => {
+    it("ON while the purge is incomplete is 409 PURGE_IN_PROGRESS and writes nothing; after the purge completes it succeeds and bumps changed_at", async () => {
       await allAttested();
       await put(appLimited, false);
-      const requested = (await setting(ORG_A))?.purge_requested_at as Date;
-      expect(requested).not.toBeNull();
+      const before = await setting(ORG_A);
+      expect(before?.purge_requested_at).not.toBeNull();
+      expect(before?.purge_completed_at).toBeNull();
+
+      const refused = await put(appLimited, true);
+      expect(refused.statusCode).toBe(409);
+      expect(codes(refused)).toEqual(["PURGE_IN_PROGRESS"]);
+      expect(await setting(ORG_A)).toEqual(before);
+
+      await completePurge();
+      const completed = await setting(ORG_A);
       expect((await put(appLimited, true)).statusCode).toBe(200);
-      const row = await setting(ORG_A);
-      expect(row?.enabled).toBe(true);
-      expect((row?.purge_requested_at as Date).getTime()).toBe(requested.getTime());
-      expect(row?.purge_completed_at).toBeNull();
+      const after = await setting(ORG_A);
+      expect(after?.enabled).toBe(true);
+      expect((after?.changed_at as Date).getTime()).toBeGreaterThan(
+        (completed?.changed_at as Date).getTime(),
+      );
+      expect(after?.purge_completed_at).not.toBeNull();
     });
 
     it("a repeated ON after OFF preserves changed_at", async () => {
       await allAttested();
       await put(appLimited, false);
+      await completePurge();
       await put(appLimited, true);
       const changed = (await setting(ORG_A))?.changed_at as Date;
       await put(appLimited, true);

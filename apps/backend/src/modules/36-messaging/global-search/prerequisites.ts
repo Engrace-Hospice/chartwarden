@@ -25,7 +25,9 @@ export type ChecklistFailureCode =
   | "PLATFORM_FLAG_OFF"
   | "LEGACY_BODIES_PRESENT"
   | "ESCROW_NOT_ATTESTED"
-  | "RATE_LIMIT_INACTIVE";
+  | "RATE_LIMIT_INACTIVE"
+  /** Not a checklist item: an earlier OFF purge has not finished, so ON would leave search stuck closed. */
+  | "PURGE_IN_PROGRESS";
 
 export interface GlobalSearchChecklist {
   readonly platformEnabled: boolean;

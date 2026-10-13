@@ -57,6 +57,8 @@ const CHECK_MESSAGES: Record<ChecklistFailureCode, string> = {
     "Some message bodies are still on the legacy envelope (key-ring migration incomplete).",
   ESCROW_NOT_ATTESTED: "The key escrow and restore drill are not on record.",
   RATE_LIMIT_INACTIVE: "The per-route search rate limit is not active.",
+  PURGE_IN_PROGRESS:
+    "The purge started by the last switch-off has not finished; wait for it to complete.",
 };
 
 export class PrerequisitesUnmetError extends WardenXError {
@@ -152,7 +154,13 @@ export function createGlobalSearchSettingsService(deps: {
         const legacy = await prerequisites.legacyBodiesRemain(tx, organizationId);
         const checklist = toChecklist(attestations, legacy);
         if (enabled && !current.enabled) {
-          const failed = failedChecks(checklist);
+          // The purge only runs while OFF and the serve gate refuses while it is pending, so ON now would stay stuck closed.
+          const purgePending =
+            current.purgeRequestedAt !== null && current.purgeCompletedAt === null;
+          const failed: ChecklistFailureCode[] = [
+            ...failedChecks(checklist),
+            ...(purgePending ? (["PURGE_IN_PROGRESS"] as const) : []),
+          ];
           if (failed.length > 0) throw new PrerequisitesUnmetError(failed);
         }
         if (enabled === current.enabled && enabled) {
