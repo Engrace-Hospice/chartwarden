@@ -70,6 +70,11 @@ const PERMISSION_SEED = [
       "alert.rules.manage",
     ],
   },
+  // lead_1: may send AND manage members (WP 2.3 add-to-conversation prompt).
+  {
+    userId: "lead_1",
+    permissions: ["messaging.read", "messaging.send", "messaging.manage_members"],
+  },
   // intern: no messaging key at all → 403 everywhere.
   { userId: "intern_1", permissions: ["patient.read"] },
   { userId: "suspended_1", permissions: ["messaging.read"] },
@@ -83,6 +88,7 @@ function makeServer(): { app: ReturnType<typeof buildServer>; service: Messaging
         { orgId: ORG, userId: "rn_1", displayName: "Nurse One", roles: ["Registered Nurse"] },
         { orgId: ORG, userId: "rn_2", displayName: "Nurse Two", roles: ["Registered Nurse"] },
         { orgId: ORG, userId: "admin_1", displayName: "Admin One", roles: ["Org Admin"] },
+        { orgId: ORG, userId: "lead_1", displayName: "Lead One", roles: ["Org Admin"] },
         {
           orgId: ORG,
           userId: "suspended_1",
@@ -170,6 +176,7 @@ const withKey = (headers: Record<string, string>): Record<string, string> => ({
 const RN1 = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "clinical_rn" };
 const RN2 = { "x-test-user": "rn_2", "x-test-org": ORG, "x-test-roles": "clinical_rn" };
 const ADMIN = { "x-test-user": "admin_1", "x-test-org": ORG, "x-test-roles": "org_admin" };
+const LEAD = { "x-test-user": "lead_1", "x-test-org": ORG, "x-test-roles": "org_admin" };
 const INTERN = { "x-test-user": "intern_1", "x-test-org": ORG, "x-test-roles": "intern" };
 const SUSPENDED = {
   "x-test-user": "suspended_1",
@@ -715,6 +722,84 @@ describe("M36-T07 messaging route inventory", () => {
         payload: { body: "must not send" },
       });
       expect(send.statusCode).toBe(410);
+      await app.close();
+    });
+  });
+
+  describe("WP 2.3 mention of a non-member", () => {
+    const nonMembers = (headers: Record<string, string>, q: string) =>
+      makeServer().app.inject({
+        method: "GET",
+        url: `/api/v1/messaging/channels/${CT}/mention-non-members?q=${q}`,
+        headers,
+      });
+
+    it("offers names only, never members, self, suspended or foreign-org people", async () => {
+      const res = await nonMembers(RN1, "One");
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.people.map((p: { displayName: string }) => p.displayName).sort()).toEqual([
+        "Admin One",
+        "Lead One",
+      ]);
+      expect(Object.keys(body.people[0]).sort()).toEqual(["displayName", "entityId"]);
+      expect(JSON.stringify(body)).not.toMatch(/Foreign|Suspended|Nurse One/);
+    });
+
+    it("needs a 2+ character query so the directory cannot be dumped", async () => {
+      const res = await nonMembers(RN1, "N");
+      expect(res.json().people).toEqual([]);
+    });
+
+    it("a sender without member-management authority gets canAdd=false", async () => {
+      const res = await nonMembers(RN1, "Nurse");
+      expect(res.json()).toEqual({
+        people: [expect.objectContaining({ entityId: "rn_2", displayName: "Nurse Two" })],
+        canAdd: false,
+      });
+    });
+
+    it("a non-member of the channel is refused like any hidden channel", async () => {
+      const res = await nonMembers(RN2, "Nurse");
+      expect(res.statusCode).toBe(403);
+      expect(res.body).not.toContain("Nurse");
+    });
+
+    it("a sender without messaging.send is refused", async () => {
+      const res = await nonMembers(ADMIN, "Nurse");
+      expect([403, 404]).toContain(res.statusCode);
+    });
+
+    it("canAdd is true for a member-admin who is in the channel", async () => {
+      const { app, service } = makeServer();
+      await service.addMember(ORG, {
+        channelId: CT,
+        userId: "lead_1",
+        actor: { kind: "user", userId: "admin_1", roles: ["org_admin"], locationIds: [] },
+      });
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/messaging/channels/${CT}/mention-non-members?q=Nurse`,
+        headers: LEAD,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().canAdd).toBe(true);
+      await app.close();
+    });
+
+    it("a staff reference to a non-member is refused (a mention never grants access)", async () => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/messaging/channels/${CT}/messages`,
+        headers: withKey(RN1),
+        payload: {
+          body: "Hello @Nurse Two",
+          references: [{ kind: "staff", entityId: "rn_2", start: 6, end: 16 }],
+        },
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.code).toBe("INVALID_MESSAGE_REFERENCES");
       await app.close();
     });
   });

@@ -1,12 +1,12 @@
 import type { JSX } from "react";
-import type { MentionCandidate } from "./messaging-types";
+import type { MentionOption } from "./messaging-types";
 
 interface MentionMenuProps {
   readonly loading: boolean;
   readonly error: boolean;
-  readonly candidates: readonly MentionCandidate[];
+  readonly candidates: readonly MentionOption[];
   readonly activeIndex: number;
-  readonly onChoose: (candidate: MentionCandidate) => void;
+  readonly onChoose: (candidate: MentionOption) => void;
   readonly onRetry: () => void;
 }
 
@@ -54,8 +54,9 @@ export function MentionMenu({
           >
             <strong>{candidate.displayName}</strong>
             <span>
-              {candidate.kind === "patient" ? "Patient" : "Staff"}
-              {candidate.detail ? ` · ${candidate.detail}` : ""}
+              {candidate.kind === "not_member"
+                ? candidate.detail
+                : `${candidate.kind === "patient" ? "Patient" : "Staff"}${candidate.detail ? ` · ${candidate.detail}` : ""}`}
             </span>
           </button>
         ))

@@ -20,11 +20,10 @@ import {
 } from "./composer-format";
 import { DraftSyncNotice, escapeKeepsMine } from "./draft-conflict-prompt";
 import { MentionMenu } from "./mention-menu";
-import { activeMentionQuery, insertMention, reconcileReferences } from "./mention-utils";
+import { activeMentionQuery, reconcileReferences } from "./mention-utils";
 import { MessageRow } from "./message-row";
 import type {
   ChannelSummary,
-  MentionCandidate,
   Message,
   MessageReference,
   MessageReferenceInput,
@@ -38,6 +37,7 @@ import {
   isAccessError,
   mergeMessages,
 } from "./messaging-utils";
+import { NonMemberMentionPrompt } from "./non-member-mention-prompt";
 import { PinnedMessagesBar } from "./pinned-messages-bar";
 import { TemplatePicker } from "./template-picker";
 import { PatientContextAside, ThreadHeader } from "./thread-header";
@@ -46,7 +46,7 @@ import { useAnnouncementTools } from "./use-announcement-tools";
 import { useAttachmentUploads } from "./use-attachment-upload";
 import { INITIAL_READ_VIEW, type ReadView, useJumpToMessage } from "./use-jump-to-message";
 import { useLatestPolling } from "./use-latest-polling";
-import { useMentionCandidates } from "./use-mention-candidates";
+import { useMentionPicker } from "./use-mention-picker";
 import { sentMessageRow, useMessageSender } from "./use-message-sender";
 import type { SentMessage } from "./use-message-sender";
 import { usePatientHeader } from "./use-patient-header";
@@ -102,15 +102,27 @@ export function ConversationThread({
   const [newMessageCount, setNewMessageCount] = useState(0);
   const [draft, setDraft] = useState("");
   const [draftReferences, setDraftReferences] = useState<MessageReferenceInput[]>([]);
-  const [mentionQuery, setMentionQuery] = useState<{ query: string; start: number } | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const {
-    candidates: mentionCandidates,
-    loading: mentionLoading,
-    error: mentionError,
-    activeIndex: mentionIndex,
+    query: mentionQuery,
+    setQuery: setMentionQuery,
+    pendingAdd,
+    choose: chooseMention,
+    mentionAdded,
+    dismissMentionAdd,
+    resetMention,
+    menu: mentionMenu,
+    canAdd: canAddMention,
     setActiveIndex: setMentionIndex,
-    retry: retryMentions,
-  } = useMentionCandidates({ channelId: channel.channelId, meId, query: mentionQuery });
+  } = useMentionPicker({
+    channelId: channel.channelId,
+    meId,
+    draft,
+    draftReferences,
+    setDraft,
+    setDraftReferences,
+    textareaRef,
+  });
   const [contextOpen, setContextOpen] = useState(false);
   const timelineRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<Message[] | null>(null);
@@ -125,7 +137,6 @@ export function ConversationThread({
   const readBoundaryRef = useRef<string | null>(null);
   const composingRef = useRef(false);
   const [isMac] = useState(detectMac);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   // WP 1.5: resets itself on channel switch and unmount (generation-guarded inside the hook).
   const uploads = useAttachmentUploads(channel.channelId);
   const attachButtonRef = useRef<HTMLButtonElement>(null);
@@ -171,7 +182,7 @@ export function ConversationThread({
     latestPageIdsRef.current = new Set([...latestPageIdsRef.current, sent.messageId]);
     setDraft((current) => (current === sent.body ? "" : current));
     setDraftReferences([]);
-    setMentionQuery(null);
+    resetMention();
     const withSentMessage = mergeMessages(messagesRef.current ?? [], [
       sentMessageRow(sent, channel.channelId, meId, meDisplayName),
     ]);
@@ -381,7 +392,7 @@ export function ConversationThread({
     setOlderCursor(null);
     setDraft("");
     setDraftReferences([]);
-    setMentionQuery(null);
+    resetMention();
     setLoadError(null);
     setRefreshError(false);
     setPatient(null);
@@ -402,7 +413,7 @@ export function ConversationThread({
       generationRef.current += 1;
     };
     // loadLatest changes identity only with the channel (or client); every other input is read through a ref.
-  }, [loadLatest, resetSender, jumpReset, panelReset, setPatient]);
+  }, [loadLatest, resetSender, resetMention, jumpReset, panelReset, setPatient]);
 
   // A new anchor on the same channel re-reads around it without touching the draft, chips or an in-flight send.
   useEffect(() => {
@@ -464,19 +475,19 @@ export function ConversationThread({
       setMentionQuery(null);
       return;
     }
-    if (mentionQuery && mentionCandidates.length > 0) {
+    if (mentionQuery && mentionMenu.candidates.length > 0) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         setMentionIndex((index) =>
           event.key === "ArrowDown"
-            ? (index + 1) % mentionCandidates.length
-            : (index - 1 + mentionCandidates.length) % mentionCandidates.length,
+            ? (index + 1) % mentionMenu.candidates.length
+            : (index - 1 + mentionMenu.candidates.length) % mentionMenu.candidates.length,
         );
         return;
       }
       if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
         event.preventDefault();
-        chooseMention(mentionCandidates[mentionIndex]!);
+        chooseMention(mentionMenu.candidates[mentionMenu.activeIndex]!);
         return;
       }
     }
@@ -495,26 +506,6 @@ export function ConversationThread({
     const area = textareaRef.current;
     if (!area) return;
     applyTextEdit(area, insertText(area.value, area.selectionStart, area.selectionEnd, text));
-  }
-
-  function chooseMention(candidate: MentionCandidate): void {
-    if (!mentionQuery) return;
-    const textarea = textareaRef.current;
-    const cursor = textarea?.selectionStart ?? draft.length;
-    const chosen = insertMention({
-      draft,
-      references: draftReferences,
-      query: mentionQuery,
-      cursor,
-      candidate,
-    });
-    setDraft(chosen.draft);
-    setDraftReferences(chosen.references);
-    setMentionQuery(null);
-    window.requestAnimationFrame(() => {
-      textarea?.focus();
-      textarea?.setSelectionRange(chosen.caret, chosen.caret);
-    });
   }
 
   // The jump hook asks for a read of the latest (or requested) page through this. Bound after commit, not in render.
@@ -746,6 +737,7 @@ export function ConversationThread({
                 setDraft(next);
                 const cursor = event.target.selectionStart ?? next.length;
                 setMentionQuery(activeMentionQuery(next, cursor, nextReferences));
+                dismissMentionAdd();
                 if (sendError) clearSendError();
               }}
               onKeyDown={handleComposerKey}
@@ -767,15 +759,16 @@ export function ConversationThread({
               onInsert={insertSavedReply}
               onClosed={() => textareaRef.current?.focus()}
             />
-            {mentionQuery ? (
-              <MentionMenu
-                loading={mentionLoading}
-                error={mentionError}
-                candidates={mentionCandidates}
-                activeIndex={mentionIndex}
-                onChoose={chooseMention}
-                onRetry={retryMentions}
+            {pendingAdd ? (
+              <NonMemberMentionPrompt
+                channelId={channel.channelId}
+                person={pendingAdd}
+                canAdd={canAddMention}
+                onAdded={mentionAdded}
+                onDismiss={dismissMentionAdd}
               />
+            ) : mentionQuery ? (
+              <MentionMenu {...mentionMenu} />
             ) : null}
             <Button
               type="submit"

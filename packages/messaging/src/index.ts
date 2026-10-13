@@ -152,6 +152,7 @@ export type {
   DmEligibleStaffMember,
   CareTeamConversation,
   MentionCandidate,
+  MentionNonMember,
   AlertInboxItem,
 } from "./interfaces/route-service";
 export {

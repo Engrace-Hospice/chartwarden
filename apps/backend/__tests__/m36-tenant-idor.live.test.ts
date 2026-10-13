@@ -104,6 +104,8 @@ const ROUTES: Record<string, Verdict> = {
   "GET /api/v1/messaging/channels/:id/messages": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/messages/:messageId/thread": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/mention-candidates": { kind: "idor" },
+  // WP 2.3: names of colleagues outside the channel; same channel gate, same random-id answer for everyone else.
+  "GET /api/v1/messaging/channels/:id/mention-non-members": { kind: "idor" },
   // WP 2.4 reactions and pins: channel-scoped, every refusal is the 404 a random id gets.
   "PUT /api/v1/messaging/channels/:id/messages/:messageId/reactions/:emoji": { kind: "idor" },
   "DELETE /api/v1/messaging/channels/:id/messages/:messageId/reactions/:emoji": { kind: "idor" },
@@ -725,6 +727,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       "GET /api/v1/messaging/channels/:id",
       "GET /api/v1/messaging/channels/:id/messages",
       "GET /api/v1/messaging/channels/:id/mention-candidates",
+      "GET /api/v1/messaging/channels/:id/mention-non-members",
     ];
     it("legitimate members read (the attacks below are not vacuous)", async () => {
       for (const ch of [dmA, locA]) {

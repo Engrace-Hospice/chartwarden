@@ -1418,6 +1418,7 @@ import {
   wireAlertRuleSeed,
   wireM36DeliveryTenancy,
 } from "./modules/36-messaging/index";
+import { createMentionActorNameResolver } from "./modules/36-messaging/mention-non-member-service-db";
 import {
   channelHintAudience,
   endChannelMembershipsForUser,
@@ -8273,7 +8274,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           // Alert-worthy: the pipeline has not been able to judge this file for a long time (the row stays pending and is
           // retried hourly; it is NOT quarantined, because "the scanner was down" is not a verdict).
           onScanUnavailable: (context) =>
-            app.log.error(context, "M36 attachment scan unavailable (row stays pending; check the scanner / bucket)"),
+            app.log.error(
+              context,
+              "M36 attachment scan unavailable (row stays pending; check the scanner / bucket)",
+            ),
           onReapError: (context, err) =>
             app.log.warn(
               { ...context, reason: err instanceof Error ? err.message : "unknown" },
@@ -9386,6 +9390,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           buildM36MessageMentionConsumer({
             alerts: getSeam("AlertEmitter") as AlertEmitter,
             messaging: createDbMessagingRouteService(dbHandle.db),
+            actorDisplayName: createMentionActorNameResolver(dbHandle.db),
           }),
           // GAP-039/040 — M13's missed-dose / PRN-reassessment-overdue / reconciliation / kit-return alerts
           // (M13 spec §4.9): previously unconsumed (M36 sat on the seam-consumer list).

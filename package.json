@@ -499,6 +499,7 @@
     "test:m36:drafts:live": "vitest run apps/backend/__tests__/m36-drafts.live.test.ts",
     "test:m36:templates:live": "vitest run apps/backend/__tests__/m36-message-templates.live.test.ts",
     "test:m36:review:live": "vitest run apps/backend/__tests__/m36-tranche-b-review.live.test.ts",
+    "test:m36:mentions:live": "vitest run apps/backend/__tests__/m36-mentions.live.test.ts",
     "test:m2:link-redemption:live": "vitest run apps/backend/__tests__/m2-link-redemption.live.test.ts",
     "test:m2:auth-hardening:live": "vitest run apps/backend/__tests__/m2-auth-hardening.live.test.ts",
     "test:m3:role-templates:live": "vitest run apps/backend/__tests__/m3-role-templates.live.test.ts",

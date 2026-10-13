@@ -157869,6 +157869,79 @@
         }
       }
     },
+    "/api/v1/messaging/channels/{id}/mention-non-members": {
+      "get": {
+        "operationId": "getApiV1MessagingChannelsByIdMentionnonmembers",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Search colleagues who are not in this conversation (names only; canAdd tells whether the caller may add them)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "people",
+                    "canAdd"
+                  ],
+                  "properties": {
+                    "people": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "entityId",
+                          "displayName"
+                        ],
+                        "properties": {
+                          "entityId": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "canAdd": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/channels/{id}/messages": {
       "get": {
         "operationId": "getApiV1MessagingChannelsByIdMessages",

@@ -1192,3 +1192,16 @@ a.wx-message-reference:hover {
 .wx-attachment-tray > .wx-composer-error:empty {
   position: absolute;
 }
+
+/* WP 2.3: the "add to this conversation?" prompt reuses the mention popup surface. */
+.wx-mention-add-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem 0.35rem;
+}
+
+.wx-mention-add .wx-mention-add-actions button {
+  display: inline-flex;
+  width: auto;
+}
