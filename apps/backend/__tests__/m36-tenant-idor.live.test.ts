@@ -1010,6 +1010,38 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       expect((await thread(u2)).json().root.replyCount).toBe(5);
     });
 
+    it("a reply to a reply is refused (422), a quote of a reply is not, and a reply to a root still works", async () => {
+      const route = "POST /api/v1/messaging/channels/:id/messages";
+      const toReply = await call(
+        route,
+        u1,
+        { id: thr },
+        { body: "nested", parentMessageId: replyIds[0] },
+      );
+      expect(toReply.statusCode, toReply.body).toBe(422);
+      expect(toReply.body).toContain("PARENT_MESSAGE_IS_REPLY");
+      const quoted = await call(
+        route,
+        u1,
+        { id: thr },
+        { body: "quoting", quotedMessageId: replyIds[0] },
+      );
+      expect(quoted.statusCode, quoted.body).toBe(201);
+      const toRoot = await call(
+        route,
+        u1,
+        { id: thr },
+        { body: "ok reply", parentMessageId: root },
+      );
+      expect(toRoot.statusCode, toRoot.body).toBe(201);
+      // the refusal wrote nothing: no row has a reply as its parent
+      expect(
+        await cell(
+          `SELECT count(*)::int AS n FROM message c JOIN message p ON p.id = c.parent_message_id WHERE p.parent_message_id IS NOT NULL`,
+        ),
+      ).toBe(0);
+    });
+
     it("a malformed cursor is a 400 on the thread read and the channel list, never a 500 and never a silent first page", async () => {
       const b64 = (text: string) => Buffer.from(text, "utf8").toString("base64url");
       const bad = [

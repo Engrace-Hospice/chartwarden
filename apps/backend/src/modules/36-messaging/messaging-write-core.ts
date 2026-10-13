@@ -153,12 +153,20 @@ export async function insertEncryptedMessage(
   ] as const) {
     if (!id) continue;
     const found = (await tx
-      .select({ channelId: MSG.channelId })
+      .select({ channelId: MSG.channelId, parentMessageId: MSG.parentMessageId })
       .from(MSG)
       .where(and(eq(MSG.organizationId, args.orgId), eq(MSG.id, id)))
-      .limit(1)) as Array<{ channelId: string }>;
+      .limit(1)) as Array<{ channelId: string; parentMessageId: string | null }>;
     if (found[0]?.channelId !== args.channelId) {
       throw new WardenXError(code, `${what} message must be in the same channel`, 422);
+    }
+    // WP 2.2: threads are one level. A reply's parent is a thread root, never another reply (quoting a reply is fine).
+    if (id === args.parentMessageId && found[0]?.parentMessageId) {
+      throw new WardenXError(
+        "PARENT_MESSAGE_IS_REPLY",
+        "a reply must target the thread's root message, not another reply",
+        422,
+      );
     }
   }
   const stored = storedBodyFor(args);

@@ -574,6 +574,13 @@ export function createInMemoryMessagingService(
             422,
           );
         }
+        if (parent.parentMessageId) {
+          throw new WardenXError(
+            "PARENT_MESSAGE_IS_REPLY",
+            "a reply must target the thread's root message, not another reply",
+            422,
+          );
+        }
       }
       const messageId = id("msg");
       const createdAt = iso();

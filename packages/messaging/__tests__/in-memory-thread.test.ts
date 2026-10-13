@@ -94,4 +94,15 @@ describe("in-memory service: threads", () => {
     });
     expect(huge.replies).toHaveLength(3);
   });
+
+  it("refuses a reply to a reply (422), allows replying to the root and quoting is untouched", async () => {
+    const service = makeService();
+    const root = await send(service, "ch_1", "root");
+    const reply = await send(service, "ch_1", "reply", root.messageId);
+    await expect(send(service, "ch_1", "nested", reply.messageId)).rejects.toMatchObject({
+      code: "PARENT_MESSAGE_IS_REPLY",
+      statusCode: 422,
+    });
+    await expect(send(service, "ch_1", "again", root.messageId)).resolves.toBeTruthy();
+  });
 });
