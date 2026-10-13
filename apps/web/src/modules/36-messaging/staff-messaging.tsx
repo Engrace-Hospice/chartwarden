@@ -147,6 +147,22 @@ function OrganizationStaffMessaging({
     focusInboxAfterNotice.current = false;
     inboxHeadingRef.current?.focus();
   }, [accessEnded, activeId]);
+  // Picking a row on a narrow screen unmounts the list that held focus: hand it to the thread heading instead. Set
+  // only by a user pick, so wide layouts, deep links and realtime refreshes (which also change activeId) never steal it.
+  const threadHeadingRef = useRef<HTMLHeadingElement>(null);
+  const focusThreadAfterPick = useRef(false);
+  useEffect(() => {
+    if (activeId === null || !focusThreadAfterPick.current) return;
+    focusThreadAfterPick.current = false;
+    threadHeadingRef.current?.focus();
+  }, [activeId]);
+  const pickConversation = useCallback(
+    (id: string | null): void => {
+      focusThreadAfterPick.current = narrow && id !== null;
+      setActiveId(id);
+    },
+    [narrow],
+  );
   const [newConversationOpen, setNewConversationOpen] = useState(false);
   const [departmentOpen, setDepartmentOpen] = useState(false);
   const [scheduledOpen, setScheduledOpen] = useState(requestedScheduled);
@@ -413,7 +429,7 @@ function OrganizationStaffMessaging({
           errorCorrelationId={errorCorrelationId}
           onQueryChange={setQuery}
           onFilterChange={setFilter}
-          onSelect={setActiveId}
+          onSelect={pickConversation}
           onRetry={() => void loadChannels()}
           onNewConversation={() => setNewConversationOpen(true)}
           onNewDepartment={canAnnounce ? () => setDepartmentOpen(true) : undefined}
@@ -425,6 +441,7 @@ function OrganizationStaffMessaging({
               key={`${organizationId}:${activeChannel.channelId}`}
               channel={activeChannel}
               outbox={outbox}
+              headingRef={threadHeadingRef}
               meId={userId}
               meDisplayName={userDisplayName}
               onBack={() => {

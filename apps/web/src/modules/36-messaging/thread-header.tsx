@@ -1,7 +1,7 @@
 // The conversation header and the patient-context pane of ConversationThread (moved out of it unchanged in WP 2.2 to
 // keep that file under the line ceiling).
 import { Glyph } from "@wardenx/ui";
-import { type JSX, useEffect, useRef } from "react";
+import { type JSX, type RefObject, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import type { ChannelSummary, PatientHeaderInfo } from "./messaging-types";
 import { initialsOf } from "./messaging-utils";
@@ -16,6 +16,8 @@ export interface ThreadHeaderProps {
   onToggleContext: () => void;
   /** WP 2.9: open the member list of a department channel (passed only to someone who may manage members). */
   onShowMembers?: () => void;
+  /** Receives focus when the user opens this conversation from the inbox on a narrow screen. */
+  headingRef?: RefObject<HTMLHeadingElement>;
 }
 
 export function ThreadHeader({
@@ -27,6 +29,7 @@ export function ThreadHeader({
   onBack,
   onToggleContext,
   onShowMembers,
+  headingRef,
 }: ThreadHeaderProps): JSX.Element {
   return (
     <header className="wx-messaging-thread-header">
@@ -42,7 +45,9 @@ export function ThreadHeader({
         {channel.kind === "care_team" ? <Glyph name="users" size={18} /> : initialsOf(title)}
       </span>
       <div className="wx-messaging-thread-title">
-        <h2>{channel.kind === "care_team" && patient ? `${title} · Care Team` : title}</h2>
+        <h2 ref={headingRef} tabIndex={-1}>
+          {channel.kind === "care_team" && patient ? `${title} · Care Team` : title}
+        </h2>
         <span>{patient ? `MRN ${patient.mrn}` : subtitle}</span>
       </div>
       {channel.archivedAt ? (
