@@ -8,14 +8,14 @@ import {
   LoadingSpinner,
   useRequestGuard,
 } from "@wardenx/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 
-/** The outcome of one read: data, a 403 (no access), or any other failure. */
+/** The outcome of one read: data, a 403 (no access), or any other failure (optionally with a server message). */
 export type ReadResult<T> =
   | { readonly kind: "ok"; readonly data: T }
   | { readonly kind: "forbidden" }
-  | { readonly kind: "error" };
+  | { readonly kind: "error"; readonly message?: string };
 
 export type LoadState<T> = { readonly kind: "loading" } | ReadResult<T>;
 
@@ -30,27 +30,67 @@ export function toReadResult<T>(
   return { kind: "ok", data };
 }
 
-/** Run `read` on mount and whenever it changes; `reload` re-runs it. Only the newest response lands. */
+/**
+ * Run `read` on mount and whenever it changes. `reload` goes back to the loading state; `refresh` refetches in
+ * place (the current view stays mounted, so focus is not lost); `setData` applies a functional update to ready
+ * data (optimistic edits). Only the newest response lands.
+ */
 export function useLoad<T>(read: () => Promise<ReadResult<T>>): {
   state: LoadState<T>;
   reload: () => void;
+  refresh: () => void;
+  setData: (update: (current: T) => T) => void;
 } {
   const guard = useRequestGuard();
   const [state, setState] = useState<LoadState<T>>({ kind: "loading" });
-  const reload = useCallback(() => {
-    const isCurrent = guard();
-    setState({ kind: "loading" });
-    read().then(
-      (result) => {
-        if (isCurrent()) setState(result);
-      },
-      () => {
-        if (isCurrent()) setState({ kind: "error" });
-      },
-    );
-  }, [read, guard]);
+  const run = useCallback(
+    (silent: boolean) => {
+      const isCurrent = guard();
+      if (!silent) setState({ kind: "loading" });
+      read().then(
+        (result) => {
+          if (isCurrent()) setState(result);
+        },
+        () => {
+          if (isCurrent()) setState({ kind: "error" });
+        },
+      );
+    },
+    [read, guard],
+  );
+  const reload = useCallback(() => run(false), [run]);
+  const refresh = useCallback(() => run(true), [run]);
+  const setData = useCallback((update: (current: T) => T) => {
+    setState((s) => (s.kind === "ok" ? { kind: "ok", data: update(s.data) } : s));
+  }, []);
   useEffect(() => reload(), [reload]);
-  return { state, reload };
+  return { state, reload, refresh, setData };
+}
+
+/**
+ * Keeps keyboard focus through a pending state that disables or unmounts the focused control. Call the returned
+ * `capture()` when the action starts; when `pending` clears, focus returns to the captured element (or `fallback`
+ * if it is gone) provided focus was lost to the page body.
+ */
+export function useRestoreFocus(
+  pending: boolean,
+  fallback?: () => HTMLElement | null | undefined,
+): () => void {
+  const was = useRef(false);
+  const captured = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (was.current && !pending) {
+      const active = document.activeElement;
+      const lost = !active || active === document.body || (active as HTMLInputElement).disabled;
+      const previous = captured.current;
+      if (lost) (previous?.isConnected ? previous : fallback?.())?.focus();
+    }
+    was.current = pending;
+  });
+  return useCallback(() => {
+    const active = document.activeElement;
+    captured.current = active instanceof HTMLElement && active !== document.body ? active : null;
+  }, []);
 }
 
 export function StateLoading({ label }: { label: string }): JSX.Element {
@@ -103,6 +143,7 @@ export function renderLoadFallback<T>(
 ): JSX.Element | null {
   if (state.kind === "loading") return <StateLoading label={opts.loading} />;
   if (state.kind === "forbidden") return <StateForbidden what={opts.noAccess} />;
-  if (state.kind === "error") return <StateError message={opts.error} onRetry={opts.retry} />;
+  if (state.kind === "error")
+    return <StateError message={state.message ?? opts.error} onRetry={opts.retry} />;
   return null;
 }

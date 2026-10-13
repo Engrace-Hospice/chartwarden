@@ -71,6 +71,32 @@ describe("Alert deliveries", () => {
     expect(urls[1]).toContain("before=2026-10-01T10%3A00%3A00.000Z");
   });
 
+  it("drops a late older page when the filter changed meanwhile", async () => {
+    let releaseStale: (r: Response) => void = () => {};
+    mount(
+      (req) => {
+        const url = new URL(req.url);
+        if (url.searchParams.get("before"))
+          return new Promise<Response>((resolve) => {
+            releaseStale = resolve;
+          });
+        return url.searchParams.get("status") === "sent"
+          ? json({ items: [delivery("sent1", "sent")], nextBefore: null })
+          : json({ items: [delivery("f1")], nextBefore: "2026-10-01T10:00:00.000Z" });
+      },
+      <AlertDeliveries />,
+    );
+    await screen.findByText("cat-f1");
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    fireEvent.change(screen.getByLabelText("Filter by delivery status"), {
+      target: { value: "sent" },
+    });
+    await screen.findByText("cat-sent1");
+    releaseStale(json({ items: [delivery("stale")], nextBefore: null }));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByText("cat-stale")).toBeNull();
+  });
+
   it("filters by status", async () => {
     const statuses: (string | null)[] = [];
     mount(

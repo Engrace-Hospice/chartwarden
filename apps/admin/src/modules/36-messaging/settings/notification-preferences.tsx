@@ -6,10 +6,11 @@ import { Button, TextField, useApiClient } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 import { useCallback, useState } from "react";
 import type { FormEvent, JSX } from "react";
+import { renderLoadFallback, useLoad, useRestoreFocus } from "../ui";
 import { humanize } from "./alert-rules";
-import { toResult, useLoad } from "./api";
+import { asRead, toResult } from "./api";
 import { type QuietHours, QuietHoursEditor } from "./quiet-hours";
-import { type Banner, BannerView, PageHead, renderLoadFallback } from "./ui";
+import { type Banner, BannerView, PageHead } from "./ui";
 
 type PreferencesView =
   operations["getApiV1NotificationsPreferences"]["responses"][200]["content"]["application/json"];
@@ -62,13 +63,14 @@ export function NotificationPreferences(): JSX.Element {
   const client = useApiClient();
   const load = useCallback(async () => {
     const res = await client.GET("/api/v1/notifications/preferences");
-    return toResult(res, "Notification preferences unavailable.");
+    return asRead(toResult(res, "Notification preferences unavailable."));
   }, [client]);
   const { state, reload } = useLoad(load);
   const fallback = renderLoadFallback(state, {
-    loadingLabel: "Loading notification preferences…",
-    what: "notification preferences",
-    onRetry: reload,
+    loading: "Loading notification preferences…",
+    error: "Notification preferences unavailable.",
+    noAccess: "notification preferences",
+    retry: reload,
   });
   return (
     <div className="wx-list-drawer-main">
@@ -76,7 +78,7 @@ export function NotificationPreferences(): JSX.Element {
         title="Notification preferences"
         sub="Choose how and when you are alerted. These settings apply to you only."
       />
-      {fallback ?? (state.status === "ready" ? <PreferencesForm initial={state.data} /> : null)}
+      {fallback ?? (state.kind === "ok" ? <PreferencesForm initial={state.data} /> : null)}
     </div>
   );
 }
@@ -86,9 +88,12 @@ function PreferencesForm({ initial }: { initial: PreferencesView }): JSX.Element
   const [draft, setDraft] = useState<Draft>(() => toDraft(initial));
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState<Banner | null>(null);
+  // The fieldsets and Save button are disabled while saving, which drops focus; put it back afterwards.
+  const captureFocus = useRestoreFocus(saving);
 
   const save = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
+    captureFocus();
     setSaving(true);
     setBanner(null);
     const res = await client.PUT("/api/v1/notifications/preferences", {
@@ -137,18 +142,13 @@ function PreferencesForm({ initial }: { initial: PreferencesView }): JSX.Element
                       className="size-5"
                       aria-label={`${humanize(category)} ${severity} via ${humanize(channel)}`}
                       checked={draft.routingMap[category]?.[severity]?.includes(channel) ?? false}
-                      onChange={(e) =>
-                        setDraft({
-                          ...draft,
-                          routingMap: toggleChannel(
-                            draft.routingMap,
-                            category,
-                            severity,
-                            channel,
-                            e.target.checked,
-                          ),
-                        })
-                      }
+                      onChange={(e) => {
+                        const on = e.target.checked;
+                        setDraft((d) => ({
+                          ...d,
+                          routingMap: toggleChannel(d.routingMap, category, severity, channel, on),
+                        }));
+                      }}
                     />
                     {humanize(channel)}
                   </label>
@@ -161,7 +161,7 @@ function PreferencesForm({ initial }: { initial: PreferencesView }): JSX.Element
       <QuietHoursEditor
         value={draft.quietHours}
         disabled={saving}
-        onChange={(quietHours) => setDraft({ ...draft, quietHours })}
+        onChange={(update) => setDraft((d) => ({ ...d, quietHours: update(d.quietHours) }))}
       />
       <fieldset className="wx-drawer-card wx-form-stack" disabled={saving}>
         <legend>Vacation forwarding</legend>
@@ -169,17 +169,23 @@ function PreferencesForm({ initial }: { initial: PreferencesView }): JSX.Element
           label="Forward alerts to (user ID)"
           hint="Leave empty to not forward."
           value={draft.vacationForwardToUserId}
-          onChange={(e) => setDraft({ ...draft, vacationForwardToUserId: e.target.value })}
+          onChange={(e) => {
+            const vacationForwardToUserId = e.target.value;
+            setDraft((d) => ({ ...d, vacationForwardToUserId }));
+          }}
         />
         <TextField
           type="date"
           label="Forward until"
           value={draft.vacationUntil}
-          onChange={(e) => setDraft({ ...draft, vacationUntil: e.target.value })}
+          onChange={(e) => {
+            const vacationUntil = e.target.value;
+            setDraft((d) => ({ ...d, vacationUntil }));
+          }}
         />
       </fieldset>
       <div className="wx-drawer-actions">
-        <Button type="submit" loading={saving}>
+        <Button type="submit" size="lg" loading={saving}>
           Save preferences
         </Button>
       </div>

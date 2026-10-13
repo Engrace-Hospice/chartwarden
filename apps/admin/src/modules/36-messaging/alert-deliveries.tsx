@@ -1,4 +1,4 @@
-import { Button, StatusPill, type StatusTone, useApiClient } from "@wardenx/ui";
+import { Button, StatusPill, type StatusTone, useApiClient, useRequestGuard } from "@wardenx/ui";
 // apps/admin/src/modules/36-messaging — Alert deliveries (`/admin/messaging/alert-deliveries`, M36 §4.1, GAP-165).
 // Platform-ops failures-and-audit drill over GET /api/v1/admin/messaging/alert-deliveries: delivery METADATA only
 // (the server returns no recipient, destination or payload), cross-tenant, keyset-paginated via `nextBefore`.
@@ -63,24 +63,37 @@ export function AlertDeliveries(): JSX.Element {
     },
     [client, status],
   );
-  const { state, reload } = useLoad(fetchPage);
+  const { state, reload, refresh } = useLoad(fetchPage);
+  const moreGuard = useRequestGuard();
 
   // A new filter or a reload starts again from the first page.
+  // Either one also invalidates an in-flight "Load more": its page belongs to the old filter/cursor.
+  const dropPendingMore = (): void => {
+    moreGuard();
+    setMoreLoading(false);
+  };
   const onFilter = (next: DeliveryStatusFilter): void => {
+    dropPendingMore();
     setOlder(null);
     setMoreError(false);
     setStatus(next);
   };
+  // Refreshes in place (no loading state) so the Refresh button keeps focus.
   const onRefresh = (): void => {
+    dropPendingMore();
     setOlder(null);
     setMoreError(false);
-    reload();
+    refresh();
   };
 
   const loadMore = async (cursor: string, prior: readonly DeliveryRow[]): Promise<void> => {
+    const isCurrent = moreGuard();
     setMoreLoading(true);
     setMoreError(false);
-    const result = await fetchPage(cursor);
+    const result = await fetchPage(cursor).catch(
+      (): ReadResult<DeliveryPage> => ({ kind: "error" }),
+    );
+    if (!isCurrent()) return;
     setMoreLoading(false);
     if (result.kind !== "ok") return setMoreError(true);
     setOlder({ rows: [...prior, ...result.data.items], next: result.data.nextBefore });
@@ -90,7 +103,7 @@ export function AlertDeliveries(): JSX.Element {
     loading: "Loading alert deliveries…",
     error: "Could not load alert deliveries.",
     noAccess: "alert deliveries",
-    retry: onRefresh,
+    retry: reload,
   });
   const firstPage = state.kind === "ok" ? state.data : null;
   const rows = firstPage ? [...firstPage.items, ...(older?.rows ?? [])] : [];
@@ -107,6 +120,7 @@ export function AlertDeliveries(): JSX.Element {
         </div>
         <div className="wx-list-toolbar-end">
           <select
+            className="min-h-11"
             value={status}
             onChange={(ev) => onFilter(ev.target.value as DeliveryStatusFilter)}
             aria-label="Filter by delivery status"

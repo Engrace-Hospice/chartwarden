@@ -21,7 +21,7 @@ const HEALTH: Record<IntegrityHealth, { label: string; tone: StatusTone }> = {
 export function IntegrityTile({ source }: { source?: IntegritySource }): JSX.Element {
   const client = useApiClient();
   const read = useMemo(() => source ?? auditIntegritySource(client), [source, client]);
-  const { state, reload } = useLoad(read);
+  const { state, reload, refresh } = useLoad(read);
   const fallback = renderLoadFallback(state, {
     loading: "Loading integrity status…",
     error: "Could not load integrity job status.",
@@ -38,7 +38,7 @@ export function IntegrityTile({ source }: { source?: IntegritySource }): JSX.Ele
           <p>Latest hash-verification run and any integrity findings, from the audit trail.</p>
         </div>
         <div className="wx-list-toolbar-end">
-          <Button tone="secondary" size="lg" onClick={reload}>
+          <Button tone="secondary" size="lg" onClick={refresh}>
             Refresh
           </Button>
         </div>

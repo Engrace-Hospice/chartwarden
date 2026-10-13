@@ -3,12 +3,15 @@
 // severity floor and recipient resolver are editable. Edits are optimistic: the row changes at once and rolls
 // back with a banner if the server refuses (e.g. SYSTEM_LOCKED when disabling a locked rule). A first edit of a
 // platform default clones it server-side, so the row adopts the id the PATCH returns. Locked rules are read-only.
+// Rows carry a stable client `key` so adopting a new ruleId neither remounts the row (focus) nor mis-targets a
+// concurrent edit; every state change is a functional update touching only the edited row.
 import { StatusPill, useApiClient } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
 import { useCallback, useState } from "react";
 import type { JSX } from "react";
-import { type ApiResult, toResult, useLoad } from "./api";
-import { type Banner, BannerView, PageHead, StateEmpty, renderLoadFallback } from "./ui";
+import { type ReadResult, StateEmpty, renderLoadFallback, useLoad } from "../ui";
+import { asRead, toResult } from "./api";
+import { type Banner, BannerView, PageHead } from "./ui";
 
 export type AlertRule =
   operations["getApiV1Alertrules"]["responses"][200]["content"]["application/json"]["rules"][number];
@@ -31,28 +34,34 @@ export const humanize = (value: string): string => {
   return text.charAt(0).toUpperCase() + text.slice(1);
 };
 
+/** A rule plus the stable key it keeps even when a clone changes its server id. */
+interface RuleRow {
+  readonly key: string;
+  readonly rule: AlertRule;
+}
+
 const SELECT_CLASS = "min-h-11 rounded-lg border px-2 focus-visible:outline-2";
 
 export function AlertRules(): JSX.Element {
   const client = useApiClient();
-  const load = useCallback(async (): Promise<ApiResult<AlertRule[]>> => {
+  const load = useCallback(async (): Promise<ReadResult<RuleRow[]>> => {
     const res = await client.GET("/api/v1/alert-rules");
     const result = toResult(res, "Alert rules unavailable.");
-    return result.ok ? { ok: true, data: result.data.rules } : result;
+    return asRead(
+      result.ok
+        ? { ok: true, data: result.data.rules.map((rule) => ({ key: rule.ruleId, rule })) }
+        : result,
+    );
   }, [client]);
   const { state, reload, setData } = useLoad(load);
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
   const [banner, setBanner] = useState<Banner | null>(null);
 
-  const patchRule = async (
-    rules: AlertRule[],
-    rule: AlertRule,
-    patch: RulePatch,
-  ): Promise<void> => {
-    const swap = (next: AlertRule): AlertRule[] =>
-      rules.map((r) => (r.ruleId === rule.ruleId ? next : r));
-    setData(swap({ ...rule, ...patch }));
-    setPending((p) => new Set(p).add(rule.ruleId));
+  const patchRule = async ({ key, rule }: RuleRow, patch: RulePatch): Promise<void> => {
+    const put = (next: AlertRule): void =>
+      setData((rows) => rows.map((r) => (r.key === key ? { key, rule: next } : r)));
+    put({ ...rule, ...patch });
+    setPending((p) => new Set(p).add(key));
     setBanner(null);
     const res = await client.PATCH("/api/v1/alert-rules/{id}", {
       params: { path: { id: rule.ruleId } },
@@ -61,22 +70,23 @@ export function AlertRules(): JSX.Element {
     const result = toResult(res, "Could not update the rule.");
     setPending((p) => {
       const next = new Set(p);
-      next.delete(rule.ruleId);
+      next.delete(key);
       return next;
     });
     if (result.ok) {
-      setData(swap(result.data));
+      put(result.data);
       setBanner({ ok: true, message: `Updated ${humanize(rule.eventType)}.` });
     } else {
-      setData(rules);
+      put(rule);
       setBanner({ ok: false, message: `${result.message} The change was undone.` });
     }
   };
 
   const fallback = renderLoadFallback(state, {
-    loadingLabel: "Loading alert rules…",
-    what: "alert rules",
-    onRetry: reload,
+    loading: "Loading alert rules…",
+    error: "Alert rules unavailable.",
+    noAccess: "alert rules",
+    retry: reload,
   });
   return (
     <div className="wx-list-drawer-main">
@@ -86,13 +96,13 @@ export function AlertRules(): JSX.Element {
       />
       <BannerView banner={banner} />
       {fallback ??
-        (state.status === "ready" && state.data.length === 0 ? (
+        (state.kind === "ok" && state.data.length === 0 ? (
           <StateEmpty>No alert rules are configured.</StateEmpty>
-        ) : state.status === "ready" ? (
+        ) : state.kind === "ok" ? (
           <RulesTable
-            rules={state.data}
+            rows={state.data}
             pending={pending}
-            onPatch={(rule, patch) => void patchRule(state.data, rule, patch)}
+            onPatch={(row, patch) => void patchRule(row, patch)}
           />
         ) : null)}
     </div>
@@ -100,13 +110,13 @@ export function AlertRules(): JSX.Element {
 }
 
 function RulesTable({
-  rules,
+  rows,
   pending,
   onPatch,
 }: {
-  rules: AlertRule[];
+  rows: readonly RuleRow[];
   pending: ReadonlySet<string>;
-  onPatch: (rule: AlertRule, patch: RulePatch) => void;
+  onPatch: (row: RuleRow, patch: RulePatch) => void;
 }): JSX.Element {
   return (
     <div className="wx-list-table-wrap">
@@ -122,11 +132,16 @@ function RulesTable({
           </tr>
         </thead>
         <tbody>
-          {rules.map((rule) => {
+          {rows.map((row) => {
+            const { rule } = row;
             const name = humanize(rule.eventType);
-            const readOnly = rule.systemLocked || pending.has(rule.ruleId);
+            // A pending row is aria-disabled, not disabled: a disabled control drops keyboard focus.
+            const busy = pending.has(row.key);
+            const patchRow = (patch: RulePatch): void => {
+              if (!busy) onPatch(row, patch);
+            };
             return (
-              <tr key={rule.ruleId} aria-busy={pending.has(rule.ruleId) || undefined}>
+              <tr key={row.key} aria-busy={busy || undefined}>
                 <td>
                   <span className="wx-row-title">{name}</span>
                   <span className="wx-row-sub">{humanize(rule.category)}</span>
@@ -137,9 +152,10 @@ function RulesTable({
                       type="checkbox"
                       className="size-5 focus-visible:outline-2"
                       checked={rule.enabled}
-                      disabled={readOnly}
+                      disabled={rule.systemLocked}
+                      aria-disabled={busy || undefined}
                       aria-label={`${name} enabled`}
-                      onChange={(e) => onPatch(rule, { enabled: e.target.checked })}
+                      onChange={(e) => patchRow({ enabled: e.target.checked })}
                     />
                     <span>{rule.enabled ? "On" : "Off"}</span>
                   </label>
@@ -149,9 +165,10 @@ function RulesTable({
                     className={SELECT_CLASS}
                     aria-label={`${name} severity floor`}
                     value={rule.severityFloor}
-                    disabled={readOnly}
+                    disabled={rule.systemLocked}
+                    aria-disabled={busy || undefined}
                     onChange={(e) =>
-                      onPatch(rule, {
+                      patchRow({
                         severityFloor: e.target.value as AlertRule["severityFloor"],
                       })
                     }
@@ -168,9 +185,10 @@ function RulesTable({
                     className={SELECT_CLASS}
                     aria-label={`${name} recipients`}
                     value={rule.recipientResolver}
-                    disabled={readOnly}
+                    disabled={rule.systemLocked}
+                    aria-disabled={busy || undefined}
                     onChange={(e) =>
-                      onPatch(rule, {
+                      patchRow({
                         recipientResolver: e.target.value as AlertRule["recipientResolver"],
                       })
                     }

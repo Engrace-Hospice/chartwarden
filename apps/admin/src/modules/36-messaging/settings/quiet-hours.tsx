@@ -29,10 +29,11 @@ export function QuietHoursEditor({
 }: {
   value: QuietHours;
   disabled: boolean;
-  onChange: (next: QuietHours) => void;
+  /** Receives a functional update so rapid edits compose instead of overwriting each other. */
+  onChange: (update: (current: QuietHours) => QuietHours) => void;
 }): JSX.Element {
-  const setRange = (index: number, next: QuietRange): void =>
-    onChange({ ...value, ranges: value.ranges.map((r, i) => (i === index ? next : r)) });
+  const setRange = (index: number, patch: (range: QuietRange) => QuietRange): void =>
+    onChange((v) => ({ ...v, ranges: v.ranges.map((r, i) => (i === index ? patch(r) : r)) }));
   return (
     <fieldset className="wx-drawer-card grid gap-3" disabled={disabled}>
       <legend>Quiet hours</legend>
@@ -41,18 +42,19 @@ export function QuietHoursEditor({
           label="Time zone"
           hint="IANA name, for example America/Chicago."
           value={value.tz}
-          onChange={(e) => onChange({ ...value, tz: e.target.value })}
+          onChange={(e) => {
+            const tz = e.target.value;
+            onChange((v) => ({ ...v, tz }));
+          }}
         />
         <SelectField
           label="Still notify me for"
           options={SEVERITY_OPTIONS}
           value={value.severityOverride}
-          onChange={(e) =>
-            onChange({
-              ...value,
-              severityOverride: e.target.value as QuietHours["severityOverride"],
-            })
-          }
+          onChange={(e) => {
+            const severityOverride = e.target.value as QuietHours["severityOverride"];
+            onChange((v) => ({ ...v, severityOverride }));
+          }}
         />
       </div>
       {value.ranges.map((range, index) => (
@@ -67,14 +69,15 @@ export function QuietHoursEditor({
                   className="size-5"
                   checked={range.daysOfWeek.includes(d)}
                   aria-label={`Range ${index + 1} ${day}`}
-                  onChange={(e) =>
-                    setRange(index, {
-                      ...range,
-                      daysOfWeek: e.target.checked
-                        ? [...range.daysOfWeek, d].sort()
-                        : range.daysOfWeek.filter((x) => x !== d),
-                    })
-                  }
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    setRange(index, (r) => ({
+                      ...r,
+                      daysOfWeek: on
+                        ? [...r.daysOfWeek.filter((x) => x !== d), d].sort()
+                        : r.daysOfWeek.filter((x) => x !== d),
+                    }));
+                  }}
                 />
                 {day}
               </label>
@@ -85,19 +88,26 @@ export function QuietHoursEditor({
               type="time"
               label={`Range ${index + 1} start`}
               value={range.start}
-              onChange={(e) => setRange(index, { ...range, start: e.target.value })}
+              onChange={(e) => {
+                const start = e.target.value;
+                setRange(index, (r) => ({ ...r, start }));
+              }}
             />
             <TextField
               type="time"
               label={`Range ${index + 1} end`}
               value={range.end}
-              onChange={(e) => setRange(index, { ...range, end: e.target.value })}
+              onChange={(e) => {
+                const end = e.target.value;
+                setRange(index, (r) => ({ ...r, end }));
+              }}
             />
             <Button
               tone="tertiary"
+              size="lg"
               aria-label={`Remove range ${index + 1}`}
               onClick={() =>
-                onChange({ ...value, ranges: value.ranges.filter((_, i) => i !== index) })
+                onChange((v) => ({ ...v, ranges: v.ranges.filter((_, i) => i !== index) }))
               }
             >
               Remove
@@ -108,7 +118,8 @@ export function QuietHoursEditor({
       <div>
         <Button
           tone="secondary"
-          onClick={() => onChange({ ...value, ranges: [...value.ranges, NEW_RANGE] })}
+          size="lg"
+          onClick={() => onChange((v) => ({ ...v, ranges: [...v.ranges, NEW_RANGE] }))}
         >
           Add quiet range
         </Button>

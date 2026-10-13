@@ -3,7 +3,7 @@ import { Button, InlineAlert, SelectField, StatusPill, TextField, useApiClient }
 // List, add (POST) and remove (DELETE) members of one channel, with role + source shown per row. The server is the
 // authority on who may manage members (`messaging.manage_members` plus channel-scoped authority); a 403 on the list
 // or on a write is shown as no-access, never hidden.
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useParams } from "react-router-dom";
 import {
@@ -14,7 +14,7 @@ import {
   listMembers,
   removeMember,
 } from "./members-api";
-import { StateEmpty, renderLoadFallback, useLoad } from "./ui";
+import { StateEmpty, renderLoadFallback, useLoad, useRestoreFocus } from "./ui";
 
 const ROLE_LABELS: Record<MemberRole, string> = {
   owner: "Owner",
@@ -28,19 +28,33 @@ export function ChannelMembers(): JSX.Element {
   const { id: channelId = "" } = useParams<{ id: string }>();
   const client = useApiClient();
   const read = useCallback(() => listMembers(client, channelId), [client, channelId]);
-  const { state, reload } = useLoad(read);
+  const { state, reload, refresh } = useLoad(read);
   const [userId, setUserId] = useState("");
   const [role, setRole] = useState<MemberRole>("member");
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
-  const run = async (write: () => Promise<string | null>): Promise<boolean> => {
+  const addFormRef = useRef<HTMLFormElement>(null);
+  // Add/Remove disable controls while busy and a removed row unmounts its button: send focus back to the Add field.
+  const captureFocus = useRestoreFocus(busy, () => addFormRef.current?.querySelector("input"));
+
+  const focusAddField = (): void => addFormRef.current?.querySelector("input")?.focus();
+
+  const run = async (
+    write: () => Promise<string | null>,
+    opts: { movesFocusToAdd?: boolean } = {},
+  ): Promise<boolean> => {
+    captureFocus();
     setBusy(true);
     setFailure(null);
     const message = await write();
     setBusy(false);
     if (message) setFailure(message);
-    else reload();
+    else {
+      // A removed row takes its Remove button with it, so focus moves to a control that stays mounted.
+      if (opts.movesFocusToAdd) focusAddField();
+      refresh();
+    }
     return message === null;
   };
 
@@ -67,14 +81,19 @@ export function ChannelMembers(): JSX.Element {
           <p>Who can read and post in this channel, and how they got access.</p>
         </div>
         <div className="wx-list-toolbar-end">
-          <Button tone="secondary" size="lg" onClick={reload}>
+          <Button tone="secondary" size="lg" onClick={refresh}>
             Refresh
           </Button>
         </div>
       </header>
 
       {state.kind !== "forbidden" ? (
-        <form className="wx-list-toolbar" onSubmit={(ev) => void onAdd(ev)} aria-label="Add member">
+        <form
+          ref={addFormRef}
+          className="wx-list-toolbar"
+          onSubmit={(ev) => void onAdd(ev)}
+          aria-label="Add member"
+        >
           <TextField
             label="User ID"
             value={userId}
@@ -135,7 +154,11 @@ export function ChannelMembers(): JSX.Element {
                           size="lg"
                           disabled={busy}
                           aria-label={`Remove ${name}`}
-                          onClick={() => void run(() => removeMember(client, channelId, m.userId))}
+                          onClick={() =>
+                            void run(() => removeMember(client, channelId, m.userId), {
+                              movesFocusToAdd: true,
+                            })
+                          }
                         >
                           Remove
                         </Button>

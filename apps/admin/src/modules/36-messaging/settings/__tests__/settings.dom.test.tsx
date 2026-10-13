@@ -42,7 +42,7 @@ interface Call {
   path: string;
   body: Record<string, unknown> | null;
 }
-type Handler = (call: Call) => Response;
+type Handler = (call: Call) => Response | Promise<Response>;
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const denied = (status: number, message = "nope"): Response =>
@@ -142,6 +142,33 @@ describe("AlertRules", () => {
     expect((screen.getByLabelText("Sfv due enabled") as HTMLInputElement).checked).toBe(true);
   });
 
+  it("keeps other rows' optimistic edits across concurrent writes and rolls back only the failed row", async () => {
+    const OTHER = {
+      ...RULE,
+      ruleId: "44444444-4444-4444-8444-444444444444",
+      eventType: "visit.missed",
+    };
+    const pendingWrites = new Map<string, (r: Response) => void>();
+    mount(<AlertRules />, (c) => {
+      if (c.method === "GET") return json({ rules: [RULE, OTHER] });
+      return new Promise<Response>((resolve) => pendingWrites.set(c.path, resolve));
+    });
+    const a = (await screen.findByLabelText("Sfv due enabled")) as HTMLInputElement;
+    const b = screen.getByLabelText("Visit missed enabled") as HTMLInputElement;
+    fireEvent.click(a);
+    fireEvent.click(b);
+    await waitFor(() => expect(pendingWrites.size).toBe(2));
+    pendingWrites.get(`/api/v1/alert-rules/${ID}`)?.(json({ ...RULE, enabled: false }));
+    await screen.findByText("Updated Sfv due.");
+    // A's late success must not revert B's still-pending optimistic edit.
+    expect((screen.getByLabelText("Visit missed enabled") as HTMLInputElement).checked).toBe(false);
+    pendingWrites.get(`/api/v1/alert-rules/${OTHER.ruleId}`)?.(denied(409, "locked"));
+    await screen.findByText(/locked/);
+    // B rolls back; A's confirmed change survives.
+    expect((screen.getByLabelText("Visit missed enabled") as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText("Sfv due enabled") as HTMLInputElement).checked).toBe(false);
+  });
+
   it("disables controls for a system-locked rule", async () => {
     mount(<AlertRules />, () => json({ rules: [LOCKED] }));
     expect(
@@ -219,6 +246,8 @@ describe("DeliveryEndpoints", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Add endpoint" }));
     expect(await screen.findByText(/do not have access to delivery endpoints/)).toBeTruthy();
+    // The 403 is that action's banner; the form stays usable.
+    expect(screen.getByRole("button", { name: "Add endpoint" })).toBeTruthy();
   });
 
   it("explains a rejected code", async () => {

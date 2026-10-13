@@ -5,11 +5,12 @@
 // target held in component state). Add a GET /notifications/endpoints list route to show earlier ones.
 import { Button, SelectField, StatusPill, TextField, useApiClient } from "@wardenx/ui";
 import type { operations } from "@wardenx/ui";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
+import { StateEmpty, useRestoreFocus } from "../ui";
 import { humanize } from "./alert-rules";
 import { toResult } from "./api";
-import { type Banner, BannerView, PageHead, StateEmpty, StateNoAccess } from "./ui";
+import { type Banner, BannerView, PageHead } from "./ui";
 
 type EndpointView =
   operations["postApiV1NotificationsEndpoints"]["responses"][200]["content"]["application/json"];
@@ -31,16 +32,24 @@ export function DeliveryEndpoints(): JSX.Element {
   const [target, setTarget] = useState("");
   const [tokens, setTokens] = useState<Readonly<Record<string, string>>>({});
   const [busy, setBusy] = useState<string | null>(null);
-  const [forbidden, setForbidden] = useState(false);
   const [banner, setBanner] = useState<Banner | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  // Fields and buttons are disabled while an action is in flight (dropping focus), and a verified row loses its
+  // code field; focus goes back to where it was, else to the address field.
+  const captureFocus = useRestoreFocus(busy !== null, () =>
+    formRef.current?.querySelector("input"),
+  );
 
-  const fail = (message: string, isForbidden: boolean): void => {
-    if (isForbidden) setForbidden(true);
-    setBanner({ ok: false, message });
-  };
+  // A 403 on one action is that action's banner; it never hides the page or the endpoints already listed.
+  const fail = (message: string, isForbidden: boolean): void =>
+    setBanner({
+      ok: false,
+      message: isForbidden ? "You do not have access to delivery endpoints." : message,
+    });
 
   const register = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
+    captureFocus();
     setBusy("register");
     setBanner(null);
     const res = await client.POST("/api/v1/notifications/endpoints", {
@@ -55,6 +64,7 @@ export function DeliveryEndpoints(): JSX.Element {
   };
 
   const verify = async (endpoint: Endpoint): Promise<void> => {
+    captureFocus();
     setBusy(endpoint.endpointId);
     setBanner(null);
     const res = await client.POST("/api/v1/notifications/endpoints/{id}/verify", {
@@ -79,6 +89,7 @@ export function DeliveryEndpoints(): JSX.Element {
   };
 
   const remove = async (endpoint: Endpoint): Promise<void> => {
+    captureFocus();
     setBusy(endpoint.endpointId);
     setBanner(null);
     const res = await client.DELETE("/api/v1/notifications/endpoints/{id}", {
@@ -91,14 +102,6 @@ export function DeliveryEndpoints(): JSX.Element {
     setBanner({ ok: true, message: `${endpoint.target} removed.` });
   };
 
-  if (forbidden) {
-    return (
-      <div className="wx-list-drawer-main">
-        <PageHead title="Delivery endpoints" sub="Where your alerts are delivered." />
-        <StateNoAccess what="delivery endpoints" />
-      </div>
-    );
-  }
   return (
     <div className="wx-list-drawer-main">
       <PageHead
@@ -106,7 +109,7 @@ export function DeliveryEndpoints(): JSX.Element {
         sub="Email, SMS and push targets your alerts are delivered to. Each must be verified."
       />
       <BannerView banner={banner} />
-      <form className="wx-form-stack" onSubmit={(e) => void register(e)}>
+      <form ref={formRef} className="wx-form-stack" onSubmit={(e) => void register(e)}>
         <SelectField
           label="Channel"
           options={CHANNEL_OPTIONS}
@@ -123,7 +126,12 @@ export function DeliveryEndpoints(): JSX.Element {
           onChange={(e) => setTarget(e.target.value)}
         />
         <div className="wx-drawer-actions">
-          <Button type="submit" loading={busy === "register"} disabled={target.trim() === ""}>
+          <Button
+            type="submit"
+            size="lg"
+            loading={busy === "register"}
+            disabled={target.trim() === ""}
+          >
             Add endpoint
           </Button>
         </div>
@@ -149,12 +157,14 @@ export function DeliveryEndpoints(): JSX.Element {
                     maxLength={64}
                     value={tokens[endpoint.endpointId] ?? ""}
                     disabled={busy !== null}
-                    onChange={(e) =>
-                      setTokens({ ...tokens, [endpoint.endpointId]: e.target.value })
-                    }
+                    onChange={(e) => {
+                      const token = e.target.value;
+                      setTokens((t) => ({ ...t, [endpoint.endpointId]: token }));
+                    }}
                   />
                   <Button
                     tone="secondary"
+                    size="lg"
                     loading={busy === endpoint.endpointId}
                     disabled={busy !== null || (tokens[endpoint.endpointId] ?? "").trim() === ""}
                     aria-label={`Verify ${endpoint.target}`}
@@ -166,6 +176,7 @@ export function DeliveryEndpoints(): JSX.Element {
               )}
               <Button
                 tone="tertiary"
+                size="lg"
                 disabled={busy !== null}
                 aria-label={`Remove ${endpoint.target}`}
                 onClick={() => void remove(endpoint)}
