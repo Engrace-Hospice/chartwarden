@@ -1,16 +1,35 @@
 // WP 2.7b C3 (ADR-0058 decisions 8, 9, 13) - the global search query pipeline. The route has already run the gates (permission,
 // rate limit, kill switches, serve gate, role gate) and hands this service the `ServeContext` they produced.
 //
-//   1. terms + tags (the query tokenised like the index; one tag per term per live key version)     [no I/O but keys]
-//   2. head-bucket refusal: a query whose every term is a head bucket returns refine:true with NO candidate SQL, NO decrypt
-//   3. isActiveMessagingUser, once                                                                   [short tx]
-//   4. TRANSACTION 1: coarse SQL prefilter (tags -> messages the caller is a member of, or announcements), keyset, cap 500
-//   5. AUTHORITY, outside any transaction: channels deduped, at most MAX_CHANNELS_PER_REQUEST, and ONE call of
-//      `effectivelyVisibleChannels`, the only decider. Candidates in channels it does not return are dropped.
-//   6. TRANSACTION 2: re-select the survivors with the same membership join, open bodies in recency order within the decrypt
-//      budget and timeout, re-verify each CURRENT row and verify the query terms against the plaintext, hydrate the page,
-//      and write one attributed read per distinct patient on it (a failed audit write fails the read).
-// This is the ONLY module of the query path that holds a `BodyReader`, and it opens bodies only after step 5.
+//   1. terms + tags (the query tokenised like the index; one tag per term per live key version)
+//   2. isActiveMessagingUser, then the head-bucket refusal (refine:true, NO candidate SQL, NO decrypt)
+//   3. ROUNDS (at most MAX_PAGES_PER_QUERY per request), each: TRANSACTION 1 coarse SQL prefilter (tags -> messages the caller
+//      is a member of, or announcements; distinct messages across key versions; keyset; cap 500) -> AUTHORITY outside any
+//      transaction (`authority`, by default `effectivelyVisibleChannels`, the only decider; at most 50 distinct channels per
+//      call) -> TRANSACTION 2 re-select of the authorised rows with the same membership join. Only rows that are authorised,
+//      still present and not redacted enter the VISIBLE queue.
+//   4. Bodies are opened from the visible queue only, in recency order, within the decrypt budget and timeout; each current
+//      row is re-verified and the query terms are verified against the plaintext.
+//   5. A last transaction re-checks the active user and the membership of the collected rows, hydrates the page once per
+//      channel and writes one attributed read per distinct patient (a failed audit write fails the read).
+//
+// NO RESPONSE FIELD DEPENDS ON A HIDDEN ROW (security review HIGH-1). `nextCursor`, `refine`, `scanCapped`, `scanned` and the
+// page content are derived from the VISIBLE rows only. The cursor names the last VISIBLE row examined, never a candidate that
+// was dropped for Part 2, a lapsed roster, removal or redaction. The pre-authority caps (500 candidates, 50 channels per call)
+// are therefore not shown to the caller: when one is reached the service CONTINUES SCANNING INTERNALLY (next round, from an
+// internal position that is never emitted) up to MAX_PAGES_PER_QUERY rounds. If that bound is reached with nothing further
+// visible, the response ends WITHOUT a cursor and without `refine`, exactly as if nothing else matched. RECALL COST (accepted):
+// a caller whose visible matches lie behind more than 5 x 500 hidden/unauthorised candidates may not reach them.
+//
+// RESIDUAL TOCTOU WINDOW (security review MED-5): authority is evaluated once per round, outside any transaction. Membership
+// and the active-user check are re-read in the last transaction, but a Part 2 consent revocation or a care-team roster change
+// that lands after the authority call and before the page is returned is not seen by this request (milliseconds to seconds,
+// bounded by the 5 s statement timeout and the 3 s decrypt budget). The next request sees it.
+//
+// DECRYPT_TIMEOUT_MS is checked BETWEEN opens, so a request overshoots it by at most one body open (one AES-GCM open, or one
+// key-vault call after WP 2.13); the 5 s statement timeout bounds each SQL statement independently.
+//
+// This is the ONLY module of the query path that holds a `BodyReader`, and it opens bodies only after the authority call.
 // Fail closed: key derivation, the authority call, the transactions and the audit write all propagate as errors, never as a
 // prefilter-only, plaintext-scan or unaudited answer. No tag, term or query text is logged.
 import { type AuditContext, auditPhiRead } from "@wardenx/audit";
@@ -36,8 +55,15 @@ import { effectivelyVisibleChannels, isActiveMessagingUser } from "../messaging-
 import type { MessageBodyCipher, Tx } from "../messaging-write-core";
 import type { Part2ChannelGate } from "../part2-channel-gate";
 import { type BodyReader, type IsRedactedOrPending, neverRedacted } from "./ports";
-import { type Candidate, type SurvivorRow, reselectSurvivors, selectCandidates } from "./query-sql";
 import {
+  type Candidate,
+  type KeysetPosition,
+  type SurvivorRow,
+  reselectSurvivors,
+  selectCandidates,
+} from "./query-sql";
+import {
+  type VersionQuery,
   bodyMatchesQueryTerms,
   buildVersionQueries,
   isHeadBucketQuery,
@@ -45,7 +71,7 @@ import {
 } from "./query-terms";
 import type { ServeContext } from "./serve-gate";
 
-/** Distinct channels authorised per request (ADR "bounded seam cost"); candidates beyond them continue through the cursor. */
+/** Distinct channels authorised per authority call (ADR "bounded seam cost"); further channels are reached by a later round. */
 export const MAX_CHANNELS_PER_REQUEST = 50;
 export const GLOBAL_SEARCH_DEFAULT_LIMIT = 20;
 export const GLOBAL_SEARCH_MAX_LIMIT = 50;
@@ -56,6 +82,22 @@ export interface GlobalSearchLimits {
   readonly maxChannels: number;
 }
 
+export interface AuthorityCandidate {
+  readonly channelId: string;
+  readonly kind: ChannelKind;
+  readonly subjectId: string | null;
+  readonly memberSource: ChannelMemberSource | null;
+}
+
+/** The access decider. Production: `effectivelyVisibleChannels`. Injectable so the "authority cannot run" path is testable. */
+export type ChannelAuthority = (
+  orgId: string,
+  userId: string,
+  candidates: readonly AuthorityCandidate[],
+  part2Gate: Part2ChannelGate,
+  warn?: (message: string, context: Record<string, string>) => void,
+) => Promise<readonly AuthorityCandidate[]>;
+
 export interface GlobalSearchDeps {
   readonly db: DbClient;
   readonly bodies: BodyReader;
@@ -63,6 +105,7 @@ export interface GlobalSearchDeps {
   readonly part2Gate: Part2ChannelGate;
   /** Hydration of the returned page only (the shared history read path), so a result never shows more than the channel does. */
   readonly cipher: MessageBodyCipher;
+  readonly authority?: ChannelAuthority;
   readonly isRedactedOrPending?: IsRedactedOrPending;
   /** Ids only: never a query, a term, a tag or a body. */
   readonly warn?: (message: string, context: Record<string, string>) => void;
@@ -112,49 +155,71 @@ function pageSize(requested: number | undefined): number {
   return Math.min(GLOBAL_SEARCH_MAX_LIMIT, Math.max(1, Math.trunc(requested)));
 }
 
-/** The first `maxChannels` distinct channels in recency order, and the candidates up to the first one outside them. */
+/** The candidates up to the first one whose (not yet decided) channel would exceed `maxChannels`, and those channels' first rows. */
 function boundChannels(
   candidates: readonly Candidate[],
+  decided: ReadonlyMap<string, boolean>,
   maxChannels: number,
-): { list: readonly Candidate[]; channels: readonly Candidate[]; cut: boolean } {
-  const first = new Map<string, Candidate>();
+): { list: readonly Candidate[]; fresh: readonly Candidate[]; cut: boolean } {
+  const fresh = new Map<string, Candidate>();
   let cutAt = candidates.length;
   for (const [i, candidate] of candidates.entries()) {
-    if (!first.has(candidate.channelId)) {
-      if (first.size >= maxChannels) {
-        cutAt = i;
-        break;
-      }
-      first.set(candidate.channelId, candidate);
+    if (decided.has(candidate.channelId) || fresh.has(candidate.channelId)) continue;
+    if (fresh.size >= maxChannels) {
+      cutAt = i;
+      break;
     }
+    fresh.set(candidate.channelId, candidate);
   }
   return {
     list: candidates.slice(0, cutAt),
-    channels: [...first.values()],
+    fresh: [...fresh.values()],
     cut: cutAt < candidates.length,
   };
 }
 
+interface VisibleRow {
+  readonly candidate: Candidate;
+  readonly row: SurvivorRow;
+}
+
+/** The per-request scan: an INTERNAL raw position (never emitted), the channel verdicts and the queue of visible rows. */
+interface Scan {
+  position: KeysetPosition | null;
+  exhausted: boolean;
+  rounds: number;
+  readonly decided: Map<string, boolean>;
+  readonly queue: VisibleRow[];
+}
+
 export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchService {
   const isRedacted = deps.isRedactedOrPending ?? neverRedacted;
+  const authority: ChannelAuthority = deps.authority ?? effectivelyVisibleChannels;
   const limits: GlobalSearchLimits = {
     decryptBudget: deps.limits?.decryptBudget ?? DECRYPT_BUDGET,
     decryptTimeoutMs: deps.limits?.decryptTimeoutMs ?? DECRYPT_TIMEOUT_MS,
     maxChannels: deps.limits?.maxChannels ?? MAX_CHANNELS_PER_REQUEST,
   };
   const clock = deps.clock ?? (() => performance.now());
+  const inTenantTx = <T>(input: GlobalSearchInput, fn: (tx: Tx) => Promise<T>) =>
+    withOrgContext(
+      deps.db,
+      { organizationId: input.organizationId, userId: input.userId },
+      async (tx) => {
+        await setStatementTimeout(tx);
+        return fn(tx);
+      },
+    );
 
-  /** Step 5. ONE call, the only access decider; a failure to run it at all is a 503, never a prefilter-only answer. */
-  async function authorisedChannelIds(
-    input: GlobalSearchInput,
-    channels: readonly Candidate[],
-  ): Promise<ReadonlySet<string>> {
-    if (channels.length === 0) return new Set();
+  /** Ask the authority about the channels of this round that have no verdict yet. A failure to run it at all is a 503. */
+  async function decide(input: GlobalSearchInput, scan: Scan, fresh: readonly Candidate[]) {
+    if (fresh.length === 0) return;
+    let allowed: readonly AuthorityCandidate[];
     try {
-      const visible = await effectivelyVisibleChannels(
+      allowed = await authority(
         input.organizationId,
         input.userId,
-        channels.map((c) => ({
+        fresh.map((c) => ({
           channelId: c.channelId,
           kind: c.kind as ChannelKind,
           subjectId: c.subjectId,
@@ -163,7 +228,6 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
         deps.part2Gate,
         deps.warn,
       );
-      return new Set(visible.map((c) => c.channelId));
     } catch (error) {
       deps.warn?.("global search authority check could not run", {
         organizationId: input.organizationId,
@@ -171,75 +235,125 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
       });
       throw unavailable();
     }
+    const ok = new Set(allowed.map((c) => c.channelId));
+    for (const c of fresh) scan.decided.set(c.channelId, ok.has(c.channelId));
   }
 
-  interface Verified {
-    readonly rows: SurvivorRow[];
-    readonly opened: number;
-    readonly lastExamined: Candidate | null;
-    /** Candidates remain that this request did not examine. */
-    readonly remaining: boolean;
-  }
-
-  /** Step 6 core: recency-ordered opens within the budget and timeout. Authorisation was decided before this is called. */
-  async function openAndVerify(
+  /** One round: prefilter -> authority -> re-select; appends the visible rows to the queue. The raw position stays internal. */
+  async function fillRound(
     input: GlobalSearchInput,
+    queries: readonly VersionQuery[],
+    scan: Scan,
+  ): Promise<void> {
+    const raw = await inTenantTx(input, (tx) =>
+      selectCandidates(tx, input.organizationId, input.userId, queries, scan.position),
+    );
+    const covered = raw.slice(0, CANDIDATE_CAP);
+    const { list, fresh, cut } = boundChannels(covered, scan.decided, limits.maxChannels);
+    await decide(input, scan, fresh);
+    scan.rounds += 1;
+    scan.exhausted = raw.length <= CANDIDATE_CAP && !cut;
+    const last = list[list.length - 1];
+    if (last) scan.position = { createdAtIso: last.createdAtIso, id: last.id };
+    const survivors = list.filter((c) => scan.decided.get(c.channelId) === true && !isRedacted(c));
+    const current = await inTenantTx(input, (tx) =>
+      reselectSurvivors(
+        tx,
+        input.organizationId,
+        input.userId,
+        survivors.map((c) => c.id),
+      ),
+    );
+    for (const candidate of survivors) {
+      const row = current.get(candidate.id);
+      if (row && row.channelId === candidate.channelId && !isRedacted(row)) {
+        scan.queue.push({ candidate, row });
+      }
+    }
+  }
+
+  const canFill = (scan: Scan) => !scan.exhausted && scan.rounds < MAX_PAGES_PER_QUERY;
+
+  /** Open and verify visible rows in recency order; stops at the page size, the budget or the end of what is visible. */
+  async function drain(
+    input: GlobalSearchInput,
+    queries: readonly VersionQuery[],
     terms: readonly string[],
-    list: readonly Candidate[],
-    authorised: ReadonlySet<string>,
-    current: ReadonlyMap<string, SurvivorRow>,
+    scan: Scan,
     limit: number,
-  ): Promise<Verified> {
+  ) {
     const started = clock();
     const rows: SurvivorRow[] = [];
     let opened = 0;
     let lastExamined: Candidate | null = null;
-    let index = 0;
-    for (; index < list.length; index += 1) {
-      const candidate = list[index] as Candidate;
-      const row = authorised.has(candidate.channelId) ? current.get(candidate.id) : undefined;
-      if (!row || isRedacted(row)) {
-        lastExamined = candidate;
-        continue;
-      }
+    for (;;) {
+      while (scan.queue.length === 0 && canFill(scan)) await fillRound(input, queries, scan);
+      const next = scan.queue[0];
+      if (!next || rows.length >= limit) break;
       if (opened >= limits.decryptBudget || clock() - started >= limits.decryptTimeoutMs) break;
+      scan.queue.shift();
       opened += 1;
-      lastExamined = candidate;
-      try {
-        const body = await deps.bodies.read(input.organizationId, row);
-        if (body.sha256 !== row.bodySha256) {
-          deps.warn?.("global search skipped a body whose digest does not match", {
-            organizationId: input.organizationId,
-            messageId: row.id,
-          });
-          continue;
-        }
-        if (!bodyMatchesQueryTerms(body.text, terms)) continue;
-      } catch {
-        deps.warn?.("global search could not open a body", {
+      lastExamined = next.candidate;
+      if (await matches(input, terms, next.row)) rows.push(next.row);
+    }
+    return { rows, opened, lastExamined, more: scan.queue.length > 0 };
+  }
+
+  async function matches(
+    input: GlobalSearchInput,
+    terms: readonly string[],
+    row: SurvivorRow,
+  ): Promise<boolean> {
+    try {
+      const body = await deps.bodies.read(input.organizationId, row);
+      if (body.sha256 !== row.bodySha256) {
+        deps.warn?.("global search skipped a body whose digest does not match", {
           organizationId: input.organizationId,
           messageId: row.id,
         });
-        continue;
+        return false;
       }
-      rows.push(row);
-      if (rows.length >= limit) {
-        index += 1;
-        break;
-      }
+      return bodyMatchesQueryTerms(body.text, terms);
+    } catch {
+      deps.warn?.("global search could not open a body", {
+        organizationId: input.organizationId,
+        messageId: row.id,
+      });
+      return false;
     }
-    return { rows, opened, lastExamined, remaining: index < list.length };
   }
 
-  /** Hydrate the page once per channel and attribute each care-team patient on it; both inside the caller's tx. */
+  /**
+   * The last transaction: the user must still be active and each collected row still readable by membership (and unchanged);
+   * then hydrate once per channel and attribute each care-team patient on the page.
+   */
+  function finish(input: GlobalSearchInput, collected: readonly SurvivorRow[]) {
+    return inTenantTx(input, async (tx): Promise<GlobalSearchHit[]> => {
+      if (collected.length === 0) return [];
+      if (!(await isActiveMessagingUser(tx, input.organizationId, input.userId))) return [];
+      const current = await reselectSurvivors(
+        tx,
+        input.organizationId,
+        input.userId,
+        collected.map((r) => r.id),
+      );
+      const rows = collected.flatMap((r) => {
+        const now = current.get(r.id);
+        return now && now.bodySha256 === r.bodySha256 && !isRedacted(now) ? [now] : [];
+      });
+      return hydrateAndAudit(tx, input, rows);
+    });
+  }
+
   async function hydrateAndAudit(
     tx: Tx,
     input: GlobalSearchInput,
     rows: readonly SurvivorRow[],
   ): Promise<GlobalSearchHit[]> {
     const byChannel = new Map<string, SurvivorRow[]>();
-    for (const row of rows)
+    for (const row of rows) {
       byChannel.set(row.channelId, [...(byChannel.get(row.channelId) ?? []), row]);
+    }
     const hydrated = new Map<string, ResolvedMessage>();
     for (const [channelId, channelRows] of byChannel) {
       const ctx: HydrationContext = {
@@ -269,89 +383,73 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
     });
   }
 
+  async function prepare(input: GlobalSearchInput) {
+    const terms = parseQueryTerms(input.query);
+    const cursor = input.cursor ? decodeSearchCursor(input.cursor) : null;
+    if (input.cursor && !cursor) {
+      throw new WardenXError("INVALID_SEARCH_QUERY", "the continuation cursor is not valid", 422);
+    }
+    const active = input.serve.versions[0];
+    if (!active) throw unavailable();
+    let queries: VersionQuery[];
+    try {
+      queries = await buildVersionQueries(
+        deps.keys,
+        input.organizationId,
+        input.serve.versions,
+        terms,
+      );
+    } catch (error) {
+      deps.warn?.("global search key derivation failed", {
+        organizationId: input.organizationId,
+        reason: error instanceof Error ? error.name : "unknown",
+      });
+      throw unavailable();
+    }
+    return { terms, cursor, queries, active };
+  }
+
   return {
     async search(input) {
-      const terms = parseQueryTerms(input.query);
-      const cursor = input.cursor ? decodeSearchCursor(input.cursor) : null;
-      if (input.cursor && !cursor) {
-        throw new WardenXError("INVALID_SEARCH_QUERY", "the continuation cursor is not valid", 422);
-      }
-      const limit = pageSize(input.limit);
-      const page = cursor?.page ?? 0;
-      const active = input.serve.versions[0];
-      if (!active) throw unavailable();
-
-      let queries: Awaited<ReturnType<typeof buildVersionQueries>>;
-      try {
-        queries = await buildVersionQueries(
-          deps.keys,
-          input.organizationId,
-          input.serve.versions,
-          terms,
-        );
-      } catch (error) {
-        deps.warn?.("global search key derivation failed", {
-          organizationId: input.organizationId,
-          reason: error instanceof Error ? error.name : "unknown",
-        });
-        throw unavailable();
-      }
+      const { terms, cursor, queries, active } = await prepare(input);
+      const isActive = await withOrgContext(
+        deps.db,
+        { organizationId: input.organizationId, userId: input.userId },
+        (tx) => isActiveMessagingUser(tx, input.organizationId, input.userId),
+      );
+      if (!isActive) return EMPTY;
       const activeQuery = queries[0];
       if (!activeQuery) throw unavailable();
       if (isHeadBucketQuery(activeQuery.termTags, active.headBuckets)) return REFINE;
 
-      const ctx = { organizationId: input.organizationId, userId: input.userId };
-      const isActive = await withOrgContext(deps.db, ctx, (tx) =>
-        isActiveMessagingUser(tx, input.organizationId, input.userId),
-      );
-      if (!isActive) return EMPTY;
-
+      const limit = pageSize(input.limit);
+      const page = cursor?.page ?? 0;
+      const scan: Scan = {
+        position: cursor ? { createdAtIso: cursor.createdAt, id: cursor.messageId } : null,
+        exhausted: false,
+        rounds: 0,
+        decided: new Map(),
+        queue: [],
+      };
       try {
-        const after = cursor ? { createdAtIso: cursor.createdAt, id: cursor.messageId } : null;
-        const raw = await withOrgContext(deps.db, ctx, async (tx) => {
-          await setStatementTimeout(tx);
-          return selectCandidates(tx, input.organizationId, input.userId, queries, after);
-        });
-        const overflow = raw.length > CANDIDATE_CAP;
-        const { list, channels, cut } = boundChannels(
-          raw.slice(0, CANDIDATE_CAP),
-          limits.maxChannels,
-        );
-
-        const authorised = await authorisedChannelIds(input, channels);
-        const survivors = list.filter((c) => authorised.has(c.channelId) && !isRedacted(c));
-
-        const outcome = await withOrgContext(deps.db, ctx, async (tx) => {
-          await setStatementTimeout(tx);
-          const current = await reselectSurvivors(
-            tx,
-            input.organizationId,
-            input.userId,
-            survivors.map((c) => c.id),
-          );
-          const verified = await openAndVerify(input, terms, list, authorised, current, limit);
-          return { verified, hits: await hydrateAndAudit(tx, input, verified.rows) };
-        });
-
-        const { verified } = outcome;
-        const more = verified.remaining || cut || overflow;
-        const lastPage = page >= MAX_PAGES_PER_QUERY - 1;
+        const drained = await drain(input, queries, terms, scan, limit);
+        const hits = await finish(input, drained.rows);
         const next =
-          more && !lastPage && verified.lastExamined
+          drained.more && page < MAX_PAGES_PER_QUERY - 1 && drained.lastExamined
             ? encodeSearchCursor({
-                createdAt: verified.lastExamined.createdAtIso,
-                messageId: verified.lastExamined.id,
+                createdAt: drained.lastExamined.createdAtIso,
+                messageId: drained.lastExamined.id,
                 page: page + 1,
               })
             : undefined;
-        // A full page is complete; a short page that stopped on a cap is scanCapped. When the chain cannot continue (the last
-        // allowed page, or nothing was examined) the client is told to refine instead of being handed a dead cursor.
-        const refine = more && next === undefined;
+        // Everything below derives from VISIBLE rows only. When the chain cannot continue (last allowed page) the client is
+        // told to refine instead of being handed a dead cursor.
+        const refine = drained.more && next === undefined;
         return {
-          results: outcome.hits,
+          results: hits,
           ...(next ? { nextCursor: next } : {}),
-          scanned: verified.opened,
-          scanCapped: refine || (more && outcome.hits.length < limit),
+          scanned: drained.opened,
+          scanCapped: refine || (drained.more && hits.length < limit),
           refine,
         };
       } catch (error) {

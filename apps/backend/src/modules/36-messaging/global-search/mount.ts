@@ -21,7 +21,7 @@ import {
   createBodyReader,
   neverRedacted,
 } from "./ports";
-import { createGlobalSearchService } from "./query-service";
+import { type ChannelAuthority, createGlobalSearchService } from "./query-service";
 import { createRoleGate } from "./role-gate";
 import { createUnavailableSearchKeyProvider } from "./search-key-provider";
 import { createServeGates } from "./serve-gate";
@@ -34,6 +34,8 @@ export interface GlobalSearchMountOptions {
   readonly part2Gate?: Part2ChannelGate;
   /** Tests only: the body-opening port (a spy proves what was, and was not, opened). */
   readonly bodies?: BodyReader;
+  /** Tests only: the access decider (default `effectivelyVisibleChannels`). */
+  readonly authority?: ChannelAuthority;
   readonly isRedactedOrPending?: IsRedactedOrPending;
   /** Ids only. */
   readonly warn?: (message: string, context: Record<string, string>) => void;
@@ -54,6 +56,7 @@ export function mountGlobalSearchRoutes(
       keys,
       part2Gate: opts.part2Gate ?? createSeamPart2ChannelGate(db),
       cipher,
+      ...(opts.authority ? { authority: opts.authority } : {}),
       isRedactedOrPending: opts.isRedactedOrPending ?? neverRedacted,
       warn,
     }),

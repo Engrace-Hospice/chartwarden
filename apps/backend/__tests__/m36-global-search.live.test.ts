@@ -44,6 +44,8 @@ import {
   MAX_PAGES_PER_QUERY,
   buildMessageTags,
   decodeSearchCursor,
+  deriveOrgDek,
+  deriveSearchKey,
   eraseTenantMessaging,
   indexTagStrings,
   paddedSize,
@@ -76,7 +78,10 @@ import { createServeGates } from "../src/modules/36-messaging/global-search/serv
 import { refreshIndexStats } from "../src/modules/36-messaging/global-search/stats";
 import { createTenantSearchSettingStore } from "../src/modules/36-messaging/global-search/tenant-setting-store";
 import { CHANNEL_VISIBILITY_PREDICATE } from "../src/modules/36-messaging/index";
-import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
+import {
+  createDbMessagingRouteService,
+  effectivelyVisibleChannels,
+} from "../src/modules/36-messaging/messaging-route-service-db";
 import { createMessageBodyCipher } from "../src/modules/36-messaging/messaging-write-core";
 import { registerGlobalSearchRoutes } from "../src/modules/36-messaging/routes/global-search-routes";
 import { registerMessagingRoutes } from "../src/modules/36-messaging/routes/messaging-routes";
@@ -152,9 +157,12 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
     denied: new Set<string>(),
     erroring: new Set<string>(),
     calls: [] as string[],
+    /** Runs inside the authority call (between the prefilter and the re-select): the removal-race hook. */
+    beforeAnswer: undefined as undefined | (() => Promise<void>),
     gate: {
       allowedUserIds: async (input: { patientId: string; userIds: readonly string[] }) => {
         part2.calls.push(input.patientId);
+        await part2.beforeAnswer?.();
         if (part2.erroring.has(input.patientId)) throw new Error("part 2 consent service down");
         return part2.denied.has(input.patientId)
           ? new Set<string>()
@@ -165,6 +173,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
   const roster = new Map<string, string[]>();
   const warns: Array<{ message: string; context: Record<string, string> }> = [];
   const redactedIds = new Set<string>();
+  const authorityBatches: number[] = [];
   let limiter: (request: FastifyRequest, reply: FastifyReply) => Promise<void> = async () => {};
   const spy = {
     reads: [] as string[],
@@ -409,6 +418,10 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       cipher,
       bodies: spy.reader,
       part2Gate: part2.gate as never,
+      authority: async (o, u, c, g, w) => {
+        authorityBatches.push(c.length);
+        return effectivelyVisibleChannels(o, u, [...c], g, w);
+      },
       isRedactedOrPending: (row) => redactedIds.has(row.id),
       warn: (message, context) => warns.push({ message, context }),
       ...(withLimiter ? { rateLimit: (req, rep) => limiter(req, rep) } : {}),
@@ -898,7 +911,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       expect((await ok(u, "indexrowsremainword")).results).toEqual([]);
     });
 
-    it("at most 50 distinct channels are authorised per request; the rest continue through the cursor", async () => {
+    it("at most 50 distinct channels are authorised per authority call; the rest are reached by a later round or the cursor", async () => {
       const u = await newUser(ORG_A);
       const channels = [];
       for (let i = 0; i < 60; i += 1) {
@@ -908,9 +921,9 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
           at: new Date(Date.UTC(2026, 3, 1, 0, i)).toISOString(),
         });
       }
-      part2.calls.length = 0;
+      authorityBatches.length = 0;
       const first = await ok(u, "channelcapword", "&limit=50");
-      expect(new Set(part2.calls).size).toBeLessThanOrEqual(50);
+      expect(Math.max(...authorityBatches)).toBeLessThanOrEqual(50); // per authority call
       expect(first.results.length).toBeLessThanOrEqual(50);
       expect(first.nextCursor).toBeTruthy();
       const second = await ok(
@@ -926,9 +939,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
     it("the body-opening port is imported by the query service only, after the authority call (source check)", () => {
       const dir = join(__dirname, "../src/modules/36-messaging");
       const service = readFileSync(join(dir, "global-search/query-service.ts"), "utf8");
-      expect(service.indexOf("effectivelyVisibleChannels(")).toBeLessThan(
-        service.indexOf("bodies.read("),
-      );
+      expect(service.indexOf("await authority(")).toBeLessThan(service.indexOf("bodies.read("));
       for (const f of ["query-sql.ts", "query-terms.ts", "serve-gate.ts", "role-gate.ts"]) {
         expect(readFileSync(join(dir, "global-search", f), "utf8")).not.toMatch(
           /\bBodyReader\b|createBodyReader/,
@@ -1606,6 +1617,235 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       await send(ORG_A, ch.id, u, "Intersectionalpha alone here");
       await send(ORG_A, ch.id, u, "Intersectionbravo alone here");
       expect(idsOf(await search(u, "intersectionalpha intersectionbra"))).toEqual([both]);
+    });
+  });
+
+  // ═══ security review round (C3 fix round) ═════════════════════════════════════════════════════════
+  describe("hidden rows never shape the response (HIGH-1)", () => {
+    const walk = async (user: string, query: string) => {
+      const pages: SearchBody[] = [];
+      let cursor: string | undefined;
+      do {
+        pages.push(
+          await ok(user, query, `&limit=1${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`),
+        );
+        cursor = pages[pages.length - 1]?.nextCursor;
+      } while (cursor && pages.length < 12);
+      return pages;
+    };
+
+    it("a stale member of a lapsed care-team channel gets no cursor naming a hidden message, and the chain shape equals the visible-only shape", async () => {
+      const u = await newUser(ORG_A);
+      const visible = await newChannel(ORG_A, { members: [[u, "manual"]] });
+      const hidden = await newChannel(ORG_A, { kind: "care_team", members: [[u, "auto"]] });
+      roster.set(hidden.subject as string, []); // off the roster: hidden
+      const visibleIds: string[] = [];
+      const hiddenIds: string[] = [];
+      for (let i = 0; i < 4; i += 1) {
+        visibleIds.push(
+          await send(ORG_A, visible.id, u, `Hiddencursorword visible ${i}`, {
+            at: new Date(Date.UTC(2026, 6, 1, 2 * i)).toISOString(),
+          }),
+        );
+        hiddenIds.push(
+          await send(ORG_A, hidden.id, u, `Hiddencursorword hidden ${i}`, {
+            at: new Date(Date.UTC(2026, 6, 1, 2 * i + 1)).toISOString(),
+          }),
+        );
+      }
+      const pages = await walk(u, "hiddencursorword");
+      expect(pages.flatMap((p) => p.results.map((h) => h.messageId)).sort()).toEqual(
+        [...visibleIds].sort(),
+      );
+      for (const page of pages) {
+        if (!page.nextCursor) continue;
+        const decoded = decodeSearchCursor(page.nextCursor);
+        expect(decoded).not.toBeNull();
+        expect(visibleIds).toContain(decoded?.messageId as string);
+        expect(hiddenIds).not.toContain(decoded?.messageId as string);
+      }
+    });
+
+    it("a hidden-only match is indistinguishable from no match at all", async () => {
+      const u = await newUser(ORG_A);
+      const hidden = await newChannel(ORG_A, { kind: "care_team", members: [[u, "manual"]] });
+      part2.denied.add(hidden.subject as string);
+      for (let i = 0; i < 3; i += 1) await send(ORG_A, hidden.id, u, `Hiddenonlyword note ${i}`);
+      const withHidden = await ok(u, "hiddenonlyword");
+      const noMatch = await ok(u, "nothingmatchesthisword");
+      expect(withHidden).toEqual(noMatch);
+    });
+
+    it("cursor / refine / scanCapped sequence is identical with and without hidden matches interleaved", async () => {
+      const a = await newUser(ORG_A);
+      const b = await newUser(ORG_A);
+      const va = await newChannel(ORG_A, { members: [[a, "manual"]] });
+      const vb = await newChannel(ORG_A, { members: [[b, "manual"]] });
+      const hb = await newChannel(ORG_A, { kind: "care_team", members: [[b, "manual"]] });
+      part2.denied.add(hb.subject as string);
+      for (let i = 0; i < 3; i += 1) {
+        const at = new Date(Date.UTC(2026, 7, 1, 3 * i)).toISOString();
+        const hiddenAt = new Date(Date.UTC(2026, 7, 1, 3 * i + 1)).toISOString();
+        await send(ORG_A, va.id, a, `Shapewordalpha number ${i}`, { at });
+        await send(ORG_A, vb.id, b, `Shapewordalpha number ${i}`, { at });
+        await send(ORG_A, hb.id, b, `Shapewordalpha hidden ${i}`, { at: hiddenAt });
+      }
+      const shape = (pages: SearchBody[]) =>
+        pages.map((p) => [p.results.length, !!p.nextCursor, p.scanCapped, p.refine, p.scanned]);
+      expect(shape(await walk(b, "shapewordalpha"))).toEqual(
+        shape(await walk(a, "shapewordalpha")),
+      );
+    });
+  });
+
+  describe("fix-round hardening", () => {
+    it("MED-3 key-rotation overlap: >500 raw rows across two live versions drop no match (dedupe happens before the LIMIT)", async () => {
+      const keys2 = {
+        activeVersion: async () => VERSION,
+        liveVersions: async () => [VERSION, "v2"],
+        tagKey: async (org: string, version: string) =>
+          deriveSearchKey(deriveOrgDek(KEK, org), org, version),
+      };
+      await q(
+        `INSERT INTO message_search_index_state (organization_id, key_version, tag_bits, status, reconciled_at)
+         VALUES ($1,'v2',19,'ready',now())
+         ON CONFLICT (organization_id, key_version) DO UPDATE SET status='ready', reconciled_at=now()`,
+        [ORG_A],
+      );
+      const u = await newUser(ORG_A);
+      const ch = await newChannel(ORG_A, { members: [[u, "manual"]] });
+      const filler = cipher.seal(ORG_A, "unrelated filler text without the searched word");
+      const real = cipher.seal(ORG_A, "dualversionword is in the oldest message");
+      await q(
+        `INSERT INTO message (channel_id, organization_id, author_user_id, author_kind, body_cipher, body_sha256, created_at)
+         SELECT $1,$2,$3,'user', CASE WHEN g = 1 THEN $4::bytea ELSE $5::bytea END, CASE WHEN g = 1 THEN $6::text ELSE $7::text END,
+                timestamptz '2026-01-01' + g * interval '1 second' FROM generate_series(1,520) g`,
+        [ch.id, ORG_A, u, real.cipher, filler.cipher, real.sha256, filler.sha256],
+      );
+      for (const version of [VERSION, "v2"]) {
+        const tag = tagForPrefix(await keys2.tagKey(ORG_A, version), "dualversionw", TAG_BITS);
+        await q(
+          `INSERT INTO message_search_token (organization_id, key_version, tag, message_id)
+           SELECT $1,$2,$3,id FROM message WHERE channel_id=$4`,
+          [ORG_A, version, tag, ch.id],
+        );
+      }
+      const raw = await one(
+        `SELECT count(*)::int AS n FROM message_search_token t JOIN message m ON m.id=t.message_id WHERE m.channel_id=$1`,
+        [ch.id],
+      );
+      expect(raw.n).toBe(1040);
+      const dual = buildServer({
+        db: handle.db,
+        authenticate: headerAuth,
+        security: { rateLimitEnabled: false },
+      });
+      mountGlobalSearchRoutes(dual, handle.db, {
+        keys: keys2,
+        cipher,
+        bodies: spy.reader,
+        part2Gate: part2.gate as never,
+        rateLimit: async () => {},
+      });
+      await dual.ready();
+      spy.reset();
+      const found: string[] = [];
+      let cursor: string | undefined;
+      let pages = 0;
+      do {
+        const res = await dual.inject({
+          method: "GET",
+          url: searchUrl("dualversionword", cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""),
+          headers: headers(u),
+        });
+        expect(res.statusCode, res.body).toBe(200);
+        found.push(...idsOf(res));
+        cursor = body(res).nextCursor;
+        pages += 1;
+      } while (cursor && pages < MAX_PAGES_PER_QUERY);
+      await dual.close();
+      expect(new Set(spy.reads).size).toBe(520); // every distinct message was reached
+      expect(spy.reads).toHaveLength(520); // and none was opened twice
+      expect(found).toHaveLength(1);
+      await q(`DELETE FROM message_search_token WHERE key_version='v2'`);
+      await q(`DELETE FROM message_search_index_state WHERE key_version='v2'`);
+    }, 180_000);
+
+    it("MED-5 removal race: a member removed between the prefilter and the re-select gets zero results", async () => {
+      const u = await newUser(ORG_A);
+      const ch = await newChannel(ORG_A, { kind: "care_team", members: [[u, "manual"]] });
+      await send(ORG_A, ch.id, u, "Removalraceword in the chart note");
+      part2.beforeAnswer = async () => {
+        part2.beforeAnswer = undefined;
+        await q(`UPDATE channel_member SET removed_at=now() WHERE channel_id=$1`, [ch.id]);
+      };
+      spy.reset();
+      expect((await ok(u, "removalraceword")).results).toEqual([]);
+      expect(spy.reads).toEqual([]); // the removed row never reached the visible queue
+    });
+
+    it("MED-5 authority cannot run: 503 GLOBAL_SEARCH_UNAVAILABLE, nothing opened", async () => {
+      const u = await newUser(ORG_A);
+      const ch = await newChannel(ORG_A, { members: [[u, "manual"]] });
+      await send(ORG_A, ch.id, u, "Authoritydownword note");
+      const server = buildServer({
+        db: handle.db,
+        authenticate: headerAuth,
+        security: { rateLimitEnabled: false },
+      });
+      mountGlobalSearchRoutes(server, handle.db, {
+        keys,
+        cipher,
+        bodies: spy.reader,
+        part2Gate: part2.gate as never,
+        rateLimit: async () => {},
+        authority: async () => {
+          throw new Error("authority down");
+        },
+      });
+      await server.ready();
+      spy.reset();
+      const res = await server.inject({
+        method: "GET",
+        url: searchUrl("authoritydownword"),
+        headers: headers(u),
+      });
+      expect([res.statusCode, errorCode(res)]).toEqual([503, "GLOBAL_SEARCH_UNAVAILABLE"]);
+      expect(spy.reads).toEqual([]);
+      await server.close();
+    });
+
+    it("addMember accepts identities of the excluded categories today (recorded); the route refuses them regardless", async () => {
+      const owner = await newUser(ORG_A);
+      const ch = await newChannel(ORG_A, { members: [[owner, "manual"]] });
+      await send(ORG_A, ch.id, owner, "Addmemberexcludedword note");
+      const outcomes: string[] = [];
+      for (const category of ["patient_family", "external_auditor", "platform_staff"] as const) {
+        const u = await newUser(ORG_A, category);
+        const outcome = await routeService
+          .addMember(ORG_A, { channelId: ch.id, userId: u, actor: { kind: "system" } })
+          .then(
+            () => "added",
+            () => "refused",
+          );
+        outcomes.push(`${category}=${outcome}`);
+        expect((await search(u, "addmemberexcludedword")).statusCode, category).toBe(403);
+      }
+      process.stderr.write(`\n[search-addmember] current behaviour: ${outcomes.join(", ")}\n`);
+    });
+
+    it("an inactive user is answered before the head-bucket refusal (no term-level signal)", async () => {
+      const u = await newUser(ORG_A);
+      const key = await keys.tagKey(ORG_A, VERSION);
+      await q(
+        `UPDATE message_search_index_state SET head_buckets = ARRAY[${tagForPrefix(key, "inactiveheadw", TAG_BITS)}]::int[] WHERE organization_id=$1`,
+        [ORG_A],
+      );
+      await q(`UPDATE "user" SET status='suspended' WHERE id=$1`, [u]);
+      expect(await ok(u, "inactiveheadword")).toMatchObject({ refine: false, results: [] });
+      await q(`UPDATE message_search_index_state SET head_buckets='{}' WHERE organization_id=$1`, [
+        ORG_A,
+      ]);
     });
   });
 

@@ -349,11 +349,12 @@ describe("structure of the query path", () => {
 
   it("the service opens a body only after the single authority call", () => {
     const source = read("global-search/query-service.ts");
-    const authority = source.indexOf("effectivelyVisibleChannels(");
+    const authority = source.indexOf("await authority(");
     const firstOpen = source.indexOf("bodies.read(");
     expect(authority).toBeGreaterThan(0);
     expect(firstOpen).toBeGreaterThan(authority);
-    expect(source.match(/effectivelyVisibleChannels\(/g)).toHaveLength(1);
+    expect(source.match(/await authority\(/g)).toHaveLength(1);
+    expect(source).toContain("deps.authority ?? effectivelyVisibleChannels");
     expect(source.match(/bodies\.read\(/g)).toHaveLength(1);
   });
 });

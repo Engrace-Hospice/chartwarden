@@ -74,12 +74,14 @@ export async function selectCandidates(
        WHERE t.organization_id = ${organizationId}
        GROUP BY t.message_id, t.key_version, q.k
       HAVING count(DISTINCT t.tag) = q.k
-    )
+    ),
+    -- ONE row per message BEFORE the LIMIT: a message indexed under two live key versions must not take two of the 501 slots.
+    hit_messages AS (SELECT DISTINCT message_id FROM hits)
     SELECT m.id::text AS id, m.channel_id::text AS channel_id, m.status::text AS status,
            to_char(date_trunc('milliseconds', m.created_at) AT TIME ZONE 'UTC', ${ISO_MS}) AS created_at_iso,
            c.channel_kind::text AS kind, c.subject_id::text AS subject_id, c.is_archived AS is_archived,
            cm.source::text AS member_source
-      FROM hits h
+      FROM hit_messages h
       JOIN message m ON m.organization_id = ${organizationId} AND m.id = h.message_id AND m.status <> 'deleted'
       JOIN channel c ON c.organization_id = m.organization_id AND c.id = m.channel_id
       LEFT JOIN channel_member cm
@@ -92,7 +94,7 @@ export async function selectCandidates(
      ORDER BY date_trunc('milliseconds', m.created_at) DESC, m.id DESC
      LIMIT ${CANDIDATE_CAP + 1}`);
 
-  // A message indexed under two live key versions appears twice; keep the first (recency order is unchanged).
+  // Defensive only: the SQL already yields one row per message.
   const seen = new Set<string>();
   const candidates: Candidate[] = [];
   for (const row of result.rows) {

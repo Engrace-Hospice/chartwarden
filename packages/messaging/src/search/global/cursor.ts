@@ -1,6 +1,12 @@
 // ADR-0058 decision 9 - the global-search cursor: a keyset on (created_at, message_id) of the last EXAMINED candidate plus a
 // `page` ordinal that bounds the cursor chain (MAX_PAGES_PER_QUERY). It never encodes a tag, a token, a query hash or any
 // value derived from the query: the client re-sends `q` and the server re-derives the tags on every page.
+//
+// The `page` ordinal is NOT authenticated: a client can forge page 0 and restart a chain, so it is a convenience that lets an
+// honest chain stop at MAX_PAGES_PER_QUERY, not a security control. The real bounds are per REQUEST (candidate cap, decrypt
+// budget and timeout, statement timeout, at most MAX_PAGES_PER_QUERY internal rounds) and the per-route rate limit (WP 2.14,
+// ADR-0058 P2). A forged cursor can only name a (created_at, id) the caller then has to be authorised for: the service never
+// trusts it for access, and emits only cursors that name a row the caller may read (WP 2.7b C3 review HIGH-1).
 import { MAX_PAGES_PER_QUERY } from "./params";
 
 export interface SearchCursor {
