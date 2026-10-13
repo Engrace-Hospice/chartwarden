@@ -1,12 +1,11 @@
-// apps/backend/src/modules/36-messaging/routes/global-search-routes.ts - WP 2.7b global message search (ADR-0058, Proposed).
+// apps/backend/src/modules/36-messaging/routes/global-search-routes.ts - WP 2.7b global message search (ADR-0058, Accepted).
 //
 //   GET /api/v1/messaging/search?q=&cursor=&limit=     every channel the caller may read: whole words, and a word beginning
-//                                                      for the last word. INERT unless the tenant flag AND the platform flag
-//                                                      are on, the index is ready and a key provider exists (none in production
-//                                                      until WP 2.13).
+//                                                      for the last word. Refused unless the tenant flag AND the platform flag
+//                                                      are on, the index is ready and the ring key provider can derive a key.
 //
 // preHandlers, in this order (the first refusal wins): authentication (the global hook), `messaging.read`, the injected rate
-// limit (default: fail closed 503 until WP 2.14 wires the real limiter), platform kill switch, tenant flag, serve gate (index
+// limit (default: fail closed 503 unless the composition root injects the WP 2.14 limiter, which it does only on a shared Valkey store), platform kill switch, tenant flag, serve gate (index
 // ready, no purge pending), workforce role gate. Nothing in a refusal repeats the query.
 // Read audit: one aggregate `message.list_viewed` from the hook (`q` and `cursor` omitted; no resourceIdParam, so the list
 // branch) plus one attributed `message.viewed` per patient on the page, written by the service in its transaction.

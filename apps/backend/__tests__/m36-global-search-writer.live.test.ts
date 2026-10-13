@@ -150,7 +150,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C2 global search index writer - LIVE Postg
     const stored = opts.rich
       ? storedBodyFor({ body: "", richBody: sanitizeRichBodyOrThrow(opts.rich).richBody })
       : { plaintext: text, bodyKind: "plain" as const };
-    const sealed = cipher.seal(org, stored.plaintext);
+    const sealed = await cipher.seal(org, stored.plaintext);
     return (
       await admin.query(
         `INSERT INTO message (channel_id, organization_id, author_user_id, author_kind, body_cipher, body_sha256, body_kind)
@@ -160,7 +160,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C2 global search index writer - LIVE Postg
     ).rows[0].id as string;
   }
   async function editBody(org: string, id: string, text: string) {
-    const sealed = cipher.seal(org, text);
+    const sealed = await cipher.seal(org, text);
     await admin.query(
       `UPDATE message SET body_cipher=$2, body_sha256=$3, status='edited', edited_at=now() WHERE id=$1`,
       [id, sealed.cipher, sealed.sha256],
@@ -482,7 +482,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C2 global search index writer - LIVE Postg
       const editor = await appClient();
       try {
         await asOrg(editor, ORG_A);
-        const sealed = cipher.seal(ORG_A, "oxycodone given");
+        const sealed = await cipher.seal(ORG_A, "oxycodone given");
         let editSettled = false;
         const editing = editor
           .query(
@@ -824,7 +824,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C2 global search index writer - LIVE Postg
     };
     async function readyBulkTenant(): Promise<ReconcileDeps> {
       await enableSearch(ORG_A);
-      const sealed = cipher.seal(ORG_A, BULK_TEXT);
+      const sealed = await cipher.seal(ORG_A, BULK_TEXT);
       await admin.query(
         `INSERT INTO message (channel_id, organization_id, author_user_id, author_kind, body_cipher, body_sha256, body_kind)
          SELECT $1,$2,$3,'user',$4,$5,'plain' FROM generate_series(1,$6)`,

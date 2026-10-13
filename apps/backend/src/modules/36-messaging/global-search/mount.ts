@@ -1,9 +1,9 @@
-// WP 2.7b C3 (ADR-0058, Proposed) - composes and mounts the global search route. ONE call from `mountMessagingRoutes`.
+// WP 2.7b C3 (ADR-0058, Accepted) - composes and mounts the global search route. ONE call from `mountMessagingRoutes`.
 //
-// PRODUCTION STAYS INERT, by four independent defaults:
+// The route does nothing until operators enable it, by four independent defaults:
 //   * the tenant flag defaults OFF (a tenant with no row is OFF) and the platform flag is absent (= OFF);
-//   * `keys` defaults to the throwing provider (every call fails closed) until WP 2.13 / prerequisite P1 supplies the key ring;
-//   * `rateLimit` defaults to a hook that answers 503 DEGRADED until WP 2.14 wires the real per-route limiter;
+//   * `keys` defaults to the throwing provider (every call fails closed); the composition root passes the ring-backed one;
+//   * `rateLimit` defaults to a hook that answers 503 DEGRADED; the composition root passes the WP 2.14 limiter only on a shared store;
 //   * nothing here reads or writes anything until a request passes all of the above.
 import type { DbClient } from "@wardenx/db";
 import type { SearchKeyProvider } from "@wardenx/messaging";

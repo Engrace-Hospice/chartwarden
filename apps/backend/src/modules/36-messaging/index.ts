@@ -225,7 +225,7 @@ export function mountMessagingRoutes(
   }
   // WP 2.8 — message templates and saved replies (personal + shared + platform overlay).
   _registerTemplateRoutes(app, { service: _createDbTemplateService(db) });
-  // WP 2.7b (ADR-0058, Proposed) — global search; INERT in production (see ./global-search/mount.ts).
+  // WP 2.7b (ADR-0058, Accepted) — global search; refused until operators enable it (see ./global-search/mount.ts).
   _mountGlobalSearchRoutes(app, db, opts.globalSearch);
   // WP 2.7b C4 - the tenant global search switch + go-live checklist (registered, nothing enabled by default).
   _registerGlobalSearchSettingsRoutes(app, {

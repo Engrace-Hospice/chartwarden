@@ -1,4 +1,4 @@
-// WP 2.7b C2 (ADR-0058, Proposed) - the one BullMQ queue of the global search maintenance job. Declared HERE and nowhere
+// WP 2.7b C2 (ADR-0058, Accepted) - the one BullMQ queue of the global search maintenance job. Declared HERE and nowhere
 // else (`arch:queue-names`: a name declared by two owners shares one Redis queue). Deliberately NOT in MESSAGING_QUEUES.
 export const GLOBAL_SEARCH_QUEUES = {
   maintenance: "messaging.search_maintenance",

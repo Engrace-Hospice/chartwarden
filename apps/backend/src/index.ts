@@ -258,6 +258,7 @@ import {
   embedderUnavailable,
   licensedSourceDenyStub,
 } from "@wardenx/terminology-loader";
+import { buildGlobalSearchRateLimit } from "./bootstrap/plugins/global-search-rate-limit";
 import {
   type RealtimeHandle,
   createRealtimeEmitter,
@@ -1389,6 +1390,7 @@ import { emitWithRecipientFallback } from "./modules/36-messaging/alert-recipien
 import {
   invalidateMessageBodyKeys,
   setMessageBodyKeyProvider,
+  sharedRingDekCache,
 } from "./modules/36-messaging/body-key-ring";
 import {
   M36_BODY_LEGACY_COUNT_JOB_ID,
@@ -1397,6 +1399,8 @@ import {
   runLegacyBodyBootCheck,
 } from "./modules/36-messaging/body-legacy-key-check";
 import { cronAlertCorrelationId } from "./modules/36-messaging/cron-alert-correlation";
+import { registerM36GlobalSearch } from "./modules/36-messaging/global-search/register";
+import { createRingSearchKeyProvider } from "./modules/36-messaging/global-search/search-key-provider";
 import {
   M36_DELIVERY_PLATFORM_JOB_ID,
   M36_INTEGRITY_PLATFORM_JOB_ID,
@@ -1415,8 +1419,8 @@ import {
   createDrizzleMembershipUserLookup,
   createDrizzleMessagingEraseStore,
   createDrizzleRoleSetMembersReader,
-  createScheduledSendDispatcher,
   createRealtimeAuditWriter,
+  createScheduledSendDispatcher,
   createSosContactCaller,
   mountMessagingRoutes,
   mountMessagingWebhookRoutes,
@@ -1455,8 +1459,6 @@ import { buildM36FieldSafetyAlertConsumer } from "./modules/36-messaging/outbox-
 import { buildM36IpuAlertConsumer } from "./modules/36-messaging/outbox-consumers/ipu-alerts";
 import { buildM36IpuIvAlertConsumer } from "./modules/36-messaging/outbox-consumers/ipu-iv-alerts";
 import { buildM36ConsentRevokedConsumer } from "./modules/36-messaging/outbox-consumers/m39-consent-revoked";
-import { registerM36GlobalSearch } from "./modules/36-messaging/global-search/register";
-import { createUnavailableSearchKeyProvider } from "./modules/36-messaging/global-search/search-key-provider";
 import { buildM36MessageHintConsumer } from "./modules/36-messaging/outbox-consumers/message-hints";
 import { buildM36MessageMentionConsumer } from "./modules/36-messaging/outbox-consumers/message-mentions";
 import { buildM36OncallAlertConsumer } from "./modules/36-messaging/outbox-consumers/oncall-alerts";
@@ -3438,6 +3440,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   const rateLimitStore = rateLimitRedisClient
     ? createRedisRateLimitStore(rateLimitRedisClient)
     : undefined;
+  // WP 2.7b / ADR-0058 P2 - the global-search limiter (active only on the cluster-wide store) and P1 ring key provider.
+  // Both are shared by the route mount and the indexer/worker; the ring cache is resolved per call (bound later at boot).
+  const m36SearchRateLimit = buildGlobalSearchRateLimit(rateLimitStore);
+  const m36SearchKeys = createRingSearchKeyProvider(() => sharedRingDekCache());
   // TASK-040B — the outbox dispatcher (below, ~worker-runner section) is constructed AFTER
   // buildServer() returns `app` (it needs `app.addHook`/`app.log`), but the readinessProbe is
   // built and passed INTO buildServer() before that. This ref lets the probe's outbox-depth check
@@ -4584,6 +4590,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             sendEndpointVerificationCode: outOfBandBinding.sendEndpointVerificationCode,
             outbox: m36OutboxPublisher,
             attachments: m36AttachmentBinding,
+            globalSearch: {
+              keys: m36SearchKeys,
+              ...(m36SearchRateLimit.rateLimit ? { rateLimit: m36SearchRateLimit.rateLimit } : {}),
+            },
+            globalSearchRateLimitActive: m36SearchRateLimit.active,
           }); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05) + WP 1.5 attachments
           // GAP-101 — the §4.9 inbound vendor webhooks (Twilio sms/voice status, Postmark event): signature-authenticated
           // (replay window + HMAC / IP allowlist + bearer), reconciling `notification_delivery`. FAIL-CLOSED: a vendor
@@ -9292,14 +9303,13 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       // one object, since createDrizzleInboundTriggerPorts's return type already satisfies both port
       // interfaces.
       const m19TriggerPorts = createDrizzleInboundTriggerPorts(dbHandle.db);
-      // WP 2.7b C2 (ADR-0058, Proposed) — global message search, writer side. INERT in production: the tenant flag
-      // defaults OFF, the platform flag is absent (= OFF) and the key provider is the `unavailable` one (throws) until
-      // WP 2.13 / P1 lands. One call builds the indexer consumer (bound below) and the `messaging.search_maintenance`
+      // WP 2.7b C2 (ADR-0058, Accepted) — global message search, writer side. Gated by data, not code: the tenant flag
+      // defaults OFF, the platform flag is absent (= OFF) and the ring key provider throws (fail closed) while no ring is bound. One call builds the indexer consumer (bound below) and the `messaging.search_maintenance`
       // worker; the worker needs the queue connection (the platform pool is already required by this block).
       const m36GlobalSearch = await registerM36GlobalSearch({
         db: dbHandle.db,
         cipher: createMessageBodyCipher(),
-        keys: createUnavailableSearchKeyProvider(),
+        keys: m36SearchKeys,
         // Ids and a fixed reason only; never a tag, token or body text.
         onIndexError: (info) => app.log.warn(info, "M36 global search index write skipped"),
         ...(queueConnection

@@ -1,4 +1,4 @@
-// WP 2.7b (ADR-0058, Proposed) - the initial, tunable parameter values of the global blind-token index, and the T
+// WP 2.7b (ADR-0058, Accepted) - the initial, tunable parameter values of the global blind-token index, and the T
 // arithmetic of "Parameter values and the T arithmetic". Every value here is a Decided-2026-10-13 INITIAL value that the
 // design review must re-validate by measurement; nothing here enables search anywhere.
 

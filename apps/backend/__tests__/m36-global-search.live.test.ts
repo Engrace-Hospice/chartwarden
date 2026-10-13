@@ -302,7 +302,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
     text: string,
     opts: { at?: string; index?: boolean } = {},
   ): Promise<string> {
-    const sealed = cipher.seal(org, text);
+    const sealed = await cipher.seal(org, text);
     const id = (
       await one(
         `INSERT INTO message (channel_id, organization_id, author_user_id, author_kind, body_cipher, body_sha256, created_at)
@@ -835,7 +835,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       const ch = await newChannel(ORG_A, { members: [[u, "manual"]] });
       const edited = await send(ORG_A, ch.id, u, "Staleeditedword original body");
       // The body changes but the stale tags of the OLD body are put back by hand (a missed hook): the plaintext check drops it.
-      const sealed = cipher.seal(ORG_A, "A completely different replacement text");
+      const sealed = await cipher.seal(ORG_A, "A completely different replacement text");
       await q(
         `UPDATE message SET body_cipher=$2, body_sha256=$3, status='edited', edited_at=now() WHERE id=$1`,
         [edited, sealed.cipher, sealed.sha256],
@@ -1515,7 +1515,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
     async function plantedCandidates(term: string, count: number) {
       const u = await newUser(ORG_A);
       const ch = await newChannel(ORG_A, { members: [[u, "manual"]] });
-      const sealed = cipher.seal(ORG_A, "unrelated filler text without the searched word");
+      const sealed = await cipher.seal(ORG_A, "unrelated filler text without the searched word");
       await q(
         `INSERT INTO message (channel_id, organization_id, author_user_id, author_kind, body_cipher, body_sha256, created_at)
          SELECT $1,$2,$3,'user',$4,$5, timestamptz '2026-01-01' + g * interval '1 second' FROM generate_series(1,$6::int) g`,
@@ -1716,8 +1716,8 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       );
       const u = await newUser(ORG_A);
       const ch = await newChannel(ORG_A, { members: [[u, "manual"]] });
-      const filler = cipher.seal(ORG_A, "unrelated filler text without the searched word");
-      const real = cipher.seal(ORG_A, "dualversionword is in the oldest message");
+      const filler = await cipher.seal(ORG_A, "unrelated filler text without the searched word");
+      const real = await cipher.seal(ORG_A, "dualversionword is in the oldest message");
       await q(
         `INSERT INTO message (channel_id, organization_id, author_user_id, author_kind, body_cipher, body_sha256, created_at)
          SELECT $1,$2,$3,'user', CASE WHEN g = 1 THEN $4::bytea ELSE $5::bytea END, CASE WHEN g = 1 THEN $6::text ELSE $7::text END,
@@ -1861,7 +1861,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       count: number,
       startIso: string,
     ) {
-      const filler = cipher.seal(ORG_A, "unrelated filler text without the searched word");
+      const filler = await cipher.seal(ORG_A, "unrelated filler text without the searched word");
       await q(
         `INSERT INTO message (channel_id, organization_id, author_user_id, author_kind, body_cipher, body_sha256, created_at)
          SELECT $1,$2,$3,'user',$4,$5, $6::timestamptz + g * interval '1 second' FROM generate_series(1,$7::int) g`,
@@ -1881,6 +1881,8 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       return ch;
     };
     const noMatch = () => ({ results: [], scanned: 0, scanCapped: false, refine: false });
+    // A scan that a limit (5 rounds / 100 channels) ended early is never reported as complete (UNRUN: needs the live stack).
+    const limitHit = () => ({ results: [], scanned: 0, scanCapped: true, refine: true });
 
     it("M2 more than 500 hidden candidates only: the response equals a no-match query", async () => {
       const u = await newUser(ORG_A);
@@ -1923,11 +1925,11 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
         );
       }
       authorityBatches.length = 0;
-      expect(await ok(u, "totalcapchanword")).toEqual(noMatch());
+      expect(await ok(u, "totalcapchanword")).toEqual(limitHit());
       expect(authorityBatches.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(100);
     }, 180_000);
 
-    it("M2 five hidden rounds followed by a visible row: EMPTY, identical to a no-match query (accepted recall cost)", async () => {
+    it("M2 five hidden rounds followed by a visible row: EMPTY but flagged scanCapped/refine, never complete (accepted recall cost)", async () => {
       const u = await newUser(ORG_A);
       const visible = await newChannel(ORG_A, { members: [[u, "manual"]] });
       await send(ORG_A, visible.id, u, "Fiveroundshiddenword visible note", {
@@ -1936,7 +1938,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       const ch = await hiddenChannel(u);
       await plantRows(ch.id, u, "fiveroundshiddenword", 2600, "2026-09-02T00:00:00Z");
       spy.reset();
-      expect(await ok(u, "fiveroundshiddenword")).toEqual(noMatch());
+      expect(await ok(u, "fiveroundshiddenword")).toEqual(limitHit());
       expect(spy.reads).toEqual([]);
     }, 180_000);
 
@@ -1994,6 +1996,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       const res = await ok(u, "fullpagecursorword", "&limit=1");
       expect(res.results).toHaveLength(1);
       expect(res.nextCursor).toBeUndefined(); // nothing further is VISIBLE
+      expect(res.scanCapped).toBe(true); // ...but the scan did not reach its end: not reported as complete (UNRUN)
       if (pgss) {
         const calls = await one(
           `SELECT coalesce(sum(calls),0)::int AS n FROM pg_stat_statements WHERE query ILIKE '%hit_messages%'`,
@@ -2113,7 +2116,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       );
       await q("TRUNCATE perf_pool");
       for (let i = 0; i < POOL; i += 1) {
-        const sealed = cipher.seal(ORG_P, pool[i] as string);
+        const sealed = await cipher.seal(ORG_P, pool[i] as string);
         await q("INSERT INTO perf_pool VALUES ($1,$2,$3,$4)", [
           i,
           sealed.cipher,

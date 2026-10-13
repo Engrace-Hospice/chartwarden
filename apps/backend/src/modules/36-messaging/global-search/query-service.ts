@@ -17,9 +17,14 @@
 // page content are derived from the VISIBLE rows only. The cursor names the last VISIBLE row examined, never a candidate that
 // was dropped for Part 2, a lapsed roster, removal or redaction. The pre-authority caps (500 candidates, 50 channels per call)
 // are therefore not shown to the caller: when one is reached the service CONTINUES SCANNING INTERNALLY (next round, from an
-// internal position that is never emitted) up to MAX_PAGES_PER_QUERY rounds. If that bound is reached with nothing further
-// visible, the response ends WITHOUT a cursor and without `refine`, exactly as if nothing else matched. RECALL COST (accepted):
-// a caller whose visible matches lie behind more than 5 x 500 hidden/unauthorised candidates may not reach them.
+// internal position that is never emitted) up to MAX_PAGES_PER_QUERY rounds or the 100-channel budget.
+// TRUNCATION IS NEVER SILENT. If a limit (5 rounds, 100 channels) ends the scan while candidates remain and nothing further is
+// visible, the response is still WITHOUT a cursor (a cursor would be derived from a hidden position or would expose that more
+// raw rows exist) but carries `scanCapped: true` (and `refine: true` when the page is empty), so it never reads as "complete".
+// The same applies after a full page whose one extra round found nothing visible. ORACLE DECISION: this flag can be set by
+// hidden volume (a caller behind > 5 x 500 hidden candidates or > 100 channels sees "a limit was hit"), but it reveals only
+// that a bound was reached, never a count, a channel or a row, and a caller can already provoke it with a broad query; the
+// accepted recall cost stands, silent completeness does not.
 //
 // RESIDUAL TOCTOU WINDOW (security review MED-5): authority is evaluated once per round, outside any transaction. Membership
 // and the active-user check are re-read in the last transaction, but a Part 2 consent revocation or a care-team roster change
@@ -205,6 +210,8 @@ interface Scan {
   position: KeysetPosition | null;
   exhausted: boolean;
   rounds: number;
+  /** The 100-channel budget ended the scan with candidates left (not exhausted, cannot continue). */
+  stopped: boolean;
   readonly decided: Map<string, boolean>;
   readonly queue: VisibleRow[];
 }
@@ -284,9 +291,9 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
     const { list, fresh, cut } = boundChannels(covered, scan.decided, allowance);
     await decide(input, scan, fresh);
     scan.rounds += 1;
-    // Out of the per-request channel budget: stop scanning (the cursor, from the last visible row, reaches the rest).
-    const outOfChannels = cut && scan.decided.size >= limits.maxTotalChannels;
-    scan.exhausted = (raw.length <= CANDIDATE_CAP && !cut) || outOfChannels;
+    // Out of the per-request channel budget: stop scanning (LOW-1: no further rounds); the response flags the truncation.
+    scan.stopped = cut && scan.decided.size >= limits.maxTotalChannels;
+    scan.exhausted = raw.length <= CANDIDATE_CAP && !cut;
     const last = list[list.length - 1];
     if (last) scan.position = { createdAtIso: last.createdAtIso, id: last.id };
     const survivors = list.filter((c) => scan.decided.get(c.channelId) === true && !isRedacted(c));
@@ -306,7 +313,8 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
     }
   }
 
-  const canFill = (scan: Scan) => !scan.exhausted && scan.rounds < MAX_PAGES_PER_QUERY;
+  const canFill = (scan: Scan) =>
+    !scan.exhausted && !scan.stopped && scan.rounds < MAX_PAGES_PER_QUERY;
 
   /** Open and verify visible rows in recency order; stops at the page size, the budget or the end of what is visible. */
   async function drain(
@@ -340,7 +348,9 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
       decryptMs += clock() - openedAt;
       if (matched) rows.push(next.row);
     }
-    return { rows, opened, lastExamined, more: scan.queue.length > 0 };
+    // Nothing visible is left to open, yet the raw scan did not reach its end (round or channel limit): not a complete answer.
+    const truncated = scan.queue.length === 0 && !scan.exhausted;
+    return { rows, opened, lastExamined, more: scan.queue.length > 0, truncated };
   }
 
   async function matches(
@@ -472,6 +482,7 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
         position: cursor ? { createdAtIso: cursor.createdAt, id: cursor.messageId } : null,
         exhausted: false,
         rounds: 0,
+        stopped: false,
         decided: new Map(),
         queue: [],
       };
@@ -493,8 +504,8 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
           results: hits,
           ...(next ? { nextCursor: next } : {}),
           scanned: drained.opened,
-          scanCapped: refine || (drained.more && hits.length < limit),
-          refine,
+          scanCapped: refine || drained.truncated || (drained.more && hits.length < limit),
+          refine: refine || (drained.truncated && hits.length === 0),
         };
       } catch (error) {
         throw searchTimeoutToError(error);

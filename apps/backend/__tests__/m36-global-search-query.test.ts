@@ -357,4 +357,17 @@ describe("structure of the query path", () => {
     expect(source).toContain("deps.authority ?? effectivelyVisibleChannels");
     expect(source.match(/bodies\.read\(/g)).toHaveLength(1);
   });
+
+  it("a scan ended by a limit is flagged, never reported complete, and never emits a cursor from raw positions", () => {
+    const source = read("global-search/query-service.ts");
+    expect(source).toContain("const truncated = scan.queue.length === 0 && !scan.exhausted;");
+    expect(source).toContain("scan.stopped = cut && scan.decided.size >= limits.maxTotalChannels;");
+    expect(source).toContain(
+      "!scan.exhausted && !scan.stopped && scan.rounds < MAX_PAGES_PER_QUERY",
+    );
+    expect(source).toContain("drained.truncated");
+    // The only cursor source is the last VISIBLE row examined.
+    expect(source.match(/encodeSearchCursor\(/g)).toHaveLength(1);
+    expect(source).toContain("drained.lastExamined.createdAtIso");
+  });
 });

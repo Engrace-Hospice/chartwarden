@@ -1,10 +1,9 @@
-// WP 2.7b C2 (ADR-0058, Proposed) - the ONE composition call for the global search writer side, so apps/backend/src/index.ts
+// WP 2.7b C2 (ADR-0058, Accepted) - the ONE composition call for the global search writer side, so apps/backend/src/index.ts
 // carries a single registration block. It builds the writer, the outbox consumer `m36.message-search-indexer`, and (when a
 // queue connection and the active-org enumerator exist) the `messaging.search_maintenance` worker + its schedule.
 //
-// PRODUCTION STAYS INERT: the tenant flag defaults OFF, the platform flag is absent (= OFF), and `keys` is wired to the
-// `unavailable` provider (throws) until WP 2.13 / prerequisite P1 supplies the key ring, so nothing can be indexed even with
-// every flag flipped. The consumer is registered unconditionally (the catalog's declared `m36` consumer must be bound);
+// Nothing is indexed until operators enable it: the tenant flag defaults OFF, the platform flag is absent (= OFF), and `keys`
+// is the ring-backed provider (throws, fail closed, while no ring is bound or the ring is destroyed). The consumer is registered unconditionally (the catalog's declared `m36` consumer must be bound);
 // with the flags off it completes without doing work.
 import type { DbClient } from "@wardenx/db";
 import type { SearchKeyProvider } from "@wardenx/messaging";
