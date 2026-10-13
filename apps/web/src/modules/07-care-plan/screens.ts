@@ -1,15 +1,15 @@
 import type { ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/modules/07-care-plan — M7 screen registration (Track B, ADR-0030).
-// The §5 Care Plan (IPOC) screens that have a backing M7 read route on the generated client: the
-// patient-scoped Care Plan View (§5.2), the Version History ledger (§5.1), and the patient-friendly
-// Care Plan Summary (§5.2). Nav visibility is gated by the matching M7 permission key; the SERVER
+// The §5 Plan of Care (IPOC) screens that have a backing M7 read route on the generated client: the
+// patient-scoped Plan of Care View (§5.2), the Version History ledger (§5.1), and the patient-friendly
+// Plan of Care Summary (§5.2). Nav visibility is gated by the matching M7 permission key; the SERVER
 // stays the only enforcement point (no frontend authz).
 //
 // F-031 (#91) — this header used to end "…fill in as their write surfaces harden", which made the
 // screens.ts corpus the only accurate inventory of what the app could not do. It is accurate the other
 // way now.
 //
-// WHAT IS BUILT, on the Care Plan View: the whole IPOC authoring surface — add / edit / resolve a
+// WHAT IS BUILT, on the Plan of Care View: the whole IPOC authoring surface — add / edit / resolve a
 // problem, add / revise a goal, add / edit / discontinue an intervention — plus the §2 version
 // lifecycle in the footer (open a version, close a draft for signature, sign, return to draft), each
 // offered only in the state the server accepts it in. The plan of care is the legal predicate for
@@ -24,11 +24,11 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 //
 // F-066 (#161) — the plan BOOTSTRAP is now built. This header used to end: "`POST /patients/:id/
 // care-plan` (plan bootstrap) has a client but no control — the plan shell is created on admission,
-// and a 'create care plan' button would need an admissionId this screen does not read". Both halves
+// and a 'create Plan of Care' button would need an admissionId this screen does not read". Both halves
 // were wrong in the same way: nothing in the product created the plan shell on admission, and no
 // caller could resolve an admissionId for a patient at all until F-065 added
-// `GET /patients/:patientId/admissions`. The Care Plan View's empty state now resolves the patient's
-// OPEN admission through that read and offers "Start the care plan" — or says the patient has no open
+// `GET /patients/:patientId/admissions`. The Plan of Care View's empty state now resolves the patient's
+// OPEN admission through that read and offers "Start the Plan of Care" — or says the patient has no open
 // admission, which is the one honest reason not to offer it.
 //
 // F-077 (#91 AC5) — `e2e/specs/care-plan.spec.ts` drives the §2 version lifecycle in a real browser and
@@ -68,33 +68,33 @@ export const carePlanScreens: ScreenRegistryModule<ComponentType> = {
   slug: "07-care-plan",
   screens: [
     {
-      // Patient-scoped Care Plan View — reached from the patient chart "Care Plan" tab; param path (no nav).
+      // Patient-scoped Plan of Care View — reached from the patient chart "Plan of Care" tab; param path (no nav).
       id: "care-plan.view",
       path: "/patients/:patientId/care-plan",
-      title: "Care Plan",
+      title: "Plan of Care",
       requiredPermission: "care_plan.read",
       screen: CarePlanView,
     },
     {
-      // Version history — reached from the Care Plan View aside; param path (no nav).
+      // Version history — reached from the Plan of Care View aside; param path (no nav).
       id: "care-plan.versions",
       path: "/care-plans/:planId/versions",
-      title: "Care Plan — Version History",
+      title: "Plan of Care — Version History",
       requiredPermission: "care_plan.read",
       screen: CarePlanVersionHistory,
     },
     {
       id: "care-plan.version-detail",
       path: "/care-plans/:planId/versions/:versionId",
-      title: "Care Plan Version",
+      title: "Plan of Care Version",
       requiredPermission: "care_plan.read",
       screen: CarePlanVersionHistory,
     },
     {
-      // Patient-friendly summary — reached from the Care Plan View aside; param path (no nav).
+      // Patient-friendly summary — reached from the Plan of Care View aside; param path (no nav).
       id: "care-plan.summary",
       path: "/care-plans/:planId/summary",
-      title: "Care Plan Summary",
+      title: "Plan of Care Summary",
       requiredPermission: "care_plan.read_summary",
       screen: CarePlanSummary,
     },

@@ -1585,7 +1585,7 @@ export function OverviewRail({
     },
 
     {
-      label: "View Care Plan",
+      label: "View Plan of Care",
 
       icon: "users",
 

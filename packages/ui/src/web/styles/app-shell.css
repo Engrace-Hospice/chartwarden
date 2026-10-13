@@ -1,114 +1,6 @@
-/* Shared WardenX app chrome (2026-09-25 redesign) — the element defaults and the sidebar/header shell,
- * used by apps/web (shell/layout.tsx) and apps/admin (shell/layout.tsx). Lifted out of apps/web/src/index.css so
- * the Platform-Ops console wears the same shell; each app imports it right after list-chrome.css, before its own
- * components. Tokens stay in each app's stylesheet (apps/web's @theme is the arch:design-tokens source). */
-@layer base {
-  html {
-    font-family: var(--font-sans);
-    color: var(--color-on-surface);
-    background: var(--color-background);
-  }
-  /* Headings use the Manrope display face. */
-  h1,
-  h2,
-  h3,
-  h4,
-  h5,
-  h6 {
-    font-family: var(--font-display);
-    font-weight: 700;
-    letter-spacing: -0.01em;
-  }
-  /* Screens author bare elements (<a>/<input>/<select>/<button>) and lean on these defaults. */
-  a {
-    color: var(--color-primary);
-    text-decoration: none;
-  }
-  a:hover {
-    text-decoration: underline;
-  }
-  button {
-    font: inherit;
-  }
-  input,
-  select,
-  textarea {
-    font: inherit;
-    padding: 0.45rem 0.7rem;
-    /* Controls carry the redesign's hairline edge on a white field (mockups). */
-    border: 1px solid var(--color-card-border);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-lowest);
-    color: var(--color-on-surface);
-  }
-  input:focus,
-  select:focus,
-  textarea:focus {
-    outline: 2px solid var(--color-focus-ring);
-    outline-offset: 1px;
-    background: var(--color-surface-lowest);
-  }
-  .wx-button:focus-visible,
-  .wx-field input:focus-visible,
-  .wx-field select:focus-visible,
-  .wx-field textarea:focus-visible {
-    outline: 2px solid var(--color-focus-ring);
-    outline-offset: 2px;
-  }
-  .wx-button:not(:disabled):hover {
-    filter: brightness(0.96);
-  }
-  .dark .wx-button:not(:disabled):hover {
-    filter: brightness(1.12);
-  }
-  .wx-button-tertiary:not(:disabled):hover {
-    background: var(--color-primary-tint);
-  }
-  .wx-data-row-interactive {
-    cursor: pointer;
-  }
-  .wx-data-row-interactive:focus-visible {
-    outline: 2px solid var(--color-focus-ring);
-    outline-offset: -2px;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
-      scroll-behavior: auto !important;
-      transition-duration: 0.01ms !important;
-      animation-duration: 0.01ms !important;
-      animation-iteration-count: 1 !important;
-    }
-  }
-  /* Identifiers/codes read in the mono face (MRN, MBI, claim/control numbers). */
-  code,
-  kbd,
-  samp {
-    font-family: var(--font-mono);
-  }
-  table {
-    border-collapse: collapse;
-    width: 100%;
-  }
-  th,
-  td {
-    text-align: left;
-    padding: 0.625rem 0.875rem;
-    /* Hairline row separator (mockup tables). */
-    border-bottom: 1px solid var(--color-card-border);
-  }
-  th {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--color-on-surface);
-  }
-  /* Financial/numeric alignment per DESIGN.md §6.7. */
-  td:has(> .tabular),
-  .tabular-nums {
-    font-variant-numeric: tabular-nums;
-  }
-}
+/* Shared staff application shell (2026-09-25 redesign), used only by apps/web and apps/admin.
+ * Browser element defaults live in base-elements.css so non-staff surfaces can share the design
+ * system without inheriting the clinical/operations navigation shell. */
 
 @layer components {
   /* ---- App shell (apps/web/src/shell/layout.tsx — NO inline styles, must be defined) ---- */
@@ -464,16 +356,14 @@
   .wx-no-scrollbar,
   .wx-main,
   .wx-nav,
-  .wx-work-table,
-  table {
+  .wx-work-table {
     scrollbar-width: none !important; /* Firefox */
     -ms-overflow-style: none !important; /* IE and Edge */
   }
   .wx-no-scrollbar::-webkit-scrollbar,
   .wx-main::-webkit-scrollbar,
   .wx-nav::-webkit-scrollbar,
-  .wx-work-table::-webkit-scrollbar,
-  table::-webkit-scrollbar {
+  .wx-work-table::-webkit-scrollbar {
     display: none !important; /* Chrome, Safari and Opera */
   }
   .wx-main:focus {
@@ -567,17 +457,6 @@
     outline: 2px solid var(--color-focus-ring);
     outline-offset: -2px;
     border-radius: var(--radius-sm);
-  }
-
-  /* Every <table> scrolls horizontally instead of blowing out the layout at narrow widths
-     (TASK-033 / UI-004). `display: block` on the outer element only — thead/tbody/tr/td keep
-     their table-* display by default (the UA stylesheet sets those on the descendant tags, not
-     inherited from the ancestor), so internal column layout is unaffected. Cheaper and more
-     consistent than hand-wrapping ~150 screens' raw `<table>` usages in an `overflow-x` div. */
-  table {
-    display: block;
-    max-width: 100%;
-    overflow-x: auto;
   }
 
   /* ---- Responsive shell (TASK-033 / UI-004): usable down to a 390px viewport. Below the

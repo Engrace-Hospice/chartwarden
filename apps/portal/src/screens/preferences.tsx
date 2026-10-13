@@ -61,22 +61,10 @@ export function PortalNotificationPreferences(): JSX.Element {
         emptyDescription="Notification channels will appear here once your account is fully set up."
       >
         <PortalCard heading="Channels">
-          <ul
-            style={{
-              listStyle: "none",
-              margin: 0,
-              padding: 0,
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.6rem",
-            }}
-          >
+          <ul className="wx-portal-setting-list">
             {(prefs?.channels ?? []).map((c) => (
-              <li
-                key={c.channel}
-                style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
-              >
-                <span style={{ fontSize: "0.92rem" }}>{label(c.channel)}</span>
+              <li key={c.channel}>
+                <span>{label(c.channel)}</span>
                 <StatusPill
                   tone={c.enabled ? "success" : "neutral"}
                   label={c.enabled ? "On" : "Off"}
@@ -87,7 +75,7 @@ export function PortalNotificationPreferences(): JSX.Element {
         </PortalCard>
         {prefs?.quietHours ? (
           <PortalCard heading="Quiet hours">
-            <p style={{ margin: 0, fontSize: "0.9rem" }}>
+            <p className="wx-portal-body-copy">
               We won't send non-urgent notifications between {hour(prefs.quietHours.startHour)} and{" "}
               {hour(prefs.quietHours.endHour)}.
             </p>

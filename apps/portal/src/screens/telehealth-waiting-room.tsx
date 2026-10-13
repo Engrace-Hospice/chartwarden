@@ -1,11 +1,11 @@
-import { StatusPill, t, useApiClient } from "@wardenx/ui";
+import { Button, InlineAlert, StatusPill, useApiClient } from "@wardenx/ui";
 // @wardenx/portal — §5.1 Telehealth waiting room (`/p/:patientId/visits/:visitId/telehealth`). Pre-visit
 // checklist (consent reaffirm, audio test), then "Join" calls POST /portal/telehealth/visits/:id/join, which
 // the backend telehealth adapter (M31-T05) answers with a short-lived vendor token + join URL. Two-party
 // recording consent is surfaced before the token is used; the audio-only fallback (Tier-3, §7.3) is always
 // offered. We wrap the vendor — we never navigate the caregiver to a raw Daily.co surface.
 import { useState } from "react";
-import type { CSSProperties, JSX } from "react";
+import type { JSX } from "react";
 import { useParams } from "react-router-dom";
 import { readError } from "./portal-format";
 import { PortalCard, PortalPage } from "./portal-page";
@@ -19,21 +19,6 @@ interface JoinTicket {
   audioOnlyFallbackActive: boolean;
   recordingActive: boolean;
 }
-
-const primaryBtn: CSSProperties = {
-  padding: "0.6rem 1rem",
-  borderRadius: "0.5rem",
-  border: "none",
-  background: t.primary,
-  color: t.onPrimary,
-  fontWeight: 600,
-  cursor: "pointer",
-};
-const ghostBtn: CSSProperties = {
-  ...primaryBtn,
-  background: t.surfaceContainer,
-  color: t.onSurface,
-};
 
 export function TelehealthWaitingRoom(): JSX.Element {
   const client = useApiClient();
@@ -68,7 +53,7 @@ export function TelehealthWaitingRoom(): JSX.Element {
     return (
       <PortalPage title="Video visit" subtitle="You're connected to your care team.">
         <PortalCard heading="In the visit">
-          <p style={{ margin: "0 0 0.75rem", fontSize: "0.9rem" }}>
+          <p className="wx-portal-body-copy">
             The video runs inside this secure window.{" "}
             {ticket.recordingActive ? (
               <StatusPill tone="warning" label="Recording" />
@@ -86,29 +71,23 @@ export function TelehealthWaitingRoom(): JSX.Element {
               src={embedUrl}
               allow={TELEHEALTH_FRAME_ALLOW}
               referrerPolicy="no-referrer"
-              style={{
-                width: "100%",
-                height: "28rem",
-                borderRadius: "0.6rem",
-                border: `1px solid ${t.surfaceContainer}`,
-                background: t.surfaceLowest,
-              }}
+              className="wx-portal-video-frame"
             />
           ) : (
-            <p role="alert" style={{ color: t.error, fontSize: "0.9rem", margin: "0 0 0.75rem" }}>
+            <InlineAlert tone="error">
               The video room could not be opened. Leave and try joining again, or call your care
               team.
-            </p>
+            </InlineAlert>
           )}
           {ticket.audioOnlyFallbackActive ? (
-            <p style={{ margin: "0.5rem 0 0", fontSize: "0.85rem", color: t.onSurfaceVariant }}>
+            <p className="wx-portal-supporting-copy">
               Audio-only mode is on because of a limited connection.
             </p>
           ) : null}
-          <div style={{ display: "flex", gap: "0.75rem", marginTop: "1rem" }}>
-            <button type="button" style={ghostBtn} onClick={() => void leave()}>
+          <div className="wx-portal-actions">
+            <Button tone="secondary" onClick={() => void leave()}>
               Leave visit
-            </button>
+            </Button>
           </div>
         </PortalCard>
       </PortalPage>
@@ -121,14 +100,12 @@ export function TelehealthWaitingRoom(): JSX.Element {
       subtitle="A few checks before your care team joins."
     >
       <PortalCard heading="Before you join">
-        <ul style={{ margin: "0 0 1rem", paddingLeft: "1.1rem", fontSize: "0.9rem" }}>
+        <ul className="wx-portal-content-list">
           <li>Find a quiet, private spot with a steady connection.</li>
           <li>Your microphone and camera will be requested when you join.</li>
           <li>If video won't connect, you can switch to audio-only.</li>
         </ul>
-        <label
-          style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", fontSize: "0.88rem" }}
-        >
+        <label className="wx-portal-check-row">
           <input
             type="checkbox"
             checked={consented}
@@ -139,20 +116,11 @@ export function TelehealthWaitingRoom(): JSX.Element {
             telehealth visit for my loved one.
           </span>
         </label>
-        {error ? (
-          <p role="alert" style={{ color: t.error, fontSize: "0.85rem", margin: "0.75rem 0 0" }}>
-            {error}
-          </p>
-        ) : null}
-        <div style={{ marginTop: "1rem" }}>
-          <button
-            type="button"
-            style={primaryBtn}
-            disabled={!consented || joining}
-            onClick={() => void join()}
-          >
+        {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
+        <div className="wx-portal-actions">
+          <Button loading={joining} disabled={!consented} onClick={() => void join()}>
             {joining ? "Connecting…" : "Join visit"}
-          </button>
+          </Button>
         </div>
       </PortalCard>
     </PortalPage>

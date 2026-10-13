@@ -4,11 +4,10 @@
  *   1. Pull in Tailwind v4 (Preflight reset + the utility engine) via the @tailwindcss/vite plugin.
  *   2. Define the design tokens the admin screens + @wardenx/admin-ui-shell chrome consume.
  *
- * SOURCE OF TRUTH is packages/ui/src/core/theme/colors.ts + apps/web/src/index.css; this is the admin
- * app's LOCAL token layer, kept until the shared `@wardenx/ui` stylesheet lift that apps/web/index.css's
- * header anticipates. It cannot @import apps/web's sheet (cross-app boundary) and must not move apps/web's
- * tokens out of its @theme (the arch:design-tokens colors.ts↔index.css sync check reads them there). Keep
- * the hex values in sync with colors.ts if they change.
+ * SOURCE OF TRUTH is packages/ui/src/core/theme/colors.ts + apps/web/src/index.css. Tokens remain local
+ * because the web @theme block is required by Tailwind and the architecture gate; shared browser defaults
+ * live in packages/ui/src/web/styles/base-elements.css. `arch:design-tokens` enforces this layer's parity
+ * with web, so local values cannot drift silently.
  *
  * Every token here is consumed ONLY through the `t.*` map (inline `var(--…)` references), never as a
  * Tailwind utility — so, per the "@theme drops unrecognised namespaces" gotcha, they live in a plain
@@ -16,6 +15,8 @@
  */
 @import "tailwindcss";
 
+/* Shell-free element/control defaults shared by every browser surface. */
+@import "../../../packages/ui/src/web/styles/base-elements.css";
 /* GAP-207 — the shared `wx-*` list chrome (KPI strip, DataTable card, WorkQueue slots, list table). */
 @import "../../../packages/ui/src/web/styles/list-chrome.css";
 /* The shared element defaults + sidebar/header shell — the console wears the clinical app's 2026-09-25 redesign. */

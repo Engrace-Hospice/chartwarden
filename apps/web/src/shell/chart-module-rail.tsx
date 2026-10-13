@@ -89,7 +89,7 @@ const TABS: {
   },
   {
     key: "care-plans",
-    label: "Care Plan",
+    label: "Plan of Care",
     route: (id) => `/patients/${id}/care-plan`,
   },
   { key: "orders", label: "Orders", route: (id) => `/patients/${id}/orders` },

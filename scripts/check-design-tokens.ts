@@ -16,9 +16,13 @@
  *      `apps/web/src/index.css` (the runtime tokens). Catches the dual-source drift between the
  *      two color tables.
  *
+ *   3. APP TOKEN PARITY — the local runtime token layers in apps/admin and apps/portal must match
+ *      apps/web for the shared light/dark contract. The repository deliberately keeps these local
+ *      (Tailwind v4 emission + app boundaries), so this rule makes the copies mechanically safe.
+ *
  * Heuristic, static, import-level (same posture as check-tenancy.ts / check-ddl-legality.ts).
  */
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -107,9 +111,58 @@ for (const m of brandSeg.matchAll(/"(#[0-9a-fA-F]{3,8})"/g)) {
   }
 }
 
+// ── Rule 3 — web/admin/portal local CSS token layers stay equal ──────────────────────────────────
+const TOKEN_APPS = ["apps/admin/src/index.css", "apps/portal/src/index.css"] as const;
+const CONTRACT_PREFIXES = ["color-", "font-", "radius-", "shadow-", "space-"] as const;
+
+function normalizedValue(value: string): string {
+  return value.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function declarations(source: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const match of source.matchAll(/--([a-z0-9-]+):\s*([^;]+);/gi)) {
+    const key = match[1]!;
+    if (CONTRACT_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+      out.set(key, normalizedValue(match[2]!));
+    }
+  }
+  return out;
+}
+
+function themeParts(source: string): { light: Map<string, string>; dark: Map<string, string> } {
+  const firstDark = source.search(/\.dark\s*\{/);
+  const light = declarations(firstDark === -1 ? source : source.slice(0, firstDark));
+  const dark = new Map<string, string>();
+  for (const match of source.matchAll(/\.dark\s*\{([^}]]*)\}/g)) {
+    for (const [key, value] of declarations(match[1]!)) dark.set(key, value);
+  }
+  return { light, dark };
+}
+
+const canonical = themeParts(css);
+for (const appPath of TOKEN_APPS) {
+  // Planted-violation fixtures intentionally contain only the minimum files needed by rules 1–2.
+  // App parity applies to the real repository (and to any fixture that supplies an app layer).
+  if (!existsSync(join(REPO_ROOT, appPath))) continue;
+  const candidate = themeParts(readFileSync(join(REPO_ROOT, appPath), "utf8"));
+  for (const mode of ["light", "dark"] as const) {
+    for (const [key, expected] of canonical[mode]) {
+      const actual = candidate[mode].get(key);
+      if (actual !== expected) {
+        violations.push({
+          rule: "app-token-drift",
+          file: appPath,
+          detail: `${mode} --${key} is ${actual ?? "missing"}; expected ${expected} from ${cssPath}`,
+        });
+      }
+    }
+  }
+}
+
 if (violations.length === 0) {
   console.log(
-    "✓ design-tokens: no raw hex/rgb in render code; colors.ts ↔ index.css @theme in sync",
+    "✓ design-tokens: render colors clean; core ↔ web source synced; app token layers match",
   );
   process.exit(0);
 }

@@ -1,18 +1,8 @@
-import { EmptyState, LoadingSpinner, cardSurface, t } from "@wardenx/ui";
+import { Card, EmptyState, ErrorState, LoadingSpinner, t } from "@wardenx/ui";
 // @wardenx/portal — shared screen frame for the §5.1 caregiver surfaces. A titled card column inside the
 // portal's centered reading width, with the loading / error / empty triad every read screen needs. Keeps
 // the individual screens focused on their data shape rather than re-deriving layout chrome.
 import type { CSSProperties, JSX, ReactNode } from "react";
-
-const column: CSSProperties = {
-  width: "100%",
-  maxWidth: "44rem",
-  margin: "0 auto",
-  padding: "1.5rem 1.25rem 3rem",
-  display: "flex",
-  flexDirection: "column",
-  gap: "1.25rem",
-};
 
 export interface PortalPageProps {
   title: string;
@@ -24,29 +14,16 @@ export interface PortalPageProps {
 /** Titled reading column — the frame for every non-dashboard §5.1 screen. */
 export function PortalPage({ title, subtitle, actions, children }: PortalPageProps): JSX.Element {
   return (
-    <main style={column}>
-      <header
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          justifyContent: "space-between",
-          gap: "1rem",
-        }}
-      >
-        <div>
-          <h1 style={{ margin: 0, fontFamily: t.fontDisplay, fontSize: "1.6rem", fontWeight: 500 }}>
-            {title}
-          </h1>
-          {subtitle ? (
-            <p style={{ margin: "0.25rem 0 0", color: t.onSurfaceVariant, fontSize: "0.9rem" }}>
-              {subtitle}
-            </p>
-          ) : null}
+    <div className="wx-portal-page">
+      <header className="wx-portal-page__header">
+        <div className="wx-portal-page__intro">
+          <h1>{title}</h1>
+          {subtitle ? <p>{subtitle}</p> : null}
         </div>
-        {actions ? <div>{actions}</div> : null}
+        {actions ? <div className="wx-portal-page__actions">{actions}</div> : null}
       </header>
       {children}
-    </main>
+    </div>
   );
 }
 
@@ -56,10 +33,10 @@ export function PortalCard({
   children,
 }: { heading?: string; children: ReactNode }): JSX.Element {
   return (
-    <section style={cardSurface}>
-      {heading ? <h2 style={{ margin: "0 0 0.75rem", fontSize: "1rem" }}>{heading}</h2> : null}
+    <Card>
+      {heading ? <h2 className="wx-portal-card__heading">{heading}</h2> : null}
       {children}
-    </section>
+    </Card>
   );
 }
 
@@ -73,6 +50,7 @@ export function PortalLoadState({
   empty,
   emptyTitle,
   emptyDescription,
+  onRetry,
   children,
 }: {
   loading: boolean;
@@ -80,10 +58,16 @@ export function PortalLoadState({
   empty: boolean;
   emptyTitle: string;
   emptyDescription?: string;
+  onRetry?: () => void;
   children: ReactNode;
 }): JSX.Element {
-  if (loading) return <LoadingSpinner label="Loading…" />;
-  if (error) return <EmptyState title="Unavailable" description={error} />;
+  if (loading)
+    return (
+      <div className="wx-portal-load-state" aria-live="polite">
+        <LoadingSpinner label="Loading…" />
+      </div>
+    );
+  if (error) return <ErrorState title="Unavailable" description={error} onRetry={onRetry} />;
   if (empty) return <EmptyState title={emptyTitle} description={emptyDescription} />;
   return <>{children}</>;
 }

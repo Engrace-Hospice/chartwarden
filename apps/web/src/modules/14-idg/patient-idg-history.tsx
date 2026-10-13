@@ -912,7 +912,7 @@ function QuickActions({
   const links: { label: string; icon: GlyphName; to: string }[] = [
     { label: "Schedule IDG Meeting", icon: "calendar", to: "/idg/schedule" },
     { label: "My Action Items", icon: "check-circle", to: "/idg/action-items" },
-    { label: "View Care Plan", icon: "clipboard-list", to: `/patients/${patientId}/care-plan` },
+    { label: "View Plan of Care", icon: "clipboard-list", to: `/patients/${patientId}/care-plan` },
     ...(latest
       ? [
           {

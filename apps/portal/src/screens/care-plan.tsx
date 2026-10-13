@@ -1,4 +1,4 @@
-import { StatusPill, t, useApiClient } from "@wardenx/ui";
+import { StatusPill, useApiClient } from "@wardenx/ui";
 // @wardenx/portal — §5.1 Care plan view (`/p/:patientId/care-plan`). Reads M7 via the backend
 // PortalCarePlanReader seam as a PHI-minimised lay summary (GET /portal/care-plan/summary): problems with
 // their goals + focus areas in plain language, coordinator notes stripped server-side. Read-only. If the
@@ -55,21 +55,13 @@ export function PortalCarePlanView(): JSX.Element {
         emptyTitle="No care-plan items yet"
         emptyDescription="Once your team sets goals, they'll appear here."
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}>
+        <div className="wx-portal-card-stack">
           {problems.map((p) => (
             <PortalCard key={p.problemId} heading={p.label}>
               {p.goals.length > 0 ? (
                 <>
-                  <div
-                    style={{
-                      fontSize: "0.78rem",
-                      color: t.onSurfaceVariant,
-                      margin: "0 0 0.25rem",
-                    }}
-                  >
-                    Goals
-                  </div>
-                  <ul style={{ margin: "0 0 0.6rem", paddingLeft: "1.1rem", fontSize: "0.92rem" }}>
+                  <h3 className="wx-portal-section-label">Goals</h3>
+                  <ul className="wx-portal-content-list">
                     {p.goals.map((g, i) => (
                       // biome-ignore lint/suspicious/noArrayIndexKey: goals are plain strings with no id; a read-only, never-reordered list
                       <li key={i}>{g}</li>
@@ -78,9 +70,7 @@ export function PortalCarePlanView(): JSX.Element {
                 </>
               ) : null}
               {p.focus.length > 0 ? (
-                <p style={{ margin: 0, fontSize: "0.85rem", color: t.onSurfaceVariant }}>
-                  Focus: {p.focus.join(", ")}
-                </p>
+                <p className="wx-portal-supporting-copy">Focus: {p.focus.join(", ")}</p>
               ) : null}
             </PortalCard>
           ))}
