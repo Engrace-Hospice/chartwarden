@@ -104,15 +104,7 @@ export function scheduleErrorText(code: string | null): string | null {
 }
 
 /** Why a scheduled message was not sent. Generic: names no channel, patient or content. */
-export function blockedReasonText(
-  reason:
-    | "channel_archived"
-    | "not_member"
-    | "permission_revoked"
-    | "announcement_not_permitted"
-    | "parent_unavailable"
-    | "dispatch_failed",
-): string {
+export function blockedReasonText(reason: string | null | undefined): string {
   switch (reason) {
     case "channel_archived":
       return "Not sent: the conversation is closed.";
@@ -126,5 +118,8 @@ export function blockedReasonText(
       return "Not sent: the message it replies to is no longer available.";
     case "dispatch_failed":
       return "Not sent: it could not be delivered. You can retry or cancel it.";
+    default:
+      // A code this client does not know (a newer server): a generic note, never the raw code.
+      return "This message could not be sent. Reschedule it to try again.";
   }
 }

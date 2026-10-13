@@ -463,6 +463,10 @@ describe("M36 secondary surfaces under the XSS corpus", () => {
     );
     await screen.findByText("Row with a reason this client does not know");
     expect(document.body.textContent).not.toContain("RAW_UNKNOWN_REASON_CODE");
+    // ...and the row still says something: a generic note, never an empty status.
+    expect(document.querySelector(".wx-scheduled-blocked")?.textContent).toBe(
+      "This message could not be sent. Reschedule it to try again.",
+    );
   });
 });
 
