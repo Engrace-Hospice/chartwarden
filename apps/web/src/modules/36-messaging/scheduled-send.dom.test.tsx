@@ -541,6 +541,7 @@ describe("entry point", () => {
         query=""
         filter="all"
         error={null}
+        errorCorrelationId={null}
         onQueryChange={() => {}}
         onFilterChange={() => {}}
         onSelect={() => {}}

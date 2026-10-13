@@ -1,0 +1,202 @@
+/* Notifications & Tasks screen. Moved out of inline styles unchanged (WP 2.11); values are identical to the old
+   CSSProperties objects. Unlayered, so these win over the @layer components table rules exactly as inline styles did. */
+
+.wx-notif-subtitle {
+  color: var(--color-on-surface-variant);
+  font-size: 0.875rem;
+}
+
+.wx-notif-filter-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0 1.5rem 0.75rem;
+}
+
+.wx-notif-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.wx-notif-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.wx-notif-error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-error) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-error) 30%, transparent);
+  color: var(--color-error);
+  font-size: 0.85rem;
+}
+
+.wx-notif-state {
+  padding: 2rem 1.5rem;
+}
+
+.wx-notif-state-loading {
+  padding: 3rem 1.5rem;
+  text-align: center;
+}
+
+.wx-notif-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  padding: 0 1.5rem 1.5rem;
+}
+
+.wx-notif-table {
+  display: table;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.wx-notif-head-row {
+  text-align: left;
+  color: var(--color-on-surface-variant);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent);
+  background: var(--color-surface-low);
+}
+
+.wx-notif-row {
+  border-bottom: 1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent);
+}
+
+.wx-notif-row.is-unread {
+  background: color-mix(in srgb, var(--color-primary) 4%, transparent);
+}
+
+.wx-notif-row.is-link {
+  cursor: pointer;
+}
+
+.wx-notif-th {
+  padding: 0.625rem 1rem;
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+.wx-notif-th-notification {
+  width: 38%;
+}
+
+.wx-notif-th-source {
+  width: 16%;
+}
+
+.wx-notif-th-severity,
+.wx-notif-th-delivery {
+  width: 12%;
+}
+
+.wx-notif-th-age {
+  width: 10%;
+  text-align: right;
+}
+
+.wx-notif-th-action {
+  width: 12%;
+  text-align: right;
+}
+
+.wx-notif-td {
+  padding: 0.75rem 1rem;
+  vertical-align: middle;
+}
+
+.wx-notif-td-age {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.wx-notif-td-action {
+  text-align: right;
+}
+
+.wx-notif-with-state {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.wx-notif-unread-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 9999px;
+  flex-shrink: 0;
+  background: var(--color-primary);
+}
+
+.wx-notif-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.wx-notif-severity-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--color-error);
+}
+
+.wx-notif-severity-icon.is-info {
+  color: var(--color-on-surface-variant);
+}
+
+.wx-notif-cell-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.wx-notif-primary {
+  font-weight: 600;
+  color: var(--color-on-surface);
+}
+
+.wx-notif-secondary {
+  font-size: 0.75rem;
+  color: var(--color-on-surface-variant);
+}
+
+.wx-notif-source-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-on-surface-variant);
+  background: var(--color-surface-container);
+  border-radius: 9999px;
+  padding: 0.1rem 0.55rem;
+}
+
+.wx-notif-mark-read {
+  border: 0;
+  background: transparent;
+  color: var(--color-primary);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.wx-notif-read-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.3rem;
+  color: var(--color-on-surface-variant);
+  font-size: 0.72rem;
+}

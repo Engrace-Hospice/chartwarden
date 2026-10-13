@@ -19,13 +19,14 @@ import {
 // is the caller's alert inbox (GET /api/v1/alerts/inbox) → the Notifications tab. Tasks & Mentions are
 // honest placeholders until the Tasks/worklist module lands — present, never fabricated.
 import { useMemo, useState } from "react";
-import type { CSSProperties, JSX } from "react";
+import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   type AlertInboxItem,
   isInternalAlertDeepLink,
   useAlertInbox,
 } from "../../shell/alert-inbox";
+import "./notifications-inbox.css";
 
 type Tab = "notifications" | "tasks" | "mentions";
 
@@ -130,25 +131,20 @@ export function NotificationsInbox(): JSX.Element {
     <WorkQueueLayout
       header={
         <PageHeader title="Notifications & Tasks" breadcrumb="General / Notifications">
-          <div
-            style={{
-              color: "var(--color-on-surface-variant)",
-              fontSize: "0.875rem",
-            }}
-          >
+          <div className="wx-notif-subtitle">
             Review alert delivery, operational notifications, and upcoming worklist scopes.
           </div>
         </PageHeader>
       }
       filters={
-        <div style={filterShellStyle}>
+        <div className="wx-notif-filter-shell">
           {loadFailed ? (
-            <div role="alert" style={errorBannerStyle}>
+            <div role="alert" className="wx-notif-error">
               <Glyph name="alert" size={16} />
               <span>Could not load notifications.</span>
             </div>
           ) : null}
-          <div style={toolbarStyle}>
+          <div className="wx-notif-toolbar">
             <div
               className="wx-subtabs wx-subtabs-inline"
               role="tablist"
@@ -176,7 +172,7 @@ export function NotificationsInbox(): JSX.Element {
             </div>
 
             {tab !== "tasks" ? (
-              <div style={controlGroupStyle}>
+              <div className="wx-notif-controls">
                 <label className="wx-search-field">
                   <Glyph name="search" size={16} />
                   <input
@@ -254,25 +250,25 @@ export function NotificationsInbox(): JSX.Element {
       }
       table={
         tab === "tasks" ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
+          <div className="wx-notif-state">
             <EmptyState
               title="Tasks"
               description="Your task worklist arrives with the Tasks module."
             />
           </div>
         ) : alerts === null && !loadFailed ? (
-          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+          <div className="wx-notif-state wx-notif-state-loading">
             <LoadingSpinner />
           </div>
         ) : alerts === null ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
+          <div className="wx-notif-state">
             <EmptyState
               title="Notifications unavailable"
               description="Notifications could not be loaded. Try opening the notification bell again."
             />
           </div>
         ) : filteredAlerts.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
+          <div className="wx-notif-state">
             <EmptyState
               title={
                 hasActiveFilters
@@ -298,16 +294,16 @@ export function NotificationsInbox(): JSX.Element {
             />
           </div>
         ) : (
-          <div style={tableWrapStyle}>
-            <table style={tableStyle}>
+          <div className="wx-notif-table-wrap">
+            <table className="wx-notif-table">
               <thead>
-                <tr style={headRowStyle}>
-                  <th style={{ ...thStyle, width: "38%" }}>Notification</th>
-                  <th style={{ ...thStyle, width: "16%" }}>Source</th>
-                  <th style={{ ...thStyle, width: "12%" }}>Severity</th>
-                  <th style={{ ...thStyle, width: "12%" }}>Delivery</th>
-                  <th style={{ ...thStyle, width: "10%", textAlign: "right" }}>Age</th>
-                  <th style={{ ...thStyle, width: "12%", textAlign: "right" }}>Action</th>
+                <tr className="wx-notif-head-row">
+                  <th className="wx-notif-th wx-notif-th-notification">Notification</th>
+                  <th className="wx-notif-th wx-notif-th-source">Source</th>
+                  <th className="wx-notif-th wx-notif-th-severity">Severity</th>
+                  <th className="wx-notif-th wx-notif-th-delivery">Delivery</th>
+                  <th className="wx-notif-th wx-notif-th-age">Age</th>
+                  <th className="wx-notif-th wx-notif-th-action">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -338,51 +334,42 @@ export function NotificationsInbox(): JSX.Element {
                             }
                           : undefined
                       }
-                      style={{
-                        ...rowStyle,
-                        ...(unread ? unreadNotificationRowStyle : {}),
-                        ...(isInternalAlertDeepLink(alert.deepLink) ? interactiveRowStyle : {}),
-                      }}
+                      className={`wx-notif-row${unread ? " is-unread" : ""}${
+                        isInternalAlertDeepLink(alert.deepLink) ? " is-link" : ""
+                      }`}
                     >
-                      <td style={tdStyle}>
-                        <div style={notificationWithStateStyle}>
+                      <td className="wx-notif-td">
+                        <div className="wx-notif-with-state">
                           {unread ? (
-                            <span aria-label="Unread" title="Unread" style={tableUnreadDotStyle} />
+                            <span
+                              aria-label="Unread"
+                              title="Unread"
+                              className="wx-notif-unread-dot"
+                            />
                           ) : null}
 
                           <NotificationCell alert={alert} />
                         </div>
                       </td>
-                      <td style={tdStyle}>
-                        <span style={sourceChipStyle}>{humanizeIdentifier(alert.category)}</span>
+                      <td className="wx-notif-td">
+                        <span className="wx-notif-source-chip">
+                          {humanizeIdentifier(alert.category)}
+                        </span>
                       </td>
-                      <td style={tdStyle}>
+                      <td className="wx-notif-td">
                         <StatusPill
                           label={humanizeIdentifier(alert.severity)}
                           tone={SEVERITY_TONE[alert.severity] ?? "neutral"}
                         />
                       </td>
-                      <td style={tdStyle}>
+                      <td className="wx-notif-td">
                         <StatusPill
                           label={humanizeIdentifier(alert.deliveryStatus)}
                           tone={DELIVERY_TONE[alert.deliveryStatus]}
                         />
                       </td>
-                      <td
-                        style={{
-                          ...tdStyle,
-                          textAlign: "right",
-                          fontVariantNumeric: "tabular-nums",
-                        }}
-                      >
-                        {relTime(alert.createdAt)}
-                      </td>
-                      <td
-                        style={{
-                          ...tdStyle,
-                          textAlign: "right",
-                        }}
-                      >
+                      <td className="wx-notif-td wx-notif-td-age">{relTime(alert.createdAt)}</td>
+                      <td className="wx-notif-td wx-notif-td-action">
                         {unread ? (
                           <button
                             type="button"
@@ -390,12 +377,12 @@ export function NotificationsInbox(): JSX.Element {
                               event.stopPropagation();
                               markRead(alert);
                             }}
-                            style={markReadButtonStyle}
+                            className="wx-notif-mark-read"
                           >
                             Mark read
                           </button>
                         ) : (
-                          <span style={readLabelStyle}>
+                          <span className="wx-notif-read-label">
                             <Glyph name="check" size={13} />
                             Read
                           </span>
@@ -444,152 +431,14 @@ function TabButton({
 
 function NotificationCell({ alert }: { alert: AlertInboxItem }): JSX.Element {
   return (
-    <div style={notificationCellStyle}>
-      <span
-        style={{
-          ...severityIconStyle,
-          color:
-            alert.severity === "info" ? "var(--color-on-surface-variant)" : "var(--color-error)",
-        }}
-      >
+    <div className="wx-notif-cell">
+      <span className={`wx-notif-severity-icon${alert.severity === "info" ? " is-info" : ""}`}>
         <Glyph name={SEVERITY_GLYPH[alert.severity] ?? "info"} size={18} />
       </span>
-      <div style={cellTextStyle}>
-        <span style={primaryTextStyle}>{alert.summary}</span>
-        <span style={secondaryLabelStyle}>{humanizeIdentifier(alert.eventType)}</span>
+      <div className="wx-notif-cell-text">
+        <span className="wx-notif-primary">{alert.summary}</span>
+        <span className="wx-notif-secondary">{humanizeIdentifier(alert.eventType)}</span>
       </div>
     </div>
   );
 }
-
-const filterShellStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.75rem",
-  padding: "0 1.5rem 0.75rem",
-};
-const toolbarStyle: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "1rem",
-};
-const controlGroupStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.5rem",
-  flexWrap: "wrap",
-};
-const errorBannerStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.5rem",
-  padding: "0.625rem 1rem",
-  borderRadius: "var(--radius-md)",
-  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
-  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
-  color: "var(--color-error)",
-  fontSize: "0.85rem",
-};
-const tableWrapStyle: CSSProperties = {
-  width: "100%",
-  overflowX: "auto",
-  padding: "0 1.5rem 1.5rem",
-};
-const tableStyle: CSSProperties = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: "0.875rem",
-};
-const headRowStyle: CSSProperties = {
-  textAlign: "left",
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-const rowStyle: CSSProperties = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-};
-const thStyle: CSSProperties = {
-  padding: "0.625rem 1rem",
-  fontWeight: 600,
-  fontSize: "0.75rem",
-};
-const tdStyle: CSSProperties = {
-  padding: "0.75rem 1rem",
-  verticalAlign: "middle",
-};
-const notificationCellStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.75rem",
-};
-const severityIconStyle: CSSProperties = {
-  display: "inline-flex",
-  flexShrink: 0,
-};
-const cellTextStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.15rem",
-  minWidth: 0,
-};
-const primaryTextStyle: CSSProperties = {
-  fontWeight: 600,
-  color: "var(--color-on-surface)",
-};
-const secondaryLabelStyle: CSSProperties = {
-  fontSize: "0.75rem",
-  color: "var(--color-on-surface-variant)",
-};
-const sourceChipStyle: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  fontSize: "0.72rem",
-  fontWeight: 600,
-  color: "var(--color-on-surface-variant)",
-  background: "var(--color-surface-container)",
-  borderRadius: "9999px",
-  padding: "0.1rem 0.55rem",
-};
-const unreadNotificationRowStyle: CSSProperties = {
-  background: "color-mix(in srgb, var(--color-primary) 4%, transparent)",
-};
-const interactiveRowStyle: CSSProperties = {
-  cursor: "pointer",
-};
-
-const notificationWithStateStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.55rem",
-};
-
-const tableUnreadDotStyle: CSSProperties = {
-  width: "0.45rem",
-  height: "0.45rem",
-  borderRadius: "9999px",
-  flexShrink: 0,
-  background: "var(--color-primary)",
-};
-
-const markReadButtonStyle: CSSProperties = {
-  border: 0,
-  background: "transparent",
-  color: "var(--color-primary)",
-  cursor: "pointer",
-  fontSize: "0.75rem",
-  fontWeight: 650,
-  whiteSpace: "nowrap",
-};
-
-const readLabelStyle: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "flex-end",
-  gap: "0.3rem",
-  color: "var(--color-on-surface-variant)",
-  fontSize: "0.72rem",
-};

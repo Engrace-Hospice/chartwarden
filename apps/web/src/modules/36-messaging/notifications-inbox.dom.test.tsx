@@ -110,4 +110,55 @@ describe("Notifications inbox labels", () => {
     await waitFor(() => expect(client.GET).toHaveBeenCalled());
     expect(screen.queryByText(eventType)).toBeNull();
   });
+
+  // WP 2.11: the screen's own markup (not the kit components inside it) carries no inline styles (they live in notifications-inbox.css), and the state
+  // that used to be computed inline (unread row, link row, info vs error icon) is a class.
+  it("styles through classes, not inline style attributes", async () => {
+    const alert = (alertId: string, severity: string, readAt: string | null, deepLink: string) => ({
+      alertId,
+      eventType: "m20.safety.coverage_gap_detected",
+      category: "field_safety",
+      severity,
+      summary: `Summary ${alertId}`,
+      deepLink,
+      createdAt: "2026-10-09T00:00:00.000Z",
+      deliveryStatus: "delivered",
+      readAt,
+    });
+    const client = {
+      GET: vi.fn(async () => ({
+        data: {
+          alerts: [
+            alert("unread-info", "info", null, "/safety"),
+            alert("read-critical", "critical", "2026-10-09T01:00:00.000Z", "https://example.com"),
+          ],
+        },
+        error: undefined,
+      })),
+      POST: vi.fn(),
+    } as unknown as ApiClient;
+
+    const { container } = render(
+      <MemoryRouter>
+        <ApiClientProvider client={client}>
+          <SessionProvider session={session}>
+            <AlertInboxProvider>
+              <NotificationsInbox />
+            </AlertInboxProvider>
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("Summary unread-info");
+    const own = container.querySelectorAll('[class*="wx-notif"][style]');
+    expect(own.length).toBe(0);
+    const rows = container.querySelectorAll("tbody tr");
+    expect(rows[0]?.className).toContain("is-unread");
+    expect(rows[0]?.className).toContain("is-link");
+    expect(rows[1]?.className).not.toContain("is-unread");
+    expect(rows[1]?.className).not.toContain("is-link");
+    expect(rows[0]?.querySelector(".wx-notif-severity-icon")?.className).toContain("is-info");
+    expect(rows[1]?.querySelector(".wx-notif-severity-icon")?.className).not.toContain("is-info");
+  });
 });

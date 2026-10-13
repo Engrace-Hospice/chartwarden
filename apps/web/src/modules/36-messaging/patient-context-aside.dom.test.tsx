@@ -26,13 +26,13 @@ describe("PatientContextAside focus", () => {
     const opener = screen.getByRole("button", { name: "Patient context" });
     opener.focus();
     fireEvent.click(opener);
-    expect(screen.getByRole("button", { name: "Close patient context" })).toHaveFocus();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Close patient context" }));
 
     fireEvent.keyDown(screen.getByRole("complementary", { name: "Patient context" }), {
       key: "Escape",
     });
     expect(screen.queryByRole("complementary", { name: "Patient context" })).toBeNull();
-    expect(opener).toHaveFocus();
+    expect(document.activeElement).toBe(opener);
   });
 
   it("restores focus to the opener when closed with the close button", () => {
@@ -41,6 +41,6 @@ describe("PatientContextAside focus", () => {
     opener.focus();
     fireEvent.click(opener);
     fireEvent.click(screen.getByRole("button", { name: "Close patient context" }));
-    expect(opener).toHaveFocus();
+    expect(document.activeElement).toBe(opener);
   });
 });
