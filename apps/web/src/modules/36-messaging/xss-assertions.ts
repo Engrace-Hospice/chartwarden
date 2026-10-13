@@ -11,7 +11,7 @@ const FORBIDDEN = [
 ].join(",");
 // Form controls are forbidden too, but a whole page legitimately holds the app's own (Send, inbox rows, the composer).
 // `appControls: true` skips them for such trees; the page tests then compare control COUNTS against a benign render.
-const CONTROLS = "form,input,button";
+const CONTROLS = "form,input,button,select,textarea";
 export const controlCount = (root: ParentNode): number => root.querySelectorAll(CONTROLS).length;
 // Attributes that carry a URL (srcset holds a comma list, handled apart).
 const URL_ATTRS = [
@@ -26,8 +26,10 @@ const URL_ATTRS = [
   "ping",
   "background",
 ];
-// https, mailto, or a same-origin path. A protocol-relative `//host` is a foreign origin, so it is not a path.
-const SAFE_URL = /^(https:\/\/|mailto:|\/(?!\/))/;
+// https, mailto, or a same-origin path. `//host` and `/\host` are foreign origins to a browser (a backslash is read as a
+// slash), so neither is a path. Browsers also drop tab/CR/LF anywhere in a URL, so those are stripped before matching.
+const SAFE_URL = /^(https:\/\/|mailto:|\/(?![/\\]))/;
+const isSafeUrl = (value: string): boolean => SAFE_URL.test(value.replace(/[\t\r\n]/g, ""));
 
 // ponytail: the `__xss` flag cannot fire under jsdom (no script/handler ever runs), so it is only a belt-and-braces
 // check; the structural checks above are what actually prove inertness. Upgrade: a real browser run (Playwright).
@@ -52,14 +54,13 @@ export function findViolations(
       if (name.startsWith("on")) found.push(`handler ${name}: ${outline(element)}`);
       if (name === "style" && /url\(|expression\(|javascript:/i.test(attribute.value))
         found.push(`style: ${outline(element)}`);
-      if (URL_ATTRS.includes(name) && !SAFE_URL.test(attribute.value))
+      if (URL_ATTRS.includes(name) && !isSafeUrl(attribute.value))
         found.push(`url ${name}: ${outline(element)}`);
       if (name === "srcset") {
         const candidates = attribute.value
           .split(",")
           .map((part) => part.trim().split(/\s+/)[0] ?? "");
-        if (candidates.some((url) => !SAFE_URL.test(url)))
-          found.push(`srcset: ${outline(element)}`);
+        if (candidates.some((url) => !isSafeUrl(url))) found.push(`srcset: ${outline(element)}`);
       }
     }
     if (

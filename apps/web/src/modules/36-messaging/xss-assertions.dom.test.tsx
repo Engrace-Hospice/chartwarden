@@ -58,6 +58,9 @@ describe("xss checker: objects to each class of bad node or attribute", () => {
     '<a href="javascript:alert(1)">x</a>',
     '<a href="data:text/html,x">x</a>',
     '<a href="//evil.example/x">protocol-relative</a>',
+    '<a href="/\\evil.example/x">backslash after slash</a>',
+    '<a href="/&#9;/evil.example/x">tab inside the leading slashes</a>',
+    '<a href="&#9;//evil.example/x">leading tab, protocol-relative</a>',
     '<a href="relative/path">no scheme</a>',
     '<a href="http://insecure.example">http</a>',
     '<a xlink:href="javascript:1">x</a>',
@@ -84,8 +87,10 @@ describe("xss checker: objects to each class of bad node or attribute", () => {
   });
 
   it("flags form controls unless the tree is allowed its own", () => {
-    const host = html("<form><input><button>go</button></form>");
-    expect(findViolations(host).length).toBe(3);
+    const host = html(
+      "<form><input><select></select><textarea></textarea><button>go</button></form>",
+    );
+    expect(findViolations(host).length).toBe(5);
     expect(findViolations(host, { appControls: true })).toEqual([]);
   });
 

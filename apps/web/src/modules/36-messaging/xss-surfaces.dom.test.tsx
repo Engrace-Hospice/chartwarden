@@ -3,17 +3,18 @@
 // server-supplied text, and the rendered DOM must stay inert: no element built from the payload, no on* attribute,
 // no non-allowlisted URL, no page global set. rich-body-view.dom.test.tsx covers the rich renderer itself; this file
 // covers the surrounding surfaces, each reached by a real render or interaction and awaited on a payload-independent
-// marker (so an empty DOM can never pass): inbox rows, thread header, patient header (MRN chip), plain/markdown/rich
-// bubbles, mention chips, attachment names, the pinned bar, the in-conversation search result (Ctrl+F), the thread
-// panel (opened from the reply count), the Members dialog, the Scheduled list, the notifications inbox and the
-// channel-list error banner.
+// marker (so an empty DOM can never pass): inbox rows, thread header, patient header (MRN chip), plain and rich
+// bubbles, mention chips (message-row.tsx renders `references` of a plain body; rich-body-view.tsx renders a {type:"mention"} node), attachment names, the
+// pinned bar, the in-conversation search result (Ctrl+F), the thread panel (opened from the reply count), the Members
+// dialog, the Scheduled list, the notifications inbox and the channel-list error banner.
 // NOT covered here (no case renders them with hostile data): saved replies, read receipts, the offline banner, the
-// platform reply panel, the announcement tools. Add a case per surface before claiming them.
+// platform reply panel, the announcement tools. A markdown-kind body is sent as hostile TEXT only: it is shown as plain
+// text, so no markdown rendering is claimed for it.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { XSS_CORPUS } from "@wardenx/types";
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import { MemoryRouter, useLocation } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { AlertInboxProvider, isInternalAlertDeepLink } from "../../shell/alert-inbox";
 import { type Session, SessionProvider } from "../../shell/session";
 import { ChannelMembersDialog } from "./channel-members-dialog";
@@ -130,12 +131,35 @@ function hostileMessages(payload: string) {
       messageId: "m-rich",
       bodyKind: "rich",
       body: payload,
-      references: [],
+      // The server's label wins over the frozen one; navigable patient references become real in-app links.
+      references: [
+        {
+          kind: "patient",
+          entityId: PATIENT,
+          start: 0,
+          end: 1,
+          displayLabel: payload,
+          navigable: true,
+        },
+      ],
       bodyDoc: {
         schemaVersion: 1,
         doc: {
           type: "doc",
-          content: [{ type: "paragraph", content: [{ type: "text", text: payload }] }],
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                { type: "text", text: payload },
+                {
+                  type: "mention",
+                  kind: "patient",
+                  entityId: PATIENT,
+                  label: payload.slice(0, 100),
+                },
+              ],
+            },
+          ],
         },
       },
     },
@@ -256,23 +280,33 @@ async function renderAndExercisePage(payload: string) {
 describe("M36 staff messaging page under the XSS corpus", () => {
   // The app's own buttons/inputs are on this page, so the element ban skips controls and their COUNT is compared with
   // a benign render of the same flow instead: a payload that made a control would change the count.
-  let benignControls: number | undefined;
-  const benignControlCount = async (): Promise<number> => {
-    if (benignControls === undefined) {
-      await renderAndExercisePage("benign");
-      benignControls = controlCount(document.body);
-      cleanup();
-    }
-    return benignControls;
-  };
+  let benignControls = -1;
+  beforeAll(async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    await renderAndExercisePage("benign");
+    benignControls = controlCount(document.body);
+    cleanup();
+  }, 20_000);
 
   it.each(XSS_CORPUS.map((entry) => [entry.id, entry.payload] as const))(
     "%s renders inert in inbox, header, patient header, bubbles, chips, attachments, pins, search and thread panel",
     async (_id, payload) => {
-      const expectedControls = await benignControlCount();
       const { container } = await renderAndExercisePage(payload);
       expectInert(document.body, { appControls: true });
-      expect(controlCount(document.body)).toBe(expectedControls);
+      expect(benignControls).toBeGreaterThan(0);
+      expect(controlCount(document.body)).toBe(benignControls);
+      // Mention chips: each is an in-app link to the patient, with the payload only as its text.
+      const chips = Array.from(document.querySelectorAll("a.wx-message-reference"));
+      expect(chips.length).toBeGreaterThan(0);
+      // The rich-body chip specifically (a {type:"mention"} node), not only the plain-body reference chips.
+      expect(
+        document.querySelectorAll(".wx-rich-body a.wx-message-reference").length,
+      ).toBeGreaterThan(0);
+      for (const chip of chips) {
+        expect(chip.getAttribute("href")).toBe(`/patients/${PATIENT}`);
+        expect(chip.children).toHaveLength(0);
+      }
+      expect(screen.getAllByRole("list", { name: "Search results" })).toHaveLength(1);
       // The rich bubble shows its payload as text, never as markup.
       if (isPlainText(payload)) expect(container.textContent).toContain(payload.slice(0, 12));
     },
@@ -330,8 +364,13 @@ describe("M36 secondary surfaces under the XSS corpus", () => {
       );
       await screen.findByRole("heading", { name: "Members" });
       await screen.findByText("Marker Member"); // the list loaded, so the hostile rows are in the DOM too
+      const rows = within(screen.getByRole("list", { name: "Channel members" })).getAllByRole(
+        "listitem",
+      );
+      expect(rows).toHaveLength(2);
       expectInert(document.body, { appControls: true });
-      if (isPlainText(payload)) expect(document.body.textContent).toContain(payload);
+      // Scoped to the hostile member's own row: the dialog title is the payload too and must not satisfy this.
+      if (isPlainText(payload)) expect(rows[1]?.textContent).toContain(payload);
     },
   );
 
@@ -379,9 +418,14 @@ describe("M36 secondary surfaces under the XSS corpus", () => {
       );
       const list = await screen.findByRole("list", { name: "Scheduled messages" });
       await within(list).findByText("Marker scheduled");
-      expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+      const rows = within(list).getAllByRole("listitem");
+      expect(rows).toHaveLength(2);
       expectInert(document.body, { appControls: true });
-      if (isPlainText(payload)) expect(document.body.textContent).toContain(payload);
+      // Scoped to the hostile row's own body: the channel label is the payload too and must not satisfy this.
+      const blockedRow = rows.find((row) => row.getAttribute("data-status") === "blocked");
+      const body = blockedRow?.querySelector(".wx-scheduled-body");
+      expect(body).toBeTruthy();
+      if (isPlainText(payload)) expect(body?.textContent).toContain(payload.slice(0, 12));
     },
   );
 

@@ -5,7 +5,7 @@
  *
  * Clause map lives in the PR / report; per-clause names are prefixed G1..G10.
  */
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -203,6 +203,14 @@ const open = async (title: string) => {
 };
 const box = () => screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement;
 const type = (value: string) => fireEvent.change(box(), { target: { value } });
+/** Text on screen INCLUDING what sits in textareas and inputs (textContent cannot see a field's value). */
+const visibleText = (): string =>
+  [
+    document.body.textContent ?? "",
+    ...Array.from(
+      document.querySelectorAll<HTMLTextAreaElement | HTMLInputElement>("textarea,input"),
+    ).map((field) => field.value),
+  ].join("\n");
 const settle = (ms = DRAFT_SAVE_DEBOUNCE_MS + 50) => act(() => vi.advanceTimersByTimeAsync(ms));
 const calls = (mock: { mock: { calls: unknown[][] } }, path?: string) =>
   mock.mock.calls.filter(([p]) => path === undefined || p === path) as [string, Json][];
@@ -259,6 +267,7 @@ beforeEach(() => {
   Object.defineProperty(window, "sessionStorage", { configurable: true, value: session });
 });
 afterEach(() => {
+  cleanup(); // unmount while the fake clock is still installed, so no pending real timer outlives the test
   vi.useRealTimers();
   for (const name of WINDOW_GLOBALS) {
     const original = savedGlobals.get(name);
@@ -386,7 +395,7 @@ describe("draft isolation: users and organisations on one browser", () => {
     await settle();
     expect(box().value).toBe("");
     expect(fake.drafts.has("colleague/dm-a|")).toBe(false);
-    expect(document.body.textContent).not.toContain("first user's private text");
+    expect(visibleText()).not.toContain("first user's private text");
   });
 
   // KNOWN LATENT DEFECT (reported with the gate evidence, unreachable today): if the session were swapped inside one SPA
@@ -409,12 +418,14 @@ describe("draft isolation: users and organisations on one browser", () => {
     await settle();
     expect(box()).toBeTruthy(); // the new user's composer is mounted and usable
 
+    // Tracking item: "Phase 2 gate PR: useServerDraft unmount flush crosses identities" (no issue number yet).
+    // Each path is its own expectation, so the day one is fixed this test names the one still leaking.
     const leakedIntoSlot = fake.drafts.has("colleague/dm-a|");
     const leakedIntoBox = box().value !== "";
-    expect(
-      leakedIntoSlot || leakedIntoBox,
-      "the latent defect is fixed: assert both leaks are false instead",
-    ).toBe(true);
+    expect(leakedIntoSlot, "unmount flush wrote the old text into the new user's server slot").toBe(
+      true,
+    );
+    expect(leakedIntoBox, "the new user's composer re-hydrated the old user's text").toBe(true);
   });
 
   it("G8: an organisation switch and a sign-out leave no draft text in the DOM, the server slots or browser storage", async () => {
@@ -430,7 +441,7 @@ describe("draft isolation: users and organisations on one browser", () => {
     await settle();
     expect(box().value).toBe("");
     expect(fake.drafts.has("south/dm-a|")).toBe(false);
-    expect(document.body.textContent).not.toContain("north-only PHI draft");
+    expect(visibleText()).not.toContain("north-only PHI draft");
 
     // South types, then signs out. Sign-out is a full page load in production (actor-menu signOut), so the old tree
     // unmounts first and its flush leaves under South's cookie; the signed-out page then mounts under no identity.
@@ -441,13 +452,12 @@ describe("draft isolation: users and organisations on one browser", () => {
     await act(async () => southView.unmount());
     identity = "signed-out/";
     mount(fake, null);
+    // Control: the signed-out tree really rendered (its inbox is there and a conversation opens with a composer).
+    await open("Nurse A");
     await settle();
-    const composer = screen.queryByRole("textbox", {
-      name: "Message",
-    }) as HTMLTextAreaElement | null;
-    expect(composer?.value ?? "").toBe("");
-    expect(document.body.textContent).not.toContain("south-only PHI draft");
-    expect(document.body.textContent).not.toContain("north-only PHI draft");
+    expect(box().value).toBe("");
+    expect(visibleText()).not.toContain("south-only PHI draft");
+    expect(visibleText()).not.toContain("north-only PHI draft");
     // Every write after South typed was made as South; nothing was written for the signed-out identity.
     expect(fake.putKeys.slice(putsBefore)).toEqual(["south/dm-a|"]);
     expect([...fake.drafts.keys()].filter((key) => key.startsWith("signed-out/"))).toEqual([]);
