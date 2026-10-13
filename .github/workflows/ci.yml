@@ -744,6 +744,8 @@ jobs:
           - { name: "M36 Announcements", scripts: "test:m36:announcements:live" }
           # WP 1.7 - tenant & IDOR proof: every M36 route + the socket gateway attacked from org B and from an in-org non-member (needs Valkey, which this job provides).
           - { name: "M36 Tenant IDOR", scripts: "test:m36:tenant-idor:live" }
+          # Admin screens PR 1a - GET channel members (active only, read-audited) + org_admin-only idempotent archive, IDOR + RLS.
+          - { name: "M36 Channel admin", scripts: "test:m36:channel-admin:live" }
           - { name: "M36 Attachments", scripts: "test:m36:attachments:live" }
           # WP 2.5 - drafts: sealed at rest, never visible to another user or tenant, conflicts, audit scrub, erase.
           - { name: "M36 Drafts", scripts: "test:m36:drafts:live" }

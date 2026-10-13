@@ -18,6 +18,7 @@
     "admin/32-ai-platform",
     "admin/34-saas-platform",
     "admin/35-subscription-billing",
+    "admin/36-messaging",
     "portal/31-portal",
     "web/02-identity",
     "web/03-authorization",
@@ -2593,6 +2594,30 @@
       "id": "admin.webhooks",
       "path": "/admin/webhooks/stripe",
       "permission": "stripe.admin.read"
+    },
+    {
+      "app": "admin",
+      "module": "36-messaging",
+      "moduleId": 36,
+      "id": "admin.messaging.alert-deliveries",
+      "path": "/admin/messaging/alert-deliveries",
+      "permission": "messaging.admin.read"
+    },
+    {
+      "app": "admin",
+      "module": "36-messaging",
+      "moduleId": 36,
+      "id": "admin.messaging.channel-members",
+      "path": "/admin/messaging/channels/:id/members",
+      "permission": "messaging.manage_members"
+    },
+    {
+      "app": "admin",
+      "module": "36-messaging",
+      "moduleId": 36,
+      "id": "admin.messaging.integrity",
+      "path": "/admin/messaging/integrity",
+      "permission": "audit.read"
     },
     {
       "app": "portal",

@@ -123,7 +123,10 @@ const positiveInt = (raw: string | undefined, fallback: number): number => {
 /** MESSAGING_ATTACHMENT_ORG_QUOTA_BYTES / MESSAGING_ATTACHMENT_USER_QUOTA_BYTES; unset or not a positive integer => default. */
 export function attachmentQuotaFromEnv(env: Record<string, string | undefined>): AttachmentQuota {
   return {
-    orgBytes: positiveInt(env.MESSAGING_ATTACHMENT_ORG_QUOTA_BYTES, DEFAULT_ORG_ATTACHMENT_QUOTA_BYTES),
+    orgBytes: positiveInt(
+      env.MESSAGING_ATTACHMENT_ORG_QUOTA_BYTES,
+      DEFAULT_ORG_ATTACHMENT_QUOTA_BYTES,
+    ),
     userBytes: positiveInt(
       env.MESSAGING_ATTACHMENT_USER_QUOTA_BYTES,
       DEFAULT_USER_ATTACHMENT_QUOTA_BYTES,
@@ -137,7 +140,10 @@ export function attachmentQuotaFromEnv(env: Record<string, string | undefined>):
  */
 export const DEFAULT_ATTACHMENT_RETENTION_DAYS = 7;
 export function attachmentRetentionMsFromEnv(env: Record<string, string | undefined>): number {
-  const days = positiveInt(env.MESSAGING_ATTACHMENT_RETENTION_DAYS, DEFAULT_ATTACHMENT_RETENTION_DAYS);
+  const days = positiveInt(
+    env.MESSAGING_ATTACHMENT_RETENTION_DAYS,
+    DEFAULT_ATTACHMENT_RETENTION_DAYS,
+  );
   return days * 24 * 60 * 60 * 1000;
 }
 

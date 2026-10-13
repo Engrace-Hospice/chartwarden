@@ -498,6 +498,55 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     },
   );
 
+  // --- the full active member list (admin screen). Same guard as the member writes: the list names
+  // who can read a (possibly clinical) channel, so it is not a plain messaging.read.
+  app.get(
+    "/api/v1/messaging/channels/:id/members",
+    {
+      preHandler: [MANAGE_MEMBERS, MANAGE_CHANNEL_MEMBERS],
+      config: { auditRead: { resourceKind: "messaging_channel_members", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(ChannelParamsSchema, request.params);
+      return {
+        members: await service.listMembers(organizationId, memberAdminActorOf(request.context), id),
+      };
+    },
+  );
+
+  // --- archive a channel (org_admin only: the service refuses everyone else, and lifecycle-managed
+  // kinds). Idempotent 204. Audited by the channel write-audit trigger with the real actor; no outbox
+  // event: the catalog has none for archive (discharge-driven archive emits none either).
+  app.post(
+    "/api/v1/messaging/channels/:id/archive",
+    { preHandler: [MANAGE_MEMBERS, MANAGE_CHANNEL_MEMBERS] },
+    async (request, reply) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(ChannelParamsSchema, request.params);
+      await service.archiveChannel(organizationId, {
+        channelId: id,
+        actor: memberAdminActorOf(request.context),
+      });
+      return reply.code(204).send();
+    },
+  );
+
+  // --- unarchive: the inverse of archive — same guards, kind policy and audit; idempotent 204.
+  app.post(
+    "/api/v1/messaging/channels/:id/unarchive",
+    { preHandler: [MANAGE_MEMBERS, MANAGE_CHANNEL_MEMBERS] },
+    async (request, reply) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(ChannelParamsSchema, request.params);
+      await service.unarchiveChannel(organizationId, {
+        channelId: id,
+        actor: memberAdminActorOf(request.context),
+      });
+      return reply.code(204).send();
+    },
+  );
+
   // --- add a manual member (admin override on auto channels — audited) -----------------------
   app.post(
     "/api/v1/messaging/channels/:id/members",

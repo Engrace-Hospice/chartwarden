@@ -56,6 +56,7 @@ import {
   PLATFORM_DEFAULT_ALERT_RULES,
   type PatientLocationResolver,
   assertLockedRulePatchAllowed,
+  assertMayArchiveChannel,
   isSystemLockedEventType,
   mayManageChannelMembersResolved,
   rollUpAlertOutcome,
@@ -1845,6 +1846,77 @@ export function createDbMessagingRouteService(
           role: input.role ?? "member",
           source: "manual",
         });
+      });
+    },
+
+    // --- the full active member list for the admin screen --------------------------------------
+    // Active channel rows only, joined to a still-active same-org membership + user, so a suspended,
+    // revoked or foreign person never appears. DMs are refused like the member writes.
+    async listMembers(orgId, actor, channelId) {
+      return withOrgContext(db, memberAdminContext(orgId, actor), async (tx) => {
+        await assertMayManageMembers(tx, orgId, channelId, actor, resolveSiting);
+        const rows = await tx
+          .select({ userId: CM.userId, role: CM.role, source: CM.source, name: USER.name })
+          .from(CM)
+          .innerJoin(
+            MEMBERSHIP,
+            and(
+              eq(MEMBERSHIP.organizationId, CM.organizationId),
+              eq(MEMBERSHIP.userId, CM.userId),
+              eq(MEMBERSHIP.status, "active"),
+            ),
+          )
+          .innerJoin(USER, and(eq(USER.id, CM.userId), eq(USER.status, "active")))
+          .where(
+            and(eq(CM.organizationId, orgId), eq(CM.channelId, channelId), isNull(CM.removedAt)),
+          )
+          .orderBy(CM.joinedAt, CM.userId);
+        return rows.map((m) => ({
+          userId: m.userId,
+          role: m.role as ChannelMemberRole,
+          source: m.source as ChannelMemberSource,
+          displayName: m.name?.trim() || null,
+        }));
+      });
+    },
+
+    // --- archive (admin) — idempotent: the guarded UPDATE writes (and audits) only on the first call -
+    async archiveChannel(orgId, input) {
+      return withOrgContext(db, memberAdminContext(orgId, input.actor), async (tx) => {
+        const [ch] = await tx
+          .select({ kind: CH.channelKind, isArchived: CH.isArchived })
+          .from(CH)
+          .where(and(eq(CH.organizationId, orgId), eq(CH.id, input.channelId)))
+          .limit(1);
+        if (!ch) throw new NotFoundError("channel", input.channelId);
+        assertMayArchiveChannel(input.actor, ch.kind);
+        if (ch.isArchived) return;
+        await tx
+          .update(CH)
+          .set({ isArchived: true, archivesAt: new Date() })
+          .where(
+            and(eq(CH.organizationId, orgId), eq(CH.id, input.channelId), eq(CH.isArchived, false)),
+          );
+      });
+    },
+
+    // --- unarchive (admin) — idempotent: the guarded UPDATE (is_archived = true) writes only when archived -
+    async unarchiveChannel(orgId, input) {
+      return withOrgContext(db, memberAdminContext(orgId, input.actor), async (tx) => {
+        const [ch] = await tx
+          .select({ kind: CH.channelKind, isArchived: CH.isArchived })
+          .from(CH)
+          .where(and(eq(CH.organizationId, orgId), eq(CH.id, input.channelId)))
+          .limit(1);
+        if (!ch) throw new NotFoundError("channel", input.channelId);
+        assertMayArchiveChannel(input.actor, ch.kind, "unarchive");
+        if (!ch.isArchived) return;
+        await tx
+          .update(CH)
+          .set({ isArchived: false, archivesAt: null })
+          .where(
+            and(eq(CH.organizationId, orgId), eq(CH.id, input.channelId), eq(CH.isArchived, true)),
+          );
       });
     },
 

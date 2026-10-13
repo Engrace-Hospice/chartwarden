@@ -176,6 +176,7 @@ export type {
 export {
   CLINICAL_LEAD_ROLE,
   ORG_ADMIN_ROLE,
+  assertMayArchiveChannel,
   mayManageChannelMembers,
   mayManageChannelMembersResolved,
   type PatientLocationResolver,

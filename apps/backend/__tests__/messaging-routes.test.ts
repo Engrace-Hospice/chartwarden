@@ -114,6 +114,26 @@ function makeServer(): { app: ReturnType<typeof buildServer>; service: Messaging
           members: [{ userId: "rn_1", role: "owner" }],
         },
         {
+          channelId: "ch_loc",
+          orgId: ORG,
+          kind: "location",
+          title: "Location channel",
+          subjectId: "loc_1",
+          members: [
+            { userId: "rn_1", role: "owner" },
+            { userId: "suspended_1", source: "auto" },
+            { userId: "foreign_1", source: "auto" },
+          ],
+        },
+        {
+          channelId: "ch_ann",
+          orgId: ORG,
+          kind: "announcement",
+          title: "Announcements",
+          subjectId: null,
+          members: [],
+        },
+        {
           channelId: "ch_archived",
           orgId: ORG,
           kind: "care_team",
@@ -854,6 +874,142 @@ describe("M36-T07 messaging route inventory", () => {
       });
       expect(suspended.statusCode).toBe(404);
       await app.close();
+    });
+
+    it("GET members: admin lists only active, same-org members with names; others 403", async () => {
+      const { app } = makeServer();
+      const list = await app.inject({
+        method: "GET",
+        url: "/api/v1/messaging/channels/ch_loc/members",
+        headers: ADMIN,
+      });
+      expect(list.statusCode).toBe(200);
+      expect(list.json()).toEqual({
+        members: [{ userId: "rn_1", role: "owner", source: "manual", displayName: "Nurse One" }],
+      });
+      const denied = await app.inject({
+        method: "GET",
+        url: "/api/v1/messaging/channels/ch_loc/members",
+        headers: RN1,
+      });
+      expect(denied.statusCode).toBe(403);
+      const missing = await app.inject({
+        method: "GET",
+        url: "/api/v1/messaging/channels/nope/members",
+        headers: ADMIN,
+      });
+      expect(missing.statusCode).toBe(403); // predicate fails closed: a foreign id answers the same
+      await app.close();
+    });
+
+    it("POST archive: org_admin archives (204), repeat is idempotent, sends then 410", async () => {
+      const { app } = makeServer();
+      const url = "/api/v1/messaging/channels/ch_loc/archive";
+      expect((await app.inject({ method: "POST", url, headers: RN1 })).statusCode).toBe(403);
+      expect((await app.inject({ method: "POST", url, headers: ADMIN })).statusCode).toBe(204);
+      expect((await app.inject({ method: "POST", url, headers: ADMIN })).statusCode).toBe(204);
+      const detail = await app.inject({
+        method: "GET",
+        url: "/api/v1/messaging/channels/ch_loc",
+        headers: RN1,
+      });
+      expect(detail.json().archivedAt).toBe("2026-06-15T12:00:00.000Z");
+      const send = await app.inject({
+        method: "POST",
+        url: "/api/v1/messaging/channels/ch_loc/messages",
+        headers: withKey(RN1),
+        payload: { body: "hi" },
+      });
+      expect(send.statusCode).toBe(410);
+      const missing = await app.inject({
+        method: "POST",
+        url: "/api/v1/messaging/channels/nope/archive",
+        headers: ADMIN,
+      });
+      expect(missing.statusCode).toBe(403); // predicate fails closed: a foreign id answers the same
+      await app.close();
+    });
+
+    it("POST archive: lifecycle-managed and private kinds are refused (409/403)", async () => {
+      const { app } = makeServer();
+      for (const [id, code] of [
+        [CT, 409],
+        ["ch_ann", 409],
+      ] as const) {
+        const res = await app.inject({
+          method: "POST",
+          url: `/api/v1/messaging/channels/${id}/archive`,
+          headers: ADMIN,
+        });
+        expect(res.statusCode).toBe(code);
+        expect(res.json().error.code).toBe("CHANNEL_LIFECYCLE_MANAGED");
+      }
+      await app.close();
+    });
+
+    it("archive is org_admin-only at the service even when manage rights pass", async () => {
+      const { service } = makeServer();
+      const lead = {
+        kind: "user" as const,
+        userId: "lead_1",
+        roles: ["clinical_lead"],
+        locationIds: ["loc_1"],
+      };
+      await expect(
+        service.archiveChannel(ORG, { channelId: "ch_loc", actor: lead }),
+      ).rejects.toMatchObject({ statusCode: 403 });
+      await expect(service.listMembers(ORG, lead, "ch_loc")).resolves.toHaveLength(1);
+    });
+
+    it("POST unarchive: org_admin restores an archived channel (204), repeat is idempotent, sends work again", async () => {
+      const { app } = makeServer();
+      const base = "/api/v1/messaging/channels/ch_loc";
+      const send = () =>
+        app.inject({
+          method: "POST",
+          url: `${base}/messages`,
+          headers: withKey(RN1),
+          payload: { body: "hi" },
+        });
+      expect(
+        (await app.inject({ method: "POST", url: `${base}/archive`, headers: ADMIN })).statusCode,
+      ).toBe(204);
+      expect((await send()).statusCode).toBe(410);
+      const url = `${base}/unarchive`;
+      expect((await app.inject({ method: "POST", url, headers: RN1 })).statusCode).toBe(403);
+      expect((await app.inject({ method: "POST", url, headers: ADMIN })).statusCode).toBe(204);
+      expect((await app.inject({ method: "POST", url, headers: ADMIN })).statusCode).toBe(204);
+      const detail = await app.inject({ method: "GET", url: base, headers: RN1 });
+      expect(detail.json().archivedAt).toBeNull();
+      expect((await send()).statusCode).toBe(201);
+      await app.close();
+    });
+
+    it("POST unarchive: lifecycle-managed kinds are refused (409)", async () => {
+      const { app } = makeServer();
+      for (const id of [CT, "ch_ann"]) {
+        const res = await app.inject({
+          method: "POST",
+          url: `/api/v1/messaging/channels/${id}/unarchive`,
+          headers: ADMIN,
+        });
+        expect(res.statusCode).toBe(409);
+        expect(res.json().error.code).toBe("CHANNEL_LIFECYCLE_MANAGED");
+      }
+      await app.close();
+    });
+
+    it("unarchive is org_admin-only at the service even when manage rights pass", async () => {
+      const { service } = makeServer();
+      const lead = {
+        kind: "user" as const,
+        userId: "lead_1",
+        roles: ["clinical_lead"],
+        locationIds: ["loc_1"],
+      };
+      await expect(
+        service.unarchiveChannel(ORG, { channelId: "ch_loc", actor: lead }),
+      ).rejects.toMatchObject({ statusCode: 403 });
     });
 
     it("a clinician cannot announce; org_admin can (201)", async () => {

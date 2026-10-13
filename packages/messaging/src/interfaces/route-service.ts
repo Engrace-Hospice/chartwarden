@@ -320,6 +320,25 @@ export interface MessagingRouteService extends MessageReactionPinService, Messag
     orgId: string,
     input: { channelId: string; userId: string; actor: MemberAdminActor },
   ): Promise<void>;
+  /** The channel's FULL active member list (GET /channels/:id/members): same actor rules as addMember, a `dm` is
+   *  refused (403), and suspended / revoked / foreign-org people are excluded. 404 for an unknown / cross-org channel. */
+  listMembers(
+    orgId: string,
+    actor: MemberAdminActor,
+    channelId: string,
+  ): Promise<readonly ChannelMemberView[]>;
+  /** Archive a channel (POST /channels/:id/archive): org_admin only (403), only discipline / location kinds
+   *  (409 CHANNEL_LIFECYCLE_MANAGED; a `dm` is 403). Idempotent: an archived channel stays archived, no second write. */
+  archiveChannel(
+    orgId: string,
+    input: { channelId: string; actor: MemberAdminActor },
+  ): Promise<void>;
+  /** Unarchive a channel (POST /channels/:id/unarchive): the inverse of archiveChannel, same guards and kind policy.
+   *  Idempotent: a live channel stays live, no write. Clears is_archived and archives_at. */
+  unarchiveChannel(
+    orgId: string,
+    input: { channelId: string; actor: MemberAdminActor },
+  ): Promise<void>;
   /** The `channel_member_admin` predicate's resolver (§4.5 `location_membership`): fail-closed
    *  `false` for an unknown / cross-org channel. */
   canManageMembers(orgId: string, actor: MemberAdminActor, channelId: string): Promise<boolean>;

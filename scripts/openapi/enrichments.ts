@@ -1253,14 +1253,6 @@ import {
   DraftResponseSchema as M36DraftResponseSchema,
   SaveDraftBodySchema as M36SaveDraftBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/draft-typebox";
-import {
-  CancelScheduledResponseSchema as M36CancelScheduledResponseSchema,
-  CreateScheduledBodySchema as M36CreateScheduledBodySchema,
-  RescheduleBodySchema as M36RescheduleBodySchema,
-  ScheduledListQuerySchema as M36ScheduledListQuerySchema,
-  ScheduledListResponseSchema as M36ScheduledListResponseSchema,
-  ScheduledMessageViewSchema as M36ScheduledMessageViewSchema,
-} from "../../apps/backend/src/modules/36-messaging/routes/scheduled-send-typebox";
 // ── M36 Secure Messaging & Alerts — request + response schema imports (all M36-aliased) ──
 import {
   // request schemas (query / body) — reused as-is
@@ -1277,6 +1269,7 @@ import {
   AuthorizeAttachmentResponseSchema as M36AuthorizeAttachmentResponseSchema,
   ChannelDetailResponseSchema as M36ChannelDetailResponseSchema,
   ChannelListResponseSchema as M36ChannelListResponseSchema,
+  ChannelMembersResponseSchema as M36ChannelMembersResponseSchema,
   DeliveryEndpointResponseSchema as M36DeliveryEndpointResponseSchema,
   DmStaffSearchQuerySchema as M36DmStaffSearchQuerySchema,
   DmStaffSearchResponseSchema as M36DmStaffSearchResponseSchema,
@@ -1307,6 +1300,14 @@ import {
   PinResponseSchema as M36PinResponseSchema,
   SetReactionResponseSchema as M36SetReactionResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/reaction-pin-typebox";
+import {
+  CancelScheduledResponseSchema as M36CancelScheduledResponseSchema,
+  CreateScheduledBodySchema as M36CreateScheduledBodySchema,
+  RescheduleBodySchema as M36RescheduleBodySchema,
+  ScheduledListQuerySchema as M36ScheduledListQuerySchema,
+  ScheduledListResponseSchema as M36ScheduledListResponseSchema,
+  ScheduledMessageViewSchema as M36ScheduledMessageViewSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/scheduled-send-typebox";
 import {
   SearchMessagesQuerySchema as M36SearchMessagesQuerySchema,
   SearchMessagesResponseSchema as M36SearchMessagesResponseSchema,
@@ -9024,17 +9025,20 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M36ScheduledMessageViewSchema,
   },
   "GET /api/v1/messaging/scheduled-messages": {
-    summary: "The caller's own scheduled messages (pending and blocked), soonest first; never anyone else's",
+    summary:
+      "The caller's own scheduled messages (pending and blocked), soonest first; never anyone else's",
     query: M36ScheduledListQuerySchema,
     response: M36ScheduledListResponseSchema,
   },
   "PATCH /api/v1/messaging/scheduled-messages/:id": {
-    summary: "Reschedule one of the caller's scheduled messages (a blocked one becomes pending again)",
+    summary:
+      "Reschedule one of the caller's scheduled messages (a blocked one becomes pending again)",
     body: M36RescheduleBodySchema,
     response: M36ScheduledMessageViewSchema,
   },
   "DELETE /api/v1/messaging/scheduled-messages/:id": {
-    summary: "Cancel a scheduled message before dispatch (idempotent; cancelled=false when nothing was left to cancel)",
+    summary:
+      "Cancel a scheduled message before dispatch (idempotent; cancelled=false when nothing was left to cancel)",
     response: M36CancelScheduledResponseSchema,
   },
   "GET /api/v1/messaging/channels/:id/mention-candidates": {
@@ -9155,6 +9159,19 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/messaging/patients/:patientId/care-team-channel": {
     summary: "Open or provision an authorized patient care-team conversation",
     response: M36OpenCareTeamConversationResponseSchema,
+  },
+  "GET /api/v1/messaging/channels/:id/members": {
+    summary:
+      "Full active member list of a channel (messaging.manage_members + channel_member_admin; 403 for a DM)",
+    response: M36ChannelMembersResponseSchema,
+  },
+  "POST /api/v1/messaging/channels/:id/archive": {
+    summary:
+      "Archive a discipline/location channel (org_admin only; 204, idempotent; 409 CHANNEL_LIFECYCLE_MANAGED for care_team/bereavement/on_call/announcement; 403 for a DM)",
+  },
+  "POST /api/v1/messaging/channels/:id/unarchive": {
+    summary:
+      "Unarchive a discipline/location channel (org_admin only; 204, idempotent; 409 CHANNEL_LIFECYCLE_MANAGED for care_team/bereavement/on_call/announcement; 403 for a DM)",
   },
   "POST /api/v1/messaging/channels/:id/members": {
     summary: "Add a manual member (admin override on auto channels; 204)",

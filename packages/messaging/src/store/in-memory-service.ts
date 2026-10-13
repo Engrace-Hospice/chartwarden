@@ -58,6 +58,7 @@ import type {
 import {
   type MemberAdminActor,
   type PatientLocationResolver,
+  assertMayArchiveChannel,
   mayManageChannelMembersResolved,
 } from "../member-admin";
 import type { QuietHoursConfig, RoutingMap } from "../resolution";
@@ -989,6 +990,30 @@ export function createInMemoryMessagingService(
       if (ch.kind === "dm") throw new ForbiddenError("direct-message membership cannot be changed");
       assertEligibleStaff(orgId, input.userId);
       ch.members.set(input.userId, { role: input.role ?? "member", source: "manual" });
+    },
+
+    async listMembers(orgId, actor, channelId) {
+      const ch = channelOr404(orgId, channelId);
+      if (ch.kind === "dm")
+        throw new ForbiddenError("direct-message membership cannot be listed here");
+      await assertMayManage(orgId, actor, ch);
+      return [...ch.members.entries()].flatMap(([uid, m]) => {
+        const staff = eligibleStaff.get(`${orgId}:${uid}`);
+        if (!staff || (staff.status ?? "active") !== "active") return [];
+        return [{ userId: uid, role: m.role, source: m.source, displayName: staff.displayName }];
+      });
+    },
+
+    async archiveChannel(orgId, input) {
+      const ch = channelOr404(orgId, input.channelId);
+      assertMayArchiveChannel(input.actor, ch.kind);
+      ch.archivedAt ??= iso();
+    },
+
+    async unarchiveChannel(orgId, input) {
+      const ch = channelOr404(orgId, input.channelId);
+      assertMayArchiveChannel(input.actor, ch.kind, "unarchive");
+      ch.archivedAt = null;
     },
 
     async removeMember(orgId, input) {
