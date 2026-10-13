@@ -1,21 +1,12 @@
 import { BACKGROUND_REQUEST_HEADERS, Button, Glyph, useApiClient } from "@wardenx/ui";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { JSX, KeyboardEvent } from "react";
-import { AttachButton, AttachmentChips } from "./attachment-composer";
+import type { JSX, KeyboardEvent, UIEvent } from "react";
 import { sendBlockedReason } from "./attachment-utils";
-import { ComposerFooter } from "./composer-footer";
-import {
-  applyTextEdit,
-  detectMac,
-  formatShortcutMarker,
-  insertText,
-  toggleWrap,
-} from "./composer-format";
-import { DraftSyncNotice, escapeKeepsMine } from "./draft-conflict-prompt";
-import { MentionMenu } from "./mention-menu";
-import { activeMentionQuery, reconcileReferences } from "./mention-utils";
-import { MessageRow } from "./message-row";
+import { applyTextEdit, detectMac, insertText } from "./composer-format";
+import { handleComposerKeyDown } from "./composer-keys";
+import { ThreadComposer } from "./message-composer";
 import { MessageSearch } from "./message-search";
+import { MessageTimeline } from "./message-timeline";
 import type {
   ChannelSummary,
   Message,
@@ -31,13 +22,9 @@ import {
   isAccessError,
   mergeMessages,
 } from "./messaging-utils";
-import { NonMemberMentionPrompt } from "./non-member-mention-prompt";
 import { PinnedMessagesBar } from "./pinned-messages-bar";
-import { ScheduleSendButton } from "./schedule-send-button";
-import { TemplatePicker } from "./template-picker";
 import { PatientContextAside, ThreadHeader } from "./thread-header";
 import { ThreadPanel } from "./thread-panel";
-import { TimelineState } from "./timeline-state";
 import { useAnnouncementTools } from "./use-announcement-tools";
 import { useAttachmentUploads } from "./use-attachment-upload";
 import { useAutoGrowTextarea } from "./use-auto-grow-textarea";
@@ -444,55 +431,27 @@ export function ConversationThread({
   }, [messages]);
 
   function handleComposerKey(event: KeyboardEvent<HTMLTextAreaElement>): void {
-    // While an IME is composing, every key belongs to the IME (candidate selection, cancel): handle none of ours.
-    if (composingRef.current || event.nativeEvent.isComposing) return;
-    if (escapeKeepsMine(event, serverDraft)) return;
-    const marker = formatShortcutMarker(event, isMac);
-    if (marker) {
-      // The edit runs through the textarea's own input path (undo stack, onChange, mention query recompute).
-      event.preventDefault();
-      const area = event.currentTarget;
-      // Built from the live value: React state may lag a programmatic change (autofill, an extension).
-      applyTextEdit(area, toggleWrap(area.value, area.selectionStart, area.selectionEnd, marker));
-      return;
-    }
-    if (pendingAdd && event.key === "Escape") {
-      // Escape closes the add prompt (unless the add is in flight) and the suggestions with it.
-      event.preventDefault();
-      dismissMentionAdd();
-      setMentionQuery(null);
-      return;
-    }
-    if (mentionQuery && event.key === "Escape") {
-      event.preventDefault();
-      setMentionQuery(null);
-      return;
-    }
-    // While the add prompt is open the (hidden) suggestions own no keys: Tab reaches the prompt's buttons, Enter sends.
-    if (mentionQuery && !pendingAdd && mentionMenu.candidates.length > 0) {
-      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-        event.preventDefault();
-        setMentionIndex((index) =>
-          event.key === "ArrowDown"
-            ? (index + 1) % mentionMenu.candidates.length
-            : (index - 1 + mentionMenu.candidates.length) % mentionMenu.candidates.length,
-        );
-        return;
-      }
-      if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
-        event.preventDefault();
-        chooseMention(mentionMenu.candidates[mentionMenu.activeIndex]!);
-        return;
-      }
-    }
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      void send();
-      return;
-    }
-    // Escape in an EMPTY composer hands focus back to the page; with a draft it does nothing (the draft is never
-    // lost to a stray key). Tab is never intercepted outside the mention popup, so there is no keyboard trap.
-    if (event.key === "Escape" && draft === "") event.currentTarget.blur();
+    handleComposerKeyDown(event, {
+      composing: composingRef.current,
+      isMac,
+      serverDraft,
+      draft,
+      pendingAdd,
+      mentionQuery,
+      mentionMenu,
+      dismissMentionAdd,
+      setMentionQuery,
+      setMentionIndex,
+      chooseMention,
+      send,
+    });
+  }
+
+  function handleTimelineScroll(event: UIEvent<HTMLDivElement>): void {
+    const element = event.currentTarget;
+    nearBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
+    if (nearBottomRef.current) setNewMessageCount(0);
+    if (element.scrollTop < 80 && olderCursor && !loadingOlder) void loadOlder();
   }
 
   // WP 2.8: a saved reply is only text put in the draft at the caret; the user edits it and sends an ordinary message.
@@ -586,62 +545,24 @@ export function ConversationThread({
       />
 
       <div className="wx-messaging-thread-body">
-        <div
-          ref={timelineRef}
-          className="wx-message-timeline"
-          aria-label="Message history"
-          tabIndex={-1}
-          onScroll={(event) => {
-            const element = event.currentTarget;
-            nearBottomRef.current =
-              element.scrollHeight - element.scrollTop - element.clientHeight < 80;
-            if (nearBottomRef.current) setNewMessageCount(0);
-            if (element.scrollTop < 80 && olderCursor && !loadingOlder) void loadOlder();
-          }}
-        >
-          <TimelineState
-            loadError={loadError}
-            loading={messages === null}
-            empty={messages?.length === 0}
-            onRetry={() => void loadLatest()}
-          />
-          {!loadError && messages && messages.length > 0 ? (
-            <>
-              {olderCursor ? (
-                <button
-                  type="button"
-                  className="wx-load-older"
-                  onClick={() => void loadOlder()}
-                  disabled={loadingOlder}
-                >
-                  {loadingOlder ? "Loading…" : "Load older messages"}
-                </button>
-              ) : (
-                <span className="wx-history-start">Beginning of conversation</span>
-              )}
-              {messages.map((message, index) => (
-                <MessageRow
-                  key={message.messageId}
-                  message={message}
-                  previous={messages[index - 1]}
-                  meId={meId}
-                  anchorMessageId={jump.highlightId ?? anchorMessageId}
-                  onOpenThread={panel.openThread}
-                  onJumpToParent={jump.jumpToMessage}
-                  parentAuthor={
-                    message.parentMessageId
-                      ? (authorById.get(message.parentMessageId) ?? null)
-                      : undefined
-                  }
-                  canReply={!channel.archivedAt && tools.canReply}
-                  canAnnotate={!channel.archivedAt}
-                  canPin
-                  onShowReceipts={tools.onShowReceipts}
-                />
-              ))}
-            </>
-          ) : null}
-        </div>
+        <MessageTimeline
+          timelineRef={timelineRef}
+          messages={messages}
+          loadError={loadError}
+          olderCursor={olderCursor}
+          loadingOlder={loadingOlder}
+          meId={meId}
+          highlightedMessageId={jump.highlightId ?? anchorMessageId}
+          authorById={authorById}
+          canReply={!channel.archivedAt && tools.canReply}
+          canAnnotate={!channel.archivedAt}
+          onShowReceipts={tools.onShowReceipts}
+          onScroll={handleTimelineScroll}
+          onRetry={() => void loadLatest()}
+          onLoadOlder={() => void loadOlder()}
+          onOpenThread={panel.openThread}
+          onJumpToMessage={jump.jumpToMessage}
+        />
 
         {contextOpen && patient ? (
           <PatientContextAside patient={patient} onClose={() => setContextOpen(false)} />
@@ -689,108 +610,36 @@ export function ConversationThread({
         </output>
       ) : null}
 
-      {composerHidden ? (
-        <output className="wx-messaging-archived">
-          <Glyph name="lock" size={16} />
-          {channel.archivedAt
-            ? "This conversation is archived. Message history remains read-only."
-            : loadError
-              ? "Messaging is unavailable until access can be verified."
-              : "Only administrators can post announcements."}
-        </output>
-      ) : (
-        <>
-          <DraftSyncNotice sync={serverDraft} />
-          <form className="wx-message-composer" onSubmit={(event) => void send(event)}>
-            <label htmlFor="messaging-composer" className="sr-only">
-              Message
-            </label>
-            <textarea
-              ref={textareaRef}
-              id="messaging-composer"
-              aria-label="Message"
-              rows={1}
-              placeholder={`Message ${channelLabel(channel)}…`}
-              value={draft}
-              disabled={sending}
-              aria-autocomplete="list"
-              aria-expanded={mentionQuery !== null && !pendingAdd}
-              aria-controls={
-                mentionQuery && !pendingAdd ? "messaging-mention-suggestions" : undefined
-              }
-              onChange={(event) => {
-                const next = event.target.value;
-                const nextReferences = reconcileReferences(draft, next, draftReferences);
-                setDraftReferences(nextReferences);
-                setDraft(next);
-                const cursor = event.target.selectionStart ?? next.length;
-                setMentionQuery(activeMentionQuery(next, cursor, nextReferences));
-                dismissMentionAdd();
-                if (sendError) clearSendError();
-              }}
-              onKeyDown={handleComposerKey}
-              onCompositionStart={() => {
-                composingRef.current = true;
-              }}
-              onCompositionEnd={() => {
-                composingRef.current = false;
-              }}
-            />
-            <AttachmentChips
-              uploads={uploads}
-              disabled={sending}
-              attachButtonRef={attachButtonRef}
-            />
-            <AttachButton uploads={uploads} disabled={sending} buttonRef={attachButtonRef} />
-            <TemplatePicker
-              disabled={sending}
-              onInsert={insertSavedReply}
-              onClosed={() => textareaRef.current?.focus()}
-            />
-            <NonMemberMentionPrompt
-              person={pendingAdd?.person ?? null}
-              canAdd={canAddMention}
-              adding={mentionAdding}
-              failed={mentionAddFailed}
-              added={pendingAdd?.stage === "added"}
-              onAdd={() => void addToConversation()}
-              onDismiss={() => {
-                dismissMentionAdd();
-                setMentionQuery(null);
-                textareaRef.current?.focus();
-              }}
-            />
-            {!pendingAdd && mentionQuery ? <MentionMenu {...mentionMenu} /> : null}
-            <Button
-              type="submit"
-              disabled={
-                sending || (!draft.trim() && uploads.sendableIds.length === 0) || uploads.blocksSend
-              }
-              loading={sending}
-              aria-label="Send"
-              aria-describedby={sendHint ? "messaging-send-hint" : undefined}
-            >
-              <Glyph name="send" size={16} /> <span>Send</span>
-            </Button>
-            <ScheduleSendButton
-              channelId={channel.channelId}
-              text={draft}
-              disabled={sending}
-              hasMentions={draftReferences.length > 0}
-              focusTargetId="messaging-composer"
-              disabledReason={
-                uploads.chips.length > 0 ? "Attachments cannot be scheduled." : undefined
-              }
-              onScheduled={() => {
-                // The scheduled copy now owns the text; an empty draft also discards the server-side draft (WP 2.5).
-                setDraft("");
-                setDraftReferences([]);
-              }}
-            />
-            <ComposerFooter sendHint={sendHint} sendError={sendError} sending={sending} />
-          </form>
-        </>
-      )}
+      <ThreadComposer
+        channel={channel}
+        composerHidden={composerHidden}
+        loadError={loadError}
+        serverDraft={serverDraft}
+        textareaRef={textareaRef}
+        attachButtonRef={attachButtonRef}
+        composingRef={composingRef}
+        draft={draft}
+        setDraft={setDraft}
+        draftReferences={draftReferences}
+        setDraftReferences={setDraftReferences}
+        uploads={uploads}
+        sending={sending}
+        send={send}
+        sendError={sendError}
+        clearSendError={clearSendError}
+        sendHint={sendHint}
+        onKeyDown={handleComposerKey}
+        onInsertSavedReply={insertSavedReply}
+        mentionQuery={mentionQuery}
+        setMentionQuery={setMentionQuery}
+        pendingAdd={pendingAdd}
+        mentionAdding={mentionAdding}
+        mentionAddFailed={mentionAddFailed}
+        canAddMention={canAddMention}
+        mentionMenu={mentionMenu}
+        addToConversation={addToConversation}
+        dismissMentionAdd={dismissMentionAdd}
+      />
     </section>
   );
 }
