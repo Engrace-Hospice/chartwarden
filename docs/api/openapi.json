@@ -159734,6 +159734,173 @@
         }
       }
     },
+    "/api/v1/messaging/channels/{id}/scheduled-messages": {
+      "post": {
+        "operationId": "postApiV1MessagingChannelsByIdScheduledmessages",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Schedule a message for later (WP 2.6; Idempotency-Key required; 1 minute to 30 days ahead; announcement channel needs messaging.announce; 409 SCHEDULE_LIMIT_REACHED at 50). Re-checked at dispatch.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "channelId",
+                    "parentMessageId",
+                    "body",
+                    "scheduledFor",
+                    "timeZone",
+                    "status",
+                    "blockedReason",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "type": "string"
+                    },
+                    "parentMessageId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "body": {
+                      "type": "string"
+                    },
+                    "scheduledFor": {
+                      "type": "string"
+                    },
+                    "timeZone": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "blocked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "blockedReason": {
+                      "anyOf": [
+                        {
+                          "const": "channel_archived",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_member",
+                          "type": "string"
+                        },
+                        {
+                          "const": "permission_revoked",
+                          "type": "string"
+                        },
+                        {
+                          "const": "announcement_not_permitted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "parent_unavailable",
+                          "type": "string"
+                        },
+                        {
+                          "const": "dispatch_failed",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "body",
+                  "scheduledFor"
+                ],
+                "properties": {
+                  "body": {
+                    "maxLength": 100000,
+                    "type": "string"
+                  },
+                  "parentMessageId": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  },
+                  "scheduledFor": {
+                    "minLength": 10,
+                    "maxLength": 40,
+                    "type": "string"
+                  },
+                  "timeZone": {
+                    "maxLength": 64,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/messaging/channels/{id}/search": {
       "get": {
         "operationId": "getApiV1MessagingChannelsByIdSearch",
@@ -160602,6 +160769,331 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/scheduled-messages": {
+      "get": {
+        "operationId": "getApiV1MessagingScheduledmessages",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The caller's own scheduled messages (pending and blocked), soonest first; never anyone else's",
+        "parameters": [
+          {
+            "name": "channelId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "scheduledMessages"
+                  ],
+                  "properties": {
+                    "scheduledMessages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "channelId",
+                          "parentMessageId",
+                          "body",
+                          "scheduledFor",
+                          "timeZone",
+                          "status",
+                          "blockedReason",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "channelId": {
+                            "type": "string"
+                          },
+                          "parentMessageId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "body": {
+                            "type": "string"
+                          },
+                          "scheduledFor": {
+                            "type": "string"
+                          },
+                          "timeZone": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "blocked",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "blockedReason": {
+                            "anyOf": [
+                              {
+                                "const": "channel_archived",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not_member",
+                                "type": "string"
+                              },
+                              {
+                                "const": "permission_revoked",
+                                "type": "string"
+                              },
+                              {
+                                "const": "announcement_not_permitted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "parent_unavailable",
+                                "type": "string"
+                              },
+                              {
+                                "const": "dispatch_failed",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/scheduled-messages/{id}": {
+      "delete": {
+        "operationId": "deleteApiV1MessagingScheduledmessagesById",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Cancel a scheduled message before dispatch (idempotent; cancelled=false when nothing was left to cancel)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "cancelled"
+                  ],
+                  "properties": {
+                    "cancelled": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1MessagingScheduledmessagesById",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Reschedule one of the caller's scheduled messages (a blocked one becomes pending again)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "channelId",
+                    "parentMessageId",
+                    "body",
+                    "scheduledFor",
+                    "timeZone",
+                    "status",
+                    "blockedReason",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "type": "string"
+                    },
+                    "parentMessageId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "body": {
+                      "type": "string"
+                    },
+                    "scheduledFor": {
+                      "type": "string"
+                    },
+                    "timeZone": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "blocked",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "blockedReason": {
+                      "anyOf": [
+                        {
+                          "const": "channel_archived",
+                          "type": "string"
+                        },
+                        {
+                          "const": "not_member",
+                          "type": "string"
+                        },
+                        {
+                          "const": "permission_revoked",
+                          "type": "string"
+                        },
+                        {
+                          "const": "announcement_not_permitted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "parent_unavailable",
+                          "type": "string"
+                        },
+                        {
+                          "const": "dispatch_failed",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "scheduledFor"
+                ],
+                "properties": {
+                  "scheduledFor": {
+                    "minLength": 10,
+                    "maxLength": 40,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }

@@ -18,7 +18,7 @@ import {
 } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, ValidationError, WardenXError } from "@wardenx/types";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import {
   type MessageBodyCipher,
   type Tx,
@@ -28,6 +28,7 @@ import {
 } from "../messaging-write-core";
 
 const SM = schema.scheduledMessages;
+const MDRAFT = schema.messageDrafts;
 const MSG = schema.messages;
 /** The most rows one list call returns; the per-user cap is far below it. */
 const LIST_LIMIT = 200;
@@ -130,6 +131,21 @@ export function createDbScheduledSendService(deps: ScheduledSendServiceDeps): Sc
           timeZone,
         })
         .returning();
+      // Tranche C: the text left the composer for the schedule, so the sender's OWN draft for this slot goes in the
+      // same transaction, exactly as a live send does (a client that closes mid-schedule cannot save it back). Done at
+      // creation, not dispatch: at dispatch a NEWER draft for the slot may exist and must not be clobbered.
+      await tx
+        .delete(MDRAFT)
+        .where(
+          and(
+            eq(MDRAFT.organizationId, orgId),
+            eq(MDRAFT.userId, input.userId),
+            eq(MDRAFT.channelId, input.channelId),
+            input.parentMessageId
+              ? eq(MDRAFT.parentMessageId, input.parentMessageId)
+              : isNull(MDRAFT.parentMessageId),
+          ),
+        );
       return viewOf(cipher, orgId, created as typeof SM.$inferSelect);
     });
   };

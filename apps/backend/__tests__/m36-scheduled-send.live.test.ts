@@ -29,6 +29,7 @@ import { eq } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { createDbDraftService } from "../src/modules/36-messaging/drafts/draft-service-db";
 import { createDrizzleMessagingEraseStore } from "../src/modules/36-messaging/erasers/messaging-eraser";
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
@@ -313,6 +314,30 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
         code: "CHANNEL_ARCHIVED",
         statusCode: 410,
       });
+    });
+
+    it("scheduling takes the sender's own draft for that slot, like a send does (Tranche C), and nothing else", async () => {
+      await wipe();
+      await admin.query("DELETE FROM message_draft");
+      const drafts = createDbDraftService({ db: handle.db, cipher });
+      const save = (userId: string, channelId: string) =>
+        drafts.saveDraft(orgA, {
+          userId,
+          channelId,
+          body: SECRET,
+          deviceId: "d1",
+          baseRevision: 0,
+        });
+      await save(alice, dm);
+      await save(alice, announcement);
+      await save(bob, dm);
+      await schedule(alice);
+      expect(await drafts.getDraft(orgA, { userId: alice, channelId: dm })).toBeNull();
+      expect(
+        await drafts.getDraft(orgA, { userId: alice, channelId: announcement }),
+      ).not.toBeNull();
+      expect(await drafts.getDraft(orgA, { userId: bob, channelId: dm })).not.toBeNull();
+      await admin.query("DELETE FROM message_draft");
     });
 
     it("caps a user at the limit with 409 SCHEDULE_LIMIT_REACHED, also under concurrency", async () => {
