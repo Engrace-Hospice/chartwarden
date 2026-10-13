@@ -163,5 +163,5 @@
 }
 
 .wx-message-row.is-mine .wx-message-bubble time {
-  color: color-mix(in srgb, var(--color-on-primary) 78%, transparent);
+  color: color-mix(in srgb, var(--color-on-primary) 90%, transparent);
 }
