@@ -20,7 +20,7 @@
 -- message's token rows when its status becomes 'deleted' or its plaintext digest `body_sha256` changes (an edit). It is
 -- NOT keyed on body_cipher: a key-ring re-wrap (ADR-0058 P1) rewrites the cipher with the same plaintext and must not wipe
 -- the index. The trigger never consults the tenant flag: it runs while search is OFF so a message deleted while OFF cannot
--- be resurrected into the index. It is SECURITY DEFINER owned by wardenx_admin (which gets a DELETE-only policy on the
+-- be resurrected into the index. It is SECURITY DEFINER owned by wardenx_admin (which gets SELECT and DELETE policies on the
 -- token table), with a pinned search_path, and deletes only NEW.organization_id's rows of the updated message, so it does
 -- not depend on which role updates the message or on whether that session carries app.org_id: a role that may update a
 -- message can never silently skip the delete. Tenant erasure (destroyTenantDek rewrites cipher and digest under

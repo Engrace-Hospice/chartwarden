@@ -17,7 +17,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Exactly the form `Date#toISOString` emits, so a lenient date string never reaches a SQL comparison. */
 function isStrictIso(value: string): boolean {
   const parsed = new Date(value);
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value;
+  return /^\d{4}-/.test(value) && !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value;
 }
 
 export function encodeSearchCursor(cursor: SearchCursor): string {
