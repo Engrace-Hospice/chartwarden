@@ -1,0 +1,123 @@
+/* M36 WP 2.9 — announcement receipts, department channel dialog, member list. Builds on the dialog chrome of
+   staff-messaging.css (.wx-new-conversation); only what is new lives here. */
+
+.wx-announcement-receipts h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.875rem;
+}
+
+.wx-announcement-receipts ul,
+.wx-channel-members ul {
+  display: grid;
+  gap: 0.15rem;
+  max-height: 14rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.wx-announcement-receipts li,
+.wx-channel-members li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-lowest);
+  font-size: 0.8125rem;
+}
+
+.wx-announcement-receipts time {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.wx-announcement-summary {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.wx-announcement-summary progress {
+  width: 100%;
+  height: 0.5rem;
+  accent-color: var(--color-primary);
+}
+
+.wx-announcement-empty {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+}
+
+.wx-message-receipts-button {
+  align-self: flex-start;
+  padding: 0.1rem 0.5rem;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.wx-message-receipts-button:hover {
+  text-decoration: underline;
+}
+
+.wx-message-receipts-button:focus-visible,
+.wx-announcement-receipts button:focus-visible,
+.wx-channel-members button:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.wx-department-form,
+.wx-channel-members {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.wx-department-form label,
+.wx-channel-members label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.8125rem;
+}
+
+.wx-department-form select,
+.wx-department-form input,
+.wx-channel-members select {
+  min-height: 2.25rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-lowest);
+  color: inherit;
+  font: inherit;
+}
+
+.wx-channel-members-add {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.wx-channel-members-add label {
+  flex: 1;
+}
+
+.wx-messaging-readonly-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}
+
+.wx-messaging-inbox-header .wx-messaging-inbox-actions {
+  align-items: center;
+}

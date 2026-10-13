@@ -161,6 +161,16 @@ export {
   type PatientLocationResolver,
   type MemberAdminActor,
 } from "./member-admin";
+// WP 2.9 — announcement receipts + department channels (its own service; the in-memory slice implements both).
+export { RECEIPT_LIST_LIMIT } from "./interfaces/announcement-service";
+export type {
+  AnnouncementReader,
+  AnnouncementReceiptPerson,
+  AnnouncementReceiptView,
+  AnnouncementService,
+  CreateDepartmentChannelInput,
+  DepartmentChannelKind,
+} from "./interfaces/announcement-service";
 export { createInMemoryMessagingService } from "./store/in-memory-service";
 export type {
   InMemoryMessagingSeed,

@@ -27,10 +27,12 @@ import {
   channelLabel,
   compareMessages,
   initialsOf,
+  isAccessError,
   mergeMessages,
 } from "./messaging-utils";
 import { PatientContextAside, ThreadHeader } from "./thread-header";
 import { ThreadPanel } from "./thread-panel";
+import { useAnnouncementTools } from "./use-announcement-tools";
 import { useAttachmentUploads } from "./use-attachment-upload";
 import { INITIAL_READ_VIEW, type ReadView, useJumpToMessage } from "./use-jump-to-message";
 import { useLatestPolling } from "./use-latest-polling";
@@ -42,15 +44,6 @@ import type { LiveHint } from "./use-thread";
 import { useThreadPanelState } from "./use-thread-panel-state";
 
 const MESSAGE_PAGE_SIZE = 50;
-
-function isAccessError(error: unknown): boolean {
-  const serialized = JSON.stringify(error ?? "").toLowerCase();
-  return (
-    serialized.includes("forbidden") ||
-    serialized.includes("not_found") ||
-    serialized.includes("not found")
-  );
-}
 
 export interface ConversationThreadProps {
   channel: ChannelSummary;
@@ -67,6 +60,9 @@ export interface ConversationThreadProps {
   realtimeConnected?: boolean;
   /** WP 2.2: what the latest realtime hint said changed, so an open thread panel refreshes only when it is concerned. */
   liveHint?: LiveHint | null;
+  /** WP 2.9: the viewer holds messaging.announce / messaging.manage_members (the server enforces both). */
+  canAnnounce?: boolean;
+  canManageMembers?: boolean;
 }
 
 export function ConversationThread({
@@ -81,8 +77,11 @@ export function ConversationThread({
   liveToken = 0,
   realtimeConnected = false,
   liveHint = null,
+  canAnnounce = false,
+  canManageMembers = false,
 }: ConversationThreadProps): JSX.Element {
   const client = useApiClient();
+  const tools = useAnnouncementTools(channel, canAnnounce, canManageMembers);
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [olderCursor, setOlderCursor] = useState<string | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -429,7 +428,7 @@ export function ConversationThread({
 
   // The composer is replaced by a notice when the channel is archived or unreadable: drop the uploads with it.
   const { reset: resetUploads } = uploads;
-  const composerHidden = Boolean(channel.archivedAt) || loadError !== null;
+  const composerHidden = Boolean(channel.archivedAt) || loadError !== null || tools.readOnly;
   useEffect(() => {
     if (composerHidden) resetUploads();
   }, [composerHidden, resetUploads]);
@@ -597,7 +596,9 @@ export function ConversationThread({
         contextOpen={contextOpen}
         onBack={onBack}
         onToggleContext={() => setContextOpen((open) => !open)}
+        onShowMembers={tools.onShowMembers}
       />
+      {tools.dialogs}
 
       <div className="wx-messaging-thread-body">
         <div
@@ -661,7 +662,8 @@ export function ConversationThread({
                       ? (authorById.get(message.parentMessageId) ?? null)
                       : undefined
                   }
-                  canReply={!channel.archivedAt}
+                  canReply={!channel.archivedAt && tools.canReply}
+                  onShowReceipts={tools.onShowReceipts}
                 />
               ))}
             </>
@@ -714,12 +716,14 @@ export function ConversationThread({
         </output>
       ) : null}
 
-      {channel.archivedAt || loadError ? (
+      {composerHidden ? (
         <output className="wx-messaging-archived">
           <Glyph name="lock" size={16} />
           {channel.archivedAt
             ? "This conversation is archived. Message history remains read-only."
-            : "Messaging is unavailable until access can be verified."}
+            : loadError
+              ? "Messaging is unavailable until access can be verified."
+              : "Only administrators can post announcements."}
         </output>
       ) : (
         <form className="wx-message-composer" onSubmit={(event) => void send(event)}>

@@ -114,3 +114,13 @@ export function sendAttemptFor(previous: SendAttempt | null, fingerprint: string
 export function rotateIdempotencyKey(attempt: SendAttempt): SendAttempt {
   return { ...attempt, idempotencyKey: crypto.randomUUID() };
 }
+
+/** A refusal that means the viewer lost access to the channel (moved out of ConversationThread to keep it small). */
+export function isAccessError(error: unknown): boolean {
+  const serialized = JSON.stringify(error ?? "").toLowerCase();
+  return (
+    serialized.includes("forbidden") ||
+    serialized.includes("not_found") ||
+    serialized.includes("not found")
+  );
+}

@@ -141,6 +141,7 @@ export {
 
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
+import { createDbAnnouncementService as _createDbAnnouncementService } from "./announcement-service-db";
 import type { AttachmentStoragePort, ScanPort } from "./attachments/attachment-ports";
 import { createAttachmentService as _createAttachmentService } from "./attachments/attachment-service-db";
 import type { EndpointVerificationSender } from "./delivery/transport-binding";
@@ -183,7 +184,7 @@ export function mountMessagingRoutes(
       : {}),
   });
   _registerMessagingAbacPredicates(service); // idempotent — single-owner registry, re-boot-safe
-  _registerMessagingRoutes(app, { service });
+  _registerMessagingRoutes(app, { service, announcements: _createDbAnnouncementService(db) }); // WP 2.9
   // WP 1.5 — attachment authorize/complete/access. The visibility rule is the route service's own, so an attachment
   // is exactly as reachable as the channel it was posted in. Without storage the routes answer a typed 503.
   if (opts.attachments) {

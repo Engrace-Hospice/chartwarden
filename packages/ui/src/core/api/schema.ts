@@ -13181,6 +13181,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/announcements/{messageId}/receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who has read one announcement: counts plus capped reader / unread lists (messaging.announce; 404 outside the announcement channel) */
+        get: operations["getApiV1MessagingAnnouncementsByMessageIdReceipts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/attachments/{id}": {
         parameters: {
             query?: never;
@@ -13363,6 +13380,23 @@ export interface paths {
         get: operations["getApiV1MessagingChannelsByIdMessagesByMessageIdThread"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/department-channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Find-or-create a discipline or location department channel (messaging.announce; 201 created, 200 found, 404 foreign subject) */
+        post: operations["postApiV1MessagingDepartmentchannels"];
         delete?: never;
         options?: never;
         head?: never;
@@ -61379,6 +61413,46 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingAnnouncementsByMessageIdReceipts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        messageId: string;
+                        channelId: string;
+                        sentAt: string;
+                        recipientCount: number;
+                        readCount: number;
+                        readers: {
+                            userId: string;
+                            displayName: string;
+                            readAt: string;
+                        }[];
+                        unread: {
+                            userId: string;
+                            displayName: string;
+                        }[];
+                        truncated: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1MessagingAttachmentsById: {
         parameters: {
             query?: never;
@@ -61612,6 +61686,7 @@ export interface operations {
                             userId: string;
                             role: "owner" | "member" | "read_only" | "portal_caregiver";
                             source: "auto" | "manual";
+                            displayName?: string | null;
                         }[];
                     };
                 };
@@ -61937,6 +62012,39 @@ export interface operations {
                         }[];
                         nextCursor?: string;
                         patientId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingDepartmentchannels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    kind: "discipline" | "location";
+                    subjectId: string;
+                    title?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        channelId: string;
+                        created: boolean;
                     };
                 };
             };

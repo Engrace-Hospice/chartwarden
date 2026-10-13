@@ -24,6 +24,7 @@ import {
   WardenXError,
 } from "@wardenx/types";
 import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { recordAnnouncementReads } from "./announcement-receipts";
 import { storedBodyFor } from "./rich-body-codec";
 
 const CH = schema.channels;
@@ -280,6 +281,16 @@ export async function markMessagesRead(
       )
       .orderBy(asc(MSG.createdAt))) as Array<{ id: string }>;
     messageIds = earlier.map((r) => r.id);
+  }
+
+  // WP 2.9: the announcement channel has no members, hence no `delivered` receipts to flip; record the reads directly.
+  const channel = (await tx
+    .select({ kind: CH.channelKind })
+    .from(CH)
+    .where(and(eq(CH.organizationId, args.orgId), eq(CH.id, msg.channelId)))
+    .limit(1)) as Array<{ kind: string }>;
+  if (channel[0]?.kind === "announcement") {
+    await recordAnnouncementReads(tx, { orgId: args.orgId, userId: args.userId, messageIds });
   }
 
   await tx

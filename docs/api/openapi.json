@@ -156320,6 +156320,113 @@
         }
       }
     },
+    "/api/v1/messaging/announcements/{messageId}/receipts": {
+      "get": {
+        "operationId": "getApiV1MessagingAnnouncementsByMessageIdReceipts",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Who has read one announcement: counts plus capped reader / unread lists (messaging.announce; 404 outside the announcement channel)",
+        "parameters": [
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "messageId",
+                    "channelId",
+                    "sentAt",
+                    "recipientCount",
+                    "readCount",
+                    "readers",
+                    "unread",
+                    "truncated"
+                  ],
+                  "properties": {
+                    "messageId": {
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "type": "string"
+                    },
+                    "sentAt": {
+                      "type": "string"
+                    },
+                    "recipientCount": {
+                      "type": "integer"
+                    },
+                    "readCount": {
+                      "type": "integer"
+                    },
+                    "readers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "userId",
+                          "displayName",
+                          "readAt"
+                        ],
+                        "properties": {
+                          "userId": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "readAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "unread": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "userId",
+                          "displayName"
+                        ],
+                        "properties": {
+                          "userId": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/attachments/{id}": {
       "get": {
         "operationId": "getApiV1MessagingAttachmentsById",
@@ -157162,6 +157269,16 @@
                               {
                                 "const": "manual",
                                 "type": "string"
+                              }
+                            ]
+                          },
+                          "displayName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
                               }
                             ]
                           }
@@ -158399,6 +158516,83 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/department-channels": {
+      "post": {
+        "operationId": "postApiV1MessagingDepartmentchannels",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Find-or-create a discipline or location department channel (messaging.announce; 201 created, 200 found, 404 foreign subject)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "channelId",
+                    "created"
+                  ],
+                  "properties": {
+                    "channelId": {
+                      "type": "string"
+                    },
+                    "created": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "subjectId"
+                ],
+                "properties": {
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "const": "discipline",
+                        "type": "string"
+                      },
+                      {
+                        "const": "location",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "subjectId": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  },
+                  "title": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }

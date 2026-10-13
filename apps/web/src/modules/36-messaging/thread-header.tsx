@@ -14,6 +14,8 @@ export interface ThreadHeaderProps {
   contextOpen: boolean;
   onBack: () => void;
   onToggleContext: () => void;
+  /** WP 2.9: open the member list of a department channel (passed only to someone who may manage members). */
+  onShowMembers?: () => void;
 }
 
 export function ThreadHeader({
@@ -24,6 +26,7 @@ export function ThreadHeader({
   contextOpen,
   onBack,
   onToggleContext,
+  onShowMembers,
 }: ThreadHeaderProps): JSX.Element {
   return (
     <header className="wx-messaging-thread-header">
@@ -46,6 +49,11 @@ export function ThreadHeader({
         <span className="wx-messaging-readonly">
           <Glyph name="lock" size={13} /> Archived · read only
         </span>
+      ) : null}
+      {onShowMembers ? (
+        <button type="button" className="wx-messaging-context-toggle" onClick={onShowMembers}>
+          <Glyph name="users" size={16} /> Members
+        </button>
       ) : null}
       {channel.kind === "care_team" && patient ? (
         <button

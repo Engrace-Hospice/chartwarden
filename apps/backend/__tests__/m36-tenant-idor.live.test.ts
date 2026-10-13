@@ -53,6 +53,7 @@ import {
   createDrizzleCareTeamStore,
   createDrizzlePatientReaderStore,
 } from "../src/modules/05-patient/seams/drizzle-stores";
+import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import type { AttachmentStoragePort } from "../src/modules/36-messaging/attachments/attachment-ports";
 import { createBuiltinScanner } from "../src/modules/36-messaging/attachments/attachment-scanners";
 import { createAttachmentService } from "../src/modules/36-messaging/attachments/attachment-service-db";
@@ -112,6 +113,9 @@ const ROUTES: Record<string, Verdict> = {
   "POST /api/v1/messaging/channels/:id/members": { kind: "idor" },
   "DELETE /api/v1/messaging/channels/:id/members/:userId": { kind: "idor" },
   "POST /api/v1/messaging/announce": { kind: "scoped" },
+  // WP 2.9: the id is an announcement message's / a location or role id in the body.
+  "GET /api/v1/messaging/announcements/:messageId/receipts": { kind: "idor" },
+  "POST /api/v1/messaging/department-channels": { kind: "idor" },
   "GET /api/v1/notifications/preferences": { kind: "scoped" },
   "PUT /api/v1/notifications/preferences": { kind: "idor" },
   "POST /api/v1/notifications/endpoints": { kind: "scoped" },
@@ -141,6 +145,8 @@ const ROUTES: Record<string, Verdict> = {
 /** The registrar files under routes/ - a new file must be classified here, then mounted in `registeredRoutes`. */
 const REGISTRAR_FILES = [
   "admin-alert-deliveries-routes.ts",
+  "announcement-routes.ts",
+  "announcement-typebox.ts", // schemas only
   "attachment-routes.ts",
   "messaging-routes.ts",
   "messaging-typebox.ts", // schemas only
@@ -155,7 +161,7 @@ function registeredRoutes(): string[] {
       if (m !== "HEAD" && m !== "OPTIONS") seen.add(`${m} ${route.url}`);
     }
   });
-  registerMessagingRoutes(probe, { service: {} as never });
+  registerMessagingRoutes(probe, { service: {} as never, announcements: {} as never });
   registerAttachmentRoutes(probe, { service: {} as never });
   registerAdminAlertDeliveriesRoutes(probe, {} as never);
   registerMessagingWebhookRoutes(probe, { publicBaseUrl: "https://x.test" } as never);
@@ -470,7 +476,10 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       security: { rateLimitEnabled: false },
       idempotencyStore: createDbIdempotencyStore(handle.db),
     });
-    registerMessagingRoutes(app, { service });
+    registerMessagingRoutes(app, {
+      service,
+      announcements: createDbAnnouncementService(handle.db),
+    });
     const blobs = new Map<string, Uint8Array>();
     const fakeStorage: AttachmentStoragePort = {
       presignUpload: async ({ objectKey }) => ({
@@ -1135,6 +1144,78 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       expect(real.statusCode).toBeGreaterThanOrEqual(400);
       expect(shape(real)).toBe(shape(ctl));
       attackers.delete(adminA.name);
+    });
+  });
+
+  describe("announcement receipts and department channels (WP 2.9)", () => {
+    const receiptsRoute = "GET /api/v1/messaging/announcements/:messageId/receipts";
+    const departmentRoute = "POST /api/v1/messaging/department-channels";
+    it("org B admin and an in-org non-admin get a random id's answer for A's announcement receipts", async () => {
+      const posted = await call("POST /api/v1/messaging/announce", adminA, {}, { body: "wp29" });
+      expect(posted.statusCode).toBe(201);
+      const messageId = posted.json().messageId as string;
+      expect((await call(receiptsRoute, adminA, { messageId })).statusCode).toBe(200);
+      await expectNoOracle(receiptsRoute, adminB, { messageId });
+      await expectNoOracle(receiptsRoute, outsider, { messageId });
+    });
+    it("org B admin cannot create a department channel for A's location or A's role", async () => {
+      const provider = (
+        await admin.query(
+          `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+             VALUES ($1,'CCN-WP29','WP29 Provider','NPI-WP29','\\x00','12-31') RETURNING id`,
+          [orgA],
+        )
+      ).rows[0].id as string;
+      const location = (
+        await admin.query(
+          `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone, status)
+             VALUES ($1,'WP29 Loc','1 St','Town','OR','97000','America/Los_Angeles','active') RETURNING id`,
+          [provider],
+        )
+      ).rows[0].id as string;
+      const role = (
+        await admin.query(
+          `INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,'wp29-role','WP29 Role','clinical_staff',true) RETURNING id`,
+          [orgA],
+        )
+      ).rows[0].id as string;
+      attackers.add(adminB.name);
+      const before = await fingerprint();
+      for (const [kind, subjectId] of [
+        ["location", location],
+        ["discipline", role],
+      ] as const) {
+        const real = await call(departmentRoute, adminB, {}, { kind, subjectId });
+        const ctl = await call(departmentRoute, adminB, {}, { kind, subjectId: randomUUID() });
+        expect(real.statusCode, kind).toBe(404);
+        expect(shape(real), kind).toBe(shape(ctl));
+        expectNoLeak(real.body, adminB, kind);
+      }
+      // A non-admin of A is refused before any lookup, so a real and a random subject are indistinguishable.
+      attackers.add(outsider.name);
+      const denied = await call(
+        departmentRoute,
+        outsider,
+        {},
+        { kind: "location", subjectId: location },
+      );
+      const deniedCtl = await call(
+        departmentRoute,
+        outsider,
+        {},
+        { kind: "location", subjectId: randomUUID() },
+      );
+      expect(denied.statusCode).toBe(403);
+      expect(shape(denied)).toBe(shape(deniedCtl));
+      expect(await fingerprint()).toEqual(before);
+      // The owner org can create it (the attacks above are not vacuous).
+      const owner = await call(
+        departmentRoute,
+        adminA,
+        {},
+        { kind: "location", subjectId: location },
+      );
+      expect(owner.statusCode).toBe(201);
     });
   });
 

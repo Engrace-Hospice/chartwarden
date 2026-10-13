@@ -307,6 +307,8 @@ const ChannelMemberViewSchema = Type.Object({
   userId: Type.String(),
   role: MemberRoleSchema,
   source: MemberSourceSchema,
+  /** WP 2.9: so a member list can show who is in a department channel. */
+  displayName: Type.Optional(NullableString()),
 });
 export const ChannelDetailResponseSchema = Type.Object({
   channelId: Type.String(),
