@@ -324,7 +324,7 @@ function TopNavSearch(): JSX.Element {
  * "Sign out instead" escape hatch, so a user finishing a shift on a shared clinical workstation had
  * no direct in-app way to end their session).
  */
-function ActorMenu({ session }: { session: Session | null }): JSX.Element {
+export function ActorMenu({ session }: { session: Session | null }): JSX.Element {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -362,6 +362,8 @@ function ActorMenu({ session }: { session: Session | null }): JSX.Element {
         className="wx-actor-trigger"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
+        // The name text is display:none below 768px, so the button names itself (label-in-name keeps the visible name).
+        aria-label={`${displayName}, account menu`}
       >
         <span className="wx-actor-avatar" aria-hidden>
           {getInitials(displayName)}

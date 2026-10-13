@@ -123,7 +123,7 @@ export function AdminLayout({ sections }: { sections: readonly AdminNavSection[]
 }
 
 /** The signed-in operator, with Sign out (the console had no way to end a session). */
-function ActorMenu({ session }: { session: Session | null }): JSX.Element {
+export function ActorMenu({ session }: { session: Session | null }): JSX.Element {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -157,6 +157,8 @@ function ActorMenu({ session }: { session: Session | null }): JSX.Element {
         className="wx-actor-trigger"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
+        // The name text is display:none below 768px, so the button names itself (label-in-name keeps the visible name).
+        aria-label={`${displayName}, account menu`}
       >
         <span className="wx-actor-avatar" aria-hidden>
           {initials(displayName)}
