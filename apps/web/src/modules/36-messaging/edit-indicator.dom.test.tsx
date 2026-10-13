@@ -1,7 +1,7 @@
 // M36 WP 1.3 - the "Edited" indicator on a message bubble (jsdom). Plain text, never colour alone, not a button;
 // it sits outside the body renderer so it applies to every body kind, own and others' messages, channel and thread.
 // Opening a revision list is Phase 5 (docs/messaging-hub/06-ux-design.md), tied to messaging.history.read.
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import axe from "axe-core";
 import { MemoryRouter } from "react-router-dom";
@@ -170,19 +170,37 @@ describe("edit indicator in the real thread panel", () => {
       replyCount: 0,
       editedAt: EDITED_AT,
     };
+    // Strict mock: every call the thread makes is answered by path; anything else is recorded and fails the test.
+    const unmocked: string[] = [];
+    const answer = (method: string, path: string) => {
+      if (
+        method === "GET" &&
+        path === "/api/v1/messaging/channels/{id}/messages/{messageId}/thread"
+      ) {
+        return {
+          data: { root, replies: [reply], patientId: null },
+          error: undefined,
+          response: { status: 200 },
+        };
+      }
+      if (method === "GET" && path === "/api/v1/messaging/channels/{id}/messages") {
+        return { data: { messages: [root, reply] }, error: undefined };
+      }
+      if (method === "POST" && path === "/api/v1/messaging/messages/{id}/read") {
+        return { data: undefined, error: undefined, response: { status: 204 } };
+      }
+      if (method === "GET" && path === "/api/v1/messaging/channels/{id}/pins") {
+        return { data: { pins: [], patientId: null }, error: undefined, response: { status: 200 } };
+      }
+      if (method === "GET" && path === "/api/v1/messaging/channels/{id}/draft") {
+        return { data: { draft: null }, error: undefined, response: { status: 200 } };
+      }
+      unmocked.push(`${method} ${path}`);
+      return { data: undefined, error: { message: "unmocked" }, response: { status: 500 } };
+    };
     const api = {
-      GET: vi.fn((path: string) =>
-        Promise.resolve(
-          path.endsWith("/thread")
-            ? {
-                data: { root, replies: [reply], patientId: null },
-                error: undefined,
-                response: { status: 200 },
-              }
-            : { data: { messages: [root, reply] }, error: undefined },
-        ),
-      ),
-      POST: vi.fn(),
+      GET: vi.fn((path: string) => Promise.resolve(answer("GET", path))),
+      POST: vi.fn((path: string) => Promise.resolve(answer("POST", path))),
     };
     render(
       <MemoryRouter>
@@ -218,5 +236,7 @@ describe("edit indicator in the real thread panel", () => {
     expect(within(replyRow).getByText(/^Edited/)).toBeTruthy();
     const rootRow = within(panel).getByText("root body").closest("article") as HTMLElement;
     expect(within(rootRow).queryByText(/^Edited/)).toBeNull();
+    await waitFor(() => expect(api.POST).toHaveBeenCalled());
+    expect(unmocked, `unmocked API call: ${unmocked.join(", ")}`).toEqual([]);
   });
 });
