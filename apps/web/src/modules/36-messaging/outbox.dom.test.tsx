@@ -451,6 +451,172 @@ describe("focus, announcements and names", () => {
   });
 });
 
+describe("the first send", () => {
+  it("treats a hung connection as no response after the timeout and hands the message to the outbox", async () => {
+    vi.useFakeTimers();
+    try {
+      const api = {
+        POST: vi.fn(
+          (_path: string, init: { signal?: AbortSignal }) =>
+            new Promise((_resolve, reject) => {
+              init.signal?.addEventListener("abort", () =>
+                reject(new DOMException("x", "AbortError")),
+              );
+            }),
+        ),
+      } as unknown as ApiClient;
+      const uploads = {
+        sendableIds: [],
+        blocksSend: false,
+        chips: [],
+        reset: vi.fn(),
+        recheck: vi.fn(),
+      } as unknown as AttachmentUploads;
+      const onQueued = vi.fn();
+      const wrapper = ({ children }: { children: ReactNode }) => (
+        <ApiClientProvider client={api}>{children}</ApiClientProvider>
+      );
+      const { result } = renderHook(
+        () =>
+          useMessageSender({
+            channelId: "dm-1",
+            archived: false,
+            draft: "hello",
+            draftReferences: [],
+            uploads,
+            generationRef: { current: 0 },
+            onSent: vi.fn(),
+            onQueued,
+          }),
+        { wrapper },
+      );
+      act(() => {
+        void result.current.send();
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+
+      expect(onQueued).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("followers, focus claims and transitions", () => {
+  it("sends the followers queued behind a head when a manual Retry delivers it, with no online event", async () => {
+    const { api } = mountScripted(OFFLINE, answered(500, "Server hiccup"), ok("m-a"), ok("m-b"));
+    await screen.findByRole("textbox", { name: "Message" });
+    await send("first");
+    await screen.findByText("Not sent");
+    await send("second");
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+    });
+    await screen.findByText("Server hiccup");
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: /^Retry sending message/ })[0]!);
+    });
+
+    await waitFor(() => expect(screen.queryByText("Not sent")).toBeNull());
+    expect(sentBodies(api).map(([, init]) => init.body.body)).toEqual([
+      "first",
+      "first",
+      "first",
+      "second",
+    ]);
+  });
+
+  it("sends the followers when a head that failed is discarded", async () => {
+    const { api } = mountScripted(OFFLINE, answered(500, "Server hiccup"), ok("m-b"));
+    await screen.findByRole("textbox", { name: "Message" });
+    await send("first");
+    await screen.findByText("Not sent");
+    await send("second");
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+    });
+    await screen.findByText("Server hiccup");
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: /^Discard message/ })[0]!);
+    });
+
+    await waitFor(() => expect(screen.queryByText("Not sent")).toBeNull());
+    expect(sentBodies(api).map(([, init]) => init.body.body)).toEqual(["first", "first", "second"]);
+  });
+
+  it("does not pull focus to the composer when the user clicked away before the row was delivered", async () => {
+    mountScripted(OFFLINE, ok("m-9"));
+    await screen.findByRole("textbox", { name: "Message" });
+    await send("hello team");
+    await screen.findByText("Not sent");
+    const retry = screen.getByRole("button", { name: "Retry sending message" });
+    retry.focus();
+    retry.blur();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      window.dispatchEvent(new Event("online"));
+    });
+
+    await waitFor(() => expect(screen.queryByText("Not sent")).toBeNull());
+    expect(document.activeElement).not.toBe(box());
+  });
+
+  it("announces a failed retry (each time differently), a refusal with its reason, and a delivery", async () => {
+    mountScripted(
+      OFFLINE,
+      answered(500, "Server hiccup"),
+      answered(500, "Server hiccup"),
+      answered(403, "You can no longer post here"),
+    );
+    await screen.findByRole("textbox", { name: "Message" });
+    const live = () => document.querySelector('output[aria-live="polite"]')?.textContent;
+    const retry = async () => {
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Retry sending message" }));
+      });
+    };
+    await send("hello team");
+    await screen.findByText("Not sent");
+
+    await retry();
+    const first = live();
+    await retry();
+    const second = live();
+    await retry();
+
+    expect(first).toBe("Retry failed, attempt 1: Server hiccup");
+    expect(second).toBe("Retry failed, attempt 2: Server hiccup");
+    expect(live()).toBe("Message not sent: You can no longer post here");
+  });
+
+  it("announces a delivery", async () => {
+    mountScripted(OFFLINE, ok("m-9"));
+    await screen.findByRole("textbox", { name: "Message" });
+    await send("hello team");
+    await screen.findByText("Not sent");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Retry sending message" }));
+    });
+
+    await waitFor(() =>
+      expect(
+        [...document.querySelectorAll('output[aria-live="polite"]')].map(
+          (node) => node.textContent,
+        ),
+      ).toContain("Message sent"),
+    );
+  });
+});
+
 describe("offline banner", () => {
   it("appears on the offline event, goes quiet on online, and the composer stays enabled", async () => {
     mountScripted();

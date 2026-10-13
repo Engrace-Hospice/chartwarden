@@ -1,18 +1,21 @@
 // The offline outbox of the channel composer (06-ux-design §4 "Offline"): messages whose POST got no response wait here
 // as "Not sent" rows until the server confirms them.
 //
+// LIFTED: one instance lives in the organization-level component (StaffMessaging), above the per-channel thread that
+// unmounts on every channel switch, so the queue, the `online`/`beforeunload` listeners and in-flight sends survive a
+// switch. The open thread binds its merge handler with `bindThread`; a delivery is merged only when the bound thread is
+// that channel's, otherwise the item is just removed (the message shows when the channel is next loaded).
+//
 // React state ONLY, held per channel so switching channels never loses a queued message. Message bodies are PHI and must
 // not be persisted in the browser (no localStorage, sessionStorage or IndexedDB): closing or reloading the tab drops the
 // queue, by design, and a beforeunload warning says so while anything waits.
 import { useApiClient } from "@wardenx/ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SendBody } from "./message-send-body";
-import { apiErrorMessage } from "./messaging-utils";
+import { REQUEST_TIMEOUT_MS, apiErrorMessage } from "./messaging-utils";
 import type { QueuedSend, SentMessage } from "./use-message-sender";
 
 const RETRY_FAILED_MESSAGE = "Message could not be sent.";
-/** A POST that has not answered by then counts as no response: the row stays "Not sent" and the key is reused. */
-const REQUEST_TIMEOUT_MS = 30_000;
 /**
  * Answered refusals a retry cannot fix: the user can only read the reason and discard. 409 is NOT here: the server
  * answers 409 for an idempotent request still in flight, so the original may yet commit and a retry is safe.
@@ -31,6 +34,8 @@ export interface OutboxItem {
   readonly error?: string;
   /** A refusal (403/404/422): Retry is withdrawn, Discard remains. */
   readonly permanent?: boolean;
+  /** How many answered failures this message has had (each is announced, even with the same error text). */
+  readonly failCount?: number;
 }
 
 type Queues = Readonly<Record<string, readonly OutboxItem[]>>;
@@ -61,23 +66,18 @@ const findItem = (queues: Queues, localId: string): OutboxItem | undefined =>
     .flat()
     .find((item) => item.localId === localId);
 
-interface UseOutboxInput {
-  /** The open channel: only its rows are returned, and only its deliveries are merged. */
-  channelId: string;
-  /** The server confirmed a queued message of the open channel: merge it into the timeline (the draft is not touched). */
-  onDelivered: (sent: SentMessage) => void;
-}
+export type Outbox = ReturnType<typeof useOutbox>;
 
-export function useOutbox({ channelId, onDelivered }: UseOutboxInput) {
+type MergeHandler = (sent: SentMessage) => void;
+
+export function useOutbox() {
   const client = useApiClient();
   const [queues, setQueues] = useState<Queues>({});
+  const [deliveredBy, setDeliveredBy] = useState<Readonly<Record<string, number>>>({});
   const queuesRef = useRef<Queues>({});
   const drainingRef = useRef(false);
   const mountedRef = useRef(true);
-  const channelIdRef = useRef(channelId);
-  channelIdRef.current = channelId;
-  const onDeliveredRef = useRef(onDelivered);
-  onDeliveredRef.current = onDelivered;
+  const threadRef = useRef<{ channelId: string; merge: MergeHandler } | null>(null);
 
   const replaceAll = useCallback((next: Queues) => {
     queuesRef.current = next;
@@ -93,33 +93,38 @@ export function useOutbox({ channelId, onDelivered }: UseOutboxInput) {
     [replaceAll],
   );
 
+  /** The open thread says where deliveries for its channel go. Returns the unbind. */
+  const bindThread = useCallback((channelId: string, merge: MergeHandler) => {
+    const binding = { channelId, merge };
+    threadRef.current = binding;
+    return () => {
+      if (threadRef.current === binding) threadRef.current = null;
+    };
+  }, []);
+
   const enqueue = useCallback(
-    (queued: QueuedSend) => {
-      const channel = channelIdRef.current;
+    (channelId: string, queued: QueuedSend) =>
       replaceAll({
         ...queuesRef.current,
-        [channel]: [
-          ...(queuesRef.current[channel] ?? NO_ITEMS),
+        [channelId]: [
+          ...(queuesRef.current[channelId] ?? NO_ITEMS),
           {
             localId: queued.body.clientMessageId,
-            channelId: channel,
+            channelId,
             body: queued.body,
             idempotencyKey: queued.idempotencyKey,
             sent: queued.sent,
             status: "not_sent",
           },
         ],
-      });
-    },
+      }),
     [replaceAll],
   );
 
-  /** Allowed while a row is sending: if that request still lands, the message was delivered and is shown as such. */
-  const discard = remove;
-
-  /** True when the open channel has a message waiting that a retry can still deliver: a new send must queue behind it. */
+  /** True when the channel has a message waiting that a retry can still deliver: a new send must queue behind it. */
   const hasQueued = useCallback(
-    () => (queuesRef.current[channelIdRef.current] ?? NO_ITEMS).some((item) => !item.permanent),
+    (channelId: string) =>
+      (queuesRef.current[channelId] ?? NO_ITEMS).some((item) => !item.permanent),
     [],
   );
 
@@ -153,6 +158,7 @@ export function useOutbox({ channelId, onDelivered }: UseOutboxInput) {
         const status = response?.status ?? 0;
         patch(item.localId, {
           status: "not_sent",
+          failCount: (item.failCount ?? 0) + 1,
           error: apiErrorMessage(error, RETRY_FAILED_MESSAGE),
           permanent: PERMANENT_STATUSES.has(status),
           // The idempotency store caches answered failures, so the key rotates; the clientMessageId stays.
@@ -161,23 +167,20 @@ export function useOutbox({ channelId, onDelivered }: UseOutboxInput) {
         return "answered";
       }
       remove(item.localId);
-      // A reply for a channel that is no longer open is not merged into the open one: it loads with that channel.
-      if (item.channelId === channelIdRef.current) {
-        onDeliveredRef.current({
-          ...item.sent,
-          messageId: data.messageId,
-          createdAt: data.createdAt,
-        });
+      setDeliveredBy((current) => ({
+        ...current,
+        [item.channelId]: (current[item.channelId] ?? 0) + 1,
+      }));
+      // A reply for a channel that is not the open one is not merged: it loads with that channel.
+      const thread = threadRef.current;
+      if (thread && thread.channelId === item.channelId) {
+        thread.merge({ ...item.sent, messageId: data.messageId, createdAt: data.createdAt });
       }
       return "delivered";
     },
     [client, patch, remove],
   );
 
-  /**
-   * One attempt. A manual Retry on item N is allowed even with older items waiting: it may then send out of order,
-   * but only because the user chose to (the online drain always goes oldest first).
-   */
   const attempt = useCallback(
     async (localId: string): Promise<AttemptOutcome> => {
       const item = findItem(queuesRef.current, localId);
@@ -195,26 +198,56 @@ export function useOutbox({ channelId, onDelivered }: UseOutboxInput) {
   );
 
   /**
-   * Every channel's queue, oldest first, one at a time. No response stops everything (still offline); anything else
-   * that is not a delivery stops only that channel, so a later message never overtakes the one that failed.
+   * Oldest first, one at a time. No response stops everything (still offline); anything else that is not a delivery
+   * stops only that channel, so a later message never overtakes the one that failed. `only` limits it to one channel.
    */
-  const drain = useCallback(async (): Promise<void> => {
-    if (drainingRef.current) return;
-    drainingRef.current = true;
-    try {
-      for (const items of Object.values(queuesRef.current)) {
-        for (const { localId } of items) {
-          const current = findItem(queuesRef.current, localId);
-          if (!current || current.permanent) continue;
-          const outcome = await attempt(localId);
-          if (outcome === "offline") return;
-          if (outcome !== "delivered") break;
+  const drain = useCallback(
+    async (only?: string): Promise<void> => {
+      if (drainingRef.current) return;
+      drainingRef.current = true;
+      try {
+        for (const [channelId, items] of Object.entries(queuesRef.current)) {
+          if (only && channelId !== only) continue;
+          for (const { localId } of items) {
+            const current = findItem(queuesRef.current, localId);
+            if (!current || current.permanent) continue;
+            const outcome = await attempt(localId);
+            if (outcome === "offline") return;
+            if (outcome !== "delivered") break;
+          }
         }
+      } finally {
+        drainingRef.current = false;
       }
-    } finally {
-      drainingRef.current = false;
-    }
-  }, [attempt]);
+    },
+    [attempt],
+  );
+
+  /**
+   * A manual Retry on item N is allowed even with older items waiting: it may then send out of order, but only because
+   * the user chose to. When it delivers (or the head turns out permanent) the followers queued behind it go out now.
+   */
+  const retry = useCallback(
+    async (localId: string): Promise<AttemptOutcome> => {
+      const channelId = findItem(queuesRef.current, localId)?.channelId;
+      const outcome = await attempt(localId);
+      const unblocked = outcome === "delivered" || findItem(queuesRef.current, localId)?.permanent;
+      if (channelId && unblocked) await drain(channelId);
+      return outcome;
+    },
+    [attempt, drain],
+  );
+
+  /** Allowed while a row is sending: if that request still lands, the message was delivered and is shown as such. */
+  const discard = useCallback(
+    (localId: string) => {
+      const item = findItem(queuesRef.current, localId);
+      remove(localId);
+      // A head that had failed was what held its followers back.
+      if (item?.error) void drain(item.channelId);
+    },
+    [remove, drain],
+  );
 
   useEffect(() => {
     mountedRef.current = true;
@@ -240,5 +273,20 @@ export function useOutbox({ channelId, onDelivered }: UseOutboxInput) {
     return () => window.removeEventListener("beforeunload", warn);
   }, [anyQueued]);
 
-  return { items: queues[channelId] ?? NO_ITEMS, enqueue, discard, retry: attempt, hasQueued };
+  const itemsFor = useCallback((channelId: string) => queues[channelId] ?? NO_ITEMS, [queues]);
+  const deliveredFor = useCallback(
+    (channelId: string) => deliveredBy[channelId] ?? 0,
+    [deliveredBy],
+  );
+  return { itemsFor, deliveredFor, enqueue, discard, retry, hasQueued, bindThread };
+}
+
+/** The open thread receives its channel's deliveries for as long as it is mounted (its latest merge handler, always). */
+export function useBindOutboxThread(outbox: Outbox, channelId: string, merge: MergeHandler): void {
+  const mergeRef = useRef(merge);
+  useLayoutEffect(() => {
+    mergeRef.current = merge;
+  });
+  const { bindThread } = outbox;
+  useEffect(() => bindThread(channelId, (sent) => mergeRef.current(sent)), [bindThread, channelId]);
 }

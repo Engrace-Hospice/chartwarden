@@ -19,6 +19,7 @@ import { OfflineBanner } from "./offline-banner";
 import { RealtimeBanner, useRealtimeDegraded } from "./realtime-banner";
 import { ScheduledMessagesDialog } from "./scheduled-messages-dialog";
 import { useMessagingRealtime } from "./use-messaging-realtime";
+import { useOutbox } from "./use-outbox";
 import { type LiveHint, POLL_INTERVAL_MS, pushLiveHint } from "./use-thread";
 import "./messaging-layout.css";
 import "./inbox.css";
@@ -128,6 +129,8 @@ function OrganizationStaffMessaging({
   requestedScheduled: boolean;
 }): JSX.Element {
   const client = useApiClient();
+  // Above the per-channel thread (keyed below, so it unmounts on every switch): the queue must outlive it.
+  const outbox = useOutbox();
   const narrow = useNarrowMessagingLayout();
   const [channels, setChannels] = useState<ChannelSummary[] | null>(null);
   const channelsRef = useRef<ChannelSummary[] | null>(null);
@@ -416,6 +419,7 @@ function OrganizationStaffMessaging({
             <ConversationThread
               key={`${organizationId}:${activeChannel.channelId}`}
               channel={activeChannel}
+              outbox={outbox}
               meId={userId}
               meDisplayName={userDisplayName}
               onBack={() => setActiveId(null)}

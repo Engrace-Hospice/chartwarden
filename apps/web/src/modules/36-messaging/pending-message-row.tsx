@@ -3,6 +3,11 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { MessageText } from "./message-row";
+import {
+  type AnnouncementState,
+  initialAnnouncement,
+  nextAnnouncement,
+} from "./pending-announcement";
 import { sentMessageRow } from "./use-message-sender";
 import type { OutboxItem } from "./use-outbox";
 import "./pending-message.css";
@@ -78,29 +83,29 @@ interface PendingMessageListProps
   extends Omit<PendingMessageRowProps, "item" | "position" | "total"> {
   items: readonly OutboxItem[];
   channelId: string;
+  /** How many of this channel's queued messages the server has confirmed so far (a delivery is announced). */
+  delivered: number;
   /** Where focus goes when the last row leaves (the composer). */
   onFocusComposer: () => void;
 }
 
-/** The queued rows plus a live region that says, per queue event, that a message was not sent. */
+/** The queued rows plus a live region that says, per event, what happened to the queue. */
 export function PendingMessageList({
   items,
   channelId,
+  delivered,
   onFocusComposer,
   ...rest
 }: PendingMessageListProps): JSX.Element {
   // Adjusted during render (not in an effect) so the text lands in the already-mounted region in the same commit.
-  // The count is part of the text, so two queue events in a row never repeat it (a repeat is not re-announced).
-  const [seen, setSeen] = useState({ channelId, count: 0, text: "" });
-  let announcement = seen.text;
-  if (seen.channelId !== channelId) {
-    // Opening another channel is not a queue event.
-    announcement = "";
-    setSeen({ channelId, count: items.length, text: "" });
-  } else if (items.length !== seen.count) {
-    announcement = items.length > seen.count ? `Message not sent (${items.length} waiting)` : "";
-    setSeen({ channelId, count: items.length, text: announcement });
-  }
+  const [announcement, setAnnouncement] = useState<AnnouncementState>(() =>
+    initialAnnouncement(channelId, items, delivered),
+  );
+  const current =
+    announcement.channelId === channelId
+      ? nextAnnouncement(announcement, items, delivered)
+      : initialAnnouncement(channelId, items, delivered);
+  if (current !== announcement) setAnnouncement(current);
 
   const listRef = useRef<HTMLDivElement>(null);
   const focusedIdRef = useRef<string | null>(null);
@@ -132,7 +137,7 @@ export function PendingMessageList({
   return (
     <>
       <output className="wx-sr-only" aria-live="polite">
-        {announcement}
+        {current.text}
       </output>
       <div
         ref={listRef}
@@ -142,8 +147,12 @@ export function PendingMessageList({
             null;
         }}
         onBlur={(event) => {
-          // Leaving for another element ends the claim; a null target (row removed, window blur) keeps it.
-          if (event.relatedTarget) focusedIdRef.current = null;
+          // Focus left for something else, or for nothing (a click on empty space): the claim ends. A row that is
+          // removed while focused fires no blur, so its claim survives; a blurred element still in the DOM was left.
+          const target = event.target;
+          queueMicrotask(() => {
+            if (target.isConnected) focusedIdRef.current = null;
+          });
         }}
       >
         {items.map((item, index) => (

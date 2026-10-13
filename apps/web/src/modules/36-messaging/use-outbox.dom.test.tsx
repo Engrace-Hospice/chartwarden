@@ -4,10 +4,11 @@
  */
 import { act, renderHook } from "@testing-library/react";
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SendBody } from "./message-send-body";
 import type { QueuedSend } from "./use-message-sender";
+import type { SentMessage } from "./use-message-sender";
 import { useOutbox } from "./use-outbox";
 
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -42,6 +43,22 @@ const deferred = () => {
   return { promise, resolve };
 };
 
+/** The lifted outbox as the open thread sees it: bound to one channel, with that channel's rows. */
+function useScopedOutbox({
+  channelId,
+  onDelivered,
+}: { channelId: string; onDelivered: (sent: SentMessage) => void }) {
+  const outbox = useOutbox();
+  const { bindThread } = outbox;
+  useEffect(() => bindThread(channelId, onDelivered), [bindThread, channelId, onDelivered]);
+  return {
+    ...outbox,
+    items: outbox.itemsFor(channelId),
+    enqueue: (queuedSend: QueuedSend) => outbox.enqueue(channelId, queuedSend),
+    hasQueued: () => outbox.hasQueued(channelId),
+  };
+}
+
 function mount(replies: (() => Promise<Reply>)[], channelId = "A") {
   const post = vi.fn((_path: string, _init: Record<string, any>) => {
     const next = replies.shift();
@@ -53,10 +70,13 @@ function mount(replies: (() => Promise<Reply>)[], channelId = "A") {
       {children}
     </ApiClientProvider>
   );
-  const hook = renderHook(({ id }: { id: string }) => useOutbox({ channelId: id, onDelivered }), {
-    wrapper,
-    initialProps: { id: channelId },
-  });
+  const hook = renderHook(
+    ({ id }: { id: string }) => useScopedOutbox({ channelId: id, onDelivered }),
+    {
+      wrapper,
+      initialProps: { id: channelId },
+    },
+  );
   return { ...hook, post, onDelivered };
 }
 const reply = (value: Reply) => () => Promise.resolve(value);
@@ -298,5 +318,45 @@ describe("the online drain", () => {
     expect(result.current.hasQueued()).toBe(false);
     act(() => result.current.enqueue(queued("m1")));
     expect(result.current.hasQueued()).toBe(true);
+  });
+});
+
+describe("the lifted owner", () => {
+  it("removes a delivered item without merging it when no thread is bound to its channel", async () => {
+    const post = vi.fn(() => Promise.resolve(ok("srv-1")));
+    const { result } = renderHook(() => useOutbox(), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <ApiClientProvider client={{ POST: post } as unknown as ApiClient}>
+          {children}
+        </ApiClientProvider>
+      ),
+    });
+    act(() => result.current.enqueue("A", queued("m1")));
+
+    await act(async () => {
+      await result.current.retry("m1");
+    });
+
+    expect(result.current.itemsFor("A")).toHaveLength(0);
+    expect(result.current.deliveredFor("A")).toBe(1);
+  });
+
+  it("finishes an in-flight send after the bound thread unbinds, merging nothing", async () => {
+    const gate = deferred();
+    const { result, rerender, onDelivered } = mount([() => gate.promise]);
+    act(() => result.current.enqueue(queued("m1")));
+    let attempt!: Promise<unknown>;
+    act(() => {
+      attempt = result.current.retry("m1");
+    });
+    rerender({ id: "B" });
+
+    await act(async () => {
+      gate.resolve(ok("srv-1"));
+      await attempt;
+    });
+
+    expect(onDelivered).not.toHaveBeenCalled();
+    expect(result.current.itemsFor("A")).toHaveLength(0);
   });
 });

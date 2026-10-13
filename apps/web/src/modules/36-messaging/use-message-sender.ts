@@ -6,7 +6,12 @@ import { apiErrorCode, toSentAttachments } from "./attachment-utils";
 import { draftToRichBody } from "./draft-to-rich-body";
 import { type SendBody, buildSendBody, referenceInput } from "./message-send-body";
 import type { Message, MessageAttachment, MessageReferenceInput } from "./messaging-types";
-import { apiErrorMessage, rotateIdempotencyKey, sendAttemptFor } from "./messaging-utils";
+import {
+  REQUEST_TIMEOUT_MS,
+  apiErrorMessage,
+  rotateIdempotencyKey,
+  sendAttemptFor,
+} from "./messaging-utils";
 import type { SendAttempt } from "./messaging-utils";
 import type { AttachmentUploads } from "./use-attachment-upload";
 
@@ -48,7 +53,7 @@ interface UseMessageSenderInput {
   /** The request is over, whatever its outcome (after `onSent` on success), even if the composer has since unmounted. */
   onSettled?: (ok: boolean, submitted: string) => void;
   /** Channel composer only: a send with no attachments that got no response becomes an outbox item instead of an error. */
-  onQueued?: (queued: QueuedSend) => void;
+  onQueued?: (queued: QueuedSend, stillOpen: boolean) => void;
   /** Channel composer only: true while an earlier message waits in the outbox, so this one queues behind it unsent. */
   hasQueuedAhead?: () => boolean;
 }
@@ -121,21 +126,26 @@ export function useMessageSender({
     });
     // Offline outbox: a plain channel message goes to the owner's "Not sent" list instead of an error. The attempt is
     // handed over (the next message mints fresh ids); files stay on the old preserved-draft path.
-    const queueIt = (): boolean => {
+    // `stillOpen` is false when the thread moved on meanwhile: the queue (which outlives the thread) still gets the
+    // message, but this thread's attempt and draft now belong to another channel and are left alone.
+    const queueIt = (stillOpen = true): boolean => {
       if (!onQueued || attachmentIds.length > 0) return false;
-      sendAttemptRef.current = null;
-      onQueued({
-        body: requestBody,
-        idempotencyKey: attempt.idempotencyKey,
-        sent: {
-          messageId: attempt.clientMessageId,
-          createdAt: new Date().toISOString(),
-          body: submitted,
-          ...(richBody ? { bodyDoc: richBody } : {}),
-          references: draftReferences,
-          attachments: [],
+      if (stillOpen) sendAttemptRef.current = null;
+      onQueued(
+        {
+          body: requestBody,
+          idempotencyKey: attempt.idempotencyKey,
+          sent: {
+            messageId: attempt.clientMessageId,
+            createdAt: new Date().toISOString(),
+            body: submitted,
+            ...(richBody ? { bodyDoc: richBody } : {}),
+            references: draftReferences,
+            attachments: [],
+          },
         },
-      });
+        stillOpen,
+      );
       return true;
     };
     // An older message is still waiting: queue behind it rather than POSTing ahead of it.
@@ -146,6 +156,9 @@ export function useMessageSender({
     setSending(true);
     setSendError(null);
     onIssued?.(submitted);
+    // A hung connection counts as no response too (same timeout as the outbox's retries).
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     const postMessage = () =>
       client.POST("/api/v1/messaging/channels/{id}/messages", {
         params: {
@@ -153,19 +166,30 @@ export function useMessageSender({
           header: { "Idempotency-Key": attempt.idempotencyKey },
         },
         body: requestBody,
+        signal: controller.signal,
       });
     let result: Awaited<ReturnType<typeof postMessage>>;
     try {
       result = await postMessage();
     } catch {
       // Network failure / aborted fetch: no response arrived, so keep the attempt for the retry.
-      if (generation !== generationRef.current) return;
+      const stillOpen = generation === generationRef.current;
+      // Queue first: the message must not be dropped because the user switched channel while this send was failing.
+      if (queueIt(stillOpen)) {
+        if (stillOpen) {
+          sendInFlightRef.current = false;
+          setSending(false);
+        }
+        return;
+      }
+      if (!stillOpen) return;
       sendInFlightRef.current = false;
       setSending(false);
-      if (queueIt()) return;
       setSendError(SEND_FAILED_MESSAGE);
       onSettled?.(false, submitted);
       return;
+    } finally {
+      clearTimeout(timer);
     }
     const { data, error, response } = result;
     if (generation !== generationRef.current) return;

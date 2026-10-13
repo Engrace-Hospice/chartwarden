@@ -127,6 +127,9 @@ export function isAccessError(error: unknown): boolean {
 
 /** WP 2.11: below 768 px the workspace is one pane at a time (06-ux-design §1). Keep in step with the 767px blocks in
  * messaging-responsive.css. */
+/** A message POST with no answer by then counts as "no response": a lost reply, retried under the same key. */
+export const REQUEST_TIMEOUT_MS = 30_000;
+
 export const NARROW_MESSAGING_QUERY = "(max-width: 767px)";
 
 /** WP 2.11: the correlation id of a failed API call (flat or nested error envelope), so a load-failed state can quote it
