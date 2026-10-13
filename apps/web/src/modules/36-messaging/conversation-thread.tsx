@@ -1,4 +1,4 @@
-import { BACKGROUND_REQUEST_HEADERS, Button, Glyph, useApiClient } from "@wardenx/ui";
+import { BACKGROUND_REQUEST_HEADERS, useApiClient } from "@wardenx/ui";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { JSX, KeyboardEvent, UIEvent } from "react";
 import { sendBlockedReason } from "./attachment-utils";

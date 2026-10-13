@@ -2,7 +2,7 @@
 // out of it unchanged in WP 2.11 to keep that file under the line ceiling). State and effects stay in the thread; this
 // only renders what it is given.
 import { Button, Glyph } from "@wardenx/ui";
-import type { FormEvent, JSX, KeyboardEvent, RefObject, UIEvent } from "react";
+import type { FormEvent, JSX, KeyboardEvent, RefObject } from "react";
 import { AttachButton, AttachmentChips } from "./attachment-composer";
 import { ComposerFooter } from "./composer-footer";
 import { DraftSyncNotice } from "./draft-conflict-prompt";
