@@ -20,6 +20,7 @@ export const MESSAGING_SERVER_EVENTS = {
   messageNew: "message.new",
   messageEdited: "message.edited",
   messageDeleted: "message.deleted",
+  messageAnnotated: "message.annotated",
   messageRead: "message.read",
   channelMemberAdded: "channel.member_added",
   channelMemberRemoved: "channel.member_removed",

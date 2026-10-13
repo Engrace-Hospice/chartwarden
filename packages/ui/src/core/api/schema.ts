@@ -13352,6 +13352,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/pin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Pin a message in its channel (idempotent; audited; 409 PIN_LIMIT_REACHED at 20 pins; 410 archived) */
+        put: operations["putApiV1MessagingChannelsByIdMessagesByMessageIdPin"];
+        post?: never;
+        /** Unpin a message (idempotent; audited with the actor; 204) */
+        delete: operations["deleteApiV1MessagingChannelsByIdMessagesByMessageIdPin"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/reactions/{emoji}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Add the caller's non-clinical reaction (idempotent; NOT an acknowledgement and writes no receipt; 422 unknown key, 410 archived, 404 deleted/other-channel message) */
+        put: operations["putApiV1MessagingChannelsByIdMessagesByMessageIdReactionsByEmoji"];
+        post?: never;
+        /** Remove the caller's reaction (idempotent) */
+        delete: operations["deleteApiV1MessagingChannelsByIdMessagesByMessageIdReactionsByEmoji"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/channels/{id}/messages/{messageId}/thread": {
         parameters: {
             query?: never;
@@ -13361,6 +13397,23 @@ export interface paths {
         };
         /** A message and its direct replies, oldest reply first (WP 2.2; channel_visibility ABAC, so a non-member, a removed member and another org get the 404 a random id gets) */
         get: operations["getApiV1MessagingChannelsByIdMessagesByMessageIdThread"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/channels/{id}/pins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The channel's pinned messages, most recently pinned first (read-audited) */
+        get: operations["getApiV1MessagingChannelsByIdPins"];
         put?: never;
         post?: never;
         delete?: never;
@@ -61750,6 +61803,12 @@ export interface operations {
                             parentMessageId: string | null;
                             replyCount?: number;
                             lastReplyAt?: string | null;
+                            reactions?: {
+                                emoji: "heart" | "thanks" | "smile" | "celebrate" | "sad" | "hug";
+                                count: number;
+                                reactedByMe: boolean;
+                            }[];
+                            pinned?: boolean;
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
@@ -61835,6 +61894,120 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    putApiV1MessagingChannelsByIdMessagesByMessageIdPin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        pinnedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MessagingChannelsByIdMessagesByMessageIdPin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1MessagingChannelsByIdMessagesByMessageIdReactionsByEmoji: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                messageId: string;
+                emoji: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        reactions: {
+                            emoji: "heart" | "thanks" | "smile" | "celebrate" | "sad" | "hug";
+                            count: number;
+                            reactedByMe: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MessagingChannelsByIdMessagesByMessageIdReactionsByEmoji: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                messageId: string;
+                emoji: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        reactions: {
+                            emoji: "heart" | "thanks" | "smile" | "celebrate" | "sad" | "hug";
+                            count: number;
+                            reactedByMe: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1MessagingChannelsByIdMessagesByMessageIdThread: {
         parameters: {
             query?: {
@@ -61879,6 +62052,12 @@ export interface operations {
                             parentMessageId: string | null;
                             replyCount?: number;
                             lastReplyAt?: string | null;
+                            reactions?: {
+                                emoji: "heart" | "thanks" | "smile" | "celebrate" | "sad" | "hug";
+                                count: number;
+                                reactedByMe: boolean;
+                            }[];
+                            pinned?: boolean;
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
@@ -61918,6 +62097,12 @@ export interface operations {
                             parentMessageId: string | null;
                             replyCount?: number;
                             lastReplyAt?: string | null;
+                            reactions?: {
+                                emoji: "heart" | "thanks" | "smile" | "celebrate" | "sad" | "hug";
+                                count: number;
+                                reactedByMe: boolean;
+                            }[];
+                            pinned?: boolean;
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
@@ -61936,6 +62121,77 @@ export interface operations {
                             hiddenAttachmentCount?: number;
                         }[];
                         nextCursor?: string;
+                        patientId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingChannelsByIdPins: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        pins: {
+                            messageId: string;
+                            channelId: string;
+                            authorUserId: string | null;
+                            authorDisplayName: string | null;
+                            body: string;
+                            bodyKind: "plain" | "markdown" | "system" | "rich";
+                            bodyDoc?: {
+                                /** @constant */
+                                schemaVersion: 1;
+                                doc: {
+                                    /** @constant */
+                                    type: "doc";
+                                    content: unknown[];
+                                };
+                            };
+                            /** @constant */
+                            bodyUnreadable?: true;
+                            createdAt: string;
+                            parentMessageId: string | null;
+                            replyCount?: number;
+                            lastReplyAt?: string | null;
+                            reactions?: {
+                                emoji: "heart" | "thanks" | "smile" | "celebrate" | "sad" | "hug";
+                                count: number;
+                                reactedByMe: boolean;
+                            }[];
+                            pinned?: boolean;
+                            references: {
+                                kind: "staff" | "patient";
+                                entityId: string;
+                                start: number;
+                                end: number;
+                                displayLabel: string;
+                                navigable: boolean;
+                            }[];
+                            attachments?: {
+                                attachmentId: string;
+                                fileName: string;
+                                mimeType: string;
+                                byteSize: number;
+                                availability: "available" | "scanning";
+                            }[];
+                            hiddenAttachmentCount?: number;
+                        }[];
                         patientId: string | null;
                     };
                 };

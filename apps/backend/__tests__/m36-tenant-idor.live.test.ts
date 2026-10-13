@@ -97,6 +97,12 @@ const ROUTES: Record<string, Verdict> = {
   "GET /api/v1/messaging/channels/:id/messages": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/messages/:messageId/thread": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/mention-candidates": { kind: "idor" },
+  // WP 2.4 reactions and pins: channel-scoped, every refusal is the 404 a random id gets.
+  "PUT /api/v1/messaging/channels/:id/messages/:messageId/reactions/:emoji": { kind: "idor" },
+  "DELETE /api/v1/messaging/channels/:id/messages/:messageId/reactions/:emoji": { kind: "idor" },
+  "PUT /api/v1/messaging/channels/:id/messages/:messageId/pin": { kind: "idor" },
+  "DELETE /api/v1/messaging/channels/:id/messages/:messageId/pin": { kind: "idor" },
+  "GET /api/v1/messaging/channels/:id/pins": { kind: "idor" },
   "POST /api/v1/messaging/channels/:id/messages": { kind: "idor" },
   "PATCH /api/v1/messaging/messages/:id": { kind: "idor" },
   "DELETE /api/v1/messaging/messages/:id": { kind: "idor" },
@@ -144,6 +150,8 @@ const REGISTRAR_FILES = [
   "attachment-routes.ts",
   "messaging-routes.ts",
   "messaging-typebox.ts", // schemas only
+  "reaction-pin-routes.ts", // mounted by registerMessagingRoutes
+  "reaction-pin-typebox.ts", // schemas only
   "webhook-routes.ts",
 ];
 
@@ -318,6 +326,8 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     "message_attachment",
     "attachment_access_event",
     "message_entity_reference",
+    "message_reaction",
+    "message_pin",
     "delivery_endpoint",
     "user_notification_preferences",
     "alert_rule",
@@ -1089,6 +1099,273 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     });
   });
 
+  describe("reactions & pins (WP 2.4): the channel's access rule, non-clinical, audited, never an acknowledgement", () => {
+    const REACT = "PUT /api/v1/messaging/channels/:id/messages/:messageId/reactions/:emoji";
+    const UNREACT = "DELETE /api/v1/messaging/channels/:id/messages/:messageId/reactions/:emoji";
+    const PIN = "PUT /api/v1/messaging/channels/:id/messages/:messageId/pin";
+    const UNPIN = "DELETE /api/v1/messaging/channels/:id/messages/:messageId/pin";
+    const PINS = "GET /api/v1/messaging/channels/:id/pins";
+    let rp: string; // private: u1, u2 active; `outsider` removed
+    let rpArchived: string;
+    let m1: string;
+    let m2: string;
+    let archivedMsg: string;
+    const mk = async (channelId: string, body: string) =>
+      (await service.sendMessage(orgA, { channelId, authorUserId: u1.userId, body })).messageId;
+    const channelOf = async (title: string, archived = false) => {
+      const id = (
+        await admin.query(
+          `INSERT INTO channel (organization_id, channel_kind, subject_id, title, retention_class)
+           VALUES ($1,'location',$2,$3,'care_related') RETURNING id`,
+          [orgA, randomUUID(), title],
+        )
+      ).rows[0].id as string;
+      for (const w of [u1, u2]) {
+        await admin.query(
+          `INSERT INTO channel_member (organization_id, channel_id, user_id, role, source)
+           VALUES ($1,$2,$3,'member','manual')`,
+          [orgA, id, w.userId],
+        );
+      }
+      await admin.query(
+        `INSERT INTO channel_member (organization_id, channel_id, user_id, role, source, removed_at)
+         VALUES ($1,$2,$3,'member','manual',now())`,
+        [orgA, id, outsider.userId],
+      );
+      return { id, archived };
+    };
+    const rows = async <T = Record<string, unknown>>(sql: string, params: unknown[] = []) =>
+      (await admin.query(sql, params)).rows as T[];
+    const listed = async (who: Who, channelId = rp) =>
+      (await call("GET /api/v1/messaging/channels/:id/messages", who, { id: channelId })).json()
+        .messages as Array<{
+        messageId: string;
+        pinned?: boolean;
+        reactions?: Array<{ emoji: string; count: number; reactedByMe: boolean }>;
+      }>;
+
+    beforeAll(async () => {
+      rp = (await channelOf("WP24 reactions")).id;
+      rpArchived = (await channelOf("WP24 archived")).id;
+      m1 = await mk(rp, `${SECRET_BODY} pinned`);
+      m2 = await mk(rp, "second");
+      archivedMsg = await mk(rpArchived, "before archive");
+      await admin.query(`UPDATE channel SET is_archived = true WHERE id = $1`, [rpArchived]);
+    });
+
+    it("outsiders and org B get the 404 of a random id on every route (incl. a real message of ANOTHER channel)", async () => {
+      for (const attacker of [bUser, outsider]) {
+        for (const channelId of [rp, dmA, locA]) {
+          const messageId = channelId === rp ? m1 : channelId === dmA ? msgDmA : msgLocA;
+          await expectNoOracle(REACT, attacker, { id: channelId, messageId, emoji: "heart" });
+          await expectNoOracle(UNREACT, attacker, { id: channelId, messageId, emoji: "heart" });
+          await expectNoOracle(PIN, attacker, { id: channelId, messageId });
+          await expectNoOracle(UNPIN, attacker, { id: channelId, messageId });
+          await expectNoOracle(PINS, attacker, { id: channelId });
+        }
+      }
+    });
+
+    it("a member cannot reach a message of ANOTHER channel (or another org) through a channel they may use", async () => {
+      attackers.add(u1.name);
+      for (const foreign of [msgDmA, m1]) {
+        const channelId = foreign === m1 ? locA : rp;
+        for (const [route, extra] of [
+          [REACT, { emoji: "heart" }],
+          [PIN, {}],
+        ] as const) {
+          const real = await call(route, u1, { id: channelId, messageId: foreign, ...extra });
+          const ctl = await call(route, u1, { id: channelId, messageId: randomUUID(), ...extra });
+          expect(real.statusCode, real.body).toBe(404);
+          expect(shape(real)).toBe(shape(ctl));
+        }
+      }
+      expect(
+        await rows(`SELECT 1 FROM message_reaction WHERE message_id = ANY($1)`, [[msgDmA]]),
+      ).toEqual([]);
+    });
+
+    it("reacting is idempotent, counts per emoji, flags the viewer's own, and writes nothing to receipts", async () => {
+      const receiptsBefore = await rows(
+        `SELECT status, count(*)::int AS n FROM message_receipt GROUP BY 1 ORDER BY 1`,
+      );
+      for (const [who, emoji] of [
+        [u2, "heart"],
+        [u2, "heart"],
+        [u1, "heart"],
+        [u1, "thanks"],
+      ] as const) {
+        const res = await call(REACT, who, { id: rp, messageId: m1, emoji });
+        expect(res.statusCode, res.body).toBe(200);
+      }
+      const seenByU2 = (await listed(u2)).find((m) => m.messageId === m1);
+      expect(seenByU2?.reactions).toEqual([
+        { emoji: "heart", count: 2, reactedByMe: true },
+        { emoji: "thanks", count: 1, reactedByMe: false },
+      ]);
+      expect((await listed(u1)).find((m) => m.messageId === m1)?.reactions?.[1]?.reactedByMe).toBe(
+        true,
+      );
+      expect(await rows(`SELECT 1 FROM message_reaction WHERE message_id = $1`, [m1])).toHaveLength(
+        3,
+      );
+      // never an acknowledgement: receipts are exactly what they were
+      expect(
+        await rows(`SELECT status, count(*)::int AS n FROM message_receipt GROUP BY 1 ORDER BY 1`),
+      ).toEqual(receiptsBefore);
+      const removed = await call(UNREACT, u1, { id: rp, messageId: m1, emoji: "thanks" });
+      expect(removed.json().reactions).toEqual([{ emoji: "heart", count: 2, reactedByMe: true }]);
+      expect((await call(UNREACT, u1, { id: rp, messageId: m1, emoji: "thanks" })).statusCode).toBe(
+        200,
+      );
+    });
+
+    it("an unknown reaction key is a 422 and the CHECK refuses one written directly", async () => {
+      const res = await call(REACT, u2, { id: rp, messageId: m1, emoji: "thumbs_up" });
+      expect(res.statusCode, res.body).toBe(422);
+      await expect(
+        admin.query(
+          `INSERT INTO message_reaction (organization_id, channel_id, message_id, user_id, emoji) VALUES ($1,$2,$3,$4,'thumbs_up')`,
+          [orgA, rp, m1, u2.userId],
+        ),
+      ).rejects.toThrow(/message_reaction_emoji_check/);
+    });
+
+    it("the database refuses a reaction or pin whose channel is not the message's channel", async () => {
+      for (const table of ["message_reaction", "message_pin"]) {
+        const [cols, vals] =
+          table === "message_reaction"
+            ? ["user_id, emoji", `'${u2.userId}', 'heart'`]
+            : ["pinned_by_user_id", `'${u2.userId}'`];
+        await expect(
+          admin.query(
+            `INSERT INTO ${table} (organization_id, channel_id, message_id, ${cols}) VALUES ($1,$2,$3,${vals})`,
+            [orgA, locA, m2],
+          ),
+        ).rejects.toThrow(/_message_channel_fk/);
+      }
+    });
+
+    it("pin and unpin are idempotent, audited with the ACTOR, hinted, and listed newest first", async () => {
+      const hintsBefore = Number(
+        (
+          await rows<{ n: number }>(
+            `SELECT count(*)::int AS n FROM outbox_event WHERE event_type = 'm36.message.annotated'`,
+          )
+        )[0]!.n,
+      );
+      expect((await call(PIN, u2, { id: rp, messageId: m1 })).statusCode).toBe(200);
+      expect((await call(PIN, u1, { id: rp, messageId: m1 })).statusCode).toBe(200); // repeat: no-op
+      expect((await call(PIN, u1, { id: rp, messageId: m2 })).statusCode).toBe(200);
+      const pins = await call(PINS, u2, { id: rp });
+      expect(pins.statusCode, pins.body).toBe(200);
+      expect(pins.json().pins.map((p: { messageId: string }) => p.messageId)).toEqual([m2, m1]);
+      expect(pins.json().pins[1].body).toContain(SECRET_BODY);
+      expect(
+        (await listed(u1))
+          .filter((m) => m.pinned)
+          .map((m) => m.messageId)
+          .sort(),
+      ).toEqual([m1, m2].sort());
+      // one row per message; the first pinner stays
+      expect(
+        await rows(`SELECT pinned_by_user_id FROM message_pin WHERE message_id = $1`, [m1]),
+      ).toEqual([{ pinned_by_user_id: u2.userId }]);
+      // outbox: one hint per CHANGE (two pins), ids only
+      const hints = await rows<{ payload: Record<string, unknown> }>(
+        `SELECT payload FROM outbox_event WHERE event_type = 'm36.message.annotated' ORDER BY created_at`,
+      );
+      expect(hints.length - hintsBefore).toBe(2);
+      expect(JSON.stringify(hints.at(-1)!.payload)).not.toContain(SECRET_BODY);
+      expect((await call(UNPIN, u1, { id: rp, messageId: m1 })).statusCode).toBe(204);
+      expect((await call(UNPIN, u1, { id: rp, messageId: m1 })).statusCode).toBe(204); // repeat: no-op
+      const audit = await rows<{ event_type: string; actor_user_id: string | null }>(
+        `SELECT event_type, actor_user_id FROM audit_event WHERE resource_kind = 'message_pin' ORDER BY created_at, id`,
+      );
+      expect(audit.map((a) => [a.event_type, a.actor_user_id])).toEqual([
+        ["message_pin.insert", u2.userId],
+        ["message_pin.insert", u1.userId],
+        ["message_pin.delete", u1.userId], // the UNPINNER, not the original pinner
+      ]);
+      expect((await call(UNPIN, u1, { id: rp, messageId: m2 })).statusCode).toBe(204);
+    });
+
+    it("caps pins per channel with a 409 and refuses a tombstoned message (404) and an archived channel (410)", async () => {
+      await admin.query(`DELETE FROM message_pin WHERE channel_id = $1`, [rp]);
+      const ids: string[] = [];
+      for (let i = 0; i < 20; i++) ids.push(await mk(rp, `cap ${i}`));
+      for (const id of ids)
+        expect((await call(PIN, u1, { id: rp, messageId: id })).statusCode).toBe(200);
+      const over = await call(PIN, u1, { id: rp, messageId: m2 });
+      expect(over.statusCode, over.body).toBe(409);
+      expect(over.json().error?.code ?? over.json().code).toBe("PIN_LIMIT_REACHED");
+      // a deleted message leaves the pin list and takes no new reaction
+      await service.deleteMessage(orgA, { userId: u1.userId, messageId: ids[0]! });
+      const after = await call(PINS, u2, { id: rp });
+      expect(after.json().pins.map((p: { messageId: string }) => p.messageId)).not.toContain(
+        ids[0],
+      );
+      expect(
+        (await call(REACT, u2, { id: rp, messageId: ids[0]!, emoji: "heart" })).statusCode,
+      ).toBe(404);
+      expect((await call(PIN, u1, { id: rpArchived, messageId: archivedMsg })).statusCode).toBe(
+        410,
+      );
+      expect(
+        (await call(REACT, u1, { id: rpArchived, messageId: archivedMsg, emoji: "heart" }))
+          .statusCode,
+      ).toBe(410);
+      expect((await call(UNPIN, u1, { id: rpArchived, messageId: archivedMsg })).statusCode).toBe(
+        410,
+      );
+    });
+
+    it("a member removed from the channel loses reactions and pins at once", async () => {
+      for (const [route, params] of [
+        [REACT, { id: rp, messageId: m1, emoji: "heart" }],
+        [PIN, { id: rp, messageId: m1 }],
+        [PINS, { id: rp }],
+      ] as const) {
+        const res = await call(route, outsider, params);
+        expect(res.statusCode, `${route}: ${res.body}`).toBeGreaterThanOrEqual(400);
+        expect(res.body).not.toContain(SECRET_BODY);
+      }
+    });
+
+    it("as the real app role: no UPDATE on either table, and another tenant's session sees none of A's rows", async () => {
+      const c = new Client({ connectionString: appUrl });
+      await c.connect();
+      try {
+        await c.query("BEGIN");
+        await c.query("SELECT set_config('app.org_id', $1, true)", [orgA]);
+        await expect(c.query(`UPDATE message_reaction SET emoji = 'hug'`)).rejects.toThrow(
+          /permission denied/,
+        );
+        await c.query("ROLLBACK");
+        await c.query("BEGIN");
+        await c.query("SELECT set_config('app.org_id', $1, true)", [orgB]);
+        for (const t of ["message_reaction", "message_pin"]) {
+          expect(
+            (
+              await c.query(`SELECT count(*)::int AS n FROM ${t} WHERE organization_id = $1`, [
+                orgA,
+              ])
+            ).rows[0].n,
+          ).toBe(0);
+        }
+        await expect(
+          c.query(
+            `INSERT INTO message_pin (organization_id, channel_id, message_id, pinned_by_user_id) VALUES ($1,$2,$3,$4)`,
+            [orgA, rp, m2, u1.userId],
+          ),
+        ).rejects.toThrow(/row-level security/);
+      } finally {
+        await c.query("ROLLBACK").catch(() => undefined);
+        await c.end();
+      }
+    });
+  });
+
   describe("dm, staff directory, care-team channel", () => {
     it("org B cannot open a DM with an org A user, same answer as for a random user", async () => {
       attackers.add(bUser.name);
@@ -1400,6 +1677,8 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       "message",
       "message_revision",
       "message_receipt",
+      "message_reaction",
+      "message_pin",
     ];
     it.each(orgScoped)(
       "SELECT on %s returns no org A rows (and the table is non-empty for A)",

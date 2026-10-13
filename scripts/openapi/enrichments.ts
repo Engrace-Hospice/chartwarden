@@ -1287,6 +1287,11 @@ import {
   SendMessageResponseSchema as M36SendMessageResponseSchema,
   VerifyEndpointBodySchema as M36VerifyEndpointBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/messaging-typebox";
+import {
+  PinListResponseSchema as M36PinListResponseSchema,
+  PinResponseSchema as M36PinResponseSchema,
+  SetReactionResponseSchema as M36SetReactionResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/reaction-pin-typebox";
 
 // M38 Clinical Terminology Service — response DTOs (all M38-aliased).
 // Merge these named imports into scripts/openapi/enrichments.ts. NOTE: an existing import already
@@ -8931,6 +8936,28 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "A message and its direct replies, oldest reply first (WP 2.2; channel_visibility ABAC, so a non-member, a removed member and another org get the 404 a random id gets)",
     query: M36ListThreadQuerySchema,
     response: M36ThreadResponseSchema,
+  },
+  // WP 2.4 reactions & pins (channel_visibility ABAC; every refusal is the 404 a random id gets)
+  "PUT /api/v1/messaging/channels/:id/messages/:messageId/reactions/:emoji": {
+    summary:
+      "Add the caller's non-clinical reaction (idempotent; NOT an acknowledgement and writes no receipt; 422 unknown key, 410 archived, 404 deleted/other-channel message)",
+    response: M36SetReactionResponseSchema,
+  },
+  "DELETE /api/v1/messaging/channels/:id/messages/:messageId/reactions/:emoji": {
+    summary: "Remove the caller's reaction (idempotent)",
+    response: M36SetReactionResponseSchema,
+  },
+  "PUT /api/v1/messaging/channels/:id/messages/:messageId/pin": {
+    summary:
+      "Pin a message in its channel (idempotent; audited; 409 PIN_LIMIT_REACHED at 20 pins; 410 archived)",
+    response: M36PinResponseSchema,
+  },
+  "DELETE /api/v1/messaging/channels/:id/messages/:messageId/pin": {
+    summary: "Unpin a message (idempotent; audited with the actor; 204)",
+  },
+  "GET /api/v1/messaging/channels/:id/pins": {
+    summary: "The channel's pinned messages, most recently pinned first (read-audited)",
+    response: M36PinListResponseSchema,
   },
   "GET /api/v1/messaging/channels/:id/mention-candidates": {
     summary: "Search staff and the linked patient eligible for a structured reference",

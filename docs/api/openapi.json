@@ -157584,6 +157584,57 @@
                               }
                             ]
                           },
+                          "reactions": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "emoji",
+                                "count",
+                                "reactedByMe"
+                              ],
+                              "properties": {
+                                "emoji": {
+                                  "anyOf": [
+                                    {
+                                      "const": "heart",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "thanks",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "smile",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "celebrate",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "sad",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "hug",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "count": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                },
+                                "reactedByMe": {
+                                  "type": "boolean"
+                                }
+                              }
+                            }
+                          },
+                          "pinned": {
+                            "type": "boolean"
+                          },
                           "references": {
                             "type": "array",
                             "items": {
@@ -157891,6 +157942,305 @@
         }
       }
     },
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/pin": {
+      "delete": {
+        "operationId": "deleteApiV1MessagingChannelsByIdMessagesByMessageIdPin",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Unpin a message (idempotent; audited with the actor; 204)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1MessagingChannelsByIdMessagesByMessageIdPin",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Pin a message in its channel (idempotent; audited; 409 PIN_LIMIT_REACHED at 20 pins; 410 archived)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "pinnedAt"
+                  ],
+                  "properties": {
+                    "pinnedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/reactions/{emoji}": {
+      "delete": {
+        "operationId": "deleteApiV1MessagingChannelsByIdMessagesByMessageIdReactionsByEmoji",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Remove the caller's reaction (idempotent)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "emoji",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "reactions"
+                  ],
+                  "properties": {
+                    "reactions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "emoji",
+                          "count",
+                          "reactedByMe"
+                        ],
+                        "properties": {
+                          "emoji": {
+                            "anyOf": [
+                              {
+                                "const": "heart",
+                                "type": "string"
+                              },
+                              {
+                                "const": "thanks",
+                                "type": "string"
+                              },
+                              {
+                                "const": "smile",
+                                "type": "string"
+                              },
+                              {
+                                "const": "celebrate",
+                                "type": "string"
+                              },
+                              {
+                                "const": "sad",
+                                "type": "string"
+                              },
+                              {
+                                "const": "hug",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "count": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "reactedByMe": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1MessagingChannelsByIdMessagesByMessageIdReactionsByEmoji",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Add the caller's non-clinical reaction (idempotent; NOT an acknowledgement and writes no receipt; 422 unknown key, 410 archived, 404 deleted/other-channel message)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "emoji",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "reactions"
+                  ],
+                  "properties": {
+                    "reactions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "emoji",
+                          "count",
+                          "reactedByMe"
+                        ],
+                        "properties": {
+                          "emoji": {
+                            "anyOf": [
+                              {
+                                "const": "heart",
+                                "type": "string"
+                              },
+                              {
+                                "const": "thanks",
+                                "type": "string"
+                              },
+                              {
+                                "const": "smile",
+                                "type": "string"
+                              },
+                              {
+                                "const": "celebrate",
+                                "type": "string"
+                              },
+                              {
+                                "const": "sad",
+                                "type": "string"
+                              },
+                              {
+                                "const": "hug",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "count": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "reactedByMe": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/channels/{id}/messages/{messageId}/thread": {
       "get": {
         "operationId": "getApiV1MessagingChannelsByIdMessagesByMessageIdThread",
@@ -158071,6 +158421,57 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "reactions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "emoji",
+                              "count",
+                              "reactedByMe"
+                            ],
+                            "properties": {
+                              "emoji": {
+                                "anyOf": [
+                                  {
+                                    "const": "heart",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "thanks",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "smile",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "celebrate",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "sad",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "hug",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "count": {
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              "reactedByMe": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        },
+                        "pinned": {
+                          "type": "boolean"
                         },
                         "references": {
                           "type": "array",
@@ -158287,6 +158688,57 @@
                               }
                             ]
                           },
+                          "reactions": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "emoji",
+                                "count",
+                                "reactedByMe"
+                              ],
+                              "properties": {
+                                "emoji": {
+                                  "anyOf": [
+                                    {
+                                      "const": "heart",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "thanks",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "smile",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "celebrate",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "sad",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "hug",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "count": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                },
+                                "reactedByMe": {
+                                  "type": "boolean"
+                                }
+                              }
+                            }
+                          },
+                          "pinned": {
+                            "type": "boolean"
+                          },
                           "references": {
                             "type": "array",
                             "items": {
@@ -158378,6 +158830,326 @@
                     },
                     "nextCursor": {
                       "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/channels/{id}/pins": {
+      "get": {
+        "operationId": "getApiV1MessagingChannelsByIdPins",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The channel's pinned messages, most recently pinned first (read-audited)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "pins",
+                    "patientId"
+                  ],
+                  "properties": {
+                    "pins": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "messageId",
+                          "channelId",
+                          "authorUserId",
+                          "authorDisplayName",
+                          "body",
+                          "bodyKind",
+                          "createdAt",
+                          "parentMessageId",
+                          "references"
+                        ],
+                        "properties": {
+                          "messageId": {
+                            "type": "string"
+                          },
+                          "channelId": {
+                            "type": "string"
+                          },
+                          "authorUserId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "authorDisplayName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "body": {
+                            "type": "string"
+                          },
+                          "bodyKind": {
+                            "anyOf": [
+                              {
+                                "const": "plain",
+                                "type": "string"
+                              },
+                              {
+                                "const": "markdown",
+                                "type": "string"
+                              },
+                              {
+                                "const": "system",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rich",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "bodyDoc": {
+                            "type": "object",
+                            "required": [
+                              "schemaVersion",
+                              "doc"
+                            ],
+                            "properties": {
+                              "schemaVersion": {
+                                "const": 1,
+                                "type": "number"
+                              },
+                              "doc": {
+                                "type": "object",
+                                "required": [
+                                  "type",
+                                  "content"
+                                ],
+                                "properties": {
+                                  "type": {
+                                    "const": "doc",
+                                    "type": "string"
+                                  },
+                                  "content": {
+                                    "maxItems": 500,
+                                    "type": "array",
+                                    "items": {}
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "bodyUnreadable": {
+                            "const": true,
+                            "type": "boolean"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "parentMessageId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "replyCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "lastReplyAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reactions": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "emoji",
+                                "count",
+                                "reactedByMe"
+                              ],
+                              "properties": {
+                                "emoji": {
+                                  "anyOf": [
+                                    {
+                                      "const": "heart",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "thanks",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "smile",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "celebrate",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "sad",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "hug",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "count": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                },
+                                "reactedByMe": {
+                                  "type": "boolean"
+                                }
+                              }
+                            }
+                          },
+                          "pinned": {
+                            "type": "boolean"
+                          },
+                          "references": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "kind",
+                                "entityId",
+                                "start",
+                                "end",
+                                "displayLabel",
+                                "navigable"
+                              ],
+                              "properties": {
+                                "kind": {
+                                  "anyOf": [
+                                    {
+                                      "const": "staff",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "patient",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "entityId": {
+                                  "type": "string"
+                                },
+                                "start": {
+                                  "type": "integer"
+                                },
+                                "end": {
+                                  "type": "integer"
+                                },
+                                "displayLabel": {
+                                  "type": "string"
+                                },
+                                "navigable": {
+                                  "type": "boolean"
+                                }
+                              }
+                            }
+                          },
+                          "attachments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "attachmentId",
+                                "fileName",
+                                "mimeType",
+                                "byteSize",
+                                "availability"
+                              ],
+                              "properties": {
+                                "attachmentId": {
+                                  "type": "string"
+                                },
+                                "fileName": {
+                                  "type": "string"
+                                },
+                                "mimeType": {
+                                  "type": "string"
+                                },
+                                "byteSize": {
+                                  "type": "integer"
+                                },
+                                "availability": {
+                                  "anyOf": [
+                                    {
+                                      "const": "available",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "scanning",
+                                      "type": "string"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          "hiddenAttachmentCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        }
+                      }
                     },
                     "patientId": {
                       "anyOf": [

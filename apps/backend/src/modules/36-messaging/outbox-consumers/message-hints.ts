@@ -31,6 +31,7 @@ export const M36_MESSAGE_HINT_EVENT_TYPES = [
   "m36.message.sent",
   "m36.message.edited",
   "m36.message.deleted",
+  "m36.message.annotated",
 ] as const;
 
 export type HintAudience = { readonly orgWide: true } | { readonly userIds: readonly string[] };

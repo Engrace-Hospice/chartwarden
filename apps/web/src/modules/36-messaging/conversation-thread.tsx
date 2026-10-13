@@ -27,8 +27,10 @@ import {
   channelLabel,
   compareMessages,
   initialsOf,
+  isAccessError,
   mergeMessages,
 } from "./messaging-utils";
+import { PinnedMessagesBar } from "./pinned-messages-bar";
 import { PatientContextAside, ThreadHeader } from "./thread-header";
 import { ThreadPanel } from "./thread-panel";
 import { useAttachmentUploads } from "./use-attachment-upload";
@@ -42,15 +44,6 @@ import type { LiveHint } from "./use-thread";
 import { useThreadPanelState } from "./use-thread-panel-state";
 
 const MESSAGE_PAGE_SIZE = 50;
-
-function isAccessError(error: unknown): boolean {
-  const serialized = JSON.stringify(error ?? "").toLowerCase();
-  return (
-    serialized.includes("forbidden") ||
-    serialized.includes("not_found") ||
-    serialized.includes("not found")
-  );
-}
 
 export interface ConversationThreadProps {
   channel: ChannelSummary;
@@ -599,6 +592,12 @@ export function ConversationThread({
         onToggleContext={() => setContextOpen((open) => !open)}
       />
 
+      <PinnedMessagesBar
+        channelId={channel.channelId}
+        messages={messages}
+        onJump={jump.jumpToMessage}
+      />
+
       <div className="wx-messaging-thread-body">
         <div
           ref={timelineRef}
@@ -662,6 +661,7 @@ export function ConversationThread({
                       : undefined
                   }
                   canReply={!channel.archivedAt}
+                  canPin
                 />
               ))}
             </>

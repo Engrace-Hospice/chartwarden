@@ -93,6 +93,7 @@ import {
   withValidMessageContent,
 } from "./messaging-write-core";
 import { type Part2ChannelGate, createSeamPart2ChannelGate } from "./part2-channel-gate";
+import { createDbReactionPinService } from "./reaction-pin-service-db";
 import { decodeStoredBody, sameMentionToken, storedBodyFor } from "./rich-body-codec";
 
 const CH = schema.channels;
@@ -824,6 +825,13 @@ export function createDbMessagingRouteService(
     }
   }
   return {
+    // WP 2.4: reactions + pins live in their own module (reaction-pin-service-db.ts).
+    ...createDbReactionPinService({
+      db,
+      canViewChannel: canViewChannelFor,
+      outbox: opts.outbox,
+      hydrationContext,
+    }),
     // ── channels & messages (§4.2; reads) ─────────────────────────────────────────────────────
     async listChannels(orgId, userId): Promise<ChannelSummary[]> {
       const candidates = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {

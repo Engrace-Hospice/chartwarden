@@ -14,7 +14,7 @@
 // fail-closed (deny-stub) in the M1 registry; its DB-backed implementation lands with the routes
 // and realtime/jobs tasks (M36-T07/T08).
 
-import type { RichBody } from "@wardenx/types";
+import type { MessageReactionSummary, RichBody } from "@wardenx/types";
 import type { ChannelKind, MessageBodyKind } from "./kinds";
 
 /** An attachment supplied with {@link MessagingProvider.sendMessage} (§3.4, WP 1.5). It references an upload the SAME
@@ -71,6 +71,10 @@ export interface ResolvedMessage {
   /** WP 2.2: created_at of the newest live direct reply, or null. */
   readonly lastReplyAt?: string | null;
   readonly references: readonly ResolvedMessageReference[];
+  /** WP 2.4: non-clinical reactions (counts + the viewer's own); absent/empty means none. NEVER a sign-off. */
+  readonly reactions?: readonly MessageReactionSummary[];
+  /** WP 2.4: true when the message is pinned in its channel. */
+  readonly pinned?: boolean;
   /** WP 1.5: scan-gated attachment metadata (quarantined and, for non-uploaders, pending ones are omitted). */
   readonly attachments?: readonly MessageAttachmentView[];
   /** Bound files this viewer cannot see (scanning for others, or withheld): a bare count, never ids, names or state. */

@@ -114,3 +114,13 @@ export function sendAttemptFor(previous: SendAttempt | null, fingerprint: string
 export function rotateIdempotencyKey(attempt: SendAttempt): SendAttempt {
   return { ...attempt, idempotencyKey: crypto.randomUUID() };
 }
+
+/** An error body that means "you can no longer read this" (forbidden or not found), however the server phrased it. */
+export function isAccessError(error: unknown): boolean {
+  const serialized = JSON.stringify(error ?? "").toLowerCase();
+  return (
+    serialized.includes("forbidden") ||
+    serialized.includes("not_found") ||
+    serialized.includes("not found")
+  );
+}
