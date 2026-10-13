@@ -531,6 +531,12 @@ jobs:
               name: "M2 organization-lifecycle — real wardenx_app role",
               scripts: "test:m2:organization-lifecycle:live",
             }
+          # POST /provider-entities seals the EIN through the real tax-id cipher: the column holds a v1 envelope
+          # (never the EIN), a failing tenant key answers 503 and writes no row, and org B cannot read org A's row.
+          - {
+              name: "M2 tax-id cipher — real wardenx_app role",
+              scripts: "test:m2:tax-id-cipher:live",
+            }
           # GAP-063: M38's platform-ops write door. Migration 0015 granted `terminology_loader`
           # INSERT/UPDATE on the canonical tables but created no row POLICY for it, so the grant was
           # dead — every loader write matched zero rows. This suite runs as NOBYPASSRLS wardenx_app,
