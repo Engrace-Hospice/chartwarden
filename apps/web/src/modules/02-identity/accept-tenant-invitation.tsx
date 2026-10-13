@@ -5,7 +5,7 @@ import { CenteredCardLayout, useApiClient } from "@wardenx/ui";
 // redeems it at POST /api/v1/public/tenant-invitations/:token/accept (creates the user + first org_admin
 // membership, no credential), then sends the standard password-reset email: possession of the invited inbox is
 // what lets the admin set a password, and no password travels through this page.
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useParams } from "react-router-dom";
 import { authClient } from "./auth-client";
@@ -22,21 +22,39 @@ export function AcceptTenantInvitation(): JSX.Element {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [resetSent, setResetSent] = useState(false);
+  const [retryError, setRetryError] = useState(false);
+  const inFlight = useRef(false);
 
   async function accept(e: FormEvent): Promise<void> {
     e.preventDefault();
-    if (!token || phase === "accepting") return;
+    if (!token || inFlight.current) return;
+    inFlight.current = true;
+    setRetryError(false);
     setPhase("accepting");
     const displayName = name.trim();
-    const { data, error } = await client.POST(
-      "/api/v1/public/tenant-invitations/{tokenHash}/accept",
-      {
+    const result = await client
+      .POST("/api/v1/public/tenant-invitations/{tokenHash}/accept", {
         params: { path: { tokenHash: token } },
         body: displayName ? { displayName } : {},
-      },
-    );
+      })
+      .catch(() => null);
+    if (!result) {
+      // Network failure: the token was not consumed, so let the admin retry rather than report it invalid.
+      inFlight.current = false;
+      setRetryError(true);
+      setPhase("ready");
+      return;
+    }
+    const { data, error, response } = result;
     if (error || !data) {
-      setPhase("invalid");
+      inFlight.current = false;
+      // 5xx / 429 say nothing about the token; only a 4xx refusal means invalid or expired.
+      if (response && (response.status >= 500 || response.status === 429)) {
+        setRetryError(true);
+        setPhase("ready");
+      } else {
+        setPhase("invalid");
+      }
       return;
     }
     setEmail(data.email);
@@ -57,7 +75,7 @@ export function AcceptTenantInvitation(): JSX.Element {
     return (
       <CenteredCardLayout brand={<strong>WardenX</strong>}>
         <h1 style={{ marginTop: 0, fontSize: "1.1rem" }}>Accept invitation</h1>
-        <p style={{ color: "var(--color-error)" }}>{INVALID_MESSAGE}</p>
+        <p role="alert" style={{ color: "var(--color-error)" }}>{INVALID_MESSAGE}</p>
       </CenteredCardLayout>
     );
   }
@@ -111,6 +129,11 @@ export function AcceptTenantInvitation(): JSX.Element {
             style={field}
           />
         </label>
+        {retryError && (
+          <p role="alert" style={{ margin: 0, color: "var(--color-error)", fontSize: "0.85rem" }}>
+            We couldn’t reach the server. Try again.
+          </p>
+        )}
         <button type="submit" disabled={phase === "accepting"} style={primaryBtn}>
           {phase === "accepting" ? "Accepting…" : "Accept invitation"}
         </button>

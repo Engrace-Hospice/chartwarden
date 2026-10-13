@@ -94,6 +94,43 @@ describe("AcceptTenantInvitation", () => {
     expect(screen.getByText(/invitation is accepted/i)).toBeTruthy();
   });
 
+  it("a network failure on the accept call shows a retryable error instead of sticking on Accepting", async () => {
+    const post = vi.fn().mockRejectedValueOnce(new Error("offline"));
+    renderPage({ POST: post } as unknown as ApiClient);
+
+    fireEvent.click(screen.getByRole("button", { name: "Accept invitation" }));
+
+    expect((await screen.findByRole("alert")).textContent).toMatch(/try again/i);
+    expect(screen.queryByText(/invalid or has expired/i)).toBeNull();
+    expect(
+      (screen.getByRole("button", { name: "Accept invitation" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it("a server error (5xx) is retryable, not reported as an invalid invitation", async () => {
+    const post = vi.fn(async () => ({ error: { error: {} }, response: { status: 503 } }));
+    renderPage({ POST: post } as unknown as ApiClient);
+
+    fireEvent.click(screen.getByRole("button", { name: "Accept invitation" }));
+
+    expect((await screen.findByRole("alert")).textContent).toMatch(/try again/i);
+    expect(screen.queryByText(/invalid or has expired/i)).toBeNull();
+  });
+
+  it("two rapid submits send a single accept request", async () => {
+    const { client, post } = clientFor({ data: { accepted: true, email: ADMIN_EMAIL } });
+    renderPage(client);
+    const form = screen
+      .getByRole("button", { name: "Accept invitation" })
+      .closest("form") as HTMLFormElement;
+
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+
+    await screen.findByText("Check your email");
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
   it("an accepted invitation whose reset email fails still points the admin at /forgot-password", async () => {
     requestPasswordReset.mockResolvedValue({ error: { message: "mail down" } });
     const { client } = clientFor({ data: { accepted: true, email: ADMIN_EMAIL } });
