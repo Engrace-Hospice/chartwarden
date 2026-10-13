@@ -54,9 +54,11 @@ if (typeof UndiciRequest === "function") {
 // simulate blocked storage reach this stub too.
 const memoryData = new WeakMap<object, Map<string, string>>();
 const dataOf = (self: object): Map<string, string> => {
-  let data = memoryData.get(self);
-  if (!data) memoryData.set(self, (data = new Map()));
-  return data;
+  const existing = memoryData.get(self);
+  if (existing) return existing;
+  const created = new Map<string, string>();
+  memoryData.set(self, created);
+  return created;
 };
 function installMemoryStorage(): Storage {
   const proto = globalThis.Storage.prototype as unknown as Record<string, unknown>;
