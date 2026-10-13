@@ -10,10 +10,7 @@
 import { schema } from "@wardenx/db";
 import { CANDIDATE_CAP } from "@wardenx/messaging";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
-import {
-  MESSAGE_ROW_COLUMNS,
-  type MessageRow,
-} from "../messaging-message-hydration";
+import { MESSAGE_ROW_COLUMNS, type MessageRow } from "../messaging-message-hydration";
 import type { Tx } from "../messaging-write-core";
 import type { VersionQuery } from "./query-terms";
 

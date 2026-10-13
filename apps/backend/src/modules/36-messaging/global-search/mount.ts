@@ -15,7 +15,12 @@ import {
   registerGlobalSearchRoutes,
 } from "../routes/global-search-routes";
 import { createPlatformSearchFlag } from "./platform-flag";
-import { type IsRedactedOrPending, createBodyReader, neverRedacted } from "./ports";
+import {
+  type BodyReader,
+  type IsRedactedOrPending,
+  createBodyReader,
+  neverRedacted,
+} from "./ports";
 import { createGlobalSearchService } from "./query-service";
 import { createRoleGate } from "./role-gate";
 import { createUnavailableSearchKeyProvider } from "./search-key-provider";
@@ -27,6 +32,8 @@ export interface GlobalSearchMountOptions {
   readonly rateLimit?: GlobalSearchRateLimit;
   readonly cipher?: MessageBodyCipher;
   readonly part2Gate?: Part2ChannelGate;
+  /** Tests only: the body-opening port (a spy proves what was, and was not, opened). */
+  readonly bodies?: BodyReader;
   readonly isRedactedOrPending?: IsRedactedOrPending;
   /** Ids only. */
   readonly warn?: (message: string, context: Record<string, string>) => void;
@@ -43,7 +50,7 @@ export function mountGlobalSearchRoutes(
   registerGlobalSearchRoutes(app, {
     service: createGlobalSearchService({
       db,
-      bodies: createBodyReader(cipher),
+      bodies: opts.bodies ?? createBodyReader(cipher),
       keys,
       part2Gate: opts.part2Gate ?? createSeamPart2ChannelGate(db),
       cipher,

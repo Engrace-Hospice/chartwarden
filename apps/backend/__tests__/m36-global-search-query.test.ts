@@ -22,10 +22,6 @@ import { WardenXError } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
-import {
-  GLOBAL_SEARCH_ROLE_POLICY,
-  mayUseGlobalSearch,
-} from "../src/modules/36-messaging/global-search/role-gate";
 import { EXTERNAL_AUDITOR_PERMISSIONS } from "../src/modules/03-authorization/auditor-access-grant";
 import {
   MAX_QUERY_TERMS,
@@ -34,6 +30,10 @@ import {
   parseQueryTerms,
   tagsForTerms,
 } from "../src/modules/36-messaging/global-search/query-terms";
+import {
+  GLOBAL_SEARCH_ROLE_POLICY,
+  mayUseGlobalSearch,
+} from "../src/modules/36-messaging/global-search/role-gate";
 import { registerGlobalSearchRoutes } from "../src/modules/36-messaging/routes/global-search-routes";
 
 const ROOT = join(__dirname, "../../..");
@@ -126,9 +126,10 @@ describe("static ratchet: excluded categories never hold messaging.read", () => 
         if (!/insert\s+into\s+"?role_permission"?/i.test(statement)) continue;
         if (!statement.includes(MESSAGING_READ)) continue;
         for (const needle of needles) {
-          expect(statement.includes(needle), `${file} grants ${MESSAGING_READ} near ${needle}`).toBe(
-            false,
-          );
+          expect(
+            statement.includes(needle),
+            `${file} grants ${MESSAGING_READ} near ${needle}`,
+          ).toBe(false);
         }
       }
     }
@@ -149,7 +150,17 @@ describe("query terms", () => {
   });
 
   it("allows 8 distinct terms and refuses 9", () => {
-    const words = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india"];
+    const words = [
+      "alpha",
+      "bravo",
+      "charlie",
+      "delta",
+      "echo",
+      "foxtrot",
+      "golf",
+      "hotel",
+      "india",
+    ];
     expect(parseQueryTerms(words.slice(0, MAX_QUERY_TERMS).join(" "))).toHaveLength(8);
     expect(() => parseQueryTerms(words.join(" "))).toThrowError(WardenXError);
   });
@@ -176,7 +187,9 @@ describe("query terms", () => {
 
 describe("body verification", () => {
   it("needs every non-last term as a whole token and the last as a prefix of some token", () => {
-    expect(bodyMatchesQueryTerms("Morphine dose increased overnight", ["morphine", "over"])).toBe(true);
+    expect(bodyMatchesQueryTerms("Morphine dose increased overnight", ["morphine", "over"])).toBe(
+      true,
+    );
     expect(bodyMatchesQueryTerms("morphine dose", ["morphin"])).toBe(true);
     expect(bodyMatchesQueryTerms("morphine dose", ["morph", "dose"])).toBe(false);
     expect(bodyMatchesQueryTerms("morphines dose", ["morphine", "dose"])).toBe(false);
@@ -197,12 +210,10 @@ describe("GET /api/v1/messaging/search gate order", () => {
     request.context.roles = ["clinical_rn"];
     request.context.locationIds = [];
   }
-  const gate =
-    (name: string, refuse?: WardenXError) =>
-    async () => {
-      calls.push(name);
-      if (refuse) throw refuse;
-    };
+  const gate = (name: string, refuse?: WardenXError) => async () => {
+    calls.push(name);
+    if (refuse) throw refuse;
+  };
   const refusal = (code: string, status: number) => new WardenXError(code, code, status);
 
   async function build(opts: {
@@ -216,7 +227,9 @@ describe("GET /api/v1/messaging/search gate order", () => {
         {
           orgId: ORG,
           userId: "u1",
-          grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [MESSAGING_READ] }],
+          grants: [
+            { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [MESSAGING_READ] },
+          ],
         },
       ]).store,
     );
@@ -320,12 +333,15 @@ describe("structure of the query path", () => {
   it("only the query service imports the body-opening port as a value", () => {
     for (const rel of queryPathFiles) {
       const source = read(rel);
-      const importsReader = /import\s+\{[^}]*\b(createBodyReader|BodyReader)\b[^}]*\}\s+from\s+"[^"]*\/ports"/s.test(
-        source,
-      );
-      const valueImport = /import\s+\{[^}]*\bcreateBodyReader\b[^}]*\}\s+from\s+"[^"]*\/ports"/s.test(source);
+      const importsReader =
+        /import\s+\{[^}]*\b(createBodyReader|BodyReader)\b[^}]*\}\s+from\s+"[^"]*\/ports"/s.test(
+          source,
+        );
+      const valueImport =
+        /import\s+\{[^}]*\bcreateBodyReader\b[^}]*\}\s+from\s+"[^"]*\/ports"/s.test(source);
       if (rel === "global-search/query-service.ts") expect(importsReader).toBe(true);
-      else if (rel === "global-search/mount.ts") expect(valueImport).toBe(true); // composes the port, never calls it
+      else if (rel === "global-search/mount.ts")
+        expect(valueImport).toBe(true); // composes the port, never calls it
       else expect(importsReader, rel).toBe(false);
     }
     expect(read("global-search/mount.ts")).not.toMatch(/\.read\(/);

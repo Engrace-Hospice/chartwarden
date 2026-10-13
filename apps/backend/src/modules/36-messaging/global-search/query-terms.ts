@@ -65,7 +65,10 @@ export async function buildVersionQueries(
 }
 
 /** True when every term of the active version's query lands in a head bucket (single-term head queries included). */
-export function isHeadBucketQuery(termTags: readonly number[], headBuckets: ReadonlySet<number>): boolean {
+export function isHeadBucketQuery(
+  termTags: readonly number[],
+  headBuckets: ReadonlySet<number>,
+): boolean {
   return termTags.length > 0 && termTags.every((tag) => headBuckets.has(tag));
 }
 

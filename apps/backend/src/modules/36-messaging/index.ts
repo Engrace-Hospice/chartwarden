@@ -146,6 +146,10 @@ import type { AttachmentStoragePort, ScanPort } from "./attachments/attachment-p
 import { createAttachmentService as _createAttachmentService } from "./attachments/attachment-service-db";
 import type { EndpointVerificationSender } from "./delivery/transport-binding";
 import { createDbDraftService as _createDbDraftService } from "./drafts/draft-service-db";
+import {
+  type GlobalSearchMountOptions,
+  mountGlobalSearchRoutes as _mountGlobalSearchRoutes,
+} from "./global-search/mount";
 import { createDbMessagingRouteService as _createDbMessagingRouteService } from "./messaging-route-service-db";
 import type { MessagingOutboxPort } from "./messaging-route-service-db";
 import {
@@ -153,10 +157,6 @@ import {
   registerAdminAlertDeliveriesRoutes as _registerAdminAlertDeliveriesRoutes,
   registerMessagingAdminPredicates as _registerMessagingAdminPredicates,
 } from "./routes/admin-alert-deliveries-routes";
-import {
-  type GlobalSearchMountOptions,
-  mountGlobalSearchRoutes as _mountGlobalSearchRoutes,
-} from "./global-search/mount";
 import { registerAttachmentRoutes as _registerAttachmentRoutes } from "./routes/attachment-routes";
 import { registerDraftRoutes as _registerDraftRoutes } from "./routes/draft-routes";
 import {

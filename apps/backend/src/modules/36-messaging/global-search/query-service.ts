@@ -36,12 +36,7 @@ import { effectivelyVisibleChannels, isActiveMessagingUser } from "../messaging-
 import type { MessageBodyCipher, Tx } from "../messaging-write-core";
 import type { Part2ChannelGate } from "../part2-channel-gate";
 import { type BodyReader, type IsRedactedOrPending, neverRedacted } from "./ports";
-import {
-  type Candidate,
-  type SurvivorRow,
-  reselectSurvivors,
-  selectCandidates,
-} from "./query-sql";
+import { type Candidate, type SurvivorRow, reselectSurvivors, selectCandidates } from "./query-sql";
 import {
   bodyMatchesQueryTerms,
   buildVersionQueries,
@@ -133,7 +128,11 @@ function boundChannels(
       first.set(candidate.channelId, candidate);
     }
   }
-  return { list: candidates.slice(0, cutAt), channels: [...first.values()], cut: cutAt < candidates.length };
+  return {
+    list: candidates.slice(0, cutAt),
+    channels: [...first.values()],
+    cut: cutAt < candidates.length,
+  };
 }
 
 export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchService {
@@ -239,7 +238,8 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
     rows: readonly SurvivorRow[],
   ): Promise<GlobalSearchHit[]> {
     const byChannel = new Map<string, SurvivorRow[]>();
-    for (const row of rows) byChannel.set(row.channelId, [...(byChannel.get(row.channelId) ?? []), row]);
+    for (const row of rows)
+      byChannel.set(row.channelId, [...(byChannel.get(row.channelId) ?? []), row]);
     const hydrated = new Map<string, ResolvedMessage>();
     for (const [channelId, channelRows] of byChannel) {
       const ctx: HydrationContext = {
@@ -313,7 +313,10 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
           return selectCandidates(tx, input.organizationId, input.userId, queries, after);
         });
         const overflow = raw.length > CANDIDATE_CAP;
-        const { list, channels, cut } = boundChannels(raw.slice(0, CANDIDATE_CAP), limits.maxChannels);
+        const { list, channels, cut } = boundChannels(
+          raw.slice(0, CANDIDATE_CAP),
+          limits.maxChannels,
+        );
 
         const authorised = await authorisedChannelIds(input, channels);
         const survivors = list.filter((c) => authorised.has(c.channelId) && !isRedacted(c));

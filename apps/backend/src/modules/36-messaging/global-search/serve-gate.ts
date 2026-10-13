@@ -134,14 +134,22 @@ export function createServeGates(deps: ServeGateDeps): ServeGates {
               headBuckets: STATE.headBuckets,
             })
             .from(STATE)
-            .where(and(eq(STATE.organizationId, organizationId), inArray(STATE.keyVersion, [...versions]))),
+            .where(
+              and(
+                eq(STATE.organizationId, organizationId),
+                inArray(STATE.keyVersion, [...versions]),
+              ),
+            ),
         );
         const since = [setting.changedAt, platform.updatedAt];
         const usable = new Map(
           rows
             .filter((row) =>
               stillValid(
-                { status: row.status as "building" | "ready" | "stale", reconciledAt: row.reconciledAt },
+                {
+                  status: row.status as "building" | "ready" | "stale",
+                  reconciledAt: row.reconciledAt,
+                },
                 since,
                 now(),
                 RECHECK_AFTER_MS,
