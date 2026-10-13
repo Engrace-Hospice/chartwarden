@@ -62,6 +62,8 @@ patient-attribution mechanism; archived-channel inclusion; whether known patient
 
 ## Prerequisites (new work packages, both gate WP 2.7b)
 
+Work-package numbers in the [Messaging Hub plan](../messaging-hub/03-phases-0-to-3.md): **P1 is WP 2.13**, **P2 is WP 2.14**. "P1" and "P2" below are this ADR's labels (not Phase 1 or Phase 2).
+
 ### P1. Migrate message bodies to the M34 wrapped-DEK ring (User decision: key model option (b))
 
 **User decision (2026-10-13):** WP 2.7b is gated on first migrating `message.body_cipher` **and** `message_revision.body_cipher` from
@@ -72,7 +74,7 @@ current scheme there is no tenant key to destroy (body-crypto.ts:24,43), so it w
 `MESSAGING_ENCRYPTION_KEY` alone), tenant erasure and ring destruction do **not** shred those copies. The crypto-shred is complete
 for a tenant only once those backups have aged out or been re-wrapped (see the retirement conditions below).
 
-Scope of P1 (its own WP, number to be taken in the plan; sized as a data migration, not a code tweak):
+Scope of P1 (WP 2.13, its own WP; sized as a data migration, not a code tweak):
 
 1. A new envelope `VERSION` byte in `body-crypto.ts` (today `VERSION = 1`) that also records the DEK key-ring version, so old and new
    envelopes coexist during the migration and decrypt picks the key by envelope version.
@@ -721,7 +723,7 @@ residual risk. The review record is linked from this ADR before Status changes.
 
 ## Consequences
 
-- Two prerequisite WPs (P1 data migration of all message and revision ciphertext; P2 per-route rate limit) before any search code.
+- Two prerequisite WPs (P1 = WP 2.13, data migration of all message and revision ciphertext; P2 = WP 2.14, per-route rate limit) before any search code.
 - A new PHI-derived table, a worker, a rebuild job, and key-version handling to run and test.
 - Search quality is limited: no substring, no fuzzy, no stemming, no phrase; no dose search; eventual consistency; occasional
   short pages after access filtering (handled by the cursor and `scanCapped`, decision 9).
@@ -733,7 +735,7 @@ residual risk. The review record is linked from this ADR before Status changes.
 
 ## Migration / rollout
 
-1. **P1 and P2 first** (each its own WP and PR, with their own live suites). P1 starts only after the key escrow is in place and the
+1. **P1 (WP 2.13) and P2 (WP 2.14) first** (each its own WP and PR, with their own live suites). P1 starts only after the key escrow is in place and the
    restore drill has passed (P1, "Key escrow until the backfill"); global search stays off in every tenant until escrow is confirmed.
 2. After acceptance: migration for the table (check `arch:migration-numbering` against `main` first; branches collide on the next
    ordinal; manifest `ownedTables` in `.ts` and `.cjs`; mirror in `packages/db` and `packages/types`), key-derivation helper beside
