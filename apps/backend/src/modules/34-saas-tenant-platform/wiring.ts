@@ -318,7 +318,7 @@ export function buildDrizzlePlatformService(deps: {
    *  implementation is bound in the composition root and passed in here rather than constructed
    *  locally; omitted, the three admin routes keep the fail-closed stub below. */
   featureFlags?: FeatureFlagAdminPort;
-}): { service: TenantPlatformRouteService } {
+}): ReturnType<typeof createDrizzleTenantPlatformBackend> {
   const outbox: OutboxPublishPort = deps.outbox ?? {
     async publish(_tx, input) {
       throw new M34InfraPortUnbound(

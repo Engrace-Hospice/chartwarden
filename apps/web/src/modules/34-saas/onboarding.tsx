@@ -131,9 +131,7 @@ export function Onboarding(): JSX.Element {
         action:
           task.status === "pending"
             ? { label: "Start", onAction: () => void advance(task.id, "start") }
-            : task.status === "in_progress"
-              ? { label: "Mark complete", onAction: () => void advance(task.id, "complete") }
-              : undefined,
+            : undefined,
       })),
     [tasks, advance],
   );
@@ -197,8 +195,8 @@ export function Onboarding(): JSX.Element {
           <section style={railSectionStyle}>
             <h3 style={railTitleStyle}>Actions</h3>
             <p style={railTextStyle}>
-              Start and complete calls are sent per task. If preconditions are unmet, the server
-              refuses completion.
+              Steps complete on their own once the platform verifies them; you cannot mark them done
+              by hand.
             </p>
           </section>
         </div>

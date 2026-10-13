@@ -35,6 +35,7 @@ import {
   TenantAccountRepository,
   TenantExportRepository,
   TenantKeyRingRepository,
+  TenantLifecycleError,
 } from "@wardenx/saas-tenant-platform";
 import {
   type LifecycleActorKind,
@@ -58,6 +59,7 @@ import {
   mintInvitationToken,
 } from "../../invitation-token";
 import type { ProvisionJobPort } from "../../jobs/provision-job-port";
+import type { AutoActivationResult } from "../../jobs/platform-sweeps-worker";
 import { evaluateActivationGuards, pickGoverningBaa } from "./activation-guards";
 import { partitionEffects } from "./effect-ledger";
 import { evaluateDestructionGuards, retentionEndsAtFrom } from "./offboarding-guards";
@@ -247,6 +249,8 @@ function outboxPayloadFor(
 
 export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDeps): {
   service: TenantPlatformRouteService;
+  /** The onboarding sweep's system-actor `onboarding → active` (not a route: no human is on the other end). */
+  activateOnboardedTenant: (tenantAccountId: string) => Promise<AutoActivationResult>;
 } {
   /** Run `fn` in one audited platform-context tx (the only place cross-tenant rows are read/written). */
   const inPlatformCtx = <T>(reason: string, fn: (tx: PlatformTx) => Promise<T>): Promise<T> =>
@@ -304,6 +308,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     tx: PlatformTx,
     tenantAccountId: string,
     reason: string,
+    actorKind: LifecycleActorKind = "platform_ops",
   ): Promise<LifecycleEvent> {
     const onboarding = new OnboardingRepository(tx);
     const [templates, tasks, baaRows] = await Promise.all([
@@ -319,7 +324,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     });
     return {
       type: "activate",
-      actorKind: "platform_ops",
+      actorKind,
       transitionReason: reason,
       canonicalTasksComplete: guards.canonicalTasksComplete,
       baaExecuted: guards.baaExecuted,
@@ -341,7 +346,8 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
   async function applyTransition(
     tx: PlatformTx,
     account: schema.TenantAccount,
-    actorMembershipId: string,
+    /** Null for the system actor (the onboarding sweep): the ledger column is nullable. */
+    actorMembershipId: string | null,
     actorKind: LifecycleActorKind,
     event: LifecycleEvent,
   ): Promise<schema.TenantAccount> {
@@ -383,7 +389,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     tx: PlatformTx,
     account: schema.TenantAccount,
     event: LifecycleEvent,
-    actorMembershipId: string,
+    actorMembershipId: string | null,
     effects: ReadonlyArray<LifecycleSideEffect>,
   ): Promise<void> {
     const occurredAt = new Date().toISOString();
@@ -395,7 +401,14 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         }
         // tenant.shred_eligibility_check is a scheduled cron job, not a request-thread enqueue.
       } else if (eff.kind === "outbox") {
-        const payload = outboxPayloadFor(eff.event, account, event, actorMembershipId, occurredAt);
+        // An empty id would fail the catalog's id schema and roll back loudly: no system-actor path reaches an event that needs one.
+        const payload = outboxPayloadFor(
+          eff.event,
+          account,
+          event,
+          actorMembershipId ?? "",
+          occurredAt,
+        );
         if (payload) {
           await deps.outbox.publish(tx, {
             eventName: eff.event,
@@ -1311,7 +1324,39 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     },
   };
 
-  return { service };
+  /**
+   * Automatic `onboarding → active` once the sweep sees every canonical step settled. Same guards and effects as the
+   * platform route, with a system actor and no membership. The tenant row is locked and re-read so two overlapping
+   * sweeps cannot both apply it, and an unmet guard is a normal "not yet" (returned, not thrown).
+   */
+  async function activateOnboardedTenant(tenantAccountId: string): Promise<AutoActivationResult> {
+    return inPlatformCtx("m34 onboarding sweep: automatic activation", async (tx) => {
+      const [account] = await tx
+        .select()
+        .from(A)
+        .where(eq(A.id, tenantAccountId))
+        .limit(1)
+        .for("update");
+      if (!account || account.status !== "onboarding") {
+        return { activated: false, reason: "NOT_IN_ONBOARDING" };
+      }
+      try {
+        const event = await activateEventFor(
+          tx,
+          account.id,
+          "all canonical onboarding steps settled and the BAA executed (automatic activation)",
+          "system_automated",
+        );
+        await applyTransition(tx, account, null, "system_automated", event);
+        return { activated: true };
+      } catch (err) {
+        if (err instanceof TenantLifecycleError) return { activated: false, reason: err.code };
+        throw err;
+      }
+    });
+  }
+
+  return { service, activateOnboardedTenant };
 }
 
 // ── projection + mapping helpers ─────────────────────────────────────────────────────────────────────

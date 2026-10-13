@@ -90,14 +90,18 @@ export interface OnboardingAdvancePorts {
    * `[*]` terminal). The adapter invokes the lifecycle-transition service (../services/lifecycle-transition
    * `transitionTenant({type:'activate', …})`) inside the tenant_account's optimistic-locked tx — which
    * itself re-checks the BAA-executed + >90d-to-expiry guards (§2.4.12) before flipping to `active`.
+   * Resolves `activated` (the lifecycle service ran the transition and alerted ops itself), `pending` (a guard
+   * refused or the call failed; tomorrow's pass retries) or `unbound` (no automatic activation; ops activates).
    */
   activateTenant(input: {
     tenantAccountId: string;
     orgId: string;
     tasksCompleted: number;
     tasksSkipped: number;
-  }): Promise<void>;
+  }): Promise<ActivationOutcome>;
 }
+
+export type ActivationOutcome = "activated" | "pending" | "unbound";
 
 /** What one advance pass did (for the worker's caller / the §2.3 funnel telemetry). */
 export interface OnboardingAdvanceReport {
@@ -292,6 +296,17 @@ async function applyEmit(
       return;
     }
     case "onboarding_completed": {
+      // The §2.3 `[*]` terminal: hand off to the lifecycle service to run `onboarding → active`
+      // (which re-checks the BAA guards, §2.4.12). The adapter wraps this in the optimistic-locked tx.
+      // "Completed" is announced only once the tenant is active (or when ops must activate by hand): a refused
+      // guard would otherwise repeat the event and alert on every daily pass.
+      const outcome = await ports.activateTenant({
+        tenantAccountId: cx.tenantAccountId,
+        orgId: cx.orgId,
+        tasksCompleted: emit.canonicalCompleted,
+        tasksSkipped: emit.canonicalSkipped,
+      });
+      if (outcome === "pending") return;
       await ports.publishOutbox({
         event: "m34.tenant.onboarding_completed",
         tenantAccountId: cx.tenantAccountId,
@@ -300,18 +315,13 @@ async function applyEmit(
         tasksCompleted: emit.canonicalCompleted,
         tasksSkipped: emit.canonicalSkipped,
       });
-      await ports.routeAlert({
-        alertKey: "tenant.onboarding_completed",
-        tenantAccountId: cx.tenantAccountId,
-      });
-      // The §2.3 `[*]` terminal: hand off to the lifecycle service to run `onboarding → active`
-      // (which re-checks the BAA guards, §2.4.12). The adapter wraps this in the optimistic-locked tx.
-      await ports.activateTenant({
-        tenantAccountId: cx.tenantAccountId,
-        orgId: cx.orgId,
-        tasksCompleted: emit.canonicalCompleted,
-        tasksSkipped: emit.canonicalSkipped,
-      });
+      // An activated tenant already raised `tenant.onboarding_completed` from the lifecycle transition.
+      if (outcome === "unbound") {
+        await ports.routeAlert({
+          alertKey: "tenant.onboarding_completed",
+          tenantAccountId: cx.tenantAccountId,
+        });
+      }
       cx.onCompleted();
       return;
     }

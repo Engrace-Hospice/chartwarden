@@ -12,6 +12,7 @@
 import { auditPlatformEvent } from "@wardenx/audit";
 import { type DbClient, schema } from "@wardenx/db";
 import {
+  type ActivationOutcome,
   type BaaExpirySweepResult,
   BaaRegisterRepository,
   type ExpiredSessionCandidate,
@@ -218,6 +219,48 @@ export async function runOnboardingFanOut(
 
 // ── live construction ────────────────────────────────────────────────────────────────────────────────
 
+/** Outcome of an automatic `onboarding → active` attempt; `reason` is the unmet lifecycle guard's code. */
+export type AutoActivationResult =
+  | { readonly activated: true }
+  | { readonly activated: false; readonly reason: string };
+
+/**
+ * The onboarding worker's `activateTenant` port: hand the tenant to the lifecycle service. An unmet guard (BAA not
+ * executed yet, BAA expiring within 90 days) is a normal "not yet" that tomorrow's sweep retries, and a failure must
+ * never throw into the org transaction that just wrote the completion event and alert, so both become warnings.
+ */
+export function buildActivateTenantPort(
+  activate:
+    | ((input: { tenantAccountId: string; orgId: string }) => Promise<AutoActivationResult>)
+    | undefined,
+  warn: ((message: string, context: Record<string, string>) => void) | undefined,
+): (input: { tenantAccountId: string; orgId: string }) => Promise<ActivationOutcome> {
+  return async ({ tenantAccountId, orgId }) => {
+    const context = { tenantAccountId, orgId };
+    if (!activate) {
+      warn?.(
+        "m34.onboarding_advance: all canonical steps settled but no activation is bound; activation left to platform ops",
+        context,
+      );
+      return "unbound";
+    }
+    try {
+      const result = await activate({ tenantAccountId, orgId });
+      if (result.activated) return "activated";
+      warn?.(
+        `m34.onboarding_advance: tenant not activated yet (${result.reason}); the next sweep retries`,
+        context,
+      );
+    } catch (err) {
+      warn?.(
+        `m34.onboarding_advance: automatic activation failed (${err instanceof Error ? err.message : String(err)}); the next sweep retries`,
+        context,
+      );
+    }
+    return "pending";
+  };
+}
+
 export interface PlatformSweepWorkerDeps {
   readonly connection: ConnectionOptions;
   /** Tenant-pool client (org-scoped onboarding work). */
@@ -230,6 +273,11 @@ export interface PlatformSweepWorkerDeps {
   readonly facts?: OnboardingFactReaders;
   readonly now?: () => Date;
   readonly warn?: (message: string, context: Record<string, string>) => void;
+  /** Runs `onboarding → active` through the lifecycle service once every canonical step settles (system actor). */
+  readonly activate?: (input: {
+    tenantAccountId: string;
+    orgId: string;
+  }) => Promise<AutoActivationResult>;
 }
 
 function platformTx<T>(
@@ -367,15 +415,7 @@ export function registerM34OnboardingAdvanceWorker(deps: PlatformSweepWorkerDeps
             correlationId: `m34-onboarding-${alert.alertKey}-${alert.tenantAccountId}-${alert.templateKey ?? "all"}-${now().toISOString().slice(0, 10)}`,
           });
         },
-        // BLOCKER (documented, not silent): `onboarding -> active` needs a lifecycle `activate` effect-runner and
-        // a system actor for the transition audit; neither exists (`applyTransition` has no activate caller).
-        // The completion event + alert above reach platform ops, who run the activation. Logged loudly.
-        activateTenant: async (a) => {
-          deps.warn?.(
-            "m34.onboarding_advance: all canonical steps settled; activation left to platform ops (no system-actor lifecycle activate path)",
-            { tenantAccountId: a.tenantAccountId, orgId: a.orgId },
-          );
-        },
+        activateTenant: buildActivateTenantPort(deps.activate, deps.warn),
       });
     });
   return new Worker(

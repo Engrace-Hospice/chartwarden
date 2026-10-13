@@ -6059,7 +6059,22 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       // GAP-163 - the three remaining M34 consumers. Platform sweeps run on the audited platform credential
       // (required by this block); onboarding is org-scoped on the tenant pool.
       const getM34AlertEmitter = () => getSeam("AlertEmitter") as AlertEmitter;
+      // Automatic `onboarding → active`: the same lifecycle machine and guards as the platform route, driven by the
+      // sweep under a system actor. It never enqueues, so its enqueue port refuses; the lifecycle alert goes through
+      // the same lazily-resolved M36 emitter as the sweep's own alerts.
+      const m34Activation = buildDrizzlePlatformService({
+        platformDb: platformDbHandle.db,
+        enqueue: {
+          enqueue: async () => {
+            throw new Error("the onboarding sweep's activation never enqueues a job");
+          },
+        },
+        auditBypass: m34PlatformBypassAuditor,
+        outbox: m34OutboxPublisher,
+      });
       const m34SweepDeps = {
+        activate: ({ tenantAccountId }: { tenantAccountId: string }) =>
+          m34Activation.activateOnboardedTenant(tenantAccountId),
         connection: queueConnection,
         db: dbHandle.db,
         platformDb: platformDbHandle.db,
