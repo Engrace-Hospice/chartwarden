@@ -138,15 +138,15 @@ function OrganizationStaffMessaging({
   const [errorCorrelationId, setErrorCorrelationId] = useState<string | null>(null);
   // WP 2.11: set when the open conversation was revoked, so the pane says so (never the title); cleared on the next pick.
   const [accessEnded, setAccessEnded] = useState(false);
-  // Leaving the access-ended notice hands focus to the inbox heading once the inbox is shown again.
+  // Leaving the access-ended notice or a thread (Back) hands focus to the inbox heading once the inbox is shown again.
   const inboxHeadingRef = useRef<HTMLHeadingElement>(null);
   const focusInboxAfterNotice = useRef(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
   useEffect(() => {
-    if (accessEnded || !focusInboxAfterNotice.current) return;
+    if (accessEnded || activeId !== null || !focusInboxAfterNotice.current) return;
     focusInboxAfterNotice.current = false;
     inboxHeadingRef.current?.focus();
-  }, [accessEnded]);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  }, [accessEnded, activeId]);
   const [newConversationOpen, setNewConversationOpen] = useState(false);
   const [departmentOpen, setDepartmentOpen] = useState(false);
   const [scheduledOpen, setScheduledOpen] = useState(requestedScheduled);
@@ -427,7 +427,10 @@ function OrganizationStaffMessaging({
               outbox={outbox}
               meId={userId}
               meDisplayName={userDisplayName}
-              onBack={() => setActiveId(null)}
+              onBack={() => {
+                focusInboxAfterNotice.current = true;
+                setActiveId(null);
+              }}
               onReadConfirmed={onReadConfirmed}
               onMessageSent={() => void loadChannels(true)}
               onAccessRevoked={onAccessRevoked}

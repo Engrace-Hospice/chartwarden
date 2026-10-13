@@ -52,7 +52,8 @@ export function ThreadHeader({
       ) : null}
       {onShowMembers ? (
         <button type="button" className="wx-messaging-context-toggle" onClick={onShowMembers}>
-          <Glyph name="users" size={16} /> Members
+          <Glyph name="users" size={16} />
+          <span className="wx-messaging-context-label">Members</span>
         </button>
       ) : null}
       {channel.kind === "care_team" && patient ? (
@@ -63,7 +64,8 @@ export function ThreadHeader({
           aria-controls="messaging-patient-context"
           onClick={onToggleContext}
         >
-          <Glyph name="user-circle" size={16} /> Patient context
+          <Glyph name="user-circle" size={16} />
+          <span className="wx-messaging-context-label">Patient context</span>
         </button>
       ) : null}
     </header>
