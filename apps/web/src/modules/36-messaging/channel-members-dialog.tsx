@@ -1,12 +1,16 @@
 // M36 WP 2.9 — who is in a department (discipline / location) channel, with add and remove. Offered to a holder of
 // messaging.manage_members; the server also applies the channel-level rule (org_admin, or a clinical lead for a
 // location channel of their own location), so a refusal is shown, not assumed.
-import { Button, LoadingSpinner, Modal, useApiClient } from "@wardenx/ui";
+import { Button, Modal, useApiClient } from "@wardenx/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
+import { AccessEndedNotice } from "./access-ended-notice";
+import { ChannelArchiveControl } from "./channel-archive-control";
 import type { DmStaffMember } from "./messaging-types";
-import { apiErrorMessage } from "./messaging-utils";
+import { apiErrorMessage, correlationIdOf } from "./messaging-utils";
+import { SkeletonRows } from "./skeleton-rows";
 import "./announcements.css";
+import "./channel-lifecycle.css";
 
 interface Member {
   userId: string;
@@ -19,15 +23,25 @@ export function ChannelMembersDialog({
   channelTitle,
   open,
   onClose,
+  canArchive = false,
+  archived = false,
+  onChanged = () => {},
 }: {
   channelId: string;
   channelTitle: string;
   open: boolean;
   onClose: () => void;
+  /** An org admin on an archivable (discipline / location) channel. */
+  canArchive?: boolean;
+  archived?: boolean;
+  /** Called after an archive / unarchive so the channel list is re-read. */
+  onChanged?: () => void;
 }): JSX.Element {
   const client = useApiClient();
   const [members, setMembers] = useState<Member[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadCorrelationId, setLoadCorrelationId] = useState<string | null>(null);
+  const [forbidden, setForbidden] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [candidates, setCandidates] = useState<DmStaffMember[]>([]);
@@ -40,15 +54,25 @@ export function ChannelMembersDialog({
   const loadMembers = useCallback(async (): Promise<void> => {
     const attempt = ++sequence.current;
     try {
-      const { data, error } = await client.GET("/api/v1/messaging/channels/{id}", {
-        params: { path: { id: channelId } },
-      });
+      const { data, error, response } = await client.GET(
+        "/api/v1/messaging/channels/{id}/members",
+        {
+          params: { path: { id: channelId } },
+        },
+      );
       if (attempt !== sequence.current) return;
-      if (error || !data) {
-        setLoadError(apiErrorMessage(error, "The member list could not be loaded."));
+      if (response?.status === 403) {
+        setForbidden(true);
         return;
       }
+      if (error || !data) {
+        setLoadError(apiErrorMessage(error, "The member list could not be loaded."));
+        setLoadCorrelationId(correlationIdOf(error));
+        return;
+      }
+      setForbidden(false);
       setLoadError(null);
+      setLoadCorrelationId(null);
       setMembers(
         data.members.map((member) => ({
           userId: member.userId,
@@ -64,6 +88,7 @@ export function ChannelMembersDialog({
   useEffect(() => {
     if (!open) return;
     setMembers(null);
+    setForbidden(false);
     setActionError(null);
     void loadMembers();
     return () => {
@@ -115,111 +140,126 @@ export function ChannelMembersDialog({
   }
 
   return (
-    <Modal open={open} onClose={onClose} ariaLabel={`Members of ${channelTitle}`} width="34rem">
-      <div className="wx-new-conversation wx-channel-members">
-        <header>
-          <h2>Members</h2>
-          <p>
-            People who can read and write in <strong>{channelTitle}</strong>.
-          </p>
-        </header>
-        {loadError ? (
-          <div role="alert" className="wx-conversation-picker-state">
-            <span>{loadError}</span>
-            <Button size="sm" tone="secondary" onClick={() => void loadMembers()}>
-              Retry
+    <Modal
+      open={open}
+      onClose={onClose}
+      ariaLabel={forbidden ? "Members" : `Members of ${channelTitle}`}
+      width="34rem"
+    >
+      {forbidden ? (
+        <AccessEndedNotice />
+      ) : (
+        <div className="wx-new-conversation wx-channel-members">
+          <header>
+            <h2>Members</h2>
+            <p>
+              People who can read and write in <strong>{channelTitle}</strong>.
+            </p>
+          </header>
+          {loadError ? (
+            <div role="alert" className="wx-channel-members-state">
+              <span>{loadError}</span>
+              {loadCorrelationId ? <small>Reference {loadCorrelationId}</small> : null}
+              <Button size="sm" tone="secondary" onClick={() => void loadMembers()}>
+                Retry
+              </Button>
+            </div>
+          ) : members === null ? (
+            <SkeletonRows label="Loading members" />
+          ) : (
+            <ul aria-label="Channel members">
+              {members.map((member) => (
+                <li key={member.userId}>
+                  <span>
+                    {member.displayName} <small>{member.role}</small>
+                  </span>
+                  <Button
+                    size="sm"
+                    tone="secondary"
+                    disabled={busy}
+                    aria-label={`Remove ${member.displayName}`}
+                    onClick={() =>
+                      void change(
+                        () =>
+                          client.DELETE("/api/v1/messaging/channels/{id}/members/{userId}", {
+                            params: { path: { id: channelId, userId: member.userId } },
+                          }),
+                        "The member could not be removed.",
+                      )
+                    }
+                  >
+                    Remove
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="wx-channel-members-add">
+            <label>
+              <span>Find staff</span>
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search by name or email…"
+              />
+            </label>
+            <label>
+              <span>Add to channel</span>
+              <select
+                value={selected?.userId ?? ""}
+                disabled={busy || addable.length === 0}
+                onChange={(event) => setCandidateId(event.target.value)}
+              >
+                {addable.length === 0 ? <option value="">No staff to add</option> : null}
+                {addable.map((person) => (
+                  <option key={person.userId} value={person.userId}>
+                    {person.displayName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Button
+              disabled={busy || !selected}
+              onClick={() =>
+                selected &&
+                void change(
+                  () =>
+                    client.POST("/api/v1/messaging/channels/{id}/members", {
+                      params: { path: { id: channelId } },
+                      body: { userId: selected.userId },
+                    }),
+                  "The member could not be added.",
+                )
+              }
+            >
+              Add
             </Button>
           </div>
-        ) : members === null ? (
-          <output className="wx-conversation-picker-state">
-            <LoadingSpinner label="Loading members" />
-          </output>
-        ) : (
-          <ul aria-label="Channel members">
-            {members.map((member) => (
-              <li key={member.userId}>
-                <span>
-                  {member.displayName} <small>{member.role}</small>
-                </span>
-                <Button
-                  size="sm"
-                  tone="secondary"
-                  disabled={busy}
-                  aria-label={`Remove ${member.displayName}`}
-                  onClick={() =>
-                    void change(
-                      () =>
-                        client.DELETE("/api/v1/messaging/channels/{id}/members/{userId}", {
-                          params: { path: { id: channelId, userId: member.userId } },
-                        }),
-                      "The member could not be removed.",
-                    )
-                  }
-                >
-                  Remove
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-        <div className="wx-channel-members-add">
-          <label>
-            <span>Find staff</span>
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search by name or email…"
+          {candidateError ? (
+            <div role="alert" className="wx-messaging-error">
+              Staff could not be searched. Try again.
+            </div>
+          ) : null}
+          {actionError ? (
+            <div role="alert" className="wx-messaging-error">
+              {actionError}
+            </div>
+          ) : null}
+          {canArchive ? (
+            <ChannelArchiveControl
+              channelId={channelId}
+              archived={archived}
+              onChanged={onChanged}
             />
-          </label>
-          <label>
-            <span>Add to channel</span>
-            <select
-              value={selected?.userId ?? ""}
-              disabled={busy || addable.length === 0}
-              onChange={(event) => setCandidateId(event.target.value)}
-            >
-              {addable.length === 0 ? <option value="">No staff to add</option> : null}
-              {addable.map((person) => (
-                <option key={person.userId} value={person.userId}>
-                  {person.displayName}
-                </option>
-              ))}
-            </select>
-          </label>
-          <Button
-            disabled={busy || !selected}
-            onClick={() =>
-              selected &&
-              void change(
-                () =>
-                  client.POST("/api/v1/messaging/channels/{id}/members", {
-                    params: { path: { id: channelId } },
-                    body: { userId: selected.userId },
-                  }),
-                "The member could not be added.",
-              )
-            }
-          >
-            Add
-          </Button>
+          ) : null}
+          <footer>
+            <Button tone="secondary" onClick={onClose}>
+              Close
+            </Button>
+          </footer>
         </div>
-        {candidateError ? (
-          <div role="alert" className="wx-messaging-error">
-            Staff could not be searched. Try again.
-          </div>
-        ) : null}
-        {actionError ? (
-          <div role="alert" className="wx-messaging-error">
-            {actionError}
-          </div>
-        ) : null}
-        <footer>
-          <Button tone="secondary" onClick={onClose}>
-            Close
-          </Button>
-        </footer>
-      </div>
+      )}
     </Modal>
   );
 }

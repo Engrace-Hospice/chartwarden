@@ -96,7 +96,7 @@ function ConversationThreadView({
   canManageMembers = false,
 }: ConversationThreadProps & { outbox: Outbox }): JSX.Element {
   const client = useApiClient();
-  const tools = useAnnouncementTools(channel, canAnnounce, canManageMembers);
+  const tools = useAnnouncementTools(channel, canAnnounce, canManageMembers, onMessageSent);
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [olderCursor, setOlderCursor] = useState<string | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);

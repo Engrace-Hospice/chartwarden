@@ -6,6 +6,7 @@
 //  - a holder of messaging.manage_members sees "Members" on a department (discipline / location) channel.
 import { useState } from "react";
 import type { JSX } from "react";
+import { useSession } from "../../shell/session";
 import { useAnnouncementReceipts } from "./announcement-receipts";
 import { ChannelMembersDialog } from "./channel-members-dialog";
 import type { ChannelSummary } from "./messaging-types";
@@ -25,7 +26,9 @@ export function useAnnouncementTools(
   channel: ChannelSummary,
   canAnnounce: boolean,
   canManageMembers: boolean,
+  onChannelChanged: () => void = () => {},
 ): AnnouncementTools {
+  const isAdmin = useSession()?.isAdmin ?? false;
   const receipts = useAnnouncementReceipts();
   const [membersOpen, setMembersOpen] = useState(false);
   const announcement = channel.kind === "announcement";
@@ -45,6 +48,9 @@ export function useAnnouncementTools(
             channelTitle={channelLabel(channel)}
             open={membersOpen}
             onClose={() => setMembersOpen(false)}
+            canArchive={isAdmin}
+            archived={Boolean(channel.archivedAt)}
+            onChanged={onChannelChanged}
           />
         ) : null}
       </>
