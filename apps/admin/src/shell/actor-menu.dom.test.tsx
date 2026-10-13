@@ -19,6 +19,8 @@ describe("ActorMenu trigger", () => {
       </MemoryRouter>,
     );
     const trigger = screen.getByRole("button", { name: /Ada Administrator/ });
-    expect(trigger.getAttribute("aria-label")).toBe("Ada Administrator, account menu");
+    expect(trigger.getAttribute("aria-label")).toBe(
+      "Ada Administrator, Platform operations, account menu",
+    );
   });
 });

@@ -166,7 +166,7 @@ export function ActorMenu({ session }: { session: Session | null }): JSX.Element
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         // The name text is display:none below 768px, so the button names itself (label-in-name keeps the visible name).
-        aria-label={`${displayName}, account menu`}
+        aria-label={`${displayName}, Platform operations, account menu`}
       >
         <span className="wx-actor-avatar" aria-hidden>
           {initials(displayName)}

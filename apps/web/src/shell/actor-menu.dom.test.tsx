@@ -11,6 +11,7 @@ const SESSION = {
   organizationId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
   organizationName: "North Hospice",
   displayName: "Ada Administrator",
+  isAdmin: true,
 } as Session;
 
 describe("ActorMenu trigger", () => {
@@ -21,6 +22,19 @@ describe("ActorMenu trigger", () => {
       </MemoryRouter>,
     );
     const trigger = screen.getByRole("button", { name: /Ada Administrator/ });
-    expect(trigger.getAttribute("aria-label")).toBe("Ada Administrator, account menu");
+    expect(trigger.getAttribute("aria-label")).toBe(
+      "Ada Administrator, Administrator, account menu",
+    );
+  });
+
+  it("omits the role segment when the actor has no role line", () => {
+    render(
+      <MemoryRouter>
+        <ActorMenu session={{ ...SESSION, isAdmin: false, roles: [] }} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("button", { name: /Ada/ }).getAttribute("aria-label")).toBe(
+      "Ada Administrator, account menu",
+    );
   });
 });
