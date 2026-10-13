@@ -816,6 +816,26 @@ export function createInMemoryMessagingService(
       return [...staff, ...patient];
     },
 
+    async searchMentionNonMembers(orgId, userId, channelId, query) {
+      const channel = channelOr404(orgId, channelId);
+      if (!(await this.canViewChannel(orgId, userId, channelId))) {
+        throw new NotFoundError("channel", channelId);
+      }
+      const needle = query.trim().toLowerCase();
+      if (channel.kind === "dm" || channel.kind === "announcement" || needle.length < 2) return [];
+      return [...eligibleStaff.values()]
+        .filter(
+          (member) =>
+            member.orgId === orgId &&
+            member.userId !== userId &&
+            !channel.members.has(member.userId) &&
+            (member.status ?? "active") === "active" &&
+            member.displayName.toLowerCase().includes(needle),
+        )
+        .slice(0, 10)
+        .map((member) => ({ entityId: member.userId, displayName: member.displayName }));
+    },
+
     async openDm(orgId, userId, peerUserId) {
       if (peerUserId === userId) {
         throw new ConflictError("cannot open a DM with yourself");

@@ -1278,6 +1278,8 @@ import {
   ListThreadQuerySchema as M36ListThreadQuerySchema,
   MentionCandidateQuerySchema as M36MentionCandidateQuerySchema,
   MentionCandidateResponseSchema as M36MentionCandidateResponseSchema,
+  MentionNonMemberQuerySchema as M36MentionNonMemberQuerySchema,
+  MentionNonMemberResponseSchema as M36MentionNonMemberResponseSchema,
   MessageListResponseSchema as M36MessageListResponseSchema,
   NotificationPreferencesResponseSchema as M36NotificationPreferencesResponseSchema,
   OpenCareTeamConversationResponseSchema as M36OpenCareTeamConversationResponseSchema,
@@ -9000,6 +9002,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Search staff and the linked patient eligible for a structured reference",
     query: M36MentionCandidateQuerySchema,
     response: M36MentionCandidateResponseSchema,
+  },
+  "GET /api/v1/messaging/channels/:id/mention-non-members": {
+    summary:
+      "Search colleagues who are not in this conversation (names only; canAdd tells whether the caller may add them)",
+    query: M36MentionNonMemberQuerySchema,
+    response: M36MentionNonMemberResponseSchema,
   },
   "POST /api/v1/messaging/channels/:id/messages": {
     summary:

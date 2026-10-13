@@ -15,9 +15,27 @@ function requireId(payload: Record<string, unknown>, key: string): string {
   return value;
 }
 
+const FALLBACK_SENDER = "A colleague";
+const MAX_SENDER_NAME_LENGTH = 80;
+const ASCII_CONTROL_LIMIT = 0x20;
+const ASCII_DELETE = 0x7f;
+
+/** WP 2.3 (PROVISIONAL wording): the sender's display name is the only variable; no body, channel or patient text. */
+export function mentionNotificationText(displayName: string | null | undefined): string {
+  const safe = [...(displayName ?? "")]
+    .filter((char) => {
+      const code = char.codePointAt(0) ?? 0;
+      return code >= ASCII_CONTROL_LIMIT && code !== ASCII_DELETE;
+    })
+    .join("")
+    .trim();
+  return `${safe.slice(0, MAX_SENDER_NAME_LENGTH) || FALLBACK_SENDER} mentioned you in a conversation`;
+}
+
 export function buildM36MessageMentionConsumer(deps: {
   readonly alerts: AlertEmitter;
   readonly messaging: Pick<MessagingRouteService, "canViewChannel">;
+  readonly actorDisplayName: (orgId: string, userId: string) => Promise<string | null>;
 }): OutboxConsumerBinding {
   return {
     consumerName: M36_MESSAGE_MENTION_CONSUMER,
@@ -46,7 +64,9 @@ export function buildM36MessageMentionConsumer(deps: {
           mentionedUserId,
           channelId,
           messageId,
-          message: "You were mentioned in a secure conversation.",
+          message: mentionNotificationText(
+            await deps.actorDisplayName(event.organizationId, actorUserId),
+          ),
           deepLink: `/messaging?channelId=${encodeURIComponent(channelId)}&messageId=${encodeURIComponent(messageId)}`,
         },
       });

@@ -13370,6 +13370,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/mention-non-members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search colleagues who are not in this conversation (names only; canAdd tells whether the caller may add them) */
+        get: operations["getApiV1MessagingChannelsByIdMentionnonmembers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/channels/{id}/messages": {
         parameters: {
             query?: never;
@@ -62103,6 +62120,38 @@ export interface operations {
                             displayName: string;
                             detail: string | null;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingChannelsByIdMentionnonmembers: {
+        parameters: {
+            query?: {
+                q?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        people: {
+                            entityId: string;
+                            displayName: string;
+                        }[];
+                        canAdd: boolean;
                     };
                 };
             };

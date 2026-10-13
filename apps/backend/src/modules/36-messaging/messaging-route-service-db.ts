@@ -81,6 +81,7 @@ import {
   generateVerificationCode,
   hashVerificationCode,
 } from "./endpoint-verification";
+import { createDbMentionNonMemberSearch } from "./mention-non-member-service-db";
 import { publishMessageHint } from "./message-hint-events";
 import { MESSAGE_ROW_COLUMNS, hydrateMessages } from "./messaging-message-hydration";
 import {
@@ -834,6 +835,8 @@ export function createDbMessagingRouteService(
       outbox: opts.outbox,
       hydrationContext,
     }),
+    // WP 2.3: non-member mention lookup (names only) lives in its own module.
+    ...createDbMentionNonMemberSearch({ db, canViewChannel: canViewChannelFor }),
     // ── channels & messages (§4.2; reads) ─────────────────────────────────────────────────────
     async listChannels(orgId, userId): Promise<ChannelSummary[]> {
       const candidates = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {

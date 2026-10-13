@@ -50,6 +50,7 @@ import {
   ListThreadQuerySchema,
   MemberParamsSchema,
   MentionCandidateQuerySchema,
+  MentionNonMemberQuerySchema,
   MessageParamsSchema,
   OpenDmBodySchema,
   PatientConversationParamsSchema,
@@ -318,6 +319,48 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
       };
     },
   );
+
+  // WP 2.3: colleagues who are NOT in this conversation, for the composer's "Add <name>?" prompt. Names only; the
+  // lookup never reveals thread content and a mention of a non-member is never persisted (sendMessage refuses it).
+  // `canAdd` mirrors the member-management route's two checks, so the UI only offers what addMember will accept.
+  app.get(
+    "/api/v1/messaging/channels/:id/mention-non-members",
+    {
+      preHandler: [SEND, SEND_TO_CHANNEL],
+      config: {
+        auditRead: {
+          none: "minimum-necessary staff names for the composer add-member prompt; no message or patient data",
+        },
+      },
+    },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(ChannelParamsSchema, request.params);
+      const { q } = parse(MentionNonMemberQuerySchema, request.query);
+      const people = await service.searchMentionNonMembers(
+        organizationId,
+        userId,
+        id,
+        q?.trim() ?? "",
+      );
+      const canAdd = await mayAddMembers(request, reply, organizationId, id);
+      return { people, canAdd };
+    },
+  );
+
+  async function mayAddMembers(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    organizationId: string,
+    channelId: string,
+  ): Promise<boolean> {
+    try {
+      await MANAGE_MEMBERS(request, reply);
+    } catch {
+      return false;
+    }
+    return service.canManageMembers(organizationId, memberAdminActorOf(request.context), channelId);
+  }
 
   // --- post a message (messaging.send + channel_visibility ABAC) -----------------------------
   app.post(

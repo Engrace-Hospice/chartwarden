@@ -24,6 +24,7 @@ describe("M36 structured mention consumer", () => {
     const consumer = buildM36MessageMentionConsumer({
       alerts: { emit } as unknown as AlertEmitter,
       messaging: { canViewChannel },
+      actorDisplayName: vi.fn().mockResolvedValue("Nurse One"),
     });
 
     await consumer.handle(event());
@@ -36,6 +37,7 @@ describe("M36 structured mention consumer", () => {
         correlationId: "message-mention:message-1:user-2",
         payload: expect.objectContaining({
           mentionedUserId: "user-2",
+          message: "Nurse One mentioned you in a conversation",
           deepLink: "/messaging?channelId=channel-1&messageId=message-1",
         }),
       }),
@@ -43,11 +45,42 @@ describe("M36 structured mention consumer", () => {
     expect(JSON.stringify(emit.mock.calls)).not.toContain("body");
   });
 
+  it("falls back to a neutral sender when the display name is unknown or unsafe", async () => {
+    const emit = vi.fn().mockResolvedValue({});
+    for (const name of [null, "   ", "\u0000\u0007"]) {
+      const consumer = buildM36MessageMentionConsumer({
+        alerts: { emit } as unknown as AlertEmitter,
+        messaging: { canViewChannel: vi.fn().mockResolvedValue(true) },
+        actorDisplayName: vi.fn().mockResolvedValue(name),
+      });
+      await consumer.handle(event());
+    }
+    for (const call of emit.mock.calls) {
+      expect(call[1].payload.message).toBe("A colleague mentioned you in a conversation");
+    }
+  });
+
+  it("never puts the message body, channel or patient into the notification text", async () => {
+    const emit = vi.fn().mockResolvedValue({});
+    const consumer = buildM36MessageMentionConsumer({
+      alerts: { emit } as unknown as AlertEmitter,
+      messaging: { canViewChannel: vi.fn().mockResolvedValue(true) },
+      actorDisplayName: vi.fn().mockResolvedValue("Nurse One"),
+    });
+    await consumer.handle(
+      event({ body: "Mrs Smith MRN 123 is declining", patientName: "Mrs Smith" }),
+    );
+    const text = JSON.stringify(emit.mock.calls);
+    expect(text).not.toContain("Smith");
+    expect(text).not.toContain("MRN");
+  });
+
   it("fails closed when membership or clinical access was revoked", async () => {
     const emit = vi.fn();
     const consumer = buildM36MessageMentionConsumer({
       alerts: { emit } as unknown as AlertEmitter,
       messaging: { canViewChannel: vi.fn().mockResolvedValue(false) },
+      actorDisplayName: vi.fn(),
     });
     await consumer.handle(event());
     expect(emit).not.toHaveBeenCalled();
@@ -59,6 +92,7 @@ describe("M36 structured mention consumer", () => {
     const consumer = buildM36MessageMentionConsumer({
       alerts: { emit } as unknown as AlertEmitter,
       messaging: { canViewChannel },
+      actorDisplayName: vi.fn(),
     });
     await consumer.handle(event({ mentionedUserId: "user-1" }));
     expect(canViewChannel).not.toHaveBeenCalled();

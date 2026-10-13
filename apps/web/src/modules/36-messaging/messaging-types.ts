@@ -88,6 +88,16 @@ export interface MentionCandidate {
   detail: string | null;
 }
 
+/** WP 2.3: a colleague who is not in the conversation. Never persisted as a reference; choosing it opens the add prompt. */
+export interface NonMemberOption {
+  kind: "not_member";
+  entityId: string;
+  displayName: string;
+  detail: string | null;
+}
+
+export type MentionOption = MentionCandidate | NonMemberOption;
+
 export interface DmStaffMember {
   userId: string;
   displayName: string;
