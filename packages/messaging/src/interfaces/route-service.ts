@@ -333,6 +333,12 @@ export interface MessagingRouteService extends MessageReactionPinService, Messag
     orgId: string,
     input: { channelId: string; actor: MemberAdminActor },
   ): Promise<void>;
+  /** Unarchive a channel (POST /channels/:id/unarchive): the inverse of archiveChannel, same guards and kind policy.
+   *  Idempotent: a live channel stays live, no write. Clears is_archived and archives_at. */
+  unarchiveChannel(
+    orgId: string,
+    input: { channelId: string; actor: MemberAdminActor },
+  ): Promise<void>;
   /** The `channel_member_admin` predicate's resolver (§4.5 `location_membership`): fail-closed
    *  `false` for an unknown / cross-org channel. */
   canManageMembers(orgId: string, actor: MemberAdminActor, channelId: string): Promise<boolean>;

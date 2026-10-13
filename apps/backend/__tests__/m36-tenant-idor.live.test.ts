@@ -140,6 +140,7 @@ const ROUTES: Record<string, Verdict> = {
   // Admin screens PR 1a: org_admin member list + archive; attacked in m36-channel-admin.live.test.ts.
   "GET /api/v1/messaging/channels/:id/members": { kind: "idor" },
   "POST /api/v1/messaging/channels/:id/archive": { kind: "idor" },
+  "POST /api/v1/messaging/channels/:id/unarchive": { kind: "idor" },
   "POST /api/v1/messaging/channels/:id/members": { kind: "idor" },
   "DELETE /api/v1/messaging/channels/:id/members/:userId": { kind: "idor" },
   "POST /api/v1/messaging/announce": { kind: "scoped" },
@@ -1879,6 +1880,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         ],
         ["GET /api/v1/messaging/channels/:id/members", adminB, { id: locA }],
         ["POST /api/v1/messaging/channels/:id/archive", adminB, { id: locA }],
+        ["POST /api/v1/messaging/channels/:id/unarchive", adminB, { id: locA }],
         ["POST /api/v1/messaging/announce", outsider, {}, { body: "x" }],
         ["POST /api/v1/messaging/dm", bUser, {}, { userId: u1.userId }],
         [
@@ -1898,6 +1900,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         ["PATCH /api/v1/alert-rules/:id", adminB, { id: ruleA }, { enabled: true }],
         ["GET /api/v1/messaging/channels/:id/members", adminB, { id: locA }],
         ["POST /api/v1/messaging/channels/:id/archive", adminB, { id: locA }],
+        ["POST /api/v1/messaging/channels/:id/unarchive", adminB, { id: locA }],
       ];
       for (const [route, who, params, payload] of replay) {
         const res = await call(route, who, params, payload);

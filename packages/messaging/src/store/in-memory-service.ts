@@ -1010,6 +1010,12 @@ export function createInMemoryMessagingService(
       ch.archivedAt ??= iso();
     },
 
+    async unarchiveChannel(orgId, input) {
+      const ch = channelOr404(orgId, input.channelId);
+      assertMayArchiveChannel(input.actor, ch.kind, "unarchive");
+      ch.archivedAt = null;
+    },
+
     async removeMember(orgId, input) {
       const ch = channelOr404(orgId, input.channelId);
       await assertMayManage(orgId, input.actor, ch);

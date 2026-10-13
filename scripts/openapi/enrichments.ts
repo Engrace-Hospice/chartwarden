@@ -1253,14 +1253,6 @@ import {
   DraftResponseSchema as M36DraftResponseSchema,
   SaveDraftBodySchema as M36SaveDraftBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/draft-typebox";
-import {
-  CancelScheduledResponseSchema as M36CancelScheduledResponseSchema,
-  CreateScheduledBodySchema as M36CreateScheduledBodySchema,
-  RescheduleBodySchema as M36RescheduleBodySchema,
-  ScheduledListQuerySchema as M36ScheduledListQuerySchema,
-  ScheduledListResponseSchema as M36ScheduledListResponseSchema,
-  ScheduledMessageViewSchema as M36ScheduledMessageViewSchema,
-} from "../../apps/backend/src/modules/36-messaging/routes/scheduled-send-typebox";
 // ── M36 Secure Messaging & Alerts — request + response schema imports (all M36-aliased) ──
 import {
   // request schemas (query / body) — reused as-is
@@ -1268,7 +1260,6 @@ import {
   // §4.2 response DTOs (added this task, pinned by Conforms to the route-service views)
   AlertInboxResponseSchema as M36AlertInboxResponseSchema,
   AlertRuleListResponseSchema as M36AlertRuleListResponseSchema,
-  ChannelMembersResponseSchema as M36ChannelMembersResponseSchema,
   AlertRulePatchSchema as M36AlertRulePatchSchema,
   AlertRuleResponseSchema as M36AlertRuleResponseSchema,
   AnnounceBodySchema as M36AnnounceBodySchema,
@@ -1278,6 +1269,7 @@ import {
   AuthorizeAttachmentResponseSchema as M36AuthorizeAttachmentResponseSchema,
   ChannelDetailResponseSchema as M36ChannelDetailResponseSchema,
   ChannelListResponseSchema as M36ChannelListResponseSchema,
+  ChannelMembersResponseSchema as M36ChannelMembersResponseSchema,
   DeliveryEndpointResponseSchema as M36DeliveryEndpointResponseSchema,
   DmStaffSearchQuerySchema as M36DmStaffSearchQuerySchema,
   DmStaffSearchResponseSchema as M36DmStaffSearchResponseSchema,
@@ -1308,6 +1300,14 @@ import {
   PinResponseSchema as M36PinResponseSchema,
   SetReactionResponseSchema as M36SetReactionResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/reaction-pin-typebox";
+import {
+  CancelScheduledResponseSchema as M36CancelScheduledResponseSchema,
+  CreateScheduledBodySchema as M36CreateScheduledBodySchema,
+  RescheduleBodySchema as M36RescheduleBodySchema,
+  ScheduledListQuerySchema as M36ScheduledListQuerySchema,
+  ScheduledListResponseSchema as M36ScheduledListResponseSchema,
+  ScheduledMessageViewSchema as M36ScheduledMessageViewSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/scheduled-send-typebox";
 import {
   SearchMessagesQuerySchema as M36SearchMessagesQuerySchema,
   SearchMessagesResponseSchema as M36SearchMessagesResponseSchema,
@@ -9168,6 +9168,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/messaging/channels/:id/archive": {
     summary:
       "Archive a discipline/location channel (org_admin only; 204, idempotent; 409 CHANNEL_LIFECYCLE_MANAGED for care_team/bereavement/on_call/announcement; 403 for a DM)",
+  },
+  "POST /api/v1/messaging/channels/:id/unarchive": {
+    summary:
+      "Unarchive a discipline/location channel (org_admin only; 204, idempotent; 409 CHANNEL_LIFECYCLE_MANAGED for care_team/bereavement/on_call/announcement; 403 for a DM)",
   },
   "POST /api/v1/messaging/channels/:id/members": {
     summary: "Add a manual member (admin override on auto channels; 204)",

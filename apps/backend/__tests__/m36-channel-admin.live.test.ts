@@ -100,6 +100,12 @@ describe.skipIf(!DB_URL)("M36 channel admin (members list + archive) — LIVE Po
       url: `/api/v1/messaging/channels/${id}/archive`,
       headers: headers(who),
     });
+  const unarchive = (who: Who, id: string) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/messaging/channels/${id}/unarchive`,
+      headers: headers(who),
+    });
   const q = async (sql: string, params: unknown[] = []) => (await admin.query(sql, params)).rows;
 
   const seedUser = async (
@@ -383,6 +389,97 @@ describe.skipIf(!DB_URL)("M36 channel admin (members list + archive) — LIVE Po
     });
   });
 
+  describe("POST /channels/:id/unarchive", () => {
+    const auditCount = async (id: string) =>
+      (
+        await q(
+          `SELECT count(*)::int AS n FROM audit_event WHERE organization_id=$1 AND resource_id=$2`,
+          [orgA, id],
+        )
+      )[0].n as number;
+    const send = (who: Who, id: string) =>
+      app.inject({
+        method: "POST",
+        url: `/api/v1/messaging/channels/${id}/messages`,
+        headers: { ...headers(who), "idempotency-key": randomUUID() },
+        payload: { body: "hello" },
+      });
+
+    it("round trip: archive -> send 410 -> unarchive 204 (audited, real actor, archives_at cleared) -> send works", async () => {
+      const subject = randomUUID();
+      const ch = await mkChannel("discipline", "care_related", subject);
+      await addMember(ch, activeMember);
+      expect((await archive(adminA, ch)).statusCode).toBe(204);
+      expect((await send(activeMember, ch)).statusCode).toBe(410);
+
+      const before = await auditCount(ch);
+      expect((await unarchive(adminA, ch)).statusCode).toBe(204);
+      const row = (await q(`SELECT is_archived, archives_at FROM channel WHERE id=$1`, [ch]))[0];
+      expect(row.is_archived).toBe(false);
+      expect(row.archives_at).toBeNull();
+      expect(await auditCount(ch)).toBeGreaterThan(before);
+      const updates = await q(
+        `SELECT actor_user_id::text AS actor FROM audit_event WHERE organization_id=$1 AND resource_id=$2 AND event_type='channel.update'`,
+        [orgA, ch],
+      );
+      expect(updates).toEqual([{ actor: adminA.userId }, { actor: adminA.userId }]); // archive + unarchive
+      expect((await send(activeMember, ch)).statusCode).toBe(201);
+    });
+
+    it("is idempotent: unarchiving a live channel is 204 with no write and no audit row", async () => {
+      const ch = await mkChannel("location", "care_related", randomUUID());
+      const before = await auditCount(ch);
+      expect((await unarchive(adminA, ch)).statusCode).toBe(204);
+      expect((await unarchive(adminA, ch)).statusCode).toBe(204);
+      expect(await auditCount(ch)).toBe(before);
+    });
+
+    it("a second unarchive after a real one writes no second audit row", async () => {
+      const ch = await mkChannel("location", "care_related", randomUUID());
+      expect((await archive(adminA, ch)).statusCode).toBe(204);
+      expect((await unarchive(adminA, ch)).statusCode).toBe(204);
+      const after = await auditCount(ch);
+      expect((await unarchive(adminA, ch)).statusCode).toBe(204);
+      expect(await auditCount(ch)).toBe(after);
+    });
+
+    it("refuses org B, a clinician, a DM, an unknown id; and a clinical_lead who passes the predicate (403)", async () => {
+      const ch = await mkChannel("location", "care_related", randomUUID());
+      await q(`UPDATE channel SET is_archived=true, archives_at=now() WHERE id=$1`, [ch]);
+      const lead = {
+        ...clinicalLeadA,
+        locations: (await q(`SELECT subject_id FROM channel WHERE id=$1`, [ch]))[0].subject_id,
+      };
+      expect((await get(lead, ch)).statusCode).toBe(200); // passes channel_member_admin
+      expect((await unarchive(lead, ch)).statusCode).toBe(403);
+      expect((await unarchive(adminB, ch)).statusCode).toBe(403);
+      expect((await unarchive(clinicianA, ch)).statusCode).toBe(403);
+      expect((await unarchive(adminA, dmA)).statusCode).toBe(403);
+      expect((await unarchive(adminA, randomUUID())).statusCode).toBe(403);
+      expect((await q(`SELECT is_archived FROM channel WHERE id=$1`, [ch]))[0].is_archived).toBe(
+        true,
+      );
+    });
+
+    it("refuses lifecycle-managed kinds (incl. a care_team archived by discharge) with 409 and leaves them archived", async () => {
+      await q(`UPDATE channel SET is_archived=true, archives_at=now() WHERE id=ANY($1)`, [
+        [careTeamA, announcementA],
+      ]);
+      for (const id of [careTeamA, announcementA]) {
+        const res = await unarchive(adminA, id);
+        expect(res.statusCode).toBe(409);
+        expect(res.json().error.code).toBe("CHANNEL_LIFECYCLE_MANAGED");
+      }
+      const rows = await q(`SELECT is_archived FROM channel WHERE id=ANY($1)`, [
+        [careTeamA, announcementA],
+      ]);
+      expect(rows.every((r) => r.is_archived === true)).toBe(true);
+      await q(`UPDATE channel SET is_archived=false, archives_at=null WHERE id=ANY($1)`, [
+        [careTeamA, announcementA],
+      ]);
+    });
+  });
+
   describe("RLS as wardenx_app with app.org_id = B", () => {
     const asOrgB = async <T>(fn: (c: Client) => Promise<T>): Promise<T> => {
       const c = new Client({ connectionString: appUrl });
@@ -405,6 +502,14 @@ describe.skipIf(!DB_URL)("M36 channel admin (members list + archive) — LIVE Po
       };
       await expect(service.listMembers(orgB, actor, locFresh)).rejects.toThrow();
       await expect(service.archiveChannel(orgB, { channelId: locFresh, actor })).rejects.toThrow();
+      await q(`UPDATE channel SET is_archived=true WHERE id=$1`, [locFresh]);
+      await expect(
+        service.unarchiveChannel(orgB, { channelId: locFresh, actor }),
+      ).rejects.toThrow();
+      expect(
+        (await q(`SELECT is_archived FROM channel WHERE id=$1`, [locFresh]))[0].is_archived,
+      ).toBe(true);
+      await q(`UPDATE channel SET is_archived=false WHERE id=$1`, [locFresh]);
       expect(
         (await q(`SELECT is_archived FROM channel WHERE id=$1`, [locFresh]))[0].is_archived,
       ).toBe(false);

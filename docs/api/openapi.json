@@ -160425,6 +160425,36 @@
         }
       }
     },
+    "/api/v1/messaging/channels/{id}/unarchive": {
+      "post": {
+        "operationId": "postApiV1MessagingChannelsByIdUnarchive",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Unarchive a discipline/location channel (org_admin only; 204, idempotent; 409 CHANNEL_LIFECYCLE_MANAGED for care_team/bereavement/on_call/announcement; 403 for a DM)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/department-channels": {
       "post": {
         "operationId": "postApiV1MessagingDepartmentchannels",

@@ -1900,6 +1900,26 @@ export function createDbMessagingRouteService(
       });
     },
 
+    // --- unarchive (admin) — idempotent: the guarded UPDATE (is_archived = true) writes only when archived -
+    async unarchiveChannel(orgId, input) {
+      return withOrgContext(db, memberAdminContext(orgId, input.actor), async (tx) => {
+        const [ch] = await tx
+          .select({ kind: CH.channelKind, isArchived: CH.isArchived })
+          .from(CH)
+          .where(and(eq(CH.organizationId, orgId), eq(CH.id, input.channelId)))
+          .limit(1);
+        if (!ch) throw new NotFoundError("channel", input.channelId);
+        assertMayArchiveChannel(input.actor, ch.kind, "unarchive");
+        if (!ch.isArchived) return;
+        await tx
+          .update(CH)
+          .set({ isArchived: false, archivesAt: null })
+          .where(
+            and(eq(CH.organizationId, orgId), eq(CH.id, input.channelId), eq(CH.isArchived, true)),
+          );
+      });
+    },
+
     // --- remove a member (soft-delete: set removed_at) -----------------------------------------
     async removeMember(orgId, input) {
       return withOrgContext(db, memberAdminContext(orgId, input.actor), async (tx) => {

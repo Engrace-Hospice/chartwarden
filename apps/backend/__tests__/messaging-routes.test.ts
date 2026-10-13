@@ -961,6 +961,57 @@ describe("M36-T07 messaging route inventory", () => {
       await expect(service.listMembers(ORG, lead, "ch_loc")).resolves.toHaveLength(1);
     });
 
+    it("POST unarchive: org_admin restores an archived channel (204), repeat is idempotent, sends work again", async () => {
+      const { app } = makeServer();
+      const base = "/api/v1/messaging/channels/ch_loc";
+      const send = () =>
+        app.inject({
+          method: "POST",
+          url: `${base}/messages`,
+          headers: withKey(RN1),
+          payload: { body: "hi" },
+        });
+      expect(
+        (await app.inject({ method: "POST", url: `${base}/archive`, headers: ADMIN })).statusCode,
+      ).toBe(204);
+      expect((await send()).statusCode).toBe(410);
+      const url = `${base}/unarchive`;
+      expect((await app.inject({ method: "POST", url, headers: RN1 })).statusCode).toBe(403);
+      expect((await app.inject({ method: "POST", url, headers: ADMIN })).statusCode).toBe(204);
+      expect((await app.inject({ method: "POST", url, headers: ADMIN })).statusCode).toBe(204);
+      const detail = await app.inject({ method: "GET", url: base, headers: RN1 });
+      expect(detail.json().archivedAt).toBeNull();
+      expect((await send()).statusCode).toBe(201);
+      await app.close();
+    });
+
+    it("POST unarchive: lifecycle-managed kinds are refused (409)", async () => {
+      const { app } = makeServer();
+      for (const id of [CT, "ch_ann"]) {
+        const res = await app.inject({
+          method: "POST",
+          url: `/api/v1/messaging/channels/${id}/unarchive`,
+          headers: ADMIN,
+        });
+        expect(res.statusCode).toBe(409);
+        expect(res.json().error.code).toBe("CHANNEL_LIFECYCLE_MANAGED");
+      }
+      await app.close();
+    });
+
+    it("unarchive is org_admin-only at the service even when manage rights pass", async () => {
+      const { service } = makeServer();
+      const lead = {
+        kind: "user" as const,
+        userId: "lead_1",
+        roles: ["clinical_lead"],
+        locationIds: ["loc_1"],
+      };
+      await expect(
+        service.unarchiveChannel(ORG, { channelId: "ch_loc", actor: lead }),
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
+
     it("a clinician cannot announce; org_admin can (201)", async () => {
       const { app } = makeServer();
       const denied = await app.inject({

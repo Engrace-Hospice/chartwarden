@@ -74,13 +74,17 @@ export async function mayManageChannelMembersResolved(
  *  the M5/M6/M16/M19 lifecycle (a manual archive would be silently reopened by the next assignment event). */
 export const ADMIN_ARCHIVABLE_CHANNEL_KINDS: readonly string[] = ["discipline", "location"];
 
-/** The archive decision both service implementations share: org_admin only (else 403), a `dm` is 403, and any
- *  other lifecycle-managed kind is 409. Throws; returns when the archive may proceed. */
-export function assertMayArchiveChannel(actor: MemberAdminActor, kind: ChannelKind | string): void {
+/** The archive / unarchive decision both service implementations share: org_admin only (else 403), a `dm` is 403,
+ *  and any other lifecycle-managed kind is 409. Throws; returns when the change may proceed. */
+export function assertMayArchiveChannel(
+  actor: MemberAdminActor,
+  kind: ChannelKind | string,
+  verb: "archive" | "unarchive" = "archive",
+): void {
   if (actor.kind !== "user" || !actor.roles.includes(ORG_ADMIN_ROLE)) {
-    throw new ForbiddenError("only an org admin may archive a channel");
+    throw new ForbiddenError(`only an org admin may ${verb} a channel`);
   }
-  if (kind === "dm") throw new ForbiddenError("a direct message cannot be archived");
+  if (kind === "dm") throw new ForbiddenError(`a direct message cannot be ${verb}d`);
   if (!ADMIN_ARCHIVABLE_CHANNEL_KINDS.includes(kind)) {
     throw new WardenXError(
       "CHANNEL_LIFECYCLE_MANAGED",
