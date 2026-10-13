@@ -114,6 +114,7 @@ const ROUTES: Record<string, Verdict> = {
   "PUT /api/v1/messaging/channels/:id/messages/:messageId/pin": { kind: "idor" },
   "DELETE /api/v1/messaging/channels/:id/messages/:messageId/pin": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/pins": { kind: "idor" },
+  "GET /api/v1/messaging/channels/:id/search": { kind: "idor" },
   // WP 2.5 drafts: the id is a channel's; a draft is also private to its author inside the channel (asserted below).
   "GET /api/v1/messaging/channels/:id/draft": { kind: "idor" },
   "PUT /api/v1/messaging/channels/:id/draft": { kind: "idor" },
@@ -198,6 +199,8 @@ const REGISTRAR_FILES = [
   "draft-routes.ts",
   "draft-typebox.ts", // schemas only
   "scheduled-send-routes.ts",
+  "search-routes.ts", // WP 2.7a in-conversation search
+  "search-typebox.ts", // schemas only
   "scheduled-send-typebox.ts", // schemas only
   "messaging-routes.ts",
   "messaging-typebox.ts", // schemas only
@@ -763,6 +766,17 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         }
       });
     }
+    it("GET search (WP 2.7a) with a real query: members search, everyone else gets a random id's answer", async () => {
+      const route = "GET /api/v1/messaging/channels/:id/search";
+      const query = "?q=attack";
+      const ok = await call(route, u2, { id: dmA }, undefined, {}, query);
+      expect(ok.statusCode).toBe(200);
+      for (const attacker of [bUser, outsider]) {
+        for (const id of [dmA, locA, careTeamA]) {
+          await expectNoOracle(route, attacker, { id }, undefined, query);
+        }
+      }
+    });
     it("POST send (incl. a reply) into A's channels", async () => {
       const route = "POST /api/v1/messaging/channels/:id/messages";
       for (const attacker of [bUser, outsider]) {
