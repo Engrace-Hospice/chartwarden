@@ -20,9 +20,16 @@
 -- message's token rows when its status becomes 'deleted' or its plaintext digest `body_sha256` changes (an edit). It is
 -- NOT keyed on body_cipher: a key-ring re-wrap (ADR-0058 P1) rewrites the cipher with the same plaintext and must not wipe
 -- the index. The trigger never consults the tenant flag: it runs while search is OFF so a message deleted while OFF cannot
--- be resurrected into the index. It is SECURITY INVOKER: every role that updates a message either carries the org context
--- (wardenx_app, RLS) or is wardenx_destruction (policy below). Tenant erasure and ring destruction delete rows through the
--- eraser and wardenx_destruction; a message DELETE cascades through the composite FK.
+-- be resurrected into the index. It is SECURITY DEFINER owned by wardenx_admin (which gets a DELETE-only policy on the
+-- token table), with a pinned search_path, and deletes only NEW.organization_id's rows of the updated message, so it does
+-- not depend on which role updates the message or on whether that session carries app.org_id: a role that may update a
+-- message can never silently skip the delete. Tenant erasure (destroyTenantDek rewrites cipher and digest under
+-- withOrgContext) fires it too; a message DELETE cascades through the composite FK.
+--
+-- INDEXER CONTRACT (chunk C2): the indexer inserts tokens in a different transaction from the one that edits or deletes a
+-- message, so it MUST `SELECT ... FROM message WHERE id = $1 FOR SHARE` and re-check status <> 'deleted' and that
+-- body_sha256 still equals the digest of the body it tokenised BEFORE inserting. Without the lock an edit can commit
+-- between the indexer's read and its insert, leaving tokens for a body that no longer exists (the hook already ran).
 --
 -- Index coverage (test:fk-indexes:live): the organization FK and the (organization_id, message_id) -> message FK are each
 -- led by an index below; changed_by_user_id points at the soft-deleted `user` parent (exempt from the rule, no index).
@@ -217,15 +224,24 @@ CREATE TRIGGER "trg_audit_tenant_messaging_search_setting"
   FOR EACH ROW EXECUTE FUNCTION audit_phi_write_tenant_messaging_search_setting();--> statement-breakpoint
 
 -- ── removal hook: a deleted or edited message leaves the index in the SAME transaction ─────────────────────────────────
+GRANT SELECT, DELETE ON "message_search_token" TO wardenx_admin;--> statement-breakpoint
+-- A DELETE ... WHERE also reads the rows, so the SELECT policy is needed beside the DELETE one.
+CREATE POLICY "message_search_token_purge_hook_select" ON "message_search_token"
+  FOR SELECT TO wardenx_admin USING (true);--> statement-breakpoint
+CREATE POLICY "message_search_token_purge_hook_delete" ON "message_search_token"
+  FOR DELETE TO wardenx_admin USING (true);--> statement-breakpoint
 CREATE OR REPLACE FUNCTION message_search_token_purge_on_change() RETURNS trigger
-LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
 BEGIN
   DELETE FROM public.message_search_token
    WHERE organization_id = NEW.organization_id AND message_id = NEW.id;
   RETURN NULL;
 END $$;--> statement-breakpoint
+ALTER FUNCTION message_search_token_purge_on_change() OWNER TO wardenx_admin;--> statement-breakpoint
+REVOKE ALL ON FUNCTION message_search_token_purge_on_change() FROM PUBLIC;--> statement-breakpoint
 CREATE TRIGGER "trg_message_search_token_purge"
   AFTER UPDATE ON message
   FOR EACH ROW
-  WHEN (NEW.status = 'deleted' OR NEW.body_sha256 IS DISTINCT FROM OLD.body_sha256)
+  WHEN ((NEW.status = 'deleted' AND OLD.status IS DISTINCT FROM 'deleted')
+        OR NEW.body_sha256 IS DISTINCT FROM OLD.body_sha256)
   EXECUTE FUNCTION message_search_token_purge_on_change();

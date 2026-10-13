@@ -3,7 +3,17 @@
 // `membership`), so `user` is NON_ORG_SCOPED in check-tenancy.ts. Better Auth reads
 // this table directly (M2-T01 vendor-adapter).
 import { sql } from "drizzle-orm";
-import { boolean, check, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  check,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { credentialState, userStatus } from "../enums";
 
 export const users = pgTable(

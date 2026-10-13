@@ -4,6 +4,7 @@ import { deriveOrgDek } from "../src/crypto/body-crypto";
 import {
   CANDIDATE_CAP,
   DEFAULT_TAG_BITS,
+  MAX_PAGES_PER_QUERY,
   type SearchKeyProvider,
   buildMessageTags,
   decodeSearchCursor,
@@ -29,6 +30,36 @@ const stubProvider: SearchKeyProvider = {
   liveVersions: async () => ["legacy"],
   tagKey: async (orgId, version) => deriveSearchKey(deriveOrgDek(KEK, orgId), orgId, version),
 };
+
+describe("known-answer vectors (independent HKDF/HMAC reference, fixed inputs)", () => {
+  const dek = Buffer.alloc(32, 0x42);
+  const keyA = deriveSearchKey(dek, ORG_A, "v1");
+
+  it("deriveSearchKey: HKDF-SHA256, empty salt, info wardenx-message-search:<org>:<label>", () => {
+    expect(keyA.toString("hex")).toBe(
+      "478d04a66604da7c9697c06edcfabe1069097599c1757c0fbb9bc73691f70d03",
+    );
+    // the SAME DEK with another org, or another label, must give another key
+    expect(deriveSearchKey(dek, ORG_B, "v1").toString("hex")).toBe(
+      "06680fa9f0947e984273f4630cedac1af8680f4b98470da3e2c732808307d636",
+    );
+    expect(deriveSearchKey(dek, ORG_A, "v2").toString("hex")).toBe(
+      "42889e49d4e317549140dc2702d89f200fc9d21005edccad6d03aeb7d239126f",
+    );
+  });
+
+  it("tags at T=19 are literal integers over the w\\0 / p\\0 len \\0 encodings", () => {
+    expect(tagForWord(keyA, "morphine", 19)).toBe(427393);
+    expect(tagForPrefix(keyA, "morp", 19)).toBe(264399);
+    expect(tagForPrefix(keyA, "mor", 19)).toBe(291042);
+  });
+
+  it("the same DEK under two org ids yields different tags for the same word", () => {
+    const keyB = deriveSearchKey(dek, ORG_B, "v1");
+    expect(tagForWord(keyA, "morphine", 19)).not.toBe(tagForWord(keyB, "morphine", 19));
+    expect(tagForPrefix(keyA, "morp", 19)).not.toBe(tagForPrefix(keyB, "morp", 19));
+  });
+});
 
 describe("search key and tags", () => {
   it("derives K_search with the version TEXT label and a domain-separated info string", () => {
@@ -105,12 +136,12 @@ describe("padding (ADR-0058 decision 4)", () => {
     expect(padTags([], 19)).toHaveLength(16);
   });
 
-  it("does not leave real tags first (order carries no meaning)", () => {
-    const real = Array.from({ length: 8 }, (_, i) => i);
-    const firstEightReal = Array.from({ length: 30 }, () => padTags(real, 20).slice(0, 8)).filter(
-      (head) => head.every((t, i) => t === i),
-    );
-    expect(firstEightReal.length).toBeLessThan(30);
+  it("shuffles: a real tag lands in every slot of the padded set", () => {
+    const marker = 1_000_000; // a real tag; dummies at T=20 collide with it with probability ~1e-6
+    const positions = new Set<number>();
+    for (let trial = 0; trial < 600; trial += 1)
+      positions.add(padTags([marker], 20).indexOf(marker));
+    expect(positions.size).toBe(16);
   });
 
   it("dummies are roughly uniform over the T-bit range", () => {
@@ -154,6 +185,11 @@ describe("cursor codec (created_at, id, page)", () => {
       [at, id, -1],
       [at, id, 1.5],
       [at, id, 99],
+      [at, id, MAX_PAGES_PER_QUERY],
+      ["2026-10-13", id, 1],
+      ["2026-10-13T10:00:00Z", id, 1],
+      ["2026-10-13T10:00:00.000+00:00", id, 1],
+      ["Oct 13 2026", id, 1],
       ["not-a-date", id, 1],
       [at, "not-a-uuid", 1],
       [at, id, 1, "extra"],
@@ -161,6 +197,25 @@ describe("cursor codec (created_at, id, page)", () => {
     ]) {
       expect(decodeSearchCursor(encodeURIComponent(JSON.stringify(bad)))).toBeNull();
     }
+  });
+
+  it("pins the page boundary: 0..MAX_PAGES_PER_QUERY - 1 decode, MAX_PAGES_PER_QUERY does not", () => {
+    for (const page of [0, MAX_PAGES_PER_QUERY - 1]) {
+      expect(
+        decodeSearchCursor(encodeSearchCursor({ createdAt: at, messageId: id, page }))?.page,
+      ).toBe(page);
+    }
+    expect(MAX_PAGES_PER_QUERY).toBe(5);
+    for (const page of [MAX_PAGES_PER_QUERY, MAX_PAGES_PER_QUERY + 1]) {
+      expect(
+        decodeSearchCursor(encodeSearchCursor({ createdAt: at, messageId: id, page })),
+      ).toBeNull();
+    }
+  });
+
+  it("refuses an oversized raw cursor before decoding it", () => {
+    expect(decodeSearchCursor("a".repeat(100_000))).toBeNull();
+    expect(decodeSearchCursor("%5B".repeat(200))).toBeNull();
   });
 
   it("encodes only the keyset: no tag, token or query-derived value", () => {

@@ -420,6 +420,76 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C1 search index storage - LIVE Postgres", 
       expect(await tokenCount(other)).toBe(TAGS_PER_MESSAGE);
     });
 
+    it("the roles able to UPDATE message are exactly the known set (a new one must be reviewed against the hook)", async () => {
+      const r = await admin.query(
+        `SELECT rolname FROM pg_roles WHERE rolname LIKE 'wardenx\\_%' AND rolsuper = false
+            AND (has_table_privilege(rolname, 'message', 'UPDATE')
+              OR has_any_column_privilege(rolname, 'message', 'UPDATE')) ORDER BY rolname`,
+      );
+      expect(r.rows.map((x) => x.rolname)).toEqual(["wardenx_app", "wardenx_destruction"]);
+    });
+
+    it("fires as wardenx_destruction (the erase path rewrites cipher and digest)", async () => {
+      const m = await seedIndexedMessage(ORG_A, channelA, userA);
+      await admin.query("BEGIN");
+      try {
+        await admin.query("SET LOCAL ROLE wardenx_destruction");
+        await admin.query(`SELECT set_config('app.org_id', $1, true)`, [ORG_A]);
+        const r = await admin.query(
+          `UPDATE message SET body_cipher=$2, body_sha256=$3 WHERE id=$1`,
+          [m, Buffer.alloc(0), "0".repeat(64)],
+        );
+        expect(r.rowCount).toBe(1);
+        await admin.query("COMMIT");
+      } catch (error) {
+        await admin.query("ROLLBACK");
+        throw error;
+      }
+      expect(await tokenCount(m)).toBe(0);
+    });
+
+    it("does not depend on the updater's own token privileges or org GUC (SECURITY DEFINER)", async () => {
+      const m = await seedIndexedMessage(ORG_A, channelA, userA);
+      await admin.query(`DROP ROLE IF EXISTS wx_c1_msg_updater`);
+      await admin.query(`CREATE ROLE wx_c1_msg_updater NOLOGIN`);
+      await admin.query(`GRANT USAGE ON SCHEMA public TO wx_c1_msg_updater`);
+      await admin.query(`GRANT SELECT, UPDATE ON message TO wx_c1_msg_updater`);
+      await admin.query(
+        `CREATE POLICY wx_c1_tmp ON message FOR ALL TO wx_c1_msg_updater USING (true) WITH CHECK (true)`,
+      );
+      try {
+        await admin.query("BEGIN");
+        await admin.query("SET LOCAL ROLE wx_c1_msg_updater");
+        // no app.org_id, no privilege on message_search_token at all
+        const r = await admin.query(
+          `UPDATE message SET status='deleted', deleted_at=now() WHERE id=$1`,
+          [m],
+        );
+        expect(r.rowCount).toBe(1);
+        await admin.query("COMMIT");
+      } catch (error) {
+        await admin.query("ROLLBACK");
+        throw error;
+      } finally {
+        await admin.query(`DROP POLICY wx_c1_tmp ON message`);
+        await admin.query(`REVOKE ALL ON message FROM wx_c1_msg_updater`);
+        await admin.query(`REVOKE USAGE ON SCHEMA public FROM wx_c1_msg_updater`);
+        await admin.query(`DROP ROLE wx_c1_msg_updater`);
+      }
+      expect(await tokenCount(m)).toBe(0);
+    });
+
+    it("the trigger WHEN fires on the transition to deleted, not on every update of an already-deleted row", async () => {
+      const def = (
+        await admin.query(
+          `SELECT pg_get_triggerdef(oid) AS d FROM pg_trigger WHERE tgname='trg_message_search_token_purge'`,
+        )
+      ).rows[0].d as string;
+      expect(def).toMatch(/old\.status IS DISTINCT FROM 'deleted'/);
+      expect(def).toMatch(/body_sha256 IS DISTINCT FROM old\.body_sha256/);
+      expect(def).not.toMatch(/body_cipher/);
+    });
+
     it("deleting the message cascades to its tokens", async () => {
       const m = await seedIndexedMessage(ORG_B, channelB, userB);
       expect(await tokenCount(m)).toBe(TAGS_PER_MESSAGE);
@@ -432,6 +502,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C1 search index storage - LIVE Postgres", 
     it("a token insert audits message ids and counts only: one statement, one row, no tag, no key version", async () => {
       const m = await seedMessage(ORG_A, channelA, userA);
       const sentinel = randomInt(900_000, 1_000_000);
+      const sentinelVersion = "kvsentinel9";
       await asApp(
         ORG_A,
         userA,
@@ -439,7 +510,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C1 search index storage - LIVE Postgres", 
           app.query(
             `INSERT INTO message_search_token (organization_id,key_version,tag,message_id)
              SELECT $1, $2, $3, $4 FROM generate_series(1, ${TAGS_PER_MESSAGE})`,
-            [ORG_A, VERSION, sentinel, m],
+            [ORG_A, sentinelVersion, sentinel, m],
           ),
         true,
       );
@@ -460,10 +531,17 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C1 search index storage - LIVE Postgres", 
         message_count: 1,
         message_ids: [m],
       });
-      // nothing in the whole row carries the tag value or the key version label
-      const whole = JSON.stringify(row);
-      expect(whole).not.toContain(String(sentinel));
-      expect(whole).not.toContain(`"${VERSION}"`);
+      // the whole serialised row, and every audit_event row of this org, carries neither value nor a tag/key_version key
+      const everything = JSON.stringify(
+        (await admin.query(`SELECT * FROM audit_event WHERE organization_id=$1`, [ORG_A])).rows,
+      );
+      for (const forbidden of [String(sentinel), sentinelVersion, '"tag"', '"key_version"']) {
+        expect(JSON.stringify(row)).not.toContain(forbidden);
+      }
+      // every audit row of the org: the sentinel tag and version never appear (other tables' audit context may name a
+      // key_version legitimately, so the key NAME is checked on the token row only)
+      expect(everything).not.toContain(String(sentinel));
+      expect(everything).not.toContain(sentinelVersion);
     });
 
     it("a token delete audits ids and counts only; a multi-message statement lists each id", async () => {
