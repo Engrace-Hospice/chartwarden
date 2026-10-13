@@ -1307,6 +1307,13 @@ import {
   UpdateTemplateBodySchema as M36UpdateTemplateBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/template-typebox";
 
+// M36 WP 2.9 — announcement receipts + department channels.
+import {
+  AnnouncementReceiptsResponseSchema as M36AnnouncementReceiptsResponseSchema,
+  CreateDepartmentChannelBodySchema as M36CreateDepartmentChannelBodySchema,
+  CreateDepartmentChannelResponseSchema as M36CreateDepartmentChannelResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/announcement-typebox";
+
 // M38 Clinical Terminology Service — response DTOs (all M38-aliased).
 // Merge these named imports into scripts/openapi/enrichments.ts. NOTE: an existing import already
 // brings in `SearchQuerySchema as TerminologySearchQuerySchema` (line ~585) — keep that one; these
@@ -9114,6 +9121,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
     headers: IDEMPOTENCY_KEY_HEADER,
     body: M36AnnounceBodySchema,
     response: M36SendMessageResponseSchema,
+  },
+  "GET /api/v1/messaging/announcements/:messageId/receipts": {
+    summary:
+      "Who has read one announcement: counts plus capped reader / unread lists (messaging.announce; 404 outside the announcement channel)",
+    response: M36AnnouncementReceiptsResponseSchema,
+  },
+  "POST /api/v1/messaging/department-channels": {
+    summary:
+      "Find-or-create a discipline or location department channel (messaging.announce; 201 created, 200 found, 404 foreign subject)",
+    body: M36CreateDepartmentChannelBodySchema,
+    response: M36CreateDepartmentChannelResponseSchema,
   },
 
   // notification preferences & endpoints (§4.2; SELF-only)

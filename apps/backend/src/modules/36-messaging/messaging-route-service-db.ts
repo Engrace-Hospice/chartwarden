@@ -1092,6 +1092,22 @@ export function createDbMessagingRouteService(
           .where(
             and(eq(CM.organizationId, orgId), eq(CM.channelId, channelId), isNull(CM.removedAt)),
           );
+        // WP 2.9: names for the member list.
+        const memberNames = new Map(
+          members.length === 0
+            ? []
+            : (
+                await tx
+                  .select({ id: USER.id, name: USER.name })
+                  .from(USER)
+                  .where(
+                    inArray(
+                      USER.id,
+                      members.map((m) => m.userId),
+                    ),
+                  )
+              ).map((u) => [u.id, u.name?.trim() || null] as const),
+        );
         const ur = await tx
           .select({ count: sql<number>`count(*)::int` })
           .from(MR)
@@ -1144,6 +1160,7 @@ export function createDbMessagingRouteService(
             userId: m.userId,
             role: m.role as ChannelMemberRole,
             source: m.source as ChannelMemberSource,
+            displayName: memberNames.get(m.userId) ?? null,
           })),
         };
       });

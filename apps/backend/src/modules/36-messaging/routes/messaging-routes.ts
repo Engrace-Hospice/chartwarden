@@ -27,10 +27,15 @@ import {
   requireAbac,
   requirePermission,
 } from "@wardenx/auth";
-import type { MemberAdminActor, MessagingRouteService } from "@wardenx/messaging";
+import type {
+  AnnouncementService,
+  MemberAdminActor,
+  MessagingRouteService,
+} from "@wardenx/messaging";
 import { UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveRichWrite } from "../rich-body-codec";
+import { announcementSendGuard, registerAnnouncementRoutes } from "./announcement-routes";
 import {
   AddMemberBodySchema,
   AlertParamsSchema,
@@ -72,6 +77,8 @@ export const CHANNEL_MEMBER_ADMIN_PREDICATE = "channel_member_admin";
 export interface MessagingRouteDeps {
   /** The §4.1–4.2 application service (in-memory in the slice; Drizzle/Valkey in prod). */
   service: MessagingRouteService;
+  /** WP 2.9: announcement receipts, department channels and the org_admin-only announcement send guard. */
+  announcements?: AnnouncementService;
 }
 
 /**
@@ -170,6 +177,9 @@ const SEND_TO_CHANNEL = requireAbac("messaging.send", CHANNEL_VISIBILITY_PREDICA
 
 export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRouteDeps): void {
   const { service } = deps;
+  // WP 2.9: sending into the announcement channel stays org_admin-only on this route too.
+  const announcementGuards = deps.announcements ? [announcementSendGuard(deps.announcements)] : [];
+  if (deps.announcements) registerAnnouncementRoutes(app, deps.announcements);
 
   // ── channels & messages (§4.2) ───────────────────────────────────────────────────────────
 
@@ -304,7 +314,9 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   // --- post a message (messaging.send + channel_visibility ABAC) -----------------------------
   app.post(
     "/api/v1/messaging/channels/:id/messages",
-    { preHandler: [SEND, SEND_TO_CHANNEL, REQUIRE_IDEMPOTENCY_KEY] },
+    {
+      preHandler: [SEND, SEND_TO_CHANNEL, ...announcementGuards, REQUIRE_IDEMPOTENCY_KEY],
+    },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(ChannelParamsSchema, request.params);

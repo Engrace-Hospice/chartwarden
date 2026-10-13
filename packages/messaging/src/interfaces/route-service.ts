@@ -63,6 +63,8 @@ export interface ChannelMemberView {
   readonly userId: string;
   readonly role: ChannelMemberRole;
   readonly source: ChannelMemberSource;
+  /** WP 2.9: the member's name, for the member list. */
+  readonly displayName?: string | null;
 }
 
 /** Channel detail + recent members (§4.2 GET /channels/:id). */
