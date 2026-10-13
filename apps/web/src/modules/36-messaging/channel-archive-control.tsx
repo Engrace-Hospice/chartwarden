@@ -11,13 +11,16 @@ const REFUSALS: Readonly<Record<number, string>> = {
   409: "This kind of conversation can't be archived.",
   403: "You don't have permission to archive conversations.",
 };
+const REFRESH_NOTE = " The list will refresh shortly.";
+/** How long the buttons stay held for the parent's refetch before the control lets go and says so. */
+const REFETCH_CAP_MS = 8_000;
 const FAILED = "The conversation could not be updated. Try again.";
 
 interface ArchiveControlProps {
   channelId: string;
   archived: boolean;
   /** Called after the server accepted the change; the control stays busy until the returned refetch settles. */
-  onChanged: () => void | Promise<void>;
+  onChanged: () => unknown;
 }
 
 export function ChannelArchiveControl({
@@ -39,6 +42,12 @@ export function ChannelArchiveControl({
   const [failed, setFailed] = useState(false);
   const sectionRef = useRef<HTMLElement>(null);
   const wasConfirming = useRef(false);
+
+  // Drop the optimistic verb once the real state has moved: otherwise archive -> (refetch) -> another admin
+  // unarchives would match `base` again and show a stale verb.
+  useEffect(() => {
+    if (done && done.base !== archived) setDone(null);
+  }, [archived, done]);
   const sentenceId = useId();
 
   // Buttons unmount as the confirm opens and closes: move focus on purpose so it never falls to <body> (which would
@@ -64,7 +73,7 @@ export function ChannelArchiveControl({
   async function run(): Promise<void> {
     if (busy) return;
     setBusy(true);
-    setStatus("");
+    setStatus("Working…");
     try {
       const path = `/api/v1/messaging/channels/{id}/${verb}` as const;
       const { error, response } = await client.POST(path, { params: { path: { id: channelId } } });
@@ -75,14 +84,31 @@ export function ChannelArchiveControl({
       }
       setDone({ verb, base: archived });
       setFailed(false);
-      setStatus(verb === "archive" ? "Conversation archived." : "Conversation unarchived.");
-      await onChanged();
+      const message = verb === "archive" ? "Conversation archived." : "Conversation unarchived.";
+      setStatus(message);
+      if (!(await refetched())) setStatus(message + REFRESH_NOTE);
     } catch {
       setFailed(true);
       setStatus(FAILED);
     } finally {
       setBusy(false);
       setConfirming(false);
+    }
+  }
+
+  /** True when the parent's refetch finished and succeeded within the cap. */
+  async function refetched(): Promise<boolean> {
+    let timer: number | undefined;
+    const cap = new Promise<boolean>((resolve) => {
+      timer = window.setTimeout(() => resolve(false), REFETCH_CAP_MS);
+    });
+    try {
+      const result = await Promise.race([Promise.resolve(onChanged()), cap]);
+      return result !== false;
+    } catch {
+      return false;
+    } finally {
+      window.clearTimeout(timer);
     }
   }
 
@@ -105,6 +131,7 @@ export function ChannelArchiveControl({
               size="lg"
               tone="secondary"
               aria-disabled={busy}
+              aria-describedby={sentenceId}
               onClick={() => (busy ? undefined : setConfirming(false))}
             >
               Cancel

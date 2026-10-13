@@ -1,6 +1,6 @@
 // M36 WP 2.11 phase 3-4 — member list states and archive / unarchive of department channels.
 // Importers: none (test). API: ChannelMembersDialog, useAnnouncementTools. Data: GET members, POST archive/unarchive.
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import { useState } from "react";
@@ -278,6 +278,103 @@ describe("archive control focus and races", () => {
     const confirm = screen.getByRole("button", { name: "Confirm archive" });
     const described = document.getElementById(confirm.getAttribute("aria-describedby") ?? "");
     expect(described?.textContent).toContain("read only");
+  });
+});
+
+describe("archive control round 3", () => {
+  const trigger = () => screen.findByRole("button", { name: "Archive conversation" });
+
+  it("describes what is being confirmed on BOTH Cancel and Confirm", async () => {
+    render(provide(makeClient({}), dialog({ canArchive: true })));
+    await userEvent.click(await trigger());
+    for (const name of ["Cancel", "Confirm archive"]) {
+      const button = screen.getByRole("button", { name });
+      const sentence = document.getElementById(button.getAttribute("aria-describedby") ?? "");
+      expect(sentence?.textContent, name).toContain("read only");
+    }
+  });
+
+  it("does not revive a stale verb after the real state moves on and comes back", async () => {
+    const api = makeClient({});
+    const view = (archived: boolean) => provide(api, dialog({ canArchive: true, archived }));
+    const { rerender } = render(view(false));
+    await userEvent.click(await trigger());
+    await userEvent.click(screen.getByRole("button", { name: "Confirm archive" }));
+    await screen.findByRole("button", { name: "Unarchive conversation" });
+    rerender(view(true));
+    rerender(view(false));
+    expect(await screen.findByRole("button", { name: "Archive conversation" })).toBeTruthy();
+  });
+
+  it("keeps the archived message and adds a refresh note when the refetch reports failure or rejects", async () => {
+    for (const onChanged of [() => Promise.resolve(false), () => Promise.reject(new Error("x"))]) {
+      const { unmount } = render(provide(makeClient({}), dialog({ canArchive: true, onChanged })));
+      await userEvent.click(await trigger());
+      await userEvent.click(screen.getByRole("button", { name: "Confirm archive" }));
+      expect(
+        await screen.findByText("Conversation archived. The list will refresh shortly."),
+      ).toBeTruthy();
+      expect(screen.queryByText(/Not updated/)).toBeNull();
+      unmount();
+    }
+  });
+
+  it("stops holding the buttons after the refetch cap and says the list will refresh", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const onChanged = vi.fn(() => new Promise<void>(() => {}));
+      render(provide(makeClient({}), dialog({ canArchive: true, onChanged })));
+      fireEvent.click(await trigger());
+      fireEvent.click(screen.getByRole("button", { name: "Confirm archive" }));
+      await waitFor(() => expect(onChanged).toHaveBeenCalled());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(8_100);
+      });
+      expect(
+        await screen.findByText("Conversation archived. The list will refresh shortly."),
+      ).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Unarchive conversation" })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("members dialog focus on state changes", () => {
+  it("puts focus on Close when the members route answers 403", async () => {
+    const api = makeClient({
+      members: () => ({ data: undefined, error: { message: "no" }, response: { status: 403 } }),
+    });
+    render(provide(api, dialog()));
+    await screen.findByText("You can't manage members of this conversation.");
+    await waitFor(() =>
+      expect(document.activeElement?.closest(".wx-channel-members-state")).toBeTruthy(),
+    );
+    expect(document.activeElement?.textContent).toBe("Close");
+  });
+
+  it("keeps Retry mounted and disabled during a retry, then lands focus on the heading", async () => {
+    const retryReply = deferred<Reply>();
+    let calls = 0;
+    const api = makeClient({
+      members: () => {
+        calls += 1;
+        if (calls === 1) {
+          return { data: undefined, error: { message: "x" }, response: { status: 500 } };
+        }
+        return retryReply.promise as unknown as Reply;
+      },
+    });
+    render(provide(api, dialog()));
+    const retry = await screen.findByRole("button", { name: "Retry" });
+    await userEvent.click(retry);
+    expect(document.activeElement).toBe(retry);
+    expect(retry.getAttribute("aria-disabled")).toBe("true");
+    retryReply.resolve(OK_MEMBERS);
+    await screen.findByText("Nurse One");
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Members" })),
+    );
   });
 });
 

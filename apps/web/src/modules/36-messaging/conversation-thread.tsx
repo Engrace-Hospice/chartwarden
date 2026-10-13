@@ -66,7 +66,7 @@ export interface ConversationThreadProps {
   /** The org-level outbox (it outlives this thread); without one the thread keeps its own. */
   outbox?: Outbox;
   /** An archive / unarchive succeeded: re-read the channel list. */
-  onChannelChanged?: () => void | Promise<void>;
+  onChannelChanged?: () => unknown;
 }
 
 export function ConversationThread(props: ConversationThreadProps): JSX.Element {

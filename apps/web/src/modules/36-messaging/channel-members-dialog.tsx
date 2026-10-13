@@ -35,13 +35,15 @@ export function ChannelMembersDialog({
   canArchive?: boolean;
   archived?: boolean;
   /** Called after an archive / unarchive so the channel list is re-read. */
-  onChanged?: () => void | Promise<void>;
+  onChanged?: () => unknown;
 }): JSX.Element {
   const client = useApiClient();
   const [members, setMembers] = useState<Member[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadCorrelationId, setLoadCorrelationId] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [candidates, setCandidates] = useState<DmStaffMember[]>([]);
@@ -128,11 +130,13 @@ export function ChannelMembersDialog({
   const addable = candidates.filter((person) => !memberIds.has(person.userId));
   const selected = addable.find((person) => person.userId === candidateId) ?? addable[0];
 
-  function retry(): void {
-    setLoadError(null);
-    setLoadCorrelationId(null);
-    setMembers(null);
-    void loadMembers();
+  // Retry stays mounted (aria-disabled) while it runs so focus is not lost; on success the heading takes focus.
+  async function retry(): Promise<void> {
+    if (retrying) return;
+    setRetrying(true);
+    await loadMembers();
+    setRetrying(false);
+    if (document.activeElement === document.body) headingRef.current?.focus();
   }
 
   async function change(run: () => Promise<{ error?: unknown }>, fallback: string): Promise<void> {
@@ -165,7 +169,9 @@ export function ChannelMembersDialog({
       ) : (
         <div className="wx-new-conversation wx-channel-members">
           <header>
-            <h2>Members</h2>
+            <h2 ref={headingRef} tabIndex={-1}>
+              Members
+            </h2>
             <p>
               People who can read and write in <strong>{channelTitle}</strong>.
             </p>
@@ -174,8 +180,13 @@ export function ChannelMembersDialog({
             <div role="alert" className="wx-channel-members-state">
               <span>{loadError}</span>
               {loadCorrelationId ? <small>Reference {loadCorrelationId}</small> : null}
-              <Button size="lg" tone="secondary" onClick={retry}>
-                Retry
+              <Button
+                size="lg"
+                tone="secondary"
+                aria-disabled={retrying}
+                onClick={() => void retry()}
+              >
+                {retrying ? "Retrying…" : "Retry"}
               </Button>
             </div>
           ) : members === null ? (
@@ -234,6 +245,7 @@ export function ChannelMembersDialog({
               </select>
             </label>
             <Button
+              size="lg"
               disabled={busy || !selected}
               onClick={() =>
                 selected &&
@@ -268,7 +280,7 @@ export function ChannelMembersDialog({
             />
           ) : null}
           <footer>
-            <Button tone="secondary" onClick={onClose}>
+            <Button size="lg" tone="secondary" onClick={onClose}>
               Close
             </Button>
           </footer>
