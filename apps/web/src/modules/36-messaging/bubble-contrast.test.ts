@@ -48,3 +48,17 @@ describe("own-bubble timestamp contrast", () => {
     expect(((hi ?? 0) + 0.05) / ((lo ?? 0) + 0.05)).toBeGreaterThanOrEqual(MIN_RATIO);
   });
 });
+
+describe("edited label contrast", () => {
+  // The "Edited" marker is a <time> inside the bubble, so it takes the timestamp colour and size above (and is
+  // covered by the contrast test above, in both themes). A dedicated rule must not lower either.
+  it("inherits the timestamp colour and size instead of overriding them", () => {
+    const rules = [...css.matchAll(/\.wx-message-edited[^{]*\{([^}]*)\}/g)].map((m) => m[1] ?? "");
+    for (const body of rules) expect(body).not.toMatch(/\b(color|opacity|font-size)\s*:/);
+  });
+
+  it("is a time element in the bubble, so the timestamp rules apply to it", () => {
+    const row = readFileSync("apps/web/src/modules/36-messaging/message-row.tsx", "utf8");
+    expect(/<time\s+className="wx-message-edited"/.test(row)).toBe(true);
+  });
+});

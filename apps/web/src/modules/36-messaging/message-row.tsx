@@ -69,6 +69,31 @@ export function MessageText({ message }: { message: Message }): JSX.Element {
 
 const GROUP_WINDOW_MS = 300_000;
 
+const clockTime = (iso: string): string =>
+  new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(iso));
+
+/**
+ * WP 1.3: plain-text "Edited <time>" marker (the words carry the meaning, not colour). Not a button: opening a
+ * revision list is Phase 5 (docs/messaging-hub/06-ux-design.md), tied to messaging.history.read.
+ * An unparseable editedAt renders nothing rather than "Invalid Date".
+ */
+function EditedIndicator({
+  editedAt,
+}: { editedAt: string | null | undefined }): JSX.Element | null {
+  const absolute = editedAt ? absoluteTime(editedAt) : "";
+  if (!editedAt || !absolute) return null;
+  return (
+    <time
+      className="wx-message-edited"
+      dateTime={editedAt}
+      title={absolute}
+      aria-label={`Edited at ${absolute}`}
+    >
+      Edited {clockTime(editedAt)}
+    </time>
+  );
+}
+
 interface MessageRowProps {
   message: Message;
   previous: Message | undefined;
@@ -180,16 +205,16 @@ function MessageRowImpl({
                     : `${message.hiddenAttachmentCount} attachments not available yet`}
                 </small>
               ) : null}
-              <time
-                dateTime={message.createdAt}
-                title={absoluteTime(message.createdAt)}
-                aria-label={absoluteTime(message.createdAt)}
-              >
-                {new Intl.DateTimeFormat(undefined, {
-                  hour: "numeric",
-                  minute: "2-digit",
-                }).format(new Date(message.createdAt))}
-              </time>
+              <span className="wx-message-meta">
+                {deleted ? null : <EditedIndicator editedAt={message.editedAt} />}
+                <time
+                  dateTime={message.createdAt}
+                  title={absoluteTime(message.createdAt)}
+                  aria-label={absoluteTime(message.createdAt)}
+                >
+                  {clockTime(message.createdAt)}
+                </time>
+              </span>
             </div>
             {!deleted ? (
               <MessageAnnotations message={message} canAnnotate={canAnnotate} canPin={canPin} />
