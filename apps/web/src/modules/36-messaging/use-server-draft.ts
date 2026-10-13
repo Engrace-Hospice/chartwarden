@@ -9,7 +9,8 @@
 //     instead of overwriting it. Last writer wins per device, so a tab never conflicts with itself.
 // A failed save never touches the composer; `saveFailed` only drives a small status line and clears on the next success.
 import { useApiClient } from "@wardenx/ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { currentSessionIdentity, useSession } from "../../shell/session";
 import type { MessageReferenceInput } from "./messaging-types";
 
 export const DRAFT_SAVE_DEBOUNCE_MS = 1500;
@@ -138,6 +139,26 @@ export function useServerDraft(args: {
   const [saveFailed, setSaveFailed] = useState(false);
   const [saveGaveUp, setSaveGaveUp] = useState(false);
   const pendingRef = useRef<Snapshot | null>(null);
+  // The identity this slot was opened under. The shared client sends as whoever is signed in NOW, so nothing (the
+  // debounce, a queued or retried save, the unmount flush) may be sent after the identity changed: it would land in
+  // the new user's draft slot. "" means the session was still loading at open; it adopts the first real identity.
+  const slotIdentityRef = useRef("");
+  // Adopt the first real identity EAGERLY (from the context this render sees; the module-level one is only updated by
+  // the provider's layout effect, which runs after this one) and never overwrite a known one. Documented ceiling:
+  // after a genuine in-page identity change a composer that stays mounted stays inert until its slot changes (safe;
+  // identity changes are full page loads today).
+  const session = useSession();
+  const contextIdentity = session ? `${session.organizationId}:${session.userId}` : "";
+  useLayoutEffect(() => {
+    if (slotIdentityRef.current === "" && contextIdentity !== "") {
+      slotIdentityRef.current = contextIdentity;
+    }
+  }, [contextIdentity]);
+  const identityUnchanged = useCallback((): boolean => {
+    const current = currentSessionIdentity();
+    if (slotIdentityRef.current === "" && current !== "") slotIdentityRef.current = current;
+    return slotIdentityRef.current === current;
+  }, []);
 
   const latestRef = useRef<Snapshot>({ body: text, references });
   latestRef.current = { body: text, references };
@@ -194,6 +215,7 @@ export function useServerDraft(args: {
     (snapshot: Snapshot, generation: number): Promise<void> => {
       const run = async (): Promise<void> => {
         if (generation !== generationRef.current) return;
+        if (!identityUnchanged()) return; // never write a draft under a different identity
         const key = keyOf(snapshot);
         if (key === syncedKeyRef.current) return;
         try {
@@ -226,7 +248,7 @@ export function useServerDraft(args: {
           if (generation !== generationRef.current) return;
           if (result.response?.status === 409) {
             const server = await readServer();
-            if (generation !== generationRef.current) return;
+            if (generation !== generationRef.current || !identityUnchanged()) return;
             if (!server || server.body === snapshot.body) {
               // Already identical (or gone): adopt the server's revision and carry on; nothing to merge.
               revisionRef.current = server?.revision ?? 0;
@@ -261,13 +283,14 @@ export function useServerDraft(args: {
         enqueue(() => run().finally(resolve));
       });
     },
-    [client, channelId, parentMessageId, enqueue, readServer, armRetry],
+    [client, channelId, parentMessageId, enqueue, readServer, armRetry, identityUnchanged],
   );
   saveRef.current = save;
 
   // Open / switch: forget the previous composer's bookkeeping, then restore this one's draft.
   // biome-ignore lint/correctness/useExhaustiveDependencies: channelId/parentMessageId ARE the reset triggers (readServer and save already close over them)
   useEffect(() => {
+    slotIdentityRef.current = currentSessionIdentity();
     const generation = ++generationRef.current;
     revisionRef.current = 0;
     syncedKeyRef.current = null;
@@ -286,7 +309,7 @@ export function useServerDraft(args: {
       } catch {
         // Offline or refused: the composer still works; the first save will say if the server is unreachable.
       }
-      if (generation !== generationRef.current) return;
+      if (generation !== generationRef.current || !identityUnchanged()) return;
       loadedRef.current = true;
       if (server) {
         revisionRef.current = server.revision;
@@ -316,6 +339,7 @@ export function useServerDraft(args: {
           pending?.body.trim() &&
           loadedRef.current &&
           !suspendedRef.current &&
+          identityUnchanged() && // never write a draft under a different identity
           keyOf(pending) !== syncedKeyRef.current
         ) {
           // Read now: the next slot's effect resets revisionRef synchronously right after this cleanup.
@@ -337,7 +361,7 @@ export function useServerDraft(args: {
         }
       }
     };
-  }, [channelId, parentMessageId, readServer, save]);
+  }, [channelId, parentMessageId, readServer, save, identityUnchanged]);
 
   /** (Re)arm the quiet-period save for whatever the composer holds now. */
   const schedule = useCallback((): void => {
@@ -355,10 +379,10 @@ export function useServerDraft(args: {
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
       pendingRef.current = null;
-      if (suspendedRef.current) return;
+      if (suspendedRef.current || !identityUnchanged()) return;
       void save(latestRef.current, generation);
     }, DRAFT_SAVE_DEBOUNCE_MS);
-  }, [save]);
+  }, [save, identityUnchanged]);
   scheduleRef.current = schedule;
 
   // Local change: empty -> discard now; otherwise save after a quiet period.

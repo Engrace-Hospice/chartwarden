@@ -131,7 +131,7 @@ export function ScheduledMessageRow({
       <p className="wx-scheduled-body">{preview(item.body)}</p>
       {blocked ? (
         <output className="wx-scheduled-blocked">
-          {blockedReasonText(item.blockedReason as NonNullable<typeof item.blockedReason>)}
+          {blockedReasonText(item.blockedReason ?? "")}
         </output>
       ) : null}
       {editing ? (

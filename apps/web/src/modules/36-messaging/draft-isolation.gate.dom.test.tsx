@@ -398,12 +398,9 @@ describe("draft isolation: users and organisations on one browser", () => {
     expect(visibleText()).not.toContain("first user's private text");
   });
 
-  // KNOWN LATENT DEFECT (reported with the gate evidence, unreachable today): if the session were swapped inside one SPA
-  // page, the old composer's unmount flush would be sent under the NEW identity and could land in the new user's draft
-  // slot for a channel both can write to. This is a normal test that INVERTS only the leak assertion: the positive
-  // controls above it fail loudly, while the leak flag turns this red the day the flush is scoped to the identity
-  // that typed the text (then delete the inversion and assert `not leaked`).
-  it("G7b: [latent] an in-page user swap currently flushes the old user's text under the new identity", async () => {
+  // An in-page session swap (not a production path today: identity changes are full page loads) must still never
+  // write the old user's text under the new identity: the unmount flush is skipped when the identity changed.
+  it("G7b: an in-page user swap flushes nothing under the new identity and leaks no text into the new composer", async () => {
     const fake = fakeServer();
     const view = mount(fake);
     await open("Nurse A");
@@ -418,14 +415,16 @@ describe("draft isolation: users and organisations on one browser", () => {
     await settle();
     expect(box()).toBeTruthy(); // the new user's composer is mounted and usable
 
-    // Tracking item: "Phase 2 gate PR: useServerDraft unmount flush crosses identities" (no issue number yet).
-    // Each path is its own expectation, so the day one is fixed this test names the one still leaking.
+    // Each path is its own expectation, so a regression names the one that leaks.
     const leakedIntoSlot = fake.drafts.has("colleague/dm-a|");
     const leakedIntoBox = box().value !== "";
     expect(leakedIntoSlot, "unmount flush wrote the old text into the new user's server slot").toBe(
-      true,
+      false,
     );
-    expect(leakedIntoBox, "the new user's composer re-hydrated the old user's text").toBe(true);
+    expect(leakedIntoBox, "the new user's composer re-hydrated the old user's text").toBe(false);
+    expect(visibleText()).not.toContain("first user's private text");
+    // The old text was never sent at all, under either identity.
+    expect(fake.putKeys).toEqual([]);
   });
 
   it("G8: an organisation switch and a sign-out leave no draft text in the DOM, the server slots or browser storage", async () => {
@@ -445,7 +444,7 @@ describe("draft isolation: users and organisations on one browser", () => {
 
     // South types, then signs out. Sign-out is a full page load in production (actor-menu signOut), so the old tree
     // unmounts first and its flush leaves under South's cookie; the signed-out page then mounts under no identity.
-    // (Swapping the session inside one page would send that flush under the new identity: the latent defect, G7b.)
+    // (An in-page session swap is covered by G7b: the flush is skipped rather than sent under the new identity.)
     type("south-only PHI draft");
     expect(box().value).toBe("south-only PHI draft");
     const putsBefore = fake.putKeys.length;

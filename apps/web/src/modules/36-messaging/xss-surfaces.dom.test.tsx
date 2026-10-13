@@ -15,7 +15,7 @@ import { XSS_CORPUS } from "@wardenx/types";
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { AlertInboxProvider, isInternalAlertDeepLink } from "../../shell/alert-inbox";
+import { AlertInboxProvider } from "../../shell/alert-inbox";
 import { type Session, SessionProvider } from "../../shell/session";
 import { ChannelMembersDialog } from "./channel-members-dialog";
 import { NotificationsInbox } from "./notifications-inbox";
@@ -463,6 +463,10 @@ describe("M36 secondary surfaces under the XSS corpus", () => {
     );
     await screen.findByText("Row with a reason this client does not know");
     expect(document.body.textContent).not.toContain("RAW_UNKNOWN_REASON_CODE");
+    // ...and the row still says something: a generic note, never an empty status.
+    expect(document.querySelector(".wx-scheduled-blocked")?.textContent).toBe(
+      "This message could not be sent. Reschedule it to try again.",
+    );
   });
 });
 
@@ -511,9 +515,11 @@ describe("M36 notifications under the XSS corpus", () => {
       expectInert(document.body, { appControls: true });
       if (isPlainText(payload)) expect(document.body.textContent).toContain(payload);
 
-      // Only a same-origin path may become a link: the hostile row is one only if it is exactly that, and never else.
+      // Independent of production code: no corpus payload is a same-origin path, so a hostile deepLink must never
+      // yield a link row; the only one is the safe alert's.
       const links = Array.from(document.querySelectorAll("tr[role=link]"));
-      expect(links).toHaveLength(isInternalAlertDeepLink(payload) ? 2 : 1);
+      expect(links).toHaveLength(1);
+      expect(links[0]?.textContent).toContain(SAFE_SUMMARY);
 
       // The safe alert is a real link: clicking it navigates the router to its path.
       const safeRow = screen.getByText(SAFE_SUMMARY).closest("tr") as HTMLElement;

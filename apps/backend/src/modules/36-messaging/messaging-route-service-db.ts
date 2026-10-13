@@ -162,6 +162,14 @@ function validateReferenceRanges(body: string, references: readonly MessageRefer
   }
 }
 
+/** The consent (M39) or care-team seam could not answer: an outage, not a verdict about the user. */
+export class VisibilitySeamUnavailableError extends Error {
+  constructor() {
+    super("channel visibility seam unavailable");
+    this.name = "VisibilitySeamUnavailableError";
+  }
+}
+
 interface EffectiveChannelAccessCandidate {
   readonly kind: ChannelKind;
   readonly subjectId: string | null;
@@ -180,6 +188,8 @@ async function effectivelyVisibleChannels<T extends EffectiveChannelAccessCandid
   candidates: readonly T[],
   part2Gate: Part2ChannelGate,
   warn?: (message: string, context: Record<string, string>) => void,
+  /** A consent/clinical seam could not answer (threw): the result is a denial, but not a verdict about the user. */
+  onSeamUnavailable?: () => void,
 ): Promise<T[]> {
   const careTeamPatientIds = [
     ...new Set(
@@ -210,9 +220,12 @@ async function effectivelyVisibleChannels<T extends EffectiveChannelAccessCandid
           organizationId: orgId,
           patientId,
           userIds: [userId],
+          onUnavailable: onSeamUnavailable,
         });
         if (allowed.has(userId)) part2AllowedPatients.add(patientId);
-        if (automaticPatientIds.has(patientId)) {
+        // A denied user is out whatever the roster says: skip the call, so a roster outage cannot turn a definitive
+        // Part 2 denial into a retryable "unavailable".
+        if (allowed.has(userId) && automaticPatientIds.has(patientId)) {
           const roster = await getSeam("CareTeamProvider").careTeamMembers({
             organizationId: orgId,
             patientId,
@@ -220,6 +233,7 @@ async function effectivelyVisibleChannels<T extends EffectiveChannelAccessCandid
           if (roster.includes(userId)) currentCareTeamPatients.add(patientId);
         }
       } catch (error) {
+        onSeamUnavailable?.();
         // An unavailable clinical/consent seam is an authorization denial, never a stale grant.
         // Logged (ids only) so an outage is distinguishable from a genuine "not a member" 404.
         warn?.("messaging visibility seam failed; denying access", {
@@ -240,6 +254,32 @@ async function effectivelyVisibleChannels<T extends EffectiveChannelAccessCandid
     if (candidate.memberSource !== "auto") return true;
     return currentCareTeamPatients.has(candidate.subjectId);
   });
+}
+
+/**
+ * The visibility decision for one candidate. A denial is `false`. With `throwOnSeamUnavailable` (a retrying caller: the
+ * scheduled-send sweep) an outage that left no definitive verdict THROWS instead, so the caller retries; a non-member
+ * is denied whatever the seam says, so only a live member's outage is worth a retry. Never loosens fail-closed.
+ */
+export async function channelVisibilityVerdict(
+  orgId: string,
+  userId: string,
+  candidate: EffectiveChannelAccessCandidate,
+  part2Gate: Part2ChannelGate,
+  warn: ((message: string, context: Record<string, string>) => void) | undefined,
+  mode: { readonly throwOnSeamUnavailable: boolean },
+): Promise<boolean> {
+  let seamUnavailable = false;
+  const visible =
+    (
+      await effectivelyVisibleChannels(orgId, userId, [candidate], part2Gate, warn, () => {
+        seamUnavailable = true;
+      })
+    ).length === 1;
+  if (!visible && seamUnavailable && candidate.memberSource && mode.throwOnSeamUnavailable) {
+    throw new VisibilitySeamUnavailableError();
+  }
+  return visible;
 }
 
 async function careTeamTitlesForAuthorizedChannels(
@@ -562,6 +602,11 @@ export function createDbMessagingRouteService(
      */
     /** GAP-065 — the M39 Part 2 consent gate on care_team visibility (default: seam-backed, fail-closed). */
     part2Gate?: Part2ChannelGate;
+    /**
+     * `canViewChannel` THROWS {@link VisibilitySeamUnavailableError} when the consent/clinical seam could not answer,
+     * instead of returning false. Only for a retrying caller (the scheduled-send dispatcher); default false.
+     */
+    throwOnSeamUnavailable?: boolean;
     /** Operational warning sink (ids only); default: silent. */
     warn?: (message: string, context: Record<string, string>) => void;
     outbox?: MessagingOutboxPort;
@@ -769,10 +814,9 @@ export function createDbMessagingRouteService(
       };
     });
     if (!candidate) return false;
-    return (
-      (await effectivelyVisibleChannels(orgId, userId, [candidate], part2Gate, opts.warn))
-        .length === 1
-    );
+    return channelVisibilityVerdict(orgId, userId, candidate, part2Gate, opts.warn, {
+      throwOnSeamUnavailable: opts.throwOnSeamUnavailable ?? false,
+    });
   }
 
   /**

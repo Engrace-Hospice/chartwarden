@@ -43,6 +43,11 @@ export interface Part2ChannelGate {
     readonly organizationId: string;
     readonly patientId: string;
     readonly userIds: readonly string[];
+    /**
+     * Called when M39 could not answer for a user (it threw): that user is withheld, exactly as for a denial, but a
+     * caller that can retry (the scheduled-send sweep) uses this to tell an outage from a verdict.
+     */
+    readonly onUnavailable?: (userId: string) => void;
   }): Promise<ReadonlySet<string>>;
 }
 
@@ -64,7 +69,7 @@ export interface Part2GatePorts {
 
 export function createPart2ChannelGate(ports: Part2GatePorts): Part2ChannelGate {
   return {
-    async allowedUserIds({ organizationId, patientId, userIds }) {
+    async allowedUserIds({ organizationId, patientId, userIds, onUnavailable }) {
       if (userIds.length === 0) return new Set();
       const flags = await ports.privacyFlags(organizationId, patientId);
       if (!flags.includes(SUD_PRIVACY_FLAG)) return new Set(userIds);
@@ -82,6 +87,7 @@ export function createPart2ChannelGate(ports: Part2GatePorts): Part2ChannelGate 
             });
             return verdict?.redactSubstanceUseDisorderFields === false ? userId : null;
           } catch {
+            onUnavailable?.(userId);
             return null; // M39 unanswerable => withhold
           }
         }),

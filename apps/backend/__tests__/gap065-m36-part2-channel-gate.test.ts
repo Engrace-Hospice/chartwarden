@@ -81,6 +81,33 @@ describe("createPart2ChannelGate", () => {
     expect(allowed.size).toBe(0);
   });
 
+  it("reports an M39 outage through onUnavailable, but not a plain denial", async () => {
+    const down: string[] = [];
+    const outage = createPart2ChannelGate(
+      ports({
+        evaluateInternalAccess: async () => {
+          throw new Error("m39 down");
+        },
+      }),
+    );
+    await outage.allowedUserIds({
+      organizationId: ORG,
+      patientId: PATIENT,
+      userIds: ["u_named"],
+      onUnavailable: (userId) => down.push(userId),
+    });
+    expect(down).toEqual(["u_named"]);
+
+    const denied: string[] = [];
+    await createPart2ChannelGate(ports()).allowedUserIds({
+      organizationId: ORG,
+      patientId: PATIENT,
+      userIds: ["u_other"], // M39 answers: redact => denied
+      onUnavailable: (userId) => denied.push(userId),
+    });
+    expect(denied).toEqual([]);
+  });
+
   it("propagates an unreadable privacy flag read (the caller must not guess 'not SUD')", async () => {
     const gate = createPart2ChannelGate(
       ports({

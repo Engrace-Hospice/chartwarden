@@ -8,7 +8,7 @@ import { useApiClient } from "@wardenx/ui";
 // The context exposes a resolution STATUS (loading | anonymous | authenticated), not just a nullable
 // Session (audit #6): a loading null and a signed-out null are different, and the chromed-route guard
 // must branch on which one it is (spinner vs. redirect to /login) rather than rendering fail-open.
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { toSession } from "./actor-session";
 import type { Session, SessionState } from "./session-types";
@@ -17,6 +17,34 @@ export type { Session } from "./session-types";
 export type { SessionState, SessionStatus } from "./session-types";
 
 const SessionContext = createContext<SessionState>({ status: "loading", session: null });
+
+let activeIdentity = "";
+/**
+ * "org:user" of the session the app is rendering NOW ("" when signed out), readable outside React. A component that
+ * is being unmounted no longer re-renders, so it cannot learn from context that the identity changed under it;
+ * this is how its cleanup finds out (updated in a layout effect, which runs before passive-effect cleanups).
+ * Assumes ONE session provider tree per document: app.tsx mounts one ActorSessionProvider, and the dev-only
+ * clinical-preview.tsx / cop27-preview.tsx harnesses mount their own single SessionProvider as the sole root. It is
+ * deliberately NOT cleared when the provider unmounts: the unmounting tree's passive-effect cleanups (the draft
+ * flush) run after any layout cleanup, so clearing here would blind them to who was signed in. A new provider overwrites it on mount.
+ */
+export const currentSessionIdentity = (): string => activeIdentity;
+
+/** The provider both session providers render: the context value plus the readable-anywhere identity. */
+function SessionStateProvider({
+  state,
+  children,
+}: {
+  state: SessionState;
+  children: ReactNode;
+}): JSX.Element {
+  const { session } = state;
+  const identity = session ? `${session.organizationId}:${session.userId}` : "";
+  useLayoutEffect(() => {
+    activeIdentity = identity;
+  }, [identity]);
+  return <SessionContext.Provider value={state}>{children}</SessionContext.Provider>;
+}
 
 /** Derive a resolved (non-loading) state from a known session — a present session is authenticated. */
 function resolvedState(session: Session | null): SessionState {
@@ -30,9 +58,7 @@ export interface SessionProviderProps {
 
 /** Static session provider — supplies a known, already-resolved session (tests / SSR / injection). */
 export function SessionProvider({ session, children }: SessionProviderProps): JSX.Element {
-  return (
-    <SessionContext.Provider value={resolvedState(session)}>{children}</SessionContext.Provider>
-  );
+  return <SessionStateProvider state={resolvedState(session)}>{children}</SessionStateProvider>;
 }
 
 export interface ActorSessionProviderProps {
@@ -86,7 +112,7 @@ export function ActorSessionProvider({
     };
   }, [client, initial]);
 
-  return <SessionContext.Provider value={state}>{children}</SessionContext.Provider>;
+  return <SessionStateProvider state={state}>{children}</SessionStateProvider>;
 }
 
 /** The full session state (status + session) — for the route guard and status-aware rendering. */

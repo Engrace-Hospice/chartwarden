@@ -14,6 +14,7 @@ import {
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { type Session, SessionProvider } from "../../shell/session";
 import { DraftConflictPrompt, escapeKeepsMine } from "./draft-conflict-prompt";
 import type { MessageReferenceInput } from "./messaging-types";
 import {
@@ -67,9 +68,19 @@ interface HookProps {
   suspended?: boolean;
 }
 
+/** The session the wrapper provides; a test swaps it to model an in-page identity change. */
+let sessionNow: Session | null = null;
+const sessionOf = (userId: string): Session => ({
+  userId,
+  organizationId: "org-1",
+  organizationName: "Org",
+});
+
 function setup(api: ReturnType<typeof makeApi>, initialText = "") {
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <ApiClientProvider client={api as unknown as ApiClient}>{children}</ApiClientProvider>
+    <ApiClientProvider client={api as unknown as ApiClient}>
+      <SessionProvider session={sessionNow}>{children}</SessionProvider>
+    </ApiClientProvider>
   );
   const hydrate = vi.fn();
   const view = renderHook<ReturnType<typeof useServerDraft>, HookProps>(
@@ -95,7 +106,10 @@ const tick = (ms: number) =>
     await vi.advanceTimersByTimeAsync(ms);
   });
 
-beforeEach(() => vi.useFakeTimers());
+beforeEach(() => {
+  sessionNow = null;
+  vi.useFakeTimers();
+});
 afterEach(() => vi.useRealTimers());
 
 describe("mergeDraftBodies", () => {
@@ -338,6 +352,167 @@ describe("useServerDraft review fixes (Tranche B)", () => {
     view.rerender({ text: "typed", suspended: true });
     view.unmount();
     await flush();
+    expect(api.PUT).not.toHaveBeenCalled();
+  });
+
+  it("I1: leaving a slot flushes its pending text when the identity is unchanged (control for I2)", async () => {
+    sessionNow = sessionOf("user-a");
+    const api = makeApi();
+    const { view } = setup(api, "");
+    await flush();
+    view.rerender({ text: "typed" });
+    view.rerender({ text: "", parent: "root-1" }); // the same slot-switch path as I2
+    await flush();
+    expect(api.PUT).toHaveBeenCalledTimes(1);
+    view.unmount();
+  });
+
+  it("I1b: the unmount flush is sent when the identity is unchanged", async () => {
+    sessionNow = sessionOf("user-a");
+    const api = makeApi();
+    const { view } = setup(api, "");
+    await flush();
+    view.rerender({ text: "typed" });
+    view.unmount();
+    await flush();
+    expect(api.PUT).toHaveBeenCalledTimes(1);
+  });
+
+  it("I2: the unmount flush is skipped when the session identity changed since the text was typed", async () => {
+    sessionNow = sessionOf("user-a");
+    const api = makeApi();
+    const { view } = setup(api, "");
+    await flush();
+    view.rerender({ text: "user A private text" });
+    sessionNow = sessionOf("user-b"); // swapped in-page: the shared client would now send as user B
+    view.rerender({ text: "", parent: "root-1" }); // leaves A's slot; the next composer is empty
+    await flush();
+    view.unmount();
+    await flush();
+    expect(api.PUT).not.toHaveBeenCalled();
+  });
+
+  it("I3: a composer that stays mounted never sends its armed debounce under a different identity", async () => {
+    sessionNow = sessionOf("user-a");
+    const api = makeApi();
+    const { view } = setup(api, "");
+    await flush();
+    view.rerender({ text: "user A private text" });
+    sessionNow = sessionOf("user-b");
+    view.rerender({ text: "user A private text" }); // same slot, no unmount
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
+    expect(api.PUT).not.toHaveBeenCalled();
+  });
+
+  it("I4: a save queued behind an in-flight one is dropped when the identity changed meanwhile", async () => {
+    sessionNow = sessionOf("user-a");
+    const api = makeApi();
+    let release: () => void = () => undefined;
+    api.PUT.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () =>
+            resolve({
+              data: { draft: serverDraft({ body: "one", revision: 1, deviceId: "d" }) },
+              error: undefined,
+              response: { status: 200 },
+            });
+        }),
+    );
+    const { view } = setup(api, "");
+    await flush();
+    view.rerender({ text: "one" });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1); // PUT #1 is in flight
+    expect(api.PUT).toHaveBeenCalledTimes(1);
+    view.rerender({ text: "one two" });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1); // save #2 is queued behind it
+    sessionNow = sessionOf("user-b");
+    view.rerender({ text: "one two" });
+    release();
+    await flush();
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
+    expect(api.PUT).toHaveBeenCalledTimes(1);
+  });
+
+  it("I5: an identity unknown while the session loaded is adopted, so a legitimate draft still flushes", async () => {
+    sessionNow = null; // session still loading when the slot opened
+    const api = makeApi();
+    const { view } = setup(api, "");
+    await flush();
+    sessionNow = sessionOf("user-a");
+    view.rerender({ text: "typed after load" });
+    view.rerender({ text: "", parent: "root-1" });
+    await flush();
+    expect(api.PUT).toHaveBeenCalledTimes(1);
+    view.unmount();
+  });
+
+  it("I6: a draft read for user A that lands after an in-page swap to B is not hydrated into the composer", async () => {
+    sessionNow = sessionOf("user-a");
+    const api = makeApi();
+    let land: () => void = () => undefined;
+    api.GET.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          land = () =>
+            resolve({
+              data: { draft: serverDraft({ body: "A's private draft" }) },
+              error: undefined,
+              response: { status: 200 },
+            });
+        }),
+    );
+    const { view, hydrate } = setup(api, "");
+    await flush();
+    sessionNow = sessionOf("user-b");
+    view.rerender({ text: "" }); // same slot, still mounted
+    land();
+    await flush();
+    expect(hydrate).not.toHaveBeenCalled();
+  });
+
+  it("I7: a 409 whose follow-up read resolves after an in-page swap raises no merge prompt", async () => {
+    sessionNow = sessionOf("user-a");
+    const api = makeApi();
+    api.PUT.mockImplementationOnce(async () => ({
+      data: undefined,
+      error: { error: { code: "CONFLICT" } },
+      response: { status: 409 },
+    }));
+    const { view, hydrate } = setup(api, "");
+    await flush();
+    let land: () => void = () => undefined;
+    api.GET.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          land = () =>
+            resolve({
+              data: { draft: serverDraft({ body: "A's other-device draft" }) },
+              error: undefined,
+              response: { status: 200 },
+            });
+        }),
+    );
+    view.rerender({ text: "A typed this" });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1); // PUT 409 under A, the follow-up read is in flight
+    sessionNow = sessionOf("user-b");
+    view.rerender({ text: "A typed this" });
+    land();
+    await flush();
+    expect(view.result.current.conflict).toBeNull();
+    expect(hydrate).not.toHaveBeenCalled();
+  });
+
+  it("I8: an identity that becomes known after open is adopted at once, so A then B inside one debounce sends nothing", async () => {
+    sessionNow = null; // loading when the slot opened
+    const api = makeApi();
+    const { view } = setup(api, "");
+    await flush();
+    sessionNow = sessionOf("user-a");
+    view.rerender({ text: "A typed this" });
+    sessionNow = sessionOf("user-b");
+    view.rerender({ text: "A typed this" });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
     expect(api.PUT).not.toHaveBeenCalled();
   });
 
