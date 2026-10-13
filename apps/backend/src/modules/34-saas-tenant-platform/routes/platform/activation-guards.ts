@@ -9,14 +9,20 @@ interface BaaRow {
 }
 
 /**
- * The BAA activation judges: the newest EXECUTED one, else the register's first row (which then fails the guard).
- * The register orders `executed_on DESC`, where Postgres puts NULLs first, so a pending renewal would otherwise win.
+ * The BAA activation judges. Fails closed: a termination always governs (a terminated row with no executed date
+ * cannot be ordered, so it blocks outright), otherwise the newest DATED row decides (a newer terminated BAA beats an
+ * older executed one), and undated pending rows are ignored once a dated one exists. The register orders
+ * `executed_on DESC`, where Postgres puts NULLs first, so a pending renewal would otherwise win.
  */
 export function pickGoverningBaa<T extends BaaRow>(rows: readonly T[]): T | undefined {
-  const executed = rows
-    .filter((r) => r.baaStatus === "executed" && r.executedOn !== null)
-    .sort((a, b) => (b.executedOn as string).localeCompare(a.executedOn as string));
-  return executed[0] ?? rows[0];
+  const undatedTermination = rows.find(
+    (r) => r.executedOn === null && r.baaStatus === "terminated",
+  );
+  if (undatedTermination) return undatedTermination;
+  const newestDated = rows
+    .filter((r) => r.executedOn !== null)
+    .sort((a, b) => (b.executedOn as string).localeCompare(a.executedOn as string))[0];
+  return newestDated ?? rows[0];
 }
 
 export interface ActivationGuardInput {
@@ -46,7 +52,10 @@ export function evaluateActivationGuards(input: ActivationGuardInput): Activatio
   const baaExecuted = input.latestBaa?.baaStatus === "executed";
   const expiresOn = input.latestBaa?.expiresOn ?? null;
   return {
-    canonicalTasksComplete: input.canonicalTemplateKeys.every((key) => settled.has(key)),
+    // No canonical templates at all means an unseeded catalog, not "nothing to do": never complete vacuously.
+    canonicalTasksComplete:
+      input.canonicalTemplateKeys.length > 0 &&
+      input.canonicalTemplateKeys.every((key) => settled.has(key)),
     baaExecuted,
     // An absent BAA fails this guard too; a null expiry never expires.
     baaExpiryClearsNinetyDays:

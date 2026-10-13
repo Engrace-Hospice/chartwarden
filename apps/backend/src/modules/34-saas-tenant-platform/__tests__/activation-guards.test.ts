@@ -140,13 +140,45 @@ describe("pickGoverningBaa", () => {
     expect(picked).toEqual(row("executed", "2026-01-01"));
   });
 
-  it("falls back to the first row when none is executed, so the guard still fails closed", () => {
-    expect(pickGoverningBaa([row("pending", null), row("terminated", "2020-01-01")])).toEqual(
-      row("pending", null),
-    );
+  it("never governs with a non-executed row when none is executed, so the guard still fails closed", () => {
+    const picked = pickGoverningBaa([row("pending", null), row("terminated", "2020-01-01")]);
+
+    expect(picked?.baaStatus).not.toBe("executed");
   });
 
   it("is undefined for a tenant with no BAA", () => {
     expect(pickGoverningBaa([])).toBeUndefined();
+  });
+});
+
+// Fail-open cases a review found: a guard that can pass vacuously or past a newer terminated BAA is not a guard.
+describe("activation guards fail closed", () => {
+  it("is not complete when the tenant has no canonical onboarding templates at all (unseeded catalog)", () => {
+    const guards = evaluateActivationGuards({
+      canonicalTemplateKeys: [],
+      tasks: [],
+      latestBaa: { baaStatus: "executed", expiresOn: null },
+      today: new Date("2026-10-13T00:00:00Z"),
+    });
+
+    expect(guards.canonicalTasksComplete).toBe(false);
+  });
+
+  it("a BAA terminated after an executed one governs, so activation is refused", () => {
+    const picked = pickGoverningBaa([
+      { baaStatus: "terminated", executedOn: "2026-06-01", expiresOn: null },
+      { baaStatus: "executed", executedOn: "2025-01-01", expiresOn: null },
+    ]);
+
+    expect(picked?.baaStatus).toBe("terminated");
+  });
+
+  it("a terminated BAA with no executed date still blocks, even beside an executed one", () => {
+    const picked = pickGoverningBaa([
+      { baaStatus: "executed", executedOn: "2025-01-01", expiresOn: null },
+      { baaStatus: "terminated", executedOn: null, expiresOn: null },
+    ]);
+
+    expect(picked?.baaStatus).toBe("terminated");
   });
 });

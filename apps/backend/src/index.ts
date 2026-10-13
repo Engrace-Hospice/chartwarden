@@ -2858,7 +2858,10 @@ function buildFirstAdminAcceptanceService(deps: {
             .select({ status: schema.tenantAccount.status })
             .from(schema.tenantAccount)
             .where(eq(schema.tenantAccount.id, invitation.tenantAccountId))
-            .limit(1);
+            .limit(1)
+            // A share lock holds off a concurrent lifecycle transition (which updates this row) until we commit,
+            // so a tenant suspended between this check and the membership insert cannot slip an admin in.
+            .for("share");
           if (!tenant || !canInviteFirstAdmin(tenant.status)) {
             throw new WardenXError(
               "INVITATION_INVALID",
