@@ -5,6 +5,7 @@ import { Button, useApiClient } from "@wardenx/ui";
 import { useEffect, useId, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import type { JSX } from "react";
+import { BUSY_STYLE } from "./busy-style";
 import "./channel-lifecycle.css";
 
 const REFUSALS = {
@@ -17,8 +18,6 @@ const REFUSALS = {
     403: "You don't have permission to unarchive conversations.",
   },
 } as const satisfies Record<string, Readonly<Record<number, string>>>;
-/** The kit Button sets opacity and cursor inline, so busy feedback has to be inline too. */
-const BUSY_STYLE = { opacity: 0.6, cursor: "not-allowed" } as const;
 const REFRESH_NOTE = " The list will refresh shortly.";
 /** How long the buttons stay held for the parent's refetch before the control lets go and says so. */
 const REFETCH_CAP_MS = 8_000;

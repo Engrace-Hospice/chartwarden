@@ -107,7 +107,9 @@ describe("member rows", () => {
     remove.focus();
     await userEvent.keyboard("{Enter}");
     await waitFor(() => expect(screen.queryByRole("button", { name: "Remove Ann" })).toBeNull());
-    await waitFor(() => expect(document.activeElement?.tagName).not.toBe("BODY"));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Members" })),
+    );
   });
 
   it("keeps Remove focused and aria-disabled (not disabled) while a change is in flight", async () => {
@@ -145,6 +147,33 @@ describe("member rows", () => {
     del.resolve({ error: undefined });
     await waitFor(() => expect(screen.queryByRole("button", { name: "Remove Bea" })).toBeNull());
     expect(document.activeElement).toBe(search);
+  });
+
+  it("does not carry a focus handoff over a failed reload into a later load", async () => {
+    let calls = 0;
+    const later = deferred<Reply>();
+    const api = makeClient({
+      members: () => {
+        calls += 1;
+        if (calls === 1) return three();
+        if (calls === 2) {
+          return { data: undefined, error: { message: "x" }, response: { status: 500 } };
+        }
+        return later.promise as unknown as Reply;
+      },
+    });
+    const { rerender } = render(provide(api, dialog()));
+    const remove = await screen.findByRole("button", { name: "Remove Bea" });
+    remove.focus();
+    await userEvent.keyboard("{Enter}");
+    await screen.findByRole("alert");
+    rerender(provide(api, dialog({ open: false })));
+    rerender(provide(api, dialog({ open: true })));
+    await waitFor(() => expect(calls).toBe(3));
+    (document.activeElement as HTMLElement | null)?.blur();
+    later.resolve(three());
+    await screen.findByRole("button", { name: "Remove Cy" });
+    expect(document.activeElement).toBe(document.body);
   });
 
   it("makes Remove a 44px touch target", async () => {

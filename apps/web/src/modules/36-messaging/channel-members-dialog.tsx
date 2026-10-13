@@ -10,10 +10,8 @@ import type { DmStaffMember } from "./messaging-types";
 import { apiErrorMessage, correlationIdOf } from "./messaging-utils";
 import { SkeletonRows } from "./skeleton-rows";
 import "./announcements.css";
+import { BUSY_STYLE } from "./busy-style";
 import "./channel-lifecycle.css";
-
-/** The kit Button sets opacity and cursor inline, so busy feedback has to be inline too. */
-const BUSY_STYLE = { opacity: 0.6, cursor: "not-allowed" } as const;
 
 interface Member {
   userId: string;
@@ -56,6 +54,9 @@ export function ChannelMembersDialog({
   const [candidateId, setCandidateId] = useState("");
   const [busy, setBusy] = useState(false);
   const [candidateError, setCandidateError] = useState(false);
+  const retryFocusPending = useRef(false);
+  const errorRef = useRef<HTMLDivElement>(null);
+  const [announcement, setAnnouncement] = useState("");
   const sequence = useRef(0);
   const candidateSequence = useRef(0);
 
@@ -74,6 +75,7 @@ export function ChannelMembersDialog({
         return;
       }
       if (error || !data) {
+        pendingFocus.current = undefined;
         setLoadError(apiErrorMessage(error, "The member list could not be loaded."));
         setLoadCorrelationId(correlationIdOf(error));
         return;
@@ -97,6 +99,11 @@ export function ChannelMembersDialog({
 
   useEffect(() => {
     if (!open) return;
+    pendingFocus.current = undefined;
+    retryFocusPending.current = false;
+    setCandidates([]);
+    setCandidateError(false);
+    setAnnouncement("");
     setMembers(null);
     setForbidden(false);
     setLoadError(null);
@@ -139,22 +146,42 @@ export function ChannelMembersDialog({
     pendingFocus.current = undefined;
     if (document.activeElement !== document.body) return;
     const row = neighbour
-      ? listRef.current?.querySelector<HTMLElement>(`[data-member-id="${neighbour}"]`)
+      ? Array.from(listRef.current?.querySelectorAll<HTMLElement>("[data-member-id]") ?? []).find(
+          (element) => element.dataset.memberId === neighbour,
+        )
       : null;
     (row ?? headingRef.current)?.focus();
   }, [members]);
 
+  // After the commit of a finished Retry: if the list is back and focus fell to <body>, the heading takes it.
+  useEffect(() => {
+    if (retrying || !retryFocusPending.current) return;
+    retryFocusPending.current = false;
+    if (loadError === null && members !== null && document.activeElement === document.body) {
+      headingRef.current?.focus();
+    }
+  }, [retrying, loadError, members]);
+
+  // The list was replaced by the error block (e.g. a reload failed after a change) and focus fell to <body>.
+  useEffect(() => {
+    if (loadError === null || retrying) return;
+    if (document.activeElement === document.body)
+      errorRef.current?.querySelector("button")?.focus();
+  }, [loadError, retrying]);
+
   const memberIds = new Set((members ?? []).map((member) => member.userId));
   const addable = candidates.filter((person) => !memberIds.has(person.userId));
+  const locked = busy || members === null || loadError !== null;
   const selected = addable.find((person) => person.userId === candidateId) ?? addable[0];
 
-  // Retry stays mounted (aria-disabled) while it runs so focus is not lost; on success the heading takes focus.
+  // Retry stays mounted (aria-disabled) while it runs so focus is not lost. The handoff to the heading happens in the
+  // effect below, after the commit that removes Retry, not here: state set after an await is not committed yet.
   async function retry(): Promise<void> {
     if (retrying) return;
+    retryFocusPending.current = true;
     setRetrying(true);
     await loadMembers();
     setRetrying(false);
-    if (document.activeElement === document.body) headingRef.current?.focus();
   }
 
   /** The row that should take focus when `userId` is removed: the next one, else the previous, else none. */
@@ -170,6 +197,7 @@ export function ChannelMembersDialog({
     onSuccess?: () => void,
   ): Promise<void> {
     if (busy) return;
+    setAnnouncement("");
     // A close or channel switch bumps the sequence: a reply that lands afterwards must not write anything.
     const generation = sequence.current;
     setBusy(true);
@@ -183,8 +211,10 @@ export function ChannelMembersDialog({
         await loadMembers();
       }
     } catch {
+      pendingFocus.current = undefined;
       if (generation === sequence.current) setActionError(fallback);
     } finally {
+      // Not cleared here: the handoff is consumed by the effect that runs once the reloaded list commits.
       setBusy(false);
     }
   }
@@ -209,7 +239,7 @@ export function ChannelMembersDialog({
             </p>
           </header>
           {loadError ? (
-            <div role="alert" className="wx-channel-members-state">
+            <div role="alert" className="wx-channel-members-state" ref={errorRef}>
               <span>{loadError}</span>
               {loadCorrelationId ? <small>Reference {loadCorrelationId}</small> : null}
               <Button
@@ -224,6 +254,8 @@ export function ChannelMembersDialog({
             </div>
           ) : members === null ? (
             <SkeletonRows label="Loading members" />
+          ) : members.length === 0 ? (
+            <p className="wx-channel-members-state">No members yet</p>
           ) : (
             <ul aria-label="Channel members" ref={listRef}>
               {members.map((member) => (
@@ -234,9 +266,9 @@ export function ChannelMembersDialog({
                   <Button
                     size="lg"
                     tone="secondary"
-                    aria-disabled={busy}
+                    aria-disabled={locked}
                     data-member-id={member.userId}
-                    style={busy ? BUSY_STYLE : undefined}
+                    style={locked ? BUSY_STYLE : undefined}
                     aria-label={`Remove ${member.displayName}`}
                     onClick={() =>
                       void change(
@@ -247,6 +279,7 @@ export function ChannelMembersDialog({
                         "The member could not be removed.",
                         () => {
                           pendingFocus.current = neighbourOf(member.userId);
+                          setAnnouncement(`${member.displayName} removed.`);
                         },
                       )
                     }
@@ -271,8 +304,10 @@ export function ChannelMembersDialog({
               <span>Add to channel</span>
               <select
                 value={selected?.userId ?? ""}
-                disabled={busy || addable.length === 0}
-                onChange={(event) => setCandidateId(event.target.value)}
+                aria-disabled={busy || addable.length === 0}
+                onChange={(event) => {
+                  if (!busy) setCandidateId(event.target.value);
+                }}
               >
                 {addable.length === 0 ? <option value="">No staff to add</option> : null}
                 {addable.map((person) => (
@@ -284,10 +319,11 @@ export function ChannelMembersDialog({
             </label>
             <Button
               size="lg"
-              aria-disabled={busy || !selected}
-              style={busy ? BUSY_STYLE : undefined}
+              aria-disabled={locked || !selected}
+              style={locked || !selected ? BUSY_STYLE : undefined}
               onClick={() =>
                 selected &&
+                !locked &&
                 void change(
                   () =>
                     client.POST("/api/v1/messaging/channels/{id}/members", {
@@ -295,12 +331,14 @@ export function ChannelMembersDialog({
                       body: { userId: selected.userId },
                     }),
                   "The member could not be added.",
+                  () => setAnnouncement(`${selected.displayName} added.`),
                 )
               }
             >
               Add
             </Button>
           </div>
+          <output aria-label="Member changes">{announcement}</output>
           {candidateError ? (
             <div role="alert" className="wx-messaging-error">
               Staff could not be searched. Try again.
