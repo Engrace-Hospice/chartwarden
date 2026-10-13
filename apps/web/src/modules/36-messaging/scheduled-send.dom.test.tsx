@@ -54,6 +54,14 @@ const blocked = {
 };
 
 describe("ScheduleSendButton", () => {
+  it("is at least 44px tall through the Button size (inline styles beat any stylesheet rule)", () => {
+    render(
+      provide(api({}), <ScheduleSendButton channelId={CH} text="hi" onScheduled={() => {}} />),
+    );
+    const button = screen.getByRole("button", { name: /schedule send/i });
+    expect(Number.parseFloat(button.style.minHeight)).toBeGreaterThanOrEqual(2.75);
+  });
+
   it("is disabled until there is text, and explains a disabled reason", () => {
     const client = api({});
     const { rerender } = render(

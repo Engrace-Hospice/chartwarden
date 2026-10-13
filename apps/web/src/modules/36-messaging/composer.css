@@ -112,7 +112,6 @@ a.wx-message-reference:hover {
 
 .wx-message-composer > .wx-button {
   align-self: end;
-  min-height: 2.75rem;
 }
 
 .wx-message-composer > small {

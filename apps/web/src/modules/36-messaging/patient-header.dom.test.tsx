@@ -86,4 +86,58 @@ describe("care-team patient header", () => {
     expect(screen.queryByText("MRN MRN-1")).toBeNull();
     expect(screen.getByText("MRN MRN-2")).toBeTruthy();
   });
+
+  it("keeps the header across a rerender that only changes callback identities", async () => {
+    const api = {
+      GET: vi.fn((path: string) =>
+        Promise.resolve(
+          path === PATIENT_PATH
+            ? { data: { id: "p-1", firstName: "Margaret", lastName: "Brandt", mrn: "MRN-77" } }
+            : { data: { messages: [] } },
+        ),
+      ),
+      POST: vi.fn(),
+    };
+    const { rerender } = render(tree(api, careTeam("c-1", "p-1")));
+    await screen.findByText("MRN MRN-77");
+    const patientCalls = api.GET.mock.calls.filter(([p]) => p === PATIENT_PATH).length;
+    rerender(tree(api, careTeam("c-1", "p-1")));
+    expect(screen.getByText("MRN MRN-77")).toBeTruthy();
+    expect(api.GET.mock.calls.filter(([p]) => p === PATIENT_PATH).length).toBe(patientCalls);
+  });
+
+  it("clears the header when the same channel stops being a care-team channel", async () => {
+    const api = {
+      GET: vi.fn((path: string) =>
+        Promise.resolve(
+          path === PATIENT_PATH
+            ? { data: { id: "p-1", firstName: "Margaret", lastName: "Brandt", mrn: "MRN-77" } }
+            : { data: { messages: [] } },
+        ),
+      ),
+      POST: vi.fn(),
+    };
+    const { rerender } = render(tree(api, careTeam("c-1", "p-1")));
+    await screen.findByText("MRN MRN-77");
+    rerender(tree(api, { ...careTeam("c-1", "p-1"), kind: "dm", subjectId: null }));
+    await waitFor(() => expect(screen.queryByText("MRN MRN-77")).toBeNull());
+  });
+
+  it("survives a rejected patient request without an unhandled rejection", async () => {
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    const api = {
+      GET: vi.fn((path: string) =>
+        path === PATIENT_PATH
+          ? Promise.reject(new Error("network down"))
+          : Promise.resolve({ data: { messages: [] } }),
+      ),
+      POST: vi.fn(),
+    };
+    render(tree(api, careTeam("c-1", "p-1")));
+    await new Promise((r) => setTimeout(r, 30));
+    process.off("unhandledRejection", unhandled);
+    expect(unhandled).not.toHaveBeenCalled();
+    expect(screen.queryByText(/^MRN /)).toBeNull();
+  });
 });

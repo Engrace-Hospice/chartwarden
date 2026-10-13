@@ -2,7 +2,7 @@
 // and unmounts every rendered tree after each test so component/router state never leaks between
 // cases. Runs for every test file (node-env tests never call `render()`, so `cleanup()` is a no-op
 // there) — one setup file is simpler than splitting into per-environment projects.
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
@@ -46,6 +46,11 @@ if (typeof UndiciRequest === "function") {
     }
   } as typeof Request;
 }
+
+// Testing Library's default 1000 ms findBy*/waitFor timeout is shorter than a debounced lookup (the @-mention
+// candidates wait 250 ms) plus a render on a loaded machine: the M36 mention tests failed only under CPU contention,
+// never in isolation. Passing waits return immediately, so a longer ceiling costs nothing.
+configure({ asyncUtilTimeout: 5000 });
 
 afterEach(() => {
   cleanup();

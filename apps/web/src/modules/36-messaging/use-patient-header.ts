@@ -10,6 +10,8 @@ export function usePatientHeader(channel: Pick<ChannelSummary, "kind" | "subject
   const client = useApiClient();
   const [patient, setPatient] = useState<PatientHeaderInfo | null>(null);
   useEffect(() => {
+    // The hook owns the header: any change of channel kind or subject drops the previous patient first.
+    setPatient(null);
     if (channel.kind !== "care_team" || !channel.subjectId) return;
     let stale = false;
     void client
@@ -17,6 +19,10 @@ export function usePatientHeader(channel: Pick<ChannelSummary, "kind" | "subject
       .then(({ data, error }) => {
         if (stale) return;
         setPatient(error || !data ? null : (data as PatientHeaderInfo));
+      })
+      // A failed read leaves no patient header: the thread falls back to its plain title and subtitle.
+      .catch(() => {
+        if (!stale) setPatient(null);
       });
     return () => {
       stale = true;

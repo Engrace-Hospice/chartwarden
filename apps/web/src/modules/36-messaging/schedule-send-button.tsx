@@ -38,7 +38,7 @@ export function ScheduleSendButton({
       <Button
         type="button"
         tone="secondary"
-        size="sm"
+        size="lg"
         disabled={unavailable}
         title={disabledReason}
         aria-label="Schedule send"

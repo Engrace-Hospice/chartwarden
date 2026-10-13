@@ -260,6 +260,31 @@ describe("access-ended notice on narrow screens (WP 2.11 D2)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back to conversations" }));
     expect(screen.queryByText("You no longer have access to this conversation")).toBeNull();
     expect(layout?.classList.contains("access-ended")).toBe(false);
+    // Focus must land on a stable inbox target, not fall to <body>.
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Conversations" }));
+  });
+
+  it("sizes the inbox header actions with the Button's own size prop (inline styles beat CSS)", async () => {
+    const api = {
+      GET: vi.fn(() => Promise.resolve({ data: { channels: [] }, error: undefined })),
+      POST: vi.fn(),
+    } as unknown as ApiClient;
+    render(
+      <MemoryRouter>
+        <ApiClientProvider client={api}>
+          <SessionProvider
+            session={{ userId: "u", organizationId: "o", organizationName: "N" } as Session}
+          >
+            <StaffMessaging />
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    for (const name of ["New conversation", "Scheduled messages"]) {
+      const button = await screen.findByRole("button", { name });
+      expect(Number.parseFloat(button.style.minHeight)).toBeGreaterThanOrEqual(2.75);
+    }
   });
 
   it("does not nest a second main landmark", () => {

@@ -1,5 +1,5 @@
 import { Button, EmptyState, Glyph } from "@wardenx/ui";
-import type { JSX, KeyboardEvent } from "react";
+import type { JSX, KeyboardEvent, RefObject } from "react";
 import type { ChannelSummary, ConversationFilter } from "./messaging-types";
 import { channelKindLabel, channelLabel, initialsOf, relativeTime } from "./messaging-utils";
 import { SkeletonRows } from "./skeleton-rows";
@@ -31,6 +31,8 @@ export interface ConversationInboxProps {
   onNewDepartment?: () => void;
   /** WP 2.6: opens the sender's Scheduled list. */
   onShowScheduled?: () => void;
+  /** Lets the page hand focus to the inbox (e.g. after leaving the access-ended notice). */
+  headingRef?: RefObject<HTMLHeadingElement>;
 }
 
 export function ConversationInbox({
@@ -48,6 +50,7 @@ export function ConversationInbox({
   onNewConversation,
   onNewDepartment,
   onShowScheduled,
+  headingRef,
 }: ConversationInboxProps): JSX.Element {
   function moveFocus(event: KeyboardEvent<HTMLUListElement>): void {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -65,13 +68,15 @@ export function ConversationInbox({
     <aside className="wx-messaging-inbox" aria-label="Conversations">
       <header className="wx-messaging-inbox-header">
         <div>
-          <h2>Conversations</h2>
+          <h2 ref={headingRef} tabIndex={-1}>
+            Conversations
+          </h2>
           <span>{channels?.length ?? 0}</span>
         </div>
         <div className="wx-messaging-inbox-actions">
           {onShowScheduled ? (
             <Button
-              size="sm"
+              size="lg"
               tone="secondary"
               onClick={onShowScheduled}
               aria-label="Scheduled messages"
@@ -81,7 +86,7 @@ export function ConversationInbox({
           ) : null}
           {onNewDepartment ? (
             <Button
-              size="sm"
+              size="lg"
               tone="secondary"
               onClick={onNewDepartment}
               aria-label="New department channel"
@@ -89,7 +94,7 @@ export function ConversationInbox({
               <Glyph name="users" size={15} /> Department
             </Button>
           ) : null}
-          <Button size="sm" onClick={onNewConversation} aria-label="New conversation">
+          <Button size="lg" onClick={onNewConversation} aria-label="New conversation">
             <Glyph name="plus" size={15} /> New
           </Button>
         </div>

@@ -373,7 +373,6 @@ export function ConversationThread({
     setLoadError(null);
     setLoadCorrelationId(null);
     setRefreshError(false);
-    setPatient(null);
     setContextOpen(false);
     panelReset();
     jumpReset();
@@ -391,7 +390,7 @@ export function ConversationThread({
       generationRef.current += 1;
     };
     // loadLatest changes identity only with the channel (or client); every other input is read through a ref.
-  }, [loadLatest, resetSender, resetMention, jumpReset, panelReset, setPatient]);
+  }, [loadLatest, resetSender, resetMention, jumpReset, panelReset]);
 
   // A new anchor on the same channel re-reads around it without touching the draft, chips or an in-flight send.
   useEffect(() => {
