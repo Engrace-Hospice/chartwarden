@@ -182,7 +182,7 @@ interface EffectiveChannelAccessCandidate {
  * it is revalidated through the opaque CareTeamProvider seam on every effective-access decision.
  * Manual membership is an explicit audited override and remains authoritative by domain rule.
  */
-async function effectivelyVisibleChannels<T extends EffectiveChannelAccessCandidate>(
+export async function effectivelyVisibleChannels<T extends EffectiveChannelAccessCandidate>(
   orgId: string,
   userId: string,
   candidates: readonly T[],
@@ -359,7 +359,7 @@ async function assertLiveMembershipInTx(
   if (!live) throw new NotFoundError("message", messageId);
 }
 
-async function isActiveMessagingUser(
+export async function isActiveMessagingUser(
   tx: Parameters<typeof channelOr404>[0],
   orgId: string,
   userId: string,

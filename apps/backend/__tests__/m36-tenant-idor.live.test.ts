@@ -391,6 +391,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     "message_attachment",
     "message_draft",
     "scheduled_message",
+    "message_search_token",
     "attachment_access_event",
     "message_entity_reference",
     "message_reaction",
