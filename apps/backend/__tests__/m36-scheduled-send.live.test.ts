@@ -30,6 +30,7 @@ import { eq, sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { BodyKeyUnavailableError } from "../src/modules/36-messaging/body-key-ring";
 import { createDbDraftService } from "../src/modules/36-messaging/drafts/draft-service-db";
 import { createDrizzleMessagingEraseStore } from "../src/modules/36-messaging/erasers/messaging-eraser";
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
@@ -75,6 +76,7 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
   /** Mutable permission table the dispatcher consults (stands in for the M3 resolver). */
   const grants = new Map<string, Set<string>>();
   let failOpenFor: string | null = null;
+  let failOpenAsKeyOutage = false;
   /** Per-user resolver fault injection (null = healthy). */
   let resolverFault: ((userId: string) => Error | null) | null = null;
   let erin: string; // a third sender, for outage patterns across distinct users
@@ -204,6 +206,8 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
         seal: (org, text) => cipher.seal(org, text),
         sealRing: (org, text) => cipher.sealRing(org, text),
         open: async (org, bytes) => {
+          if (failOpenFor && failOpenAsKeyOutage)
+            throw new BodyKeyUnavailableError(new Error("simulated key outage"));
           if (failOpenFor) throw new Error("simulated unseal failure");
           return cipher.open(org, bytes);
         },
@@ -607,6 +611,24 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
       expect(await tick()).toMatchObject({ blocked: 1 });
       const [row] = await rows();
       expect(row.blocked_reason).toBe("parent_unavailable");
+    });
+
+    it("a key-provider outage retries the row without counting an attempt or blocking it (never dispatch_failed)", async () => {
+      await wipe();
+      const created = await schedule(alice);
+      await makeDue(created.id);
+      failOpenFor = created.id;
+      failOpenAsKeyOutage = true;
+      try {
+        for (let i = 0; i < 4; i += 1)
+          expect(await tick()).toMatchObject({ sent: 0, blocked: 0, failed: 0 });
+        expect((await rows())[0]).toMatchObject({ status: "pending", attempts: 0 });
+      } finally {
+        failOpenFor = null;
+        failOpenAsKeyOutage = false;
+      }
+      expect(await tick()).toMatchObject({ sent: 1 }); // the outage ended: it is delivered
+      expect(await eventsOf("m36.message.schedule_blocked")).toHaveLength(0);
     });
 
     it("a send that keeps failing is blocked as dispatch_failed after three tries", async () => {

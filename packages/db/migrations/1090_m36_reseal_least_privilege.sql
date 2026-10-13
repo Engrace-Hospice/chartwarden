@@ -9,7 +9,11 @@
 --   * the function validates the SHAPE of both envelopes: the old one must be a plausible legacy envelope (version byte 1,
 --     >= 29 bytes) and the new one a well-formed ring envelope (version byte 2, label length 1..32, label of [A-Za-z0-9._-],
 --     >= header + nonce + tag) whose length is exactly the legacy length plus 1 + label length (same plaintext, different
---     header), so garbage or a differently-sized forged blob is refused. GCM authenticity cannot be checked in SQL; the
+--     header), so garbage or a differently-sized forged blob is refused.
+--   ACCEPTED RESIDUAL: a holder of the carrier role (the operator backfill login) who knows a legacy revision's bytes can swap in a
+--     well-shaped but forged ring envelope; neither the shape check nor the compare-and-swap can see GCM authenticity. Only
+--     `hash_verify` (decrypt + plaintext hash) catches it, and the audit trigger records who/when. Treat the credential as
+--     operator-held and use it only inside the escrow-gated backfill. GCM authenticity cannot be checked in SQL; the
 --     backfill proves the round trip before calling, and hash_verify detects a forged blob that passed the shape check.
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'wardenx_m36_reseal') THEN
@@ -27,16 +31,24 @@ BEGIN
   IF p_organization_id IS NULL OR p_organization_id IS DISTINCT FROM NULLIF(current_setting('app.org_id', true), '')::uuid THEN
     RAISE EXCEPTION 'm36_reseal_message_revision: the organization does not match the session' USING ERRCODE = '42501';
   END IF;
-  IF p_old IS NULL OR p_new IS NULL
-     OR octet_length(p_old) < 29 OR get_byte(p_old, 0) <> 1
-     OR octet_length(p_new) < 31 OR get_byte(p_new, 0) <> 2 THEN
+  -- Explicit nesting: get_byte on a too-short value would raise a different error, so never rely on OR short-circuiting.
+  IF p_old IS NULL OR p_new IS NULL THEN
+    RAISE EXCEPTION 'm36_reseal_message_revision: only a legacy (1) envelope may be replaced by a ring (2) envelope' USING ERRCODE = '22023';
+  END IF;
+  IF octet_length(p_old) < 29 OR octet_length(p_new) < 31 THEN
+    RAISE EXCEPTION 'm36_reseal_message_revision: only a legacy (1) envelope may be replaced by a ring (2) envelope' USING ERRCODE = '22023';
+  END IF;
+  IF get_byte(p_old, 0) <> 1 OR get_byte(p_new, 0) <> 2 THEN
     RAISE EXCEPTION 'm36_reseal_message_revision: only a legacy (1) envelope may be replaced by a ring (2) envelope' USING ERRCODE = '22023';
   END IF;
   v_label_len := get_byte(p_new, 1);
-  IF v_label_len < 1 OR v_label_len > 32
-     OR octet_length(p_new) < 2 + v_label_len + 12 + 16
-     OR encode(substring(p_new from 3 for v_label_len), 'escape') !~ '^[A-Za-z0-9._-]+$'
-     OR octet_length(p_new) <> octet_length(p_old) + 1 + v_label_len THEN
+  IF v_label_len < 1 OR v_label_len > 32 THEN
+    RAISE EXCEPTION 'm36_reseal_message_revision: malformed ring envelope' USING ERRCODE = '22023';
+  END IF;
+  IF octet_length(p_new) < 2 + v_label_len + 12 + 16 OR octet_length(p_new) <> octet_length(p_old) + 1 + v_label_len THEN
+    RAISE EXCEPTION 'm36_reseal_message_revision: malformed ring envelope' USING ERRCODE = '22023';
+  END IF;
+  IF encode(substring(p_new from 3 for v_label_len), 'escape') !~ '^[A-Za-z0-9._-]+$' THEN
     RAISE EXCEPTION 'm36_reseal_message_revision: malformed ring envelope' USING ERRCODE = '22023';
   END IF;
   UPDATE message_revision SET body_cipher = p_new

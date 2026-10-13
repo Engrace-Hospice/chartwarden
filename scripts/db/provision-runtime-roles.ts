@@ -377,7 +377,7 @@ async function main(): Promise<void> {
         END IF;
       END $$;`);
       await run(
-        `ALTER ROLE wardenx_body_backfill_login LOGIN NOBYPASSRLS PASSWORD ${quoteLiteral(bodyBackfillPassword)};`,
+        `ALTER ROLE wardenx_body_backfill_login LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS PASSWORD ${quoteLiteral(bodyBackfillPassword)};`,
       );
       await run("GRANT wardenx_m36_reseal TO wardenx_body_backfill_login;");
       console.log(

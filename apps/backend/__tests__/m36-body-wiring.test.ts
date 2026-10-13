@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { DbClient } from "@wardenx/db";
 import { describe, expect, it, vi } from "vitest";
+import { collectEnvProblems } from "../src/bootstrap/env";
 import {
   BodyKeyUnavailableError,
   createRingDekCache,
@@ -188,11 +189,19 @@ describe("fail-closed: no write or read proceeds on a key, envelope or scheme pr
   });
 });
 
+describe("production env guarantees the platform pool the legacy check needs", () => {
+  it("assertProductionEnv names DATABASE_PLATFORM_URL as required", () => {
+    const problems = collectEnvProblems({ NODE_ENV: "production" } as never);
+    expect(problems.map((p) => p.key)).toContain("DATABASE_PLATFORM_URL");
+  });
+});
+
 describe("wiring: the calls exist where they must (source-level regression guards)", () => {
   const index = src("src/index.ts");
   it("index.ts validates the seal scheme, runs the legacy boot check and binds the key provider", () => {
     expect(index).toContain("assertM36BodyBootEnv(process.env)");
     expect(index).toContain("await runLegacyBodyBootCheck({");
+    expect(index).toContain("cannot run in production without DATABASE_PLATFORM_URL");
     expect(index).toContain("setMessageBodyKeyProvider(() => getTenantKeyProvider())");
   });
 
@@ -218,9 +227,9 @@ describe("wiring: the calls exist where they must (source-level regression guard
   });
 
   it("hash_verify and search do not swallow key outages", () => {
-    expect(src("src/modules/36-messaging/jobs/integrity-jobs.ts")).toContain(
-      "if (err instanceof BodyKeyUnavailableError) throw err;",
-    );
+    const jobs = src("src/modules/36-messaging/jobs/integrity-jobs.ts");
+    expect(jobs).toContain("if (err.destroyed) return null;");
+    expect(jobs).toMatch(/if \(err\.destroyed\) return null;\s*throw err;/);
     expect(src("src/modules/36-messaging/message-search-service-db.ts")).toContain(
       "if (err instanceof BodyKeyUnavailableError) throw err;",
     );

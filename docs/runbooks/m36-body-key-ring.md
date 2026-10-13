@@ -79,6 +79,11 @@ hash is checked before and after; a row whose hash does not match is reported (`
 audit row) and **left alone**: investigate it, do not force it. Every batch writes `m36.body_backfill.batch`, the end writes
 `m36.body_backfill.run` with the completion count, and the table audit triggers write one row per re-sealed row.
 
+**Accepted residual:** the re-seal function validates envelope shape and does a compare-and-swap, but it cannot verify GCM
+authenticity, so a holder of the `wardenx_m36_reseal` credential who knows a legacy revision's bytes could swap in a well-shaped
+forged ring envelope. Only `hash_verify` (decrypt + hash) catches that, and the audit trigger records the write. Keep the
+credential operator-held and use it only for the escrow-gated backfill.
+
 Revisions are re-sealed through `m36_reseal_message_revision` (migrations 1089/1090), the only path that may UPDATE a revision, callable
 only by members of `wardenx_m36_reseal`.
 
@@ -102,7 +107,9 @@ DEK. After that every ring-sealed body of the tenant fails to open (proved live 
 cache is dropped in the process that runs the shred worker immediately after `m34_destroy_tenant_key_ring` commits (index.ts
 `destroyTenantKeyRing`), and for an org when a `dek_rotation_completed` event is published. **Other processes** (api replicas, other
 workers) have no such hook and keep a cached DEK for up to 60 s after a destruction: that is the stated exposure window. A key
-outage while verifying is reported as `BodyKeyUnavailableError` (hash_verify fails the run; search returns 503), never as tampering.
+outage while verifying is reported as `BodyKeyUnavailableError` (hash_verify fails the run; search returns 503; a scheduled send is
+retried next tick without counting an attempt), never as tampering. A *destroyed* ring (crypto-shred) is skipped by hash_verify
+like an erased tenant, so a shredded tenant does not retry into the DLQ forever.
 
 **What is not shredded:** a legacy-sealed row, and any backup or dump containing legacy-sealed ciphertext, is readable with
 `MESSAGING_ENCRYPTION_KEY` and the org id alone. The shred is complete for a tenant only after the backfill finished for it and

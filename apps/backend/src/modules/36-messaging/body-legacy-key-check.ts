@@ -138,7 +138,8 @@ export async function runLegacyBodyBootCheck(deps: {
 /**
  * Boot-time validation of the WP 2.13 environment (called unconditionally, beside `assertProductionEnv`): a typo in
  * M36_BODY_SEAL_SCHEME must stop the boot, not surface as a 500 on the first send; `ring` additionally needs the platform KEK and
- * the platform pool (the ring is read through them), and every tenant must already have a provisioned ring (runbook stage 2).
+ * the platform pool (the ring is read through them). It does NOT check that every tenant has a provisioned ring: that is an
+ * operator precondition (runbook stage 2); a tenant without one fails its sends with BodyKeyUnavailableError.
  */
 export function assertM36BodyBootEnv(env: NodeJS.ProcessEnv = process.env): "legacy" | "ring" {
   const raw = env.M36_BODY_SEAL_SCHEME?.trim().toLowerCase();

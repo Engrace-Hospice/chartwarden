@@ -23,12 +23,15 @@ import { DegradedError } from "@wardenx/types";
  * GCM authentication failure. It is a 503-class DegradedError carrying the cause.
  */
 export class BodyKeyUnavailableError extends DegradedError {
+  /** The ring was destroyed (M34 crypto-shred): permanent and authorised, unlike an outage. */
+  readonly destroyed: boolean;
   constructor(override readonly cause: unknown) {
     super(
       "message-body-key",
       `body key unavailable: ${cause instanceof Error ? cause.message : String(cause)}`,
     );
     this.name = "BodyKeyUnavailableError";
+    this.destroyed = cause instanceof Error && cause.name === "TenantKeyDestroyed";
   }
 }
 

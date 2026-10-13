@@ -3222,6 +3222,12 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         }),
       log: console,
     });
+  } else if (process.env.NODE_ENV === "production") {
+    // assertProductionEnv requires DATABASE_PLATFORM_URL, so this is unreachable in a validated boot; if validation is ever
+    // bypassed the legacy-row check must not silently not run.
+    throw new Error(
+      "M36 legacy message-body check cannot run in production without DATABASE_PLATFORM_URL; refusing to boot (ADR-0058 P1)",
+    );
   }
   // audit C1 — RLS is the tenancy control, and a role with BYPASSRLS makes every policy decorative.
   // The migrator now gates that grant on WARDENX_DEV_BYPASSRLS + non-production, but a grant applied

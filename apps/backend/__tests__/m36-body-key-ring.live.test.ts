@@ -403,6 +403,10 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
     await expect(
       call(ORG_A, rev?.id as string, rev?.body_cipher as Buffer, rev?.body_cipher as Buffer),
     ).rejects.toMatchObject({ cause: { message: expect.stringMatching(/only a legacy/) } });
+    // a value too short for get_byte raises the INTENDED error (explicit nesting, no reliance on OR short-circuit)
+    await expect(call(ORG_A, rev?.id as string, Buffer.from([1]), sealed)).rejects.toMatchObject({
+      cause: { message: expect.stringMatching(/only a legacy/) },
+    });
     // a stale ciphertext (compare-and-swap) changes nothing
     const stale = await call(
       ORG_A,
@@ -708,33 +712,46 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
     cache.invalidate(ORG_B);
 
     await expect(ringCipher.open(ORG_B, ringRow.body_cipher)).rejects.toThrow(/destroyed/i);
-    // a key outage is not tampering: hash_verify fails the run instead of writing critical mismatch rows
-    const mismatchesBefore = (
-      await admin.query(
-        "SELECT count(*)::int AS n FROM audit_event WHERE event_type='m36.integrity.hash_mismatch' AND organization_id=$1",
-        [ORG_B],
-      )
-    ).rows[0].n;
+    // reads never degrade to an empty or placeholder body: the key error reaches the caller (503), not a blank message
     await expect(
-      runHashVerifyForOrg(
-        {
-          db: handle.db,
-          cipher: ringCipher,
-          holdScopeForOrg: async () => ({ orgWide: false, patientIds: new Set() }),
-          sampleLimit: 1000,
-          randomSampleSize: 100,
-        },
-        ORG_B,
-      ),
+      ringService.listMessages(ORG_B, { channelId: dmB.channelId, userId: users.b2 as string }),
     ).rejects.toBeInstanceOf(BodyKeyUnavailableError);
-    expect(
+    // a DESTROYED ring is the authorised shred: hash_verify skips the tenant's bodies (no mismatch, no endless retry)
+    const verifyDeps = {
+      db: handle.db,
+      cipher: ringCipher,
+      holdScopeForOrg: async () => ({ orgWide: false, patientIds: new Set<string>() }),
+      sampleLimit: 1000,
+      randomSampleSize: 100,
+    };
+    const mismatchCount = async (org: string) =>
       (
         await admin.query(
           "SELECT count(*)::int AS n FROM audit_event WHERE event_type='m36.integrity.hash_mismatch' AND organization_id=$1",
-          [ORG_B],
+          [org],
         )
-      ).rows[0].n,
-    ).toBe(mismatchesBefore);
+      ).rows[0].n as number;
+    const mismatchesBefore = await mismatchCount(ORG_B);
+    const shredded = await runHashVerifyForOrg(verifyDeps, ORG_B);
+    expect(shredded.mismatched).toBe(0);
+    expect(shredded.skippedDeletedTenant).toBeGreaterThan(0);
+    expect(await mismatchCount(ORG_B)).toBe(mismatchesBefore);
+    // ...but a plain key OUTAGE (live ring, provider down) fails the run: not tampering, and not silently passed
+    const outage = createMessageBodyCipher({
+      ringCache: createRingDekCache({
+        dekForOrg: async () => {
+          throw new Error("platform pool down");
+        },
+        dekForOrgVersion: async () => {
+          throw new Error("platform pool down");
+        },
+      }),
+    });
+    const mismatchesA = await mismatchCount(ORG_A);
+    await expect(
+      runHashVerifyForOrg({ ...verifyDeps, cipher: outage }, ORG_A),
+    ).rejects.toBeInstanceOf(BodyKeyUnavailableError);
+    expect(await mismatchCount(ORG_A)).toBe(mismatchesA);
     const legacy = (await rowsOf("message", ORG_B)).find(
       (r) => r.id === legacyRowB.messageId,
     ) as Row;

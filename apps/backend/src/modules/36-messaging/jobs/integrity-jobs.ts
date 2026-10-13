@@ -114,7 +114,12 @@ async function recompute(
     return messageBodySha256(await cipher.open(orgId, meta.cipherBytes));
   } catch (err) {
     // A key outage is not tampering: fail the run (retried, DLQ alert) instead of writing critical mismatch rows.
-    if (err instanceof BodyKeyUnavailableError) throw err;
+    // A DESTROYED ring is the M34 crypto-shred (authorised by a destruction certificate): the body is permanently
+    // unreadable by design, so it is skipped like an erased tenant (never retried forever, never a mismatch).
+    if (err instanceof BodyKeyUnavailableError) {
+      if (err.destroyed) return null;
+      throw err;
+    }
     return DECRYPT_FAILED;
   }
 }
