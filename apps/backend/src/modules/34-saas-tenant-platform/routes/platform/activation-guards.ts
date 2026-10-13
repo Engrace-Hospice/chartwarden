@@ -2,6 +2,23 @@
 // onboarding task is done/skipped, the latest BAA is executed, and it does not expire within 90 days.
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
 
+interface BaaRow {
+  readonly baaStatus: string;
+  readonly executedOn: string | null;
+  readonly expiresOn: string | null;
+}
+
+/**
+ * The BAA activation judges: the newest EXECUTED one, else the register's first row (which then fails the guard).
+ * The register orders `executed_on DESC`, where Postgres puts NULLs first, so a pending renewal would otherwise win.
+ */
+export function pickGoverningBaa<T extends BaaRow>(rows: readonly T[]): T | undefined {
+  const executed = rows
+    .filter((r) => r.baaStatus === "executed" && r.executedOn !== null)
+    .sort((a, b) => (b.executedOn as string).localeCompare(a.executedOn as string));
+  return executed[0] ?? rows[0];
+}
+
 export interface ActivationGuardInput {
   readonly canonicalTemplateKeys: readonly string[];
   readonly tasks: readonly { readonly templateKey: string; readonly status: string }[];

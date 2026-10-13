@@ -90,11 +90,22 @@ export function AgencySetup(): JSX.Element {
       table={
         <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
           {loadError ? (
-            <InlineAlert tone="error">Could not load your agency details.</InlineAlert>
+            <>
+              <InlineAlert tone="error">Could not load your agency details.</InlineAlert>
+              <Button tone="secondary" onClick={() => void load()}>
+                Try again
+              </Button>
+            </>
           ) : null}
           {entities === null && !loadError ? <LoadingSpinner label="Loading…" /> : null}
-          <ProviderEntitySection entities={entities ?? []} onCreated={load} />
-          <LocationSection entities={entities ?? []} locations={locations} onCreated={load} />
+          {/* Render the sections only once the lists are known: "no provider entity yet" on a failed or pending
+              load would invite creating a duplicate CCN/NPI. */}
+          {entities !== null ? (
+            <>
+              <ProviderEntitySection entities={entities} onCreated={load} />
+              <LocationSection entities={entities} locations={locations} onCreated={load} />
+            </>
+          ) : null}
         </div>
       }
     />
@@ -111,7 +122,8 @@ function ProviderEntitySection({
   const [form, setForm] = useState(EMPTY_ENTITY);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const set = (key: keyof typeof form) => (value: string) => setForm({ ...form, [key]: value });
+  const set = (key: keyof typeof form) => (value: string) =>
+    setForm((f) => ({ ...f, [key]: value }));
 
   async function submit(e: FormEvent): Promise<void> {
     e.preventDefault();
@@ -232,7 +244,8 @@ function LocationSection({
   const [form, setForm] = useState(EMPTY_LOCATION);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const set = (key: keyof typeof form) => (value: string) => setForm({ ...form, [key]: value });
+  const set = (key: keyof typeof form) => (value: string) =>
+    setForm((f) => ({ ...f, [key]: value }));
   const noEntities = entities.length === 0;
   const providerEntityId = form.providerEntityId || entities[0]?.id || "";
 
@@ -267,7 +280,7 @@ function LocationSection({
         setError(serverMessage(err) ?? "The location could not be created.");
         return;
       }
-      setForm({ ...EMPTY_LOCATION, providerEntityId: form.providerEntityId, timezone });
+      setForm((f) => ({ ...EMPTY_LOCATION, providerEntityId: f.providerEntityId, timezone }));
       await onCreated();
     } catch {
       setError(UNREACHABLE);

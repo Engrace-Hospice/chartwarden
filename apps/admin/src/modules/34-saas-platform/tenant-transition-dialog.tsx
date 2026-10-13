@@ -5,7 +5,7 @@
 // guards (canonical tasks + BAA for activation; retention elapsed and no legal hold for destruction), so a refusal
 // carries the reason.
 import { Button, InlineAlert, Modal, SelectField, TextAreaField, useApiClient } from "@wardenx/ui";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { statusLabel } from "./saas-status";
 
@@ -73,6 +73,14 @@ export function TenantTransitionDialog({
   const [busy, setBusy] = useState(false);
 
   // The dialog stays mounted while the tenant's status changes, so a remembered pick may no longer be reachable.
+  // The dialog stays mounted while closed, so a refusal or half-typed reason must not greet the next opening.
+  useEffect(() => {
+    if (open) return;
+    setReason("");
+    setError(null);
+    setBusy(false);
+  }, [open]);
+
   const chosen = targets.includes(target) ? target : (targets[0] ?? "");
   const offboarding = chosen === "offboarding_initiated";
   const commitLabel =

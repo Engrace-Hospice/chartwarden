@@ -90,10 +90,16 @@ export function TenantInventory(): JSX.Element {
       };
       if (status) query.status = status as typeof query.status;
       if (appliedSearch) query.search = appliedSearch;
-      const { data, error: err } = await client.GET("/api/v1/platform/tenants", {
-        params: { query },
-      });
-      if (!isCurrent()) return;
+      // A rejected request (offline) must settle like an error response, never leave the spinner or an unhandled rejection.
+      const result = await client
+        .GET("/api/v1/platform/tenants", { params: { query } })
+        .catch(() => null);
+      if (!isCurrent()) {
+        // A foreground load superseded by a newer request must not leave its spinner up.
+        if (!silent) setLoading(false);
+        return;
+      }
+      const { data, error: err } = result ?? { data: undefined, error: true };
       if (err) {
         // A background refresh that fails keeps the rows already shown rather than blanking the list.
         if (silent) return;

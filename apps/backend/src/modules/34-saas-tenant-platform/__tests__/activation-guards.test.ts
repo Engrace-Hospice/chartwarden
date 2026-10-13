@@ -1,7 +1,7 @@
 // onboarding → active (§2.4.12 / D11): the guards the platform status route feeds the lifecycle machine's
 // `activate` event, computed from the tenant's onboarding tasks and its latest BAA record.
 import { describe, expect, it } from "vitest";
-import { evaluateActivationGuards } from "../routes/platform/activation-guards";
+import { evaluateActivationGuards, pickGoverningBaa } from "../routes/platform/activation-guards";
 
 const TODAY = new Date("2026-10-13T00:00:00Z");
 const canonical = ["account_created", "ccn_registered"];
@@ -118,5 +118,35 @@ describe("evaluateActivationGuards", () => {
     expect(exactlyNinety.baaExpiryClearsNinetyDays).toBe(false);
     expect(beyond.baaExpiryClearsNinetyDays).toBe(true);
     expect(never.baaExpiryClearsNinetyDays).toBe(true);
+  });
+});
+
+// BaaRegisterRepository lists `ORDER BY executed_on DESC`, and Postgres sorts NULLs first on DESC, so a pending
+// renewal (no executed_on) used to shadow the executed BAA and block activation with BAA_NOT_EXECUTED.
+describe("pickGoverningBaa", () => {
+  const row = (baaStatus: string, executedOn: string | null) => ({
+    baaStatus,
+    executedOn,
+    expiresOn: null,
+  });
+
+  it("prefers the newest executed BAA over a pending row that sorts first", () => {
+    const picked = pickGoverningBaa([
+      row("pending", null),
+      row("executed", "2025-01-01"),
+      row("executed", "2026-01-01"),
+    ]);
+
+    expect(picked).toEqual(row("executed", "2026-01-01"));
+  });
+
+  it("falls back to the first row when none is executed, so the guard still fails closed", () => {
+    expect(pickGoverningBaa([row("pending", null), row("terminated", "2020-01-01")])).toEqual(
+      row("pending", null),
+    );
+  });
+
+  it("is undefined for a tenant with no BAA", () => {
+    expect(pickGoverningBaa([])).toBeUndefined();
   });
 });

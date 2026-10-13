@@ -94,9 +94,16 @@ describe("ProvisioningCard", () => {
     expect((await screen.findByRole("alert")).textContent).toMatch(/no provisioning job/i);
   });
 
-  it("a failed status read is reported, not shown as a job state", async () => {
-    mount({ GET: vi.fn().mockRejectedValue(new Error("offline")), POST: vi.fn() });
+  it("a failed status read is reported, not shown as a job state, and can be retried", async () => {
+    const GET = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue(status("running"));
+    mount({ GET, POST: vi.fn() });
 
     expect((await screen.findByRole("alert")).textContent).toMatch(/could not load/i);
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+
+    expect(await screen.findByText(/provisioning is running/i)).toBeTruthy();
   });
 });

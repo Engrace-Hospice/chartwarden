@@ -185,6 +185,35 @@ describe("TenantTransitionDialog", () => {
     expect((await screen.findByRole("alert")).textContent).toMatch(/retention_ends_at/);
   });
 
+  it("forgets a refusal and the typed reason once it is closed and reopened", async () => {
+    const post = vi.fn(async () => ({ error: { error: { message: "legal hold active" } } }));
+    const client = { POST: post } as unknown as ApiClient;
+    const dialog = (open: boolean) => (
+      <ApiClientProvider client={client}>
+        <TenantTransitionDialog
+          open={open}
+          orgSlug="cedar-ridge"
+          tenantName="Cedar Ridge Hospice LLC"
+          fromStatus="retained"
+          onDone={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </ApiClientProvider>
+    );
+    const { rerender } = render(dialog(true));
+    fireEvent.change(screen.getByLabelText(/reason/i), {
+      target: { value: "Retention window elapsed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /schedule destruction/i }));
+    await screen.findByText(/legal hold active/);
+
+    rerender(dialog(false));
+    rerender(dialog(true));
+
+    expect(screen.queryByText(/legal hold active/)).toBeNull();
+    expect((screen.getByLabelText(/reason/i) as HTMLTextAreaElement).value).toBe("");
+  });
+
   it("says there is nothing to do from a state with no platform-ops transitions", () => {
     renderDialog("destroyed", vi.fn());
 

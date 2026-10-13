@@ -179,6 +179,7 @@ export function TenantOnboarding(): JSX.Element {
                     <Button
                       tone="secondary"
                       size="sm"
+                      aria-label={`Skip ${t.templateKey}`}
                       onClick={() => {
                         setSkipping(t);
                         setRationale("");

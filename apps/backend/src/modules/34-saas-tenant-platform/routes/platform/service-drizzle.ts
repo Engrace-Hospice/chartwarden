@@ -52,9 +52,14 @@ import {
 import { type PlatformBypassAuditor, withPlatformContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, desc, eq } from "drizzle-orm";
-import { type InvitationDeliveryPort, mintInvitationToken } from "../../invitation-token";
+import {
+  type InvitationDeliveryPort,
+  canInviteFirstAdmin,
+  mintInvitationToken,
+} from "../../invitation-token";
 import type { ProvisionJobPort } from "../../jobs/provision-job-port";
-import { evaluateActivationGuards } from "./activation-guards";
+import { evaluateActivationGuards, pickGoverningBaa } from "./activation-guards";
+import { partitionEffects } from "./effect-ledger";
 import { evaluateDestructionGuards, retentionEndsAtFrom } from "./offboarding-guards";
 import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf, paginate } from "./concurrency";
 import type {
@@ -309,7 +314,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     const guards = evaluateActivationGuards({
       canonicalTemplateKeys: templates.filter((t) => t.isCanonical).map((t) => t.key),
       tasks,
-      latestBaa: baaRows[0],
+      latestBaa: pickGoverningBaa(baaRows),
       today: new Date(),
     });
     return {
@@ -364,7 +369,9 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       transitionReason: event.transitionReason,
       actorMembershipId,
       actorKind,
-      sideEffectsRecorded: { effects: res.effects.map((e) => e.kind) },
+      // `notRun` names machine effects with no runner here (welcome email, M4 requestDestruction, ...), so the
+      // ledger never claims an effect happened that was dropped.
+      sideEffectsRecorded: partitionEffects(res.effects),
     });
 
     // 3) enqueue worker jobs + 4) emit catalog outbox + 5) session revocation + 6) M36 alert, same tx
@@ -729,6 +736,13 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     async issueInvitation(actorMembershipId, args) {
       return inPlatformCtx("platform-ops issue invitation", async (tx) => {
         const { account } = await loadByOrgSlug(tx, args.orgSlug);
+        if (!canInviteFirstAdmin(account.status)) {
+          throw new WardenXError(
+            "TENANT_NOT_INVITABLE",
+            `a first-admin invitation cannot be issued while the tenant is '${account.status}'`,
+            409,
+          );
+        }
         const repo = new TenantAccountRepository(tx);
         const email = args.firstAdminEmail.trim();
         const existing = await repo.listInvitations(account.id);
@@ -751,6 +765,8 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           deps.invitationDelivery.acceptBaseUrl,
         );
         // Insert, then send, in one transaction: a failed send rolls the new row back and leaves the old link intact.
+        // Known window: a commit failure AFTER a successful send leaves an emailed link with no row (the old link stays
+        // valid, so the invitee can ask again); the HTTP call also holds a platform connection while it runs.
         const row = await repo.createInvitation({
           tenantAccountId: account.id,
           organizationId: account.organizationId,

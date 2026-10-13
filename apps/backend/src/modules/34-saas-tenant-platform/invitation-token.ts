@@ -14,6 +14,19 @@ export interface InvitationDeliveryPort {
   }): Promise<void>;
 }
 
+/**
+ * A first-admin invitation grants org_admin through the PUBLIC accept route, so it may only be minted or redeemed
+ * while the tenant is being set up or live. A suspended, flagged or offboarded tenant must not gain an admin back.
+ */
+const INVITABLE_TENANT_STATUSES: ReadonlySet<string> = new Set([
+  "provisioning",
+  "onboarding",
+  "active",
+]);
+
+export const canInviteFirstAdmin = (tenantStatus: string): boolean =>
+  INVITABLE_TENANT_STATUSES.has(tenantStatus);
+
 export interface MintedInvitationToken {
   readonly rawToken: string;
   readonly tokenHash: string;

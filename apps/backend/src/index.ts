@@ -1361,6 +1361,7 @@ import {
   wireM34AlertRuleSeed,
   wireM34Tenancy,
 } from "./modules/34-saas-tenant-platform/index";
+import { canInviteFirstAdmin } from "./modules/34-saas-tenant-platform/invitation-token";
 // M35 (Subscription Billing) boot surface — the §4.11 outbox catalog, the §4.8 ABAC predicates, and the
 // §4.1–4.3 route mount over the single Drizzle route service. The write path emits `m35.*` events through
 // the bound transactional-outbox publisher; the platform-ops cross-tenant reads/writes run through the
@@ -2845,6 +2846,20 @@ function buildFirstAdminAcceptanceService(deps: {
             throw new WardenXError("INVITATION_INVALID", "invitation is invalid", 404);
           }
           if (invitation.status !== "pending" || invitation.expiresAt <= new Date()) {
+            throw new WardenXError(
+              "INVITATION_INVALID",
+              "invitation is expired or already used",
+              409,
+            );
+          }
+
+          // An invitation issued earlier must not redeem once the tenant was suspended or offboarded.
+          const [tenant] = await platformTx
+            .select({ status: schema.tenantAccount.status })
+            .from(schema.tenantAccount)
+            .where(eq(schema.tenantAccount.id, invitation.tenantAccountId))
+            .limit(1);
+          if (!tenant || !canInviteFirstAdmin(tenant.status)) {
             throw new WardenXError(
               "INVITATION_INVALID",
               "invitation is expired or already used",
@@ -4551,7 +4566,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                 const scope = await activeLegalHoldScopeForOrg(dbHandle.db, organizationId);
                 return !scope.orgWide && scope.patientIds.size === 0;
               },
-              ...(m34ProvisionGateway ? { invitationDelivery: m34ProvisionGateway.invitation } : {}),
+              ...(m34ProvisionGateway
+                ? { invitationDelivery: m34ProvisionGateway.invitation }
+                : {}),
               auditBypass: m34PlatformBypassAuditor,
               outbox: m34OutboxPublisher,
               // F-091 — M1 owns the `feature_flag` schema, so the §4.7 admin seam is built here and

@@ -169,6 +169,24 @@ describe("AgencySetup", () => {
     ).toBe(true);
   });
 
+  it("a failed load says so with a retry instead of claiming there is no provider entity", async () => {
+    const GET = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockImplementation(async (path: string) =>
+        path === "/api/v1/provider-entities" ? page(ENTITY) : page(),
+      );
+    mount({ GET, POST: vi.fn() });
+
+    expect((await screen.findByRole("alert")).textContent).toMatch(/could not load/i);
+    expect(screen.queryByText(/no provider entity yet/i)).toBeNull();
+    expect(screen.queryByText(/add a provider entity first/i)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+
+    const entities = await screen.findByRole("region", { name: "Provider entities" });
+    expect(await within(entities).findByText("Cedar Ridge Hospice LLC")).toBeTruthy();
+  });
+
   it("a network failure is reported and the form stays usable", async () => {
     const c = client({ post: vi.fn().mockRejectedValue(new Error("offline")) });
     mount(c);

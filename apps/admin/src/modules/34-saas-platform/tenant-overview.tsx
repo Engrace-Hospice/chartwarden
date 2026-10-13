@@ -84,22 +84,29 @@ export function TenantOverview(): JSX.Element {
   const [shredBusy, setShredBusy] = useState(false);
 
   const guard = useRequestGuard();
-  const load = useCallback(async () => {
-    const isCurrent = guard();
-    setLoading(true);
-    setError(null);
-    const { data, error: err } = await client.GET("/api/v1/platform/tenants/{orgSlug}", {
-      params: { path: { orgSlug } },
-    });
-    if (!isCurrent()) return;
-    if (err) {
-      setError("Tenant not found.");
+  const load = useCallback(
+    async (silent = false) => {
+      const isCurrent = guard();
+      // A silent refresh keeps the page (and any open dialog or polling card) mounted instead of swapping in a spinner.
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+      }
+      const { data, error: err } = await client.GET("/api/v1/platform/tenants/{orgSlug}", {
+        params: { path: { orgSlug } },
+      });
+      if (!isCurrent()) return;
+      if (err) {
+        if (silent) return;
+        setError("Tenant not found.");
+        setLoading(false);
+        return;
+      }
+      setTenant(data as unknown as TenantOverview);
       setLoading(false);
-      return;
-    }
-    setTenant(data as unknown as TenantOverview);
-    setLoading(false);
-  }, [client, guard, orgSlug]);
+    },
+    [client, guard, orgSlug],
+  );
 
   useEffect(() => {
     void load();
@@ -209,7 +216,7 @@ export function TenantOverview(): JSX.Element {
         </header>
 
         {tenant.status === "provisioning" ? (
-          <ProvisioningCard orgSlug={orgSlug} onChanged={() => void load()} />
+          <ProvisioningCard key={orgSlug} orgSlug={orgSlug} onChanged={() => void load(true)} />
         ) : null}
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -234,7 +241,7 @@ export function TenantOverview(): JSX.Element {
         onDone={() => {
           setTransitionOpen(false);
           toast.show("Tenant status updated.", { tone: "success" });
-          void load();
+          void load(true);
         }}
       />
 

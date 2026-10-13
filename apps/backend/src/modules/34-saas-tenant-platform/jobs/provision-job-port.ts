@@ -25,7 +25,7 @@ interface JobLike {
   getState(): Promise<string>;
   readonly attemptsMade: number;
   readonly failedReason?: string | undefined;
-  retry(): Promise<unknown>;
+  retry(state?: "failed", opts?: { resetAttemptsMade?: boolean }): Promise<unknown>;
   remove(): Promise<unknown>;
 }
 
@@ -66,7 +66,7 @@ export function createProvisionJobPort(queue: ProvisionQueueLike): ProvisionJobP
       const job = await queue.getJob(provisionJobId(tenantAccountId));
       if (!job) return "missing";
       if ((await job.getState()) !== "failed") return "not_failed";
-      await job.retry();
+      await job.retry("failed", { resetAttemptsMade: true });
       return "retried";
     },
   };

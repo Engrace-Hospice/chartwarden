@@ -73,7 +73,8 @@ describe("createProvisionJobPort.retry", () => {
     const port = createProvisionJobPort(queueWith(job));
 
     expect(await port.retry("t-1")).toBe("retried");
-    expect(job.retry).toHaveBeenCalledTimes(1);
+    // Without resetAttemptsMade the exhausted attempt count survives, so the next failure ends the job at once.
+    expect(job.retry).toHaveBeenCalledWith("failed", { resetAttemptsMade: true });
   });
 
   it.each(["waiting", "active", "completed"])("never retries a %s job", async (state) => {

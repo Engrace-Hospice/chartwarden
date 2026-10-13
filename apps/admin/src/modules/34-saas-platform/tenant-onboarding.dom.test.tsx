@@ -105,6 +105,13 @@ describe("TenantOnboarding", () => {
     expect(POST).not.toHaveBeenCalled();
   });
 
+  it("names each Skip button after its step so a screen reader can tell them apart", async () => {
+    renderScreen({ GET: vi.fn(async () => ({ data: ONBOARDING })), POST: vi.fn() });
+
+    expect(await screen.findByRole("button", { name: "Skip ccn_registered" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Skip xero_connected" })).toBeTruthy();
+  });
+
   it("offers no skip on a settled task", async () => {
     renderScreen({ GET: vi.fn(async () => ({ data: ONBOARDING })), POST: vi.fn() });
 

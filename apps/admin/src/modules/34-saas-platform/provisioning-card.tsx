@@ -95,7 +95,14 @@ export function ProvisioningCard({
         <h3>Provisioning</h3>
       </div>
       {loadError ? (
-        <InlineAlert tone="error">Could not load provisioning status.</InlineAlert>
+        <>
+          <InlineAlert tone="error">Could not load provisioning status.</InlineAlert>
+          <div className="wx-drawer-actions">
+            <Button tone="secondary" onClick={() => void load()}>
+              Try again
+            </Button>
+          </div>
+        </>
       ) : null}
       {state === "queued" ? <p>Provisioning is queued.</p> : null}
       {state === "running" ? <p>Provisioning is running.</p> : null}
