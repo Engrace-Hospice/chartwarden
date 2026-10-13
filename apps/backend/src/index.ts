@@ -8334,7 +8334,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           db: dbHandle.db,
           cipher: createMessageBodyCipher(),
           outbox: m36OutboxPublisher,
-          canViewChannel: createDbMessagingRouteService(dbHandle.db).canViewChannel,
+          // A consent/care-team outage must retry the row (bounded), not block it as "not a member".
+          canViewChannel: createDbMessagingRouteService(dbHandle.db, {
+            throwOnSeamUnavailable: true,
+          }).canViewChannel,
           permissionsFor: async (organizationId, userId) =>
             resolveActorPermissions({ organizationId, userId }),
           // Ids only: a DB/driver error can carry statement parameters, and a sealed body must never reach a log.

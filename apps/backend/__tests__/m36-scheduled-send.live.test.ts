@@ -663,16 +663,17 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
         publish: (tx: unknown, e: Record<string, unknown>) =>
           publisher.publish(tx as never, { ...e, callerModule: "m36" } as never),
       };
+      const gatedPart2 = {
+        allowedUserIds: async ({ userIds }: { userIds: readonly string[] }) => {
+          if (part2 === "throw") throw new Error("M39 consent evaluator unavailable");
+          return new Set(part2 === "allow" ? userIds : []);
+        },
+      };
       gated = createDbMessagingRouteService(handle.db, {
         kek: KEK,
         outbox: outbox as never,
         warn: (m) => gateWarnings.push(m),
-        part2Gate: {
-          allowedUserIds: async ({ userIds }) => {
-            if (part2 === "throw") throw new Error("M39 consent evaluator unavailable");
-            return new Set(part2 === "allow" ? userIds : []);
-          },
-        },
+        part2Gate: gatedPart2,
       });
       gatedService = createDbScheduledSendService({
         db: handle.db,
@@ -680,11 +681,19 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
         maxPerUser: 3,
         canViewChannel: gated.canViewChannel,
       });
+      // The dispatcher's own instance: an unreadable seam THROWS (retry) instead of reading as "cannot view" (block).
+      const gatedStrict = createDbMessagingRouteService(handle.db, {
+        kek: KEK,
+        outbox: outbox as never,
+        warn: (m) => gateWarnings.push(m),
+        throwOnSeamUnavailable: true,
+        part2Gate: gatedPart2,
+      });
       gatedDispatcher = createScheduledSendDispatcher({
         db: handle.db,
         cipher,
         outbox,
-        canViewChannel: gated.canViewChannel,
+        canViewChannel: gatedStrict.canViewChannel,
         permissionsFor: async (org, user) => grants.get(`${org}:${user}`) ?? new Set<string>(),
       });
     });
@@ -792,7 +801,16 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
       expect(await rows()).toHaveLength(0);
     });
 
-    it("an unreadable consent seam fails closed: the row is blocked (not_member), nothing is delivered, the outage is logged", async () => {
+    // An unreadable consent seam is an OUTAGE, not a verdict: never sent while consent is unknown (fail closed for the
+    // send), but the row is not blocked for good either; later ticks retry it, bounded by the overdue window.
+    const pendingRow = async () => (await rows())[0];
+    const ago = (id: string, interval: string) =>
+      admin.query(
+        `UPDATE scheduled_message SET scheduled_for = now() - interval '${interval}' WHERE id=$1`,
+        [id],
+      );
+
+    it("an unreadable consent seam never sends and does not block: the row stays pending, the outage is logged", async () => {
       await wipe();
       gateWarnings.length = 0; // earlier tests may have logged the same line; only THIS dispatch may satisfy the assertion
       const hints = await sentHints();
@@ -804,10 +822,83 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
       });
       part2 = "throw";
       await makeDue(created.id);
-      // The dispatcher treats an unreadable seam as "cannot view": the same refusal as an explicit deny.
-      expect(await gatedDispatcher.dispatchDueForOrg(orgA)).toMatchObject({ sent: 0, blocked: 1 });
+      expect(await gatedDispatcher.dispatchDueForOrg(orgA)).toMatchObject({
+        sent: 0,
+        blocked: 0,
+        failed: 0,
+      });
       expect(gateWarnings.some((w) => /denying access/.test(w))).toBe(true);
+      expect(await pendingRow()).toMatchObject({ id: created.id, status: "pending", attempts: 0 });
+      expect(
+        (await messagesIn(careTeam)).filter((m) => m.client_message_id === created.id),
+      ).toHaveLength(0);
+      expect(await sentHints()).toBe(hints);
+      expect(await eventsOf("m36.message.schedule_blocked")).toHaveLength(0);
+    });
+
+    it("an explicit consent denial still blocks at once (not_member): only an outage is retried", async () => {
+      await wipe();
+      const hints = await sentHints();
+      const created = await gatedService.create(orgA, {
+        userId: alice,
+        channelId: careTeam,
+        body: SECRET,
+        scheduledFor: inFuture(),
+      });
+      part2 = "deny";
+      await makeDue(created.id);
+      expect(await gatedDispatcher.dispatchDueForOrg(orgA)).toMatchObject({ sent: 0, blocked: 1 });
       await expectRefused(created.id, careTeam, "not_member", hints);
+    });
+
+    it("a consent outage that outlasts the overdue window ends blocked (dispatch_failed) with one notice, nothing delivered", async () => {
+      await wipe();
+      const hints = await sentHints();
+      const created = await gatedService.create(orgA, {
+        userId: alice,
+        channelId: careTeam,
+        body: SECRET,
+        scheduledFor: inFuture(),
+      });
+      part2 = "throw";
+      await ago(created.id, "30 minutes"); // past OVERDUE_COUNTS_AS_ATTEMPT_MS: each failing tick is a real attempt
+      expect(await gatedDispatcher.dispatchDueForOrg(orgA)).toMatchObject({
+        blocked: 0,
+        failed: 1,
+      });
+      expect(await pendingRow()).toMatchObject({ status: "pending", attempts: 1 });
+      await gatedDispatcher.dispatchDueForOrg(orgA);
+      expect(await gatedDispatcher.dispatchDueForOrg(orgA)).toMatchObject({ blocked: 1 });
+      await expectRefused(created.id, careTeam, "dispatch_failed", hints);
+    });
+
+    it("a consent outage that clears sends the same row exactly once on a later tick", async () => {
+      await wipe();
+      const created = await gatedService.create(orgA, {
+        userId: alice,
+        channelId: careTeam,
+        body: SECRET,
+        scheduledFor: inFuture(),
+      });
+      part2 = "throw";
+      await makeDue(created.id);
+      await gatedDispatcher.dispatchDueForOrg(orgA);
+      await gatedDispatcher.dispatchDueForOrg(orgA);
+      expect(await pendingRow()).toMatchObject({ status: "pending" });
+      part2 = "allow"; // consent service is back
+      const [a, b] = await Promise.all([
+        gatedDispatcher.dispatchDueForOrg(orgA),
+        gatedDispatcher.dispatchDueForOrg(orgA),
+      ]);
+      expect(a.sent + b.sent).toBe(1);
+      expect(await gatedDispatcher.dispatchDueForOrg(orgA)).toMatchObject({ sent: 0 });
+      const delivered = (await messagesIn(careTeam)).filter(
+        (m) => m.client_message_id === created.id,
+      );
+      expect(delivered).toHaveLength(1);
+      expect(cipher.open(orgA, delivered[0].body_cipher)).toBe(SECRET);
+      expect(await rows()).toHaveLength(0);
+      expect(await eventsOf("m36.message.schedule_blocked")).toHaveLength(0);
     });
 
     it("a still-valid scheduled message through the same gated path is delivered exactly once", async () => {
