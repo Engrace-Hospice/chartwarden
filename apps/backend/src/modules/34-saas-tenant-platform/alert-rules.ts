@@ -459,6 +459,24 @@ export const M34_ALERT_RULES: readonly M34AlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // 15. tenant.onboarding_activation_stuck - m34.tenant.onboarding_activation_stuck -> platform-ops (warn).
+  //
+  // NOT in the §4.8 table. The onboarding sweep retries `onboarding -> active` daily and a refused guard (tasks not
+  // settled, no executed BAA, BAA within 90 days of expiry) only logs; after 3 consecutive identical refusals the
+  // sweep emits this so a tenant stuck in `onboarding` surfaces to a person. Routed at the built-in `role_set` over
+  // `platform_ops` for the same reason as `tenant_export.oversized_hold` above.
+  {
+    ruleKey: "tenant.onboarding_activation_stuck",
+    eventType: "m34.tenant.onboarding_activation_stuck",
+    category: "administrative",
+    severityFloor: floorOf("warn"),
+    specSeverity: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: [PLATFORM_OPS_ROLE_KEY] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
   // §4.1/§4.7 kill-switch toggle — `severity=critical`. The kill-switch store emits this under the ACTING
   // platform-ops operator's own organization (a global flag has no org of its own, and the operator holds
   // no membership in the flag's tenant), so `role_set` over `platform_ops` reaches the platform staff in
@@ -497,7 +515,7 @@ export const M36_BUILT_IN_RESOLVERS: readonly string[] = [
  */
 export const seedableM34AlertRules = (): readonly M34AlertRuleSeed[] => M34_ALERT_RULES;
 
-/** The fifteen distinct §4.8 rule keys (the canonical key set, before platform-ops companion rows). */
+/** The sixteen distinct §4.8 rule keys (the canonical key set, before platform-ops companion rows). */
 export const M34_ALERT_RULE_KEYS = [
   "tenant.onboarding_step_blocked_5d",
   "tenant.onboarding_overdue",
@@ -513,6 +531,7 @@ export const M34_ALERT_RULE_KEYS = [
   "dsar_export.sla_escalation_27d",
   "dsar_export.sla_escalation_30d",
   "tenant_export.oversized_hold",
+  "tenant.onboarding_activation_stuck",
   "feature_flag.platform_emergency_changed",
 ] as const;
 

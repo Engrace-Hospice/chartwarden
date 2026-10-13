@@ -366,11 +366,29 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
 
       const result = await backend().activateOnboardedTenant(TENANT_ACCOUNT_B);
 
-      expect(result).toEqual({ activated: false, reason: "BAA_NOT_EXECUTED" });
-      const row = await admin.query("SELECT status FROM tenant_account WHERE id = $1", [
+      expect(result).toEqual({
+        activated: false,
+        reason: "BAA_NOT_EXECUTED",
+        refusalStreak: { days: 1, advanced: true },
+      });
+      const row = await admin.query("SELECT status, metadata FROM tenant_account WHERE id = $1", [
         TENANT_ACCOUNT_B,
       ]);
       expect(row.rows[0].status).toBe("onboarding");
+      expect(row.rows[0].metadata.onboardingActivationRefusal).toMatchObject({
+        reason: "BAA_NOT_EXECUTED",
+        days: 1,
+      });
+    });
+
+    it("does not double count a retried sweep on the same day", async () => {
+      const result = await backend().activateOnboardedTenant(TENANT_ACCOUNT_B);
+
+      expect(result).toEqual({
+        activated: false,
+        reason: "BAA_NOT_EXECUTED",
+        refusalStreak: { days: 1, advanced: false },
+      });
     });
 
     it("activates under the system actor once the BAA is executed: ledger has no membership, activated_at is set", async () => {
@@ -384,10 +402,11 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
 
       expect(result).toEqual({ activated: true });
       const row = await admin.query(
-        "SELECT status, activated_at FROM tenant_account WHERE id = $1",
+        "SELECT status, activated_at, metadata FROM tenant_account WHERE id = $1",
         [TENANT_ACCOUNT_B],
       );
       expect(row.rows[0].status).toBe("active");
+      expect(row.rows[0].metadata.onboardingActivationRefusal).toBeUndefined();
       expect(row.rows[0].activated_at).not.toBeNull();
       const ledger = await admin.query(
         `SELECT from_status, to_status, actor_kind, actor_membership_id, side_effects_recorded

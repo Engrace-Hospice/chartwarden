@@ -22,6 +22,7 @@ import {
   PLATFORM_OPS_ROLE_KEY,
   seedableM34AlertRules,
 } from "../src/modules/34-saas-tenant-platform/alert-rules";
+import { M34_ACTIVATION_STUCK_EVENT } from "../src/modules/34-saas-tenant-platform/jobs/platform-sweeps-worker";
 
 describe("M34 §4.8 alert-rule seed (GAP-098)", () => {
   it("ships the oversized-hold rule keyed on the event the hold port emits", () => {
@@ -40,6 +41,14 @@ describe("M34 §4.8 alert-rule seed (GAP-098)", () => {
     const rule = M34_ALERT_RULES.find((r) => r.ruleKey === "tenant_export.oversized_hold");
     expect(M36_BUILT_IN_RESOLVERS).toContain(rule?.recipientResolver);
     expect(rule?.recipientResolver).toBe("role_set");
+    expect(rule?.resolverArgs).toEqual({ roleKeys: [PLATFORM_OPS_ROLE_KEY] });
+  });
+
+  it("seeds the stuck-activation rule on the event the onboarding sweep emits, routed at platform-ops", () => {
+    const rule = M34_ALERT_RULES.find((r) => r.ruleKey === "tenant.onboarding_activation_stuck");
+    expect(rule?.eventType).toBe(M34_ACTIVATION_STUCK_EVENT);
+    expect(rule?.enabled).toBe(true);
+    expect(M36_BUILT_IN_RESOLVERS).toContain(rule?.recipientResolver);
     expect(rule?.resolverArgs).toEqual({ roleKeys: [PLATFORM_OPS_ROLE_KEY] });
   });
 

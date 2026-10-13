@@ -26,6 +26,7 @@ import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import type { AlertEmitter } from "@wardenx/messaging";
 import {
+  ACTIVATION_REFUSAL_METADATA_KEY,
   BaaRegisterRepository,
   FIRST_ADMIN_INVITATION_TTL_DAYS,
   OnboardingRepository,
@@ -36,6 +37,10 @@ import {
   TenantExportRepository,
   TenantKeyRingRepository,
   TenantLifecycleError,
+  nextActivationRefusal,
+  readActivationRefusal,
+  withActivationRefusal,
+  withoutActivationRefusal,
 } from "@wardenx/saas-tenant-platform";
 import {
   type LifecycleActorKind,
@@ -1347,11 +1352,37 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           "all canonical onboarding steps settled and the BAA executed (automatic activation)",
           "system_automated",
         );
+        const metadata = account.metadata as Record<string, unknown>;
+        if (readActivationRefusal(metadata)) {
+          await tx
+            .update(A)
+            .set({ metadata: withoutActivationRefusal(metadata) })
+            .where(eq(A.id, account.id));
+        }
         await applyTransition(tx, account, null, "system_automated", event);
         return { activated: true };
       } catch (err) {
-        if (err instanceof TenantLifecycleError) return { activated: false, reason: err.code };
-        throw err;
+        if (!(err instanceof TenantLifecycleError)) throw err;
+        // The reason is the server-side guard's own code (never tenant-written status). The streak is counted in
+        // this same row-locked transaction, so overlapping sweeps cannot double count and a retry the same UTC
+        // day is a no-op.
+        const metadata = account.metadata as Record<string, unknown>;
+        const { state, advanced } = nextActivationRefusal(
+          metadata[ACTIVATION_REFUSAL_METADATA_KEY],
+          err.code,
+          new Date().toISOString().slice(0, 10),
+        );
+        if (advanced) {
+          await tx
+            .update(A)
+            .set({ metadata: withActivationRefusal(metadata, state) })
+            .where(eq(A.id, account.id));
+        }
+        return {
+          activated: false,
+          reason: err.code,
+          refusalStreak: { days: state.days, advanced },
+        };
       }
     });
   }

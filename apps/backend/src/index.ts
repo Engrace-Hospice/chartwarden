@@ -1340,6 +1340,7 @@ import {
   createDrizzleSaasTenantPlatformEraseStore,
   createDrizzleTenantAccountFlagsService,
   createM34ProvisionGateway,
+  describeM34SweepSchedules,
   enableM34JobCapability,
   getTenantKeyProvider,
   m34ProvisionGatewayConfigFromEnv,
@@ -6164,6 +6165,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           ) => getM34AlertEmitter().emit(orgId, input),
         },
         warn: (message: string, context: Record<string, string>) => app.log.warn(context, message),
+        info: (message: string, context: Record<string, string>) => app.log.info(context, message),
       };
       const m34SweepWorkers = [
         registerM34BaaExpiryWorker(m34SweepDeps),
@@ -6172,6 +6174,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       ];
       m34Workers.push(...m34SweepWorkers);
       const m34SweepSchedules = await scheduleM34PlatformSweepJobs(queueConnection);
+      app.log.info(
+        { sweeps: describeM34SweepSchedules().map(({ sweep, cron }) => ({ sweep, cron })) },
+        "M34 platform sweeps scheduled: baa_expiry, support_session_close, onboarding_advance",
+      );
       app.addHook("onClose", () =>
         Promise.all([
           ...m34SweepWorkers.map((w) => w.close()),
