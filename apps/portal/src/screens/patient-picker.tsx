@@ -1,11 +1,11 @@
-import { StatusPill, t, useApiClient } from "@wardenx/ui";
+import { StatusPill, useApiClient } from "@wardenx/ui";
 // @wardenx/portal — §5.1 Patient selector (`/patient-picker`). A portal session is scoped to the patients its ACCOUNT is
 // granted — never to the signed-in user — and works on ONE at a time (D2). This lists the account's live grants
 // (GET /portal/sessions/patients: the lay label, the relationship the grant came from and how many areas of care it
 // opens), and choosing one binds the session via POST /portal/sessions/select-patient before routing into the
 // dashboard. A grant that is revoked or whose consent has ended simply does not appear.
 import { useEffect, useState } from "react";
-import type { CSSProperties, JSX } from "react";
+import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { humanize, readError } from "./portal-format";
 import { PortalLoadState, PortalPage } from "./portal-page";
@@ -18,21 +18,6 @@ interface GrantedPatient {
   layPatientLabel: string;
 }
 
-const item: CSSProperties = {
-  width: "100%",
-  textAlign: "left",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "1rem",
-  padding: "0.9rem 1rem",
-  borderRadius: "0.6rem",
-  border: `1px solid ${t.surfaceContainer}`,
-  background: t.surfaceLowest,
-  color: t.onSurface,
-  cursor: "pointer",
-};
-
 export function PortalPatientPicker(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
@@ -40,11 +25,15 @@ export function PortalPatientPicker(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selecting, setSelecting] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   useEffect(() => {
+    // Reading the counter is intentional: incrementing it is the retry trigger for this effect.
+    void loadAttempt;
     let active = true;
     void (async () => {
       setLoading(true);
+      setError(null);
       const res = await client.GET("/api/v1/portal/sessions/patients", {});
       if (!active) return;
       if (res.error) setError(readError(res.response?.status));
@@ -54,7 +43,7 @@ export function PortalPatientPicker(): JSX.Element {
     return () => {
       active = false;
     };
-  }, [client]);
+  }, [client, loadAttempt]);
 
   async function enter(patientId: string): Promise<void> {
     setSelecting(patientId);
@@ -77,19 +66,21 @@ export function PortalPatientPicker(): JSX.Element {
         empty={patients.length === 0}
         emptyTitle="No active access"
         emptyDescription="Your account doesn't have access to anyone's records right now. Your hospice team can help."
+        onRetry={() => setLoadAttempt((attempt) => attempt + 1)}
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+        <div className="wx-portal-patient-list">
           {patients.map((p) => (
             <button
               key={p.grantId}
               type="button"
-              style={item}
+              className="wx-portal-patient-option"
               disabled={selecting !== null}
+              aria-describedby={`patient-access-${p.grantId}`}
               onClick={() => void enter(p.patientId)}
             >
-              <span>
-                <span style={{ fontWeight: 600 }}>{p.layPatientLabel}</span>
-                <span style={{ display: "block", color: t.onSurfaceVariant, fontSize: "0.82rem" }}>
+              <span className="wx-portal-patient-option__copy">
+                <strong>{p.layPatientLabel}</strong>
+                <span id={`patient-access-${p.grantId}`}>
                   {`${humanize(p.grantKind)} · ${p.scopeSet.length} area${p.scopeSet.length === 1 ? "" : "s"} of access`}
                 </span>
               </span>

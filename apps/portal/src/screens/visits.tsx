@@ -1,20 +1,13 @@
-import { StatusPill, t, useApiClient } from "@wardenx/ui";
+import { StatusPill, useApiClient } from "@wardenx/ui";
 // @wardenx/portal — §5.1 Visit list (`/p/:patientId/visits`). Reads M17 via the backend PortalVisitReader
 // (GET /portal/visits/upcoming + /portal/visits/history). A telehealth visit shows a "Join" affordance that
 // routes to the waiting room; the button is only meaningful within ~15 min of start, which the backend flags
 // on the row (`joinable`) — the server, not this screen, decides when joining is allowed.
 import { useEffect, useState } from "react";
-import type { CSSProperties, JSX } from "react";
+import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import { humanize, readError, stamp, statusTone } from "./portal-format";
-import {
-  PortalCard,
-  PortalLoadState,
-  PortalPage,
-  tableCell,
-  tableHead,
-  tableRow,
-} from "./portal-page";
+import { PortalCard, PortalLoadState, PortalPage } from "./portal-page";
 
 interface Visit {
   visitId: string;
@@ -25,45 +18,37 @@ interface Visit {
   joinable?: boolean;
 }
 
-const joinBtn: CSSProperties = {
-  padding: "0.35rem 0.7rem",
-  borderRadius: "0.4rem",
-  border: "none",
-  background: t.primary,
-  color: t.onPrimary,
-  fontSize: "0.8rem",
-  fontWeight: 600,
-  textDecoration: "none",
-};
-
 function VisitTable({ rows, base }: { rows: Visit[]; base: string }): JSX.Element {
   return (
-    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+    <table className="wx-portal-data-table">
       <thead>
         <tr>
-          <th style={tableHead}>When</th>
-          <th style={tableHead}>Discipline</th>
-          <th style={tableHead}>How</th>
-          <th style={tableHead}>Status</th>
-          <th style={tableHead} aria-label="Actions" />
+          <th>When</th>
+          <th>Discipline</th>
+          <th>How</th>
+          <th>Status</th>
+          <th aria-label="Actions" />
         </tr>
       </thead>
       <tbody>
         {rows.map((v) => (
-          <tr key={v.visitId} style={tableRow}>
-            <td style={tableCell}>{stamp(v.scheduledStart)}</td>
-            <td style={tableCell}>{v.discipline ? humanize(v.discipline) : "—"}</td>
-            <td style={tableCell}>{v.modality ? humanize(v.modality) : "In person"}</td>
-            <td style={tableCell}>
+          <tr key={v.visitId}>
+            <td data-label="When">{stamp(v.scheduledStart)}</td>
+            <td data-label="Discipline">{v.discipline ? humanize(v.discipline) : "—"}</td>
+            <td data-label="How">{v.modality ? humanize(v.modality) : "In person"}</td>
+            <td data-label="Status">
               {v.status ? (
                 <StatusPill tone={statusTone(v.status)} label={humanize(v.status)} />
               ) : (
                 "—"
               )}
             </td>
-            <td style={{ ...tableCell, textAlign: "right" }}>
+            <td className="wx-portal-data-table__action" data-label="Action">
               {v.joinable && v.modality === "telehealth" ? (
-                <Link to={`${base}/visits/${v.visitId}/telehealth`} style={joinBtn}>
+                <Link
+                  className="wx-portal-action-link"
+                  to={`${base}/visits/${v.visitId}/telehealth`}
+                >
                   Join
                 </Link>
               ) : null}
@@ -82,11 +67,14 @@ export function PortalVisitList(): JSX.Element {
   const [history, setHistory] = useState<Visit[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   useEffect(() => {
+    void loadAttempt;
     let active = true;
     void (async () => {
       setLoading(true);
+      setError(null);
       const [uRes, hRes] = await Promise.all([
         client.GET("/api/v1/portal/visits/upcoming", {}),
         client.GET("/api/v1/portal/visits/history", {}),
@@ -100,7 +88,7 @@ export function PortalVisitList(): JSX.Element {
     return () => {
       active = false;
     };
-  }, [client]);
+  }, [client, loadAttempt]);
 
   const base = `/p/${patientId}`;
   return (
@@ -111,12 +99,11 @@ export function PortalVisitList(): JSX.Element {
         empty={upcoming.length === 0 && history.length === 0}
         emptyTitle="No visits yet"
         emptyDescription="Scheduled and completed visits will appear here."
+        onRetry={() => setLoadAttempt((attempt) => attempt + 1)}
       >
         <PortalCard heading="Upcoming">
           {upcoming.length === 0 ? (
-            <p style={{ margin: 0, color: t.onSurfaceVariant, fontSize: "0.88rem" }}>
-              Nothing scheduled.
-            </p>
+            <p className="wx-portal-muted-copy">Nothing scheduled.</p>
           ) : (
             <VisitTable rows={upcoming} base={base} />
           )}

@@ -1,4 +1,4 @@
-import { createApiClient } from "@wardenx/ui";
+import { createApiClient, initTheme } from "@wardenx/ui";
 import "@fontsource-variable/manrope";
 import "@fontsource-variable/inter";
 import "./index.css"; // Tailwind v4 Preflight + the portal's Lantern token layer (global styles)
@@ -8,6 +8,9 @@ import "./index.css"; // Tailwind v4 Preflight + the portal's Lantern token laye
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { PortalApp } from "./app";
+
+// Resolve the stored choice (or OS preference) before React paints, matching web/admin.
+initTheme();
 
 const client = createApiClient();
 

@@ -341,7 +341,7 @@ export function CarePlanView(): JSX.Element {
   if (error && !plan) {
     return (
       <PatientChartBail banner={bailBanner} patientId={patientId} current="care-plan">
-        <EmptyState title="Care Plan unavailable" description={error} />
+        <EmptyState title="Plan of Care unavailable" description={error} />
       </PatientChartBail>
     );
   }
@@ -701,7 +701,7 @@ function WorkflowGuide({
         </button>
       ) : (
         <button type="button" style={primaryBtn} onClick={onContinue}>
-          Continue Care Plan
+          Continue Plan of Care
         </button>
       );
   } else if (hasOpenDraft && readiness?.canFinalize) {

@@ -1,4 +1,4 @@
-import { ApiClientProvider, CorrelationIdProvider, ErrorBoundary, t } from "@wardenx/ui";
+import { ApiClientProvider, CorrelationIdProvider, ErrorBoundary } from "@wardenx/ui";
 import type { ApiClient } from "@wardenx/ui";
 // @wardenx/portal — the portal SPA shell (M31 §5.1, ADR-0030). Composes the cross-cutting providers around a
 // react-router router built from the portal screen registry. Chromeless surfaces (the sign-in flow) are
@@ -7,7 +7,14 @@ import type { ApiClient } from "@wardenx/ui";
 // the same discipline the M1 web shell keeps.
 import { createElement, useMemo } from "react";
 import type { JSX } from "react";
-import { Link, Outlet, RouterProvider, createBrowserRouter } from "react-router-dom";
+import {
+  Link,
+  NavLink,
+  Outlet,
+  RouterProvider,
+  createBrowserRouter,
+  useLocation,
+} from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
 import { createPortalRegistry, portalScreens } from "./screens/registry";
 
@@ -17,39 +24,81 @@ function newCorrelationId(): string {
   return "cid-portal";
 }
 
-/** The authenticated portal frame: brand bar + the screen's own reading column via <Outlet>. */
+const PATIENT_PATH = /^\/p\/([^/]+)/;
+
+function currentPatientId(pathname: string): string | null {
+  const encodedId = PATIENT_PATH.exec(pathname)?.[1];
+  if (!encodedId) return null;
+  try {
+    return decodeURIComponent(encodedId);
+  } catch {
+    return null;
+  }
+}
+
+/** The authenticated portal frame: calm navigation, patient context, content, and persistent safety help. */
 function PortalFrame(): JSX.Element {
+  const { pathname } = useLocation();
+  const patientId = currentPatientId(pathname);
+  const patientBase = patientId ? `/p/${encodeURIComponent(patientId)}` : null;
+  const brandDestination = patientBase ?? "/patient-picker";
+
   return (
-    <div style={{ minHeight: "100vh", background: t.background, color: t.onSurface }}>
-      <header
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0.85rem 1.25rem",
-          borderBottom: `1px solid ${t.surfaceContainer}`,
-          background: t.surfaceLowest,
-        }}
-      >
-        <Link
-          to="/patient-picker"
-          style={{
-            textDecoration: "none",
-            color: t.onSurface,
-            fontFamily: t.fontDisplay,
-            fontWeight: 600,
-          }}
-        >
-          WardenX Family Portal
-        </Link>
-        <Link
-          to="/account"
-          style={{ textDecoration: "none", color: t.primary, fontWeight: 600, fontSize: "0.85rem" }}
-        >
-          Account
-        </Link>
+    <div className="wx-portal-shell">
+      <a className="wx-portal-skip-link" href="#portal-main">
+        Skip to main content
+      </a>
+      <header className="wx-portal-header">
+        <div className="wx-portal-header__bar">
+          <Link
+            className="wx-portal-brand"
+            to={brandDestination}
+            aria-label="WardenX Family Portal home"
+          >
+            <span className="wx-portal-brand__mark" aria-hidden="true">
+              W
+            </span>
+            <span>
+              <strong>WardenX</strong>
+              <small>Family Portal</small>
+            </span>
+          </Link>
+
+          <NavLink className="wx-portal-account-link" to="/account">
+            Account
+          </NavLink>
+        </div>
+
+        {patientBase ? (
+          <nav className="wx-portal-nav" aria-label="Portal navigation">
+            <NavLink end to={patientBase}>
+              Home
+            </NavLink>
+            <NavLink to={`${patientBase}/visits`}>Visits</NavLink>
+            <NavLink to={`${patientBase}/messages`}>Messages</NavLink>
+            <NavLink to={`${patientBase}/documents`}>Documents</NavLink>
+          </nav>
+        ) : null}
       </header>
-      <Outlet />
+
+      {patientBase ? (
+        <div className="wx-portal-context" aria-label="Patient context">
+          <span>Viewing a care record</span>
+          <Link to="/patient-picker">Switch person</Link>
+        </div>
+      ) : null}
+
+      <main className="wx-portal-main" id="portal-main">
+        <Outlet />
+      </main>
+
+      <aside className="wx-portal-urgent-help" aria-label="Urgent care information">
+        <strong>Need urgent help?</strong>
+        <span>
+          Call your hospice team's 24/7 line. For an emergency, call local emergency services.
+          Portal messages are not monitored for emergencies.
+        </span>
+      </aside>
     </div>
   );
 }
@@ -88,7 +137,9 @@ export function PortalApp({
     <ErrorBoundary correlationId={correlationId}>
       <CorrelationIdProvider value={correlationId}>
         <ApiClientProvider client={client}>
-          <RouterProvider router={router} />
+          <div className="wx-portal">
+            <RouterProvider router={router} />
+          </div>
         </ApiClientProvider>
       </CorrelationIdProvider>
     </ErrorBoundary>

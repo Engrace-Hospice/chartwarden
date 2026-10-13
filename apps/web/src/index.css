@@ -6,8 +6,8 @@
  *     (apps/web/src/shell/layout.tsx uses these with NO inline fallback).
  *
  * Brand tokens mirror packages/ui/src/core/theme/colors.ts (the source of truth) and
- * docs/design/DESIGN.md §11. When apps/admin + apps/portal need styling, lift the @theme +
- * @layer blocks into a shared @wardenx/ui stylesheet and @import it here.
+ * docs/design/DESIGN.md §11. Shell-free element/control rules are shared through
+ * packages/ui/src/web/styles/base-elements.css; app tokens stay local and their parity is gated.
  *
  * FONTS: the WardenX type trio (Manrope display · Inter text/UI · IBM Plex Mono identifiers) is
  * SELF-HOSTED via @fontsource* packages imported in main.tsx (no third-party CDN — external font
@@ -17,6 +17,8 @@
  */
 @import "tailwindcss";
 
+/* Shell-free element/control defaults shared by every browser surface. */
+@import "../../../packages/ui/src/web/styles/base-elements.css";
 /* GAP-207 — the shared `wx-*` list chrome (KPI strip, DataTable card, WorkQueue slots, list table). */
 @import "../../../packages/ui/src/web/styles/list-chrome.css";
 /* The shared element defaults + sidebar/header shell (lifted 2026-10-08 so apps/admin can wear it too). */

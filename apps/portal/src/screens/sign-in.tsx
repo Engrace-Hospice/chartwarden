@@ -1,4 +1,4 @@
-import { Button, CenteredCardLayout, InlineAlert, TextField, t } from "@wardenx/ui";
+import { Button, CenteredCardLayout, InlineAlert, TextField } from "@wardenx/ui";
 // @wardenx/portal — §5.1 Landing / sign-in (`/`). The invitee authenticates through M2 (Better Auth); this screen
 // holds NO PHI and issues no portal read. Two ways in, matching the spec (§7.1: the invitation's magic link sets the
 // account up; later sign-ins are a link, or a password plus an authenticator code):
@@ -70,20 +70,29 @@ export function PortalSignIn(): JSX.Element {
   return (
     <CenteredCardLayout
       brand={
-        <div>
-          <div style={{ fontFamily: t.fontDisplay, fontSize: "1.5rem", fontWeight: 600 }}>
-            WardenX Family Portal
-          </div>
-          <div style={{ color: t.onSurfaceVariant, fontSize: "0.85rem" }}>
-            Secure access to your loved one's care
+        <div className="wx-portal-auth-brand">
+          <span className="wx-portal-auth-brand__mark" aria-hidden="true">
+            W
+          </span>
+          <div>
+            <strong>WardenX</strong>
+            <span>Family Portal</span>
           </div>
         </div>
       }
-      footer={<a href="/help">Need help signing in?</a>}
+      footer={
+        <p className="wx-portal-auth-help">
+          Need help signing in? Contact your hospice team. Never share your password or
+          authenticator code.
+        </p>
+      }
     >
       {step === "link_sent" ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: t.space3 }}>
-          <h1 style={{ margin: 0, fontSize: "1.15rem" }}>Check your email</h1>
+        <div className="wx-portal-auth-form">
+          <div className="wx-portal-auth-heading">
+            <span className="wx-portal-auth-heading__eyebrow">Secure sign-in</span>
+            <h1>Check your email</h1>
+          </div>
           <InlineAlert tone="success">
             If a family portal account exists for {email || "that address"}, a secure sign-in link
             is on its way. It can be used once and expires shortly.
@@ -93,12 +102,12 @@ export function PortalSignIn(): JSX.Element {
           </Button>
         </div>
       ) : step === "code" ? (
-        <form
-          onSubmit={onCode}
-          aria-label="Authenticator code"
-          style={{ display: "flex", flexDirection: "column", gap: t.space3 }}
-        >
-          <h1 style={{ margin: 0, fontSize: "1.15rem" }}>Enter your code</h1>
+        <form onSubmit={onCode} aria-label="Authenticator code" className="wx-portal-auth-form">
+          <div className="wx-portal-auth-heading">
+            <span className="wx-portal-auth-heading__eyebrow">One more step</span>
+            <h1>Enter your code</h1>
+            <p>Use the current code from your authenticator app.</p>
+          </div>
           <TextField
             label="Authenticator code"
             inputMode="numeric"
@@ -116,9 +125,12 @@ export function PortalSignIn(): JSX.Element {
         <form
           onSubmit={onPassword}
           aria-label="Sign in with a password"
-          style={{ display: "flex", flexDirection: "column", gap: t.space3 }}
+          className="wx-portal-auth-form"
         >
-          <h1 style={{ margin: 0, fontSize: "1.15rem" }}>Sign in with your password</h1>
+          <div className="wx-portal-auth-heading">
+            <span className="wx-portal-auth-heading__eyebrow">Welcome back</span>
+            <h1>Sign in with your password</h1>
+          </div>
           <TextField
             label="Email address"
             type="email"
@@ -144,12 +156,12 @@ export function PortalSignIn(): JSX.Element {
           </Button>
         </form>
       ) : (
-        <form
-          onSubmit={onLink}
-          aria-label="Sign in"
-          style={{ display: "flex", flexDirection: "column", gap: t.space3 }}
-        >
-          <h1 style={{ margin: 0, fontSize: "1.15rem" }}>Sign in</h1>
+        <form onSubmit={onLink} aria-label="Sign in" className="wx-portal-auth-form">
+          <div className="wx-portal-auth-heading">
+            <span className="wx-portal-auth-heading__eyebrow">Private and secure</span>
+            <h1>Sign in</h1>
+            <p>Access care updates shared with you by the hospice team.</p>
+          </div>
           {linkProblem ? (
             <InlineAlert tone="error">
               That sign-in link can't be used. It may have expired or been used already. Request a

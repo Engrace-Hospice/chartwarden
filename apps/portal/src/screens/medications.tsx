@@ -1,4 +1,12 @@
-import { StatusPill, t, useApiClient } from "@wardenx/ui";
+import {
+  Button,
+  InlineAlert,
+  SelectField,
+  StatusPill,
+  TextAreaField,
+  TextField,
+  useApiClient,
+} from "@wardenx/ui";
 // @wardenx/portal — §5.1 Medication list + administration log (`/p/:patientId/medications`). Reads the active
 // medications (GET /portal/medications/active) and recent caregiver-attested administrations
 // (GET /portal/administrations/recent). The attestation panel POSTs to /portal/administrations/caregiver-attested
@@ -6,16 +14,9 @@ import { StatusPill, t, useApiClient } from "@wardenx/ui";
 // `portal_caregiver_is_primary_or_dpoa`; a family (non-primary) caregiver still SEES the panel but the server
 // answers 403, which we surface plainly rather than hiding the affordance and pretending it doesn't exist.
 import { useCallback, useEffect, useState } from "react";
-import type { CSSProperties, FormEvent, JSX } from "react";
+import type { FormEvent, JSX } from "react";
 import { day, humanize, readError } from "./portal-format";
-import {
-  PortalCard,
-  PortalLoadState,
-  PortalPage,
-  tableCell,
-  tableHead,
-  tableRow,
-} from "./portal-page";
+import { PortalCard, PortalLoadState, PortalPage } from "./portal-page";
 
 interface Medication {
   medicationOrderId: string;
@@ -32,24 +33,6 @@ interface Administration {
   administeredUnit?: string;
 }
 
-const field: CSSProperties = {
-  padding: "0.5rem 0.6rem",
-  borderRadius: "0.45rem",
-  border: `1px solid ${t.surfaceContainer}`,
-  background: t.surfaceLowest,
-  color: t.onSurface,
-  fontSize: "0.9rem",
-};
-const primaryBtn: CSSProperties = {
-  padding: "0.55rem 0.9rem",
-  borderRadius: "0.5rem",
-  border: "none",
-  background: t.primary,
-  color: t.onPrimary,
-  fontWeight: 600,
-  cursor: "pointer",
-};
-
 export function PortalMedicationList(): JSX.Element {
   const client = useApiClient();
   const [meds, setMeds] = useState<Medication[]>([]);
@@ -63,9 +46,11 @@ export function PortalMedicationList(): JSX.Element {
   const [route, setRoute] = useState("");
   const [attestText, setAttestText] = useState("");
   const [submitState, setSubmitState] = useState<{ tone: "ok" | "err"; msg: string } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const load = useCallback(async (): Promise<void> => {
     setLoading(true);
+    setError(null);
     const [mRes, aRes] = await Promise.all([
       client.GET("/api/v1/portal/medications/active", {}),
       client.GET("/api/v1/portal/administrations/recent", {}),
@@ -89,6 +74,7 @@ export function PortalMedicationList(): JSX.Element {
   async function attest(e: FormEvent): Promise<void> {
     e.preventDefault();
     setSubmitState(null);
+    setSubmitting(true);
     const res = await client.POST("/api/v1/portal/administrations/caregiver-attested", {
       body: {
         medicationOrderId: orderId,
@@ -99,6 +85,7 @@ export function PortalMedicationList(): JSX.Element {
         caregiverAttestationText: attestText,
       },
     });
+    setSubmitting(false);
     if (res.error) {
       setSubmitState({ tone: "err", msg: readError(res.response?.status) });
       return;
@@ -120,26 +107,27 @@ export function PortalMedicationList(): JSX.Element {
         empty={meds.length === 0}
         emptyTitle="No active medications"
         emptyDescription="Active medications will appear here."
+        onRetry={() => void load()}
       >
         <PortalCard heading="Active medications">
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <table className="wx-portal-data-table">
             <thead>
               <tr>
-                <th style={tableHead}>Medication</th>
-                <th style={tableHead}>Dose</th>
-                <th style={tableHead}>Route</th>
-                <th style={tableHead}>Schedule</th>
+                <th>Medication</th>
+                <th>Dose</th>
+                <th>Route</th>
+                <th>Schedule</th>
               </tr>
             </thead>
             <tbody>
               {meds.map((m) => (
-                <tr key={m.medicationOrderId} style={tableRow}>
-                  <td style={tableCell}>
+                <tr key={m.medicationOrderId}>
+                  <td data-label="Medication">
                     {m.drugName} {m.isPrn ? <StatusPill tone="neutral" label="As needed" /> : null}
                   </td>
-                  <td style={tableCell}>{m.dose ?? "—"}</td>
-                  <td style={tableCell}>{m.route ? humanize(m.route) : "—"}</td>
-                  <td style={tableCell}>{m.scheduleSummary ?? "—"}</td>
+                  <td data-label="Dose">{m.dose ?? "—"}</td>
+                  <td data-label="Route">{m.route ? humanize(m.route) : "—"}</td>
+                  <td data-label="Schedule">{m.scheduleSummary ?? "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -147,27 +135,24 @@ export function PortalMedicationList(): JSX.Element {
         </PortalCard>
 
         <PortalCard heading="Record a dose you gave">
-          <p style={{ margin: "0 0 0.75rem", fontSize: "0.85rem", color: t.onSurfaceVariant }}>
+          <p className="wx-portal-supporting-copy">
             Only the primary caregiver or a healthcare DPOA can record an administration. If the
             button is declined, your team can help set this up.
           </p>
-          <form onSubmit={(e) => void attest(e)} style={{ display: "grid", gap: "0.6rem" }}>
-            <select
+          <form className="wx-portal-form" onSubmit={(e) => void attest(e)}>
+            <SelectField
+              label="Medication"
               value={orderId}
               onChange={(e) => setOrderId(e.target.value)}
               required
-              style={field}
-              aria-label="Medication"
-            >
-              <option value="">Select a medication…</option>
-              {meds.map((m) => (
-                <option key={m.medicationOrderId} value={m.medicationOrderId}>
-                  {m.drugName}
-                </option>
-              ))}
-            </select>
-            <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
-              <input
+              options={[
+                { value: "", label: "Select a medication…", disabled: true },
+                ...meds.map((m) => ({ value: m.medicationOrderId, label: m.drugName })),
+              ]}
+            />
+            <div className="wx-portal-field-grid">
+              <TextField
+                label="Amount given"
                 type="number"
                 step="any"
                 min="0"
@@ -175,60 +160,46 @@ export function PortalMedicationList(): JSX.Element {
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 required
-                style={{ ...field, flex: 1 }}
-                aria-label="Amount given"
               />
-              <input
+              <TextField
+                label="Unit"
                 type="text"
                 placeholder="Unit (e.g. mg)"
                 value={unit}
                 onChange={(e) => setUnit(e.target.value)}
                 required
-                style={{ ...field, flex: 1 }}
-                aria-label="Unit"
               />
-              <input
+              <TextField
+                label="Route"
                 type="text"
                 placeholder="Route (e.g. oral)"
                 value={route}
                 onChange={(e) => setRoute(e.target.value)}
                 required
-                style={{ ...field, flex: 1 }}
-                aria-label="Route"
               />
             </div>
-            <textarea
+            <TextAreaField
+              label="Caregiver attestation"
               placeholder="Attestation — confirm what you gave and when"
               value={attestText}
               onChange={(e) => setAttestText(e.target.value)}
               required
               rows={2}
-              style={field}
-              aria-label="Attestation"
             />
-            <div>
-              <button type="submit" style={primaryBtn}>
-                Record administration
-              </button>
-            </div>
+            <Button type="submit" loading={submitting}>
+              Record administration
+            </Button>
             {submitState ? (
-              <p
-                role={submitState.tone === "err" ? "alert" : "status"}
-                style={{
-                  margin: 0,
-                  fontSize: "0.85rem",
-                  color: submitState.tone === "err" ? t.error : t.success,
-                }}
-              >
+              <InlineAlert tone={submitState.tone === "err" ? "error" : "success"}>
                 {submitState.msg}
-              </p>
+              </InlineAlert>
             ) : null}
           </form>
         </PortalCard>
 
         {log.length > 0 ? (
           <PortalCard heading="Recent doses given">
-            <ul style={{ margin: 0, paddingLeft: "1.1rem", fontSize: "0.88rem" }}>
+            <ul className="wx-portal-content-list">
               {log.map((a, i) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: server payload has no stable id; a read-only, never-reordered list
                 <li key={i}>

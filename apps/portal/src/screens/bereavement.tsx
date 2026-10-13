@@ -1,11 +1,11 @@
-import { t, useApiClient } from "@wardenx/ui";
+import { Button, InlineAlert, useApiClient } from "@wardenx/ui";
 // @wardenx/portal — §5.1 Bereavement support hub (`/p/:patientId/bereavement`). Active only when the grant is
 // in bereaved mode (the M16-driven flip after a patient's death, M31-T03). M16 owns the content — the program
 // enrollment (GET /portal/bereavement/program) and the resource library (GET /portal/bereavement/resources);
 // M31 owns the surface and the opt-out (POST /portal/bereavement/opt-out). Restrained palette, no celebratory
 // color (§5.4).
 import { useEffect, useState } from "react";
-import type { CSSProperties, JSX } from "react";
+import type { JSX } from "react";
 import { humanize, readError } from "./portal-format";
 import { PortalCard, PortalLoadState, PortalPage } from "./portal-page";
 
@@ -20,16 +20,6 @@ interface ProgramItem {
   detail?: string;
 }
 
-const ghostBtn: CSSProperties = {
-  padding: "0.5rem 0.9rem",
-  borderRadius: "0.5rem",
-  border: `1px solid ${t.surfaceContainer}`,
-  background: t.surfaceLowest,
-  color: t.onSurface,
-  cursor: "pointer",
-  fontSize: "0.85rem",
-};
-
 export function PortalBereavement(): JSX.Element {
   const client = useApiClient();
   const [program, setProgram] = useState<ProgramItem[]>([]);
@@ -37,6 +27,8 @@ export function PortalBereavement(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [optedOut, setOptedOut] = useState(false);
+  const [optingOut, setOptingOut] = useState(false);
+  const [optOutError, setOptOutError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -58,8 +50,12 @@ export function PortalBereavement(): JSX.Element {
   }, [client]);
 
   async function optOut(): Promise<void> {
+    setOptingOut(true);
+    setOptOutError(null);
     const res = await client.POST("/api/v1/portal/bereavement/opt-out", {});
-    if (!res.error) setOptedOut(true);
+    setOptingOut(false);
+    if (res.error) setOptOutError(readError(res.response?.status));
+    else setOptedOut(true);
   }
 
   return (
@@ -73,7 +69,7 @@ export function PortalBereavement(): JSX.Element {
       >
         {program.length > 0 ? (
           <PortalCard heading="Your bereavement program">
-            <ul style={{ margin: 0, paddingLeft: "1.1rem", fontSize: "0.9rem" }}>
+            <ul className="wx-portal-content-list">
               {program.map((p, i) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: server payload has no stable id; a read-only, never-reordered list
                 <li key={i}>
@@ -87,30 +83,15 @@ export function PortalBereavement(): JSX.Element {
 
         {resources.length > 0 ? (
           <PortalCard heading="Resources">
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            <div className="wx-portal-resource-list">
               {resources.map((r, i) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: server payload has no stable id; a read-only, never-reordered list
                 <div key={i}>
-                  <div style={{ fontWeight: 600, fontSize: "0.92rem" }}>
+                  <div className="wx-portal-resource-list__title">
                     {r.title ?? "Resource"}
-                    {r.kind ? (
-                      <span style={{ color: t.onSurfaceVariant, fontWeight: 400 }}>
-                        {" "}
-                        · {humanize(r.kind)}
-                      </span>
-                    ) : null}
+                    {r.kind ? <span> · {humanize(r.kind)}</span> : null}
                   </div>
-                  {r.summary ? (
-                    <p
-                      style={{
-                        margin: "0.2rem 0 0",
-                        fontSize: "0.85rem",
-                        color: t.onSurfaceVariant,
-                      }}
-                    >
-                      {r.summary}
-                    </p>
-                  ) : null}
+                  {r.summary ? <p>{r.summary}</p> : null}
                 </div>
               ))}
             </div>
@@ -119,18 +100,19 @@ export function PortalBereavement(): JSX.Element {
 
         <PortalCard heading="Communication preferences">
           {optedOut ? (
-            <output style={{ display: "block", margin: 0, fontSize: "0.88rem" }}>
+            <output className="wx-portal-body-copy">
               You've opted out of bereavement outreach. You can always reach back out to your
               hospice team.
             </output>
           ) : (
             <>
-              <p style={{ margin: "0 0 0.75rem", fontSize: "0.88rem", color: t.onSurfaceVariant }}>
+              <p className="wx-portal-supporting-copy">
                 If you'd prefer not to receive bereavement outreach, you can opt out at any time.
               </p>
-              <button type="button" style={ghostBtn} onClick={() => void optOut()}>
+              <Button tone="secondary" loading={optingOut} onClick={() => void optOut()}>
                 Opt out of bereavement outreach
-              </button>
+              </Button>
+              {optOutError ? <InlineAlert tone="error">{optOutError}</InlineAlert> : null}
             </>
           )}
         </PortalCard>

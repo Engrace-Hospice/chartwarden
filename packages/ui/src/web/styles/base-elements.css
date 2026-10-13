@@ -1,0 +1,141 @@
+/* Shared WardenX browser defaults.
+ *
+ * This file is intentionally shell-free: web, admin and portal all import it, while only the
+ * staff applications import app-shell.css. Keep application layout rules out of this layer.
+ */
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    color: var(--color-on-surface);
+    background: var(--color-background);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  a {
+    color: var(--color-primary);
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+
+  button {
+    font: inherit;
+  }
+
+  button:focus-visible,
+  a:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+
+  input,
+  select,
+  textarea {
+    font: inherit;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-lowest);
+    color: var(--color-on-surface);
+  }
+
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 1px;
+    background: var(--color-surface-lowest);
+  }
+
+  code,
+  kbd,
+  samp {
+    font-family: var(--font-mono);
+  }
+
+  table {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    border-collapse: collapse;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  table::-webkit-scrollbar {
+    display: none;
+  }
+
+  th,
+  td {
+    text-align: left;
+    padding: 0.625rem 0.875rem;
+    border-bottom: 1px solid var(--color-card-border);
+  }
+
+  th {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-on-surface);
+  }
+
+  td:has(> .tabular),
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
+}
+
+@layer components {
+  .wx-button:focus-visible,
+  .wx-field input:focus-visible,
+  .wx-field select:focus-visible,
+  .wx-field textarea:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+
+  .wx-button:not(:disabled):hover {
+    filter: brightness(0.96);
+  }
+
+  .dark .wx-button:not(:disabled):hover {
+    filter: brightness(1.12);
+  }
+
+  .wx-button-tertiary:not(:disabled):hover {
+    background: var(--color-primary-tint);
+  }
+
+  .wx-data-row-interactive {
+    cursor: pointer;
+  }
+
+  .wx-data-row-interactive:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: -2px;
+  }
+}

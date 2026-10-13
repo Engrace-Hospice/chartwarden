@@ -1,20 +1,13 @@
-import { StatusPill, t, useApiClient } from "@wardenx/ui";
+import { SelectField, StatusPill, useApiClient } from "@wardenx/ui";
 // @wardenx/portal — §5.1 Document library (`/p/:patientId/documents`). Outbound: the documents shared TO the
 // caregiver (GET /portal/documents via M22 PortalDocumentReader); download mints a short-lived watermarked
 // URL (GET .../download-url). Inbound: the M31-T06 upload path — init (signed URL + 50 MB / MIME allowlist
 // enforced server-side) → PUT the bytes → complete, which hands the file to the M22 intake + virus-scan
 // pipeline. M31 never stores the blob; it brokers the signed URL and records the intent.
 import { useCallback, useEffect, useState } from "react";
-import type { CSSProperties, ChangeEvent, JSX } from "react";
+import type { ChangeEvent, JSX } from "react";
 import { day, humanize, readError } from "./portal-format";
-import {
-  PortalCard,
-  PortalLoadState,
-  PortalPage,
-  tableCell,
-  tableHead,
-  tableRow,
-} from "./portal-page";
+import { PortalCard, PortalLoadState, PortalPage } from "./portal-page";
 
 interface PortalDoc {
   documentId: string;
@@ -29,22 +22,13 @@ type UploadPurpose =
   | "advance_directive_copy"
   | "other";
 
-const control: CSSProperties = {
-  padding: "0.5rem 0.6rem",
-  borderRadius: "0.45rem",
-  border: `1px solid ${t.surfaceContainer}`,
-  background: t.surfaceLowest,
-  color: t.onSurface,
-  fontSize: "0.9rem",
-};
-const linkBtn: CSSProperties = {
-  color: t.primary,
-  background: "none",
-  border: "none",
-  cursor: "pointer",
-  fontWeight: 600,
-  fontSize: "0.85rem",
-};
+const PURPOSE_OPTIONS = [
+  { value: "insurance_card", label: "Insurance card" },
+  { value: "prior_records", label: "Prior records" },
+  { value: "wound_photo", label: "Wound photo" },
+  { value: "advance_directive_copy", label: "Advance directive" },
+  { value: "other", label: "Other" },
+] as const;
 
 export function PortalDocumentList(): JSX.Element {
   const client = useApiClient();
@@ -57,6 +41,7 @@ export function PortalDocumentList(): JSX.Element {
 
   const load = useCallback(async (): Promise<void> => {
     setLoading(true);
+    setError(null);
     const res = await client.GET("/api/v1/portal/documents", {});
     if (res.error) setError(readError(res.response?.status));
     else setDocs((res.data?.items ?? []) as unknown as PortalDoc[]);
@@ -132,20 +117,14 @@ export function PortalDocumentList(): JSX.Element {
   return (
     <PortalPage title="Documents" subtitle="Files your team has shared, and documents you send in.">
       <PortalCard heading="Send a document">
-        <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", alignItems: "center" }}>
-          <select
+        <div className="wx-portal-upload-controls">
+          <SelectField
+            label="Document type"
             value={purpose}
             onChange={(e) => setPurpose(e.target.value as UploadPurpose)}
-            style={control}
-            aria-label="Document purpose"
-          >
-            <option value="insurance_card">Insurance card</option>
-            <option value="prior_records">Prior records</option>
-            <option value="wound_photo">Wound photo</option>
-            <option value="advance_directive_copy">Advance directive</option>
-            <option value="other">Other</option>
-          </select>
-          <label style={{ ...linkBtn, opacity: busy ? 0.5 : 1 }}>
+            options={PURPOSE_OPTIONS}
+          />
+          <label className="wx-portal-file-button" aria-disabled={busy || undefined}>
             {busy ? "Uploading…" : "Choose a file…"}
             <input
               type="file"
@@ -156,18 +135,14 @@ export function PortalDocumentList(): JSX.Element {
             />
           </label>
         </div>
-        <p style={{ margin: "0.5rem 0 0", fontSize: "0.78rem", color: t.onSurfaceVariant }}>
+        <p className="wx-portal-supporting-copy">
           PDF, JPEG, PNG, HEIC or TIFF up to 50 MB. Files are scanned before your team can open
           them.
         </p>
         {uploadMsg ? (
           <p
             role={uploadMsg.tone === "err" ? "alert" : "status"}
-            style={{
-              margin: "0.6rem 0 0",
-              fontSize: "0.85rem",
-              color: uploadMsg.tone === "err" ? t.error : t.success,
-            }}
+            className={`wx-portal-feedback wx-portal-feedback--${uploadMsg.tone}`}
           >
             {uploadMsg.msg}
           </p>
@@ -180,33 +155,34 @@ export function PortalDocumentList(): JSX.Element {
         empty={docs.length === 0}
         emptyTitle="No documents shared yet"
         emptyDescription="Documents your team shares with you will appear here."
+        onRetry={() => void load()}
       >
         <PortalCard heading="Shared with you">
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <table className="wx-portal-data-table">
             <thead>
               <tr>
-                <th style={tableHead}>Document</th>
-                <th style={tableHead}>Type</th>
-                <th style={tableHead}>Shared</th>
-                <th style={tableHead} aria-label="Actions" />
+                <th>Document</th>
+                <th>Type</th>
+                <th>Shared</th>
+                <th aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
               {docs.map((d) => (
-                <tr key={d.documentId} style={tableRow}>
-                  <td style={tableCell}>{d.title ?? "Document"}</td>
-                  <td style={tableCell}>
+                <tr key={d.documentId}>
+                  <td data-label="Document">{d.title ?? "Document"}</td>
+                  <td data-label="Type">
                     {d.documentType ? (
                       <StatusPill tone="neutral" label={humanize(d.documentType)} />
                     ) : (
                       "—"
                     )}
                   </td>
-                  <td style={tableCell}>{day(d.sharedAt)}</td>
-                  <td style={{ ...tableCell, textAlign: "right" }}>
+                  <td data-label="Shared">{day(d.sharedAt)}</td>
+                  <td className="wx-portal-data-table__action" data-label="Action">
                     <button
                       type="button"
-                      style={linkBtn}
+                      className="wx-portal-link-button"
                       onClick={() => void download(d.documentId)}
                     >
                       Download
