@@ -128,7 +128,8 @@ above.
 | Rejected if | `accepted` is not exactly boolean `true` |
 
 `invitationUrl` is built as `${M34_INVITATION_ACCEPT_URL}/${rawToken}` — that env var is the base,
-and it must point at your **web app**, not at the gateway. The token in that URL is the raw
+and it must point at your **web app**'s `/tenant-invite` route (`accept-tenant-invitation.tsx`; the `/invite`
+route is the M2 organization-invitation page and cannot redeem this token), not at the gateway. The token in that URL is the raw
 invitation secret; it is delivered here and stored only as a hash, so this payload is sensitive and
 must not be logged.
 

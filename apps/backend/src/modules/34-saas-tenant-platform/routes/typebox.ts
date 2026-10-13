@@ -337,7 +337,11 @@ export const TenantListResponseSchema = CursorPageOf(TenantAccountViewSchema);
 /** POST /public/signup-intents/:tokenHash/verify-email → single-use token consumed. */
 export const VerifyEmailAckSchema = Type.Object({ verified: Type.Literal(true) });
 /** POST /public/tenant-invitations/:tokenHash/accept → first-admin acceptance completed. */
-export const AcceptInvitationAckSchema = Type.Object({ accepted: Type.Literal(true) });
+/** `email` is the invited address (the token holder is that invitee) — the web page mails the password-reset link to it. */
+export const AcceptInvitationAckSchema = Type.Object({
+  accepted: Type.Literal(true),
+  email: Type.String({ format: "email" }),
+});
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

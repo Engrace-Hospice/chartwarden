@@ -105,7 +105,10 @@ export interface SignupIntentRouteService {
   /** Consume a single-use `email_verification` token by its SHA256 hash; idempotent on re-consume → 409. */
   verifyEmail(tokenHash: string): Promise<{ verified: true }>;
   /** Accept the platform → first-admin invitation by token hash; creates the M2 user + first org_admin. */
-  acceptInvitation(tokenHash: string, args: { displayName?: string }): Promise<{ accepted: true }>;
+  acceptInvitation(
+    tokenHash: string,
+    args: { displayName?: string },
+  ): Promise<{ accepted: true; email: string }>;
 }
 
 export interface PublicSignupRouteDeps {
