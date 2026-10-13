@@ -1,0 +1,228 @@
+/* M36 WP 2.8 - saved replies: the composer picker and the management screen. Tokens only (no raw colours). Kept apart
+   from staff-messaging.css so parallel work on that file does not collide. */
+
+/* ── composer picker ───────────────────────────────────────────────────────────────────────────────────────── */
+.wx-message-composer > .wx-template-picker {
+  grid-column: 3;
+  grid-row: 3;
+  position: relative;
+  justify-self: end;
+}
+
+.wx-template-picker-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.75rem;
+  padding: 0 0.65rem;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--color-on-surface-variant);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.wx-template-picker-toggle:hover:not(:disabled),
+.wx-template-picker-toggle:focus-visible,
+.wx-template-picker-toggle[aria-expanded="true"] {
+  background: var(--color-surface-container);
+  color: var(--color-on-surface);
+}
+
+.wx-template-picker-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.wx-template-popover {
+  position: absolute;
+  z-index: 20;
+  right: 0;
+  bottom: calc(100% + 0.25rem);
+  display: flex;
+  width: min(26rem, calc(100vw - 2rem));
+  max-height: 22rem;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem;
+  border: 1px solid var(--color-outline-variant);
+  border-radius: 0.75rem;
+  background: var(--color-surface-container-highest);
+  box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 16%);
+}
+
+.wx-template-search {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-low);
+  color: var(--color-on-surface);
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.wx-template-status {
+  color: var(--color-on-surface-variant);
+  font-size: 0.6875rem;
+  padding-inline: 0.25rem;
+}
+
+.wx-template-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.wx-template-option {
+  display: grid;
+  width: 100%;
+  gap: 0.1rem;
+  padding: 0.5rem 0.65rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--color-on-surface);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wx-template-option:hover,
+.wx-template-option.is-active {
+  background: var(--color-surface-container);
+}
+
+.wx-template-option small {
+  color: var(--color-on-surface-variant);
+  font-size: 0.6875rem;
+}
+
+.wx-template-option span {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--color-on-surface-variant);
+  font-size: 0.75rem;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.wx-template-empty,
+.wx-template-retry {
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}
+
+.wx-template-retry {
+  align-self: flex-start;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+
+@media (max-width: 760px) {
+  .wx-message-composer > .wx-template-picker {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .wx-template-popover {
+    right: auto;
+    left: 0;
+  }
+}
+
+/* ── management screen ─────────────────────────────────────────────────────────────────────────────────────── */
+.wx-saved-replies {
+  display: grid;
+  gap: 1rem;
+  max-width: 64rem;
+}
+
+.wx-saved-reply-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wx-saved-reply-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.25rem 1rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--color-card-border);
+}
+
+.wx-saved-reply-row:first-child {
+  border-top: 0;
+}
+
+.wx-saved-reply-row p {
+  grid-column: 1;
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.wx-saved-reply-row small {
+  color: var(--color-on-surface-variant);
+  font-size: 0.75rem;
+}
+
+.wx-saved-reply-actions {
+  display: flex;
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.wx-saved-reply-form {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+}
+
+.wx-saved-reply-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.wx-required-phrases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wx-required-phrases li {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--color-surface-container);
+  color: var(--color-on-surface-variant);
+  font-size: 0.75rem;
+}
+
+@media (max-width: 760px) {
+  .wx-saved-reply-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wx-saved-reply-actions {
+    grid-column: 1;
+    grid-row: auto;
+  }
+}

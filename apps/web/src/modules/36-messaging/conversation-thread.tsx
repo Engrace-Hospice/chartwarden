@@ -10,7 +10,13 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { JSX, KeyboardEvent } from "react";
 import { AttachButton, AttachmentChips } from "./attachment-composer";
 import { sendBlockedReason } from "./attachment-utils";
-import { applyTextEdit, detectMac, formatShortcutMarker, toggleWrap } from "./composer-format";
+import {
+  applyTextEdit,
+  detectMac,
+  formatShortcutMarker,
+  insertText,
+  toggleWrap,
+} from "./composer-format";
 import { MentionMenu } from "./mention-menu";
 import { activeMentionQuery, reconcileReferences } from "./mention-utils";
 import { MessageRow } from "./message-row";
@@ -29,6 +35,7 @@ import {
   initialsOf,
   mergeMessages,
 } from "./messaging-utils";
+import { TemplatePicker } from "./template-picker";
 import { PatientContextAside, ThreadHeader } from "./thread-header";
 import { ThreadPanel } from "./thread-panel";
 import { useAttachmentUploads } from "./use-attachment-upload";
@@ -503,6 +510,13 @@ export function ConversationThread({
     if (event.key === "Escape" && draft === "") event.currentTarget.blur();
   }
 
+  // WP 2.8: a saved reply is only text put in the draft at the caret; the user edits it and sends an ordinary message.
+  function insertSavedReply(text: string): void {
+    const area = textareaRef.current;
+    if (!area) return;
+    applyTextEdit(area, insertText(area.value, area.selectionStart, area.selectionEnd, text));
+  }
+
   function chooseMention(candidate: MentionCandidate): void {
     if (!mentionQuery) return;
     const textarea = textareaRef.current;
@@ -756,6 +770,11 @@ export function ConversationThread({
           />
           <AttachmentChips uploads={uploads} disabled={sending} attachButtonRef={attachButtonRef} />
           <AttachButton uploads={uploads} disabled={sending} buttonRef={attachButtonRef} />
+          <TemplatePicker
+            disabled={sending}
+            onInsert={insertSavedReply}
+            onClosed={() => textareaRef.current?.focus()}
+          />
           {mentionQuery ? (
             <MentionMenu
               loading={mentionLoading}

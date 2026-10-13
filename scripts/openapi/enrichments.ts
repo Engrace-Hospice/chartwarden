@@ -1258,6 +1258,10 @@ import {
   AlertRulePatchSchema as M36AlertRulePatchSchema,
   AlertRuleResponseSchema as M36AlertRuleResponseSchema,
   AnnounceBodySchema as M36AnnounceBodySchema,
+  AttachmentAccessResponseSchema as M36AttachmentAccessResponseSchema,
+  AttachmentStatusResponseSchema as M36AttachmentStatusResponseSchema,
+  AuthorizeAttachmentBodySchema as M36AuthorizeAttachmentBodySchema,
+  AuthorizeAttachmentResponseSchema as M36AuthorizeAttachmentResponseSchema,
   ChannelDetailResponseSchema as M36ChannelDetailResponseSchema,
   ChannelListResponseSchema as M36ChannelListResponseSchema,
   DeliveryEndpointResponseSchema as M36DeliveryEndpointResponseSchema,
@@ -1265,13 +1269,8 @@ import {
   DmStaffSearchResponseSchema as M36DmStaffSearchResponseSchema,
   EditMessageBodySchema as M36EditMessageBodySchema,
   EditMessageResponseSchema as M36EditMessageResponseSchema,
-  AttachmentAccessResponseSchema as M36AttachmentAccessResponseSchema,
-  AttachmentStatusResponseSchema as M36AttachmentStatusResponseSchema,
-  AuthorizeAttachmentBodySchema as M36AuthorizeAttachmentBodySchema,
-  AuthorizeAttachmentResponseSchema as M36AuthorizeAttachmentResponseSchema,
   ListMessagesQuerySchema as M36ListMessagesQuerySchema,
   ListThreadQuerySchema as M36ListThreadQuerySchema,
-  ThreadResponseSchema as M36ThreadResponseSchema,
   MentionCandidateQuerySchema as M36MentionCandidateQuerySchema,
   MentionCandidateResponseSchema as M36MentionCandidateResponseSchema,
   MessageListResponseSchema as M36MessageListResponseSchema,
@@ -1285,8 +1284,18 @@ import {
   RegisterEndpointBodySchema as M36RegisterEndpointBodySchema,
   SendMessageBodySchema as M36SendMessageBodySchema,
   SendMessageResponseSchema as M36SendMessageResponseSchema,
+  ThreadResponseSchema as M36ThreadResponseSchema,
   VerifyEndpointBodySchema as M36VerifyEndpointBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/messaging-typebox";
+// M36 WP 2.8 message templates & saved replies.
+import {
+  CreateTemplateBodySchema as M36CreateTemplateBodySchema,
+  PutOverlayBodySchema as M36PutOverlayBodySchema,
+  TemplateAdminResponseSchema as M36TemplateAdminResponseSchema,
+  TemplateListResponseSchema as M36TemplateListResponseSchema,
+  TemplateViewSchema as M36TemplateViewSchema,
+  UpdateTemplateBodySchema as M36UpdateTemplateBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/template-typebox";
 
 // M38 Clinical Terminology Service — response DTOs (all M38-aliased).
 // Merge these named imports into scripts/openapi/enrichments.ts. NOTE: an existing import already
@@ -8976,6 +8985,60 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Short-lived signed download URL (120 s) for a clean attachment; current channel members only; one attachment_access_event per open; Cache-Control: no-store",
     response: M36AttachmentAccessResponseSchema,
+  },
+  // WP 2.8 message templates & saved replies (plain non-clinical text; PHI lint on every save)
+  "GET /api/v1/messaging/templates": {
+    summary:
+      "The caller's saved-reply picker: platform templates (tenant overlay applied, disabled ones omitted), the organization's shared templates and the caller's own personal replies (messaging.send)",
+    response: M36TemplateListResponseSchema,
+  },
+  "GET /api/v1/messaging/templates/:id": {
+    summary:
+      "One template from the caller's picker; any id that is not theirs to read is the 404 a random id gets",
+    response: M36TemplateViewSchema,
+  },
+  "POST /api/v1/messaging/templates/personal": {
+    summary:
+      "Save a personal reply, private to the caller (201; 422 TEMPLATE_PHI_DETECTED names the field and reason code, never the text; 409 TEMPLATE_TITLE_TAKEN or TEMPLATE_LIMIT_REACHED; Idempotency-Key required)",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    body: M36CreateTemplateBodySchema,
+    response: M36TemplateViewSchema,
+  },
+  "PATCH /api/v1/messaging/templates/personal/:id": {
+    summary: "Edit one of the caller's own personal replies (422 PHI lint; 404 for anyone else's)",
+    body: M36UpdateTemplateBodySchema,
+    response: M36TemplateViewSchema,
+  },
+  "DELETE /api/v1/messaging/templates/personal/:id": {
+    summary: "Delete one of the caller's own personal replies (204; 404 for anyone else's)",
+  },
+  "GET /api/v1/messaging/template-admin": {
+    summary:
+      "Template administration view: the platform wording and required phrases, this organization's overlay on each, and its shared templates (messaging.template.manage)",
+    response: M36TemplateAdminResponseSchema,
+  },
+  "POST /api/v1/messaging/template-admin/shared": {
+    summary:
+      "Author a shared template every sender in the organization sees (messaging.template.manage; 422 PHI lint; 409 title taken or limit; Idempotency-Key required)",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    body: M36CreateTemplateBodySchema,
+    response: M36TemplateViewSchema,
+  },
+  "PATCH /api/v1/messaging/template-admin/shared/:id": {
+    summary: "Edit a shared template (messaging.template.manage; 422 PHI lint)",
+    body: M36UpdateTemplateBodySchema,
+    response: M36TemplateViewSchema,
+  },
+  "DELETE /api/v1/messaging/template-admin/shared/:id": {
+    summary: "Delete a shared template (204; messaging.template.manage)",
+  },
+  "PUT /api/v1/messaging/template-admin/platform/:id/overlay": {
+    summary:
+      "Re-word or disable a platform template for this organization (204). An overlay can never loosen the platform floor: a body that drops a required phrase is 422 TEMPLATE_FLOOR_VIOLATION; text is held to the PHI lint (422 TEMPLATE_PHI_DETECTED)",
+    body: M36PutOverlayBodySchema,
+  },
+  "DELETE /api/v1/messaging/template-admin/platform/:id/overlay": {
+    summary: "Remove this organization's overlay, restoring the platform text (204)",
   },
   "POST /api/v1/messaging/dm": {
     summary: "Open or find a 1:1 DM channel (idempotent; 200/201)",

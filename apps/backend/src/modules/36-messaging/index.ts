@@ -156,6 +156,8 @@ import {
   registerMessagingAbacPredicates as _registerMessagingAbacPredicates,
   registerMessagingRoutes as _registerMessagingRoutes,
 } from "./routes/messaging-routes";
+import { registerTemplateRoutes as _registerTemplateRoutes } from "./routes/template-routes";
+import { createDbTemplateService as _createDbTemplateService } from "./templates/template-service-db";
 
 /**
  * Mount the M36 messaging REST routes (channels / messages / notification preferences + endpoints /
@@ -197,6 +199,8 @@ export function mountMessagingRoutes(
       }),
     });
   }
+  // WP 2.8 — message templates and saved replies (personal + shared + platform overlay).
+  _registerTemplateRoutes(app, { service: _createDbTemplateService(db) });
   // GAP-165 — the platform-ops cross-tenant delivery drill (§4.1 `messaging.admin.read`): own predicate, own
   // SECURITY DEFINER reader (0474), audited per read. Not tenant-scoped, so it takes the pooled handle directly.
   _registerMessagingAdminPredicates();
@@ -266,3 +270,7 @@ export {
   scheduleM36AttachmentScanJobs,
 } from "./attachments/attachment-scan-worker";
 export { registerAttachmentRoutes } from "./routes/attachment-routes";
+
+// WP 2.8 — message templates & saved replies: Drizzle service + routes (the in-memory twin lives in @wardenx/messaging).
+export { createDbTemplateService } from "./templates/template-service-db";
+export { registerTemplateRoutes } from "./routes/template-routes";
