@@ -11,7 +11,8 @@ import { withOrgContext } from "@wardenx/tenancy";
  *   bun run m36:body-backfill -- --org <organization-uuid> [--dry-run] [--batch 100] [--max-rows 5000]
  *                                [--pause-ms 250] [--deadline-sec 600]
  *
- * Needs DATABASE_URL (the tenant role), DATABASE_PLATFORM_URL (reads tenant_key_ring), M34_TENANT_KEK (+ _RETIRED) and
+ * Needs DATABASE_URL (the tenant role), DATABASE_PLATFORM_URL (reads tenant_key_ring), DATABASE_BODY_BACKFILL_URL (real runs: the
+ * wardenx_body_backfill_login that alone may re-seal a revision), M34_TENANT_KEK (+ _RETIRED) and
  * MESSAGING_ENCRYPTION_KEY (the legacy key that still opens the old rows). It is safe to stop and re-run: it resumes.
  * Prints the JSON completion report (counts per table, rows remaining on the legacy envelope). Exit 1 if any row failed
  * or mismatched its plaintext hash; the run is `complete` only when zero legacy rows remain.
@@ -51,9 +52,15 @@ async function main(): Promise<number> {
   }
   const dryRun = process.argv.includes("--dry-run");
   assertBodyBackfillAllowed(process.env, dryRun);
-  const { DATABASE_URL, DATABASE_PLATFORM_URL } = process.env;
+  const { DATABASE_URL, DATABASE_PLATFORM_URL, DATABASE_BODY_BACKFILL_URL } = process.env;
   if (!DATABASE_URL || !DATABASE_PLATFORM_URL) {
     console.error("DATABASE_URL and DATABASE_PLATFORM_URL are required");
+    return 1;
+  }
+  if (!dryRun && !DATABASE_BODY_BACKFILL_URL) {
+    console.error(
+      "DATABASE_BODY_BACKFILL_URL (login wardenx_body_backfill_login, member of wardenx_m36_reseal) is required for a real run: revisions are append-only for every other role",
+    );
     return 1;
   }
   const kekRing = loadPlatformKekRing();
@@ -63,6 +70,9 @@ async function main(): Promise<number> {
   }
   const tenant = createDbClient({ connectionString: DATABASE_URL });
   const platform = createDbClient({ connectionString: DATABASE_PLATFORM_URL });
+  const reseal = DATABASE_BODY_BACKFILL_URL
+    ? createDbClient({ connectionString: DATABASE_BODY_BACKFILL_URL })
+    : undefined;
   try {
     const keys = buildKeyProvider({
       kekUnwrap: createPlatformKekAdapter(kekRing),
@@ -76,7 +86,11 @@ async function main(): Promise<number> {
     }
     const deadlineSec = intFlag("deadline-sec");
     const report = await backfillBodiesForOrg(
-      { db: tenant.db, cipher: createMessageBodyCipher({ keys, sealScheme: "ring" }) },
+      {
+        db: tenant.db,
+        cipher: createMessageBodyCipher({ keys, sealScheme: "ring" }),
+        ...(reseal ? { resealDb: reseal.db } : {}),
+      },
       org,
       {
         dryRun,
@@ -94,6 +108,7 @@ async function main(): Promise<number> {
   } finally {
     await tenant.close();
     await platform.close();
+    await reseal?.close();
   }
 }
 

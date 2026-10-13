@@ -18,15 +18,18 @@ runbook is the operator side. The design and its guarantees are in ADR-0058 sect
 | Per-row scheme marker | generated column `body_envelope_version` (0 erased, 1 legacy, 2 ring), migration 1089 | n/a |
 | Ring DEK cache | `body-key-ring.ts`, TTL 60 s, `invalidateMessageBodyKeys(orgId)` | n/a |
 | Backfill | `bun run m36:body-backfill -- --org <uuid>` (`scripts/m36-body-backfill.ts`) | refused in production without the drill flag |
-| Boot check | boot log line `M36 message bodies: <state>`; production fails closed on legacy rows + unusable key | on |
+| Boot check | boot log line `M36 message bodies: <state>`; production fails closed on legacy rows + unusable key, **and fails if the count cannot be taken** | on |
+| Seal scheme validation | `M36_BODY_SEAL_SCHEME` must be `legacy` or `ring` or the boot fails; `ring` also needs `M34_TENANT_KEK` and `DATABASE_PLATFORM_URL` | on |
+| Revision re-seal credential | `wardenx_body_backfill_login` (member of `wardenx_m36_reseal`), migration 1090; `wardenx_app` has NO execute on `m36_reseal_message_revision` | operator-held |
 | Standing signal | `m36.hash_verify.run` audit context carries `legacyBodies` per tenant, nightly | on |
 
 ## Stage 1: ship the reader (this release)
 
 Deploy with `M36_BODY_SEAL_SCHEME` unset. Behaviour is unchanged for writes; reads can already open ring envelopes. Migration
 1089 rewrites `message` and `message_revision` once (generated column), which takes an ACCESS EXCLUSIVE lock: fine while the
-tables are small (demo data), check row counts first otherwise. After deploy, re-run `bun run db:provision-roles` so the platform
-login gets the column grant on `body_envelope_version`; until then the boot count logs "unavailable" and continues.
+tables are small (demo data), check row counts first otherwise. **Before** deploying, re-run `bun run db:provision-roles` so the platform
+login gets the column grant on `body_envelope_version`: in production a boot that cannot take the legacy-row count is FATAL
+(`LegacyBodyCountUnavailableError`), by design. Outside production it warns and continues.
 
 Verify: boot log shows `M36 message bodies: legacy_rows_key_present (...)` or `ring_only`; `check:boot:platform` is green.
 
@@ -37,6 +40,10 @@ Verify: boot log shows `M36 message bodies: legacy_rows_key_present (...)` or `r
 Preconditions: stage 1 has soaked (at least one nightly `hash_verify` clean); every tenant that writes has a provisioned,
 not-destroyed key ring (`m34` provisioning); the platform KEK (`M34_TENANT_KEK`) and `DATABASE_PLATFORM_URL` are set (the ring is read
 through the platform login).
+
+**Every active tenant must already have a provisioned, non-destroyed key ring before the flag is flipped** (a tenant without one
+cannot send: the seal fails with a 503-class `BodyKeyUnavailableError`). Check `tenant_key_ring` against the active organizations first;
+the boot only validates the variable and the KEK / platform pool, not each tenant.
 
 Set `M36_BODY_SEAL_SCHEME=ring` and restart. Rollback is setting it back to `legacy` (ring rows already written stay
 readable; the reader stays deployed).
@@ -52,7 +59,12 @@ readable; the reader stays deployed).
    from a copy, confirm `sha256(plaintext) == body_sha256`; unwrap a sampled tenant DEK from a restored `tenant_key_ring` row
    and decrypt a sampled ring body. Record date, custodians, key versions.
 4. Only then set `M36_BODY_BACKFILL_ESCROW_DRILL_CONFIRMED=true` **in the shell of the operator running the backfill** (not in the
-   deployment's `.env.production`). In `NODE_ENV=production` a real run without it exits 1 before touching a row. A dry run is always allowed.
+   deployment's `.env.production`). In `NODE_ENV=production` a real run without it is refused by `backfillBodiesForOrg` itself (library
+   and CLI) before touching a row. A dry run is always allowed. **This flag is a self-attestation keyed on `NODE_ENV`: it is an
+   operational control, not a technical proof that the drill happened.** The recorded drill (who, when, key versions) is the evidence.
+5. Provision the re-seal credential once: `WARDENX_BODY_BACKFILL_PASSWORD=… bun run db:provision-roles`, and give the operator
+   `DATABASE_BODY_BACKFILL_URL=postgres://wardenx_body_backfill_login:…`. Revisions are append-only for every other role; the function
+   validates the envelope shape (version, label, exact length) but cannot verify GCM authenticity, so `hash_verify` after each tenant is mandatory.
 
 Run, per tenant:
 
@@ -67,7 +79,8 @@ hash is checked before and after; a row whose hash does not match is reported (`
 audit row) and **left alone**: investigate it, do not force it. Every batch writes `m36.body_backfill.batch`, the end writes
 `m36.body_backfill.run` with the completion count, and the table audit triggers write one row per re-sealed row.
 
-Revisions are re-sealed through `m36_reseal_message_revision` (migration 1089), the only path that may UPDATE a revision.
+Revisions are re-sealed through `m36_reseal_message_revision` (migrations 1089/1090), the only path that may UPDATE a revision, callable
+only by members of `wardenx_m36_reseal`.
 
 Throttle with `--batch`, `--pause-ms`, `--max-rows`, `--deadline-sec`. New legacy rows keep appearing until stage 2 is on, so the
 completion count only converges after it. Drafts and scheduled messages are not backfilled (transient: a draft is overwritten, a
@@ -86,8 +99,10 @@ separate step if policy ever requires dropping the old version.
 
 M34's four-phase shred runs the module erasers (M36 blanks `body_cipher`), then `m34_destroy_tenant_key_ring` zeroes the wrapped
 DEK. After that every ring-sealed body of the tenant fails to open (proved live in `m36-body-key-ring.live.test.ts`). The decrypt
-cache bounds how long a running process keeps using a destroyed DEK: at most 60 s, or immediately where
-`invalidateMessageBodyKeys(orgId)` is called.
+cache is dropped in the process that runs the shred worker immediately after `m34_destroy_tenant_key_ring` commits (index.ts
+`destroyTenantKeyRing`), and for an org when a `dek_rotation_completed` event is published. **Other processes** (api replicas, other
+workers) have no such hook and keep a cached DEK for up to 60 s after a destruction: that is the stated exposure window. A key
+outage while verifying is reported as `BodyKeyUnavailableError` (hash_verify fails the run; search returns 503), never as tampering.
 
 **What is not shredded:** a legacy-sealed row, and any backup or dump containing legacy-sealed ciphertext, is readable with
 `MESSAGING_ENCRYPTION_KEY` and the org id alone. The shred is complete for a tenant only after the backfill finished for it and

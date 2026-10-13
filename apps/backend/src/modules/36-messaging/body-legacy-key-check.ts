@@ -99,3 +99,59 @@ export async function countLegacyBodiesAllTenants(deps: {
     },
   );
 }
+
+export class LegacyBodyCountUnavailableError extends Error {
+  constructor(readonly causeMessage: string) {
+    super(
+      `the legacy message-body count could not be taken at boot (${causeMessage}); refusing to boot in production without knowing whether legacy rows exist. Re-run \`bun run db:provision-roles\` (column grant on body_envelope_version) BEFORE deploying this build (ADR-0058 P1).`,
+    );
+    this.name = "LegacyBodyCountUnavailableError";
+  }
+}
+
+/**
+ * The boot step: take the cross-tenant count and classify it. In production an unavailable count is FATAL (we cannot claim the
+ * history is readable); elsewhere it is reported and boot continues. The caller (index.ts) awaits this before listen().
+ */
+export async function runLegacyBodyBootCheck(deps: {
+  count: () => Promise<LegacyBodyCounts>;
+  env?: NodeJS.ProcessEnv;
+  log: { info: (msg: string) => void; warn: (msg: string) => void };
+}): Promise<LegacyBodyKeyStatus | undefined> {
+  const env = deps.env ?? process.env;
+  let counts: LegacyBodyCounts;
+  try {
+    counts = await deps.count();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "unknown error";
+    if (env.NODE_ENV === "production") throw new LegacyBodyCountUnavailableError(message);
+    deps.log.warn(`M36 legacy message-body count unavailable at boot: ${message}`);
+    return undefined;
+  }
+  const status = assertLegacyBodyKeyAvailable(counts, env);
+  deps.log.info(
+    `M36 message bodies: ${status.state} (legacy rows: message ${counts.message}, message_revision ${counts.message_revision})`,
+  );
+  return status;
+}
+
+/**
+ * Boot-time validation of the WP 2.13 environment (called unconditionally, beside `assertProductionEnv`): a typo in
+ * M36_BODY_SEAL_SCHEME must stop the boot, not surface as a 500 on the first send; `ring` additionally needs the platform KEK and
+ * the platform pool (the ring is read through them), and every tenant must already have a provisioned ring (runbook stage 2).
+ */
+export function assertM36BodyBootEnv(env: NodeJS.ProcessEnv = process.env): "legacy" | "ring" {
+  const raw = env.M36_BODY_SEAL_SCHEME?.trim().toLowerCase();
+  if (!raw || raw === "legacy") return "legacy";
+  if (raw !== "ring") {
+    throw new Error(`M36_BODY_SEAL_SCHEME must be 'legacy' or 'ring' (got '${raw}')`);
+  }
+  for (const key of ["M34_TENANT_KEK", "DATABASE_PLATFORM_URL"]) {
+    if (!env[key]?.trim()) {
+      throw new Error(
+        `M36_BODY_SEAL_SCHEME=ring requires ${key} (the tenant ring DEK is read through it)`,
+      );
+    }
+  }
+  return "ring";
+}

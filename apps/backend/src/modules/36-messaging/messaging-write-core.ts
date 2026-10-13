@@ -19,6 +19,7 @@ import {
   sealMessageBody,
   sealMessageBodyRing,
 } from "@wardenx/messaging";
+import type { RingBodyDek } from "@wardenx/messaging";
 import type { MessageBodyKind } from "@wardenx/messaging";
 import {
   IdempotencyConflictError,
@@ -30,6 +31,7 @@ import {
 import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { recordAnnouncementReads } from "./announcement-receipts";
 import {
+  BodyKeyUnavailableError,
   type MessageBodyKeyProvider,
   type RingDekCache,
   createRingDekCache,
@@ -124,10 +126,18 @@ export function createMessageBodyCipher(
     }
     return cache;
   };
-  const sealRing = async (orgId: string, plaintext: string) => ({
-    cipher: sealMessageBodyRing(plaintext, await ring().current(orgId), orgId),
-    sha256: messageBodySha256(plaintext),
-  });
+  const sealRing = async (orgId: string, plaintext: string) => {
+    let dek: RingBodyDek;
+    try {
+      dek = await ring().current(orgId);
+    } catch (err) {
+      throw new BodyKeyUnavailableError(err);
+    }
+    return {
+      cipher: sealMessageBodyRing(plaintext, dek, orgId),
+      sha256: messageBodySha256(plaintext),
+    };
+  };
   return {
     sealRing,
     async seal(orgId, plaintext) {
@@ -140,9 +150,23 @@ export function createMessageBodyCipher(
     },
     async open(orgId, cipher) {
       const scheme = bodyEnvelopeScheme(cipher);
-      if (scheme === "legacy") return openMessageBody(cipher, legacyDek(orgId));
+      // Key lookup failures are infrastructure (BodyKeyUnavailableError); only the GCM open below is a statement about the bytes.
+      if (scheme === "legacy") {
+        let dek: Buffer;
+        try {
+          dek = legacyDek(orgId);
+        } catch (err) {
+          throw new BodyKeyUnavailableError(err);
+        }
+        return openMessageBody(cipher, dek);
+      }
       if (scheme === "ring") {
-        const dek = await ring().byVersion(orgId, ringEnvelopeVersion(cipher));
+        let dek: RingBodyDek;
+        try {
+          dek = await ring().byVersion(orgId, ringEnvelopeVersion(cipher));
+        } catch (err) {
+          throw new BodyKeyUnavailableError(err);
+        }
         return openMessageBodyRing(cipher, dek.key, orgId);
       }
       throw new Error(`message body-crypto: cannot open a ${scheme} envelope`);

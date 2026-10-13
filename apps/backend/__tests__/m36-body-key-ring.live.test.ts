@@ -38,7 +38,12 @@ import {
   registerLiveM34Seams,
   validateModule34Seams,
 } from "../src/modules/34-saas-tenant-platform/index";
-import { createRingDekCache } from "../src/modules/36-messaging/body-key-ring";
+import {
+  BodyKeyUnavailableError,
+  createRingDekCache,
+  invalidateMessageBodyKeys,
+  setMessageBodyKeyProvider,
+} from "../src/modules/36-messaging/body-key-ring";
 import {
   LegacyBodyKeyMissingError,
   M36_BODY_LEGACY_COUNT_JOB_ID,
@@ -59,6 +64,8 @@ const ROLES = [
   "wardenx_readonly",
   "wardenx_audit_writer",
   "tenant_platform_writer",
+  "wp213_resealer",
+  "wardenx_m36_reseal",
 ];
 const KEK = randomBytes(32);
 const ORG_A = "11111111-1111-4111-8111-1111111136a1";
@@ -71,6 +78,8 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
   let admin: Client;
   let handle: { db: DbClient; close: () => Promise<void> };
   let platformHandle: { db: DbClient; close: () => Promise<void> };
+  /** Logs in as a member of wardenx_m36_reseal: the only credential that may re-seal a revision (migration 1090). */
+  let resealHandle: { db: DbClient; close: () => Promise<void> };
   const accountOf: Record<string, string> = {};
   let kekAdapter: ReturnType<typeof createPlatformKekAdapter>;
   let cache: ReturnType<typeof createRingDekCache>;
@@ -176,7 +185,10 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
     body: string,
   ) => svc.editMessage(org, { userId: users[who] as string, messageId, body });
   const backfill = (org: string, opts: Parameters<typeof backfillBodiesForOrg>[2] = {}) =>
-    backfillBodiesForOrg({ db: handle.db, cipher: ringCipher }, org, { pauseMs: 0, ...opts });
+    backfillBodiesForOrg({ db: handle.db, cipher: ringCipher, resealDb: resealHandle.db }, org, {
+      pauseMs: 0,
+      ...opts,
+    });
 
   beforeAll(async () => {
     admin = new Client({ connectionString: DB_URL });
@@ -207,6 +219,13 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
     platformUrl.username = "wardenx_admin";
     platformUrl.password = "wp213_platform";
     platformHandle = createDbClient({ connectionString: platformUrl.toString() });
+    await admin.query(
+      "CREATE ROLE wp213_resealer LOGIN NOBYPASSRLS PASSWORD 'wp213_resealer' IN ROLE wardenx_m36_reseal",
+    );
+    const resealUrl = new URL(DB_URL as string);
+    resealUrl.username = "wp213_resealer";
+    resealUrl.password = "wp213_resealer";
+    resealHandle = createDbClient({ connectionString: resealUrl.toString() });
 
     const ring = loadPlatformKekRing({ [ACTIVE_KEK_ENV]: PLATFORM_KEK } as NodeJS.ProcessEnv);
     if (!ring) throw new Error("expected a KEK ring");
@@ -231,6 +250,7 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
     });
     validateModule34Seams();
     cache = createRingDekCache(getTenantKeyProvider());
+    setMessageBodyKeyProvider(() => getTenantKeyProvider());
     legacyCipher = createMessageBodyCipher({ kek: KEK, ringCache: cache, sealScheme: "legacy" });
     ringCipher = createMessageBodyCipher({ kek: KEK, ringCache: cache, sealScheme: "ring" });
     legacyService = createDbMessagingRouteService(handle.db, { kek: KEK, cipher: legacyCipher });
@@ -240,6 +260,8 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
   afterAll(async () => {
     await handle?.close();
     await platformHandle?.close();
+    await resealHandle?.close();
+    setMessageBodyKeyProvider(undefined);
     await admin?.end();
     __resetModule34SeamsForTest();
   });
@@ -309,12 +331,56 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
     const sealed = (
       await ringCipher.sealRing(ORG_A, await legacyCipher.open(ORG_A, rev?.body_cipher as Buffer))
     ).cipher;
-    const call = (org: string, id: string, oldC: Buffer, newC: Buffer, sessionOrg = ORG_A) =>
-      asApp(sessionOrg, (tx) =>
-        tx.execute(
+    const callVia = (
+      h: { db: DbClient },
+      org: string,
+      id: string,
+      oldC: Buffer,
+      newC: Buffer,
+      sessionOrg = ORG_A,
+    ) =>
+      withOrgContext(h.db, systemOrgContext(sessionOrg), (tx) =>
+        (tx as unknown as DbClient).execute(
           sql`SELECT m36_reseal_message_revision(${org}::uuid, ${id}::uuid, ${oldC}::bytea, ${newC}::bytea) AS ok`,
         ),
       );
+    // HIGH fix: the request-path role has NO execute on it, so garbage that merely starts with 0x02 is refused outright
+    const garbage = Buffer.concat([Buffer.from([2]), randomBytes(60)]);
+    await expect(
+      callVia(handle, ORG_A, rev?.id as string, rev?.body_cipher as Buffer, garbage),
+    ).rejects.toMatchObject({
+      cause: { message: expect.stringMatching(/permission denied for function/i) },
+    });
+    expect(
+      (
+        await admin.query(`SELECT body_envelope_version AS v FROM message_revision WHERE id=$1`, [
+          rev?.id,
+        ])
+      ).rows[0].v,
+    ).toBe(1);
+    // the dedicated credential still validates the envelope shape: garbage, wrong length, empty label
+    const call = (org: string, id: string, oldC: Buffer, newC: Buffer, sessionOrg = ORG_A) =>
+      callVia(resealHandle, org, id, oldC, newC, sessionOrg);
+    for (const bad of [
+      garbage,
+      Buffer.concat([
+        Buffer.from([2, 2]),
+        Buffer.from("v1"),
+        randomBytes((rev?.body_cipher.length as number) + 2),
+      ]),
+      Buffer.concat([Buffer.from([2, 0]), randomBytes((rev?.body_cipher.length as number) + 1)]),
+      Buffer.concat([
+        Buffer.from([2, 2]),
+        Buffer.from("v!"),
+        randomBytes((rev?.body_cipher.length as number) + 1),
+      ]),
+    ]) {
+      await expect(
+        call(ORG_A, rev?.id as string, rev?.body_cipher as Buffer, bad),
+      ).rejects.toMatchObject({
+        cause: { message: expect.stringMatching(/malformed ring envelope|only a legacy/) },
+      });
+    }
     // another org than the session is bound to
     await expect(
       call(ORG_B, rev?.id as string, rev?.body_cipher as Buffer, sealed),
@@ -341,7 +407,7 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
     const stale = await call(
       ORG_A,
       rev?.id as string,
-      Buffer.concat([Buffer.from([1]), randomBytes(40)]),
+      Buffer.concat([Buffer.from([1]), randomBytes((rev?.body_cipher.length as number) - 1)]),
       sealed,
     );
     expect((stale as unknown as { rows: Array<{ ok: boolean }> }).rows[0]?.ok).toBe(false);
@@ -615,6 +681,8 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
     );
     const ringRow = (await rowsOf("message", ORG_B)).find((r) => r.id === ringMsg.messageId) as Row;
     expect(await ringCipher.open(ORG_B, ringRow.body_cipher)).toBe("to be shredded");
+    const sharedCipher = createMessageBodyCipher({ sealScheme: "ring" });
+    expect(await sharedCipher.open(ORG_B, ringRow.body_cipher)).toBe("to be shredded"); // warms the shared cache
 
     const certId = (
       await admin.query(
@@ -630,9 +698,43 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
       "33333333-3333-4333-8333-333333330453",
     ]);
     await admin.query("SELECT m34_destroy_tenant_key_ring($1,$2)", [accountOf[ORG_B], certId]);
-    cache.invalidate(ORG_B); // what the in-process shred hook does; other processes see it within the cache TTL
+    // An in-process cipher on the SHARED cache (what production uses) opened this body before the destroy:
+    // it keeps working inside the TTL until the shred hook drops the cache, and fails the instant it does.
+    expect(await sharedCipher.open(ORG_B, ringRow.body_cipher)).toBe("to be shredded");
+    invalidateMessageBodyKeys(); // index.ts destroyTenantKeyRing calls exactly this right after the destroy commits
+    await expect(sharedCipher.open(ORG_B, ringRow.body_cipher)).rejects.toBeInstanceOf(
+      BodyKeyUnavailableError,
+    );
+    cache.invalidate(ORG_B);
 
     await expect(ringCipher.open(ORG_B, ringRow.body_cipher)).rejects.toThrow(/destroyed/i);
+    // a key outage is not tampering: hash_verify fails the run instead of writing critical mismatch rows
+    const mismatchesBefore = (
+      await admin.query(
+        "SELECT count(*)::int AS n FROM audit_event WHERE event_type='m36.integrity.hash_mismatch' AND organization_id=$1",
+        [ORG_B],
+      )
+    ).rows[0].n;
+    await expect(
+      runHashVerifyForOrg(
+        {
+          db: handle.db,
+          cipher: ringCipher,
+          holdScopeForOrg: async () => ({ orgWide: false, patientIds: new Set() }),
+          sampleLimit: 1000,
+          randomSampleSize: 100,
+        },
+        ORG_B,
+      ),
+    ).rejects.toBeInstanceOf(BodyKeyUnavailableError);
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM audit_event WHERE event_type='m36.integrity.hash_mismatch' AND organization_id=$1",
+          [ORG_B],
+        )
+      ).rows[0].n,
+    ).toBe(mismatchesBefore);
     const legacy = (await rowsOf("message", ORG_B)).find(
       (r) => r.id === legacyRowB.messageId,
     ) as Row;

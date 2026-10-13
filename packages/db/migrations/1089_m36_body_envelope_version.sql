@@ -9,6 +9,9 @@
 --    data), the same reasoning as 1080.
 -- 2. Partial indexes over exactly the legacy rows: the backfill pages them in key order and the completion count reads them,
 --    and they shrink to nothing as the backfill finishes.
+-- NOTE (corrected by 1090): the EXECUTE grant to wardenx_app below was too wide (any org-session caller could replace a
+-- legacy revision with arbitrary bytes). Migration 1090 revokes it, adds envelope-shape validation, and grants EXECUTE only to the
+-- dedicated carrier wardenx_m36_reseal.
 -- 3. message_revision is append-only for the app role (SELECT + INSERT, 1070 / ADR-0055). Re-sealing a revision under the
 --    ring needs an UPDATE of `body_cipher` and nothing else, so it goes through ONE SECURITY DEFINER function owned by a
 --    role holding only a COLUMN grant: it answers only for the org the session is bound to, only turns a legacy envelope

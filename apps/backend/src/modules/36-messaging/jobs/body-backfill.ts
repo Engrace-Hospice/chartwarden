@@ -59,6 +59,8 @@ export function assertBodyBackfillAllowed(env: NodeJS.ProcessEnv, dryRun: boolea
 
 export interface BodyBackfillOptions {
   readonly dryRun?: boolean;
+  /** Environment the escrow gate reads (default `process.env`); tests inject. */
+  readonly env?: NodeJS.ProcessEnv;
   readonly batchSize?: number;
   readonly pauseMs?: number;
   /** Stop after this many rows have been examined in this run (the next run resumes). */
@@ -185,6 +187,7 @@ async function resealRow(
   table: BackfillTable,
   row: Candidate,
   dryRun: boolean,
+  resealDb: DbClient | undefined,
 ): Promise<Outcome> {
   let plaintext: string;
   try {
@@ -218,8 +221,15 @@ async function resealRow(
       .returning({ id: MSG.id });
     return swapped.length === 1 ? "migrated" : "skippedConcurrent";
   }
-  const res = await tx.execute(
-    sql`SELECT m36_reseal_message_revision(${organizationId}::uuid, ${row.id}::uuid, ${row.bodyCipher}::bytea, ${sealed}::bytea) AS ok`,
+  // Revisions are append-only for the app role: the re-seal runs on the dedicated backfill credential (migration 1090).
+  if (!resealDb)
+    throw new BodyBackfillRefusedError(
+      "a real run needs the revision re-seal credential (resealDb)",
+    );
+  const res = await withOrgContext(resealDb, systemOrgContext(organizationId), (rtx) =>
+    rtx.execute(
+      sql`SELECT m36_reseal_message_revision(${organizationId}::uuid, ${row.id}::uuid, ${row.bodyCipher}::bytea, ${sealed}::bytea) AS ok`,
+    ),
   );
   const ok = (res as unknown as { rows?: Array<{ ok: boolean }> }).rows?.[0]?.ok;
   return ok ? "migrated" : "skippedConcurrent";
@@ -227,11 +237,23 @@ async function resealRow(
 
 /** Re-seal one tenant's legacy message heads and revisions under the ring. See the file header for the guarantees. */
 export async function backfillBodiesForOrg(
-  deps: { readonly db: DbClient; readonly cipher: MessageBodyCipher },
+  deps: {
+    readonly db: DbClient;
+    readonly cipher: MessageBodyCipher;
+    /** Connection as a member of `wardenx_m36_reseal` (the only role that may re-seal a revision). Required for a real run. */
+    readonly resealDb?: DbClient;
+  },
   organizationId: string,
   opts: BodyBackfillOptions = {},
 ): Promise<BodyBackfillReport> {
   const dryRun = opts.dryRun ?? false;
+  // The gate lives in the library, not only the CLI: every real run in a production environment needs the recorded drill.
+  assertBodyBackfillAllowed(opts.env ?? process.env, dryRun);
+  if (!dryRun && !deps.resealDb) {
+    throw new BodyBackfillRefusedError(
+      "a real run needs deps.resealDb (the wardenx_m36_reseal credential)",
+    );
+  }
   const batchSize = Math.max(1, opts.batchSize ?? BODY_BACKFILL_DEFAULT_BATCH_SIZE);
   const maxRows = opts.maxRows ?? BODY_BACKFILL_DEFAULT_MAX_ROWS;
   const pauseMs = opts.pauseMs ?? BODY_BACKFILL_DEFAULT_PAUSE_MS;
@@ -276,7 +298,15 @@ export async function backfillBodiesForOrg(
         async (tx) => {
           const results: Outcome[] = [];
           for (const row of batch) {
-            const outcome = await resealRow(tx, deps.cipher, organizationId, table, row, dryRun);
+            const outcome = await resealRow(
+              tx,
+              deps.cipher,
+              organizationId,
+              table,
+              row,
+              dryRun,
+              deps.resealDb,
+            );
             results.push(outcome);
             if (outcome === "hashMismatch" && !dryRun) {
               await audit(tx as unknown as AuditExecutor, systemContext(organizationId, runId), {

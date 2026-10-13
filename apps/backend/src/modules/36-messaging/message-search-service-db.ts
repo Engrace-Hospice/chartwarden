@@ -27,6 +27,7 @@ import type { MessageBodyKind } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import { type SQL, and, desc, eq, sql } from "drizzle-orm";
+import { BodyKeyUnavailableError } from "./body-key-ring";
 import { decodeCursor, encodeCursor } from "./message-cursor";
 import {
   type HydrationContext,
@@ -253,7 +254,9 @@ async function rowMatches(
       row.bodyKind as MessageBodyKind,
       await ctx.cipher.open(orgId, row.bodyCipher),
     ).body;
-  } catch {
+  } catch (err) {
+    // A key outage must fail the search (503), not silently drop every hit as "unreadable".
+    if (err instanceof BodyKeyUnavailableError) throw err;
     ctx.warn?.("message body could not be opened for search", {
       organizationId: orgId,
       messageId: row.id,

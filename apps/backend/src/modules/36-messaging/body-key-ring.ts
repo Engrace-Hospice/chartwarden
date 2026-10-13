@@ -7,12 +7,30 @@
 // pool (one round trip, a separate transaction). A thread read opens up to a page of bodies, so the hot path must not pay
 // that per message: {@link createRingDekCache} memoises the current DEK and each prior version per org with a TTL.
 //
-// SHRED / ROTATION SEMANTICS OF THE CACHE. The TTL bounds how long a process keeps using a DEK after its ring was destroyed
-// or rotated; `invalidate(orgId)` drops it at once (the in-process shred/rotate hooks call it). A destroyed ring is never
-// cached (the provider throws and a rejection is not memoised), so after the TTL every body of a shredded tenant fails to
-// open. Other processes see a destruction within one TTL. A rotation is harmless for reads (the envelope names its
-// version); a stale "current" only means a write is sealed under the previous, still-retained, version for up to one TTL.
+// SHRED / ROTATION SEMANTICS OF THE CACHE. The composition root calls `invalidateMessageBodyKeys()` in THIS process right
+// after M34's `m34_destroy_tenant_key_ring` commits (index.ts `destroyTenantKeyRing`) and when a `dek_rotation_completed`
+// event is published, so a destroyed ring is honoured immediately here. OTHER processes (api replicas, workers) have no
+// such hook: they keep a cached DEK for at most one TTL (60 s) after a destruction, which is the stated exposure window. A
+// destroyed ring is never cached (the provider throws and a rejection is not memoised). A rotation is harmless for reads
+// (the envelope names its version); a stale "current" only means a write is sealed under the previous, still-retained,
+// version for up to one TTL.
 import type { RingBodyDek } from "@wardenx/messaging";
+import { DegradedError } from "@wardenx/types";
+
+/**
+ * The key for a body could not be obtained (provider outage, unbound KEK, destroyed or missing ring, absent legacy key). This is
+ * NOT evidence about the ciphertext: callers that judge integrity (hash_verify) or return hits (search) must not treat it as a
+ * GCM authentication failure. It is a 503-class DegradedError carrying the cause.
+ */
+export class BodyKeyUnavailableError extends DegradedError {
+  constructor(readonly cause: unknown) {
+    super(
+      "message-body-key",
+      `body key unavailable: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
+    this.name = "BodyKeyUnavailableError";
+  }
+}
 
 /** The slice of M34's `TenantKeyProvider` the body cipher needs (structural: no M34 import). */
 export interface MessageBodyKeyProvider {

@@ -23,6 +23,7 @@ import {
 } from "@wardenx/messaging";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { and, eq, lt } from "drizzle-orm";
+import { BodyKeyUnavailableError } from "../body-key-ring";
 import type { MessageBodyCipher } from "../messaging-write-core";
 import { countLegacyBodiesInTx } from "./body-backfill";
 import {
@@ -111,7 +112,9 @@ async function recompute(
   if (meta.cipherBytes.length === 0 && meta.storedHash === ERASED_BODY_SHA256) return null;
   try {
     return messageBodySha256(await cipher.open(orgId, meta.cipherBytes));
-  } catch {
+  } catch (err) {
+    // A key outage is not tampering: fail the run (retried, DLQ alert) instead of writing critical mismatch rows.
+    if (err instanceof BodyKeyUnavailableError) throw err;
     return DECRYPT_FAILED;
   }
 }
