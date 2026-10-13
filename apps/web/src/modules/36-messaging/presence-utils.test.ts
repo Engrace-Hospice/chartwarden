@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_BACKOFF_MS,
   POLL_INTERVAL_MS,
+  TYPING_THROTTLE_MS,
   backoffDelay,
   displayNameFor,
   jittered,
@@ -43,5 +44,11 @@ describe("displayNameFor", () => {
   it("falls back to a neutral name rather than an id", () => {
     expect(displayNameFor(new Map([["u1", "Alex"]]), "u1")).toBe("Alex");
     expect(displayNameFor(new Map(), "u2")).toBe("A colleague");
+  });
+});
+
+describe("typing throttle", () => {
+  it("is longer than the server's 3 s window so jitter cannot drop a refresh", () => {
+    expect(TYPING_THROTTLE_MS).toBeGreaterThan(3_000);
   });
 });

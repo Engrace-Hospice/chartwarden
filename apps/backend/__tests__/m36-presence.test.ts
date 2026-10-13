@@ -18,6 +18,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { CHANNEL_VISIBILITY_PREDICATE } from "../src/modules/36-messaging/index";
+import { cacheFlagRead } from "../src/modules/36-messaging/presence/binding";
 import {
   PRESENCE_LIST_LIMIT,
   type PresenceStore,
@@ -116,7 +117,7 @@ function headerAuth(request: FastifyRequest): void {
 }
 
 function makeServer(opts: {
-  enabled: boolean;
+  enabled: boolean | "throws";
   store: PresenceStore;
   idempotencyStore?: IdempotencyStore;
 }) {
@@ -164,7 +165,13 @@ function makeServer(opts: {
   });
   registerPresenceRoutes(
     app,
-    { store: opts.store, isEnabled: async () => opts.enabled },
+    {
+      store: opts.store,
+      isEnabled: async () => {
+        if (opts.enabled === "throws") throw new Error("flag db down");
+        return opts.enabled;
+      },
+    },
     {
       read: requirePermission("messaging.read") as (
         request: FastifyRequest,
@@ -289,6 +296,16 @@ describe("presence routes", () => {
     await app.close();
   });
 
+  it("an unreadable flag answers 503 (retry), never the 403 that means genuinely off", async () => {
+    const store = createInMemoryPresenceStore();
+    const app = makeServer({ enabled: "throws", store });
+    const post = await app.inject({ method: "POST", url: url(), headers: as("rn_1") });
+    const get = await app.inject({ method: "GET", url: url(), headers: as("rn_1") });
+    expect([post.statusCode, get.statusCode]).toEqual([503, 503]);
+    expect(await store.list(scope, "present")).toEqual([]);
+    await app.close();
+  });
+
   it("a store outage never fails the caller", async () => {
     const broken: PresenceStore = {
       mark: async () => {
@@ -305,5 +322,33 @@ describe("presence routes", () => {
     const get = await app.inject({ method: "GET", url: url(), headers: as("rn_1") });
     expect(get.json()).toEqual({ present: [], typing: [] });
     await app.close();
+  });
+});
+
+describe("cacheFlagRead", () => {
+  it("reads once per org per window, expires on the injected clock, and never caches a failure", async () => {
+    let now = 0;
+    let calls = 0;
+    let fail = false;
+    const read = cacheFlagRead(
+      async () => {
+        calls++;
+        if (fail) throw new Error("down");
+        return true;
+      },
+      5_000,
+      () => now,
+    );
+    expect(await read("a")).toBe(true);
+    expect(await read("a")).toBe(true);
+    expect(calls).toBe(1);
+    await read("b");
+    expect(calls).toBe(2);
+    now = 5_000;
+    fail = true;
+    await expect(read("a")).rejects.toThrow("down");
+    fail = false;
+    expect(await read("a")).toBe(true);
+    expect(calls).toBe(4);
   });
 });

@@ -56,6 +56,12 @@ export function createInMemoryPresenceStore(
       const k = key(kind, scope, userId);
       const last = lastWrite.get(k);
       if (last !== undefined && t - last < timings.throttleMs) return "throttled";
+      for (const [other, expiresAt] of expiry) {
+        if (expiresAt <= t) {
+          expiry.delete(other);
+          lastWrite.delete(other);
+        }
+      }
       lastWrite.set(k, t);
       expiry.set(k, t + ttlFor(timings, kind));
       return "written";

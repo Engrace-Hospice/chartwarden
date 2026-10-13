@@ -5,8 +5,9 @@ export const PRESENCE_FLAG_KEY = "messaging.presence_enabled";
 
 export const HEARTBEAT_INTERVAL_MS = 25_000;
 export const POLL_INTERVAL_MS = 6_000;
-/** The server throttles at 3 s; asking more often is only a wasted request. */
-export const TYPING_THROTTLE_MS = 3_000;
+/** Above the server's 3 s throttle, so network jitter never lands a refresh inside the server window (it would be dropped).
+ *  Typing lives 6 s on the server, so refreshing every 4 s keeps it up; after the last keystroke it fades within 6 s. */
+export const TYPING_THROTTLE_MS = 4_000;
 export const MAX_BACKOFF_MS = 120_000;
 const JITTER_FRACTION = 0.2;
 const MAX_NAMED_TYPISTS = 3;

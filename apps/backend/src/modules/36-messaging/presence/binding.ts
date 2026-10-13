@@ -31,12 +31,34 @@ export interface PresenceBindingInput {
   readonly onStoreError?: (err: unknown) => void;
 }
 
+/** Flag cache window: a tenant flag flip or kill switch takes effect on a replica within this long. */
+export const PRESENCE_FLAG_CACHE_MS = 5_000;
+
+/** Per-org TTL cache over an async flag read. Only successes are cached; a throw propagates and is retried next call. */
+export function cacheFlagRead(
+  read: (organizationId: string) => Promise<boolean>,
+  ttlMs: number = PRESENCE_FLAG_CACHE_MS,
+  now: () => number = Date.now,
+): (organizationId: string) => Promise<boolean> {
+  const cache = new Map<string, { value: boolean; expiresAt: number }>();
+  return async (organizationId) => {
+    const t = now();
+    const hit = cache.get(organizationId);
+    if (hit && hit.expiresAt > t) return hit.value;
+    const value = await read(organizationId);
+    cache.set(organizationId, { value, expiresAt: t + ttlMs });
+    return value;
+  };
+}
+
 export function buildPresenceDeps(input: PresenceBindingInput): PresenceRouteDeps {
   const { flags } = input;
   return {
     store: input.redis ? createValkeyPresenceStore(input.redis) : createInMemoryPresenceStore(),
-    isEnabled: async (organizationId) =>
+    // Cached ~5 s per org: one DB read per org per window, not per heartbeat. A kill switch lands within that window.
+    isEnabled: cacheFlagRead(async (organizationId) =>
       flags ? (await flags.forOrg(organizationId))[PRESENCE_FLAG_KEY] === true : false,
+    ),
     rateLimit: createRouteRateLimit({
       store: input.rateLimitStore ?? createInMemoryRateLimitStore(),
       limit: PRESENCE_ROUTE_RATE_LIMIT,

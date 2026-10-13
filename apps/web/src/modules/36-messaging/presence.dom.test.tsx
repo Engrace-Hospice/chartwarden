@@ -166,4 +166,18 @@ describe("presence (WP 2.12)", () => {
     expect(api.GET.mock.calls.length).toBe(gets);
     expect(container.innerHTML).toBe("");
   });
+
+  it("keeps retrying (backs off) on a 503 instead of halting", async () => {
+    const unavailable = {
+      data: undefined,
+      error: { error: { code: "DEGRADED" } },
+      response: { status: 503 },
+    };
+    const api = makeApi({ presence: unavailable, postResult: unavailable });
+    mount(api, true);
+    await tick(10);
+    const gets = api.GET.mock.calls.length;
+    await tick(10 * 60_000);
+    expect(api.GET.mock.calls.length).toBeGreaterThan(gets);
+  });
 });

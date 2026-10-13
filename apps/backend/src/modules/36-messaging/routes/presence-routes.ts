@@ -12,7 +12,7 @@
 // OFF BY A TENANT FLAG (`messaging.presence_enabled`, default off): a member of the channel gets a typed 403
 // PRESENCE_DISABLED and nothing is written or read. A store outage never fails the caller: heartbeat answers 204 without
 // writing, the read answers empty lists, both log a warning (ids only).
-import { UnauthorizedError, WardenXError } from "@wardenx/types";
+import { DegradedError, UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   type PresenceKind,
@@ -30,7 +30,7 @@ export const PRESENCE_FLAG_KEY = "messaging.presence_enabled";
 
 export interface PresenceRouteDeps {
   readonly store?: PresenceStore;
-  /** True when the tenant has switched presence on. A throw is treated as off (and logged). */
+  /** True when the tenant has switched presence on. A throw answers 503 (not 403), so the client retries. */
   readonly isEnabled: (organizationId: string) => Promise<boolean>;
   /** Optional per-route rate limit (`createRouteRateLimit`), run after the channel guards. */
   readonly rateLimit?: PreHandler;
@@ -52,11 +52,13 @@ async function requireEnabled(
   isEnabled: PresenceRouteDeps["isEnabled"],
   organizationId: string,
 ): Promise<void> {
-  let enabled = false;
+  let enabled: boolean;
   try {
     enabled = await isEnabled(organizationId);
   } catch (err) {
-    request.log.warn({ err }, "presence flag unreadable; treated as off");
+    // An unreadable flag is NOT "off": 503 makes the client back off and retry instead of halting for good.
+    request.log.warn({ err }, "presence flag unreadable; answering 503");
+    throw new DegradedError("presence", "temporarily unavailable");
   }
   if (!enabled) {
     throw new WardenXError(
