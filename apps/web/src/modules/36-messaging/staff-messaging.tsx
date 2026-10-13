@@ -18,6 +18,7 @@ import { NewConversationDialog } from "./new-conversation-dialog";
 import { OfflineBanner } from "./offline-banner";
 import { RealtimeBanner, useRealtimeDegraded } from "./realtime-banner";
 import { ScheduledMessagesDialog } from "./scheduled-messages-dialog";
+import { useFocusThreadAfterPick } from "./use-focus-thread-after-pick";
 import { useMessagingRealtime } from "./use-messaging-realtime";
 import { useOutbox } from "./use-outbox";
 import { type LiveHint, POLL_INTERVAL_MS, pushLiveHint } from "./use-thread";
@@ -147,22 +148,13 @@ function OrganizationStaffMessaging({
     focusInboxAfterNotice.current = false;
     inboxHeadingRef.current?.focus();
   }, [accessEnded, activeId]);
-  // Picking a row on a narrow screen unmounts the list that held focus: hand it to the thread heading instead. Set
-  // only by a user pick, so wide layouts, deep links and realtime refreshes (which also change activeId) never steal it.
   const threadHeadingRef = useRef<HTMLHeadingElement>(null);
-  const focusThreadAfterPick = useRef(false);
-  useEffect(() => {
-    if (activeId === null || !focusThreadAfterPick.current) return;
-    focusThreadAfterPick.current = false;
-    threadHeadingRef.current?.focus();
-  }, [activeId]);
-  const pickConversation = useCallback(
-    (id: string | null): void => {
-      focusThreadAfterPick.current = narrow && id !== null;
-      setActiveId(id);
-    },
-    [narrow],
-  );
+  const pickConversation = useFocusThreadAfterPick({
+    activeId,
+    narrow,
+    headingRef: threadHeadingRef,
+    setActiveId,
+  });
   const [newConversationOpen, setNewConversationOpen] = useState(false);
   const [departmentOpen, setDepartmentOpen] = useState(false);
   const [scheduledOpen, setScheduledOpen] = useState(requestedScheduled);
