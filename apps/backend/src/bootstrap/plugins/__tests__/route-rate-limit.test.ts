@@ -120,9 +120,29 @@ describe("createRouteRateLimit", () => {
     expect((await hit(app, ORG_A, "u1")).statusCode).toBe(503);
   });
 
-  it("failMode open: a store outage allows the request", async () => {
-    const app = buildApp({ ...LIMIT, failMode: "open" }, throwing);
+  it("failMode closed: a zero or negative store count is treated as an outage", async () => {
+    for (const bad of [0, -1, 1.5]) {
+      const app = buildApp(LIMIT, { increment: async () => bad });
+      expect((await hit(app, ORG_A, "u1")).statusCode).toBe(503);
+    }
+  });
+
+  it("failMode closed: a partial outage (user counter ok, org counter throws) is a 503", async () => {
+    let calls = 0;
+    const app = buildApp(LIMIT, {
+      increment: async () => {
+        if (++calls === 2) throw new Error("ECONNRESET");
+        return 1;
+      },
+    });
+    expect((await hit(app, ORG_A, "u1")).statusCode).toBe(503);
+  });
+
+  it("failMode open: a store outage allows the request and reports it", async () => {
+    const errors: unknown[] = [];
+    const app = buildApp({ ...LIMIT, failMode: "open" }, throwing, (e) => errors.push(e));
     expect((await hit(app, ORG_A, "u1")).statusCode).toBe(200);
+    expect(errors).toHaveLength(1);
   });
 
   it("an unauthenticated request is refused (401), never silently unlimited", async () => {
@@ -138,11 +158,22 @@ describe("createRouteRateLimit", () => {
 
   it("rejects an invalid configuration at registration time", () => {
     const store = createInMemoryRateLimitStore();
-    for (const bad of [{ perUser: 0 }, { perOrg: 1.5 }, { windowMs: -1 }]) {
+    for (const bad of [
+      { perUser: 0 },
+      { perOrg: 1.5 },
+      { windowMs: -1 },
+      { failMode: "x" as never },
+    ]) {
       expect(() =>
         createRouteRateLimit({ store, limit: { ...LIMIT, ...bad }, keyPrefix: "t" }),
       ).toThrow();
     }
+  });
+
+  it("rejects an empty keyPrefix", () => {
+    expect(() =>
+      createRouteRateLimit({ store: createInMemoryRateLimitStore(), limit: LIMIT, keyPrefix: "" }),
+    ).toThrow();
   });
 
   it("exposes the ADR-0058 P2 decided defaults as named constants", () => {

@@ -11,7 +11,7 @@
 // PHI or query text. Expiry is the store's job (Valkey PEXPIRE on the first hit of a window, see
 // `rate-limit-store.ts`), so cardinality is bounded by active callers per window and no
 // application clock participates in the window (clock skew between replicas is irrelevant).
-import { RateLimitedError, UnauthorizedError, WardenXError } from "@wardenx/types";
+import { DegradedError, RateLimitedError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { RateLimitStore } from "./rate-limit-store";
 
@@ -55,6 +55,10 @@ export function createRouteRateLimit(
   assertPositiveInteger("perUser", limit.perUser);
   assertPositiveInteger("perOrg", limit.perOrg);
   assertPositiveInteger("windowMs", limit.windowMs);
+  if (!keyPrefix) throw new Error("route rate limit: keyPrefix must be non-empty");
+  if (limit.failMode !== "open" && limit.failMode !== "closed") {
+    throw new Error(`route rate limit: failMode must be "open" or "closed"`);
+  }
   const retryAfter = String(Math.ceil(limit.windowMs / 1000));
 
   async function count(key: string): Promise<number> {
@@ -64,7 +68,8 @@ export function createRouteRateLimit(
     } catch (err) {
       throw new StoreUnavailable("store threw", { cause: err });
     }
-    if (!Number.isFinite(n)) throw new StoreUnavailable("store returned a non-numeric count");
+    if (!Number.isInteger(n) || n < 1)
+      throw new StoreUnavailable("store returned a non-numeric count");
     return n;
   }
 
@@ -88,12 +93,13 @@ export function createRouteRateLimit(
         "route rate-limit store unavailable",
       );
       if (limit.failMode === "open") return;
-      throw new WardenXError("DEGRADED", "Rate limiting is temporarily unavailable", 503);
+      throw new DegradedError("rate-limit", "temporarily unavailable");
     }
   };
 }
 
 function refuse(reply: FastifyReply, retryAfter: string): never {
+  // ponytail: fixed window, so up to 2x the cap can land across a window boundary; sliding window if that matters.
   // Fixed-window store exposes no remaining TTL: the full window is an honest upper bound.
   reply.header("Retry-After", retryAfter);
   throw new RateLimitedError();
