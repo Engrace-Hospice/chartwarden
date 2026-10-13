@@ -16,6 +16,8 @@
 // `packages/db/src/schema` type surface, not the `@wardenx/db` runtime barrel (the import
 // boundary in .dependency-cruiser.cjs). check-ddl-legality.ts keeps the DB enum canonical.
 
+import { SYSTEM_ROLE_DISPLAY_NAMES } from "./display-names";
+
 /** The twelve role categories A–L (mirrors the `role_category` DB enum, spec §3.2). */
 export type RoleCategory =
   | "clinical_staff"
@@ -254,7 +256,7 @@ export type SystemLockedRoleKey = keyof typeof SYSTEM_LOCKED_FLOORS;
 export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
   {
     key: "medical_director",
-    name: "Medical Director",
+    name: SYSTEM_ROLE_DISPLAY_NAMES.medical_director,
     category: "clinical_leadership",
     scopeLevel: "organization",
     systemDefault: true,
@@ -301,7 +303,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
   },
   {
     key: "compliance_officer",
-    name: "Compliance Officer",
+    name: SYSTEM_ROLE_DISPLAY_NAMES.compliance_officer,
     category: "compliance_quality",
     scopeLevel: "organization",
     systemDefault: true,
@@ -321,7 +323,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
   },
   {
     key: "hipaa_privacy_officer",
-    name: "HIPAA Privacy Officer",
+    name: SYSTEM_ROLE_DISPLAY_NAMES.hipaa_privacy_officer,
     category: "compliance_quality",
     scopeLevel: "organization",
     systemDefault: true,

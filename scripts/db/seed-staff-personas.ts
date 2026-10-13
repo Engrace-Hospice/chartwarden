@@ -40,6 +40,7 @@ import {
   SSN_DEFAULT_GRANTS,
   SYSTEM_LOCKED_FLOORS,
   allPermissionMirrorRows,
+  systemRoleDisplayName,
 } from "@wardenx/auth";
 import { Client } from "pg";
 import { group } from "../lib/strict";
@@ -399,16 +400,15 @@ async function main(): Promise<void> {
   const userIdByEmail = new Map<string, string>();
   const roleIdByKey = new Map<string, string>();
   for (const key of priorRoleKeys) {
-    const owner =
-      PERSONAS.find((p) => p.roleKeys[0] === key) ?? PERSONAS.find((p) => p.roleKeys.includes(key));
+    const displayName = systemRoleDisplayName(key);
     const r = await db.query<{ id: string }>(
       `INSERT INTO role (organization_id, key, name, category, scope_level, enabled, description)
        VALUES ($1,$2,$3,$5::role_category,'organization', true, $4) RETURNING id`,
       [
         orgId,
         key,
-        owner?.roleName ?? key,
-        `${owner?.roleName ?? key} (dev seed persona)`,
+        displayName,
+        `${displayName} (dev seed persona)`,
         ROLE_CATEGORY[key] ?? "clinical_staff",
       ],
     );
