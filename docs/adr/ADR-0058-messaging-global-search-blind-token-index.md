@@ -89,7 +89,7 @@ for the global search route, because search is an oracle and a decrypt-cost ampl
 ## Decision
 
 1. **Scope.** The index covers the **head body of each non-deleted, non-redacted message** only (not revisions, not drafts, not
-   attachments). Indexing runs in a worker driven by `m36.message.sent.v1` / `m36.message.revised.v1` outbox events and is therefore
+   attachments). Indexing (inserts only) runs in a worker driven by `m36.message.sent.v1` / `m36.message.revised.v1` outbox events (**indexer work item: emit and catalog both events**; they exist only in the plan today, `02` §9, not in the event catalog or emit sites) and is therefore
    eventually consistent; the UI states that new messages may take seconds to appear. The index is derived data, never the record.
    Wire the worker's consumer factory in `apps/backend/src/index.ts` (grep for it; `arch:outbox-bindings` does not prove it is wired).
 2. **Keys (after P1).** `K_search(org, v) = HKDF-SHA256(ikm = TenantDek.key, salt = "", info = "wardenx-message-search:" || orgId || ":v" || v)`
@@ -139,7 +139,7 @@ for the global search route, because search is an oracle and a decrypt-cost ampl
    - **delete** (`status` to `deleted`): the delete path deletes the message's rows in the same transaction as the tombstone update;
    - **redact** (ADR-0055 item 7): the redaction request path deletes the rows in the same transaction as the request is recorded
      (see item 7 below for pending redactions);
-   - **edit**: delete the old tags and insert the new in the same transaction as the revision write;
+   - **edit**: the edit path **only deletes** the old tags, in the same transaction as the revision write; the indexer worker inserts the new tags when it handles `m36.message.revised.v1` (decision 1). Between the two the message is simply unfindable by its new words (and by the old ones), which is the safe direction;
    - **retention destruction** of a message deletes its rows; **tenant erasure and ring destruction** delete all rows.
 
    An outbox-driven deleter is only the repair path (idempotent re-run), never the primary mechanism.
@@ -201,7 +201,7 @@ for the global search route, because search is an oracle and a decrypt-cost ampl
 12. **UI contract.** The search box says it matches whole words and word beginnings of at least 3 characters, not arbitrary
     substrings, and that archived conversations are marked.
 13. **Fail-closed.** If key derivation fails, the ring is destroyed, the key version is unknown, the authority check cannot run, or the
-    rate-limit store is down, search returns an error; it never falls back to a plaintext scan, to a prefilter-only result, or to option C.
+    rate-limit store is down, search returns an error (a seam error inside `effectivelyVisibleChannels` is different: it silently excludes that channel's results and logs a `warn` with ids only, it is not an error response); it never falls back to a plaintext scan, to a prefilter-only result, or to option C.
 
 ## Access control
 
@@ -305,6 +305,7 @@ and the resulting requirements:
 | Database operator who can observe live queries | access pattern: which messages match which (unknown) query | bound parameters, no statement/parameter logging, no result caching, per-route rate limit | Repeated or correlated queries let them cluster queries; with auxiliary data, recover query words |
 | Application compromise (code execution with KEK) | everything: bodies and keys | none new - already game over for bodies | Index adds no capability beyond bodies |
 | Authorised insider using the UI to probe | whether a word occurs in channels they may already read | results restricted to current access; per-user and per-org rate limit (P2); read audit | Probing within permitted scope reveals only permitted content |
+| Patient names typed in messages | with no patient-name flag in v1, a name is indexed like any other word | none specific; ordinary tag protections | Names are the highest-value token for frequency and auxiliary-vocabulary attacks (the adversary can build a name list from outside data). **Proposed default, for security/privacy reviewers to confirm:** the reviewers decide between "index names" (current) and "exclude known patient-name tokens" from the index (at the cost of not finding messages by patient name) |
 | Cross-tenant | nothing | distinct keys per tenant; RLS; cross-tenant collision test | Compromised KEK defeats all tenants |
 
 The honest summary: option B trades a reduced blast radius for a database-only compromise (no plaintext copy exists, unlike C) against
