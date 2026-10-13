@@ -7,7 +7,7 @@
 //   3. re-check eligibility (status <> 'deleted', not redacted/pending) and that the body we opened still hashes to the
 //      CURRENT `body_sha256`; otherwise delete the message's tokens and stop;
 //   4. tokenise the PLAIN TEXT projection (never raw stored JSON), derive + pad the tags, delete-then-bulk-insert.
-// Nothing happens while the platform kill switch or the tenant flag is OFF (an inert no-op ack). The same-transaction
+// Nothing happens while the platform kill switch or the tenant flag is OFF (an inert no-op that still completes the event). The same-transaction
 // delete hook in migration 1091 never consults a flag; `removeMessage` here is the unconditional repair path.
 // Key and tag-width errors THROW: the caller (outbox retry, maintenance tick) fails closed and tries again.
 import { type DbClient, schema } from "@wardenx/db";

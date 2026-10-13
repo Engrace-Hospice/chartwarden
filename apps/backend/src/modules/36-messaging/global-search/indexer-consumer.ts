@@ -5,7 +5,7 @@
 // TENANT: from the envelope `event.organizationId`, NEVER the payload. The message id comes from the payload and is only ever
 // looked up under that org (a foreign org's id finds nothing). A malformed payload THROWS (retry -> DLQ).
 // IDEMPOTENT: `edited` is also emitted for attachment changes and an event can be redelivered; every handling replaces the
-// message's rows (fresh dummies) or removes them. INERT: with either flag OFF the writer acknowledges without work.
+// message's rows (fresh dummies) or removes them. INERT: with either flag OFF the writer returns without doing work.
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,

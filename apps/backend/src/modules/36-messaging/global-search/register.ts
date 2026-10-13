@@ -5,7 +5,7 @@
 // PRODUCTION STAYS INERT: the tenant flag defaults OFF, the platform flag is absent (= OFF), and `keys` is wired to the
 // `unavailable` provider (throws) until WP 2.13 / prerequisite P1 supplies the key ring, so nothing can be indexed even with
 // every flag flipped. The consumer is registered unconditionally (the catalog's declared `m36` consumer must be bound);
-// with the flags off it acknowledges without work.
+// with the flags off it completes without doing work.
 import type { DbClient } from "@wardenx/db";
 import type { SearchKeyProvider } from "@wardenx/messaging";
 import type { ConnectionOptions, Queue, Worker } from "bullmq";
