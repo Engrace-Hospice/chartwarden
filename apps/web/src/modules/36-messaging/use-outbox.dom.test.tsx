@@ -357,25 +357,6 @@ describe("the drain's reach", () => {
     expect(post.mock.calls.map(([, init]) => init.body.clientMessageId)).toEqual(["m1", "m2"]);
     expect(result.current.items).toHaveLength(0);
   });
-
-  it("does not drop a drain requested while one is running", async () => {
-    const gate = deferred();
-    const { result, post } = mount([() => gate.promise, reply(ok("srv-2"))]);
-    act(() => result.current.enqueue(queued("m1")));
-    act(() => {
-      window.dispatchEvent(new Event("online"));
-    });
-    act(() => result.current.enqueue(queued("m2")));
-    act(() => {
-      window.dispatchEvent(new Event("online"));
-    });
-
-    await act(async () => {
-      gate.resolve(ok("srv-1"));
-    });
-
-    expect(post).toHaveBeenCalledTimes(2);
-  });
 });
 
 describe("a drain requested while another runs", () => {
@@ -408,6 +389,27 @@ describe("a drain requested while another runs", () => {
       "a2",
       "b1",
     ]);
+  });
+});
+
+describe("a head discarded while it was sending", () => {
+  it("lets the followers go when that send ends with no response", async () => {
+    const gate = deferred();
+    const { result, post } = mount([() => gate.promise, reply(ok("srv-2"))]);
+    act(() => result.current.enqueue(queued("m1")));
+    act(() => result.current.enqueue(queued("m2")));
+    let attempt!: Promise<unknown>;
+    act(() => {
+      attempt = result.current.retry("m1");
+    });
+    act(() => result.current.discard("m1"));
+
+    await act(async () => {
+      gate.resolve(Promise.reject(new TypeError("Failed to fetch")));
+      await attempt.catch(() => {});
+    });
+
+    expect(post.mock.calls.map(([, init]) => init.body.clientMessageId)).toEqual(["m1", "m2"]);
   });
 });
 

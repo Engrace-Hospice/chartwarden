@@ -27,6 +27,10 @@
   color: var(--color-error-pill-fg);
 }
 
+.wx-pending-label.is-sending {
+  color: var(--color-muted);
+}
+
 .wx-pending-action {
   min-width: 44px;
   min-height: 44px;

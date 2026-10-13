@@ -46,7 +46,9 @@ function PendingMessageRow({
         </div>
         <div className="wx-pending-meta">
           <span id={statusId} className="wx-pending-status">
-            <strong className="wx-pending-label">{sending ? "Sending…" : "Not sent"}</strong>
+            <strong className={`wx-pending-label${sending ? " is-sending" : ""}`}>
+              {sending ? "Sending…" : "Not sent"}
+            </strong>
             {item.error ? <span className="wx-pending-error"> {item.error}</span> : null}
           </span>
           {item.permanent ? null : (

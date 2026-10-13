@@ -505,6 +505,92 @@ describe("the first send", () => {
   });
 });
 
+describe("a delivery while the first load is in flight", () => {
+  it("shows the message once the load lands, although the first GET predates the commit", async () => {
+    let releaseFirstLoad!: (value: unknown) => void;
+    const firstLoad = new Promise((resolve) => {
+      releaseFirstLoad = resolve;
+    });
+    let committed = false;
+    let loads = 0;
+    const queue: Step[] = [OFFLINE, ok("m-9")];
+    mountThread({
+      GET: (path) => {
+        if (path !== MESSAGES) return undefined;
+        loads += 1;
+        if (loads === 1) return firstLoad;
+        return {
+          data: {
+            messages: committed
+              ? [
+                  {
+                    messageId: "m-9",
+                    channelId: "dm-1",
+                    authorUserId: "11111111-1111-4111-8111-111111111111",
+                    authorDisplayName: "Me",
+                    body: "hello team",
+                    bodyKind: "plain",
+                    createdAt: "2026-10-10T10:00:00.000Z",
+                    parentMessageId: null,
+                    references: [],
+                    attachments: [],
+                  },
+                ]
+              : [],
+          },
+          error: undefined,
+        };
+      },
+      POST: (path) => {
+        if (path !== MESSAGES) return undefined;
+        const step = queue.shift();
+        if (step === OFFLINE) return Promise.reject(new TypeError("Failed to fetch"));
+        committed = true;
+        return step;
+      },
+    });
+    await send("hello team");
+    await screen.findByText("Not sent");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Retry sending message" }));
+    });
+    await waitFor(() => expect(committed).toBe(true));
+
+    await act(async () => {
+      releaseFirstLoad({ data: { messages: [] }, error: undefined });
+    });
+
+    await waitFor(() =>
+      expect(document.querySelector('[data-message-id="m-9"]')?.textContent).toContain(
+        "hello team",
+      ),
+    );
+    expect(screen.queryByText("Not sent")).toBeNull();
+  });
+});
+
+describe("a retry that gets no response", () => {
+  it("is announced each time, with a different text", async () => {
+    mountScripted(OFFLINE, OFFLINE, OFFLINE);
+    await screen.findByRole("textbox", { name: "Message" });
+    const live = () => document.querySelector('output[aria-live="polite"]')?.textContent;
+    const retry = async () => {
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Retry sending message" }));
+      });
+    };
+    await send("hello team");
+    await screen.findByText("Not sent");
+
+    await retry();
+    const first = live();
+    await retry();
+
+    expect(first).toBe("Still offline, message 1 of 1 not sent (attempt 1)");
+    expect(live()).toBe("Still offline, message 1 of 1 not sent (attempt 2)");
+  });
+});
+
 describe("followers, focus claims and transitions", () => {
   it("sends the followers queued behind a head when a manual Retry delivers it, with no online event", async () => {
     const { api } = mountScripted(OFFLINE, answered(500, "Server hiccup"), ok("m-a"), ok("m-b"));
@@ -594,7 +680,7 @@ describe("followers, focus claims and transitions", () => {
 
     expect(first).toBe("Retry failed for message 1 of 1, attempt 1: Server hiccup");
     expect(second).toBe("Retry failed for message 1 of 1, attempt 2: Server hiccup");
-    expect(live()).toBe("Message not sent: You can no longer post here");
+    expect(live()).toBe("Not sent, message 1 of 1: You can no longer post here");
   });
 
   it("announces a delivery", async () => {

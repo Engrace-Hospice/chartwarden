@@ -4,6 +4,7 @@ import type { JSX, KeyboardEvent, UIEvent } from "react";
 import { sendBlockedReason } from "./attachment-utils";
 import { applyTextEdit, detectMac, insertText } from "./composer-format";
 import { handleComposerKeyDown } from "./composer-keys";
+import { deferUntilLoaded } from "./defer-until-loaded";
 import { ThreadComposer } from "./message-composer";
 import { MessageSearch } from "./message-search";
 import { MessageTimeline } from "./message-timeline";
@@ -185,8 +186,7 @@ function ConversationThreadView({
 
   /** The server confirmed `sent`: show it at the bottom. Leaves the draft alone (a queued message's draft moved on). */
   const mergeSent = (sent: SentMessage): void => {
-    // Not loaded yet: the load carries it (merging now would disable the initial scroll).
-    if (messagesRef.current === null) return void onMessageSent();
+    if (deferUntilLoaded(messagesRef, rereadAfterFlight, onMessageSent)) return;
     latestPageIdsRef.current = new Set([...latestPageIdsRef.current, sent.messageId]);
     const withSentMessage = mergeMessages(messagesRef.current ?? [], [
       sentMessageRow(sent, channel.channelId, meId, meDisplayName),

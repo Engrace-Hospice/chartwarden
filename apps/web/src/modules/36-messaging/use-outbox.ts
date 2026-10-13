@@ -3,7 +3,8 @@
 //
 // LIFTED: one instance lives in the organization-level component (StaffMessaging), above the per-channel thread that
 // unmounts on every channel switch, so the queue, the `online`/`beforeunload` listeners and in-flight sends survive a
-// switch. The open thread binds its merge handler with `bindThread`; a delivery is merged only when the bound thread is
+// switch. (An in-app route change away from messaging unmounts it too, and drops the queue: an accepted limit, there is
+// no router blocker.) The open thread binds its merge handler with `bindThread`; a delivery is merged only when the bound thread is
 // that channel's, otherwise the item is just removed (the message shows when the channel is next loaded).
 //
 // React state ONLY, held per channel so switching channels never loses a queued message. Message bodies are PHI and must
@@ -36,6 +37,8 @@ export interface OutboxItem {
   readonly permanent?: boolean;
   /** How many answered failures this message has had (each is announced, even with the same error text). */
   readonly failCount?: number;
+  /** How many retries got no response at all (announced too: otherwise a retry offline is silent). */
+  readonly offlineCount?: number;
 }
 
 type Queues = Readonly<Record<string, readonly OutboxItem[]>>;
@@ -77,6 +80,7 @@ export function useOutbox() {
   const queuesRef = useRef<Queues>({});
   const drainingRef = useRef(false);
   const drainAgainRef = useRef(false);
+  const drainRef = useRef<(only?: string) => Promise<void>>(async () => {});
   const mountedRef = useRef(true);
   const threadRef = useRef<{ channelId: string; merge: MergeHandler } | null>(null);
 
@@ -148,7 +152,9 @@ export function useOutbox() {
       } catch {
         // Still no response (offline or timed out): keep the same key, a lost reply replays safely on the server.
         if (!mountedRef.current) return "skipped";
-        patch(item.localId, { status: "not_sent" });
+        patch(item.localId, { status: "not_sent", offlineCount: (item.offlineCount ?? 0) + 1 });
+        // Discarded while sending: nothing holds its followers back any more.
+        if (!findItem(queuesRef.current, item.localId)) void drainRef.current(item.channelId);
         return "offline";
       } finally {
         clearTimeout(timer);
@@ -165,6 +171,7 @@ export function useOutbox() {
           // The idempotency store caches answered failures, so the key rotates; the clientMessageId stays.
           ...(status >= 400 ? { idempotencyKey: crypto.randomUUID() } : {}),
         });
+        if (!findItem(queuesRef.current, item.localId)) void drainRef.current(item.channelId);
         return "answered";
       }
       remove(item.localId);
@@ -240,6 +247,8 @@ export function useOutbox() {
     },
     [attempt],
   );
+
+  drainRef.current = drain;
 
   /**
    * A manual Retry on item N is allowed even with older items waiting: it may then send out of order, but only because
