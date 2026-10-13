@@ -15,6 +15,9 @@
 /** Bump when a rule is added or tightened; recorded so an operator can tell which rule set accepted a row. */
 export const PHI_LINT_VERSION = 2;
 
+/** The longest text the lint examines (the templates' own 2000 character body cap). */
+export const MAX_LINT_INPUT = 2000;
+
 export type PhiFindingCode =
   | "DATE"
   | "EMAIL"
@@ -66,7 +69,7 @@ const RULES: ReadonlyArray<readonly [PhiFindingCode, RegExp]> = [
         // a label counts only when a value follows: ":"/"#"/"=" then anything, or a token containing a digit
         "(?:\\s*[:#=]\\s*\\S|\\s+#?\\s*\\S*\\d)" +
         // or the label runs straight into its value with no separator at all ("MRN12345", "DOBAB12")
-        "|\\b(?:mrn|ssn|dob)[a-z]{0,3}\\d",
+        "|\\b(?:mrn|ssn|dob)[a-z_-]{0,3}\\d",
       "i",
     ),
   ],
@@ -86,7 +89,9 @@ const RULES: ReadonlyArray<readonly [PhiFindingCode, RegExp]> = [
 ];
 
 // Zero-width, bidi and soft-hyphen characters would let "88​77..." slip past a digit rule.
-const INVISIBLE = /[\u00AD\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\uFEFF]/g;
+const INVISIBLE_RANGES =
+  "\\u00AD\\u034F\\u061C\\u180B-\\u180E\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFE00-\\uFE0F\\uFEFF\\u{E0000}-\\u{E007F}";
+const INVISIBLE = new RegExp(`[${INVISIBLE_RANGES}]`, "gu");
 // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control characters is the point
 const CONTROL = /[\u0000-\u0008\u000B-\u001F\u007F]/g;
 
@@ -167,11 +172,14 @@ export function normalizeForLint(text: string): string {
 }
 
 /** The text the digit rules see: separators sitting between two digits ("88/77, 66 - 55") are removed. */
-const collapseDigitRuns = (text: string): string => text.replace(/(?<=\d)[\s.,/-]+(?=\d)/g, "");
+const collapseDigitRuns = (text: string): string =>
+  text.replace(/(?<=\d)[\s.,/−٫٬\p{Pd}\p{Pc}]+(?=\d)/gu, "");
 
 /** The distinct finding codes for `text`, sorted. Empty means "nothing this lint recognises", not "no PHI". */
 export function lintTemplateText(text: string): PhiFindingCode[] {
-  const normalized = normalizeForLint(text).replace(
+  // Callers refuse anything over TEMPLATE_LIMITS (2000 characters) BEFORE linting; this bound only keeps the worst-case
+  // regex work fixed for a direct caller. It is a time bound, never the validation.
+  const normalized = normalizeForLint(text.slice(0, MAX_LINT_INPUT)).replace(
     CONFUSABLE_CHARS,
     (ch) => CONFUSABLES[ch] ?? ch,
   );

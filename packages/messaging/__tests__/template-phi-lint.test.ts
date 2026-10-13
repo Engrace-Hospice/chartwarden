@@ -1,7 +1,12 @@
 // M36 WP 2.8 - the "no PHI in saved replies" lint. Deterministic, server-side; these are its corpus. The lint is a
 // best-effort identifier screen, NOT a PHI detector: the "known misses" block pins what it deliberately does not catch.
 import { describe, expect, it } from "vitest";
-import { PHI_LINT_VERSION, lintTemplateText } from "../src/templates/phi-lint";
+import {
+  PHI_LINT_VERSION,
+  lintTemplateText,
+  stripInvisibleCharacters,
+} from "../src/templates/phi-lint";
+import { PLATFORM_MESSAGE_TEMPLATES } from "../src/templates/template-seed";
 
 describe("lintTemplateText: rejects direct identifiers", () => {
   const rejected: ReadonlyArray<readonly [string, string, string]> = [
@@ -106,4 +111,62 @@ describe("lintTemplateText: deliberate over-rejection (the price of collapsing s
 
 it("exposes a lint version so a stricter rule set can be rolled out and recorded", () => {
   expect(PHI_LINT_VERSION).toBeGreaterThanOrEqual(1);
+});
+
+describe("lintTemplateText: second review round (probe corpus)", () => {
+  const rejected: ReadonlyArray<readonly [string, string, string]> = [
+    ["non-breaking hyphens between digit groups", "123‑456‑789", "LONG_NUMBER"],
+    ["em dashes between digit groups", "Acct 123—456—7890", "LONG_NUMBER"],
+    ["minus signs between digit groups", "123−456−789", "LONG_NUMBER"],
+    ["underscores between digit groups", "123_456_7890", "LONG_NUMBER"],
+    ["Arabic decimal and thousands separators", "123٫456٬789", "LONG_NUMBER"],
+    ["combining grapheme joiner inside digits", "12͏34͏5678", "LONG_NUMBER"],
+    ["variation selectors inside digits", "12️34️5678", "LONG_NUMBER"],
+    ["Mongolian free variation selector inside digits", "12᠋34᠋5678", "LONG_NUMBER"],
+    ["Arabic letter mark inside digits", "12؜345678", "LONG_NUMBER"],
+    ["tag characters inside digits", "12\u{E0041}34\u{E0041}5678", "LONG_NUMBER"],
+    ["zero-width space inside the MRN label", "M​RN 12345", "IDENTIFIER_LABEL"],
+    ["combining joiner between MRN and its value", "MRN͏12345", "IDENTIFIER_LABEL"],
+    ["fullwidth MRN label", "ＭＲＮ12345", "IDENTIFIER_LABEL"],
+    ["MRN joined to its value by an underscore", "mrn_12345", "IDENTIFIER_LABEL"],
+    ["MRN joined to its value by a hyphen", "MRN-12345", "IDENTIFIER_LABEL"],
+    [
+      "a per-day rate that reads as a host and path (documented over-rejection)",
+      "Visit 2.5/day",
+      "URL",
+    ],
+  ];
+  it.each(rejected)("%s", (_label, text, code) => {
+    expect(lintTemplateText(text)).toContain(code);
+  });
+
+  it("stripInvisibleCharacters removes every character the lint ignores", () => {
+    const noisy = "a͏b️c᠋d\u{E0041}e؜f​g";
+    expect(stripInvisibleCharacters(noisy)).toBe("abcdefg");
+  });
+
+  it("still misses a spelled-out address, as documented", () => {
+    expect(lintTemplateText("write to bob at example dot com")).toEqual([]);
+  });
+
+  it("every platform seed template (title, body and required phrases) passes the lint", () => {
+    for (const t of PLATFORM_MESSAGE_TEMPLATES) {
+      expect(lintTemplateText(t.title), t.templateKey).toEqual([]);
+      expect(lintTemplateText(t.body), t.templateKey).toEqual([]);
+      for (const phrase of t.requiredPhrases) expect(lintTemplateText(phrase), phrase).toEqual([]);
+    }
+  });
+
+  it("stays fast on adversarial input at the 2000 character cap (no catastrophic backtracking)", () => {
+    for (const text of [
+      "a.".repeat(1000),
+      "a-".repeat(1000),
+      "1 ".repeat(1000),
+      `${"a".repeat(1999)}.`,
+    ]) {
+      const started = performance.now();
+      lintTemplateText(text);
+      expect(performance.now() - started).toBeLessThan(200);
+    }
+  });
 });

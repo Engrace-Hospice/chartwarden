@@ -188,3 +188,11 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* aria-disabled keeps the control focusable while a request is in flight; it must still look and feel busy. */
+.wx-reaction-chip[aria-disabled="true"],
+.wx-reaction-add[aria-disabled="true"],
+.wx-pin-toggle[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

@@ -1607,7 +1607,10 @@ export function createDbMessagingRouteService(
           .update(MSG)
           .set({ status: "deleted", deletedAt: deletedAt, editedAt: null })
           .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, input.messageId)));
-        // WP 2.4: a deleted message frees its pin (the 20-pin cap counts live pins only).
+        // WP 2.4: a deleted message frees its pin (the 20-pin cap counts live pins only). Same per-channel lock a pin
+        // takes, so a pin racing this delete either lands first (and is freed here) or waits and then finds the
+        // message deleted; it can never leave a pin on a deleted message.
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${m.channelId}, 36))`);
         await tx
           .delete(MPIN)
           .where(and(eq(MPIN.organizationId, orgId), eq(MPIN.messageId, input.messageId)));

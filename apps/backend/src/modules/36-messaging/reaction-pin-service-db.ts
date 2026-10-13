@@ -146,11 +146,13 @@ export function createDbReactionPinService(deps: ReactionPinDeps): MessageReacti
     async pinMessage(orgId, input) {
       await assertMember(orgId, input.userId, input.channelId);
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
-        const message = await liveMessageInTx(tx, orgId, input);
-        // Serialise pins per channel so two racing pins cannot both slip under the cap.
+        // Serialise pins per channel so two racing pins cannot both slip under the cap. Taken BEFORE the liveness
+        // read: a message delete takes the same lock, so either it commits first (this pin then sees it deleted) or
+        // it waits for this pin and frees it.
         await tx.execute(
           sql`SELECT pg_advisory_xact_lock(hashtextextended(${input.channelId}, 36))`,
         );
+        const message = await liveMessageInTx(tx, orgId, input);
         const [existing] = await tx
           .select({ createdAt: MPIN.createdAt })
           .from(MPIN)

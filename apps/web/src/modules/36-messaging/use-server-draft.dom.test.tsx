@@ -14,9 +14,14 @@ import {
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DraftConflictPrompt } from "./draft-conflict-prompt";
+import { DraftConflictPrompt, escapeKeepsMine } from "./draft-conflict-prompt";
 import type { MessageReferenceInput } from "./messaging-types";
-import { DRAFT_SAVE_DEBOUNCE_MS, mergeDraftBodies, useServerDraft } from "./use-server-draft";
+import {
+  DRAFT_SAVE_DEBOUNCE_MS,
+  MAX_SAVE_ATTEMPTS,
+  mergeDraftBodies,
+  useServerDraft,
+} from "./use-server-draft";
 
 const DRAFT_PATH = "/api/v1/messaging/channels/{id}/draft";
 const serverDraft = (over: Record<string, unknown> = {}) => ({
@@ -412,5 +417,156 @@ describe("DraftConflictPrompt", () => {
     );
     const ids = Array.from(document.querySelectorAll("[id]")).map((n) => n.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe("useServerDraft second review round", () => {
+  const failing = (status: number) =>
+    (async () => ({
+      data: undefined,
+      error: { error: { code: "X" } },
+      response: { status },
+    })) as never;
+
+  it("1: a 403 is permanent: no retry, and the hook says it gave up", async () => {
+    const api = makeApi();
+    const { view } = setup(api);
+    await flush();
+    api.PUT.mockImplementation(failing(403));
+    view.rerender({ text: "abc" });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
+    expect(view.result.current.saveFailed).toBe(true);
+    expect(view.result.current.saveGaveUp).toBe(true);
+    await tick(10 * 60_000);
+    expect(api.PUT).toHaveBeenCalledTimes(1);
+  });
+
+  it("1: a 413 is permanent too", async () => {
+    const api = makeApi();
+    const { view } = setup(api);
+    await flush();
+    api.PUT.mockImplementation(failing(413));
+    view.rerender({ text: "abc" });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
+    await tick(10 * 60_000);
+    expect(api.PUT).toHaveBeenCalledTimes(1);
+    expect(view.result.current.saveGaveUp).toBe(true);
+  });
+
+  it("1: a 503 retries and then stops at the attempt cap", async () => {
+    const api = makeApi();
+    const { view } = setup(api);
+    await flush();
+    api.PUT.mockImplementation(failing(503));
+    view.rerender({ text: "abc" });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
+    await tick(60 * 60_000);
+    expect(api.PUT).toHaveBeenCalledTimes(MAX_SAVE_ATTEMPTS);
+    expect(view.result.current.saveGaveUp).toBe(true);
+  });
+
+  it("1: a 429 is retried and recovers", async () => {
+    const api = makeApi();
+    const { view } = setup(api);
+    await flush();
+    api.PUT.mockImplementationOnce(failing(429));
+    view.rerender({ text: "abc" });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
+    expect(view.result.current.saveGaveUp).toBe(false);
+    await tick(60_000);
+    expect(api.PUT).toHaveBeenCalledTimes(2);
+    expect(view.result.current.saveFailed).toBe(false);
+  });
+
+  it("1: after giving up, new typing re-arms a save", async () => {
+    const api = makeApi();
+    const { view } = setup(api);
+    await flush();
+    api.PUT.mockImplementationOnce(failing(403));
+    view.rerender({ text: "abc" });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
+    expect(view.result.current.saveGaveUp).toBe(true);
+    view.rerender({ text: "abcd" });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
+    expect(api.PUT).toHaveBeenCalledTimes(2);
+    expect(view.result.current.saveGaveUp).toBe(false);
+  });
+
+  it("2: a 404 on discarding a draft the send already removed is success, with no retry loop", async () => {
+    const api = makeApi(serverDraft());
+    const { view } = setup(api, "text");
+    await flush();
+    api.DELETE.mockImplementation(failing(404));
+    view.rerender({ text: "" });
+    await flush();
+    await tick(10 * 60_000);
+    expect(api.DELETE).toHaveBeenCalledTimes(1);
+    expect(view.result.current.saveFailed).toBe(false);
+  });
+
+  it("3: resolving the merge prompt while a send is in flight saves nothing until it settles", async () => {
+    const api = makeApi();
+    const { view } = setup(api);
+    await flush();
+    api.PUT.mockImplementationOnce(conflictingPut());
+    api.GET.mockImplementation(async () => ({
+      data: { draft: serverDraft() },
+      error: undefined,
+      response: { status: 200 },
+    }));
+    view.rerender({ text: "mine" });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
+    expect(view.result.current.conflict).not.toBeNull();
+    api.PUT.mockClear();
+    view.rerender({ text: "mine", suspended: true });
+    act(() => view.result.current.resolve("mine"));
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
+    expect(api.PUT).not.toHaveBeenCalled();
+  });
+
+  it("4: switching to another thread root inside the debounce still saves the text to the OLD slot", async () => {
+    const api = makeApi();
+    const { view } = setup(api);
+    await flush();
+    view.rerender({ text: "typed for root one", parent: "root-1" });
+    await flush();
+    view.rerender({ text: "", parent: "root-2" });
+    await flush();
+    const first = api.PUT.mock.calls[0]?.[1].body;
+    expect(first).toMatchObject({ body: "typed for root one", parentMessageId: "root-1" });
+  });
+
+  it("6: a failed send (suspended then released) keeps the text and autosaves it again", async () => {
+    const api = makeApi();
+    const { view } = setup(api);
+    await flush();
+    view.rerender({ text: "kept after a failed send", suspended: true });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
+    expect(api.PUT).not.toHaveBeenCalled();
+    view.rerender({ text: "kept after a failed send", suspended: false });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
+    expect(api.PUT.mock.calls[0]?.[1].body).toMatchObject({ body: "kept after a failed send" });
+  });
+});
+
+describe("5: Escape in the composer while the merge prompt is open", () => {
+  const conflictValue = {
+    server: { body: "t", references: [], revision: 2, deviceId: "d", updatedAt: "x" },
+    mine: { body: "m", references: [] },
+  };
+  it("keeps the user's text and is consumed", () => {
+    const resolve = vi.fn();
+    const event = { key: "Escape", preventDefault: vi.fn() };
+    expect(escapeKeepsMine(event, { conflict: conflictValue, resolve })).toBe(true);
+    expect(resolve).toHaveBeenCalledWith("mine");
+    expect(event.preventDefault).toHaveBeenCalled();
+  });
+  it("does nothing without an open prompt or for another key", () => {
+    const resolve = vi.fn();
+    const escKey = { key: "Escape", preventDefault: vi.fn() };
+    const letter = { key: "a", preventDefault: vi.fn() };
+    expect(escapeKeepsMine(escKey, { conflict: null, resolve })).toBe(false);
+    expect(escapeKeepsMine(letter, { conflict: conflictValue, resolve })).toBe(false);
+    expect(resolve).not.toHaveBeenCalled();
   });
 });

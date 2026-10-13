@@ -323,6 +323,32 @@ describe.skipIf(!DB_URL)("M36 Tranche B review fixes - LIVE Postgres", () => {
     });
   });
 
+  describe("round 2, item 7: a message delete takes the channel's pin lock", () => {
+    it("a delete waits while another transaction holds the per-channel lock a pin takes", async () => {
+      const messageId = await sendOk(n1, loc2, "deleted while the pin lock is held");
+      const holder = new Client({ connectionString: DB_URL });
+      await holder.connect();
+      await holder.query("BEGIN");
+      await holder.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 36))", [loc2]);
+      let finished = false;
+      const deletion = app
+        .inject({
+          method: "DELETE",
+          url: `/api/v1/messaging/messages/${messageId}`,
+          headers: as(n1),
+        })
+        .then((res) => {
+          finished = true;
+          return res;
+        });
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(finished).toBe(false);
+      await holder.query("COMMIT");
+      await holder.end();
+      expect((await deletion).statusCode).toBe(204);
+    });
+  });
+
   describe("B2: pins in an announcement channel need messaging.announce", () => {
     it("a member may react but not pin or unpin; the announcer may pin and unpin", async () => {
       const posted = await app.inject({

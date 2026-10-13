@@ -14,6 +14,7 @@ import type { MessageReferenceInput } from "./messaging-types";
 
 export const DRAFT_SAVE_DEBOUNCE_MS = 1500;
 const DRAFT_PATH = "/api/v1/messaging/channels/{id}/draft";
+export const MAX_SAVE_ATTEMPTS = 8;
 const RETRY_BASE_MS = 3000;
 const RETRY_MAX_MS = 30_000;
 const DEVICE_KEY = "wx-messaging-draft-device";
@@ -37,6 +38,8 @@ export type DraftResolution = "mine" | "theirs" | "both";
 export interface ServerDraftSync {
   readonly conflict: DraftConflict | null;
   readonly saveFailed: boolean;
+  /** Autosave stopped retrying (a permanent refusal, or the attempt cap): the text is kept on this device only until the next edit. */
+  readonly saveGaveUp: boolean;
   readonly resolve: (choice: DraftResolution) => void;
 }
 
@@ -53,6 +56,17 @@ interface WireDraft {
   deviceId: string;
   updatedAt: string;
 }
+
+/** A save the server (or the network) refused; `status` 0 means no answer at all. */
+class SaveError extends Error {
+  constructor(readonly status: number) {
+    super(`draft request failed (${status})`);
+  }
+}
+
+/** A 4xx other than "slow down / try later" will not get better by repeating the same request. */
+const isPermanentFailure = (status: number): boolean =>
+  status >= 400 && status < 500 && status !== 408 && status !== 429;
 
 /** The thread-root selector; absent for the channel composer's own draft. */
 const draftQuery = (parentMessageId: string | null): { parentMessageId?: string } =>
@@ -122,6 +136,8 @@ export function useServerDraft(args: {
   const client = useApiClient();
   const [conflict, setConflict] = useState<DraftConflict | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
+  const [saveGaveUp, setSaveGaveUp] = useState(false);
+  const pendingRef = useRef<Snapshot | null>(null);
 
   const latestRef = useRef<Snapshot>({ body: text, references });
   latestRef.current = { body: text, references };
@@ -157,10 +173,15 @@ export function useServerDraft(args: {
   }, []);
 
   /** Retry a failed save on its own with a growing delay (the status line promises it). */
-  const armRetry = useCallback((generation: number): void => {
+  const armRetry = useCallback((generation: number, status: number): void => {
     if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     const delay = Math.min(RETRY_BASE_MS * 2 ** failuresRef.current, RETRY_MAX_MS);
     failuresRef.current += 1;
+    // Give up on a permanent refusal or after the attempt cap; only new typing re-arms a save.
+    if (isPermanentFailure(status) || failuresRef.current >= MAX_SAVE_ATTEMPTS) {
+      setSaveGaveUp(true);
+      return;
+    }
     retryTimerRef.current = setTimeout(() => {
       retryTimerRef.current = null;
       if (generation !== generationRef.current || suspendedRef.current) return;
@@ -182,12 +203,14 @@ export function useServerDraft(args: {
                 params: { path: { id: channelId }, query: draftQuery(parentMessageId) },
               });
               const status = removed.response?.status ?? 0;
-              if (removed.error || status >= 400) throw new Error("draft discard failed");
+              // 404: the draft is already gone (a send removes it with the message), which is the goal.
+              if ((removed.error || status >= 400) && status !== 404) throw new SaveError(status);
             }
             revisionRef.current = 0;
             syncedKeyRef.current = key;
             failuresRef.current = 0;
             setSaveFailed(false);
+            setSaveGaveUp(false);
             return;
           }
           const result = await client.PUT(DRAFT_PATH, {
@@ -222,15 +245,16 @@ export function useServerDraft(args: {
             return;
           }
           const saved = (result.data as { draft?: WireDraft | null } | undefined)?.draft;
-          if (result.error || !saved) throw new Error("draft save failed");
+          if (result.error || !saved) throw new SaveError(result.response?.status ?? 0);
           revisionRef.current = saved.revision;
           syncedKeyRef.current = key;
           failuresRef.current = 0;
           setSaveFailed(false);
-        } catch {
+          setSaveGaveUp(false);
+        } catch (error) {
           if (generation !== generationRef.current) return;
           setSaveFailed(true);
-          armRetry(generation);
+          armRetry(generation, error instanceof SaveError ? error.status : 0);
         }
       };
       return new Promise<void>((resolve) => {
@@ -254,6 +278,7 @@ export function useServerDraft(args: {
     retryTimerRef.current = null;
     setConflict(null);
     setSaveFailed(false);
+    setSaveGaveUp(false);
     void (async () => {
       let server: WireDraft | null = null;
       try {
@@ -283,7 +308,31 @@ export function useServerDraft(args: {
       if (timerRef.current) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
-        if (loadedRef.current && !suspendedRef.current) void save(latestRef.current, generation);
+        // The text armed for THIS slot, with THIS slot's revision, sent straight away: by the time a queued save
+        // would run, the next slot's bookkeeping has replaced both.
+        const pending = pendingRef.current;
+        pendingRef.current = null;
+        if (
+          pending?.body.trim() &&
+          loadedRef.current &&
+          !suspendedRef.current &&
+          keyOf(pending) !== syncedKeyRef.current
+        ) {
+          void Promise.resolve()
+            .then(() =>
+              client.PUT(DRAFT_PATH, {
+                params: { path: { id: channelId } },
+                body: {
+                  body: pending.body,
+                  references: toWire(pending.references),
+                  deviceId: deviceId(),
+                  baseRevision: revisionRef.current,
+                  ...(parentMessageId ? { parentMessageId } : {}),
+                },
+              }),
+            )
+            .catch(() => undefined);
+        }
       }
     };
   }, [channelId, parentMessageId, readServer, save]);
@@ -300,8 +349,10 @@ export function useServerDraft(args: {
       return;
     }
     if (keyOf(snapshot) === syncedKeyRef.current) return;
+    pendingRef.current = snapshot;
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
+      pendingRef.current = null;
       if (suspendedRef.current) return;
       void save(latestRef.current, generation);
     }, DRAFT_SAVE_DEBOUNCE_MS);
@@ -313,6 +364,7 @@ export function useServerDraft(args: {
   // biome-ignore lint/correctness/useExhaustiveDependencies: see above
   useEffect(() => {
     if (!loadedRef.current && !text) return;
+    failuresRef.current = 0; // new typing re-arms a save that gave up
     const open = conflictRef.current;
     if (open) {
       if (!latestRef.current.body.trim()) {
@@ -351,10 +403,12 @@ export function useServerDraft(args: {
       const chosen = choice === "both" ? mergeDraftBodies(mine, current.server) : mine;
       if (choice === "both") hydrateRef.current(chosen.body, [...chosen.references]);
       syncedKeyRef.current = null;
-      void save({ body: chosen.body, references: chosen.references }, generation);
+      // While a send is in flight nothing is saved; the change effect schedules it if the send fails.
+      if (!suspendedRef.current)
+        void save({ body: chosen.body, references: chosen.references }, generation);
     },
     [save],
   );
 
-  return { conflict, saveFailed, resolve };
+  return { conflict, saveFailed, saveGaveUp, resolve };
 }

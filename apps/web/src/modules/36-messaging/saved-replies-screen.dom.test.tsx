@@ -38,10 +38,11 @@ const refusal = (message: string, details: unknown[] = []) => ({
 
 interface Options {
   readonly manager?: boolean;
+  readonly platformOverlay?: Record<string, unknown>;
   readonly write?: (method: string, path: string, init: unknown) => unknown;
 }
 
-function mount({ manager = false, write }: Options = {}) {
+function mount({ manager = false, write, platformOverlay }: Options = {}) {
   const calls: Array<{ method: string; path: string; init: any }> = [];
   const respond = (method: string) => (path: string, init?: unknown) => {
     calls.push({ method, path, init });
@@ -51,7 +52,13 @@ function mount({ manager = false, write }: Options = {}) {
       }
       return Promise.resolve(
         manager
-          ? { data: { platform: [platformAdmin], shared: [shared] }, error: undefined }
+          ? {
+              data: {
+                platform: [{ ...platformAdmin, overlay: platformOverlay ?? null }],
+                shared: [shared],
+              },
+              error: undefined,
+            }
           : { data: undefined, error: { error: { message: "no" } }, response: { status: 403 } },
       );
     }
@@ -220,6 +227,30 @@ describe("Saved replies screen: a template manager", () => {
     expect((toggle as HTMLInputElement).disabled).toBe(true);
     expect((toggle as HTMLInputElement).checked).toBe(true);
     expect(calls.some((c) => c.method === "PUT")).toBe(false);
+  });
+});
+
+describe("Saved replies screen second review round", () => {
+  it("6: a stored 'hidden' overlay on a template with required wording is shown on and saved on", async () => {
+    const { calls } = mount({
+      manager: true,
+      platformOverlay: {
+        title: null,
+        body: null,
+        isEnabled: false,
+        updatedAt: "2026-10-01T00:00:00Z",
+      },
+    });
+    await screen.findByText("Org reminder");
+    fireEvent.click(screen.getByRole("button", { name: "Customize After hours and emergencies" }));
+    const form = screen.getByRole("form", { name: "Customize After hours and emergencies" });
+    expect(
+      (within(form).getByRole("checkbox", { name: /available to staff/i }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    fireEvent.click(within(form).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
+    expect(calls.find((c) => c.method === "PUT")?.init.body.isEnabled).toBe(true);
   });
 });
 

@@ -18,7 +18,7 @@ import {
   insertText,
   toggleWrap,
 } from "./composer-format";
-import { DraftSyncNotice } from "./draft-conflict-prompt";
+import { DraftSyncNotice, escapeKeepsMine } from "./draft-conflict-prompt";
 import { MentionMenu } from "./mention-menu";
 import { activeMentionQuery, insertMention, reconcileReferences } from "./mention-utils";
 import { MessageRow } from "./message-row";
@@ -449,6 +449,7 @@ export function ConversationThread({
   function handleComposerKey(event: KeyboardEvent<HTMLTextAreaElement>): void {
     // While an IME is composing, every key belongs to the IME (candidate selection, cancel): handle none of ours.
     if (composingRef.current || event.nativeEvent.isComposing) return;
+    if (escapeKeepsMine(event, serverDraft)) return;
     const marker = formatShortcutMarker(event, isMac);
     if (marker) {
       // The edit runs through the textarea's own input path (undo stack, onChange, mention query recompute).

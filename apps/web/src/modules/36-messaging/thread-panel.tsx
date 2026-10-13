@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import type { JSX, KeyboardEvent, MutableRefObject } from "react";
 import { AttachButton, AttachmentChips } from "./attachment-composer";
 import { sendBlockedReason } from "./attachment-utils";
-import { DraftSyncNotice } from "./draft-conflict-prompt";
+import { DraftSyncNotice, escapeKeepsMine } from "./draft-conflict-prompt";
 import { MessageRow } from "./message-row";
 import { useAttachmentUploads } from "./use-attachment-upload";
 import { sentMessageRow, useMessageSender } from "./use-message-sender";
@@ -190,6 +190,7 @@ export function ThreadPanel({
   function handleComposerKey(event: KeyboardEvent<HTMLTextAreaElement>): void {
     // While an IME is composing, every key belongs to the IME.
     if (composingRef.current || event.nativeEvent.isComposing) return;
+    if (escapeKeepsMine(event, serverDraft)) return;
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       if (!held) void send();

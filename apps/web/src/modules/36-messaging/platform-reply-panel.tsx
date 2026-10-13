@@ -23,7 +23,9 @@ function PlatformReplyRow({
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(overlay?.title ?? item.floorTitle);
   const [body, setBody] = useState(overlay?.body ?? item.floorBody);
-  const [enabled, setEnabled] = useState(overlay?.isEnabled ?? true);
+  // A template with required wording is always on, whatever an older stored overlay says.
+  const floorProtected = item.requiredPhrases.length > 0;
+  const [enabled, setEnabled] = useState(floorProtected ? true : (overlay?.isEnabled ?? true));
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -46,7 +48,7 @@ function PlatformReplyRow({
       failure = await writes.save(item.id, {
         title: title.trim() === item.floorTitle ? null : title,
         body: body.trim() === item.floorBody ? null : body,
-        isEnabled: enabled,
+        isEnabled: floorProtected ? true : enabled,
       });
     } catch {
       failure = "This could not be saved. Check your connection and try again.";
@@ -120,7 +122,7 @@ function PlatformReplyRow({
             <input
               type="checkbox"
               checked={enabled}
-              disabled={item.requiredPhrases.length > 0}
+              disabled={floorProtected}
               onChange={(event) => setEnabled(event.target.checked)}
             />{" "}
             Available to staff in the composer
