@@ -13595,6 +13595,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/global-search/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's global search switch with the go-live checklist and the index rebuild progress (messaging.global_search.manage) */
+        get: operations["getApiV1MessagingGlobalsearchSettings"];
+        /** Switch global search on or off for the organization (messaging.global_search.manage + a fresh step-up). ON is 409 GLOBAL_SEARCH_PREREQUISITES_UNMET naming each failing checklist item; OFF is always accepted and requests the token purge */
+        put: operations["putApiV1MessagingGlobalsearchSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/messages/{id}": {
         parameters: {
             query?: never;
@@ -63001,6 +63019,90 @@ export interface operations {
                             displayName: string;
                             roles: string[];
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingGlobalsearchSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        changedAt: string | null;
+                        purgeRequestedAt: string | null;
+                        purgeCompletedAt: string | null;
+                        checklist: {
+                            platformEnabled: boolean;
+                            legacyBodiesMigrated: boolean;
+                            escrowAttested: boolean;
+                            rateLimitActive: boolean;
+                        };
+                        rebuild: {
+                            keyVersion: string;
+                            status: "building" | "ready" | "stale";
+                            checkpointCreatedAt: string | null;
+                            reconciledAt: string | null;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1MessagingGlobalsearchSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    enabled: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        changedAt: string | null;
+                        purgeRequestedAt: string | null;
+                        purgeCompletedAt: string | null;
+                        checklist: {
+                            platformEnabled: boolean;
+                            legacyBodiesMigrated: boolean;
+                            escrowAttested: boolean;
+                            rateLimitActive: boolean;
+                        };
+                        rebuild: {
+                            keyVersion: string;
+                            status: "building" | "ready" | "stale";
+                            checkpointCreatedAt: string | null;
+                            reconciledAt: string | null;
+                        } | null;
                     };
                 };
             };

@@ -506,6 +506,7 @@
     "test:m36:search:live": "vitest run apps/backend/__tests__/m36-message-search.live.test.ts",
     "test:m36:search-index:live": "vitest run apps/backend/__tests__/m36-message-search-index.live.test.ts",
     "test:m36:global-search-writer:live": "vitest run apps/backend/__tests__/m36-global-search-writer.live.test.ts",
+    "test:m36:global-search-settings:live": "vitest run apps/backend/__tests__/m36-global-search-settings.live.test.ts",
     "test:m2:link-redemption:live": "vitest run apps/backend/__tests__/m2-link-redemption.live.test.ts",
     "test:m2:auth-hardening:live": "vitest run apps/backend/__tests__/m2-auth-hardening.live.test.ts",
     "test:m3:role-templates:live": "vitest run apps/backend/__tests__/m3-role-templates.live.test.ts",
