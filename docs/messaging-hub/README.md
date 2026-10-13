@@ -49,6 +49,7 @@ the 2-second delivery target.
 | 6 | [`06-ux-design.md`](./06-ux-design.md) | Three-panel workspace, states, accessibility, kit reuse |
 | 7 | [`07-testing-release-governance.md`](./07-testing-release-governance.md) | Test strategy, NFR targets, fitness gates, release gates, risks, open decisions |
 | 8 | [`08-capability-register.md`](./08-capability-register.md) | All 88 capabilities → phase, owner, dependency, risk, status |
+| 9 | [`09-ui-gap-register.md`](./09-ui-gap-register.md) | UI and screen gaps still to build (audit 2026-10-12), mapped to WPs or marked unscheduled |
 
 ## 4. Phase summary
 
