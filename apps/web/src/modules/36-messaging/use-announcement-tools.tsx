@@ -26,7 +26,7 @@ export function useAnnouncementTools(
   channel: ChannelSummary,
   canAnnounce: boolean,
   canManageMembers: boolean,
-  onChannelChanged: () => void = () => {},
+  onChannelChanged: () => void | Promise<void> = () => {},
 ): AnnouncementTools {
   const isAdmin = useSession()?.isAdmin ?? false;
   const receipts = useAnnouncementReceipts();

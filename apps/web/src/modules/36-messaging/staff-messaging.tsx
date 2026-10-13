@@ -431,6 +431,9 @@ function OrganizationStaffMessaging({
               realtimeConnected={realtimeConnected}
               canAnnounce={canAnnounce}
               canManageMembers={canManageMembers}
+              onChannelChanged={async () => {
+                await loadChannels(true);
+              }}
               anchorMessageId={
                 activeChannel.channelId === requestedChannelId ? requestedMessageId : null
               }

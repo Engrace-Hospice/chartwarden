@@ -65,6 +65,8 @@ export interface ConversationThreadProps {
   canManageMembers?: boolean;
   /** The org-level outbox (it outlives this thread); without one the thread keeps its own. */
   outbox?: Outbox;
+  /** An archive / unarchive succeeded: re-read the channel list. */
+  onChannelChanged?: () => void | Promise<void>;
 }
 
 export function ConversationThread(props: ConversationThreadProps): JSX.Element {
@@ -94,9 +96,10 @@ function ConversationThreadView({
   liveHint = null,
   canAnnounce = false,
   canManageMembers = false,
+  onChannelChanged,
 }: ConversationThreadProps & { outbox: Outbox }): JSX.Element {
   const client = useApiClient();
-  const tools = useAnnouncementTools(channel, canAnnounce, canManageMembers, onMessageSent);
+  const tools = useAnnouncementTools(channel, canAnnounce, canManageMembers, onChannelChanged);
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [olderCursor, setOlderCursor] = useState<string | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);

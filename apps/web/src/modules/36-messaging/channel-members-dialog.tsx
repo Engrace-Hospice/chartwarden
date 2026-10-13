@@ -4,8 +4,8 @@
 import { Button, Modal, useApiClient } from "@wardenx/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
-import { AccessEndedNotice } from "./access-ended-notice";
 import { ChannelArchiveControl } from "./channel-archive-control";
+import { MembersForbidden } from "./members-forbidden";
 import type { DmStaffMember } from "./messaging-types";
 import { apiErrorMessage, correlationIdOf } from "./messaging-utils";
 import { SkeletonRows } from "./skeleton-rows";
@@ -35,7 +35,7 @@ export function ChannelMembersDialog({
   canArchive?: boolean;
   archived?: boolean;
   /** Called after an archive / unarchive so the channel list is re-read. */
-  onChanged?: () => void;
+  onChanged?: () => void | Promise<void>;
 }): JSX.Element {
   const client = useApiClient();
   const [members, setMembers] = useState<Member[] | null>(null);
@@ -81,7 +81,9 @@ export function ChannelMembersDialog({
         })),
       );
     } catch {
-      if (attempt === sequence.current) setLoadError("The member list could not be loaded.");
+      if (attempt !== sequence.current) return;
+      setLoadError("The member list could not be loaded.");
+      setLoadCorrelationId(null);
     }
   }, [client, channelId]);
 
@@ -89,6 +91,8 @@ export function ChannelMembersDialog({
     if (!open) return;
     setMembers(null);
     setForbidden(false);
+    setLoadError(null);
+    setLoadCorrelationId(null);
     setActionError(null);
     void loadMembers();
     return () => {
@@ -124,16 +128,26 @@ export function ChannelMembersDialog({
   const addable = candidates.filter((person) => !memberIds.has(person.userId));
   const selected = addable.find((person) => person.userId === candidateId) ?? addable[0];
 
+  function retry(): void {
+    setLoadError(null);
+    setLoadCorrelationId(null);
+    setMembers(null);
+    void loadMembers();
+  }
+
   async function change(run: () => Promise<{ error?: unknown }>, fallback: string): Promise<void> {
     if (busy) return;
+    // A close or channel switch bumps the sequence: a reply that lands afterwards must not write anything.
+    const generation = sequence.current;
     setBusy(true);
     setActionError(null);
     try {
       const { error } = await run();
+      if (generation !== sequence.current) return;
       if (error) setActionError(apiErrorMessage(error, fallback));
       else await loadMembers();
     } catch {
-      setActionError(fallback);
+      if (generation === sequence.current) setActionError(fallback);
     } finally {
       setBusy(false);
     }
@@ -147,7 +161,7 @@ export function ChannelMembersDialog({
       width="34rem"
     >
       {forbidden ? (
-        <AccessEndedNotice />
+        <MembersForbidden onClose={onClose} />
       ) : (
         <div className="wx-new-conversation wx-channel-members">
           <header>
@@ -160,7 +174,7 @@ export function ChannelMembersDialog({
             <div role="alert" className="wx-channel-members-state">
               <span>{loadError}</span>
               {loadCorrelationId ? <small>Reference {loadCorrelationId}</small> : null}
-              <Button size="sm" tone="secondary" onClick={() => void loadMembers()}>
+              <Button size="lg" tone="secondary" onClick={retry}>
                 Retry
               </Button>
             </div>

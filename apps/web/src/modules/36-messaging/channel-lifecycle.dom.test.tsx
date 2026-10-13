@@ -22,6 +22,13 @@ const OK_MEMBERS = {
 };
 
 type Reply = Record<string, unknown>;
+function deferred<T>() {
+  let resolve: (value: T) => void = () => {};
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
 function makeClient(replies: { members?: () => Reply | Promise<Reply>; post?: () => Reply }) {
   return {
     GET: vi.fn((path: string) =>
@@ -69,14 +76,34 @@ describe("member list states", () => {
     fail = false;
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("Nurse One")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("shows the access-ended notice on 403 without leaking the title", async () => {
+  it("a thrown load shows the failure and no stale correlation id from an earlier failure", async () => {
+    let mode: "http" | "throw" = "http";
+    const api = makeClient({
+      members: () => {
+        if (mode === "throw") throw new Error("offline");
+        return { data: undefined, error: { correlationId: "c-old" }, response: { status: 500 } };
+      },
+    });
+    render(provide(api, dialog()));
+    expect((await screen.findByRole("alert")).textContent).toContain("c-old");
+    mode = "throw";
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).not.toContain("c-old"));
+    expect(screen.getByRole("alert").textContent).toContain("could not be loaded");
+  });
+
+  it("says the viewer cannot manage members on 403, without leaking the title or the access-ended wording", async () => {
     const api = makeClient({
       members: () => ({ data: undefined, error: { message: "no" }, response: { status: 403 } }),
     });
     render(provide(api, dialog({ channelTitle: "Secret Unit" })));
-    expect(await screen.findByText("You no longer have access to this conversation")).toBeTruthy();
+    expect(
+      (await screen.findAllByText("You can't manage members of this conversation.")).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText(/no longer have access/)).toBeNull();
     expect(screen.queryByText(/Secret Unit/)).toBeNull();
     expect(screen.getByRole("dialog").getAttribute("aria-label")).toBe("Members");
   });
@@ -162,6 +189,126 @@ describe("archive and unarchive", () => {
   });
 });
 
+describe("archive control focus and races", () => {
+  it("Cancel returns focus to the trigger and Escape still closes the dialog", async () => {
+    const onClose = vi.fn();
+    render(provide(makeClient({}), dialog({ canArchive: true, onClose })));
+    const trigger = await screen.findByRole("button", { name: "Archive conversation" });
+    trigger.focus();
+    await userEvent.keyboard("{Enter}");
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    expect(document.activeElement).toBe(cancel);
+    await userEvent.keyboard("{Enter}");
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Archive conversation" }),
+    );
+    await userEvent.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("Escape inside the confirm closes only the confirm", async () => {
+    const onClose = vi.fn();
+    render(provide(makeClient({}), dialog({ canArchive: true, onClose })));
+    await userEvent.click(await screen.findByRole("button", { name: "Archive conversation" }));
+    await userEvent.keyboard("{Escape}");
+    expect(onClose).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Archive conversation" }),
+    );
+  });
+
+  it("keeps focus on Confirm while the request is in flight and issues one POST on double click", async () => {
+    const post = deferred<{ error: undefined }>();
+    const api = makeClient({});
+    api.POST.mockImplementation(() => post.promise);
+    render(provide(api, dialog({ canArchive: true })));
+    await userEvent.click(await screen.findByRole("button", { name: "Archive conversation" }));
+    const confirm = screen.getByRole("button", { name: "Confirm archive" });
+    confirm.focus();
+    await userEvent.dblClick(confirm);
+    expect(api.POST).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(confirm);
+    expect(confirm.getAttribute("aria-disabled")).toBe("true");
+    post.resolve({ error: undefined });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Unarchive conversation" })).toBeTruthy(),
+    );
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Unarchive conversation" }),
+    );
+  });
+
+  it("a network throw shows the failure text and returns focus to the trigger", async () => {
+    const api = makeClient({});
+    api.POST.mockImplementation(() => Promise.reject(new Error("offline")));
+    render(provide(api, dialog({ canArchive: true })));
+    await userEvent.click(await screen.findByRole("button", { name: "Archive conversation" }));
+    await userEvent.click(screen.getByRole("button", { name: "Confirm archive" }));
+    expect(await screen.findByText(/could not be updated/)).toBeTruthy();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Archive conversation" }),
+    );
+  });
+
+  it("flips the verb and announces success once, after the refetch resolves", async () => {
+    const refetch = deferred<void>();
+    const onChanged = vi.fn(() => refetch.promise);
+    render(provide(makeClient({}), dialog({ canArchive: true, onChanged })));
+    await userEvent.click(await screen.findByRole("button", { name: "Archive conversation" }));
+    await userEvent.click(screen.getByRole("button", { name: "Confirm archive" }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
+    expect(
+      screen.getByRole("button", { name: "Confirm archive" }).getAttribute("aria-disabled"),
+    ).toBe("true");
+    refetch.resolve();
+    expect(await screen.findByRole("button", { name: "Unarchive conversation" })).toBeTruthy();
+    expect(screen.getAllByText("Conversation archived.")).toHaveLength(1);
+  });
+
+  it("clears the previous status when the confirm opens and ties the sentence to Confirm", async () => {
+    const api = makeClient({
+      post: () => ({ error: { message: "x" }, response: { status: 409 } }),
+    });
+    render(provide(api, dialog({ canArchive: true })));
+    await userEvent.click(await screen.findByRole("button", { name: "Archive conversation" }));
+    await userEvent.click(screen.getByRole("button", { name: "Confirm archive" }));
+    await screen.findByText(/can't be archived/);
+    await userEvent.click(screen.getByRole("button", { name: "Archive conversation" }));
+    expect(screen.queryByText(/can't be archived/)).toBeNull();
+    const confirm = screen.getByRole("button", { name: "Confirm archive" });
+    const described = document.getElementById(confirm.getAttribute("aria-describedby") ?? "");
+    expect(described?.textContent).toContain("read only");
+  });
+});
+
+describe("member list races", () => {
+  it("does not reload a list after the dialog closed mid-change", async () => {
+    const post = deferred<{ error: undefined }>();
+    const api = makeClient({});
+    api.POST.mockImplementation(() => post.promise);
+    api.GET.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === MEMBERS
+          ? OK_MEMBERS
+          : {
+              data: { staff: [{ userId: "u-2", displayName: "Nurse Two", roles: [] }] },
+              error: undefined,
+            },
+      ),
+    );
+    const { rerender } = render(provide(api, dialog()));
+    await screen.findByText("Nurse One");
+    await screen.findByRole("option", { name: "Nurse Two" });
+    await userEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(api.POST).toHaveBeenCalled());
+    const before = api.GET.mock.calls.filter(([path]) => path === MEMBERS).length;
+    rerender(provide(api, dialog({ open: false })));
+    post.resolve({ error: undefined });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(api.GET.mock.calls.filter(([path]) => path === MEMBERS).length).toBe(before);
+  });
+});
+
 describe("useAnnouncementTools archive gating", () => {
   const channel = (kind: ChannelSummary["kind"]) =>
     ({ channelId: "ch-1", kind, title: "North", archivedAt: null }) as unknown as ChannelSummary;
@@ -191,6 +338,16 @@ describe("useAnnouncementTools archive gating", () => {
     await userEvent.click(screen.getByRole("button", { name: "open" }));
     expect(await screen.findByRole("button", { name: "Archive conversation" })).toBeTruthy();
   });
+
+  it.each(["care_team", "announcement"] as const)(
+    "never offers archive to an admin on a %s channel",
+    async (kind) => {
+      mount(kind, true);
+      await userEvent.click(screen.getByRole("button", { name: "open" }));
+      expect(screen.queryByRole("button", { name: /archive conversation/i })).toBeNull();
+      expect(screen.queryByRole("dialog")).toBeNull();
+    },
+  );
 
   it("does not offer archive to a non-admin", async () => {
     mount("location", false);
