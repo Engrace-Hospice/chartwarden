@@ -122,6 +122,88 @@ describe("a handoff left by a failed reload", () => {
   });
 });
 
+describe("reopening the dialog", () => {
+  const insideDialog = () => {
+    const active = document.activeElement;
+    return active !== document.body && screen.getByRole("dialog").contains(active);
+  };
+
+  it("keeps focus inside the dialog when reopened after a loaded list", async () => {
+    const later = deferred<Reply>();
+    let calls = 0;
+    const api = makeClient({
+      members: () => {
+        calls += 1;
+        return calls === 1 ? listOf(person("u-1", "Ann")) : (later.promise as unknown as Reply);
+      },
+    });
+    const { rerender } = render(provide(api, dialog()));
+    (await screen.findByRole("button", { name: "Remove Ann" })).focus();
+    rerender(provide(api, dialog({ open: false })));
+    rerender(provide(api, dialog({ open: true })));
+    await screen.findByText("Loading members");
+    expect(insideDialog()).toBe(true);
+    later.resolve(listOf(person("u-1", "Ann")));
+    await screen.findByRole("button", { name: "Remove Ann" });
+    await waitFor(() => expect(insideDialog()).toBe(true));
+  });
+
+  it("keeps focus inside the dialog when reopened after an error block", async () => {
+    const later = deferred<Reply>();
+    let calls = 0;
+    const api = makeClient({
+      members: () => {
+        calls += 1;
+        return calls === 1 ? FAILURE : (later.promise as unknown as Reply);
+      },
+    });
+    const { rerender } = render(provide(api, dialog()));
+    (await screen.findByRole("button", { name: "Retry" })).focus();
+    rerender(provide(api, dialog({ open: false })));
+    rerender(provide(api, dialog({ open: true })));
+    await screen.findByText("Loading members");
+    expect(insideDialog()).toBe(true);
+    later.resolve(listOf(person("u-1", "Ann")));
+    await screen.findByRole("button", { name: "Remove Ann" });
+    await waitFor(() => expect(insideDialog()).toBe(true));
+  });
+
+  it("hands focus to the heading when the first load completes with focus on body", async () => {
+    const first = deferred<Reply>();
+    const api = makeClient({ members: () => first.promise as unknown as Reply });
+    render(provide(api, dialog()));
+    await screen.findByText("Loading members");
+    (document.activeElement as HTMLElement | null)?.blur();
+    first.resolve(listOf(person("u-1", "Ann")));
+    await screen.findByRole("button", { name: "Remove Ann" });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Members" })),
+    );
+  });
+});
+
+describe("a handoff left by a thrown reload", () => {
+  it("does not outlive the throw: a later Retry lands on the heading, not a stale row", async () => {
+    let calls = 0;
+    const three = listOf(person("u-1", "Ann"), person("u-2", "Bea"), person("u-3", "Cy"));
+    const api = makeClient({
+      members: () => {
+        calls += 1;
+        return calls === 2 ? (Promise.reject(new Error("offline")) as unknown as Reply) : three;
+      },
+    });
+    render(provide(api, dialog()));
+    const remove = await screen.findByRole("button", { name: "Remove Bea" });
+    remove.focus();
+    await userEvent.keyboard("{Enter}");
+    await userEvent.click(await screen.findByRole("button", { name: "Retry" }));
+    await screen.findByRole("list", { name: "Channel members" });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Members" })),
+    );
+  });
+});
+
 describe("empty list, announcements and locked controls", () => {
   it("says there are no members instead of rendering an empty list", async () => {
     render(provide(makeClient({ members: () => listOf() }), dialog()));

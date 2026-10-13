@@ -173,7 +173,10 @@ describe("member rows", () => {
     (document.activeElement as HTMLElement | null)?.blur();
     later.resolve(three());
     await screen.findByRole("button", { name: "Remove Cy" });
-    expect(document.activeElement).toBe(document.body);
+    // The first-load handoff takes body focus to the heading; a stale handoff would have picked a row.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Members" })),
+    );
   });
 
   it("makes Remove a 44px touch target", async () => {

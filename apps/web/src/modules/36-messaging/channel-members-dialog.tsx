@@ -71,6 +71,7 @@ export function ChannelMembersDialog({
       );
       if (attempt !== sequence.current) return;
       if (response?.status === 403) {
+        pendingFocus.current = undefined;
         setForbidden(true);
         return;
       }
@@ -92,15 +93,15 @@ export function ChannelMembersDialog({
       );
     } catch {
       if (attempt !== sequence.current) return;
+      pendingFocus.current = undefined;
       setLoadError("The member list could not be loaded.");
       setLoadCorrelationId(null);
     }
   }, [client, channelId]);
 
   useEffect(() => {
-    if (!open) return;
     pendingFocus.current = undefined;
-    retryFocusPending.current = false;
+    retryFocusPending.current = open;
     setCandidates([]);
     setCandidateError(false);
     setAnnouncement("");
@@ -109,9 +110,14 @@ export function ChannelMembersDialog({
     setLoadError(null);
     setLoadCorrelationId(null);
     setActionError(null);
+    // Reset on close as well: this component stays mounted while the Modal renders nothing, so a stale list or error
+    // block would otherwise render on the first frame of the next open, take the Modal's initial focus, and then be
+    // replaced by the skeleton, dropping focus to <body>.
+    if (!open) return;
     void loadMembers();
     return () => {
       sequence.current += 1;
+      pendingFocus.current = undefined;
     };
   }, [open, loadMembers]);
 
@@ -153,9 +159,10 @@ export function ChannelMembersDialog({
     (row ?? headingRef.current)?.focus();
   }, [members]);
 
-  // After the commit of a finished Retry: if the list is back and focus fell to <body>, the heading takes it.
+  // After the commit of a finished first load or Retry: if the list is back and focus fell to <body>, the heading takes it.
   useEffect(() => {
     if (retrying || !retryFocusPending.current) return;
+    if (members === null && loadError === null) return;
     retryFocusPending.current = false;
     if (loadError === null && members !== null && document.activeElement === document.body) {
       headingRef.current?.focus();
@@ -178,6 +185,7 @@ export function ChannelMembersDialog({
   // effect below, after the commit that removes Retry, not here: state set after an await is not committed yet.
   async function retry(): Promise<void> {
     if (retrying) return;
+    pendingFocus.current = undefined;
     retryFocusPending.current = true;
     setRetrying(true);
     await loadMembers();
