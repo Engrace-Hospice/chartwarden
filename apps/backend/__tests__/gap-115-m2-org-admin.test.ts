@@ -89,7 +89,7 @@ function makeServer(opts: { cipher?: boolean | "throws" } = {}) {
     ],
   });
   const auditSink = createInMemoryAuditExecutor();
-  const encrypted: { organizationId: string; plaintext: string }[] = [];
+  const encrypted: { organizationId: string; providerEntityId: string; plaintext: string }[] = [];
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   registerOrgAdminRoutes(app, {
     actors: createContextActorResolver(),
@@ -229,7 +229,7 @@ describe("organizations", () => {
 
 describe("provider entities", () => {
   it("creates one: tax id enveloped by the cipher and never echoed back", async () => {
-    const { app, encrypted, auditSink } = makeServer();
+    const { app, store, encrypted, auditSink } = makeServer();
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/provider-entities",
@@ -240,7 +240,11 @@ describe("provider entities", () => {
     expect(res.json()).toMatchObject({ ccn: "444444", status: "created", organizationId: "org_a" });
     expect(JSON.stringify(res.json())).not.toMatch(/tax|123456789|enc:/i);
     // The EIN is sealed under THIS tenant's key, so the route must hand the cipher the caller's org.
-    expect(encrypted).toEqual([{ organizationId: "org_a", plaintext: "123456789" }]);
+    // ...and to THIS row: the AAD id is the id the store persisted, so the blob cannot be replayed onto another row.
+    expect(encrypted).toEqual([
+      { organizationId: "org_a", providerEntityId: res.json().id, plaintext: "123456789" },
+    ]);
+    expect(store.state.pes.get(res.json().id)?.organizationId).toBe("org_a");
     expect(auditSink.rows.some((r) => r.eventType === "m2.provider_entity.created")).toBe(true);
     await app.close();
   });

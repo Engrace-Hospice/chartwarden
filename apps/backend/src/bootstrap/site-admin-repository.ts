@@ -50,7 +50,7 @@ type Writable<T> = { -readonly [K in keyof T]: T[K] };
 
 export type NewProviderEntity = Omit<
   ProviderEntityDetail,
-  "id" | "organizationId" | "status" | "createdAt" | "updatedAt"
+  "organizationId" | "status" | "createdAt" | "updatedAt"
 > & { readonly taxIdEncrypted: string };
 
 export type ProviderEntityPatch = Writable<
@@ -165,6 +165,7 @@ export function createDrizzleSiteAdminRepository(db: DbClient): SiteAdminReposit
           const [row] = await tx
             .insert(PE)
             .values({
+              id: input.id,
               organizationId,
               ccn: input.ccn,
               legalName: input.legalName,
@@ -268,7 +269,6 @@ export function createInMemorySiteAdminRepository(
       const { taxIdEncrypted: _omitted, ...rest } = input;
       const pe: ProviderEntityDetail = {
         ...rest,
-        id: crypto.randomUUID(),
         organizationId,
         status: "created",
         createdAt: now(),

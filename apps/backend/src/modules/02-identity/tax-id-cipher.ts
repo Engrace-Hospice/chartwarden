@@ -3,10 +3,11 @@
 // The EIN is sealed under the tenant's OWN DEK from M34's key ring, the same shape as M20's `safety-crypto` and M8's
 // `hearthnote-crypto`: the key provider is INJECTED (the composition root binds `getTenantKeyProvider()`, so M2 takes no
 // edge on M34), AES-256-GCM, and the DEK version travels in the envelope so a key rotation leaves historical rows
-// openable. The AAD binds the blob to this purpose AND the tenant, so a blob lifted into another tenant, or into another
-// column sealed under the same DEK, refuses to open instead of decrypting into the wrong record.
+// openable. The AAD binds the blob to this purpose, the tenant AND the owning provider_entity row, so a blob lifted into
+// another tenant, another row of the same tenant, or another column sealed under the same DEK, refuses to open instead
+// of decrypting into the wrong record.
 //
-// Stored value (the `tax_id_encrypted` text column): `v1.<dekVersion>.<nonce>.<tag>.<ciphertext>`, base64url parts.
+// Stored value (the `tax_id_encrypted` text column): `v2.<dekVersion>.<nonce>.<tag>.<ciphertext>`, base64url parts.
 // Fail-closed: an unbound key ring throws from `dekForOrg`, so there is no path that stores an EIN in the clear.
 // `decrypt` exists to prove the format and for a future billing/support reader; no route returns a tax id.
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
@@ -21,27 +22,36 @@ export interface TaxIdKeyProvider {
 }
 
 export interface TaxIdCipher {
-  encrypt(input: { organizationId: string; plaintext: string }): Promise<string>;
-  decrypt(input: { organizationId: string; sealed: string }): Promise<string>;
+  encrypt(input: {
+    organizationId: string;
+    providerEntityId: string;
+    plaintext: string;
+  }): Promise<string>;
+  decrypt(input: {
+    organizationId: string;
+    providerEntityId: string;
+    sealed: string;
+  }): Promise<string>;
 }
 
-const SCHEME = "v1";
+// v2: the AAD gained the provider-entity id; a v1 envelope is rejected as malformed (demo data is reseeded).
+const SCHEME = "v2";
 const DEK_BYTES = 32;
 const NONCE_BYTES = 12;
 /** GCM tag length, pinned on decrypt: without it Node accepts a truncated (4-15 byte) tag. */
 const TAG_BYTES = 16;
 
-const aadFor = (organizationId: string): Buffer =>
-  Buffer.from(`m2:provider_entity:tax_id:${organizationId}`, "utf8");
+const aadFor = (organizationId: string, providerEntityId: string): Buffer =>
+  Buffer.from(`m2:provider_entity:tax_id:${organizationId}:${providerEntityId}`, "utf8");
 
 export function createTaxIdCipher(keys: TaxIdKeyProvider): TaxIdCipher {
   return {
-    async encrypt({ organizationId, plaintext }) {
+    async encrypt({ organizationId, providerEntityId, plaintext }) {
       const { version, key } = await keys.dekForOrg(organizationId);
       if (key.byteLength !== DEK_BYTES) throw new Error("tenant DEK must be 32 bytes");
       const nonce = randomBytes(NONCE_BYTES);
       const cipher = createCipheriv("aes-256-gcm", key, nonce);
-      cipher.setAAD(aadFor(organizationId));
+      cipher.setAAD(aadFor(organizationId, providerEntityId));
       const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
       return [
         SCHEME,
@@ -52,7 +62,7 @@ export function createTaxIdCipher(keys: TaxIdKeyProvider): TaxIdCipher {
       ].join(".");
     },
 
-    async decrypt({ organizationId, sealed }) {
+    async decrypt({ organizationId, providerEntityId, sealed }) {
       const parts = sealed.split(".");
       const [scheme, version, nonce, tag, ciphertext] = parts;
       if (
@@ -75,7 +85,7 @@ export function createTaxIdCipher(keys: TaxIdKeyProvider): TaxIdCipher {
       const decipher = createDecipheriv("aes-256-gcm", key, nonceBytes, {
         authTagLength: TAG_BYTES,
       });
-      decipher.setAAD(aadFor(organizationId));
+      decipher.setAAD(aadFor(organizationId, providerEntityId));
       decipher.setAuthTag(authTag);
       return Buffer.concat([
         decipher.update(Buffer.from(ciphertext, "base64url")),

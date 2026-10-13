@@ -27,6 +27,7 @@
 // TAX ID CIPHER. `provider_entity.tax_id_encrypted` is NOT NULL and an EIN must never be stored in the clear.
 // The envelope cipher is an injected port; until the KMS-backed key ring binds it, POST /provider-entities
 // refuses with 503 `TAX_ID_CIPHER_UNBOUND` (the M8/M20/M32 `*_CIPHER_UNBOUND` posture) — everything else works.
+import { randomUUID } from "node:crypto";
 import { PLATFORM_OPS_ROLE_KEYS, requireAbac, requirePermission } from "@wardenx/auth";
 import { WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
@@ -65,8 +66,12 @@ import {
 
 /** The injected envelope cipher for `provider_entity.tax_id_encrypted` (KMS-backed in production). */
 export interface TaxIdCipherPort {
-  /** Sealed under the tenant's own DEK, so the cipher needs to know whose key to use. */
-  encrypt(input: { organizationId: string; plaintext: string }): Promise<string>;
+  /** Sealed under the tenant's own DEK; the row id is bound into the AAD so the blob opens only for that row. */
+  encrypt(input: {
+    organizationId: string;
+    providerEntityId: string;
+    plaintext: string;
+  }): Promise<string>;
 }
 
 export interface OrgAdminRouteDeps extends AdminRouteDeps {
@@ -230,8 +235,10 @@ export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRoute
       );
     // A missing/destroyed tenant key ring or an unbound KEK is an operator problem, not a bug: say so (503) without
     // echoing the provider's message, and log the cause.
+    // The id is minted here (not by the store) because it is part of the AAD and so must exist before the seal.
+    const id = randomUUID();
     const taxIdEncrypted = await deps.taxIdCipher
-      .encrypt({ organizationId: orgId, plaintext: taxId as string })
+      .encrypt({ organizationId: orgId, providerEntityId: id, plaintext: taxId as string })
       .catch((cause: unknown) => {
         request.log.error({ err: cause, organizationId: orgId }, "tax-id encryption failed");
         throw new WardenXError(
@@ -240,7 +247,7 @@ export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRoute
           503,
         );
       });
-    const created = await store.createProviderEntity(orgId, { ...input, taxIdEncrypted });
+    const created = await store.createProviderEntity(orgId, { ...input, id, taxIdEncrypted });
     if ("conflict" in created)
       throw conflict(
         created.conflict === "ccn" ? "CCN_TAKEN" : "NPI_TAKEN",
