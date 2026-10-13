@@ -1,6 +1,6 @@
 // WP 2.10 - polls in a messaging channel. NON-CLINICAL: a poll is a single-choice, named-vote question for staff
 // ("lunch on Friday?"), never a clinical decision, a sign-off or an acknowledgement. Creation is refused in any
-// channel that carries a patient link (see `channelKindsWithPatientLink` in the backend). The question is the
+// channel that carries a patient link (see `pollBlockedChannelKinds` in the backend's poll-service-db.ts). The question is the
 // message body; options are sealed at rest like a body. Everything here is shared by the API and the web client so
 // the bounds and the plain-text rules are stated once.
 
@@ -8,6 +8,12 @@ export const POLL_MIN_OPTIONS = 2;
 export const POLL_MAX_OPTIONS = 10;
 export const POLL_MAX_QUESTION_LENGTH = 300;
 export const POLL_MAX_OPTION_LENGTH = 100;
+
+/**
+ * Channel kinds whose subject is a patient or a patient's bereavement plan: no polls there. The web reads this list;
+ * the backend derives the same set from CHANNEL_KIND_DESCRIPTORS and a backend test pins the two together.
+ */
+export const POLL_BLOCKED_CHANNEL_KINDS = ["care_team", "bereavement"] as const;
 
 /** An option as a reader sees it. `voteCount` is exact; the voters are listed only by the poll detail read. */
 export interface PollOptionView {
@@ -49,7 +55,7 @@ const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g;
 /** Zero-width and bidirectional control characters: invisible, so they could spoof a label or hide a duplicate. */
 const INVISIBLE_FORMATTING = /[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g;
 /** Anything that reads as an HTML tag or comment. Labels render as text, but no markup is stored at all. */
-const MARKUP = /<\s*\/?\s*[a-z!?][^>]*>?/i;
+const MARKUP = /<\/?[a-z!?][^>]*>/i;
 
 /** NFC, control characters to a space, runs of whitespace collapsed, trimmed. Plain text out, never markup. */
 export function normalisePollText(raw: string): string {

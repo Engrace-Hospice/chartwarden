@@ -11,12 +11,45 @@ const OPT = schema.messagePollOptions;
 const VOTE = schema.messagePollVotes;
 const USER = schema.users;
 
+/** Shown in place of an option label that cannot be decrypted. */
+export const UNREADABLE_OPTION_LABEL = "(option could not be displayed)";
+
 export interface PollViewInput {
+  readonly warn?: (message: string, context: Record<string, string>) => void;
   readonly orgId: string;
   readonly channelId: string;
   readonly viewerUserId: string;
   readonly messageIds: readonly string[];
   readonly cipher: MessageBodyCipher;
+}
+
+/**
+ * Decrypt option labels in parallel. One unreadable label must not break a whole message page: it shows a clear
+ * placeholder and warns with ids only (never the cipher or any text).
+ */
+export async function openOptionLabels(
+  options: ReadonlyArray<{ id: string; pollId: string; labelCipher: Buffer }>,
+  input: Pick<PollViewInput, "orgId" | "channelId" | "cipher" | "warn">,
+): Promise<Map<string, string>> {
+  const opened = await Promise.allSettled(
+    options.map((option) => input.cipher.open(input.orgId, option.labelCipher)),
+  );
+  const labels = new Map<string, string>();
+  options.forEach((option, index) => {
+    const result = opened[index];
+    if (result?.status === "fulfilled") {
+      labels.set(option.id, result.value);
+      return;
+    }
+    input.warn?.("poll option label could not be read; showing a placeholder", {
+      organizationId: input.orgId,
+      channelId: input.channelId,
+      pollId: option.pollId,
+      optionId: option.id,
+    });
+    labels.set(option.id, UNREADABLE_OPTION_LABEL);
+  });
+  return labels;
 }
 
 /** The polls on these messages, keyed by message id. A message without a poll is simply absent. */
@@ -56,11 +89,7 @@ export async function loadPollViews(tx: Tx, input: PollViewInput): Promise<Map<s
     .groupBy(VOTE.optionId);
   const countByOption = new Map(counts.map((c) => [c.optionId, Number(c.n)]));
   const myOption = new Set(counts.filter((c) => c.mine === true).map((c) => c.optionId));
-  const labels = new Map<string, string>();
-  const opened = await Promise.all(
-    options.map((option) => input.cipher.open(input.orgId, option.labelCipher)),
-  );
-  options.forEach((option, index) => labels.set(option.id, opened[index] ?? ""));
+  const labels = await openOptionLabels(options, input);
   for (const poll of polls) {
     const views: PollOptionView[] = options
       .filter((o) => o.pollId === poll.id)

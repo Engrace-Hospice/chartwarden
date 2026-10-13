@@ -176,6 +176,7 @@ export async function hydrateMessages(
     viewerUserId: ctx.viewerUserId,
     messageIds: liveIds,
     cipher: ctx.cipher,
+    ...(ctx.warn ? { warn: ctx.warn } : {}),
   });
   return Promise.all(
     rows.map(async (m): Promise<ResolvedMessage> => {

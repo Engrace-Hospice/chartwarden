@@ -40,8 +40,22 @@ describe("checkPollInput", () => {
     expect(check("Q", ["<img src=x onerror=alert(1)>", "b"]).ok).toBe(false);
   });
 
-  it("keeps a bare less-than comparison", () => {
+  it("keeps plain text that merely contains a less-than sign", () => {
     expect(check("Is 3 < 5?", ["yes", "no"]).ok).toBe(true);
+    expect(check("Is the wait < 1 hour?", ["yes", "no"]).ok).toBe(true);
+    expect(check("Q", ["x <y", "a < b > c"]).ok).toBe(true);
+  });
+
+  it("still rejects real tags, closing tags, comments and doctype-like input", () => {
+    for (const markup of [
+      "<b>bold</b>",
+      "</div>",
+      "<!-- hi -->",
+      "<!DOCTYPE html>",
+      "<a href=x>",
+    ]) {
+      expect(check("Q", [markup, "other"]).ok, markup).toBe(false);
+    }
   });
 
   it("rejects duplicate options case-insensitively after normalising", () => {
