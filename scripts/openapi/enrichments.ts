@@ -1248,6 +1248,11 @@ import {
   AlertDeliveriesQuerySchema as M36AlertDeliveriesQuerySchema,
   AlertDeliveriesResponseSchema as M36AlertDeliveriesResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/admin-alert-deliveries-routes";
+import {
+  DraftQuerySchema as M36DraftQuerySchema,
+  DraftResponseSchema as M36DraftResponseSchema,
+  SaveDraftBodySchema as M36SaveDraftBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/draft-typebox";
 // ── M36 Secure Messaging & Alerts — request + response schema imports (all M36-aliased) ──
 import {
   // request schemas (query / body) — reused as-is
@@ -1292,11 +1297,6 @@ import {
   PinResponseSchema as M36PinResponseSchema,
   SetReactionResponseSchema as M36SetReactionResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/reaction-pin-typebox";
-import {
-  DraftQuerySchema as M36DraftQuerySchema,
-  DraftResponseSchema as M36DraftResponseSchema,
-  SaveDraftBodySchema as M36SaveDraftBodySchema,
-} from "../../apps/backend/src/modules/36-messaging/routes/draft-typebox";
 // M36 WP 2.8 message templates & saved replies.
 import {
   CreateTemplateBodySchema as M36CreateTemplateBodySchema,

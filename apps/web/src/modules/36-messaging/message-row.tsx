@@ -82,6 +82,8 @@ interface MessageRowProps {
   parentAuthor?: string | null;
   /** False in an archived channel: replies are read-only there, but an existing thread can still be opened. */
   canReply?: boolean;
+  /** Reactions and pins are allowed wherever the channel is writable, even when sending is not (announcements need messaging.announce to send/reply, not to react). Defaults to canReply. */
+  canAnnotate?: boolean;
   /** WP 2.4: offer Pin/Unpin (the conversation timeline only; the thread panel does not). */
   canPin?: boolean;
   /** WP 2.9: open who has read this announcement (only passed for a sender of announcements). */
@@ -102,6 +104,7 @@ function MessageRowImpl({
   onJumpToParent,
   parentAuthor,
   canReply = true,
+  canAnnotate = canReply,
   canPin = false,
   onShowReceipts,
 }: MessageRowProps): JSX.Element {
@@ -189,7 +192,7 @@ function MessageRowImpl({
               </time>
             </div>
             {!deleted ? (
-              <MessageAnnotations message={message} canAnnotate={canReply} canPin={canPin} />
+              <MessageAnnotations message={message} canAnnotate={canAnnotate} canPin={canPin} />
             ) : null}
             {onShowReceipts && !deleted ? (
               <button
