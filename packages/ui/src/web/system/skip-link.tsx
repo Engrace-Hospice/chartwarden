@@ -11,6 +11,8 @@ export interface SkipLinkProps {
  */
 export function SkipLink({ targetId }: SkipLinkProps): JSX.Element {
   function skip(event: MouseEvent<HTMLAnchorElement>): void {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+      return;
     event.preventDefault();
     document.getElementById(targetId)?.focus();
   }

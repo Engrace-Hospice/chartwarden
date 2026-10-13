@@ -32,6 +32,16 @@ describe("SkipLink", () => {
     expect(document.activeElement).toBe(screen.getByRole("main"));
   });
 
+  it("leaves modified and non-primary clicks to the browser", () => {
+    render(<Shell />);
+    const link = screen.getByRole("link", { name: "Skip to main content" });
+    expect(fireEvent.click(link, { ctrlKey: true })).toBe(true);
+    expect(fireEvent.click(link, { metaKey: true })).toBe(true);
+    expect(fireEvent.click(link, { shiftKey: true })).toBe(true);
+    expect(fireEvent.click(link, { button: 1 })).toBe(true);
+    expect(document.activeElement).not.toBe(screen.getByRole("main"));
+  });
+
   it("does nothing (and does not throw) when the target is missing", () => {
     render(<SkipLink targetId="absent" />);
     expect(() =>
