@@ -1309,6 +1309,10 @@ import {
   ScheduledMessageViewSchema as M36ScheduledMessageViewSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/scheduled-send-typebox";
 import {
+  GlobalSearchQuerySchema as M36GlobalSearchQuerySchema,
+  GlobalSearchResponseSchema as M36GlobalSearchResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/global-search-typebox";
+import {
   SearchMessagesQuerySchema as M36SearchMessagesQuerySchema,
   SearchMessagesResponseSchema as M36SearchMessagesResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/search-typebox";
@@ -8994,6 +8998,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/messaging/channels/:id/pins": {
     summary: "The channel's pinned messages, most recently pinned first (read-audited)",
     response: M36PinListResponseSchema,
+  },
+  "GET /api/v1/messaging/search": {
+    summary:
+      "Search every channel the caller may read (WP 2.7b, ADR-0058 Proposed, INERT until enabled: whole words, last word is a word beginning; blind-token index, authority re-checked per request; 403 GLOBAL_SEARCH_DISABLED / GLOBAL_SEARCH_ROLE_NOT_PERMITTED, 503 GLOBAL_SEARCH_INDEX_NOT_READY / DEGRADED, 422 bad query; `refine: true` asks the user to add a word; read-audited without the query or cursor; never cached)",
+    query: M36GlobalSearchQuerySchema,
+    response: M36GlobalSearchResponseSchema,
   },
   "GET /api/v1/messaging/channels/:id/search": {
     summary:

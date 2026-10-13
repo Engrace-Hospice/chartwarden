@@ -153,6 +153,10 @@ import {
   registerAdminAlertDeliveriesRoutes as _registerAdminAlertDeliveriesRoutes,
   registerMessagingAdminPredicates as _registerMessagingAdminPredicates,
 } from "./routes/admin-alert-deliveries-routes";
+import {
+  type GlobalSearchMountOptions,
+  mountGlobalSearchRoutes as _mountGlobalSearchRoutes,
+} from "./global-search/mount";
 import { registerAttachmentRoutes as _registerAttachmentRoutes } from "./routes/attachment-routes";
 import { registerDraftRoutes as _registerDraftRoutes } from "./routes/draft-routes";
 import {
@@ -180,6 +184,8 @@ export function mountMessagingRoutes(
     outbox?: MessagingOutboxPort;
     /** WP 1.5: object storage + malware scanner. No scanner => attachments stay pending (nothing is delivered). */
     attachments?: { storage: AttachmentStoragePort; scanner?: ScanPort | undefined };
+    /** WP 2.7b: global search. Omitted => inert (throwing key provider, fail-closed limiter, flags OFF). */
+    globalSearch?: GlobalSearchMountOptions;
   } = {},
 ): void {
   // GAP-063 — the §4.2 OTP sender; with none bound, sms/email endpoint registration answers 503.
@@ -214,6 +220,8 @@ export function mountMessagingRoutes(
   }
   // WP 2.8 — message templates and saved replies (personal + shared + platform overlay).
   _registerTemplateRoutes(app, { service: _createDbTemplateService(db) });
+  // WP 2.7b (ADR-0058, Proposed) — global search; INERT in production (see ./global-search/mount.ts).
+  _mountGlobalSearchRoutes(app, db, opts.globalSearch);
   // GAP-165 — the platform-ops cross-tenant delivery drill (§4.1 `messaging.admin.read`): own predicate, own
   // SECURITY DEFINER reader (0474), audited per read. Not tenant-scoped, so it takes the pooled handle directly.
   _registerMessagingAdminPredicates();

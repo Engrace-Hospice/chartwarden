@@ -183,8 +183,9 @@ async function verifyAndFinish(
   return outcome;
 }
 
-function stillValid(
-  state: IndexState,
+/** Exported for the query path (WP 2.7b C3): the serve gate trusts a 'ready' index by exactly this rule. */
+export function stillValid(
+  state: Pick<IndexState, "status" | "reconciledAt">,
   since: readonly (Date | null)[],
   now: number,
   recheckAfterMs: number,
