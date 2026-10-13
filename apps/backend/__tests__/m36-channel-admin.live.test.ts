@@ -44,6 +44,7 @@ interface Who {
   readonly userId: string;
   readonly org: string;
   readonly roles: string;
+  readonly locations?: string;
 }
 
 function headerAuth(request: FastifyRequest): void {
@@ -54,7 +55,9 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles ? roles.split(",") : [];
-  request.context.locationIds = [];
+  const locations = request.headers["x-test-locations"];
+  request.context.locationIds =
+    typeof locations === "string" && locations ? locations.split(",") : [];
 }
 
 describe.skipIf(!DB_URL)("M36 channel admin (members list + archive) — LIVE Postgres", () => {
@@ -70,7 +73,11 @@ describe.skipIf(!DB_URL)("M36 channel admin (members list + archive) — LIVE Po
   let activeMember: Who;
   let suspendedMember: Who;
   let revokedMember: Who;
+  let service: ReturnType<typeof createDbMessagingRouteService>;
   let locA: string;
+  let locSubject: string;
+  let locFresh: string;
+  let clinicalLeadA: Who;
   let dmA: string;
   let careTeamA: string;
   let announcementA: string;
@@ -79,6 +86,7 @@ describe.skipIf(!DB_URL)("M36 channel admin (members list + archive) — LIVE Po
     "x-test-user": who.userId,
     "x-test-org": who.org,
     "x-test-roles": who.roles,
+    "x-test-locations": who.locations ?? "",
   });
   const get = (who: Who, id: string) =>
     app.inject({
@@ -167,7 +175,14 @@ describe.skipIf(!DB_URL)("M36 channel admin (members list + archive) — LIVE Po
     suspendedMember = await seedUser("suspended", orgA, "clinical_rn", "suspended");
     revokedMember = await seedUser("revoked", orgA, "clinical_rn", "revoked");
 
-    locA = await mkChannel("location", "care_related", randomUUID());
+    locSubject = randomUUID();
+    locA = await mkChannel("location", "care_related", locSubject);
+    const freshSubject = randomUUID();
+    locFresh = await mkChannel("location", "care_related", freshSubject);
+    clinicalLeadA = {
+      ...(await seedUser("clinicalLeadA", orgA, "clinical_lead")),
+      locations: `${locSubject},${freshSubject}`,
+    };
     for (const w of [activeMember, suspendedMember, revokedMember]) await addMember(locA, w);
     // a removed row for an otherwise-active user must not list either
     await addMember(locA, clinicianA);
@@ -187,7 +202,7 @@ describe.skipIf(!DB_URL)("M36 channel admin (members list + archive) — LIVE Po
 
     appUrl = await appRoleConnectionString(admin, DB_URL as string);
     handle = createDbClient({ connectionString: appUrl });
-    const service = createDbMessagingRouteService(handle.db, {
+    service = createDbMessagingRouteService(handle.db, {
       kek: KEK,
       sendEndpointVerificationCode: async () => undefined,
     });
@@ -195,7 +210,7 @@ describe.skipIf(!DB_URL)("M36 channel admin (members list + archive) — LIVE Po
     const keys = ["messaging.read", "messaging.send", "messaging.dm"];
     registerEffectivePermissionResolver(
       createInMemoryEffectivePermissionStore(
-        [adminA, adminB, clinicianA, activeMember].map((w) => ({
+        [adminA, adminB, clinicianA, activeMember, clinicalLeadA].map((w) => ({
           orgId: w.org,
           userId: w.userId,
           grants: [
@@ -204,7 +219,9 @@ describe.skipIf(!DB_URL)("M36 channel admin (members list + archive) — LIVE Po
               enabled: true,
               expiresAt: null,
               permissionKeys:
-                w.roles === "org_admin" ? [...keys, "messaging.manage_members"] : keys,
+                w.roles === "org_admin" || w.roles === "clinical_lead"
+                  ? [...keys, "messaging.manage_members"]
+                  : keys,
             },
           ],
         })),
@@ -337,17 +354,26 @@ describe.skipIf(!DB_URL)("M36 channel admin (members list + archive) — LIVE Po
       const row = (await q(`SELECT is_archived, archives_at FROM channel WHERE id=$1`, [locA]))[0];
       expect(row.is_archived).toBe(true);
       expect(row.archives_at).not.toBeNull();
-      const actors = await q(
-        `SELECT DISTINCT actor_user_id::text AS actor FROM audit_event WHERE organization_id=$1 AND resource_id=$2 ORDER BY 1`,
+      const updates = await q(
+        `SELECT event_type, actor_user_id::text AS actor FROM audit_event WHERE organization_id=$1 AND resource_id=$2 AND event_type='channel.update'`,
         [orgA, locA],
       );
-      expect(actors.map((r) => r.actor)).toContain(adminA.userId);
+      expect(updates).toEqual([{ event_type: "channel.update", actor: adminA.userId }]);
 
       expect((await archive(adminA, locA)).statusCode).toBe(204);
       expect(await auditCount()).toBe(t1);
       expect(
         (await q(`SELECT archives_at FROM channel WHERE id=$1`, [locA]))[0].archives_at,
       ).toEqual(row.archives_at);
+    });
+
+    it("lets a location-scoped clinical_lead list its location channel but not archive it (org_admin only)", async () => {
+      expect((await get(clinicalLeadA, locA)).statusCode).toBe(200);
+      expect((await get(clinicalLeadA, locFresh)).statusCode).toBe(200);
+      expect((await archive(clinicalLeadA, locFresh)).statusCode).toBe(403);
+      expect(
+        (await q(`SELECT is_archived FROM channel WHERE id=$1`, [locFresh]))[0].is_archived,
+      ).toBe(false);
     });
 
     it("an archived channel still lists its members", async () => {
@@ -370,18 +396,32 @@ describe.skipIf(!DB_URL)("M36 channel admin (members list + archive) — LIVE Po
         await c.end();
       }
     };
+    it("service-level calls with orgId=B against A's channel fail and change nothing", async () => {
+      const actor = {
+        kind: "user" as const,
+        userId: adminB.userId,
+        roles: ["org_admin"],
+        locationIds: [],
+      };
+      await expect(service.listMembers(orgB, actor, locFresh)).rejects.toThrow();
+      await expect(service.archiveChannel(orgB, { channelId: locFresh, actor })).rejects.toThrow();
+      expect(
+        (await q(`SELECT is_archived FROM channel WHERE id=$1`, [locFresh]))[0].is_archived,
+      ).toBe(false);
+    });
+
     it("reads none of A's channels or members, and an archive UPDATE touches zero rows", async () => {
       await asOrgB(async (c) => {
         expect((await c.query(`SELECT 1 FROM channel WHERE id=$1`, [careTeamA])).rowCount).toBe(0);
         expect(
           (await c.query(`SELECT 1 FROM channel_member WHERE channel_id=$1`, [locA])).rowCount,
         ).toBe(0);
-        const upd = await c.query(`UPDATE channel SET is_archived=true WHERE id=$1`, [dmA]);
+        const upd = await c.query(`UPDATE channel SET is_archived=true WHERE id=$1`, [locFresh]);
         expect(upd.rowCount).toBe(0);
       });
-      expect((await q(`SELECT is_archived FROM channel WHERE id=$1`, [dmA]))[0].is_archived).toBe(
-        false,
-      );
+      expect(
+        (await q(`SELECT is_archived FROM channel WHERE id=$1`, [locFresh]))[0].is_archived,
+      ).toBe(false);
     });
   });
 });
