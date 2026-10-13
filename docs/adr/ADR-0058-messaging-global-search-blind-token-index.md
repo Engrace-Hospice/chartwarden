@@ -1,13 +1,15 @@
 # ADR-0058 — Global message search is a per-tenant HMAC blind-token index (whole-word and prefix only), re-checked against current access at query time
 
-- **Status:** **Proposed**
-- **Gate:** a design review by the **security architect and the privacy officer** is a hard precondition to acceptance. It gates **both
-  building WP 2.7b and enabling it in production** (D10, decided 2026-10-11 by the product owner, who chose option B (D3) knowing it
-  leaks token frequency). Do not mark this Accepted, and do not ENABLE WP 2.7b in production, until the review in "Design review requirement"
-  has passed and its record is linked here. **Build waiver (2026-10-13):** the user waived the "do not implement" part of this gate for BUILDING
-  only; the access-control layer is built default-off (tenant flag off, platform kill switch absent = off, production key provider
-  fails closed until the key-ring migration lands). Enabling stays gated by this review. WP 2.7b is additionally **blocked on the two prerequisite work packages** in "Prerequisites"
-  (key-ring migration of message bodies; per-route rate limit). In-conversation search (WP 2.7a, option A) does not depend on this ADR.
+- **Status:** **Accepted** (2026-10-13, by the user's decision in conversation: "turn ADR-0058 to accepted").
+- **Review record:** the design review by the **security architect and the privacy officer** that this ADR named as a hard precondition has
+  **NOT been recorded**. Acceptance was granted by the user (product owner) without it, and the status line does not claim otherwise.
+  The review remains the condition for the production attestations below; link its record here when it exists. D10 (decided 2026-10-11 by
+  the product owner, who chose option B (D3) knowing it leaks token frequency) is unchanged.
+- **What acceptance does not do:** it does not set `messaging.global_search_escrow_attested` or the rate-limit attestation (`globalSearchRateLimitActive`),
+  which are statements of fact about the escrow drill and the limiter and are set only when true (the escrow drill is in
+  `docs/runbooks/m36-body-key-ring.md`). The tenant switch still refuses ON until its go-live checklist passes. WP 2.7b was additionally
+  **blocked on the two prerequisite work packages** in "Prerequisites" (WP 2.13 key-ring migration of message bodies; WP 2.14 per-route
+  rate limit). In-conversation search (WP 2.7a, option A) does not depend on this ADR.
 - **Date:** 2026-10-11 (revised 2026-10-13 after design review feedback, and again 2026-10-13 to record the open-question decisions; Status unchanged)
 - **Phase:** Messaging Hub Phase 2 (WP 2.7b). Needed before Phase 2 work on global search starts.
 - **Extends:** [ADR-0038](ADR-0038-app-layer-envelope-encryption.md) (app-layer envelope encryption) and
