@@ -66,6 +66,85 @@ export function openMessageBody(cipher: Buffer, dek: Buffer): string {
   return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8");
 }
 
+// ── RING ENVELOPE (v2) — M36 WP 2.13 / ADR-0058 P1 ──────────────────────────────────────────────────
+// The tenant DEK is the M34 wrapped-DEK ring key (random 32 bytes, destroyable), NOT an HKDF derivation. The envelope
+// carries the ring version that sealed it, so old and new rows coexist and a rotation keeps old rows readable:
+//   version(1)=2 ‖ verLen(1) ‖ ringVersion(ascii) ‖ nonce(12) ‖ ciphertext ‖ tag(16)   — AES-256-GCM
+// AAD = "wardenx-message-body:v2:<orgId>:<ringVersion>", so a row cannot be opened under another tenant or relabelled.
+// `body_sha256` is unchanged (hash of the plaintext); the scheme is therefore also the per-row marker the backfill and the
+// legacy-row count read (first byte of body_cipher).
+const RING_VERSION_BYTE = 2;
+const RING_LABEL = /^[A-Za-z0-9._-]{1,32}$/;
+const RING_AAD_PREFIX = "wardenx-message-body:v2:";
+
+/** A ring DEK as the M34 `TenantKeyProvider` hands it out (`TenantDek`). */
+export interface RingBodyDek {
+  readonly version: string;
+  readonly key: Buffer;
+}
+
+export type BodyEnvelopeScheme = "legacy" | "ring" | "erased" | "unknown";
+
+/** Classify a `body_cipher` by its leading byte, without decrypting. Empty = erased by the eraser. */
+export function bodyEnvelopeScheme(cipher: Buffer): BodyEnvelopeScheme {
+  if (cipher.length === 0) return "erased";
+  if (cipher[0] === VERSION) return "legacy";
+  if (cipher[0] === RING_VERSION_BYTE) return "ring";
+  return "unknown";
+}
+
+function ringAad(orgId: string, version: string): Buffer {
+  return Buffer.from(`${RING_AAD_PREFIX}${orgId}:${version}`, "utf8");
+}
+
+/** Seal a plaintext under a tenant ring DEK → v2 envelope that records the ring version. */
+export function sealMessageBodyRing(plaintext: string, dek: RingBodyDek, orgId: string): Buffer {
+  if (!RING_LABEL.test(dek.version)) throw new Error("message body-crypto: bad ring version label");
+  if (dek.key.length !== KEY_LEN)
+    throw new Error(`message body-crypto: DEK must be ${KEY_LEN} bytes`);
+  const nonce = randomBytes(NONCE_LEN);
+  const cipher = createCipheriv("aes-256-gcm", dek.key, nonce);
+  cipher.setAAD(ringAad(orgId, dek.version));
+  const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const label = Buffer.from(dek.version, "ascii");
+  return Buffer.concat([
+    Buffer.from([RING_VERSION_BYTE, label.length]),
+    label,
+    nonce,
+    ct,
+    cipher.getAuthTag(),
+  ]);
+}
+
+function parseRing(cipher: Buffer): { version: string; body: number } {
+  if (cipher.length < 2 + 1 + NONCE_LEN + TAG_LEN || cipher[0] !== RING_VERSION_BYTE) {
+    throw new Error("message body-crypto: malformed ring ciphertext");
+  }
+  const len = cipher[1] ?? 0;
+  const body = 2 + len;
+  if (len < 1 || cipher.length < body + NONCE_LEN + TAG_LEN) {
+    throw new Error("message body-crypto: malformed ring ciphertext");
+  }
+  return { version: cipher.subarray(2, body).toString("ascii"), body };
+}
+
+/** The ring version recorded in a v2 envelope (which DEK version to ask the key provider for). */
+export function ringEnvelopeVersion(cipher: Buffer): string {
+  return parseRing(cipher).version;
+}
+
+/** Open a v2 envelope under the ring DEK of that version. Throws on a wrong key/org, tamper or bad format. */
+export function openMessageBodyRing(cipher: Buffer, key: Buffer, orgId: string): string {
+  const { version, body } = parseRing(cipher);
+  const nonce = cipher.subarray(body, body + NONCE_LEN);
+  const tag = cipher.subarray(cipher.length - TAG_LEN);
+  const ct = cipher.subarray(body + NONCE_LEN, cipher.length - TAG_LEN);
+  const decipher = createDecipheriv("aes-256-gcm", key, nonce);
+  decipher.setAAD(ringAad(orgId, version));
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8");
+}
+
 /** The §164.312(c) integrity digest — hex SHA-256 of the PLAINTEXT, computed pre-encryption. */
 export function messageBodySha256(plaintext: string): string {
   return createHash("sha256").update(plaintext, "utf8").digest("hex");

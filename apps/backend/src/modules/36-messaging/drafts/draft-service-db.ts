@@ -61,8 +61,8 @@ export function createDbDraftService(deps: DraftServiceDeps): MessageDraftServic
         : isNull(DRAFT.parentMessageId),
     );
 
-  const view = (orgId: string, row: typeof DRAFT.$inferSelect): DraftView => {
-    const sealed = JSON.parse(cipher.open(orgId, row.bodyCipher)) as SealedDraft;
+  const view = async (orgId: string, row: typeof DRAFT.$inferSelect): Promise<DraftView> => {
+    const sealed = JSON.parse(await cipher.open(orgId, row.bodyCipher)) as SealedDraft;
     return {
       channelId: row.channelId,
       parentMessageId: row.parentMessageId,
@@ -108,12 +108,14 @@ export function createDbDraftService(deps: DraftServiceDeps): MessageDraftServic
           return null;
         });
       }
-      const sealed = cipher.seal(
-        orgId,
-        JSON.stringify({
-          body: input.body,
-          references: input.references ?? [],
-        } satisfies SealedDraft),
+      const sealed = (
+        await cipher.seal(
+          orgId,
+          JSON.stringify({
+            body: input.body,
+            references: input.references ?? [],
+          } satisfies SealedDraft),
+        )
       ).cipher;
       try {
         return await withOrgContext(

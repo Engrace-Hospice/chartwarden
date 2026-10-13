@@ -27,6 +27,7 @@ import type { MessageBodyKind } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import { type SQL, and, desc, eq, sql } from "drizzle-orm";
+import { BodyKeyUnavailableError } from "./body-key-ring";
 import { decodeCursor, encodeCursor } from "./message-cursor";
 import {
   type HydrationContext,
@@ -174,7 +175,7 @@ export function createDbMessageSearchService(deps: MessageSearchDeps): MessageSe
       for (const [i, row] of batch.entries()) {
         scanned += 1;
         lastExamined = { createdAtMicros: row.createdAtMicros, id: row.id };
-        if (rowMatches(ctx, orgId, row, filters.terms)) matched.push(row);
+        if (await rowMatches(ctx, orgId, row, filters.terms)) matched.push(row);
         if (matched.length >= filters.limit) {
           more = i < batch.length - 1 || olderRemains;
           done = true;
@@ -240,20 +241,22 @@ export function createDbMessageSearchService(deps: MessageSearchDeps): MessageSe
 }
 
 /** Open one body and test it; an unreadable body never matches (and says so by id, never by content). */
-function rowMatches(
+async function rowMatches(
   ctx: HydrationContext,
   orgId: string,
   row: MessageRow,
   terms: readonly string[],
-): boolean {
+): Promise<boolean> {
   if (terms.length === 0) return true;
   let plain: string;
   try {
     plain = decodeStoredBody(
       row.bodyKind as MessageBodyKind,
-      ctx.cipher.open(orgId, row.bodyCipher),
+      await ctx.cipher.open(orgId, row.bodyCipher),
     ).body;
-  } catch {
+  } catch (err) {
+    // A key outage must fail the search (503), not silently drop every hit as "unreadable".
+    if (err instanceof BodyKeyUnavailableError) throw err;
     ctx.warn?.("message body could not be opened for search", {
       organizationId: orgId,
       messageId: row.id,

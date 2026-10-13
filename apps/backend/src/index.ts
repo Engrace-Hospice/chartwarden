@@ -1386,6 +1386,16 @@ import {
   scheduleM35Jobs,
 } from "./modules/35-subscription/index";
 import { emitWithRecipientFallback } from "./modules/36-messaging/alert-recipient-fallback";
+import {
+  invalidateMessageBodyKeys,
+  setMessageBodyKeyProvider,
+} from "./modules/36-messaging/body-key-ring";
+import {
+  M36_BODY_LEGACY_COUNT_JOB_ID,
+  assertM36BodyBootEnv,
+  countLegacyBodiesAllTenants,
+  runLegacyBodyBootCheck,
+} from "./modules/36-messaging/body-legacy-key-check";
 import { cronAlertCorrelationId } from "./modules/36-messaging/cron-alert-correlation";
 import {
   M36_DELIVERY_PLATFORM_JOB_ID,
@@ -2462,6 +2472,11 @@ export function wireModuleSeams(
     bootstrapModule34(SLICE_MODULE_34_SEAM_DEPS);
   }
   validateModule34Seams();
+  // M36 WP 2.13 / ADR-0058 P1 — message bodies sealed under the tenant ring DEK resolve it through M34's provider.
+  // Bound lazily (resolved per use) so a DB-less slice boot keeps the fail-closed deny provider: a ring body then fails
+  // to open rather than falling back to anything. M36 cannot import M34 (M34 dependsOn M36); this is the one binding.
+  setMessageBodyKeyProvider(() => getTenantKeyProvider());
+  assertM36BodyBootEnv(process.env); // a M36_BODY_SEAL_SCHEME typo, or ring without the KEK / platform pool, stops the boot
   // ── TASK-001 ledger (production-readiness audit 2026-08-03, ARCH-003) ───────────────────────────
   // Every registrar above that STILL stands an in-memory store behind a published seam on a
   // db-present boot is recorded here, beside the wiring that chose it. A per-process Map wearing a
@@ -3213,6 +3228,27 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   if (platformDbHandle) registerPlatformJob(M36_SOLE_TENANT_JOB_ID);
   // M34 tenant shred — the identity eraser's sole-tenant subjects, resolved by the SAME rule as M36's.
   if (platformDbHandle) registerPlatformJob(M34_SHRED_SOLE_TENANT_JOB_ID);
+  // M36 WP 2.13 / ADR-0058 P1 — legacy message-body envelope rows vs MESSAGING_ENCRYPTION_KEY. A production boot with
+  // legacy rows and no usable key FAILS CLOSED (unreadable history); otherwise the count is logged. In production a count
+  // that cannot be taken is ALSO fatal (re-run db:provision-roles for the column grant BEFORE deploying); elsewhere it warns.
+  if (platformDbHandle) {
+    registerPlatformJob(M36_BODY_LEGACY_COUNT_JOB_ID);
+    await runLegacyBodyBootCheck({
+      count: () =>
+        countLegacyBodiesAllTenants({
+          platformDb: platformDbHandle.db,
+          auditBypass: m34PlatformBypassAuditor,
+          jobId: M36_BODY_LEGACY_COUNT_JOB_ID,
+        }),
+      log: console,
+    });
+  } else if (process.env.NODE_ENV === "production") {
+    // assertProductionEnv requires DATABASE_PLATFORM_URL, so this is unreachable in a validated boot; if validation is ever
+    // bypassed the legacy-row check must not silently not run.
+    throw new Error(
+      "M36 legacy message-body check cannot run in production without DATABASE_PLATFORM_URL; refusing to boot (ADR-0058 P1)",
+    );
+  }
   // audit C1 — RLS is the tenancy control, and a role with BYPASSRLS makes every policy decorative.
   // The migrator now gates that grant on WARDENX_DEV_BYPASSRLS + non-production, but a grant applied
   // by hand (or by an older migrate run against this cluster) would leave no trace at boot. Ask the
@@ -5954,7 +5990,18 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           auditBypass: m34PlatformBypassAuditor,
           keyMaterial: m34KeyMaterial ?? m34ProvisionGateway.keyMaterial,
           storage: m34ProvisionGateway.destructionStorage,
-          outbox: m34OutboxPublisher,
+          // WP 2.13: a published dek_rotation_completed drops this process's cached message-body DEKs for the org.
+          outbox: {
+            ...m34OutboxPublisher,
+            async publish(...args: Parameters<typeof m34OutboxPublisher.publish>) {
+              const result = await m34OutboxPublisher.publish(...args);
+              const event = args[1];
+              if (event.eventName === "m34.tenant.dek_rotation_completed") {
+                invalidateMessageBodyKeys(event.organizationId ?? undefined);
+              }
+              return result;
+            },
+          },
           async destroyTenantKeyRing(input) {
             await platformDbHandle.db.transaction(async (tx) => {
               await tx.execute(
@@ -5964,6 +6011,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                 sql`SELECT m34_destroy_tenant_key_ring(${input.tenantAccountId}, ${input.destructionCertId})`,
               );
             });
+            // WP 2.13: this process must stop using a cached message-body DEK the moment the ring is destroyed (other
+            // processes keep theirs for at most one cache TTL). The input names the tenant account, so drop every cached DEK.
+            invalidateMessageBodyKeys();
           },
           destructionWorkflow: (() => {
             const workflow = createM34DestructionWorkflow();

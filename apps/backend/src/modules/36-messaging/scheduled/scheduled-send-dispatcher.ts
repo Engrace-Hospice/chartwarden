@@ -24,6 +24,7 @@ import {
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError } from "@wardenx/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
+import { BodyKeyUnavailableError } from "../body-key-ring";
 import { publishMessageHint } from "../message-hint-events";
 import type { MessagingOutboxPort } from "../messaging-route-service-db";
 import {
@@ -227,7 +228,7 @@ export function createScheduledSendDispatcher(
         orgId,
         channelId: claimed.channelId,
         authorUserId: claimed.userId,
-        body: cipher.open(orgId, claimed.bodyCipher),
+        body: await cipher.open(orgId, claimed.bodyCipher),
         bodyKind: "plain",
         parentMessageId: claimed.parentMessageId,
         // The DB backstop: a send that already committed (row survived some other way) returns the original message.
@@ -292,7 +293,13 @@ export function createScheduledSendDispatcher(
           outageSenders = new Set();
           if (outcome === "sent") sent += 1;
           if (outcome === "blocked") blocked += 1;
-        } catch (error) {
+        } catch (caught) {
+          // A key-provider outage is not a verdict about this row: retry it next tick without counting an attempt,
+          // exactly like a resolver outage (otherwise a few minutes of M34 trouble would block every due message).
+          const error =
+            caught instanceof BodyKeyUnavailableError
+              ? new DependencyUnavailableError(caught, false)
+              : caught;
           if (error instanceof DependencyUnavailableError) {
             deps.onRowError?.(
               { organizationId: orgId, scheduledMessageId: row.id },

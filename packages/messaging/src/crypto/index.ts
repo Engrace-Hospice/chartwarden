@@ -5,4 +5,10 @@ export {
   sealMessageBody,
   openMessageBody,
   messageBodySha256,
+  bodyEnvelopeScheme,
+  sealMessageBodyRing,
+  openMessageBodyRing,
+  ringEnvelopeVersion,
+  type BodyEnvelopeScheme,
+  type RingBodyDek,
 } from "./body-crypto";

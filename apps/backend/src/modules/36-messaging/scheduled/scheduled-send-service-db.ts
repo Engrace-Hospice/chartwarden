@@ -45,16 +45,16 @@ export interface ScheduledSendServiceDeps {
   readonly now?: () => Date;
 }
 
-function viewOf(
+async function viewOf(
   cipher: MessageBodyCipher,
   orgId: string,
   row: typeof SM.$inferSelect,
-): ScheduledMessageView {
+): Promise<ScheduledMessageView> {
   return {
     id: row.id,
     channelId: row.channelId,
     parentMessageId: row.parentMessageId,
-    body: cipher.open(orgId, row.bodyCipher),
+    body: await cipher.open(orgId, row.bodyCipher),
     scheduledFor: row.scheduledFor.toISOString(),
     timeZone: row.timeZone,
     status: row.status as ScheduledMessageView["status"],
@@ -98,7 +98,7 @@ export function createDbScheduledSendService(deps: ScheduledSendServiceDeps): Sc
     }
     const when = assertScheduleTime(input.scheduledFor, clock());
     const timeZone = normalizeScheduleTimeZone(input.timeZone);
-    const sealed = cipher.seal(orgId, input.body).cipher;
+    const sealed = (await cipher.seal(orgId, input.body)).cipher;
     return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
       const channel = await channelOr404(tx, orgId, input.channelId);
       if (channel.isArchived)
@@ -166,7 +166,7 @@ export function createDbScheduledSendService(deps: ScheduledSendServiceDeps): Sc
         )
         .orderBy(asc(SM.scheduledFor), asc(SM.id))
         .limit(LIST_LIMIT);
-      return found.map((row) => viewOf(cipher, orgId, row));
+      return Promise.all(found.map((row) => viewOf(cipher, orgId, row)));
     });
 
   const cancel: ScheduledSendService["cancel"] = (orgId, input) =>

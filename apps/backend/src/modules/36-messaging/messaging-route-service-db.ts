@@ -972,7 +972,7 @@ export function createDbMessagingRouteService(
               messagePreview(
                 decodeStoredBody(
                   row.bodyKind as MessageBodyKind,
-                  cipher.open(orgId, row.bodyCipher),
+                  await cipher.open(orgId, row.bodyCipher),
                 ).body,
               ),
             );
@@ -1557,7 +1557,7 @@ export function createDbMessagingRouteService(
           bodyKind: m.bodyKind === "rich" ? "plain" : (m.bodyKind as MessageBodyKind),
           richBody: input.richBody,
         });
-        const { cipher: bodyCipher, sha256 } = cipher.seal(orgId, next.plaintext);
+        const { cipher: bodyCipher, sha256 } = await cipher.seal(orgId, next.plaintext);
         const editedAt = new Date();
         await tx
           .update(MSG)

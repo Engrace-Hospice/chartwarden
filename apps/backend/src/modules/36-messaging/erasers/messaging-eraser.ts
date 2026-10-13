@@ -75,14 +75,13 @@ export interface DrizzleMessagingEraseDeps {
  * in-memory store, so a tenant offboarding "erased" messages that exist nowhere). Executes the
  * ROW-LEVEL part of each §7.8 step; counts are always rows actually written (`.returning()`).
  *
- *   • `destroyTenantDek` — Phase 1 derives each tenant DEK from the master KEK by HKDF
- *     (packages/messaging/src/crypto: "no per-tenant key table"), so there is no key ROW this
- *     store could destroy; forgetting the derived key is the M1 key-vault/KEK-rotation op the
- *     composition root owns. The row-level part executed here makes the erasure physical rather
- *     than notional: every `message.body_cipher` for the org is overwritten with the empty
- *     sentinel (both columns are NOT NULL — the M31 `""`-sentinel precedent) so no ciphertext
- *     survives for a future KEK compromise to unseal. A valid envelope is ≥ 29 bytes, so
- *     `octet_length > 0` is the idempotency predicate: a second pass finds 0.
+ *   • `destroyTenantDek` — a body sealed on the M34 ring (WP 2.13, envelope version 2) is shredded for real when M34's
+ *     shred worker runs `m34_destroy_tenant_key_ring` AFTER the module erasers (the wrapped DEK was random and its
+ *     ciphertext was the only copy). A body still on the legacy envelope (version 1) has NO destroyable key: its DEK is
+ *     HKDF(MESSAGING_ENCRYPTION_KEY, org), so only the row-level part executed here makes the erasure physical: every
+ *     `message.body_cipher` for the org is overwritten with the empty sentinel (both columns are NOT NULL, the M31 `""`-sentinel
+ *     precedent) so no ciphertext survives in the live table. A valid envelope is ≥ 29 bytes, so `octet_length > 0` is the
+ *     idempotency predicate: a second pass finds 0. Backups of a legacy row are not shredded (docs/runbooks/m36-body-key-ring.md).
  *   • `deleteStructuralRows` — FK-ordered hard deletes of the org-scoped subtree under
  *     `withOrgContext`, children before parents (delivery→alert; attachment/receipt→message→
  *     channel_member→channel; overlay→template). The parent-join child (notification_delivery

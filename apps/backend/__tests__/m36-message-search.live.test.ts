@@ -130,7 +130,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7a in-conversation search - LIVE Postgres", (
     body: string,
     createdAt: string,
   ) => {
-    const sealed = cipher.seal(org, body);
+    const sealed = await cipher.seal(org, body);
     return (
       await admin.query(
         `INSERT INTO message (organization_id, channel_id, author_user_id, author_kind, body_cipher, body_sha256, created_at)
@@ -147,7 +147,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7a in-conversation search - LIVE Postgres", (
     await admin.query("TRUNCATE body_pool");
     for (let i = 0; i < POOL; i += 1) {
       const text = `visit note ${i} patient comfortable pain managed ${i % 50 === 0 ? "morphine adjusted" : "repositioned"} family present`;
-      const sealed = cipher.seal(ORG, text);
+      const sealed = await cipher.seal(ORG, text);
       await admin.query("INSERT INTO body_pool VALUES ($1,$2,$3)", [
         i,
         sealed.cipher,

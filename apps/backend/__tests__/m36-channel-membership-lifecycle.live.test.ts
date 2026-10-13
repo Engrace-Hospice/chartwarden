@@ -767,16 +767,18 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
       [sent.messageId],
     );
     expect(revisions.rows.map((r) => r.revision_no)).toEqual([1, 2]);
-    expect(cipher.open(orgA, revisions.rows[0].body_cipher)).toBe("original wording");
-    expect(cipher.open(orgA, revisions.rows[1].body_cipher)).toBe("second");
+    expect(await cipher.open(orgA, revisions.rows[0].body_cipher)).toBe("original wording");
+    expect(await cipher.open(orgA, revisions.rows[1].body_cipher)).toBe("second");
     expect(revisions.rows.every((r) => r.edited_by === rn)).toBe(true);
     // the head still verifies against its own hash, and each revision against the hash of the body it holds
     const head = await admin.query(`SELECT body_cipher, body_sha256 FROM message WHERE id=$1`, [
       sent.messageId,
     ]);
-    expect(cipher.open(orgA, head.rows[0].body_cipher)).toBe("third");
-    expect(head.rows[0].body_sha256).toBe(cipher.seal(orgA, "third").sha256);
-    expect(revisions.rows[0].body_sha256).toBe(cipher.seal(orgA, "original wording").sha256);
+    expect(await cipher.open(orgA, head.rows[0].body_cipher)).toBe("third");
+    expect(head.rows[0].body_sha256).toBe((await cipher.seal(orgA, "third")).sha256);
+    expect(revisions.rows[0].body_sha256).toBe(
+      (await cipher.seal(orgA, "original wording")).sha256,
+    );
 
     // the app role can append but never rewrite or remove a revision
     const app = new Client({
