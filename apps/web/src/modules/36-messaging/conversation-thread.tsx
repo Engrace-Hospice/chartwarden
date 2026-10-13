@@ -11,6 +11,7 @@ import type { JSX, KeyboardEvent } from "react";
 import { AttachButton, AttachmentChips } from "./attachment-composer";
 import { sendBlockedReason } from "./attachment-utils";
 import { applyTextEdit, detectMac, formatShortcutMarker, toggleWrap } from "./composer-format";
+import { DraftSyncNotice } from "./draft-conflict-prompt";
 import { MentionMenu } from "./mention-menu";
 import { activeMentionQuery, reconcileReferences } from "./mention-utils";
 import { MessageRow } from "./message-row";
@@ -38,6 +39,7 @@ import { sentMessageRow, useMessageSender } from "./use-message-sender";
 import type { SentMessage } from "./use-message-sender";
 import { usePatientHeader } from "./use-patient-header";
 import { useScanningRefresh } from "./use-scanning-refresh";
+import { useServerDraft } from "./use-server-draft";
 import type { LiveHint } from "./use-thread";
 import { useThreadPanelState } from "./use-thread-panel-state";
 
@@ -171,6 +173,16 @@ export function ConversationThread({
     });
     onMessageSent();
   };
+  // WP 2.5: the draft follows the user across reloads and devices (restore, debounced autosave, merge prompt).
+  const serverDraft = useServerDraft({
+    channelId: channel.channelId,
+    text: draft,
+    references: draftReferences,
+    hydrate: (text, references) => {
+      setDraft(text);
+      setDraftReferences(references);
+    },
+  });
   const { send, sending, sendError, clearSendError, resetSender } = useMessageSender({
     channelId: channel.channelId,
     archived: Boolean(channel.archivedAt),
@@ -722,76 +734,83 @@ export function ConversationThread({
             : "Messaging is unavailable until access can be verified."}
         </output>
       ) : (
-        <form className="wx-message-composer" onSubmit={(event) => void send(event)}>
-          <label htmlFor="messaging-composer" className="sr-only">
-            Message
-          </label>
-          <textarea
-            ref={textareaRef}
-            id="messaging-composer"
-            aria-label="Message"
-            rows={1}
-            placeholder={`Message ${channelLabel(channel)}…`}
-            value={draft}
-            disabled={sending}
-            aria-autocomplete="list"
-            aria-expanded={mentionQuery !== null}
-            aria-controls={mentionQuery ? "messaging-mention-suggestions" : undefined}
-            onChange={(event) => {
-              const next = event.target.value;
-              const nextReferences = reconcileReferences(draft, next, draftReferences);
-              setDraftReferences(nextReferences);
-              setDraft(next);
-              const cursor = event.target.selectionStart ?? next.length;
-              setMentionQuery(activeMentionQuery(next, cursor, nextReferences));
-              if (sendError) clearSendError();
-            }}
-            onKeyDown={handleComposerKey}
-            onCompositionStart={() => {
-              composingRef.current = true;
-            }}
-            onCompositionEnd={() => {
-              composingRef.current = false;
-            }}
-          />
-          <AttachmentChips uploads={uploads} disabled={sending} attachButtonRef={attachButtonRef} />
-          <AttachButton uploads={uploads} disabled={sending} buttonRef={attachButtonRef} />
-          {mentionQuery ? (
-            <MentionMenu
-              loading={mentionLoading}
-              error={mentionError}
-              candidates={mentionCandidates}
-              activeIndex={mentionIndex}
-              onChoose={chooseMention}
-              onRetry={() => setMentionRetry((value) => value + 1)}
+        <>
+          <DraftSyncNotice sync={serverDraft} />
+          <form className="wx-message-composer" onSubmit={(event) => void send(event)}>
+            <label htmlFor="messaging-composer" className="sr-only">
+              Message
+            </label>
+            <textarea
+              ref={textareaRef}
+              id="messaging-composer"
+              aria-label="Message"
+              rows={1}
+              placeholder={`Message ${channelLabel(channel)}…`}
+              value={draft}
+              disabled={sending}
+              aria-autocomplete="list"
+              aria-expanded={mentionQuery !== null}
+              aria-controls={mentionQuery ? "messaging-mention-suggestions" : undefined}
+              onChange={(event) => {
+                const next = event.target.value;
+                const nextReferences = reconcileReferences(draft, next, draftReferences);
+                setDraftReferences(nextReferences);
+                setDraft(next);
+                const cursor = event.target.selectionStart ?? next.length;
+                setMentionQuery(activeMentionQuery(next, cursor, nextReferences));
+                if (sendError) clearSendError();
+              }}
+              onKeyDown={handleComposerKey}
+              onCompositionStart={() => {
+                composingRef.current = true;
+              }}
+              onCompositionEnd={() => {
+                composingRef.current = false;
+              }}
             />
-          ) : null}
-          <Button
-            type="submit"
-            disabled={
-              sending || (!draft.trim() && uploads.sendableIds.length === 0) || uploads.blocksSend
-            }
-            loading={sending}
-            aria-label="Send"
-            aria-describedby={sendHint ? "messaging-send-hint" : undefined}
-          >
-            <Glyph name="send" size={16} /> <span>Send</span>
-          </Button>
-          <small>Enter to send · Shift+Enter for a new line</small>
-          {sendHint ? (
-            <div id="messaging-send-hint" className="wx-send-hint">
-              {sendHint}
-            </div>
-          ) : null}
-          {sendError ? (
-            <div role="alert" className="wx-composer-error">
-              {sendError}{" "}
-              <button type="submit" disabled={sending}>
-                Retry
-              </button>
-            </div>
-          ) : null}
-        </form>
+            <AttachmentChips
+              uploads={uploads}
+              disabled={sending}
+              attachButtonRef={attachButtonRef}
+            />
+            <AttachButton uploads={uploads} disabled={sending} buttonRef={attachButtonRef} />
+            {mentionQuery ? (
+              <MentionMenu
+                loading={mentionLoading}
+                error={mentionError}
+                candidates={mentionCandidates}
+                activeIndex={mentionIndex}
+                onChoose={chooseMention}
+                onRetry={() => setMentionRetry((value) => value + 1)}
+              />
+            ) : null}
+            <Button
+              type="submit"
+              disabled={
+                sending || (!draft.trim() && uploads.sendableIds.length === 0) || uploads.blocksSend
+              }
+              loading={sending}
+              aria-label="Send"
+              aria-describedby={sendHint ? "messaging-send-hint" : undefined}
+            >
+              <Glyph name="send" size={16} /> <span>Send</span>
+            </Button>
+            <small>Enter to send · Shift+Enter for a new line</small>
+            {sendHint ? (
+              <div id="messaging-send-hint" className="wx-send-hint">
+                {sendHint}
+              </div>
+            ) : null}
+            {sendError ? (
+              <div role="alert" className="wx-composer-error">
+                {sendError}{" "}
+                <button type="submit" disabled={sending}>
+                  Retry
+                </button>
+              </div>
+            ) : null}
+          </form>
+        </>
       )}
     </section>
   );

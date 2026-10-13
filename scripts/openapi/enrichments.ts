@@ -1287,6 +1287,11 @@ import {
   SendMessageResponseSchema as M36SendMessageResponseSchema,
   VerifyEndpointBodySchema as M36VerifyEndpointBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/messaging-typebox";
+import {
+  DraftQuerySchema as M36DraftQuerySchema,
+  DraftResponseSchema as M36DraftResponseSchema,
+  SaveDraftBodySchema as M36SaveDraftBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/draft-typebox";
 
 // M38 Clinical Terminology Service — response DTOs (all M38-aliased).
 // Merge these named imports into scripts/openapi/enrichments.ts. NOTE: an existing import already
@@ -8931,6 +8936,22 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "A message and its direct replies, oldest reply first (WP 2.2; channel_visibility ABAC, so a non-member, a removed member and another org get the 404 a random id gets)",
     query: M36ListThreadQuerySchema,
     response: M36ThreadResponseSchema,
+  },
+  "GET /api/v1/messaging/channels/:id/draft": {
+    summary:
+      "The caller's own unsent draft for a channel (or a thread root via parentMessageId); null when none (WP 2.5; never another user's)",
+    query: M36DraftQuerySchema,
+    response: M36DraftResponseSchema,
+  },
+  "PUT /api/v1/messaging/channels/:id/draft": {
+    summary:
+      "Autosave the caller's draft (revision + device checked; a blank body discards; 409 DRAFT_CONFLICT when another device wrote since baseRevision)",
+    body: M36SaveDraftBodySchema,
+    response: M36DraftResponseSchema,
+  },
+  "DELETE /api/v1/messaging/channels/:id/draft": {
+    summary: "Discard the caller's draft (idempotent, 204)",
+    query: M36DraftQuerySchema,
   },
   "GET /api/v1/messaging/channels/:id/mention-candidates": {
     summary: "Search staff and the linked patient eligible for a structured reference",

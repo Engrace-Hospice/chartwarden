@@ -157182,6 +157182,378 @@
         }
       }
     },
+    "/api/v1/messaging/channels/{id}/draft": {
+      "delete": {
+        "operationId": "deleteApiV1MessagingChannelsByIdDraft",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Discard the caller's draft (idempotent, 204)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "parentMessageId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "get": {
+        "operationId": "getApiV1MessagingChannelsByIdDraft",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The caller's own unsent draft for a channel (or a thread root via parentMessageId); null when none (WP 2.5; never another user's)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "parentMessageId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "draft"
+                  ],
+                  "properties": {
+                    "draft": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "channelId",
+                            "parentMessageId",
+                            "body",
+                            "references",
+                            "revision",
+                            "deviceId",
+                            "updatedAt"
+                          ],
+                          "properties": {
+                            "channelId": {
+                              "type": "string"
+                            },
+                            "parentMessageId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "body": {
+                              "type": "string"
+                            },
+                            "references": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "kind",
+                                  "entityId",
+                                  "start",
+                                  "end"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "anyOf": [
+                                      {
+                                        "const": "staff",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "patient",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "entityId": {
+                                    "type": "string"
+                                  },
+                                  "start": {
+                                    "type": "integer"
+                                  },
+                                  "end": {
+                                    "type": "integer"
+                                  }
+                                }
+                              }
+                            },
+                            "revision": {
+                              "minimum": 1,
+                              "type": "integer"
+                            },
+                            "deviceId": {
+                              "type": "string"
+                            },
+                            "updatedAt": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1MessagingChannelsByIdDraft",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Autosave the caller's draft (revision + device checked; a blank body discards; 409 DRAFT_CONFLICT when another device wrote since baseRevision)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "draft"
+                  ],
+                  "properties": {
+                    "draft": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "channelId",
+                            "parentMessageId",
+                            "body",
+                            "references",
+                            "revision",
+                            "deviceId",
+                            "updatedAt"
+                          ],
+                          "properties": {
+                            "channelId": {
+                              "type": "string"
+                            },
+                            "parentMessageId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "body": {
+                              "type": "string"
+                            },
+                            "references": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "kind",
+                                  "entityId",
+                                  "start",
+                                  "end"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "anyOf": [
+                                      {
+                                        "const": "staff",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "patient",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "entityId": {
+                                    "type": "string"
+                                  },
+                                  "start": {
+                                    "type": "integer"
+                                  },
+                                  "end": {
+                                    "type": "integer"
+                                  }
+                                }
+                              }
+                            },
+                            "revision": {
+                              "minimum": 1,
+                              "type": "integer"
+                            },
+                            "deviceId": {
+                              "type": "string"
+                            },
+                            "updatedAt": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "body",
+                  "deviceId",
+                  "baseRevision"
+                ],
+                "properties": {
+                  "parentMessageId": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "body": {
+                    "maxLength": 100000,
+                    "type": "string"
+                  },
+                  "references": {
+                    "maxItems": 25,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "entityId",
+                        "start",
+                        "end"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "anyOf": [
+                            {
+                              "const": "staff",
+                              "type": "string"
+                            },
+                            {
+                              "const": "patient",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "entityId": {
+                          "minLength": 1,
+                          "maxLength": 64,
+                          "type": "string"
+                        },
+                        "start": {
+                          "minimum": 0,
+                          "maximum": 8000,
+                          "type": "integer"
+                        },
+                        "end": {
+                          "minimum": 1,
+                          "maximum": 8001,
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  },
+                  "deviceId": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "baseRevision": {
+                    "minimum": 0,
+                    "maximum": 2000000000,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/messaging/channels/{id}/members": {
       "post": {
         "operationId": "postApiV1MessagingChannelsByIdMembers",

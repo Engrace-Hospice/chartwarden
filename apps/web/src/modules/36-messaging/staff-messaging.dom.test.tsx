@@ -325,7 +325,8 @@ describe("M36 messaging organization switching", () => {
           });
         }
         const requestedChannelId = options?.params?.path?.id;
-        if (requestedChannelId) messageLoads.push(requestedChannelId);
+        // WP 2.5: the draft read is a separate (own-draft) GET on the same channel id; this counts message loads only.
+        if (requestedChannelId && !path.endsWith("/draft")) messageLoads.push(requestedChannelId);
         return Promise.resolve({ data: { messages: [] }, error: undefined });
       }),
       POST: vi.fn(() => oldSend.promise),

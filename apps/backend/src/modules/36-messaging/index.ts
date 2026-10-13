@@ -144,6 +144,7 @@ import type { FastifyInstance } from "fastify";
 import type { AttachmentStoragePort, ScanPort } from "./attachments/attachment-ports";
 import { createAttachmentService as _createAttachmentService } from "./attachments/attachment-service-db";
 import type { EndpointVerificationSender } from "./delivery/transport-binding";
+import { createDbDraftService as _createDbDraftService } from "./drafts/draft-service-db";
 import { createDbMessagingRouteService as _createDbMessagingRouteService } from "./messaging-route-service-db";
 import type { MessagingOutboxPort } from "./messaging-route-service-db";
 import {
@@ -152,6 +153,7 @@ import {
   registerMessagingAdminPredicates as _registerMessagingAdminPredicates,
 } from "./routes/admin-alert-deliveries-routes";
 import { registerAttachmentRoutes as _registerAttachmentRoutes } from "./routes/attachment-routes";
+import { registerDraftRoutes as _registerDraftRoutes } from "./routes/draft-routes";
 import {
   registerMessagingAbacPredicates as _registerMessagingAbacPredicates,
   registerMessagingRoutes as _registerMessagingRoutes,
@@ -184,6 +186,8 @@ export function mountMessagingRoutes(
   });
   _registerMessagingAbacPredicates(service); // idempotent — single-owner registry, re-boot-safe
   _registerMessagingRoutes(app, { service });
+  // WP 2.5 — private encrypted drafts (own row per user + channel + thread root).
+  _registerDraftRoutes(app, { service: _createDbDraftService({ db }) });
   // WP 1.5 — attachment authorize/complete/access. The visibility rule is the route service's own, so an attachment
   // is exactly as reachable as the channel it was posted in. Without storage the routes answer a typed 503.
   if (opts.attachments) {
