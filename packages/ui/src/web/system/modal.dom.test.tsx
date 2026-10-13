@@ -2,6 +2,7 @@
 // (tabindex="-1" headings, the card itself), which are not in the Tab-order list the trap compares against.
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { createPortal } from "react-dom";
 import { describe, expect, it, vi } from "vitest";
 import { Modal } from "./modal";
 
@@ -95,5 +96,92 @@ describe("Modal Tab trap", () => {
     expect(document.activeElement).toBe(button("Inner one"));
     await userEvent.tab({ shift: true });
     expect(document.activeElement).toBe(button("Inner two"));
+  });
+});
+
+describe("Modal Tab trap, more coverage", () => {
+  it("moves between controls mid-list without wrapping", async () => {
+    renderModal();
+    button("First").focus();
+    await userEvent.tab();
+    expect(document.activeElement).toBe(button("Second"));
+    await userEvent.tab({ shift: true });
+    expect(document.activeElement).toBe(button("First"));
+  });
+
+  it("focuses the first control on open, not the tabindex=-1 heading", () => {
+    renderModal();
+    expect(document.activeElement).toBe(button("First"));
+  });
+
+  it("treats the card itself as outside the Tab order: Tab goes to the first control, Shift+Tab to the last", async () => {
+    renderModal();
+    const card = screen.getByRole("dialog");
+    card.focus();
+    await userEvent.tab();
+    expect(document.activeElement).toBe(button("First"));
+    card.focus();
+    await userEvent.tab({ shift: true });
+    expect(document.activeElement).toBe(button("Last"));
+  });
+
+  it("ignores disabled controls when deciding where the ends are", async () => {
+    render(
+      <>
+        <button type="button">Behind</button>
+        <Modal open ariaLabel="With disabled">
+          <button type="button" disabled>
+            Disabled first
+          </button>
+          <button type="button">Real first</button>
+          <button type="button">Real last</button>
+          <button type="button" disabled>
+            Disabled last
+          </button>
+        </Modal>
+      </>,
+    );
+    button("Real last").focus();
+    await userEvent.tab();
+    expect(document.activeElement).toBe(button("Real first"));
+    await userEvent.tab({ shift: true });
+    expect(document.activeElement).toBe(button("Real last"));
+  });
+
+  it("leaves a portaled inner modal's mid-list Tab to the browser even though the event bubbles to the outer modal", async () => {
+    render(
+      <Modal open ariaLabel="Outer">
+        <button type="button">Outer one</button>
+        <button type="button">Outer two</button>
+        {createPortal(
+          <Modal open ariaLabel="Inner">
+            <button type="button">Inner A</button>
+            <button type="button">Inner B</button>
+            <button type="button">Inner C</button>
+          </Modal>,
+          document.body,
+        )}
+      </Modal>,
+    );
+    button("Inner A").focus();
+    await userEvent.tab();
+    expect(document.activeElement).toBe(button("Inner B"));
+  });
+
+  it("closes only the inner modal on Escape when two are nested", async () => {
+    const outerClose = vi.fn();
+    const innerClose = vi.fn();
+    render(
+      <Modal open onClose={outerClose} ariaLabel="Outer">
+        <button type="button">Outer one</button>
+        <Modal open onClose={innerClose} ariaLabel="Inner">
+          <button type="button">Inner one</button>
+        </Modal>
+      </Modal>,
+    );
+    button("Inner one").focus();
+    await userEvent.keyboard("{Escape}");
+    expect(innerClose).toHaveBeenCalledOnce();
+    expect(outerClose).not.toHaveBeenCalled();
   });
 });
