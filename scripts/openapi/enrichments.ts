@@ -1253,6 +1253,10 @@ import {
   DraftResponseSchema as M36DraftResponseSchema,
   SaveDraftBodySchema as M36SaveDraftBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/draft-typebox";
+import {
+  GlobalSearchQuerySchema as M36GlobalSearchQuerySchema,
+  GlobalSearchResponseSchema as M36GlobalSearchResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/global-search-typebox";
 // ── M36 Secure Messaging & Alerts — request + response schema imports (all M36-aliased) ──
 import {
   // request schemas (query / body) — reused as-is
@@ -1308,10 +1312,6 @@ import {
   ScheduledListResponseSchema as M36ScheduledListResponseSchema,
   ScheduledMessageViewSchema as M36ScheduledMessageViewSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/scheduled-send-typebox";
-import {
-  GlobalSearchQuerySchema as M36GlobalSearchQuerySchema,
-  GlobalSearchResponseSchema as M36GlobalSearchResponseSchema,
-} from "../../apps/backend/src/modules/36-messaging/routes/global-search-typebox";
 import {
   SearchMessagesQuerySchema as M36SearchMessagesQuerySchema,
   SearchMessagesResponseSchema as M36SearchMessagesResponseSchema,
