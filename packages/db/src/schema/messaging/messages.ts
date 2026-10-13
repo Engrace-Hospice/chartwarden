@@ -15,6 +15,7 @@ import {
   foreignKey,
   index,
   pgTable,
+  smallint,
   text,
   timestamp,
   unique,
@@ -44,6 +45,10 @@ export const messages = pgTable(
     authorKind: messageAuthorKind("author_kind").notNull(),
     bodyCipher: bytea("body_cipher").notNull(), // envelope-encrypted under tenant DEK
     bodySha256: text("body_sha256").notNull(), // hex SHA-256 of plaintext pre-encryption
+    // 1089 (WP 2.13): GENERATED from body_cipher's first byte: 0 erased, 1 legacy HKDF envelope, 2 M34 ring envelope.
+    bodyEnvelopeVersion: smallint("body_envelope_version").generatedAlwaysAs(
+      sql`CASE WHEN octet_length(body_cipher) = 0 THEN 0 ELSE get_byte(body_cipher, 0) END`,
+    ),
     bodyKind: messageBodyKind("body_kind").notNull().default("plain"),
     parentMessageId: uuid("parent_message_id"), // composite same-channel FK below (1083)
     quotedMessageId: uuid("quoted_message_id"), // composite same-channel FK below (1083)
@@ -62,6 +67,10 @@ export const messages = pgTable(
     byOrgIdx: index("message_org_idx").on(t.organizationId),
     // 1080: keyset paging for the hash_verify rotation (tenant, created_at, id).
     byOrgCreatedIdIdx: index("message_org_created_id_idx").on(t.organizationId, t.createdAt, t.id),
+    // 1089: the legacy-envelope rows only (the P1 backfill pages these; the index empties as it finishes).
+    legacyBodyIdx: index("message_body_legacy_idx")
+      .on(t.organizationId, t.id)
+      .where(sql`body_envelope_version = 1`),
     orgIdIdUnique: unique("message_org_id_id_unique").on(t.organizationId, t.id),
     // 1083 (WP 2.2 / D6): the referenced side of the same-channel reply/quote edges below.
     orgChannelIdUnique: unique("message_org_channel_id_unique").on(

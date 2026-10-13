@@ -252,6 +252,14 @@ async function main(): Promise<void> {
       for (const t of PLATFORM_READ_TABLES) {
         await run(`GRANT SELECT ON "${t}" TO wardenx_platform;`);
       }
+      // M36 WP 2.13 (migration 1089) — the boot check counts message rows still on the legacy body envelope across
+      // tenants. COLUMN grants on the scheme marker (generated from body_cipher's first byte) only: the platform login
+      // can count the scheme, never read a byte of ciphertext or any message content.
+      for (const t of ["message", "message_revision"]) {
+        await run(
+          `GRANT SELECT ("organization_id", "body_envelope_version") ON "${t}" TO wardenx_platform;`,
+        );
+      }
       // F-236 — the M32 backend health sweep (worker) is the only writer of these two columns. A COLUMN
       // grant, not table UPDATE: the platform role may record a probe result, never re-pin a model, flip
       // `zdr_status`, or reactivate a backend (those stay `wardenx_admin`, db:sync:ai-backends).
