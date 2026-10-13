@@ -58,7 +58,8 @@ export function TenantTransitionDialog({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const chosen = target || (targets[0] ?? "");
+  // The dialog stays mounted while the tenant's status changes, so a remembered pick may no longer be reachable.
+  const chosen = targets.includes(target) ? target : (targets[0] ?? "");
   const activating = fromStatus === "onboarding" && chosen === "active";
   const commitLabel = activating ? "Activate tenant" : "Apply";
 

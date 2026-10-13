@@ -94,6 +94,34 @@ describe("TenantTransitionDialog", () => {
     expect(onDone).not.toHaveBeenCalled();
   });
 
+  it("re-derives the target when the tenant's status changes under an already-mounted dialog", async () => {
+    const post = vi.fn(async () => ({ data: { tenantAccountId: "t-1", status: "suspended" } }));
+    const client = { POST: post } as unknown as ApiClient;
+    const dialog = (fromStatus: string) => (
+      <ApiClientProvider client={client}>
+        <TenantTransitionDialog
+          open
+          orgSlug="cedar-ridge"
+          tenantName="Cedar Ridge Hospice LLC"
+          fromStatus={fromStatus}
+          onDone={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </ApiClientProvider>
+    );
+    const { rerender } = render(dialog("onboarding"));
+
+    rerender(dialog("active"));
+    fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: "Non-payment 30 days" } });
+    fireEvent.click(screen.getByRole("button", { name: /apply/i }));
+
+    await waitFor(() => expect(post).toHaveBeenCalled());
+    expect(post).toHaveBeenCalledWith(
+      "/api/v1/platform/tenants/{orgSlug}/status",
+      expect.objectContaining({ body: expect.objectContaining({ toStatus: "suspended" }) }),
+    );
+  });
+
   it("says there is nothing to do from a state with no platform-ops transitions", () => {
     renderDialog("destroyed", vi.fn());
 
