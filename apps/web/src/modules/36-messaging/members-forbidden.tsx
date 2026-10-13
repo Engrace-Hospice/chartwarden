@@ -2,22 +2,23 @@
 // for a failed thread read). Static copy, never the title. Importers: channel-members-dialog.tsx.
 // The body replaces a focused control, so Close takes focus on mount (keeps the Modal's Tab trap and Escape alive).
 import { Button, EmptyState } from "@wardenx/ui";
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import type { JSX } from "react";
 
 const TITLE = "You can't manage members of this conversation.";
 
 export function MembersForbidden({ onClose }: { onClose: () => void }): JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
+  const textId = useId();
   useEffect(() => {
     ref.current?.querySelector("button")?.focus();
   }, []);
   return (
     <div className="wx-channel-members-state" ref={ref}>
-      <output>
+      <output id={textId}>
         <EmptyState title={TITLE} description="Ask an administrator if you need access." />
       </output>
-      <Button size="lg" tone="secondary" onClick={onClose}>
+      <Button size="lg" tone="secondary" aria-describedby={textId} onClick={onClose}>
         Close
       </Button>
     </div>

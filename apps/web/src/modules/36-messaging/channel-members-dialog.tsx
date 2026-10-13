@@ -12,6 +12,9 @@ import { SkeletonRows } from "./skeleton-rows";
 import "./announcements.css";
 import "./channel-lifecycle.css";
 
+/** The kit Button sets opacity and cursor inline, so busy feedback has to be inline too. */
+const BUSY_STYLE = { opacity: 0.6, cursor: "not-allowed" } as const;
+
 interface Member {
   userId: string;
   displayName: string;
@@ -44,6 +47,9 @@ export function ChannelMembersDialog({
   const [forbidden, setForbidden] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  // Set when a removal succeeds: the removed row's button is gone after the reload, so focus is handed on.
+  const pendingFocus = useRef<string | null | undefined>(undefined);
   const [actionError, setActionError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [candidates, setCandidates] = useState<DmStaffMember[]>([]);
@@ -126,6 +132,18 @@ export function ChannelMembersDialog({
     };
   }, [client, open, query]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the list changes, which is when the row is gone
+  useEffect(() => {
+    if (pendingFocus.current === undefined) return;
+    const neighbour = pendingFocus.current;
+    pendingFocus.current = undefined;
+    if (document.activeElement !== document.body) return;
+    const row = neighbour
+      ? listRef.current?.querySelector<HTMLElement>(`[data-member-id="${neighbour}"]`)
+      : null;
+    (row ?? headingRef.current)?.focus();
+  }, [members]);
+
   const memberIds = new Set((members ?? []).map((member) => member.userId));
   const addable = candidates.filter((person) => !memberIds.has(person.userId));
   const selected = addable.find((person) => person.userId === candidateId) ?? addable[0];
@@ -139,7 +157,18 @@ export function ChannelMembersDialog({
     if (document.activeElement === document.body) headingRef.current?.focus();
   }
 
-  async function change(run: () => Promise<{ error?: unknown }>, fallback: string): Promise<void> {
+  /** The row that should take focus when `userId` is removed: the next one, else the previous, else none. */
+  function neighbourOf(userId: string): string | null {
+    const rows = members ?? [];
+    const index = rows.findIndex((member) => member.userId === userId);
+    return (rows[index + 1] ?? rows[index - 1])?.userId ?? null;
+  }
+
+  async function change(
+    run: () => Promise<{ error?: unknown }>,
+    fallback: string,
+    onSuccess?: () => void,
+  ): Promise<void> {
     if (busy) return;
     // A close or channel switch bumps the sequence: a reply that lands afterwards must not write anything.
     const generation = sequence.current;
@@ -149,7 +178,10 @@ export function ChannelMembersDialog({
       const { error } = await run();
       if (generation !== sequence.current) return;
       if (error) setActionError(apiErrorMessage(error, fallback));
-      else await loadMembers();
+      else {
+        onSuccess?.();
+        await loadMembers();
+      }
     } catch {
       if (generation === sequence.current) setActionError(fallback);
     } finally {
@@ -184,6 +216,7 @@ export function ChannelMembersDialog({
                 size="lg"
                 tone="secondary"
                 aria-disabled={retrying}
+                style={retrying ? BUSY_STYLE : undefined}
                 onClick={() => void retry()}
               >
                 {retrying ? "Retrying…" : "Retry"}
@@ -192,16 +225,18 @@ export function ChannelMembersDialog({
           ) : members === null ? (
             <SkeletonRows label="Loading members" />
           ) : (
-            <ul aria-label="Channel members">
+            <ul aria-label="Channel members" ref={listRef}>
               {members.map((member) => (
                 <li key={member.userId}>
                   <span>
                     {member.displayName} <small>{member.role}</small>
                   </span>
                   <Button
-                    size="sm"
+                    size="lg"
                     tone="secondary"
-                    disabled={busy}
+                    aria-disabled={busy}
+                    data-member-id={member.userId}
+                    style={busy ? BUSY_STYLE : undefined}
                     aria-label={`Remove ${member.displayName}`}
                     onClick={() =>
                       void change(
@@ -210,6 +245,9 @@ export function ChannelMembersDialog({
                             params: { path: { id: channelId, userId: member.userId } },
                           }),
                         "The member could not be removed.",
+                        () => {
+                          pendingFocus.current = neighbourOf(member.userId);
+                        },
                       )
                     }
                   >
@@ -246,7 +284,8 @@ export function ChannelMembersDialog({
             </label>
             <Button
               size="lg"
-              disabled={busy || !selected}
+              aria-disabled={busy || !selected}
+              style={busy ? BUSY_STYLE : undefined}
               onClick={() =>
                 selected &&
                 void change(

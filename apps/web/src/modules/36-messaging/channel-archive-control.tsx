@@ -7,10 +7,18 @@ import type { KeyboardEvent } from "react";
 import type { JSX } from "react";
 import "./channel-lifecycle.css";
 
-const REFUSALS: Readonly<Record<number, string>> = {
-  409: "This kind of conversation can't be archived.",
-  403: "You don't have permission to archive conversations.",
-};
+const REFUSALS = {
+  archive: {
+    409: "This kind of conversation can't be archived.",
+    403: "You don't have permission to archive conversations.",
+  },
+  unarchive: {
+    409: "This kind of conversation can't be unarchived.",
+    403: "You don't have permission to unarchive conversations.",
+  },
+} as const satisfies Record<string, Readonly<Record<number, string>>>;
+/** The kit Button sets opacity and cursor inline, so busy feedback has to be inline too. */
+const BUSY_STYLE = { opacity: 0.6, cursor: "not-allowed" } as const;
 const REFRESH_NOTE = " The list will refresh shortly.";
 /** How long the buttons stay held for the parent's refetch before the control lets go and says so. */
 const REFETCH_CAP_MS = 8_000;
@@ -55,7 +63,12 @@ export function ChannelArchiveControl({
   useEffect(() => {
     if (confirming === wasConfirming.current) return;
     wasConfirming.current = confirming;
-    sectionRef.current?.querySelector("button")?.focus();
+    const section = sectionRef.current;
+    const active = document.activeElement;
+    // Only follow focus that was ours (or lost); never pull it from somewhere else in the dialog.
+    if (active === document.body || (active && section?.contains(active))) {
+      section?.querySelector("button")?.focus();
+    }
   }, [confirming]);
 
   function openConfirm(): void {
@@ -65,9 +78,10 @@ export function ChannelArchiveControl({
   }
 
   function onKeyDown(event: KeyboardEvent): void {
-    if (event.key !== "Escape" || !confirming || busy) return;
+    if (event.key !== "Escape" || !confirming) return;
+    // Swallowed while busy too: the dialog must not close under a request that is still running.
     event.stopPropagation();
-    setConfirming(false);
+    if (!busy) setConfirming(false);
   }
 
   async function run(): Promise<void> {
@@ -79,7 +93,7 @@ export function ChannelArchiveControl({
       const { error, response } = await client.POST(path, { params: { path: { id: channelId } } });
       if (error) {
         setFailed(true);
-        setStatus(REFUSALS[response?.status ?? 0] ?? FAILED);
+        setStatus(REFUSALS[verb][(response?.status ?? 0) as 409 | 403] ?? FAILED);
         return;
       }
       setDone({ verb, base: archived });
@@ -132,6 +146,7 @@ export function ChannelArchiveControl({
               tone="secondary"
               aria-disabled={busy}
               aria-describedby={sentenceId}
+              style={busy ? BUSY_STYLE : undefined}
               onClick={() => (busy ? undefined : setConfirming(false))}
             >
               Cancel
@@ -141,6 +156,7 @@ export function ChannelArchiveControl({
               aria-disabled={busy}
               aria-label={`Confirm ${verb}`}
               aria-describedby={sentenceId}
+              style={busy ? BUSY_STYLE : undefined}
               onClick={() => void run()}
             >
               Confirm
