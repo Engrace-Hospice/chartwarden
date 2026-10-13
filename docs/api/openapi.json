@@ -158247,6 +158247,16 @@
                           "createdAt": {
                             "type": "string"
                           },
+                          "editedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "parentMessageId": {
                             "anyOf": [
                               {
@@ -159085,6 +159095,16 @@
                         "createdAt": {
                           "type": "string"
                         },
+                        "editedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "parentMessageId": {
                           "anyOf": [
                             {
@@ -159350,6 +159370,16 @@
                           },
                           "createdAt": {
                             "type": "string"
+                          },
+                          "editedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "parentMessageId": {
                             "anyOf": [
@@ -159673,6 +159703,16 @@
                           },
                           "createdAt": {
                             "type": "string"
+                          },
+                          "editedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "parentMessageId": {
                             "anyOf": [
@@ -160225,6 +160265,16 @@
                           },
                           "createdAt": {
                             "type": "string"
+                          },
+                          "editedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "parentMessageId": {
                             "anyOf": [

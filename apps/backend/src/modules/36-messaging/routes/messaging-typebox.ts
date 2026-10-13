@@ -355,6 +355,8 @@ export const ResolvedMessageSchema = Type.Object({
   // True when a stored rich body cannot be read back: show "could not be displayed", not "deleted".
   bodyUnreadable: Type.Optional(Type.Literal(true)),
   createdAt: Type.String(),
+  // WP 1.3: when a live message was last edited (additive; null/absent = never edited or deleted).
+  editedAt: Type.Optional(NullableString()),
   parentMessageId: NullableString(),
   // WP 2.2: live direct replies and the newest one's time (additive; absent on providers that do not compute it).
   replyCount: Type.Optional(Type.Integer({ minimum: 0 })),

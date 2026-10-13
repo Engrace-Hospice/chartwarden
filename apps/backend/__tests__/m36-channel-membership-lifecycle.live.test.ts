@@ -821,6 +821,62 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     expect(after.rows[0].n).toBe(2);
   });
 
+  it("WP 1.3 edit indicator: every read path returns editedAt for an edited message, to a non-author, and a delete clears it", async () => {
+    const service = createDbMessagingRouteService(handle.db, { kek: KEK });
+    const root = await service.sendMessage(orgA, {
+      channelId,
+      authorUserId: rn,
+      body: "root",
+      bodyKind: "plain",
+    });
+    const reply = await service.sendMessage(orgA, {
+      channelId,
+      authorUserId: rn,
+      body: "reply",
+      bodyKind: "plain",
+      parentMessageId: root.messageId,
+    });
+    const untouched = await service.sendMessage(orgA, {
+      channelId,
+      authorUserId: rn,
+      body: "never edited",
+      bodyKind: "plain",
+    });
+    await service.editMessage(orgA, { userId: rn, messageId: root.messageId, body: "root v2" });
+    await service.editMessage(orgA, { userId: rn, messageId: reply.messageId, body: "reply v2" });
+    await service.pinMessage(orgA, { userId: rn, channelId, messageId: root.messageId });
+    const reader = manual; // a non-author member that earlier tests never remove
+    const isIso = (value: unknown) =>
+      typeof value === "string" && new Date(value).toISOString() === value;
+
+    const channelPage = await service.listMessages(orgA, { channelId, userId: reader, limit: 100 });
+    const byId = new Map(channelPage.messages.map((m) => [m.messageId, m]));
+    expect(isIso(byId.get(root.messageId)?.editedAt)).toBe(true);
+    expect(byId.get(untouched.messageId)?.editedAt ?? null).toBeNull();
+
+    const thread = await service.listThread(orgA, {
+      channelId,
+      messageId: root.messageId,
+      userId: reader,
+    });
+    expect(isIso(thread.root.editedAt)).toBe(true);
+    expect(isIso(thread.replies.find((m) => m.messageId === reply.messageId)?.editedAt)).toBe(true);
+
+    const pins = await service.listPins(orgA, { channelId, userId: reader });
+    expect(isIso(pins.pins.find((m) => m.messageId === root.messageId)?.editedAt)).toBe(true);
+
+    // a delete after an edit shows a plain tombstone: no edited marker
+    await service.deleteMessage(orgA, { userId: rn, messageId: reply.messageId });
+    const afterDelete = await service.listThread(orgA, {
+      channelId,
+      messageId: root.messageId,
+      userId: reader,
+    });
+    const tombstone = afterDelete.replies.find((m) => m.messageId === reply.messageId);
+    expect(tombstone?.body).toBe("");
+    expect(tombstone?.editedAt ?? null).toBeNull();
+  });
+
   it("send, edit and delete each publish one PHI-free hint event in the write transaction (ADR-0054 A4)", async () => {
     const emitted: Array<{ eventName: string; payload: Record<string, unknown> }> = [];
     const outbox = {
