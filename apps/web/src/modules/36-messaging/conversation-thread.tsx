@@ -18,6 +18,7 @@ import {
   channelKindLabel,
   channelLabel,
   compareMessages,
+  correlationIdOf,
   initialsOf,
   isAccessError,
   mergeMessages,
@@ -82,6 +83,7 @@ export function ConversationThread({
   const [olderCursor, setOlderCursor] = useState<string | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadCorrelationId, setLoadCorrelationId] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState(false);
   const [newMessageCount, setNewMessageCount] = useState(0);
   const [draft, setDraft] = useState("");
@@ -274,6 +276,7 @@ export function ConversationThread({
             setMessages([]);
             setPatient(null);
             setLoadError("This conversation is unavailable or your access has changed.");
+            setLoadCorrelationId(correlationIdOf(error));
           }
           return false;
         }
@@ -289,6 +292,7 @@ export function ConversationThread({
           ? 0
           : incoming.filter((message) => !existingIds.has(message.messageId)).length;
         setLoadError(null);
+        setLoadCorrelationId(null);
         setRefreshError(false);
         setOlderCursor((data?.nextCursor as string | undefined) ?? null);
         const merged =
@@ -367,6 +371,7 @@ export function ConversationThread({
     setDraftReferences([]);
     resetMention();
     setLoadError(null);
+    setLoadCorrelationId(null);
     setRefreshError(false);
     setPatient(null);
     setContextOpen(false);
@@ -549,6 +554,7 @@ export function ConversationThread({
           timelineRef={timelineRef}
           messages={messages}
           loadError={loadError}
+          loadCorrelationId={loadCorrelationId}
           olderCursor={olderCursor}
           loadingOlder={loadingOlder}
           meId={meId}

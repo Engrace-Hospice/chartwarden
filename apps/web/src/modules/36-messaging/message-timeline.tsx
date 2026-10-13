@@ -11,6 +11,7 @@ export interface MessageTimelineProps {
   timelineRef: RefObject<HTMLDivElement>;
   messages: Message[] | null;
   loadError: string | null;
+  loadCorrelationId: string | null;
   olderCursor: string | null;
   loadingOlder: boolean;
   meId: string;
@@ -30,6 +31,7 @@ export function MessageTimeline({
   timelineRef,
   messages,
   loadError,
+  loadCorrelationId,
   olderCursor,
   loadingOlder,
   meId,
@@ -54,6 +56,7 @@ export function MessageTimeline({
     >
       <TimelineState
         loadError={loadError}
+        correlationId={loadCorrelationId}
         loading={messages === null}
         empty={messages?.length === 0}
         onRetry={onRetry}

@@ -294,3 +294,39 @@
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* WP 2.11 loading skeleton (06-ux-design §4). */
+.wx-messaging-skeleton {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.wx-messaging-skeleton-row {
+  height: 3rem;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-container, rgb(0 0 0 / 0.06));
+  animation: wx-messaging-skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes wx-messaging-skeleton-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wx-messaging-skeleton-row {
+    animation: none;
+  }
+}
+
+.wx-messaging-realtime-banner {
+  display: block;
+  margin: 0 var(--spacing-5, 1.25rem) 0.5rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-container, rgb(0 0 0 / 0.06));
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}

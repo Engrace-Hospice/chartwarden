@@ -1,7 +1,8 @@
-import { Button, EmptyState, Glyph, LoadingSpinner } from "@wardenx/ui";
+import { Button, EmptyState, Glyph } from "@wardenx/ui";
 import type { JSX, KeyboardEvent } from "react";
 import type { ChannelSummary, ConversationFilter } from "./messaging-types";
 import { channelKindLabel, channelLabel, initialsOf, relativeTime } from "./messaging-utils";
+import { SkeletonRows } from "./skeleton-rows";
 
 const FILTERS: readonly { value: ConversationFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -19,6 +20,8 @@ export interface ConversationInboxProps {
   query: string;
   filter: ConversationFilter;
   error: string | null;
+  /** Correlation id of the failed channel-list call, quoted in the load-failed state. */
+  errorCorrelationId: string | null;
   onQueryChange: (query: string) => void;
   onFilterChange: (filter: ConversationFilter) => void;
   onSelect: (channelId: string) => void;
@@ -37,6 +40,7 @@ export function ConversationInbox({
   query,
   filter,
   error,
+  errorCorrelationId,
   onQueryChange,
   onFilterChange,
   onSelect,
@@ -122,14 +126,13 @@ export function ConversationInbox({
           <Glyph name="alert-circle" size={22} />
           <strong>Conversations could not be loaded</strong>
           <span>{error}</span>
+          {errorCorrelationId ? <small>Reference {errorCorrelationId}</small> : null}
           <Button size="sm" tone="secondary" onClick={onRetry}>
             Retry
           </Button>
         </div>
       ) : channels === null ? (
-        <output className="wx-messaging-list-state">
-          <LoadingSpinner label="Loading conversations" />
-        </output>
+        <SkeletonRows label="Loading conversations" className="wx-messaging-list-state" />
       ) : visibleChannels.length === 0 ? (
         <div className="wx-messaging-list-state">
           <EmptyState
