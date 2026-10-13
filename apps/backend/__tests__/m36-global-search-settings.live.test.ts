@@ -547,6 +547,86 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C4 global search settings - LIVE Postgres"
     });
   });
 
+  describe("fix round: effectiveReady, body hardening, erased bodies, purge columns", () => {
+    const seedReadyState = () =>
+      admin.query(
+        `INSERT INTO message_search_index_state (organization_id, key_version, status, reconciled_at)
+         VALUES ($1,'v1','ready', now())
+         ON CONFLICT (organization_id, key_version) DO UPDATE SET status='ready', reconciled_at=now()`,
+        [ORG_A],
+      );
+
+    it("a ready index is not effectiveReady after a re-ON or a later platform flag change", async () => {
+      await allAttested();
+      expect((await put(appLimited, true)).statusCode).toBe(200);
+      await seedReadyState();
+      const first = (await get(appLimited)).json().rebuild;
+      expect(first).toMatchObject({ status: "ready", effectiveReady: true });
+      expect(first.reconciledAt).not.toBeNull();
+      expect(first.changedAt).not.toBeNull();
+
+      // OFF then ON again: the old `ready` row survives (no purge ran) but predates the new changed_at.
+      await put(appLimited, false);
+      expect((await put(appLimited, true)).statusCode).toBe(200);
+      const reOn = (await get(appLimited)).json().rebuild;
+      expect(reOn.status).toBe("ready");
+      expect(reOn.effectiveReady).toBe(false);
+
+      // reconciled again after the flip: effective; a later platform flag change makes it stale again
+      await seedReadyState();
+      expect((await get(appLimited)).json().rebuild.effectiveReady).toBe(true);
+      await admin.query(
+        `UPDATE feature_flag SET updated_at = now() + interval '1 minute'
+          WHERE flag_key=$1 AND organization_id IS NULL`,
+        [GLOBAL_SEARCH_PLATFORM_FLAG_KEY],
+      );
+      expect((await get(appLimited)).json().rebuild.effectiveReady).toBe(false);
+    });
+
+    it("a body naming another organization is refused and writes nothing for either org", async () => {
+      await allAttested();
+      const res = await appLimited.inject({
+        method: "PUT",
+        url: URL_PATH,
+        headers: as(adminA, sessions.adminA),
+        payload: { enabled: true, organizationId: ORG_B } as never,
+      });
+      expect(res.statusCode).toBeGreaterThanOrEqual(400);
+      expect(await setting(ORG_B)).toBeUndefined();
+      expect(await setting(ORG_A)).toBeUndefined();
+    });
+
+    it("erased (zero-length) bodies neither crash nor count as legacy", async () => {
+      await allAttested();
+      const message = await seedMessage(Buffer.alloc(0));
+      await seedRevision(message, Buffer.alloc(0));
+      const res = await put(appLimited, true);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().checklist.legacyBodiesMigrated).toBe(true);
+    });
+
+    it("a re-ON while the purge is incomplete keeps purge_requested_at and leaves purge_completed_at NULL", async () => {
+      await allAttested();
+      await put(appLimited, false);
+      const requested = (await setting(ORG_A))?.purge_requested_at as Date;
+      expect(requested).not.toBeNull();
+      expect((await put(appLimited, true)).statusCode).toBe(200);
+      const row = await setting(ORG_A);
+      expect(row?.enabled).toBe(true);
+      expect((row?.purge_requested_at as Date).getTime()).toBe(requested.getTime());
+      expect(row?.purge_completed_at).toBeNull();
+    });
+
+    it("a repeated ON after OFF preserves changed_at", async () => {
+      await allAttested();
+      await put(appLimited, false);
+      await put(appLimited, true);
+      const changed = (await setting(ORG_A))?.changed_at as Date;
+      await put(appLimited, true);
+      expect(((await setting(ORG_A))?.changed_at as Date).getTime()).toBe(changed.getTime());
+    });
+  });
+
   describe("interlock with the index writer", () => {
     it("an ON flip waits for a writer holding the setting row FOR SHARE", async () => {
       await allAttested();

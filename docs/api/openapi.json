@@ -160800,7 +160800,9 @@
                             "keyVersion",
                             "status",
                             "checkpointCreatedAt",
-                            "reconciledAt"
+                            "reconciledAt",
+                            "changedAt",
+                            "effectiveReady"
                           ],
                           "properties": {
                             "keyVersion": {
@@ -160841,6 +160843,19 @@
                                   "type": "null"
                                 }
                               ]
+                            },
+                            "changedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "effectiveReady": {
+                              "type": "boolean"
                             }
                           }
                         },
@@ -160949,7 +160964,9 @@
                             "keyVersion",
                             "status",
                             "checkpointCreatedAt",
-                            "reconciledAt"
+                            "reconciledAt",
+                            "changedAt",
+                            "effectiveReady"
                           ],
                           "properties": {
                             "keyVersion": {
@@ -160990,6 +161007,19 @@
                                   "type": "null"
                                 }
                               ]
+                            },
+                            "changedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "effectiveReady": {
+                              "type": "boolean"
                             }
                           }
                         },

@@ -63057,6 +63057,8 @@ export interface operations {
                             status: "building" | "ready" | "stale";
                             checkpointCreatedAt: string | null;
                             reconciledAt: string | null;
+                            changedAt: string | null;
+                            effectiveReady: boolean;
                         } | null;
                     };
                 };
@@ -63102,6 +63104,8 @@ export interface operations {
                             status: "building" | "ready" | "stale";
                             checkpointCreatedAt: string | null;
                             reconciledAt: string | null;
+                            changedAt: string | null;
+                            effectiveReady: boolean;
                         } | null;
                     };
                 };

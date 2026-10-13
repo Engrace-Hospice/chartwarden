@@ -38,6 +38,8 @@ export interface GlobalSearchAttestations {
   readonly platformEnabled: boolean;
   readonly escrowAttested: boolean;
   readonly rateLimitActive: boolean;
+  /** `updated_at` of the platform row (null when absent): a later flip invalidates a prior reconciliation. */
+  readonly platformUpdatedAt: Date | null;
 }
 
 export interface GlobalSearchPrerequisites {
@@ -51,7 +53,12 @@ export function toChecklist(
   attestations: GlobalSearchAttestations,
   legacyBodiesRemain: boolean,
 ): GlobalSearchChecklist {
-  return { ...attestations, legacyBodiesMigrated: !legacyBodiesRemain };
+  return {
+    platformEnabled: attestations.platformEnabled,
+    legacyBodiesMigrated: !legacyBodiesRemain,
+    escrowAttested: attestations.escrowAttested,
+    rateLimitActive: attestations.rateLimitActive,
+  };
 }
 
 /** The failing checks, in a stable order; empty means the tenant may be switched ON. */
@@ -75,6 +82,9 @@ export function createGlobalSearchPrerequisites(
 ): GlobalSearchPrerequisites {
   const platform = createPlatformSearchFlag(wiring.db);
   return {
+    // Accepted TOCTOU: the platform and escrow flags are read before the flip transaction, so ops could turn one off in
+    // between. That is safe: the flag only gates the flip, and C3's serve gate re-reads the platform flag on EVERY query (and
+    // the indexer on every write), so a platform OFF after the flip still stops search immediately.
     async readAttestations(organizationId) {
       const [platformFlag, escrowFlag] = await Promise.all([
         platform.read(organizationId),
@@ -84,6 +94,7 @@ export function createGlobalSearchPrerequisites(
         platformEnabled: platformFlag.enabled,
         escrowAttested: escrowFlag.enabled,
         rateLimitActive: wiring.rateLimitActive === true,
+        platformUpdatedAt: platformFlag.updatedAt,
       };
     },
     // ponytail: a full scan per org when everything is migrated (nothing indexes the version byte); this is an admin-only

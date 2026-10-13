@@ -28,6 +28,10 @@ export interface RebuildProgress {
   readonly status: "building" | "ready" | "stale";
   readonly checkpointCreatedAt: string | null;
   readonly reconciledAt: string | null;
+  /** When the tenant flag last flipped; a `ready` index is only trustworthy if reconciled at or after this. */
+  readonly changedAt: string | null;
+  /** `status === "ready"` AND reconciled at/after both the tenant flip and the platform flag's last change. */
+  readonly effectiveReady: boolean;
 }
 
 export interface GlobalSearchSettingsView {
@@ -67,19 +71,28 @@ export class PrerequisitesUnmetError extends WardenXError {
   }
 }
 
-const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
+const iso = (d: Date | string | null): string | null => (d ? new Date(d).toISOString() : null);
 
 async function readRebuildProgress(
   tx: Parameters<typeof readTenantSearchSettingInTx>[0],
   organizationId: string,
+  setting: TenantSearchSetting,
+  platformUpdatedAt: Date | null,
 ): Promise<RebuildProgress | null> {
+  // The driver may hand timestamptz back as text, and a JS Date would truncate microseconds, so freshness is decided in SQL.
   const result = await tx.execute<{
     key_version: string;
     status: RebuildProgress["status"];
-    checkpoint_created_at: Date | null;
-    reconciled_at: Date | null;
+    checkpoint_created_at: Date | string | null;
+    reconciled_at: Date | string | null;
+    fresh: boolean;
   }>(sql`
-    SELECT key_version, status, checkpoint_created_at, reconciled_at
+    SELECT key_version, status, checkpoint_created_at, reconciled_at,
+           (reconciled_at IS NOT NULL
+            AND reconciled_at >= COALESCE((SELECT changed_at FROM tenant_messaging_search_setting
+                                            WHERE organization_id = ${organizationId}), '-infinity'::timestamptz)
+            AND reconciled_at >= COALESCE(${platformUpdatedAt?.toISOString() ?? null}::timestamptz, '-infinity'::timestamptz)
+           ) AS fresh
       FROM message_search_index_state
      WHERE organization_id = ${organizationId}
      ORDER BY updated_at DESC LIMIT 1`);
@@ -90,6 +103,8 @@ async function readRebuildProgress(
     status: row.status,
     checkpointCreatedAt: iso(row.checkpoint_created_at),
     reconciledAt: iso(row.reconciled_at),
+    changedAt: iso(setting.changedAt),
+    effectiveReady: row.status === "ready" && row.fresh === true,
   };
 }
 
@@ -120,7 +135,12 @@ export function createGlobalSearchSettingsService(deps: {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const setting = await readTenantSearchSettingInTx(tx, organizationId);
         const legacy = await prerequisites.legacyBodiesRemain(tx, organizationId);
-        const rebuild = await readRebuildProgress(tx, organizationId);
+        const rebuild = await readRebuildProgress(
+          tx,
+          organizationId,
+          setting,
+          attestations.platformUpdatedAt,
+        );
         return toView(setting, toChecklist(attestations, legacy), rebuild);
       });
     },
@@ -136,7 +156,13 @@ export function createGlobalSearchSettingsService(deps: {
           if (failed.length > 0) throw new PrerequisitesUnmetError(failed);
         }
         if (enabled === current.enabled && enabled) {
-          return toView(current, checklist, await readRebuildProgress(tx, organizationId));
+          const rebuild = await readRebuildProgress(
+            tx,
+            organizationId,
+            current,
+            attestations.platformUpdatedAt,
+          );
+          return toView(current, checklist, rebuild);
         }
         // OFF (re)requests the purge and re-opens `purge_completed_at` so the sweep runs; ON leaves the purge columns alone.
         await tx.execute(sql`
@@ -154,7 +180,13 @@ export function createGlobalSearchSettingsService(deps: {
             purge_completed_at = CASE WHEN EXCLUDED.enabled
                                       THEN tenant_messaging_search_setting.purge_completed_at ELSE NULL END`);
         const next = await readTenantSearchSettingInTx(tx, organizationId);
-        return toView(next, checklist, await readRebuildProgress(tx, organizationId));
+        const rebuild = await readRebuildProgress(
+          tx,
+          organizationId,
+          next,
+          attestations.platformUpdatedAt,
+        );
+        return toView(next, checklist, rebuild);
       });
     },
   };

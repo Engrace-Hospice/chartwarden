@@ -26,6 +26,8 @@ export const GlobalSearchSettingsViewSchema = Type.Object({
       status: Type.Union([Type.Literal("building"), Type.Literal("ready"), Type.Literal("stale")]),
       checkpointCreatedAt: NullableTimestamp,
       reconciledAt: NullableTimestamp,
+      changedAt: NullableTimestamp,
+      effectiveReady: Type.Boolean(),
     }),
     Type.Null(),
   ]),
