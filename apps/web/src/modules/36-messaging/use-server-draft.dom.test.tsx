@@ -536,6 +536,19 @@ describe("useServerDraft second review round", () => {
     expect(first).toMatchObject({ body: "typed for root one", parentMessageId: "root-1" });
   });
 
+  it("4b: the slot-switch flush sends the OLD slot's revision, not the next slot's reset one", async () => {
+    const api = makeApi(serverDraft({ revision: 5, parentMessageId: null }));
+    const { view } = setup(api);
+    await flush();
+    view.rerender({ text: "typed over revision five" });
+    view.rerender({ text: "", parent: "root-2" });
+    await flush();
+    expect(api.PUT.mock.calls[0]?.[1].body).toMatchObject({
+      body: "typed over revision five",
+      baseRevision: 5,
+    });
+  });
+
   it("6: a failed send (suspended then released) keeps the text and autosaves it again", async () => {
     const api = makeApi();
     const { view } = setup(api);

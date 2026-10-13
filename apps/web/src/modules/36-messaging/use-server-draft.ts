@@ -318,6 +318,8 @@ export function useServerDraft(args: {
           !suspendedRef.current &&
           keyOf(pending) !== syncedKeyRef.current
         ) {
+          // Read now: the next slot's effect resets revisionRef synchronously right after this cleanup.
+          const baseRevision = revisionRef.current;
           void Promise.resolve()
             .then(() =>
               client.PUT(DRAFT_PATH, {
@@ -326,7 +328,7 @@ export function useServerDraft(args: {
                   body: pending.body,
                   references: toWire(pending.references),
                   deviceId: deviceId(),
-                  baseRevision: revisionRef.current,
+                  baseRevision,
                   ...(parentMessageId ? { parentMessageId } : {}),
                 },
               }),
@@ -365,6 +367,7 @@ export function useServerDraft(args: {
   useEffect(() => {
     if (!loadedRef.current && !text) return;
     failuresRef.current = 0; // new typing re-arms a save that gave up
+    setSaveGaveUp(false);
     const open = conflictRef.current;
     if (open) {
       if (!latestRef.current.body.trim()) {
