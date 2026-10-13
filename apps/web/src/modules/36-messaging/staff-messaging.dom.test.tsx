@@ -1083,7 +1083,7 @@ describe("M36 clinical messenger workspace", () => {
     const originalMatchMedia = window.matchMedia;
     window.matchMedia = vi.fn().mockImplementation(() => ({
       matches: true,
-      media: "(max-width: 760px)",
+      media: "(max-width: 767px)",
       onchange: null,
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),

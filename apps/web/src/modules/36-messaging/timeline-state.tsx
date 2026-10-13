@@ -1,10 +1,13 @@
 // The three non-list states of the message timeline (error with retry, loading, empty), moved out of
 // conversation-thread.tsx unchanged in WP 2.7a to keep that file under the line ceiling.
-import { Button, EmptyState, Glyph, LoadingSpinner } from "@wardenx/ui";
+import { Button, EmptyState, Glyph } from "@wardenx/ui";
 import type { JSX } from "react";
+import { SkeletonRows } from "./skeleton-rows";
 
 interface TimelineStateProps {
   readonly loadError: string | null;
+  /** Quoted next to the failure so support can find the request. */
+  readonly correlationId: string | null;
   /** The list has not been read yet. */
   readonly loading: boolean;
   /** The list was read and holds nothing. */
@@ -15,6 +18,7 @@ interface TimelineStateProps {
 /** The state to show instead of the message list, or null when the list itself should render. */
 export function TimelineState({
   loadError,
+  correlationId,
   loading,
   empty,
   onRetry,
@@ -25,6 +29,7 @@ export function TimelineState({
         <Glyph name="shield" size={24} />
         <strong>Conversation unavailable</strong>
         <span>{loadError}</span>
+        {correlationId ? <small>Reference {correlationId}</small> : null}
         <Button size="sm" tone="secondary" onClick={onRetry}>
           Retry
         </Button>
@@ -32,11 +37,7 @@ export function TimelineState({
     );
   }
   if (loading) {
-    return (
-      <output className="wx-message-state">
-        <LoadingSpinner label="Loading messages" />
-      </output>
-    );
+    return <SkeletonRows label="Loading messages" className="wx-message-state" />;
   }
   if (empty) {
     return (

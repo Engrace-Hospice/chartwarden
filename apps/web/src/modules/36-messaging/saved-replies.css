@@ -127,7 +127,7 @@
   cursor: pointer;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .wx-message-composer > .wx-template-picker {
     grid-column: 2;
     justify-self: start;
@@ -216,7 +216,7 @@
   font-size: 0.75rem;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .wx-saved-reply-row {
     grid-template-columns: minmax(0, 1fr);
   }

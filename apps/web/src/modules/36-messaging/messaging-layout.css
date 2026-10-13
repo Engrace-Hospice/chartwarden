@@ -1,0 +1,37 @@
+/* Page and layout shell. Moved out of staff-messaging.css unchanged (WP 2.11); import order preserves the original cascade. */
+
+.wx-messaging-page {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 38rem;
+  height: calc(100dvh - var(--wx-app-header-height, 4rem));
+  overflow: hidden;
+  background: var(--color-background);
+}
+
+.wx-messaging-page-subtitle {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.875rem;
+}
+
+.wx-messaging-layout {
+  display: grid;
+  grid-template-columns: clamp(20rem, 27vw, 23.5rem) minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  margin: 0 var(--spacing-5, 1.25rem) var(--spacing-5, 1.25rem);
+  overflow: hidden;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+  box-shadow: var(--shadow-ambient);
+}
+
+.wx-messaging-inbox,
+.wx-messaging-thread,
+.wx-messaging-active-pane {
+  min-width: 0;
+  min-height: 0;
+}

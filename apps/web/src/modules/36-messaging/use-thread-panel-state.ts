@@ -3,11 +3,12 @@
 // anything that must survive a switch (the drafts) lives here.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
-
-const NARROW_QUERY = "(max-width: 760px)";
+import { NARROW_MESSAGING_QUERY } from "./messaging-utils";
 
 function isNarrowScreen(): boolean {
-  return typeof window.matchMedia === "function" && window.matchMedia(NARROW_QUERY).matches;
+  return (
+    typeof window.matchMedia === "function" && window.matchMedia(NARROW_MESSAGING_QUERY).matches
+  );
 }
 
 interface PanelStateInput {
@@ -81,7 +82,9 @@ export function useThreadPanelState({ timelineRef, textareaRef, jumpToMessage }:
     const timeline = timelineRef.current;
     if (!timeline || rootId === null) return;
     const query =
-      typeof window.matchMedia === "function" ? window.matchMedia(NARROW_QUERY) : undefined;
+      typeof window.matchMedia === "function"
+        ? window.matchMedia(NARROW_MESSAGING_QUERY)
+        : undefined;
     const apply = (): void => {
       timeline.toggleAttribute("inert", isNarrowScreen());
     };

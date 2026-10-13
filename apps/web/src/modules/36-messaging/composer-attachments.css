@@ -1,0 +1,171 @@
+/* Composer attachments, send hint and mention-add prompt. Moved out of staff-messaging.css unchanged (WP 2.11); import order preserves the original cascade. */
+
+/* WP 1.5 attachments: composer tray + chips, and the file rows inside a message bubble. */
+.wx-attach-button {
+  grid-column: 1;
+  align-self: end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  min-height: 2.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-low);
+  color: var(--color-on-surface-variant);
+  cursor: pointer;
+}
+
+.wx-attach-button:hover:not(:disabled),
+.wx-attach-button:focus-visible {
+  background: var(--color-surface-container);
+  color: var(--color-on-surface);
+}
+
+.wx-attach-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.wx-attachment-tray {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.wx-attachment-chips,
+.wx-message-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wx-attachment-chip,
+.wx-message-attachment {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-low);
+  color: var(--color-on-surface);
+  font-size: 0.75rem;
+}
+
+.wx-attachment-chip.is-failed,
+.wx-attachment-chip.is-reattach,
+.wx-attachment-chip.is-blocked {
+  border-color: var(--color-error-pill-fg);
+}
+
+.wx-attachment-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wx-attachment-size,
+.wx-attachment-state,
+.wx-attachment-note {
+  color: var(--color-on-surface-variant);
+  white-space: nowrap;
+}
+
+.wx-attachment-chip.is-failed .wx-attachment-state,
+.wx-attachment-chip.is-reattach .wx-attachment-state,
+.wx-attachment-chip.is-blocked .wx-attachment-state,
+.wx-attachment-unavailable {
+  color: var(--color-error-pill-fg);
+}
+
+.wx-attachment-unavailable:empty {
+  position: absolute;
+}
+
+.wx-attachment-chip button,
+.wx-attachment-open {
+  min-height: 2rem;
+  min-width: 2rem;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wx-attachment-chip button:focus-visible,
+.wx-attachment-open:focus-visible {
+  outline: 2px solid var(--color-primary);
+}
+
+.wx-attachment-open[aria-disabled="true"] {
+  opacity: 0.5;
+}
+
+/* Inside a sent (primary-coloured) bubble the row keeps its own surface so text contrast holds. */
+.wx-message-attachment {
+  background: var(--color-surface-lowest);
+}
+
+.wx-message-attachment .wx-attachment-open {
+  color: var(--color-primary);
+}
+
+/* WP 1.5 follow-ups: DOM order is label, textarea, chips, attach, send; rows are explicit so it stays put. */
+.wx-message-composer > .wx-attachment-tray {
+  grid-row: 1;
+}
+
+.wx-message-composer > .wx-attach-button,
+.wx-message-composer > textarea,
+.wx-message-composer > .wx-button {
+  grid-row: 2;
+}
+
+.wx-message-composer > .wx-button {
+  grid-column: 3;
+}
+
+.wx-message-composer > small {
+  grid-row: 3;
+}
+
+.wx-send-hint {
+  grid-column: 2;
+  grid-row: 4;
+  color: var(--color-on-surface-variant);
+  font-size: 0.75rem;
+}
+
+.wx-message-composer > .wx-composer-error {
+  grid-row: 5;
+}
+
+/* An empty live region stays mounted but takes no flex slot. */
+.wx-attachment-tray > .wx-composer-error:empty {
+  position: absolute;
+}
+
+/* WP 2.3: the "add to this conversation?" prompt reuses the mention popup surface. */
+.wx-mention-add-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem 0.35rem;
+}
+
+.wx-mention-add .wx-mention-add-actions button {
+  display: inline-flex;
+  width: auto;
+}

@@ -30,7 +30,7 @@ export interface LiveHint {
  * `message.viewed` row per call, the background header only exempts the idle timeout), so the cadence is deliberately
  * slow: a hint or a user action is what normally refreshes the panel, the poll only covers a dropped hint.
  */
-const POLL_INTERVAL_MS = 60_000;
+export const POLL_INTERVAL_MS = 60_000;
 const REALTIME_POLL_INTERVAL_MS = 300_000;
 const MAX_BACKOFF_STEPS = 2;
 

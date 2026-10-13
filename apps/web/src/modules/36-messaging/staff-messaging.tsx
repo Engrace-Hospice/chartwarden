@@ -3,29 +3,45 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useLocation } from "react-router-dom";
 import { useSession } from "../../shell";
+import { AccessEndedNotice } from "./access-ended-notice";
 import { ConversationInbox } from "./conversation-inbox";
 import { ConversationThread } from "./conversation-thread";
 import { DepartmentChannelDialog } from "./department-channel-dialog";
 import type { ChannelSummary, ConversationFilter } from "./messaging-types";
-import { channelKindLabel, channelLabel } from "./messaging-utils";
+import {
+  NARROW_MESSAGING_QUERY,
+  channelKindLabel,
+  channelLabel,
+  correlationIdOf,
+} from "./messaging-utils";
 import { NewConversationDialog } from "./new-conversation-dialog";
+import { RealtimeBanner, useRealtimeDegraded } from "./realtime-banner";
 import { ScheduledMessagesDialog } from "./scheduled-messages-dialog";
 import { useMessagingRealtime } from "./use-messaging-realtime";
-import { type LiveHint, pushLiveHint } from "./use-thread";
-import "./staff-messaging.css";
+import { type LiveHint, POLL_INTERVAL_MS, pushLiveHint } from "./use-thread";
+import "./messaging-layout.css";
+import "./inbox.css";
+import "./thread.css";
+import "./message-list.css";
+import "./patient-context.css";
+import "./composer.css";
+import "./new-conversation.css";
+import "./messaging-responsive.css";
+import "./composer-attachments.css";
 
 const CHANNEL_POLL_INTERVAL_MS = 15_000;
 const MAX_CHANNEL_POLL_INTERVAL_MS = 60_000;
 const REALTIME_CHANNEL_POLL_INTERVAL_MS = 120_000;
 
 function useNarrowMessagingLayout(): boolean {
-  const query = "(max-width: 760px)";
   const [narrow, setNarrow] = useState(() =>
-    typeof window.matchMedia === "function" ? window.matchMedia(query).matches : false,
+    typeof window.matchMedia === "function"
+      ? window.matchMedia(NARROW_MESSAGING_QUERY).matches
+      : false,
   );
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
-    const media = window.matchMedia(query);
+    const media = window.matchMedia(NARROW_MESSAGING_QUERY);
     const update = (): void => setNarrow(media.matches);
     update();
     media.addEventListener("change", update);
@@ -115,6 +131,9 @@ function OrganizationStaffMessaging({
   const [channels, setChannels] = useState<ChannelSummary[] | null>(null);
   const channelsRef = useRef<ChannelSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorCorrelationId, setErrorCorrelationId] = useState<string | null>(null);
+  // WP 2.11: set when the open conversation was revoked, so the pane says so (never the title); cleared on the next pick.
+  const [accessEnded, setAccessEnded] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [newConversationOpen, setNewConversationOpen] = useState(false);
   const [departmentOpen, setDepartmentOpen] = useState(false);
@@ -138,6 +157,7 @@ function OrganizationStaffMessaging({
             setError(
               "Secure Messaging could not refresh. Your existing view has not been replaced.",
             );
+            setErrorCorrelationId(correlationIdOf(loadError));
             if (!background && channelsRef.current === null) setChannels(null);
             return false;
           }
@@ -151,6 +171,7 @@ function OrganizationStaffMessaging({
           channelsRef.current = list;
           setChannels(list);
           setError(null);
+          setErrorCorrelationId(null);
           setActiveId((current) => {
             if (current && list.some((channel) => channel.channelId === current)) return current;
             if (
@@ -193,6 +214,10 @@ function OrganizationStaffMessaging({
   // WP 2.2: which message the last hint named (and its parent), so an open thread panel reads only when concerned.
   const [liveHint, setLiveHint] = useState<LiveHint | null>(null);
   const activeIdRef = useRef<string | null>(null);
+  // Any way of landing on a conversation (pick, new conversation, deep link, auto-select) ends the notice.
+  useEffect(() => {
+    if (activeId !== null) setAccessEnded(false);
+  }, [activeId]);
   activeIdRef.current = activeId;
   const refreshFromHint = useCallback(async (): Promise<void> => {
     const generation = generationRef.current;
@@ -220,6 +245,7 @@ function OrganizationStaffMessaging({
       setLiveHint((previous) => pushLiveHint(previous, null, null));
     }, [refreshFromHint]),
   );
+  const realtimeDegraded = useRealtimeDegraded(realtimeConnected);
 
   useEffect(() => {
     let timer: number | undefined;
@@ -290,6 +316,7 @@ function OrganizationStaffMessaging({
       channelsRef.current = next;
       return next;
     });
+    if (activeIdRef.current === channelId) setAccessEnded(true);
     setActiveId((current) => (current === channelId ? null : current));
   }, []);
 
@@ -351,6 +378,8 @@ function OrganizationStaffMessaging({
         />
       ) : null}
 
+      <RealtimeBanner degraded={realtimeDegraded} refreshSeconds={POLL_INTERVAL_MS / 1000} />
+
       <main className={`wx-messaging-layout ${activeChannel ? "has-active-thread" : ""}`}>
         <ConversationInbox
           channels={channels}
@@ -359,6 +388,7 @@ function OrganizationStaffMessaging({
           query={query}
           filter={filter}
           error={error}
+          errorCorrelationId={errorCorrelationId}
           onQueryChange={setQuery}
           onFilterChange={setFilter}
           onSelect={setActiveId}
@@ -389,10 +419,14 @@ function OrganizationStaffMessaging({
             />
           ) : (
             <div className="wx-messaging-no-selection">
-              <EmptyState
-                title="Select a conversation"
-                description="Choose a secure conversation from the inbox to view its messages."
-              />
+              {accessEnded ? (
+                <AccessEndedNotice />
+              ) : (
+                <EmptyState
+                  title="Select a conversation"
+                  description="Choose a secure conversation from the inbox to view its messages."
+                />
+              )}
             </div>
           )}
         </div>

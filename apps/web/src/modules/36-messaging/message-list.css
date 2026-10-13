@@ -1,0 +1,167 @@
+/* Timeline messages: load-older, day dividers, rows, bubbles, rich body. Moved out of staff-messaging.css unchanged (WP 2.11); import order preserves the original cascade. */
+
+.wx-load-older {
+  display: block;
+  margin: 0 auto 1rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-lowest);
+  color: var(--color-primary);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wx-history-start,
+.wx-system-message {
+  display: block;
+  margin: 0 auto 0.75rem;
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+  text-align: center;
+}
+
+.wx-message-day {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1rem 0;
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.wx-message-day::before,
+.wx-message-day::after {
+  flex: 1;
+  height: 1px;
+  background: var(--color-card-border);
+  content: "";
+}
+
+.wx-message-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+
+.wx-message-row.is-grouped {
+  margin-top: 0.2rem;
+}
+
+.wx-message-row.is-mine {
+  justify-content: flex-end;
+}
+
+.wx-message-avatar,
+.wx-message-avatar-spacer {
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.6rem;
+}
+
+.wx-message-copy {
+  display: grid;
+  max-width: min(72%, 42rem);
+  gap: 0.2rem;
+}
+
+.wx-message-copy > strong {
+  color: var(--color-on-surface-variant);
+  font-size: 0.6875rem;
+}
+
+.wx-message-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 1rem 1rem 1rem 0.25rem;
+  background: var(--color-surface-lowest);
+  color: var(--color-on-surface);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-on-surface) 8%, transparent);
+}
+
+.wx-message-row.is-mine .wx-message-bubble {
+  border-radius: 1rem 1rem 0.25rem 1rem;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+.wx-message-bubble > span {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+/* WP 2.1: the structured body (RichBodyView). Block flow, not pre-wrap: the document owns its line breaks. */
+.wx-rich-body {
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.wx-rich-body > * + * {
+  margin-top: 0.35rem;
+}
+
+.wx-rich-fallback {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.wx-link-destination {
+  opacity: 0.85;
+  font-size: 0.8em;
+}
+
+.wx-rich-p,
+.wx-rich-list {
+  margin: 0;
+}
+
+.wx-rich-list {
+  padding-left: 1.25rem;
+}
+
+.wx-rich-body code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.8125rem;
+  padding: 0 0.2rem;
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.wx-rich-code {
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  overflow-x: auto;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.wx-rich-code code {
+  padding: 0;
+  background: none;
+  white-space: pre;
+}
+
+.wx-rich-body a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.wx-message-bubble time {
+  align-self: flex-end;
+  color: var(--color-muted);
+  font-size: 0.625rem;
+}
+
+.wx-message-row.is-mine .wx-message-bubble time {
+  color: color-mix(in srgb, var(--color-on-primary) 78%, transparent);
+}

@@ -151,7 +151,7 @@
   outline-offset: 2px;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   /* Narrow screens: the panel slides over the timeline, like the patient-context pane. */
   .wx-thread-panel {
     position: absolute;

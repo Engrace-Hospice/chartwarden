@@ -1,7 +1,7 @@
 // The conversation header and the patient-context pane of ConversationThread (moved out of it unchanged in WP 2.2 to
 // keep that file under the line ceiling).
 import { Glyph } from "@wardenx/ui";
-import type { JSX } from "react";
+import { type JSX, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import type { ChannelSummary, PatientHeaderInfo } from "./messaging-types";
 import { initialsOf } from "./messaging-utils";
@@ -70,6 +70,9 @@ export function ThreadHeader({
   );
 }
 
+/** Below 1280 px the patient context overlays the conversation (06-ux-design §1). Keep in step with messaging-responsive.css. */
+const OVERLAY_CONTEXT_QUERY = "(max-width: 1279px)";
+
 export function PatientContextAside({
   patient,
   onClose,
@@ -77,15 +80,30 @@ export function PatientContextAside({
   patient: PatientHeaderInfo;
   onClose: () => void;
 }): JSX.Element {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  // WP 2.11: opened by the user, so it takes focus (it is a slide-over / sheet below 1280 px) and hands it back on close.
+  useEffect(() => {
+    const opener = document.activeElement;
+    // Docked (>= 1280 px) it is a column beside the conversation, not an overlay: leave focus on the toggle.
+    const overlay =
+      typeof window.matchMedia !== "function" || window.matchMedia(OVERLAY_CONTEXT_QUERY).matches;
+    if (overlay) closeRef.current?.focus();
+    return () => {
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
+    };
+  }, []);
   return (
     <aside
       id="messaging-patient-context"
       className="wx-messaging-patient-context"
       aria-label="Patient context"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") onClose();
+      }}
     >
       <header>
         <strong>Patient context</strong>
-        <button type="button" onClick={onClose} aria-label="Close patient context">
+        <button ref={closeRef} type="button" onClick={onClose} aria-label="Close patient context">
           <Glyph name="close" size={17} />
         </button>
       </header>

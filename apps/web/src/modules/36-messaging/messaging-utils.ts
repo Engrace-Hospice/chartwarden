@@ -124,3 +124,16 @@ export function isAccessError(error: unknown): boolean {
     serialized.includes("not found")
   );
 }
+
+/** WP 2.11: below 768 px the workspace is one pane at a time (06-ux-design §1). Keep in step with the 767px blocks in
+ * messaging-responsive.css. */
+export const NARROW_MESSAGING_QUERY = "(max-width: 767px)";
+
+/** WP 2.11: the correlation id of a failed API call (flat or nested error envelope), so a load-failed state can quote it
+ * for support. Null when the response carried none. */
+export function correlationIdOf(error: unknown): string | null {
+  if (typeof error !== "object" || error === null) return null;
+  const record = error as { correlationId?: unknown; error?: unknown };
+  if (typeof record.correlationId === "string" && record.correlationId) return record.correlationId;
+  return record.error !== undefined ? correlationIdOf(record.error) : null;
+}
