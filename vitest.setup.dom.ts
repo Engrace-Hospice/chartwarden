@@ -50,21 +50,43 @@ if (typeof UndiciRequest === "function") {
 // Node's experimental Web Storage defines a global `localStorage` that vitest's jsdom environment will not overwrite,
 // and without a `--localstorage-file` it is a stub with no methods (`window.localStorage.clear is not a function`).
 // An in-memory Storage is a faithful stand-in: jsdom's own localStorage is also per-test-process memory.
-function createMemoryStorage(): Storage {
-  const data = new Map<string, string>();
-  return {
-    get length() {
-      return data.size;
+// The methods live on `Storage.prototype` (as in a browser), so tests that `vi.spyOn(Storage.prototype, "setItem")` to
+// simulate blocked storage reach this stub too.
+const memoryData = new WeakMap<object, Map<string, string>>();
+const dataOf = (self: object): Map<string, string> => {
+  let data = memoryData.get(self);
+  if (!data) memoryData.set(self, (data = new Map()));
+  return data;
+};
+function installMemoryStorage(): Storage {
+  const proto = globalThis.Storage.prototype as unknown as Record<string, unknown>;
+  Object.assign(proto, {
+    clear() {
+      dataOf(this).clear();
     },
-    clear: () => data.clear(),
-    getItem: (key) => data.get(String(key)) ?? null,
-    key: (index) => [...data.keys()][index] ?? null,
-    removeItem: (key) => void data.delete(String(key)),
-    setItem: (key, value) => void data.set(String(key), String(value)),
-  };
+    getItem(key: string) {
+      return dataOf(this).get(String(key)) ?? null;
+    },
+    key(index: number) {
+      return [...dataOf(this).keys()][index] ?? null;
+    },
+    removeItem(key: string) {
+      dataOf(this).delete(String(key));
+    },
+    setItem(key: string, value: string) {
+      dataOf(this).set(String(key), String(value));
+    },
+  });
+  Object.defineProperty(proto, "length", {
+    configurable: true,
+    get(this: object) {
+      return dataOf(this).size;
+    },
+  });
+  return Object.create(globalThis.Storage.prototype) as Storage;
 }
 if (typeof window !== "undefined" && typeof window.localStorage?.clear !== "function") {
-  const storage = createMemoryStorage();
+  const storage = installMemoryStorage();
   Object.defineProperty(window, "localStorage", { value: storage, configurable: true });
   Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
 }
