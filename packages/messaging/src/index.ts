@@ -135,6 +135,24 @@ export type {
 } from "./interfaces/provider";
 export type { AlertEmitter, RecipientResolver } from "./interfaces/alert-emitter";
 export type { MessageReactionPinService } from "./interfaces/reaction-pin";
+export {
+  SEARCH_DEFAULT_PAGE_SIZE,
+  SEARCH_MAX_PAGE_SIZE,
+  SEARCH_MAX_QUERY_LENGTH,
+  SEARCH_MAX_SCAN_PER_REQUEST,
+  SEARCH_MAX_TERMS,
+  SEARCH_MIN_QUERY_LENGTH,
+  assertSearchHasCriteria,
+  bodyMatchesTerms,
+  normalizeSearchText,
+  parseSearchQuery,
+  searchPageSize,
+} from "./search/message-search";
+export type {
+  MessageSearchInput,
+  MessageSearchResult,
+  MessageSearchService,
+} from "./search/message-search";
 
 // ── M36-T07 route-facing application service (§4.1–4.2) — the surface the REST inventory uses ─
 export type {

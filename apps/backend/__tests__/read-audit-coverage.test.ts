@@ -14,6 +14,7 @@ import {
   ReadAuditCoverageError,
   applyReadAuditCoverage,
   isGovernedReadRoute,
+  listAuditFilter,
 } from "../src/bootstrap/plugins/read-audit";
 import type { M26RouteServices } from "../src/modules/26-cap/routes/index";
 import { mountM26Routes } from "../src/modules/26-cap/routes/mount";
@@ -46,6 +47,20 @@ describe("isGovernedReadRoute", () => {
     expect(isGovernedReadRoute("GET", "/health", PREFIXES)).toBe(false);
     // a prefix must match a path segment boundary, not a string prefix of another resource
     expect(isGovernedReadRoute("GET", "/api/v1/patients-archive", PREFIXES)).toBe(false);
+  });
+});
+
+describe("listAuditFilter (WP 2.7a: a search term is content, never audit metadata)", () => {
+  it("keeps the query shape but replaces the omitted keys' values", () => {
+    expect(listAuditFilter({ q: "morphine", limit: "20", hasAttachment: "true" }, ["q"])).toEqual({
+      q: "[omitted]",
+      limit: "20",
+      hasAttachment: "true",
+    });
+  });
+  it("passes the query through untouched when nothing is omitted", () => {
+    expect(listAuditFilter({ limit: "5" }, undefined)).toEqual({ limit: "5" });
+    expect(listAuditFilter(undefined, ["q"])).toBeUndefined();
   });
 });
 

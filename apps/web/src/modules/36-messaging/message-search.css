@@ -1,0 +1,199 @@
+/* WP 2.7a in-conversation search: a slim trigger row under the conversation header, and a flat panel (no modal) with
+   the query, the filters and a keyboard-navigable result list. Token-driven, same quiet pattern as the pinned bar. */
+
+.wx-msg-search {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--color-card-border);
+  background: var(--color-surface-lowest);
+}
+
+.wx-msg-search-trigger {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.2rem 1rem;
+  padding: 0.15rem 0.6rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: 999px;
+  background: var(--color-surface-lowest);
+  color: var(--color-on-surface-variant);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.wx-msg-search-trigger:hover,
+.wx-msg-search-trigger[aria-expanded="true"] {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.wx-msg-search-trigger:focus-visible,
+.wx-msg-search-close:focus-visible,
+.wx-msg-search-input:focus-visible,
+.wx-msg-search-results button:focus-visible,
+.wx-msg-search-filters select:focus-visible,
+.wx-msg-search-filters input:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.wx-msg-search-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem 0.75rem;
+  max-height: min(24rem, 50vh);
+  overflow-y: auto;
+  font-size: 0.8125rem;
+  color: var(--color-on-surface);
+}
+
+.wx-msg-search-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.wx-msg-search-input {
+  flex: 1;
+  min-height: 2rem;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-lowest);
+  color: inherit;
+  font: inherit;
+}
+
+.wx-msg-search-close {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-on-surface-variant);
+  cursor: pointer;
+}
+
+.wx-msg-search-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.75rem;
+  color: var(--color-on-surface-variant);
+}
+
+.wx-msg-search-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.7rem;
+}
+
+.wx-msg-search-filters .wx-msg-search-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+}
+
+.wx-msg-search-filters select,
+.wx-msg-search-filters input[type="date"] {
+  min-height: 1.75rem;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-lowest);
+  color: var(--color-on-surface);
+  font: inherit;
+  font-size: 0.8125rem;
+}
+
+.wx-msg-search-status p,
+.wx-msg-search-more p {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+}
+
+.wx-msg-search-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-md);
+  color: var(--color-error-pill-fg);
+}
+
+.wx-msg-search-results {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.wx-msg-search-results li + li {
+  border-top: 1px solid var(--color-card-border);
+}
+
+.wx-msg-search-results button {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  width: 100%;
+  padding: 0.45rem 0.4rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wx-msg-search-results button:hover {
+  background: var(--color-surface-low);
+}
+
+.wx-msg-search-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.wx-msg-search-meta time {
+  color: var(--color-on-surface-variant);
+  font-size: 0.7rem;
+}
+
+.wx-msg-search-snippet {
+  color: var(--color-on-surface-variant);
+  overflow-wrap: anywhere;
+}
+
+.wx-msg-search-snippet mark {
+  padding: 0 0.1rem;
+  border-radius: 2px;
+  background: var(--color-primary-tint);
+  color: var(--color-on-surface);
+}
+
+.wx-msg-search-more {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+@media (max-width: 640px) {
+  .wx-msg-search-panel {
+    max-height: 60vh;
+  }
+}

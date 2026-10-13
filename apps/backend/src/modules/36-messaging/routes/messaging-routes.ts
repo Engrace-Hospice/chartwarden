@@ -63,6 +63,7 @@ import {
   parse,
 } from "./messaging-typebox";
 import { registerReactionPinRoutes } from "./reaction-pin-routes";
+import { registerMessageSearchRoutes } from "./search-routes";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -283,6 +284,15 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
 
   // --- WP 2.4: reactions and pins (own file; the channel's guards, no sign-off affordance) ---------
   registerReactionPinRoutes(app, service, {
+    read: READ,
+    send: SEND,
+    viewChannel: VIEW_CHANNEL,
+    sendToChannel: SEND_TO_CHANNEL,
+    announcementOnly: announceGuard,
+  });
+
+  // --- WP 2.7a: in-conversation search (own file; the channel's guards, read-audited) -------------
+  registerMessageSearchRoutes(app, service, {
     read: READ,
     send: SEND,
     viewChannel: VIEW_CHANNEL,

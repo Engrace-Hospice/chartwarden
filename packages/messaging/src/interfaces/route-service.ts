@@ -18,6 +18,7 @@
 import type { RichBody } from "@wardenx/types";
 import type { MemberAdminActor } from "../member-admin";
 import type { QuietHoursConfig, RoutingMap } from "../resolution";
+import type { MessageSearchService } from "../search/message-search";
 import type {
   AlertCategory,
   AlertRecipientResolver,
@@ -178,7 +179,7 @@ export interface MentionCandidate {
  * M1 error handler renders (NOT_FOUND 404, CHANNEL_ARCHIVED 410, CHANNEL_NOT_VISIBLE 403,
  * SYSTEM_LOCKED 403, INVALID_RESOLVER 422, INVALID_ROUTING_MAP 422, VACATION_FORWARD_* 409).
  */
-export interface MessagingRouteService extends MessageReactionPinService {
+export interface MessagingRouteService extends MessageReactionPinService, MessageSearchService {
   // ── channels & messages (§4.2) ──────────────────────────────────────────────────────────
   /** Channels the user is an active member of (§4.2 GET /channels). */
   listChannels(orgId: string, userId: string): Promise<ChannelSummary[]>;

@@ -1299,6 +1299,10 @@ import {
   PinResponseSchema as M36PinResponseSchema,
   SetReactionResponseSchema as M36SetReactionResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/reaction-pin-typebox";
+import {
+  SearchMessagesQuerySchema as M36SearchMessagesQuerySchema,
+  SearchMessagesResponseSchema as M36SearchMessagesResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/search-typebox";
 // M36 WP 2.8 message templates & saved replies.
 import {
   CreateTemplateBodySchema as M36CreateTemplateBodySchema,
@@ -8981,6 +8985,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/messaging/channels/:id/pins": {
     summary: "The channel's pinned messages, most recently pinned first (read-audited)",
     response: M36PinListResponseSchema,
+  },
+  "GET /api/v1/messaging/channels/:id/search": {
+    summary:
+      "Search ONE channel's live messages (WP 2.7a, option A: decrypt-and-filter, no index; scans at most 5000 bodies per request and returns a continuation cursor; read-audited without the query text; 404 non-member, 410 archived, 422 bad query)",
+    query: M36SearchMessagesQuerySchema,
+    response: M36SearchMessagesResponseSchema,
   },
   "GET /api/v1/messaging/channels/:id/draft": {
     summary:

@@ -41,6 +41,11 @@ export interface RouteReadAuditEmit {
    * event (count + filter) via `auditListRead`, not one `<kind>.viewed` per row (§3.4).
    */
   readonly list?: boolean;
+  /**
+   * Query-string keys whose VALUES must not reach the audit row (a free-text search term is message content, not
+   * metadata). The key stays, with its value replaced, so the row still shows that the filter was used.
+   */
+  readonly filterOmit?: readonly string[];
 }
 
 /** An explicit, justified waiver: the route surfaces no accountable PHI (e.g. aggregate counts). */

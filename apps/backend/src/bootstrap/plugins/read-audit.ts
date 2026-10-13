@@ -114,6 +114,19 @@ function resolvePatientId(
   return undefined;
 }
 
+const OMITTED_FILTER_VALUE = "[omitted]";
+
+/** The query as recorded on a list-read audit row: `omit`ted keys keep their name but lose their value. */
+export function listAuditFilter(
+  query: unknown,
+  omit: readonly string[] | undefined,
+): Record<string, unknown> | undefined {
+  if (!query || typeof query !== "object") return undefined;
+  const filter = { ...(query as Record<string, unknown>) };
+  for (const key of omit ?? []) if (key in filter) filter[key] = OMITTED_FILTER_VALUE;
+  return filter;
+}
+
 /** Row count for a list read — an `items` array (cursor-page convention), a bare array, or the first array property. */
 function rowCount(payload: unknown): number {
   if (Array.isArray(payload)) return payload.length;
@@ -196,7 +209,14 @@ export function applyReadAuditCoverage(
             await auditListRead(tx, auditCtx, {
               resourceKind: cfg.resourceKind,
               count: rowCount(payload),
-              filter: request.query as Record<string, unknown> | undefined,
+              // A list scoped by a path param (one channel's search) records that param in the filter, since a
+              // list event carries no resource id of its own.
+              filter: {
+                ...listAuditFilter(request.query, cfg.filterOmit),
+                ...(cfg.resourceIdParam && params[cfg.resourceIdParam]
+                  ? { [cfg.resourceIdParam]: params[cfg.resourceIdParam] }
+                  : {}),
+              },
               patientId,
             });
           } else {
