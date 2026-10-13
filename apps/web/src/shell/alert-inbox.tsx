@@ -35,9 +35,13 @@ interface AlertInboxContextValue {
 
 const AlertInboxContext = createContext<AlertInboxContextValue | null>(null);
 
-/** A deep link is data, never an instruction to leave the authenticated SPA. */
+/**
+ * A deep link is data, never an instruction to leave the authenticated SPA. Browsers delete tab/CR/LF anywhere in a
+ * URL and read "\" as "/", so "/\x" and "/<TAB>/x" both mean "//x" (off-origin): strip, then require a single "/"
+ * not followed by another "/" or "\".
+ */
 export function isInternalAlertDeepLink(deepLink: string | null): deepLink is string {
-  return deepLink !== null && /^\/(?!\/)/.test(deepLink);
+  return deepLink !== null && /^\/(?![/\\])/.test(deepLink.replace(/[\t\r\n]/g, ""));
 }
 
 export function AlertInboxProvider({ children }: { children: ReactNode }): JSX.Element {

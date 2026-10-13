@@ -3,7 +3,12 @@ import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import type { JSX } from "react";
 import type { NavigateFunction } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
-import { type AlertInboxItem, AlertInboxProvider, useAlertInbox } from "./alert-inbox";
+import {
+  type AlertInboxItem,
+  AlertInboxProvider,
+  isInternalAlertDeepLink,
+  useAlertInbox,
+} from "./alert-inbox";
 import { type Session, SessionProvider } from "./session";
 
 const session: Session = {
@@ -176,5 +181,31 @@ describe("shared alert inbox freshness", () => {
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     await waitFor(() => expect(api.GET).toHaveBeenCalledTimes(2));
     expect(screen.getByLabelText("alert count").textContent).toBe("1");
+  });
+});
+
+describe("isInternalAlertDeepLink", () => {
+  it.each(["/", "/ok/path", "/patients/p-1?tab=emar"])("accepts same-origin path %j", (link) => {
+    expect(isInternalAlertDeepLink(link)).toBe(true);
+  });
+
+  // Browsers read "/\\x" as "//x" and drop tab/CR/LF, so each of these is a protocol-relative (off-origin) URL.
+  it.each([
+    "//evil.example",
+    "/\\evil.example",
+    "/\t/evil.example",
+    "/\n/evil.example",
+    "/\r/evil.example",
+    "/\t\\evil.example",
+    "\t//evil.example",
+    "\u0000//evil.example",
+    " //evil.example",
+    "https://evil.example",
+    "javascript:alert(1)",
+    "evil",
+    "",
+    null,
+  ])("rejects %j", (link) => {
+    expect(isInternalAlertDeepLink(link)).toBe(false);
   });
 });

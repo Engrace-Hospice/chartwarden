@@ -10,6 +10,7 @@
 // A failed save never touches the composer; `saveFailed` only drives a small status line and clears on the next success.
 import { useApiClient } from "@wardenx/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { currentSessionIdentity } from "../../shell/session";
 import type { MessageReferenceInput } from "./messaging-types";
 
 export const DRAFT_SAVE_DEBOUNCE_MS = 1500;
@@ -268,6 +269,9 @@ export function useServerDraft(args: {
   // Open / switch: forget the previous composer's bookkeeping, then restore this one's draft.
   // biome-ignore lint/correctness/useExhaustiveDependencies: channelId/parentMessageId ARE the reset triggers (readServer and save already close over them)
   useEffect(() => {
+    // The identity this slot was opened under. The shared client sends as whoever is signed in NOW, so a flush that
+    // outlives an identity change must not be sent: it would land in the new user's draft slot.
+    const slotIdentity = currentSessionIdentity();
     const generation = ++generationRef.current;
     revisionRef.current = 0;
     syncedKeyRef.current = null;
@@ -316,6 +320,7 @@ export function useServerDraft(args: {
           pending?.body.trim() &&
           loadedRef.current &&
           !suspendedRef.current &&
+          slotIdentity === currentSessionIdentity() && // never write a draft under a different identity
           keyOf(pending) !== syncedKeyRef.current
         ) {
           // Read now: the next slot's effect resets revisionRef synchronously right after this cleanup.

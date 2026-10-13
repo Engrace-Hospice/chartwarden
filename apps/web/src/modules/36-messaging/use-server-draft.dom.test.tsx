@@ -14,6 +14,7 @@ import {
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { type Session, SessionProvider } from "../../shell/session";
 import { DraftConflictPrompt, escapeKeepsMine } from "./draft-conflict-prompt";
 import type { MessageReferenceInput } from "./messaging-types";
 import {
@@ -67,9 +68,19 @@ interface HookProps {
   suspended?: boolean;
 }
 
+/** The session the wrapper provides; a test swaps it to model an in-page identity change. */
+let sessionNow: Session | null = null;
+const sessionOf = (userId: string): Session => ({
+  userId,
+  organizationId: "org-1",
+  organizationName: "Org",
+});
+
 function setup(api: ReturnType<typeof makeApi>, initialText = "") {
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <ApiClientProvider client={api as unknown as ApiClient}>{children}</ApiClientProvider>
+    <ApiClientProvider client={api as unknown as ApiClient}>
+      <SessionProvider session={sessionNow}>{children}</SessionProvider>
+    </ApiClientProvider>
   );
   const hydrate = vi.fn();
   const view = renderHook<ReturnType<typeof useServerDraft>, HookProps>(
@@ -95,7 +106,10 @@ const tick = (ms: number) =>
     await vi.advanceTimersByTimeAsync(ms);
   });
 
-beforeEach(() => vi.useFakeTimers());
+beforeEach(() => {
+  sessionNow = null;
+  vi.useFakeTimers();
+});
 afterEach(() => vi.useRealTimers());
 
 describe("mergeDraftBodies", () => {
@@ -336,6 +350,31 @@ describe("useServerDraft review fixes (Tranche B)", () => {
     await flush();
     view.rerender({ text: "typed" });
     view.rerender({ text: "typed", suspended: true });
+    view.unmount();
+    await flush();
+    expect(api.PUT).not.toHaveBeenCalled();
+  });
+
+  it("I1: the unmount flush is sent when the identity is unchanged (control)", async () => {
+    sessionNow = sessionOf("user-a");
+    const api = makeApi();
+    const { view } = setup(api, "");
+    await flush();
+    view.rerender({ text: "typed" });
+    view.unmount();
+    await flush();
+    expect(api.PUT).toHaveBeenCalledTimes(1);
+  });
+
+  it("I2: the unmount flush is skipped when the session identity changed since the text was typed", async () => {
+    sessionNow = sessionOf("user-a");
+    const api = makeApi();
+    const { view } = setup(api, "");
+    await flush();
+    view.rerender({ text: "user A private text" });
+    sessionNow = sessionOf("user-b"); // swapped in-page: the shared client would now send as user B
+    view.rerender({ text: "", parent: "root-1" }); // leaves A's slot; the next composer is empty
+    await flush();
     view.unmount();
     await flush();
     expect(api.PUT).not.toHaveBeenCalled();
