@@ -116,9 +116,10 @@ describe("m36.message-search-indexer consumer", () => {
 describe("wiring (bound is not computing: the factories are reachable from index.ts)", () => {
   const indexSource = readFileSync(join(__dirname, "../src/index.ts"), "utf8");
 
-  it("index.ts calls registerM36GlobalSearch once, with the unavailable key provider, and binds its consumer", () => {
+  it("index.ts calls registerM36GlobalSearch once, with the ring key provider (fail closed while no ring is bound), and binds its consumer", () => {
     expect(indexSource.match(/registerM36GlobalSearch\(/g)).toHaveLength(1);
-    expect(indexSource).toContain("keys: createUnavailableSearchKeyProvider()");
+    expect(indexSource).toContain("createRingSearchKeyProvider(() => sharedRingDekCache())");
+    expect(indexSource).toContain("keys: m36SearchKeys,");
     expect(indexSource).toContain("m36GlobalSearch.consumer");
   });
 
