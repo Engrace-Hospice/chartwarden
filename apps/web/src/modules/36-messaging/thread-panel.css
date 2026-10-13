@@ -88,6 +88,7 @@
   gap: 0.25rem;
   align-self: flex-start;
   margin-bottom: 0.15rem;
+  min-height: 1.5rem; /* WCAG 2.5.8: at least 24px */
   padding: 0;
   border: 0;
   background: transparent;
@@ -114,6 +115,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
+  min-height: 1.5rem; /* WCAG 2.5.8: at least 24px */
   padding: 0.1rem 0;
   border: 0;
   background: transparent;
