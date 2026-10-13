@@ -696,6 +696,10 @@ import {
   TransitionCapabilityBody as M32TransitionCapabilityBody,
   TriageHallucinationReportBody as M32TriageHallucinationReportBody,
 } from "../../apps/backend/src/modules/32-ai-platform/routes/m32-typebox";
+import {
+  PresenceHeartbeatBodySchema as M36PresenceHeartbeatBodySchema,
+  PresenceResponseSchema as M36PresenceResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/presence-typebox";
 import { SearchQuerySchema as TerminologySearchQuerySchema } from "../../apps/backend/src/modules/38-terminology/routes/terminology-typebox";
 import {
   GriefResourceBodySchema as M40GriefResourceBody,
@@ -8813,7 +8817,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34TenantStatusAckSchema,
   },
   "GET /api/v1/platform/tenants/:orgSlug/provision-status": {
-    summary: "A tenant's lifecycle status next to its tenant.provision job state (queued/running/failed/…)",
+    summary:
+      "A tenant's lifecycle status next to its tenant.provision job state (queued/running/failed/…)",
     response: M34ProvisionStatusViewSchema,
   },
   "POST /api/v1/platform/tenants/:orgSlug/provision/retry": {
@@ -9044,6 +9049,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Close a poll (WP 2.10; the poll's author or a channel manager, else 403; idempotent; closed polls reject votes)",
     response: M36PollResultResponseSchema,
+  },
+  // WP 2.12 presence/typing (ephemeral, Valkey, never persisted; tenant flag messaging.presence_enabled, default off)
+  "POST /api/v1/messaging/channels/:id/presence": {
+    summary:
+      "Heartbeat / typing marker for the caller in a channel (ephemeral ids with a short TTL, never stored in Postgres; at most one write per 3 s per user per channel, extra calls are 204 no-ops; 403 PRESENCE_DISABLED when the tenant flag is off, and the channel guard's refusal for a non-member, removed member or other tenant)",
+    body: M36PresenceHeartbeatBodySchema,
+  },
+  "GET /api/v1/messaging/channels/:id/presence": {
+    summary:
+      "Ids of channel members currently present / typing (poll; ids only, no names; 403 PRESENCE_DISABLED when the tenant flag is off; a non-member gets what a random channel id gets)",
+    response: M36PresenceResponseSchema,
   },
   "GET /api/v1/messaging/search": {
     summary:
