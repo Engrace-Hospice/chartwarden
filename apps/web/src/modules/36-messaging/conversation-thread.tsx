@@ -6,9 +6,8 @@ import {
   LoadingSpinner,
   useApiClient,
 } from "@wardenx/ui";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
-import { Link } from "react-router-dom";
 import { AttachButton, AttachmentChips } from "./attachment-composer";
 import { sendBlockedReason } from "./attachment-utils";
 import { applyTextEdit, detectMac, formatShortcutMarker, toggleWrap } from "./composer-format";
@@ -30,15 +29,19 @@ import {
   initialsOf,
   mergeMessages,
 } from "./messaging-utils";
+import { PatientContextAside, ThreadHeader } from "./thread-header";
+import { ThreadPanel } from "./thread-panel";
 import { useAttachmentUploads } from "./use-attachment-upload";
+import { INITIAL_READ_VIEW, type ReadView, useJumpToMessage } from "./use-jump-to-message";
+import { useLatestPolling } from "./use-latest-polling";
 import { sentMessageRow, useMessageSender } from "./use-message-sender";
 import type { SentMessage } from "./use-message-sender";
+import { usePatientHeader } from "./use-patient-header";
 import { useScanningRefresh } from "./use-scanning-refresh";
+import type { LiveHint } from "./use-thread";
+import { useThreadPanelState } from "./use-thread-panel-state";
 
 const MESSAGE_PAGE_SIZE = 50;
-const POLL_INTERVAL_MS = 15_000;
-const MAX_POLL_INTERVAL_MS = 60_000;
-const REALTIME_POLL_INTERVAL_MS = 120_000;
 
 function isAccessError(error: unknown): boolean {
   const serialized = JSON.stringify(error ?? "").toLowerCase();
@@ -62,6 +65,8 @@ export interface ConversationThreadProps {
   liveToken?: number;
   /** While the socket is up, polling is only a safety net and runs slowly. */
   realtimeConnected?: boolean;
+  /** WP 2.2: what the latest realtime hint said changed, so an open thread panel refreshes only when it is concerned. */
+  liveHint?: LiveHint | null;
 }
 
 export function ConversationThread({
@@ -75,6 +80,7 @@ export function ConversationThread({
   anchorMessageId = null,
   liveToken = 0,
   realtimeConnected = false,
+  liveHint = null,
 }: ConversationThreadProps): JSX.Element {
   const client = useApiClient();
   const [messages, setMessages] = useState<Message[] | null>(null);
@@ -91,11 +97,11 @@ export function ConversationThread({
   const [mentionError, setMentionError] = useState(false);
   const [mentionRetry, setMentionRetry] = useState(0);
   const [mentionIndex, setMentionIndex] = useState(0);
-  const [patient, setPatient] = useState<PatientHeaderInfo | null>(null);
   const [contextOpen, setContextOpen] = useState(false);
   const timelineRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<Message[] | null>(null);
   const generationRef = useRef(0);
+  const [patient, setPatient] = usePatientHeader(channel, generationRef);
   const latestInFlight = useRef(false);
   const handledAnchor = useRef(anchorMessageId);
   // A hint that lands while a read is in flight may postdate that read: read once more when it settles.
@@ -117,12 +123,36 @@ export function ConversationThread({
   const meIdRef = useRef(meId);
   const onReadConfirmedRef = useRef(onReadConfirmed);
   const onAccessRevokedRef = useRef(onAccessRevoked);
+  // The route anchor follows ONLY its own prop: "Back to latest" clears the mirror, and a re-render with new callback
+  // identities must not write the old anchor back.
   useEffect(() => {
     anchorRef.current = anchorMessageId;
+  }, [anchorMessageId]);
+  useEffect(() => {
     meIdRef.current = meId;
     onReadConfirmedRef.current = onReadConfirmed;
     onAccessRevokedRef.current = onAccessRevoked;
-  }, [anchorMessageId, meId, onReadConfirmed, onAccessRevoked]);
+  }, [meId, onReadConfirmed, onAccessRevoked]);
+
+  // WP 2.2 jump-to-parent (and "Back to latest" after an anchored page): see use-jump-to-message.ts.
+  const readViewRef = useRef<ReadView>(INITIAL_READ_VIEW);
+  const jumpedRef = useRef(false);
+  const jump = useJumpToMessage({
+    timelineRef,
+    messages,
+    routeAnchorRef: anchorRef,
+    initialScrollPending,
+    nearBottomRef,
+    viewRef: readViewRef,
+    jumpedRef,
+  });
+  const { reset: jumpReset, anchorGone, routeAnchorChanged } = jump;
+  const panel = useThreadPanelState({
+    timelineRef,
+    textareaRef,
+    jumpToMessage: jump.jumpToMessage,
+  });
+  const { reset: panelReset } = panel;
 
   const handleSent = (sent: SentMessage): void => {
     latestPageIdsRef.current = new Set([...latestPageIdsRef.current, sent.messageId]);
@@ -197,20 +227,38 @@ export function ConversationThread({
       if (latestInFlight.current) return true;
       latestInFlight.current = true;
       const generation = generationRef.current;
-      const anchorMessageId = anchorRef.current;
+      // The request is captured when the read is issued (see use-jump-to-message.ts).
+      const view = readViewRef.current;
+      const anchorMessageId = view.anchor ?? anchorRef.current;
       try {
-        const { data, error } = await client.GET("/api/v1/messaging/channels/{id}/messages", {
-          params: {
-            path: { id: channel.channelId },
-            query: {
-              limit: MESSAGE_PAGE_SIZE,
-              direction: "backward",
-              ...(anchorMessageId ? { anchorMessageId } : {}),
+        const { data, error, response } = await client.GET(
+          "/api/v1/messaging/channels/{id}/messages",
+          {
+            params: {
+              path: { id: channel.channelId },
+              query: {
+                limit: MESSAGE_PAGE_SIZE,
+                direction: "backward",
+                ...(anchorMessageId ? { anchorMessageId } : {}),
+              },
             },
+            ...(background ? { headers: BACKGROUND_REQUEST_HEADERS } : {}),
           },
-          ...(background ? { headers: BACKGROUND_REQUEST_HEADERS } : {}),
-        });
+        );
         if (generation !== generationRef.current) return false;
+        if (view !== readViewRef.current) {
+          // A newer request (a jump, back to latest) arrived while this read was in flight: this answer is for the
+          // wrong page. Drop it; the queued re-read carries the new request.
+          rereadAfterFlight.current = true;
+          return true;
+        }
+        if (error && view.anchor && response?.status === 404) {
+          // A 404 on a user jump's page: the message is gone, not access revoked. Say so, show the newest page, and
+          // let that read surface a real revocation. Other errors keep the page (ordinary path below).
+          anchorGone();
+          rereadAfterFlight.current = true;
+          return false;
+        }
         if (error) {
           if (isAccessError(error)) onAccessRevokedRef.current(channel.channelId);
           if (background) setRefreshError(true);
@@ -223,10 +271,15 @@ export function ConversationThread({
         }
         const incoming = (data?.messages ?? []) as Message[];
         latestPageIdsRef.current = new Set(incoming.map((message) => message.messageId));
-        const currentMessages = messagesRef.current;
-        const wasInitial = currentMessages === null;
+        // WP 2.2: a jump to an unloaded message (or back to latest) shows ONE contiguous page, never a merge of two.
+        const replace = view.replace;
+        if (replace) readViewRef.current = { ...view, replace: false };
+        const currentMessages = replace ? null : messagesRef.current;
+        const wasInitial = messagesRef.current === null;
         const existingIds = new Set(currentMessages?.map((message) => message.messageId) ?? []);
-        const added = incoming.filter((message) => !existingIds.has(message.messageId)).length;
+        const added = replace
+          ? 0
+          : incoming.filter((message) => !existingIds.has(message.messageId)).length;
         setLoadError(null);
         setRefreshError(false);
         setOlderCursor((data?.nextCursor as string | undefined) ?? null);
@@ -235,7 +288,11 @@ export function ConversationThread({
         messagesRef.current = merged;
         setMessages(merged);
         if (wasInitial) initialScrollPending.current = true;
-        else if (background && added > 0 && !nearBottomRef.current) {
+        else if (replace && !view.anchor) {
+          initialScrollPending.current = true;
+          nearBottomRef.current = true;
+          setNewMessageCount(0);
+        } else if (background && added > 0 && !nearBottomRef.current) {
           setNewMessageCount((count) => count + added);
         } else if (added > 0 && nearBottomRef.current) {
           window.requestAnimationFrame(() => {
@@ -258,7 +315,7 @@ export function ConversationThread({
         }
       }
     },
-    [channel.channelId, client, markReadBoundary],
+    [channel.channelId, client, markReadBoundary, anchorGone, setPatient],
   );
 
   useEffect(() => {
@@ -301,6 +358,7 @@ export function ConversationThread({
     const timeline = timelineRef.current;
     const previousHeight = timeline?.scrollHeight ?? 0;
     const generation = generationRef.current;
+    const token = readViewRef.current.token;
     setLoadingOlder(true);
     const { data, error } = await client.GET("/api/v1/messaging/channels/{id}/messages", {
       params: {
@@ -310,6 +368,8 @@ export function ConversationThread({
     });
     if (generation !== generationRef.current) return;
     setLoadingOlder(false);
+    // A jump or Back to latest replaced the list while this page was in flight: it belongs to the old list.
+    if (token !== readViewRef.current.token) return;
     if (error) {
       setRefreshError(true);
       return;
@@ -340,6 +400,8 @@ export function ConversationThread({
     setRefreshError(false);
     setPatient(null);
     setContextOpen(false);
+    panelReset();
+    jumpReset();
     setNewMessageCount(0);
     readBoundaryRef.current = null;
     latestPageIdsRef.current = new Set();
@@ -354,15 +416,16 @@ export function ConversationThread({
       generationRef.current += 1;
     };
     // loadLatest changes identity only with the channel (or client); every other input is read through a ref.
-  }, [loadLatest, resetSender]);
+  }, [loadLatest, resetSender, jumpReset, panelReset, setPatient]);
 
   // A new anchor on the same channel re-reads around it without touching the draft, chips or an in-flight send.
   useEffect(() => {
     if (anchorMessageId === handledAnchor.current) return;
     handledAnchor.current = anchorMessageId;
+    routeAnchorChanged(readViewRef.current.anchor !== null);
     if (latestInFlight.current) rereadAfterFlight.current = true;
     else void loadLatest(true);
-  }, [anchorMessageId, loadLatest]);
+  }, [anchorMessageId, loadLatest, routeAnchorChanged]);
 
   // The composer is replaced by a notice when the channel is archived or unreadable: drop the uploads with it.
   const { reset: resetUploads } = uploads;
@@ -372,21 +435,12 @@ export function ConversationThread({
   }, [composerHidden, resetUploads]);
 
   useLayoutEffect(() => {
-    if (!anchorMessageId || messages === null) return;
-    const target = document.querySelector(`[data-message-id="${CSS.escape(anchorMessageId)}"]`);
+    if (!anchorMessageId || messages === null || jumpedRef.current) return;
+    const target = timelineRef.current?.querySelector(
+      `[data-message-id="${CSS.escape(anchorMessageId)}"]`,
+    );
     target?.scrollIntoView({ block: "center" });
   }, [anchorMessageId, messages]);
-
-  useEffect(() => {
-    if (channel.kind !== "care_team" || !channel.subjectId) return;
-    const generation = generationRef.current;
-    void client
-      .GET("/api/v1/patients/{id}", { params: { path: { id: channel.subjectId } } })
-      .then(({ data, error }) => {
-        if (generation !== generationRef.current) return;
-        setPatient(error || !data ? null : (data as PatientHeaderInfo));
-      });
-  }, [channel.kind, channel.subjectId, client]);
 
   // Starts at the token this thread mounted with: the initial load already reads the latest, so only a LATER bump acts.
   const handledLiveToken = useRef(liveToken);
@@ -397,37 +451,7 @@ export function ConversationThread({
     else void loadLatest(true);
   }, [liveToken, loadLatest]);
 
-  useEffect(() => {
-    let timer: number | undefined;
-    let failures = 0;
-    let stopped = false;
-    const base = realtimeConnected ? REALTIME_POLL_INTERVAL_MS : POLL_INTERVAL_MS;
-    const schedule = (): void => {
-      const delay = Math.min(base * 2 ** failures, Math.max(MAX_POLL_INTERVAL_MS, base));
-      timer = window.setTimeout(tick, delay);
-    };
-    const tick = async (): Promise<void> => {
-      if (stopped) return;
-      if (document.hidden) {
-        schedule();
-        return;
-      }
-      failures = (await loadLatest(true)) ? 0 : Math.min(failures + 1, 2);
-      schedule();
-    };
-    const refreshWhenVisible = (): void => {
-      if (!document.hidden) void loadLatest(true);
-    };
-    schedule();
-    document.addEventListener("visibilitychange", refreshWhenVisible);
-    window.addEventListener("focus", refreshWhenVisible);
-    return () => {
-      stopped = true;
-      if (timer !== undefined) window.clearTimeout(timer);
-      document.removeEventListener("visibilitychange", refreshWhenVisible);
-      window.removeEventListener("focus", refreshWhenVisible);
-    };
-  }, [loadLatest, realtimeConnected]);
+  useLatestPolling(loadLatest, realtimeConnected);
 
   useLayoutEffect(() => {
     if (!initialScrollPending.current || messages === null) return;
@@ -506,6 +530,37 @@ export function ConversationThread({
     });
   }
 
+  // The jump hook asks for a read of the latest (or requested) page through this. Bound after commit, not in render.
+  const { reloadRef } = jump;
+  useLayoutEffect(() => {
+    reloadRef.current = (): void => {
+      if (latestInFlight.current) rereadAfterFlight.current = true;
+      else void loadLatest(true);
+    };
+  }, [reloadRef, loadLatest]);
+
+  // A reply was accepted in the panel: patch that root's count now (it may be outside the latest page, which a
+  // re-read would not refresh), then re-read, queueing the re-read if one is already in flight.
+  const handleReplySent = useCallback(
+    (rootId: string, createdAt: string): void => {
+      const patched = (messagesRef.current ?? []).map((m) =>
+        m.messageId === rootId
+          ? { ...m, replyCount: (m.replyCount ?? 0) + 1, lastReplyAt: createdAt }
+          : m,
+      );
+      messagesRef.current = patched;
+      setMessages(patched);
+      if (latestInFlight.current) rereadAfterFlight.current = true;
+      else void loadLatest(true);
+      onMessageSent();
+    },
+    [loadLatest, onMessageSent],
+  );
+  const authorById = useMemo(
+    () => new Map((messages ?? []).map((m) => [m.messageId, m.authorDisplayName])),
+    [messages],
+  );
+
   function showLatest(): void {
     const timeline = timelineRef.current;
     if (timeline) timeline.scrollTop = timeline.scrollHeight;
@@ -534,45 +589,22 @@ export function ConversationThread({
 
   return (
     <section className="wx-messaging-thread" aria-label={`Conversation with ${title}`}>
-      <header className="wx-messaging-thread-header">
-        <button
-          type="button"
-          className="wx-messaging-back"
-          onClick={onBack}
-          aria-label="Back to conversations"
-        >
-          <Glyph name="chevron-left" size={20} />
-        </button>
-        <span className={`wx-messaging-avatar wx-kind-${channel.kind}`} aria-hidden="true">
-          {channel.kind === "care_team" ? <Glyph name="users" size={18} /> : initialsOf(title)}
-        </span>
-        <div className="wx-messaging-thread-title">
-          <h2>{channel.kind === "care_team" && patient ? `${title} · Care Team` : title}</h2>
-          <span>{patient ? `MRN ${patient.mrn}` : subtitle}</span>
-        </div>
-        {channel.archivedAt ? (
-          <span className="wx-messaging-readonly">
-            <Glyph name="lock" size={13} /> Archived · read only
-          </span>
-        ) : null}
-        {channel.kind === "care_team" && patient ? (
-          <button
-            type="button"
-            className="wx-messaging-context-toggle"
-            aria-expanded={contextOpen}
-            aria-controls="messaging-patient-context"
-            onClick={() => setContextOpen((open) => !open)}
-          >
-            <Glyph name="user-circle" size={16} /> Patient context
-          </button>
-        ) : null}
-      </header>
+      <ThreadHeader
+        channel={channel}
+        title={title}
+        subtitle={subtitle}
+        patient={patient}
+        contextOpen={contextOpen}
+        onBack={onBack}
+        onToggleContext={() => setContextOpen((open) => !open)}
+      />
 
       <div className="wx-messaging-thread-body">
         <div
           ref={timelineRef}
           className="wx-message-timeline"
           aria-label="Message history"
+          tabIndex={-1}
           onScroll={(event) => {
             const element = event.currentTarget;
             nearBottomRef.current =
@@ -621,7 +653,15 @@ export function ConversationThread({
                   message={message}
                   previous={messages[index - 1]}
                   meId={meId}
-                  anchorMessageId={anchorMessageId}
+                  anchorMessageId={jump.highlightId ?? anchorMessageId}
+                  onOpenThread={panel.openThread}
+                  onJumpToParent={jump.jumpToMessage}
+                  parentAuthor={
+                    message.parentMessageId
+                      ? (authorById.get(message.parentMessageId) ?? null)
+                      : undefined
+                  }
+                  canReply={!channel.archivedAt}
                 />
               ))}
             </>
@@ -629,37 +669,26 @@ export function ConversationThread({
         </div>
 
         {contextOpen && patient ? (
-          <aside
-            id="messaging-patient-context"
-            className="wx-messaging-patient-context"
-            aria-label="Patient context"
-          >
-            <header>
-              <strong>Patient context</strong>
-              <button
-                type="button"
-                onClick={() => setContextOpen(false)}
-                aria-label="Close patient context"
-              >
-                <Glyph name="close" size={17} />
-              </button>
-            </header>
-            <div className="wx-messaging-patient-identity">
-              <span className="wx-messaging-avatar">
-                {initialsOf(`${patient.firstName} ${patient.lastName}`)}
-              </span>
-              <div>
-                <strong>
-                  {patient.firstName} {patient.lastName}
-                </strong>
-                <span>MRN {patient.mrn}</span>
-              </div>
-            </div>
-            <p>Minimum identification details for this authorized care-team conversation.</p>
-            <Link to={`/patients/${patient.id}`}>
-              Open patient chart <Glyph name="arrow-right" size={14} />
-            </Link>
-          </aside>
+          <PatientContextAside patient={patient} onClose={() => setContextOpen(false)} />
+        ) : null}
+        {panel.rootId ? (
+          <ThreadPanel
+            key={panel.rootId}
+            channelId={channel.channelId}
+            rootId={panel.rootId}
+            archived={Boolean(channel.archivedAt)}
+            meId={meId}
+            meDisplayName={meDisplayName}
+            liveHint={liveHint}
+            realtimeConnected={realtimeConnected}
+            sendInFlight={panel.sendingRoots.has(panel.rootId)}
+            onSendStart={panel.beginSend}
+            onSendEnd={panel.endSend}
+            drafts={panel.draftsRef}
+            onClose={panel.closeThread}
+            onJumpToMessage={panel.showInConversation}
+            onReplySent={handleReplySent}
+          />
         ) : null}
       </div>
 
@@ -667,6 +696,14 @@ export function ConversationThread({
         <button type="button" className="wx-new-messages" onClick={showLatest}>
           {newMessageCount} new {newMessageCount === 1 ? "message" : "messages"}
         </button>
+      ) : null}
+      {jump.browsingHistory ? (
+        <button type="button" className="wx-new-messages" onClick={jump.backToLatest}>
+          Back to latest messages
+        </button>
+      ) : null}
+      {jump.anchorMissing ? (
+        <output className="wx-thread-refresh-warning">That message is no longer available.</output>
       ) : null}
       {refreshError && !loadError ? (
         <output className="wx-thread-refresh-warning">

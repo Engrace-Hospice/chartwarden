@@ -9,6 +9,7 @@ import type { ChannelSummary, ConversationFilter } from "./messaging-types";
 import { channelKindLabel, channelLabel } from "./messaging-utils";
 import { NewConversationDialog } from "./new-conversation-dialog";
 import { useMessagingRealtime } from "./use-messaging-realtime";
+import { type LiveHint, pushLiveHint } from "./use-thread";
 import "./staff-messaging.css";
 
 const CHANNEL_POLL_INTERVAL_MS = 15_000;
@@ -175,6 +176,8 @@ function OrganizationStaffMessaging({
   // ADR-0054 hints: a hint (or a reconnect) refreshes the list at once and nudges the open thread. If a load is
   // already in flight it may predate the change, so wait for it and read again.
   const [liveToken, setLiveToken] = useState(0);
+  // WP 2.2: which message the last hint named (and its parent), so an open thread panel reads only when concerned.
+  const [liveHint, setLiveHint] = useState<LiveHint | null>(null);
   const activeIdRef = useRef<string | null>(null);
   activeIdRef.current = activeId;
   const refreshFromHint = useCallback(async (): Promise<void> => {
@@ -188,13 +191,19 @@ function OrganizationStaffMessaging({
     useCallback(
       (hint) => {
         void refreshFromHint();
-        if (hint.ids.channelId === activeIdRef.current) setLiveToken((n) => n + 1);
+        if (hint.ids.channelId === activeIdRef.current) {
+          setLiveToken((n) => n + 1);
+          setLiveHint((previous) =>
+            pushLiveHint(previous, hint.ids.messageId, hint.ids.parentMessageId ?? null),
+          );
+        }
       },
       [refreshFromHint],
     ),
     useCallback(() => {
       void refreshFromHint();
       setLiveToken((n) => n + 1);
+      setLiveHint((previous) => pushLiveHint(previous, null, null));
     }, [refreshFromHint]),
   );
 
@@ -335,6 +344,7 @@ function OrganizationStaffMessaging({
               onMessageSent={() => void loadChannels(true)}
               onAccessRevoked={onAccessRevoked}
               liveToken={liveToken}
+              liveHint={liveHint}
               realtimeConnected={realtimeConnected}
               anchorMessageId={
                 activeChannel.channelId === requestedChannelId ? requestedMessageId : null

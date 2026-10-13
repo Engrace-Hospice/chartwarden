@@ -66,6 +66,10 @@ export interface ResolvedMessage {
   readonly bodyUnreadable?: true;
   readonly createdAt: string; // ISO-8601
   readonly parentMessageId: string | null;
+  /** WP 2.2: live (not deleted) direct replies. Absent on providers that do not compute it; 0 means none. */
+  readonly replyCount?: number;
+  /** WP 2.2: created_at of the newest live direct reply, or null. */
+  readonly lastReplyAt?: string | null;
   readonly references: readonly ResolvedMessageReference[];
   /** WP 1.5: scan-gated attachment metadata (quarantined and, for non-uploaders, pending ones are omitted). */
   readonly attachments?: readonly MessageAttachmentView[];

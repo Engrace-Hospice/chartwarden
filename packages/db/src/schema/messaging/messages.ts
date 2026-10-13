@@ -45,8 +45,8 @@ export const messages = pgTable(
     bodyCipher: bytea("body_cipher").notNull(), // envelope-encrypted under tenant DEK
     bodySha256: text("body_sha256").notNull(), // hex SHA-256 of plaintext pre-encryption
     bodyKind: messageBodyKind("body_kind").notNull().default("plain"),
-    parentMessageId: uuid("parent_message_id"), // composite FK below
-    quotedMessageId: uuid("quoted_message_id"), // composite FK below
+    parentMessageId: uuid("parent_message_id"), // composite same-channel FK below (1083)
+    quotedMessageId: uuid("quoted_message_id"), // composite same-channel FK below (1083)
     // WP 1.2: client-minted, stable across retries; the DB backstop behind the Idempotency-Key middleware.
     clientMessageId: uuid("client_message_id"),
     status: messageStatus("status").notNull().default("sent"),
@@ -63,6 +63,12 @@ export const messages = pgTable(
     // 1080: keyset paging for the hash_verify rotation (tenant, created_at, id).
     byOrgCreatedIdIdx: index("message_org_created_id_idx").on(t.organizationId, t.createdAt, t.id),
     orgIdIdUnique: unique("message_org_id_id_unique").on(t.organizationId, t.id),
+    // 1083 (WP 2.2 / D6): the referenced side of the same-channel reply/quote edges below.
+    orgChannelIdUnique: unique("message_org_channel_id_unique").on(
+      t.organizationId,
+      t.channelId,
+      t.id,
+    ),
     // 1072: every edge carries organization_id, so the database (not only the app) refuses a
     // cross-tenant link; an FK check bypasses RLS, a composite FK cannot.
     channelOrgFk: foreignKey({
@@ -70,22 +76,25 @@ export const messages = pgTable(
       columns: [t.organizationId, t.channelId],
       foreignColumns: [channels.organizationId, channels.id],
     }).onDelete("restrict"),
-    parentOrgFk: foreignKey({
-      name: "message_parent_org_fk",
-      columns: [t.organizationId, t.parentMessageId],
-      foreignColumns: [t.organizationId, t.id],
+    // 1083: a reply's parent and a quote's target must be in the SAME channel (and org); the database refuses
+    // anything else, whatever the caller (supersedes the (organization_id, id) edges of 1072).
+    parentChannelFk: foreignKey({
+      name: "message_parent_channel_fk",
+      columns: [t.organizationId, t.channelId, t.parentMessageId],
+      foreignColumns: [t.organizationId, t.channelId, t.id],
     }),
-    quotedOrgFk: foreignKey({
-      name: "message_quoted_org_fk",
-      columns: [t.organizationId, t.quotedMessageId],
-      foreignColumns: [t.organizationId, t.id],
+    quotedChannelFk: foreignKey({
+      name: "message_quoted_channel_fk",
+      columns: [t.organizationId, t.channelId, t.quotedMessageId],
+      foreignColumns: [t.organizationId, t.channelId, t.id],
     }),
     byOrgChannelIdx: index("message_org_channel_idx").on(t.organizationId, t.channelId),
-    byOrgParentIdx: index("message_org_parent_idx")
-      .on(t.organizationId, t.parentMessageId)
+    // 1083: FK-supporting and the thread-read / reply-count index (replaces 1072's narrower pair).
+    byOrgChannelParentIdx: index("message_org_channel_parent_idx")
+      .on(t.organizationId, t.channelId, t.parentMessageId, t.createdAt, t.id)
       .where(sql`parent_message_id IS NOT NULL`),
-    byOrgQuotedIdx: index("message_org_quoted_idx")
-      .on(t.organizationId, t.quotedMessageId)
+    byOrgChannelQuotedIdx: index("message_org_channel_quoted_idx")
+      .on(t.organizationId, t.channelId, t.quotedMessageId)
       .where(sql`quoted_message_id IS NOT NULL`),
     clientMessageUnique: unique("message_client_message_unique").on(
       t.organizationId,

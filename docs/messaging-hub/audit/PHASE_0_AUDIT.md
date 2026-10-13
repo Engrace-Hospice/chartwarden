@@ -12,7 +12,7 @@
 | F2 | **M14 `idg_action_item.idg_meeting_id` is NOT NULL** (cascade-deletes with the meeting) | **D2 confirmed**: chat tasks cannot live there. Closes open item 2 |
 | F3 | **M36 does not consume `m2.membership.revoked`, `m2.membership.suspended` or `m2.user.deactivated`** (they exist in `events-by-m2.ts`). Channel-membership sync consumes only `m5.patient.assignment_created/ended`, `m5.patient.deceased`, `m6.admission.discharged` | Offboarding gap is real → WP 1.4 must add the consumer + prove it is wired (bound ≠ computing) |
 | F4 | **No attachments anywhere**: none in `messaging-route-service-db.ts` / `messaging-write-core.ts`, none in the web module, though the TypeBox body schema allows `attachments[]` (≤ 10) | WP 1.5 is a build, not a fix. Check what the server does with that field today (unconfirmed) |
-| F5 | **Threads are schema-only.** Server persists `parentMessageId`/`quotedMessageId`; **no same-channel validation found**; web sends `parentMessageId: null` and has no reply UI | Add a same-channel check in WP 2.2 (consider pulling it into Phase 1: it is a data-integrity hole) **Resolved (WP 1.7 / 1.9):** `PARENT_MESSAGE_NOT_IN_CHANNEL` / `QUOTED_MESSAGE_NOT_IN_CHANNEL` (422) in the one insert helper, live-proven; the DB-level FK stays WP 2.2 |
+| F5 | **Threads are schema-only.** Server persists `parentMessageId`/`quotedMessageId`; **no same-channel validation found**; web sends `parentMessageId: null` and has no reply UI | Add a same-channel check in WP 2.2 (consider pulling it into Phase 1: it is a data-integrity hole) **Resolved (WP 1.7 / 1.9):** `PARENT_MESSAGE_NOT_IN_CHANNEL` / `QUOTED_MESSAGE_NOT_IN_CHANNEL` (422) in the one insert helper, live-proven; the DB-level FK was WP 2.2: **resolved (WP 2.2, migration `1083`)**; reply count, thread read and thread panel also shipped there |
 | F6 | **No message-level idempotency key**, but a generic HTTP `Idempotency-Key` middleware exists (`bootstrap/plugins/idempotency.ts`: org + key + body hash, 409 on conflict) | **Consolidate**: WP 1.2 reuses the middleware; a `client_message_id` unique index becomes a DB backstop, not a second mechanism. Confirm the web sends the header (unconfirmed) |
 | F7 | **`message_receipt.status = 'ack'` is only a TypeScript type** (`kinds.ts:163`); nothing writes it | Safe to define clinical acknowledgment fresh (ADR); retire `ack` from the type to prevent misuse |
 | F8 | **Job catalogue ≠ running jobs.** Queues for `retention_scan`, `hash_verify`, `channel_sync`, `bereavement_close`, `fan_out` are catalogued and the processors are pure functions; only the four out-of-band delivery queues are registered (`registerM36DeliveryWorkers`). No scheduler for hash-verify/retention found in M36; `runHashVerify`'s only non-test callers found are in the audit package | Treat message integrity verification and retention/legal-hold as **not running** until proven. Feeds WP 1.3 / 1.9 / 5.6 **Resolved for hash-verify and the scheduling of retention-scan (WP 1.9):** both are registered repeatable jobs and recorded in audit; the retention scan is plan-only (destruction and the message hold overlay remain WP 5.6) |
@@ -33,7 +33,7 @@
 | 5 | Retention & holds | ~~Pure processors only; no scheduling found (F8)~~ Scheduled and plan-only since WP 1.9 (consults M4's active legal holds); still no link to the ADR-0051 message overlay (WP 5.6) |
 | 6 | Realtime | None (F1) |
 | 7 | Receipts | `ack` unused (F7); read receipts written via `/messages/:id/read` |
-| 8 | Threads | Schema-only (F5); same-channel parent/quote check done (WP 1.7 / 1.9) |
+| 8 | Threads | ~~Schema-only (F5)~~ Done (WP 2.2): same-channel enforced in the DB (migration 1083), reply count, thread read, side panel, jump-to-parent |
 | 9 | Web | Polling thread view; load/refresh/access-revoked/send error states exist (`loadError`, `refreshError`, `isAccessError`); oversized files (F11). Whether the screenshot's "No messages yet" can mask a failure needs a visual check (*unconfirmed*) |
 | 10 | Seams | `CareTeamProvider`-driven membership; outbox consumers for M5/M6; M2 events missing (F3); M19 message seam missing (F12) |
 | 11 | Data | Not queried. Prod is demo data → reseed, don't remediate |
@@ -49,7 +49,7 @@
 | 15 On-call/escalation | Keep, add seam | Keep; **the seam is net-new** (F12) |
 | 20 Offboarding | Modify | **Build the consumer** for `m2.membership.revoked/suspended`, `m2.user.deactivated` (F3) |
 | 19 Legal hold | ⚑ verify | ~~Not wired (F8)~~ The scheduled retention scan consults M4's active holds and withholds held messages (WP 1.9, live-proven); the message hold overlay is WP 5.6 |
-| 6 Threads | ⚑ verify | Schema-only; ~~add same-channel check (F5)~~ same-channel check done (WP 1.7 / 1.9) |
+| 6 Threads | ⚑ verify | Schema-only; ~~add same-channel check (F5)~~ same-channel check done (WP 1.7 / 1.9), DB-level FK and thread UI done (WP 2.2) |
 | 5 Attachments | ⚑ verify | Not implemented (F4) |
 
 ## 4. Remaining Phase 0 work

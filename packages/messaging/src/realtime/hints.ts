@@ -17,7 +17,12 @@ export interface RealtimeHint {
   readonly kind: MessageHintKind;
   /** Opaque dedupe / catch-up token; clients dedupe by it and reconcile over REST. */
   readonly cursor: string;
-  readonly ids: { readonly channelId: string; readonly messageId: string };
+  /** `parentMessageId` is set when the change is to a thread reply, so a client can refresh that thread. */
+  readonly ids: {
+    readonly channelId: string;
+    readonly messageId: string;
+    readonly parentMessageId?: string;
+  };
 }
 
 const KIND_BY_OUTBOX_EVENT = {
@@ -38,12 +43,21 @@ export function isMessageHintOutboxEvent(eventType: string): eventType is Messag
  */
 export function buildMessageHint(
   eventType: MessageHintOutboxEvent,
-  facts: { readonly channelId: string; readonly messageId: string; readonly at: string },
+  facts: {
+    readonly channelId: string;
+    readonly messageId: string;
+    readonly at: string;
+    readonly parentMessageId?: string;
+  },
 ): RealtimeHint {
   const kind = KIND_BY_OUTBOX_EVENT[eventType];
   return {
     kind,
     cursor: Buffer.from(`${kind}|${facts.at}|${facts.messageId}`, "utf8").toString("base64url"),
-    ids: { channelId: facts.channelId, messageId: facts.messageId },
+    ids: {
+      channelId: facts.channelId,
+      messageId: facts.messageId,
+      ...(facts.parentMessageId ? { parentMessageId: facts.parentMessageId } : {}),
+    },
   };
 }

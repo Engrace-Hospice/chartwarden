@@ -42,6 +42,9 @@ export interface Message {
   bodyUnreadable?: boolean;
   createdAt: string;
   parentMessageId: string | null;
+  /** WP 2.2: live direct replies (deleted ones excluded) and the newest one's time. Absent on older payloads. */
+  replyCount?: number;
+  lastReplyAt?: string | null;
   references: MessageReference[];
   /** WP 1.5: absent on older payloads. `scanning` is only ever listed to the uploader. */
   attachments?: MessageAttachment[];

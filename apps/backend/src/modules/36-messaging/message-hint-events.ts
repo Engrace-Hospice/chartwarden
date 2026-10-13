@@ -33,6 +33,8 @@ export async function publishMessageHint(
     readonly orgId: string;
     readonly channelId: string;
     readonly messageId: string;
+    /** WP 2.2: set when the message is a thread reply, so a client can refresh that thread (an id, never content). */
+    readonly parentMessageId?: string | null;
     /** `sent`: the message's created_at. `edited`/`deleted`: when the change was committed. */
     readonly at: Date | string;
   },
@@ -46,6 +48,7 @@ export async function publishMessageHint(
       organizationId: facts.orgId,
       channelId: facts.channelId,
       messageId: facts.messageId,
+      ...(facts.parentMessageId ? { parentMessageId: facts.parentMessageId } : {}),
       at: typeof facts.at === "string" ? facts.at : facts.at.toISOString(),
     },
   });

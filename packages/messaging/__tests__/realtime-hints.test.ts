@@ -21,6 +21,17 @@ describe("realtime hints (ADR-0054: hints only, no PHI)", () => {
     expect(JSON.stringify(hint)).not.toMatch(/cancer|Jane/);
   });
 
+  it("a thread reply's hint adds the parent id (an id, never content); a top-level hint has none", () => {
+    const reply = buildMessageHint("m36.message.sent", { ...facts, parentMessageId: "msg_root" });
+    expect(reply.ids).toEqual({
+      channelId: "ch_1",
+      messageId: "msg_1",
+      parentMessageId: "msg_root",
+    });
+    expect(Object.keys(reply).sort()).toEqual(["cursor", "ids", "kind"]);
+    expect(buildMessageHint("m36.message.sent", facts).ids).not.toHaveProperty("parentMessageId");
+  });
+
   it("is deterministic, so a redelivered event yields the same cursor", () => {
     expect(buildMessageHint("m36.message.sent", facts).cursor).toBe(
       buildMessageHint("m36.message.sent", facts).cursor,

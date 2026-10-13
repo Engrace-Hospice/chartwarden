@@ -8,7 +8,12 @@ import { type Socket, io } from "socket.io-client";
 export interface MessagingHint {
   readonly kind: string;
   readonly cursor: string;
-  readonly ids: { readonly channelId: string; readonly messageId: string };
+  readonly ids: {
+    readonly channelId: string;
+    readonly messageId: string;
+    /** Set when the change is to a thread reply (WP 2.2). */
+    readonly parentMessageId?: string;
+  };
 }
 
 export type MessagingSocketFactory = () => Pick<Socket, "on" | "off" | "close">;

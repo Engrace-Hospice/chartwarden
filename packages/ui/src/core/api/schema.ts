@@ -13352,6 +13352,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/thread": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A message and its direct replies, oldest reply first (WP 2.2; channel_visibility ABAC, so a non-member, a removed member and another org get the 404 a random id gets) */
+        get: operations["getApiV1MessagingChannelsByIdMessagesByMessageIdThread"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/dm": {
         parameters: {
             query?: never;
@@ -61731,6 +61748,8 @@ export interface operations {
                             bodyUnreadable?: true;
                             createdAt: string;
                             parentMessageId: string | null;
+                            replyCount?: number;
+                            lastReplyAt?: string | null;
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
@@ -61809,6 +61828,115 @@ export interface operations {
                         messageId: string;
                         channelId: string;
                         createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingChannelsByIdMessagesByMessageIdThread: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        root: {
+                            messageId: string;
+                            channelId: string;
+                            authorUserId: string | null;
+                            authorDisplayName: string | null;
+                            body: string;
+                            bodyKind: "plain" | "markdown" | "system" | "rich";
+                            bodyDoc?: {
+                                /** @constant */
+                                schemaVersion: 1;
+                                doc: {
+                                    /** @constant */
+                                    type: "doc";
+                                    content: unknown[];
+                                };
+                            };
+                            /** @constant */
+                            bodyUnreadable?: true;
+                            createdAt: string;
+                            parentMessageId: string | null;
+                            replyCount?: number;
+                            lastReplyAt?: string | null;
+                            references: {
+                                kind: "staff" | "patient";
+                                entityId: string;
+                                start: number;
+                                end: number;
+                                displayLabel: string;
+                                navigable: boolean;
+                            }[];
+                            attachments?: {
+                                attachmentId: string;
+                                fileName: string;
+                                mimeType: string;
+                                byteSize: number;
+                                availability: "available" | "scanning";
+                            }[];
+                            hiddenAttachmentCount?: number;
+                        };
+                        replies: {
+                            messageId: string;
+                            channelId: string;
+                            authorUserId: string | null;
+                            authorDisplayName: string | null;
+                            body: string;
+                            bodyKind: "plain" | "markdown" | "system" | "rich";
+                            bodyDoc?: {
+                                /** @constant */
+                                schemaVersion: 1;
+                                doc: {
+                                    /** @constant */
+                                    type: "doc";
+                                    content: unknown[];
+                                };
+                            };
+                            /** @constant */
+                            bodyUnreadable?: true;
+                            createdAt: string;
+                            parentMessageId: string | null;
+                            replyCount?: number;
+                            lastReplyAt?: string | null;
+                            references: {
+                                kind: "staff" | "patient";
+                                entityId: string;
+                                start: number;
+                                end: number;
+                                displayLabel: string;
+                                navigable: boolean;
+                            }[];
+                            attachments?: {
+                                attachmentId: string;
+                                fileName: string;
+                                mimeType: string;
+                                byteSize: number;
+                                availability: "available" | "scanning";
+                            }[];
+                            hiddenAttachmentCount?: number;
+                        }[];
+                        nextCursor?: string;
+                        patientId: string | null;
                     };
                 };
             };

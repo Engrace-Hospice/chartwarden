@@ -58,6 +58,9 @@ async function handleEvent(event: DispatchableOutboxEvent, deps: MessageHintDeps
   const channelId = requireString(p, "channelId", event.eventType);
   const messageId = requireString(p, "messageId", event.eventType);
   const at = requireString(p, "at", event.eventType);
+  // WP 2.2: present only for a thread reply (an id). A malformed value is ignored, not fatal: it is an optimisation.
+  const parentMessageId =
+    typeof p.parentMessageId === "string" && p.parentMessageId ? p.parentMessageId : undefined;
   if (!deps.emitToRooms) return;
   const audience = await deps.audience(event.organizationId, channelId);
   const rooms =
@@ -65,7 +68,10 @@ async function handleEvent(event: DispatchableOutboxEvent, deps: MessageHintDeps
       ? [orgRoom(event.organizationId)]
       : audience.userIds.map((id) => userRoom(event.organizationId, id));
   if (rooms.length === 0) return;
-  await deps.emitToRooms(rooms, buildMessageHint(event.eventType, { channelId, messageId, at }));
+  await deps.emitToRooms(
+    rooms,
+    buildMessageHint(event.eventType, { channelId, messageId, at, parentMessageId }),
+  );
 }
 
 export function buildM36MessageHintConsumer(deps: MessageHintDeps): OutboxConsumerBinding {

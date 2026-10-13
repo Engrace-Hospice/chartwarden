@@ -35,6 +35,8 @@ export interface SentMessage {
 
 interface UseMessageSenderInput {
   channelId: string;
+  /** WP 2.2: the root this message replies to (the thread panel's composer); absent for a channel message. */
+  parentMessageId?: string;
   archived: boolean;
   draft: string;
   draftReferences: readonly MessageReferenceInput[];
@@ -42,6 +44,10 @@ interface UseMessageSenderInput {
   /** The thread's generation: bumped on channel switch and unmount, so a late reply is dropped. */
   generationRef: MutableRefObject<number>;
   onSent: (sent: SentMessage) => void;
+  /** The request has been issued with `submitted` (the owner can move the text into its in-flight record). */
+  onIssued?: (submitted: string) => void;
+  /** The request is over, whatever its outcome (after `onSent` on success), even if the composer has since unmounted. */
+  onSettled?: (ok: boolean, submitted: string) => void;
 }
 
 /**
@@ -55,12 +61,15 @@ interface UseMessageSenderInput {
  */
 export function useMessageSender({
   channelId,
+  parentMessageId,
   archived,
   draft,
   draftReferences,
   uploads,
   generationRef,
   onSent,
+  onIssued,
+  onSettled,
 }: UseMessageSenderInput) {
   const client = useApiClient();
   const [sending, setSending] = useState(false);
@@ -94,7 +103,7 @@ export function useMessageSender({
     const sentAttachments = toSentAttachments(uploads.chips);
     const attempt = sendAttemptFor(
       sendAttemptRef.current,
-      JSON.stringify([channelId, submitted, references, attachmentIds]),
+      JSON.stringify([channelId, parentMessageId ?? null, submitted, references, attachmentIds]),
     );
     sendAttemptRef.current = attempt;
     // Take the latch only after the attempt exists: sendAttemptFor can throw (crypto.randomUUID).
@@ -102,6 +111,7 @@ export function useMessageSender({
     const generation = generationRef.current;
     setSending(true);
     setSendError(null);
+    onIssued?.(submitted);
     const postMessage = () =>
       client.POST("/api/v1/messaging/channels/{id}/messages", {
         params: {
@@ -121,6 +131,7 @@ export function useMessageSender({
               }
             : { ...(submitted.trim() ? { body: submitted } : {}), references }),
           clientMessageId: attempt.clientMessageId,
+          ...(parentMessageId ? { parentMessageId } : {}),
           ...(attachmentIds.length > 0
             ? { attachments: attachmentIds.map((attachmentId) => ({ attachmentId })) }
             : {}),
@@ -135,6 +146,7 @@ export function useMessageSender({
       sendInFlightRef.current = false;
       setSending(false);
       setSendError(SEND_FAILED_MESSAGE);
+      onSettled?.(false, submitted);
       return;
     }
     const { data, error, response } = result;
@@ -151,6 +163,7 @@ export function useMessageSender({
       );
       // Flag which chips went bad (blocked, gone) so the user knows what to remove; the others stay.
       if (notBindable) void uploads.recheck();
+      onSettled?.(false, submitted);
       return;
     }
     sendAttemptRef.current = null;
@@ -163,6 +176,7 @@ export function useMessageSender({
       references: draftReferences,
       attachments: sentAttachments,
     });
+    onSettled?.(true, submitted);
   }
 
   return { send, sending, sendError, clearSendError, resetSender };
@@ -174,6 +188,7 @@ export function sentMessageRow(
   channelId: string,
   meId: string,
   meDisplayName: string,
+  parentMessageId: string | null = null,
 ): Message {
   // A structured send shows what the server will return: the projection as `body`, mentions at projection offsets.
   const rich = sent.bodyDoc;
@@ -195,7 +210,7 @@ export function sentMessageRow(
     bodyKind: rich ? "rich" : "plain",
     ...(rich ? { bodyDoc: rich } : {}),
     createdAt: sent.createdAt,
-    parentMessageId: null,
+    parentMessageId,
     references: references.map((reference) => ({ ...reference, navigable: true })),
     attachments: sent.attachments,
   };

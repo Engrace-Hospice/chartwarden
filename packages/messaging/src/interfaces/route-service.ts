@@ -195,6 +195,26 @@ export interface MessagingRouteService {
     /** The care_team channel's patient, for read-audit attribution (GAP-064); null for other kinds. */
     patientId: string | null;
   }>;
+  /**
+   * WP 2.2: one message and its direct replies, oldest reply first, keyset-paged. Thread permissions are the
+   * channel's: callers authorise the channel first; a root absent from that channel is NOT_FOUND.
+   */
+  listThread(
+    orgId: string,
+    input: {
+      channelId: string;
+      messageId: string;
+      userId: string;
+      cursor?: string;
+      limit?: number;
+    },
+  ): Promise<{
+    root: ResolvedMessage;
+    replies: readonly ResolvedMessage[];
+    nextCursor?: string;
+    /** The care_team channel's patient, for read-audit attribution (GAP-064); null for other kinds. */
+    patientId: string | null;
+  }>;
   /** Post a message; CHANNEL_ARCHIVED (410) on an archived channel (§4.2). */
   sendMessage(
     orgId: string,

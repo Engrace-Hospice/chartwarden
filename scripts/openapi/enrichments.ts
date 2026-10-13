@@ -1270,6 +1270,8 @@ import {
   AuthorizeAttachmentBodySchema as M36AuthorizeAttachmentBodySchema,
   AuthorizeAttachmentResponseSchema as M36AuthorizeAttachmentResponseSchema,
   ListMessagesQuerySchema as M36ListMessagesQuerySchema,
+  ListThreadQuerySchema as M36ListThreadQuerySchema,
+  ThreadResponseSchema as M36ThreadResponseSchema,
   MentionCandidateQuerySchema as M36MentionCandidateQuerySchema,
   MentionCandidateResponseSchema as M36MentionCandidateResponseSchema,
   MessageListResponseSchema as M36MessageListResponseSchema,
@@ -8923,6 +8925,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Paginated message history (bodies decrypted for entitled readers)",
     query: M36ListMessagesQuerySchema,
     response: M36MessageListResponseSchema,
+  },
+  "GET /api/v1/messaging/channels/:id/messages/:messageId/thread": {
+    summary:
+      "A message and its direct replies, oldest reply first (WP 2.2; channel_visibility ABAC, so a non-member, a removed member and another org get the 404 a random id gets)",
+    query: M36ListThreadQuerySchema,
+    response: M36ThreadResponseSchema,
   },
   "GET /api/v1/messaging/channels/:id/mention-candidates": {
     summary: "Search staff and the linked patient eligible for a structured reference",

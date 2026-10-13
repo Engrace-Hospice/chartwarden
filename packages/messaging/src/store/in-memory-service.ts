@@ -421,6 +421,48 @@ export function createInMemoryMessagingService(
     return m;
   };
 
+  /** One stored row as a reader sees it, including the WP 2.2 reply count (live direct replies only). */
+  const resolveStored = (
+    orgId: string,
+    m: MessageRow,
+    channel: { readonly kind: ChannelKind },
+  ): ResolvedMessage => {
+    const replies = [...messages.values()].filter(
+      (r) =>
+        r.orgId === orgId &&
+        r.channelId === m.channelId &&
+        r.parentMessageId === m.messageId &&
+        !r.deletedAt,
+    );
+    return {
+      messageId: m.messageId,
+      channelId: m.channelId,
+      authorUserId: m.authorUserId,
+      authorDisplayName: m.authorUserId
+        ? (eligibleStaff.get(`${orgId}:${m.authorUserId}`)?.displayName ?? null)
+        : null,
+      body: m.deletedAt ? "" : m.body,
+      bodyKind: m.bodyKind,
+      ...(m.richBody && !m.deletedAt ? { bodyDoc: m.richBody } : {}),
+      createdAt: m.createdAt,
+      parentMessageId: m.parentMessageId,
+      replyCount: replies.length,
+      lastReplyAt:
+        replies
+          .map((r) => r.createdAt)
+          .sort()
+          .at(-1) ?? null,
+      references: m.references.map((reference) => ({
+        ...reference,
+        displayLabel:
+          reference.kind === "staff"
+            ? (eligibleStaff.get(`${orgId}:${reference.entityId}`)?.displayName ?? "Staff member")
+            : "Patient",
+        navigable: reference.kind === "patient" && channel.kind === "care_team",
+      })),
+    };
+  };
+
   return {
     async listChannels(orgId, userId) {
       const out: ChannelSummary[] = [];
@@ -477,32 +519,39 @@ export function createInMemoryMessagingService(
       const hasMore = rows.length > limit;
       const pageRows = rows.slice(0, limit);
       if (backward) pageRows.reverse();
-      const page = pageRows.map<ResolvedMessage>((m) => ({
-        messageId: m.messageId,
-        channelId: m.channelId,
-        authorUserId: m.authorUserId,
-        authorDisplayName: m.authorUserId
-          ? (eligibleStaff.get(`${orgId}:${m.authorUserId}`)?.displayName ?? null)
-          : null,
-        body: m.deletedAt ? "" : m.body,
-        bodyKind: m.bodyKind,
-        ...(m.richBody && !m.deletedAt ? { bodyDoc: m.richBody } : {}),
-        createdAt: m.createdAt,
-        parentMessageId: m.parentMessageId,
-        references: m.references.map((reference) => ({
-          ...reference,
-          displayLabel:
-            reference.kind === "staff"
-              ? (eligibleStaff.get(`${orgId}:${reference.entityId}`)?.displayName ?? "Staff member")
-              : "Patient",
-          navigable: reference.kind === "patient" && channel.kind === "care_team",
-        })),
-      }));
+      const page = pageRows.map((m) => resolveStored(orgId, m, channel));
       return {
         messages: page,
         nextCursor:
           hasMore && pageRows.length > 0
             ? encodeMessageCursor(backward ? pageRows[0]! : pageRows.at(-1)!)
+            : undefined,
+        patientId: channel.kind === "care_team" ? (channel.subjectId ?? null) : null,
+      };
+    },
+
+    async listThread(orgId, input) {
+      const channel = channelOr404(orgId, input.channelId);
+      const root = messages.get(input.messageId);
+      if (root?.orgId !== orgId || root.channelId !== input.channelId) {
+        throw new NotFoundError("message", input.messageId);
+      }
+      const limit = Math.min(Math.max(input.limit ?? 50, 1), 200);
+      const cursor = input.cursor ? decodeMessageCursor(input.cursor) : null;
+      const afterCursor = (m: MessageRow): boolean =>
+        !cursor ||
+        (m.createdAt.localeCompare(cursor[0]) || m.messageId.localeCompare(cursor[1])) > 0;
+      const replies = [...messages.values()]
+        .filter((m) => m.orgId === orgId && m.parentMessageId === input.messageId)
+        .sort(messageOrder)
+        .filter(afterCursor);
+      const pageRows = replies.slice(0, limit);
+      return {
+        root: resolveStored(orgId, root, channel),
+        replies: pageRows.map((m) => resolveStored(orgId, m, channel)),
+        nextCursor:
+          replies.length > limit && pageRows.length > 0
+            ? encodeMessageCursor(pageRows.at(-1)!)
             : undefined,
         patientId: channel.kind === "care_team" ? (channel.subjectId ?? null) : null,
       };
@@ -522,6 +571,13 @@ export function createInMemoryMessagingService(
           throw new WardenXError(
             "PARENT_MESSAGE_NOT_IN_CHANNEL",
             "a reply's parent message must be in the same channel",
+            422,
+          );
+        }
+        if (parent.parentMessageId) {
+          throw new WardenXError(
+            "PARENT_MESSAGE_IS_REPLY",
+            "a reply must target the thread's root message, not another reply",
             422,
           );
         }
