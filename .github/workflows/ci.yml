@@ -757,6 +757,8 @@ jobs:
           - { name: "M36 Attachments", scripts: "test:m36:attachments:live" }
           # WP 2.5 - drafts: sealed at rest, never visible to another user or tenant, conflicts, audit scrub, erase.
           - { name: "M36 Drafts", scripts: "test:m36:drafts:live" }
+          # WP 2.10 - polls: refused in patient-linked channels, one named vote per user, closed rejects votes, removed member/tenant isolation, audit.
+          - { name: "M36 Polls", scripts: "test:m36:polls:live" }
           # WP 2.6 - scheduled send: sealed at rest, owner-private, dispatch-time re-checks block (not send) and notify, exactly-once, erase.
           - { name: "M36 Scheduled Send", scripts: "test:m36:scheduled-send:live" }
           - { name: "M36 Message templates", scripts: "test:m36:templates:live" }

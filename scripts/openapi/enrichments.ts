@@ -1175,6 +1175,8 @@ import {
   // responses
   BaaRecordViewSchema as M34PlatformBaaRecordViewSchema,
   TenantExportJobListResponseSchema as M34PlatformTenantExportJobListResponseSchema,
+  ProvisionRetryAckSchema as M34ProvisionRetryAckSchema,
+  ProvisionStatusViewSchema as M34ProvisionStatusViewSchema,
   ProvisionTenantRequest as M34ProvisionTenantRequest,
   QualifyIntentAckSchema as M34QualifyIntentAckSchema,
   QualifyIntentRequest as M34QualifyIntentRequest,
@@ -1187,8 +1189,6 @@ import {
   SignupIntentListResponseSchema as M34SignupIntentListResponseSchema,
   StartSessionAckSchema as M34StartSessionAckSchema,
   StartSessionRequest as M34StartSessionRequest,
-  ProvisionRetryAckSchema as M34ProvisionRetryAckSchema,
-  ProvisionStatusViewSchema as M34ProvisionStatusViewSchema,
   StatusTransitionRequest as M34StatusTransitionRequest,
   SupportSessionEventListResponseSchema as M34SupportSessionEventListResponseSchema,
   SupportSessionListQuerySchema as M34SupportSessionListQuerySchema,
@@ -1255,15 +1255,15 @@ import {
   DraftResponseSchema as M36DraftResponseSchema,
   SaveDraftBodySchema as M36SaveDraftBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/draft-typebox";
-import {
-  GlobalSearchQuerySchema as M36GlobalSearchQuerySchema,
-  GlobalSearchResponseSchema as M36GlobalSearchResponseSchema,
-} from "../../apps/backend/src/modules/36-messaging/routes/global-search-typebox";
 // M36 WP 2.7b C4 tenant global search switch.
 import {
   GlobalSearchSettingsViewSchema as M36GlobalSearchSettingsViewSchema,
   PutGlobalSearchSettingsBodySchema as M36PutGlobalSearchSettingsBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/global-search-settings-typebox";
+import {
+  GlobalSearchQuerySchema as M36GlobalSearchQuerySchema,
+  GlobalSearchResponseSchema as M36GlobalSearchResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/global-search-typebox";
 // ── M36 Secure Messaging & Alerts — request + response schema imports (all M36-aliased) ──
 import {
   // request schemas (query / body) — reused as-is
@@ -1306,6 +1306,13 @@ import {
   ThreadResponseSchema as M36ThreadResponseSchema,
   VerifyEndpointBodySchema as M36VerifyEndpointBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/messaging-typebox";
+import {
+  CreatePollBodySchema as M36CreatePollBodySchema,
+  CreatePollResponseSchema as M36CreatePollResponseSchema,
+  PollDetailViewSchema as M36PollDetailViewSchema,
+  PollResultResponseSchema as M36PollResultResponseSchema,
+  VotePollBodySchema as M36VotePollBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/poll-typebox";
 import {
   PinListResponseSchema as M36PinListResponseSchema,
   PinResponseSchema as M36PinResponseSchema,
@@ -9013,6 +9020,30 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/messaging/channels/:id/pins": {
     summary: "The channel's pinned messages, most recently pinned first (read-audited)",
     response: M36PinListResponseSchema,
+  },
+  // WP 2.10 polls (non-clinical; single choice; named votes; channel_visibility ABAC, refusals are the 404 a random id gets)
+  "POST /api/v1/messaging/channels/:id/polls": {
+    summary:
+      "Create a poll as a message (WP 2.10; Idempotency-Key required; 2-10 options, plain text only; 422 POLL_NOT_ALLOWED_IN_PATIENT_CHANNEL in a care_team/bereavement channel, 422 VALIDATION_FAILED on bad text/options, 410 archived; announcement channel needs messaging.announce)",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    body: M36CreatePollBodySchema,
+    response: M36CreatePollResponseSchema,
+  },
+  "GET /api/v1/messaging/channels/:id/messages/:messageId/poll": {
+    summary:
+      "A poll's results with who voted for each option and the caller's own vote (WP 2.10; read-audited; never cached)",
+    response: M36PollDetailViewSchema,
+  },
+  "PUT /api/v1/messaging/channels/:id/messages/:messageId/poll/vote": {
+    summary:
+      "Cast or change the caller's single vote (WP 2.10; idempotent; one vote per user, a change is audited; 409 POLL_CLOSED, 422 INVALID_POLL_OPTION, 410 archived)",
+    body: M36VotePollBodySchema,
+    response: M36PollResultResponseSchema,
+  },
+  "POST /api/v1/messaging/channels/:id/messages/:messageId/poll/close": {
+    summary:
+      "Close a poll (WP 2.10; the poll's author or a channel manager, else 403; idempotent; closed polls reject votes)",
+    response: M36PollResultResponseSchema,
   },
   "GET /api/v1/messaging/search": {
     summary:

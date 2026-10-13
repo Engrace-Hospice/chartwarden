@@ -1,4 +1,4 @@
-import type { MessageReactionSummary, RichBody } from "@wardenx/types";
+import type { MessageReactionSummary, PollView, RichBody } from "@wardenx/types";
 
 export type ChannelKind =
   | "care_team"
@@ -52,6 +52,8 @@ export interface Message {
   reactions?: MessageReactionSummary[];
   /** WP 2.4: pinned in its channel. */
   pinned?: boolean;
+  /** WP 2.10: the poll on this message (non-clinical; counts + the viewer's own vote). */
+  poll?: PollView;
   /** WP 1.5: absent on older payloads. `scanning` is only ever listed to the uploader. */
   attachments?: MessageAttachment[];
   /** Files this viewer cannot see yet (scanning for others, or withheld): a bare count, no detail. */

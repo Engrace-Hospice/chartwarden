@@ -13441,6 +13441,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/poll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A poll's results with who voted for each option and the caller's own vote (WP 2.10; read-audited; never cached) */
+        get: operations["getApiV1MessagingChannelsByIdMessagesByMessageIdPoll"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/poll/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close a poll (WP 2.10; the poll's author or a channel manager, else 403; idempotent; closed polls reject votes) */
+        post: operations["postApiV1MessagingChannelsByIdMessagesByMessageIdPollClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/poll/vote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Cast or change the caller's single vote (WP 2.10; idempotent; one vote per user, a change is audited; 409 POLL_CLOSED, 422 INVALID_POLL_OPTION, 410 archived) */
+        put: operations["putApiV1MessagingChannelsByIdMessagesByMessageIdPollVote"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/channels/{id}/messages/{messageId}/reactions/{emoji}": {
         parameters: {
             query?: never;
@@ -13487,6 +13538,23 @@ export interface paths {
         get: operations["getApiV1MessagingChannelsByIdPins"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/channels/{id}/polls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a poll as a message (WP 2.10; Idempotency-Key required; 2-10 options, plain text only; 422 POLL_NOT_ALLOWED_IN_PATIENT_CHANNEL in a care_team/bereavement channel, 422 VALIDATION_FAILED on bad text/options, 410 archived; announcement channel needs messaging.announce) */
+        post: operations["postApiV1MessagingChannelsByIdPolls"];
         delete?: never;
         options?: never;
         head?: never;
@@ -62437,6 +62505,19 @@ export interface operations {
                                 reactedByMe: boolean;
                             }[];
                             pinned?: boolean;
+                            poll?: {
+                                pollId: string;
+                                closed: boolean;
+                                closedAt: string | null;
+                                totalVotes: number;
+                                myOptionId: string | null;
+                                canClose: boolean;
+                                options: {
+                                    optionId: string;
+                                    label: string;
+                                    voteCount: number;
+                                }[];
+                            };
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
@@ -62572,6 +62653,134 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingChannelsByIdMessagesByMessageIdPoll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        pollId: string;
+                        closed: boolean;
+                        closedAt: string | null;
+                        totalVotes: number;
+                        myOptionId: string | null;
+                        canClose: boolean;
+                        options: {
+                            optionId: string;
+                            label: string;
+                            voteCount: number;
+                        }[];
+                        voters: {
+                            [key: string]: {
+                                userId: string;
+                                displayName: string;
+                                votedAt: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingChannelsByIdMessagesByMessageIdPollClose: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        poll: {
+                            pollId: string;
+                            closed: boolean;
+                            closedAt: string | null;
+                            totalVotes: number;
+                            myOptionId: string | null;
+                            canClose: boolean;
+                            options: {
+                                optionId: string;
+                                label: string;
+                                voteCount: number;
+                            }[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1MessagingChannelsByIdMessagesByMessageIdPollVote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    optionId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        poll: {
+                            pollId: string;
+                            closed: boolean;
+                            closedAt: string | null;
+                            totalVotes: number;
+                            myOptionId: string | null;
+                            canClose: boolean;
+                            options: {
+                                optionId: string;
+                                label: string;
+                                voteCount: number;
+                            }[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     putApiV1MessagingChannelsByIdMessagesByMessageIdReactionsByEmoji: {
         parameters: {
             query?: never;
@@ -62687,6 +62896,19 @@ export interface operations {
                                 reactedByMe: boolean;
                             }[];
                             pinned?: boolean;
+                            poll?: {
+                                pollId: string;
+                                closed: boolean;
+                                closedAt: string | null;
+                                totalVotes: number;
+                                myOptionId: string | null;
+                                canClose: boolean;
+                                options: {
+                                    optionId: string;
+                                    label: string;
+                                    voteCount: number;
+                                }[];
+                            };
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
@@ -62733,6 +62955,19 @@ export interface operations {
                                 reactedByMe: boolean;
                             }[];
                             pinned?: boolean;
+                            poll?: {
+                                pollId: string;
+                                closed: boolean;
+                                closedAt: string | null;
+                                totalVotes: number;
+                                myOptionId: string | null;
+                                canClose: boolean;
+                                options: {
+                                    optionId: string;
+                                    label: string;
+                                    voteCount: number;
+                                }[];
+                            };
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
@@ -62806,6 +63041,19 @@ export interface operations {
                                 reactedByMe: boolean;
                             }[];
                             pinned?: boolean;
+                            poll?: {
+                                pollId: string;
+                                closed: boolean;
+                                closedAt: string | null;
+                                totalVotes: number;
+                                myOptionId: string | null;
+                                canClose: boolean;
+                                options: {
+                                    optionId: string;
+                                    label: string;
+                                    voteCount: number;
+                                }[];
+                            };
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
@@ -62824,6 +63072,58 @@ export interface operations {
                             hiddenAttachmentCount?: number;
                         }[];
                         patientId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingChannelsByIdPolls: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    question: string;
+                    options: string[];
+                    clientMessageId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        messageId: string;
+                        channelId: string;
+                        createdAt: string;
+                        poll: {
+                            pollId: string;
+                            closed: boolean;
+                            closedAt: string | null;
+                            totalVotes: number;
+                            myOptionId: string | null;
+                            canClose: boolean;
+                            options: {
+                                optionId: string;
+                                label: string;
+                                voteCount: number;
+                            }[];
+                        };
                     };
                 };
             };
@@ -62933,6 +63233,19 @@ export interface operations {
                                 reactedByMe: boolean;
                             }[];
                             pinned?: boolean;
+                            poll?: {
+                                pollId: string;
+                                closed: boolean;
+                                closedAt: string | null;
+                                totalVotes: number;
+                                myOptionId: string | null;
+                                canClose: boolean;
+                                options: {
+                                    optionId: string;
+                                    label: string;
+                                    voteCount: number;
+                                }[];
+                            };
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
@@ -63446,6 +63759,19 @@ export interface operations {
                                 reactedByMe: boolean;
                             }[];
                             pinned?: boolean;
+                            poll?: {
+                                pollId: string;
+                                closed: boolean;
+                                closedAt: string | null;
+                                totalVotes: number;
+                                myOptionId: string | null;
+                                canClose: boolean;
+                                options: {
+                                    optionId: string;
+                                    label: string;
+                                    voteCount: number;
+                                }[];
+                            };
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;

@@ -690,6 +690,7 @@ function ConversationThreadView({
         sendHint={sendHint}
         onKeyDown={handleComposerKey}
         onInsertSavedReply={insertSavedReply}
+        onPollCreated={() => void loadLatest(true)}
         mentionQuery={mentionQuery}
         setMentionQuery={setMentionQuery}
         pendingAdd={pendingAdd}
