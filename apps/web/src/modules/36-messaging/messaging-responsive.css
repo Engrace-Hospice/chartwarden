@@ -6,11 +6,20 @@
   }
 
   .wx-messaging-context-toggle {
-    width: 2.5rem;
+    width: 2.75rem;
+    min-height: 2.75rem;
     padding: 0;
     justify-content: center;
+  }
+
+  /* Icon-only: the label stays in the accessible name but takes no room (it used to push the icon out of the button). */
+  .wx-messaging-context-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
     overflow: hidden;
-    color: transparent;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   .wx-messaging-context-toggle svg {
