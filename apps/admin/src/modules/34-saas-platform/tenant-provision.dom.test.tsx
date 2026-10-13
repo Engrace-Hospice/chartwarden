@@ -127,4 +127,42 @@ describe("TenantProvisionDrawer", () => {
       "ada@cedar.example",
     );
   });
+
+  it("shows the server's reason when provisioning is refused (e.g. a duplicate name)", async () => {
+    const { onAccepted } = mount(() =>
+      json(409, {
+        error: {
+          code: "CONFLICT",
+          message: "a tenant with that legal name already exists",
+          correlationId: "c",
+        },
+      }),
+    );
+    fillAll();
+    fireEvent.click(screen.getByRole("button", { name: "Provision tenant" }));
+
+    expect(await screen.findByText(/already exists/)).toBeTruthy();
+    expect(onAccepted).not.toHaveBeenCalled();
+  });
+
+  it("a network failure shows a retryable message and re-enables the button", async () => {
+    mount(() => {
+      throw new Error("offline");
+    });
+    fillAll();
+    fireEvent.click(screen.getByRole("button", { name: "Provision tenant" }));
+
+    expect(await screen.findByText(/could not reach the server/i)).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "Provision tenant" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it("points the operator at the tenant to follow provisioning progress", async () => {
+    mount(() => json(202, { tenantAccountId: "t-1", jobId: "j" }));
+    fillAll();
+    fireEvent.click(screen.getByRole("button", { name: "Provision tenant" }));
+
+    expect(await screen.findByText(/open the tenant to follow its progress/i)).toBeTruthy();
+  });
 });

@@ -430,12 +430,8 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
         const rawToken = randomBytes(32).toString("base64url");
         const tokenHash = createHash("sha256").update(rawToken).digest("hex");
         const invitationUrl = `${deps.provision.invitation.acceptBaseUrl.replace(/\/$/, "")}/${rawToken}`;
-        await deps.provision.invitation.send({
-          to: input.inviteeEmail,
-          inviteeFullName: input.inviteeFullName,
-          invitationUrl,
-          expiresAt: input.expiresAt,
-        });
+        // Insert first, send second, in one transaction: a failed insert then never leaves an emailed link with no
+        // row, and a failed send rolls the row back so the retry mints a fresh token (only the hash is stored).
         const created = await repo.createInvitation({
           organizationId: input.organizationId,
           tenantAccountId: input.tenantAccountId,
@@ -443,6 +439,12 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
           inviteeFullName: input.inviteeFullName,
           tokenHash,
           inviterMembershipId: input.inviterMembershipId,
+          expiresAt: input.expiresAt,
+        });
+        await deps.provision.invitation.send({
+          to: input.inviteeEmail,
+          inviteeFullName: input.inviteeFullName,
+          invitationUrl,
           expiresAt: input.expiresAt,
         });
         return { invitationId: created.id };

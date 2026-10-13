@@ -2,14 +2,7 @@
 // `/tenants/:orgSlug/status`): onboarding → active, active ⇄ suspended / at_risk. Backed by
 // POST /api/v1/platform/tenants/{orgSlug}/status; the server runs the §2.2 machine and its guards (canonical
 // onboarding tasks settled, BAA executed and >90d from expiry for activation), so a refusal carries the reason.
-import {
-  Button,
-  InlineAlert,
-  Modal,
-  SelectField,
-  TextAreaField,
-  useApiClient,
-} from "@wardenx/ui";
+import { Button, InlineAlert, Modal, SelectField, TextAreaField, useApiClient } from "@wardenx/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { statusLabel } from "./saas-status";

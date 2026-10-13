@@ -56,6 +56,7 @@ function m34DsarDeriveTenantBucket(organizationId: string): string {
 import { type M34QueueName, M34_QUEUES } from "./jobs/index";
 import type { M34WorkerDeps } from "./jobs/saas-jobs";
 import type { TenantPlatformRouteService } from "./routes/platform/service";
+import { type ProvisionJobPort, createProvisionJobPort } from "./jobs/provision-job-port";
 import type { EnqueuePort as PlatformEnqueuePort } from "./routes/platform/service";
 import {
   type DrizzleTenantPlatformDeps,
@@ -189,10 +190,18 @@ export function registerLiveM34Seams(deps: {
  */
 export function buildPlatformEnqueue(connection: ConnectionOptions | undefined): {
   enqueue: PlatformEnqueuePort;
+  provisionJobs: ProvisionJobPort;
   queues: Queue[];
 } {
   if (!connection) {
+    const unbound = (): never => {
+      throw new M34InfraPortUnbound(
+        "provisionJobs",
+        "no Valkey connection configured — cannot read or retry the tenant.provision job",
+      );
+    };
     return {
+      provisionJobs: { status: async () => unbound(), retry: async () => unbound() },
       enqueue: {
         async enqueue(queue) {
           assertM34JobCapability(queue);
@@ -228,7 +237,9 @@ export function buildPlatformEnqueue(connection: ConnectionOptions | undefined):
       return { jobId: job.id ?? `${queue}:${jobKey}` };
     },
   };
-  return { enqueue, queues: [...cache.values()] };
+  // The provision job lives on the queue the outbox consumer fills; this handle only reads and retries it.
+  const provisionJobs = createProvisionJobPort(queueFor(M34_QUEUES.provision));
+  return { enqueue, provisionJobs, queues: [...cache.values()] };
 }
 
 /**
@@ -292,6 +303,8 @@ export function buildTenantEnqueue(connection: ConnectionOptions | undefined): {
 export function buildDrizzlePlatformService(deps: {
   platformDb: DbClient;
   enqueue: PlatformEnqueuePort;
+  /** Reads/retries the `tenant.provision` job; omitted, those two routes fail closed. */
+  provisionJobs?: ProvisionJobPort;
   auditBypass: PlatformBypassAuditor<PlatformTx>;
   /** #107 — the live transactional-outbox publisher (callerModule-pinned 'm34'). When omitted the lifecycle
    *  outbox stays fail-closed (the §2.5 emit throws, never a silent no-op). */
@@ -344,6 +357,14 @@ export function buildDrizzlePlatformService(deps: {
   const drizzleDeps: DrizzleTenantPlatformDeps = {
     platformDb: deps.platformDb,
     enqueue: deps.enqueue,
+    provisionJobs: deps.provisionJobs ?? {
+      async status() {
+        throw new M34InfraPortUnbound("provisionJobs.status", "bind the provision job port");
+      },
+      async retry() {
+        throw new M34InfraPortUnbound("provisionJobs.retry", "bind the provision job port");
+      },
+    },
     auditBypass: deps.auditBypass,
     outbox,
     organizations,

@@ -4545,6 +4545,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             platform: buildDrizzlePlatformService({
               platformDb: platformDbHandle?.db ?? dbHandle.db,
               enqueue: m34PlatformEnqueue.enqueue,
+              provisionJobs: m34PlatformEnqueue.provisionJobs,
               auditBypass: m34PlatformBypassAuditor,
               outbox: m34OutboxPublisher,
               // F-091 — M1 owns the `feature_flag` schema, so the §4.7 admin seam is built here and

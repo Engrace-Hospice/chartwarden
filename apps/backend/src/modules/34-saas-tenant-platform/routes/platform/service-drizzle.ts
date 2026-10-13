@@ -51,6 +51,7 @@ import {
 import { type PlatformBypassAuditor, withPlatformContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, desc, eq } from "drizzle-orm";
+import type { ProvisionJobPort } from "../../jobs/provision-job-port";
 import { evaluateActivationGuards } from "./activation-guards";
 import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf, paginate } from "./concurrency";
 import type {
@@ -127,6 +128,8 @@ export interface DrizzleTenantPlatformDeps {
   readonly platformDb: DbClient;
   /** The §4.3 worker-trigger port (BullMQ producer in prod; the slice records the call in tests). */
   readonly enqueue: EnqueuePort;
+  /** Reads/retries the BullMQ `tenant.provision` job (BullMQ in prod; fail-closed when no queue is configured). */
+  readonly provisionJobs: ProvisionJobPort;
   /** Emits the mandatory `platform.bypass_invoked` audit event for every platform-context entry (F09). */
   readonly auditBypass: PlatformBypassAuditor<PlatformTx>;
   /** Catalog-validated outbox publish, over the same platform tx. */
@@ -625,6 +628,48 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         );
         return { tenantAccountId: account.id, jobId };
       });
+    },
+
+    async getProvisionStatus(orgSlug) {
+      const { account } = await inPlatformCtx("platform-ops read provision status", (tx) =>
+        loadByOrgSlug(tx, orgSlug),
+      );
+      return {
+        tenantAccountId: account.id,
+        orgSlug,
+        tenantStatus: account.status,
+        job: await deps.provisionJobs.status(account.id),
+      };
+    },
+
+    async retryProvision(orgSlug) {
+      const { account } = await inPlatformCtx("platform-ops retry tenant provision", (tx) =>
+        loadByOrgSlug(tx, orgSlug),
+      );
+      if (account.status !== "provisioning") {
+        throw new WardenXError(
+          "PROVISION_NOT_RETRYABLE",
+          `only a tenant in 'provisioning' can be retried; this one is '${account.status}'`,
+          409,
+        );
+      }
+      const result = await deps.provisionJobs.retry(account.id);
+      if (result === "missing") {
+        throw new WardenXError(
+          "PROVISION_JOB_MISSING",
+          "no provisioning job exists for this tenant; it was never enqueued or has been cleared",
+          409,
+        );
+      }
+      if (result === "not_failed") {
+        const { state } = await deps.provisionJobs.status(account.id);
+        throw new WardenXError(
+          "PROVISION_JOB_NOT_FAILED",
+          `the provisioning job is '${state}', not failed — nothing to retry`,
+          409,
+        );
+      }
+      return { tenantAccountId: account.id, state: "queued" };
     },
 
     // ── tenant-invitations ──

@@ -87,7 +87,9 @@ describe("TenantTransitionDialog", () => {
     const post = vi.fn().mockRejectedValue(new Error("offline"));
     const { onDone } = renderDialog("active", post);
 
-    fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: "Non-payment 30 days" } });
+    fireEvent.change(screen.getByLabelText(/reason/i), {
+      target: { value: "Non-payment 30 days" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /apply/i }));
 
     expect((await screen.findByRole("alert")).textContent).toMatch(/try again/i);
@@ -112,7 +114,9 @@ describe("TenantTransitionDialog", () => {
     const { rerender } = render(dialog("onboarding"));
 
     rerender(dialog("active"));
-    fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: "Non-payment 30 days" } });
+    fireEvent.change(screen.getByLabelText(/reason/i), {
+      target: { value: "Non-payment 30 days" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /apply/i }));
 
     await waitFor(() => expect(post).toHaveBeenCalled());

@@ -125,6 +125,14 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
           return { jobId: `${queue}-${jobKey}` };
         },
       },
+      provisionJobs: {
+        async status() {
+          throw new Error("not used by this suite");
+        },
+        async retry() {
+          throw new Error("not used by this suite");
+        },
+      },
       auditBypass: async () => {},
       outbox,
       organizations: {

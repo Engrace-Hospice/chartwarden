@@ -21,6 +21,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { BAA_TONE, cap, lifecycleTone, statusLabel } from "./saas-status";
+import { ProvisioningCard } from "./provisioning-card";
 import { TenantTransitionDialog } from "./tenant-transition-dialog";
 
 interface StatusEvent {
@@ -205,6 +206,10 @@ export function TenantOverview(): JSX.Element {
             ) : null}
           </div>
         </header>
+
+        {tenant.status === "provisioning" ? (
+          <ProvisioningCard orgSlug={orgSlug} onChanged={() => void load()} />
+        ) : null}
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <LifecycleCard tenant={tenant} onTransition={() => setTransitionOpen(true)} />

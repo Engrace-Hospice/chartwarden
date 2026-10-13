@@ -196402,6 +196402,157 @@
         }
       }
     },
+    "/api/v1/platform/tenants/{orgSlug}/provision-status": {
+      "get": {
+        "operationId": "getApiV1PlatformTenantsByOrgSlugProvisionstatus",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "A tenant's lifecycle status next to its tenant.provision job state (queued/running/failed/…)",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "tenantAccountId",
+                    "orgSlug",
+                    "tenantStatus",
+                    "job"
+                  ],
+                  "properties": {
+                    "tenantAccountId": {
+                      "type": "string"
+                    },
+                    "orgSlug": {
+                      "type": "string"
+                    },
+                    "tenantStatus": {
+                      "type": "string"
+                    },
+                    "job": {
+                      "type": "object",
+                      "required": [
+                        "state",
+                        "attemptsMade",
+                        "failedReason"
+                      ],
+                      "properties": {
+                        "state": {
+                          "anyOf": [
+                            {
+                              "const": "queued",
+                              "type": "string"
+                            },
+                            {
+                              "const": "running",
+                              "type": "string"
+                            },
+                            {
+                              "const": "completed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "failed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "missing",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "attemptsMade": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "failedReason": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/provision/retry": {
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugProvisionRetry",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Re-run a failed tenant.provision job for a tenant still in provisioning (step-up)",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "tenantAccountId",
+                    "state"
+                  ],
+                  "properties": {
+                    "tenantAccountId": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/platform/tenants/{orgSlug}/shred": {
       "post": {
         "operationId": "postApiV1PlatformTenantsByOrgSlugShred",
