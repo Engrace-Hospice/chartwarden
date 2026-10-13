@@ -72,25 +72,31 @@ const GROUP_WINDOW_MS = 300_000;
 const clockTime = (iso: string): string =>
   new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(iso));
 
+/** RFC 3339 date-time prefix: `new Date("10")` parses in V8, so a bare Date check would accept it. */
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T/;
+
 /**
  * WP 1.3: plain-text "Edited <time>" marker (the words carry the meaning, not colour). Not a button: opening a
  * revision list is Phase 5 (docs/messaging-hub/06-ux-design.md), tied to messaging.history.read.
- * An unparseable editedAt renders nothing rather than "Invalid Date".
+ * The visible text is also the accessible text; the full date is real screen-reader text (a `title` is mouse-only).
+ * A non-ISO or unparseable editedAt renders nothing rather than "Invalid Date".
  */
 function EditedIndicator({
   editedAt,
 }: { editedAt: string | null | undefined }): JSX.Element | null {
-  const absolute = editedAt ? absoluteTime(editedAt) : "";
+  const absolute = editedAt && ISO_INSTANT.test(editedAt) ? absoluteTime(editedAt) : "";
   if (!editedAt || !absolute) return null;
   return (
-    <time
-      className="wx-message-edited"
-      dateTime={editedAt}
-      title={absolute}
-      aria-label={`Edited at ${absolute}`}
-    >
-      Edited {clockTime(editedAt)}
-    </time>
+    <>
+      <span aria-hidden="true">·</span>
+      <span className="wx-message-edited">
+        Edited{" "}
+        <time dateTime={editedAt} title={absolute}>
+          {clockTime(editedAt)}
+        </time>
+        <span className="wx-sr-only"> on {absolute}</span>
+      </span>
+    </>
   );
 }
 
@@ -205,8 +211,7 @@ function MessageRowImpl({
                     : `${message.hiddenAttachmentCount} attachments not available yet`}
                 </small>
               ) : null}
-              <span className="wx-message-meta">
-                {deleted ? null : <EditedIndicator editedAt={message.editedAt} />}
+              <div className="wx-message-meta">
                 <time
                   dateTime={message.createdAt}
                   title={absoluteTime(message.createdAt)}
@@ -214,7 +219,8 @@ function MessageRowImpl({
                 >
                   {clockTime(message.createdAt)}
                 </time>
-              </span>
+                {deleted ? null : <EditedIndicator editedAt={message.editedAt} />}
+              </div>
             </div>
             {!deleted ? (
               <MessageAnnotations message={message} canAnnotate={canAnnotate} canPin={canPin} />

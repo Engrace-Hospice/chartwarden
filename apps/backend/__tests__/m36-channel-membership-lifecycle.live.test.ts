@@ -852,7 +852,7 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     const channelPage = await service.listMessages(orgA, { channelId, userId: reader, limit: 100 });
     const byId = new Map(channelPage.messages.map((m) => [m.messageId, m]));
     expect(isIso(byId.get(root.messageId)?.editedAt)).toBe(true);
-    expect(byId.get(untouched.messageId)?.editedAt ?? null).toBeNull();
+    expect(byId.get(untouched.messageId)?.editedAt).toBeNull(); // on the wire: null, never absent
 
     const thread = await service.listThread(orgA, {
       channelId,
@@ -864,6 +864,13 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
 
     const pins = await service.listPins(orgA, { channelId, userId: reader });
     expect(isIso(pins.pins.find((m) => m.messageId === root.messageId)?.editedAt)).toBe(true);
+
+    const found = await service.searchMessages(orgA, {
+      userId: reader,
+      channelId,
+      query: "root v2",
+    });
+    expect(isIso(found.results.find((m) => m.messageId === root.messageId)?.editedAt)).toBe(true);
 
     // a delete after an edit shows a plain tombstone: no edited marker
     await service.deleteMessage(orgA, { userId: rn, messageId: reply.messageId });
