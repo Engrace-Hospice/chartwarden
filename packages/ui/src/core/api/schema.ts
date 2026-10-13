@@ -13458,6 +13458,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/scheduled-messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Schedule a message for later (WP 2.6; Idempotency-Key required; 1 minute to 30 days ahead; announcement channel needs messaging.announce; 409 SCHEDULE_LIMIT_REACHED at 50). Re-checked at dispatch. */
+        post: operations["postApiV1MessagingChannelsByIdScheduledmessages"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/department-channels": {
         parameters: {
             query?: never;
@@ -13559,6 +13576,41 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/scheduled-messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's own scheduled messages (pending and blocked), soonest first; never anyone else's */
+        get: operations["getApiV1MessagingScheduledmessages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/scheduled-messages/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Cancel a scheduled message before dispatch (idempotent; cancelled=false when nothing was left to cancel) */
+        delete: operations["deleteApiV1MessagingScheduledmessagesById"];
+        options?: never;
+        head?: never;
+        /** Reschedule one of the caller's scheduled messages (a blocked one becomes pending again) */
+        patch: operations["patchApiV1MessagingScheduledmessagesById"];
         trace?: never;
     };
     "/api/v1/messaging/template-admin": {
@@ -62552,6 +62604,53 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1MessagingChannelsByIdScheduledmessages: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    body: string;
+                    parentMessageId?: string;
+                    scheduledFor: string;
+                    timeZone?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        channelId: string;
+                        parentMessageId: string | null;
+                        body: string;
+                        scheduledFor: string;
+                        timeZone: string;
+                        status: "pending" | "blocked";
+                        blockedReason: "channel_archived" | "not_member" | "permission_revoked" | "announcement_not_permitted" | "parent_unavailable" | "dispatch_failed" | null;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1MessagingDepartmentchannels: {
         parameters: {
             query?: never;
@@ -62767,6 +62866,110 @@ export interface operations {
                         kind: "care_team";
                         patientId: string;
                         archived: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingScheduledmessages: {
+        parameters: {
+            query?: {
+                channelId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        scheduledMessages: {
+                            id: string;
+                            channelId: string;
+                            parentMessageId: string | null;
+                            body: string;
+                            scheduledFor: string;
+                            timeZone: string;
+                            status: "pending" | "blocked";
+                            blockedReason: "channel_archived" | "not_member" | "permission_revoked" | "announcement_not_permitted" | "parent_unavailable" | "dispatch_failed" | null;
+                            createdAt: string;
+                            updatedAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MessagingScheduledmessagesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        cancelled: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1MessagingScheduledmessagesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    scheduledFor: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        channelId: string;
+                        parentMessageId: string | null;
+                        body: string;
+                        scheduledFor: string;
+                        timeZone: string;
+                        status: "pending" | "blocked";
+                        blockedReason: "channel_archived" | "not_member" | "permission_revoked" | "announcement_not_permitted" | "parent_unavailable" | "dispatch_failed" | null;
+                        createdAt: string;
+                        updatedAt: string;
                     };
                 };
             };

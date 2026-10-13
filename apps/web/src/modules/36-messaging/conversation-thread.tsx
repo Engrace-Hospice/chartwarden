@@ -39,11 +39,13 @@ import {
   mergeMessages,
 } from "./messaging-utils";
 import { PinnedMessagesBar } from "./pinned-messages-bar";
+import { ScheduleSendButton } from "./schedule-send-button";
 import { TemplatePicker } from "./template-picker";
 import { PatientContextAside, ThreadHeader } from "./thread-header";
 import { ThreadPanel } from "./thread-panel";
 import { useAnnouncementTools } from "./use-announcement-tools";
 import { useAttachmentUploads } from "./use-attachment-upload";
+import { useAutoGrowTextarea } from "./use-auto-grow-textarea";
 import { INITIAL_READ_VIEW, type ReadView, useJumpToMessage } from "./use-jump-to-message";
 import { useLatestPolling } from "./use-latest-polling";
 import { useMentionCandidates } from "./use-mention-candidates";
@@ -205,20 +207,7 @@ export function ConversationThread({
     },
   });
 
-  useLayoutEffect(() => {
-    // Recalculate after every controlled-value change, including selection and send/reset.
-    void draft;
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    textarea.style.height = "auto";
-    const maximum = Number.parseFloat(window.getComputedStyle(textarea).maxHeight);
-    const nextHeight = Number.isFinite(maximum)
-      ? Math.min(textarea.scrollHeight, maximum)
-      : textarea.scrollHeight;
-    textarea.style.height = `${nextHeight}px`;
-    textarea.style.overflowY =
-      Number.isFinite(maximum) && textarea.scrollHeight > maximum ? "auto" : "hidden";
-  }, [draft]);
+  useAutoGrowTextarea(textareaRef, draft);
 
   const markReadBoundary = useCallback(
     async (candidateMessages: readonly Message[]): Promise<void> => {
@@ -788,6 +777,19 @@ export function ConversationThread({
             >
               <Glyph name="send" size={16} /> <span>Send</span>
             </Button>
+            <ScheduleSendButton
+              channelId={channel.channelId}
+              text={draft}
+              disabled={sending}
+              disabledReason={
+                uploads.chips.length > 0 ? "Attachments cannot be scheduled." : undefined
+              }
+              onScheduled={() => {
+                // The scheduled copy now owns the text; an empty draft also discards the server-side draft (WP 2.5).
+                setDraft("");
+                setDraftReferences([]);
+              }}
+            />
             <ComposerFooter sendHint={sendHint} sendError={sendError} sending={sending} />
           </form>
         </>

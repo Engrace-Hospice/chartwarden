@@ -32,6 +32,17 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  {
+    eventType: "m36.message.schedule_blocked",
+    category: "clinical_routine",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    // WP 2.6: only the SENDER of the scheduled message is told, and only in-app with generic text (no channel/patient).
+    resolverArgs: { roleKeys: [], userIdPaths: ["senderUserId"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
   // ── Tier-1: SOS — system_locked, voice in channels (§2.5 voice is SOS-only) ──────────────
   {
     eventType: "field_safety.sos",

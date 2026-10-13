@@ -9,6 +9,7 @@ import { DepartmentChannelDialog } from "./department-channel-dialog";
 import type { ChannelSummary, ConversationFilter } from "./messaging-types";
 import { channelKindLabel, channelLabel } from "./messaging-utils";
 import { NewConversationDialog } from "./new-conversation-dialog";
+import { ScheduledMessagesDialog } from "./scheduled-messages-dialog";
 import { useMessagingRealtime } from "./use-messaging-realtime";
 import { type LiveHint, pushLiveHint } from "./use-thread";
 import "./staff-messaging.css";
@@ -79,6 +80,7 @@ export function StaffMessaging(): JSX.Element {
       canManageMembers={session?.permissions?.includes("messaging.manage_members") ?? false}
       requestedChannelId={requestedChannelId}
       requestedMessageId={requestedMessageId}
+      requestedScheduled={new URLSearchParams(location.search).get("scheduled") === "1"}
     />
   );
 }
@@ -95,6 +97,7 @@ function OrganizationStaffMessaging({
   canManageMembers,
   requestedChannelId,
   requestedMessageId,
+  requestedScheduled,
 }: {
   organizationId: string;
   organizationName: string;
@@ -104,6 +107,8 @@ function OrganizationStaffMessaging({
   canManageMembers: boolean;
   requestedChannelId: string | null;
   requestedMessageId: string | null;
+  /** WP 2.6: `?scheduled=1` (the "not sent" notification's link) opens the Scheduled list. */
+  requestedScheduled: boolean;
 }): JSX.Element {
   const client = useApiClient();
   const narrow = useNarrowMessagingLayout();
@@ -113,6 +118,7 @@ function OrganizationStaffMessaging({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [newConversationOpen, setNewConversationOpen] = useState(false);
   const [departmentOpen, setDepartmentOpen] = useState(false);
+  const [scheduledOpen, setScheduledOpen] = useState(requestedScheduled);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ConversationFilter>("all");
   const generationRef = useRef(0);
@@ -327,6 +333,15 @@ function OrganizationStaffMessaging({
         onCreated={openConversation}
       />
 
+      <ScheduledMessagesDialog
+        open={scheduledOpen}
+        onClose={() => setScheduledOpen(false)}
+        channelName={(channelId) => {
+          const known = channels?.find((channel) => channel.channelId === channelId);
+          return known ? channelLabel(known) : "A conversation you can no longer open";
+        }}
+      />
+
       {canAnnounce ? (
         <DepartmentChannelDialog
           key={departmentOpen ? "open" : "closed"}
@@ -350,6 +365,7 @@ function OrganizationStaffMessaging({
           onRetry={() => void loadChannels()}
           onNewConversation={() => setNewConversationOpen(true)}
           onNewDepartment={canAnnounce ? () => setDepartmentOpen(true) : undefined}
+          onShowScheduled={() => setScheduledOpen(true)}
         />
         <div className="wx-messaging-active-pane">
           {activeChannel ? (

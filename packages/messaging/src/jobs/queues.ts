@@ -46,6 +46,7 @@ export const MESSAGING_QUEUES = {
   deliveryReconcile: "messaging.delivery_reconcile",
   hashVerify: "messaging.hash_verify",
   attachmentScan: "messaging.attachment_scan",
+  scheduledSend: "messaging.scheduled_send",
 } as const;
 
 /** A queue name from the catalog. */
@@ -187,6 +188,19 @@ export const MESSAGING_QUEUE_PARAMETERS: { readonly [K in MessagingQueueName]: Q
     dlq: "messaging.attachment_scan.dlq",
     idempotency: "attachmentId; verdict applied WHERE scan_state='pending' (first writer wins)",
   },
+  // WP 2.6: a per-minute sweep (not one delayed job per message, so a cancel or reschedule never has to find a queued
+  // job). It claims each due row under FOR UPDATE SKIP LOCKED and sends it with client_message_id = the scheduled id, so
+  // a retried or overlapping tick can never send twice. Concurrency 1: one sweeper; a missed tick is made up by the next.
+  "messaging.scheduled_send": {
+    name: "messaging.scheduled_send",
+    priority: 6,
+    attempts: 2,
+    backoff: { type: "fixed", baseMs: 60000 },
+    concurrency: 1,
+    dlq: "messaging.scheduled_send.dlq",
+    idempotency:
+      "scheduledMessageId (= message.client_message_id); row locked FOR UPDATE SKIP LOCKED and deleted in the send transaction",
+  },
 };
 
 /** The repeat cadences for the scheduled jobs (UTC cron). Event-triggered queues have no entry. */
@@ -205,4 +219,6 @@ export const MESSAGING_JOB_SCHEDULES = {
   hashVerify: "0 4 * * *",
   /** attachment_scan: every minute (sweeps completed uploads still awaiting a verdict). */
   attachmentScan: "* * * * *",
+  /** scheduled_send: every minute (sends the scheduled messages that came due). */
+  scheduledSend: "* * * * *",
 } as const;

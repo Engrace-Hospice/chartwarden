@@ -1,0 +1,141 @@
+/* WP 2.6: the composer's Schedule control, the "Send later" dialog and the Scheduled list. Tokens come from the app theme. */
+
+.wx-message-composer > .wx-schedule-send {
+  grid-column: 3;
+  display: grid;
+  justify-items: end;
+  gap: 0.25rem;
+}
+
+.wx-schedule-status {
+  max-width: 14rem;
+  color: var(--color-on-surface-variant);
+  font-size: 0.6875rem;
+  text-align: right;
+}
+
+.wx-schedule-status:empty {
+  display: none;
+}
+
+.wx-schedule-dialog,
+.wx-scheduled-dialog {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1.25rem;
+}
+
+.wx-schedule-dialog h2,
+.wx-scheduled-dialog h2 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.wx-schedule-dialog header p,
+.wx-scheduled-dialog header p {
+  margin: 0.25rem 0 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}
+
+.wx-schedule-field,
+.wx-scheduled-edit label {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.wx-schedule-field input,
+.wx-scheduled-edit input {
+  min-height: 2.5rem;
+  padding: 0 0.65rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-low);
+  color: var(--color-on-surface);
+  font: inherit;
+}
+
+.wx-schedule-field input:focus-visible,
+.wx-scheduled-edit input:focus-visible {
+  border-color: var(--color-focus-ring);
+  outline: 2px solid color-mix(in srgb, var(--color-focus-ring) 30%, transparent);
+  outline-offset: 1px;
+}
+
+.wx-schedule-zone {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}
+
+.wx-schedule-dialog footer,
+.wx-scheduled-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.wx-scheduled-list {
+  display: grid;
+  gap: 0.6rem;
+  max-height: 24rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.wx-scheduled-row {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+}
+
+.wx-scheduled-row[data-status="blocked"] {
+  border-color: var(--color-error, var(--color-card-border));
+}
+
+.wx-scheduled-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.wx-scheduled-meta span {
+  color: var(--color-on-surface-variant);
+}
+
+.wx-scheduled-body {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+}
+
+.wx-scheduled-blocked {
+  margin: 0;
+  color: var(--color-error, var(--color-on-surface));
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.wx-scheduled-actions,
+.wx-scheduled-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.wx-scheduled-empty {
+  margin: 0;
+  padding: 1rem 0;
+  color: var(--color-on-surface-variant);
+  text-align: center;
+}

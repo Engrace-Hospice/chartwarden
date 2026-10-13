@@ -159,7 +159,9 @@ import {
   registerMessagingAbacPredicates as _registerMessagingAbacPredicates,
   registerMessagingRoutes as _registerMessagingRoutes,
 } from "./routes/messaging-routes";
+import { registerScheduledSendRoutes as _registerScheduledSendRoutes } from "./routes/scheduled-send-routes";
 import { registerTemplateRoutes as _registerTemplateRoutes } from "./routes/template-routes";
+import { createDbScheduledSendService as _createDbScheduledSendService } from "./scheduled/scheduled-send-service-db";
 import { createDbTemplateService as _createDbTemplateService } from "./templates/template-service-db";
 
 /**
@@ -188,9 +190,15 @@ export function mountMessagingRoutes(
       : {}),
   });
   _registerMessagingAbacPredicates(service); // idempotent — single-owner registry, re-boot-safe
-  _registerMessagingRoutes(app, { service, announcements: _createDbAnnouncementService(db) }); // WP 2.9
+  const announcements = _createDbAnnouncementService(db);
+  _registerMessagingRoutes(app, { service, announcements }); // WP 2.9
   // WP 2.5 — private encrypted drafts (own row per user + channel + thread root).
   _registerDraftRoutes(app, { service: _createDbDraftService({ db }) });
+  // WP 2.6 — scheduled send: the QUEUEING side. The `messaging.scheduled_send` sweep sends (see ./scheduled/*).
+  _registerScheduledSendRoutes(app, {
+    service: _createDbScheduledSendService({ db }),
+    announcements,
+  });
   // WP 1.5 — attachment authorize/complete/access. The visibility rule is the route service's own, so an attachment
   // is exactly as reachable as the channel it was posted in. Without storage the routes answer a typed 503.
   if (opts.attachments) {
@@ -279,3 +287,24 @@ export { registerAttachmentRoutes } from "./routes/attachment-routes";
 // WP 2.8 — message templates & saved replies: Drizzle service + routes (the in-memory twin lives in @wardenx/messaging).
 export { createDbTemplateService } from "./templates/template-service-db";
 export { registerTemplateRoutes } from "./routes/template-routes";
+
+// WP 2.6 — scheduled send: the dispatcher (re-check at dispatch, send, delete in one transaction), its per-minute BullMQ
+// sweep, and the consumer that tells the sender a message was blocked.
+export {
+  type ScheduledSendDispatcher,
+  type ScheduledSendDispatcherDeps,
+  SCHEDULE_BLOCKED_EVENT,
+  createScheduledSendDispatcher,
+} from "./scheduled/scheduled-send-dispatcher";
+export { createDbScheduledSendService } from "./scheduled/scheduled-send-service-db";
+export {
+  type M36ScheduledSendWorkerDeps,
+  registerM36ScheduledSendWorker,
+  scheduleM36ScheduledSendJobs,
+  scheduledSendTick,
+} from "./scheduled/scheduled-send-worker";
+export { registerScheduledSendRoutes } from "./routes/scheduled-send-routes";
+export {
+  M36_SCHEDULE_BLOCKED_CONSUMER,
+  buildM36ScheduleBlockedConsumer,
+} from "./outbox-consumers/schedule-blocked";

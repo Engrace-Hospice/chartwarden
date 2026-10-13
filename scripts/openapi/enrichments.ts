@@ -1253,6 +1253,14 @@ import {
   DraftResponseSchema as M36DraftResponseSchema,
   SaveDraftBodySchema as M36SaveDraftBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/draft-typebox";
+import {
+  CancelScheduledResponseSchema as M36CancelScheduledResponseSchema,
+  CreateScheduledBodySchema as M36CreateScheduledBodySchema,
+  RescheduleBodySchema as M36RescheduleBodySchema,
+  ScheduledListQuerySchema as M36ScheduledListQuerySchema,
+  ScheduledListResponseSchema as M36ScheduledListResponseSchema,
+  ScheduledMessageViewSchema as M36ScheduledMessageViewSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/scheduled-send-typebox";
 // ── M36 Secure Messaging & Alerts — request + response schema imports (all M36-aliased) ──
 import {
   // request schemas (query / body) — reused as-is
@@ -8995,6 +9003,27 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "DELETE /api/v1/messaging/channels/:id/draft": {
     summary: "Discard the caller's draft (idempotent, 204)",
     query: M36DraftQuerySchema,
+  },
+  "POST /api/v1/messaging/channels/:id/scheduled-messages": {
+    summary:
+      "Schedule a message for later (WP 2.6; Idempotency-Key required; 1 minute to 30 days ahead; announcement channel needs messaging.announce; 409 SCHEDULE_LIMIT_REACHED at 50). Re-checked at dispatch.",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    body: M36CreateScheduledBodySchema,
+    response: M36ScheduledMessageViewSchema,
+  },
+  "GET /api/v1/messaging/scheduled-messages": {
+    summary: "The caller's own scheduled messages (pending and blocked), soonest first; never anyone else's",
+    query: M36ScheduledListQuerySchema,
+    response: M36ScheduledListResponseSchema,
+  },
+  "PATCH /api/v1/messaging/scheduled-messages/:id": {
+    summary: "Reschedule one of the caller's scheduled messages (a blocked one becomes pending again)",
+    body: M36RescheduleBodySchema,
+    response: M36ScheduledMessageViewSchema,
+  },
+  "DELETE /api/v1/messaging/scheduled-messages/:id": {
+    summary: "Cancel a scheduled message before dispatch (idempotent; cancelled=false when nothing was left to cancel)",
+    response: M36CancelScheduledResponseSchema,
   },
   "GET /api/v1/messaging/channels/:id/mention-candidates": {
     summary: "Search staff and the linked patient eligible for a structured reference",
