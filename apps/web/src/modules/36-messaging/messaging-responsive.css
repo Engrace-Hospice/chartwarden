@@ -1,0 +1,119 @@
+/* Responsive @media blocks. Moved out of staff-messaging.css unchanged (WP 2.11); import order preserves the original cascade. */
+
+@media (max-width: 1000px) {
+  .wx-messaging-layout {
+    grid-template-columns: 18rem minmax(0, 1fr);
+  }
+
+  .wx-messaging-context-toggle {
+    width: 2.5rem;
+    padding: 0;
+    justify-content: center;
+    overflow: hidden;
+    color: transparent;
+  }
+
+  .wx-messaging-context-toggle svg {
+    color: var(--color-primary);
+  }
+}
+
+@media (max-width: 760px) {
+  .wx-messaging-page {
+    min-height: 32rem;
+  }
+
+  .wx-messaging-page > .wx-page-header {
+    padding: 0.75rem 1rem 0.5rem !important;
+  }
+
+  .wx-messaging-page > .wx-page-header .wx-page-title {
+    font-size: 1.25rem !important;
+  }
+
+  .wx-messaging-page > .wx-page-header .wx-breadcrumb,
+  .wx-messaging-page-subtitle {
+    display: none;
+  }
+
+  .wx-messaging-layout {
+    display: block;
+    margin: 0;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .wx-messaging-inbox,
+  .wx-messaging-active-pane {
+    width: 100%;
+    height: 100%;
+  }
+
+  .wx-messaging-layout.has-active-thread .wx-messaging-inbox,
+  .wx-messaging-layout:not(.has-active-thread) .wx-messaging-active-pane {
+    display: none;
+  }
+
+  .wx-messaging-inbox {
+    border-right: 0;
+  }
+
+  .wx-messaging-back {
+    display: inline-flex;
+  }
+
+  .wx-messaging-thread-header {
+    padding: 0.55rem 0.75rem;
+  }
+
+  .wx-messaging-thread-header > .wx-messaging-avatar {
+    display: none;
+  }
+
+  .wx-messaging-readonly {
+    width: 2rem;
+    overflow: hidden;
+    color: transparent;
+  }
+
+  .wx-messaging-readonly svg {
+    color: var(--color-on-surface-variant);
+  }
+
+  .wx-message-timeline {
+    padding: 0.75rem;
+  }
+
+  .wx-message-copy {
+    max-width: 84%;
+  }
+
+  .wx-messaging-patient-context {
+    position: absolute;
+    inset: 0 0 0 auto;
+    z-index: 4;
+    width: min(19rem, 88%);
+    box-shadow: var(--shadow-ambient);
+  }
+
+  .wx-message-composer {
+    padding: 0.65rem;
+    padding-bottom: max(0.65rem, env(safe-area-inset-bottom));
+  }
+
+  .wx-message-composer .wx-button span {
+    display: none;
+  }
+
+  .wx-message-composer .wx-button {
+    width: 2.75rem;
+    padding: 0;
+  }
+
+  .wx-message-composer > small {
+    display: none;
+  }
+}

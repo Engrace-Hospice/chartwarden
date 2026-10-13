@@ -1,0 +1,110 @@
+/* New-conversation dialog and shared focus rings. Moved out of staff-messaging.css unchanged (WP 2.11); import order preserves the original cascade. */
+
+.wx-new-conversation {
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem;
+}
+
+.wx-new-conversation h2 {
+  font-size: 1.2rem;
+}
+
+.wx-new-conversation header p {
+  margin: 0.3rem 0 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}
+
+.wx-conversation-type-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-low);
+}
+
+.wx-conversation-type-tabs button {
+  min-height: 2.5rem;
+}
+
+.wx-conversation-picker-search {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--color-on-surface);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.wx-conversation-picker-search input {
+  min-height: 2.6rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-lowest);
+  color: var(--color-on-surface);
+  font: inherit;
+}
+
+.wx-conversation-picker-results {
+  min-height: 12rem;
+  max-height: min(22rem, 45vh);
+  overflow-y: auto;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+}
+
+.wx-conversation-picker-state {
+  display: flex;
+  min-height: 12rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  color: var(--color-on-surface-variant);
+  text-align: center;
+}
+
+.wx-conversation-picker-results li > button {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 3.75rem;
+  padding: 0.65rem 0.75rem;
+  border: 0;
+  border-bottom: 1px solid var(--color-card-border);
+  background: transparent;
+  color: var(--color-on-surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.wx-conversation-picker-results li > button.is-active {
+  background: var(--color-primary-tint);
+}
+
+.wx-conversation-picker-results li > button > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 0.15rem;
+}
+
+.wx-conversation-picker-results small {
+  color: var(--color-muted);
+}
+
+.wx-new-conversation footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+.wx-messaging-layout button:focus-visible,
+.wx-new-conversation button:focus-visible,
+.wx-messaging-patient-context a:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}

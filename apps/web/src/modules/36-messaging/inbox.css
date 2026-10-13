@@ -1,0 +1,296 @@
+/* Inbox pane: header, search, filters, conversation rows, list states. Moved out of staff-messaging.css unchanged (WP 2.11); import order preserves the original cascade. */
+
+.wx-messaging-inbox {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--color-card-border);
+  background: var(--color-surface-lowest);
+}
+
+.wx-messaging-inbox-header,
+.wx-messaging-thread-header {
+  flex: 0 0 auto;
+  background: var(--color-surface-lowest);
+}
+
+.wx-messaging-inbox-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 4rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-card-border);
+}
+
+.wx-messaging-inbox-header > div {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.wx-messaging-inbox-header h2,
+.wx-messaging-thread-header h2,
+.wx-new-conversation h2 {
+  margin: 0;
+  color: var(--color-on-surface);
+  font-family: var(--font-sans);
+  font-weight: 700;
+}
+
+.wx-messaging-inbox-header h2 {
+  font-size: 1rem;
+}
+
+.wx-messaging-inbox-header > div > span {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.wx-messaging-inbox-tools {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.75rem 0.875rem;
+  border-bottom: 1px solid var(--color-card-border);
+}
+
+.wx-messaging-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.5rem;
+  padding: 0 0.7rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-low);
+  color: var(--color-muted);
+}
+
+.wx-messaging-search:focus-within,
+.wx-message-composer textarea:focus-visible {
+  border-color: var(--color-focus-ring);
+  outline: 2px solid color-mix(in srgb, var(--color-focus-ring) 30%, transparent);
+  outline-offset: 1px;
+}
+
+.wx-messaging-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-on-surface);
+  font: inherit;
+  font-size: 0.8125rem;
+}
+
+.wx-messaging-filters {
+  display: flex;
+  gap: 0.2rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.wx-messaging-filters::-webkit-scrollbar {
+  display: none;
+}
+
+.wx-messaging-filters button,
+.wx-conversation-type-tabs button {
+  min-height: 2rem;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-on-surface-variant);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.wx-messaging-filters button {
+  padding: 0.35rem 0.55rem;
+}
+
+.wx-messaging-filters button[aria-selected="true"],
+.wx-conversation-type-tabs button[aria-selected="true"] {
+  background: var(--color-primary-tint);
+  color: var(--color-primary-strong);
+}
+
+.wx-messaging-conversation-list,
+.wx-conversation-picker-results ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wx-messaging-conversation-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.wx-messaging-conversation-list > li > button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  min-height: 4.75rem;
+  padding: 0.7rem 0.875rem;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-card-border) 65%, transparent);
+  background: transparent;
+  color: var(--color-on-surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.wx-messaging-conversation-list > li > button:hover {
+  background: var(--color-surface-low);
+}
+
+.wx-messaging-conversation-list > li > button.is-active {
+  background: var(--color-primary-tint);
+}
+
+.wx-messaging-conversation-list > li > button.is-active::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--color-primary);
+  content: "";
+}
+
+.wx-messaging-avatar,
+.wx-message-avatar,
+.wx-message-avatar-spacer {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+}
+
+.wx-messaging-avatar,
+.wx-message-avatar {
+  background: var(--color-surface-container);
+  color: var(--color-on-surface-variant);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.wx-messaging-avatar.wx-kind-care_team {
+  background: color-mix(in srgb, var(--color-success) 12%, var(--color-surface-lowest));
+  color: var(--color-success-pill-fg);
+}
+
+.wx-messaging-row-copy {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 0.15rem;
+}
+
+.wx-messaging-row-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.wx-messaging-row-title strong,
+.wx-messaging-row-preview,
+.wx-messaging-row-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wx-messaging-row-title strong {
+  flex: 1;
+  font-size: 0.8125rem;
+}
+
+.wx-messaging-row-title time,
+.wx-messaging-row-copy small {
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+}
+
+.wx-messaging-row-preview {
+  color: var(--color-on-surface-variant);
+  font-size: 0.75rem;
+}
+
+.wx-messaging-unread {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font-size: 0.625rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.wx-messaging-mention {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.3rem;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
+  border-radius: 999px;
+  background: var(--color-primary-tint);
+  color: var(--color-primary-strong);
+  font-size: 0.625rem;
+  font-weight: 800;
+}
+
+.wx-messaging-list-state,
+.wx-message-state,
+.wx-messaging-no-selection {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  min-height: 0;
+  padding: 1.5rem;
+  color: var(--color-on-surface-variant);
+  text-align: center;
+}
+
+.wx-messaging-refresh-warning,
+.wx-thread-refresh-warning {
+  padding: 0.45rem 0.75rem;
+  background: var(--color-accent-tint);
+  color: var(--color-warning-pill-fg);
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.wx-messaging-refresh-warning button,
+.wx-thread-refresh-warning button,
+.wx-composer-error button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}

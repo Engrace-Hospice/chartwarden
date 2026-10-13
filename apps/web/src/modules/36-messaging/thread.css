@@ -1,0 +1,115 @@
+/* Thread pane: header, read-only badge, patient-context toggle, body and timeline. Moved out of staff-messaging.css unchanged (WP 2.11); import order preserves the original cascade. */
+
+.wx-messaging-active-pane,
+.wx-messaging-thread {
+  display: flex;
+  flex-direction: column;
+}
+
+.wx-messaging-active-pane {
+  overflow: hidden;
+}
+
+.wx-messaging-thread {
+  flex: 1;
+  height: 100%;
+}
+
+.wx-messaging-thread-header {
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 4rem;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--color-card-border);
+}
+
+.wx-messaging-back {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-on-surface);
+  cursor: pointer;
+}
+
+.wx-messaging-thread-title {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 0.1rem;
+}
+
+.wx-messaging-thread-title h2,
+.wx-messaging-thread-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wx-messaging-thread-title h2 {
+  font-size: 0.9375rem;
+}
+
+.wx-messaging-thread-title span {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.wx-messaging-readonly {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: var(--color-surface-container);
+  color: var(--color-on-surface-variant);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.wx-messaging-context-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.25rem;
+  padding: 0 0.65rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-lowest);
+  color: var(--color-primary);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wx-messaging-thread-body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.wx-message-timeline {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 1rem clamp(1rem, 3vw, 2.5rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--color-background);
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wx-message-timeline {
+    scroll-behavior: auto;
+  }
+}

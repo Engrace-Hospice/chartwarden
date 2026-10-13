@@ -12,7 +12,15 @@ import { NewConversationDialog } from "./new-conversation-dialog";
 import { ScheduledMessagesDialog } from "./scheduled-messages-dialog";
 import { useMessagingRealtime } from "./use-messaging-realtime";
 import { type LiveHint, pushLiveHint } from "./use-thread";
-import "./staff-messaging.css";
+import "./messaging-layout.css";
+import "./inbox.css";
+import "./thread.css";
+import "./message-list.css";
+import "./patient-context.css";
+import "./composer.css";
+import "./new-conversation.css";
+import "./messaging-responsive.css";
+import "./composer-attachments.css";
 
 const CHANNEL_POLL_INTERVAL_MS = 15_000;
 const MAX_CHANNEL_POLL_INTERVAL_MS = 60_000;
