@@ -177,11 +177,18 @@ describe("rich composer", () => {
     mountThread();
     const box = await composer();
     type(box, "hello @Nu");
-    expect(box.getAttribute("aria-expanded")).toBe("true");
+    expect(box.getAttribute("aria-controls")).toBe("messaging-mention-suggestions");
     box.setSelectionRange(0, 9);
     fireEvent.keyDown(box, { code: "KeyB", key: "b", ctrlKey: true });
     expect(box.value).toBe("**hello @Nu**");
-    expect(box.getAttribute("aria-expanded")).toBe("false");
+    expect(box.getAttribute("aria-controls")).toBeNull();
+  });
+
+  it("never carries aria-expanded (invalid on a textbox; axe aria-allowed-attr)", async () => {
+    mountThread();
+    const box = await composer();
+    type(box, "hello @Nu");
+    expect(box.hasAttribute("aria-expanded")).toBe(false);
   });
 
   it("Escape closes the mention popup first and does not blur", async () => {
@@ -189,9 +196,9 @@ describe("rich composer", () => {
     const box = await composer();
     box.focus();
     type(box, "hello @Nu");
-    expect(box.getAttribute("aria-expanded")).toBe("true");
+    expect(box.getAttribute("aria-controls")).toBe("messaging-mention-suggestions");
     fireEvent.keyDown(box, { key: "Escape" });
-    expect(box.getAttribute("aria-expanded")).toBe("false");
+    expect(box.getAttribute("aria-controls")).toBeNull();
     expect(document.activeElement).toBe(box);
   });
 
@@ -222,7 +229,7 @@ describe("rich composer", () => {
     fireEvent.keyDown(box, { key: "Enter", isComposing: true });
     fireEvent.keyDown(box, { key: "Escape", isComposing: true });
     expect(POST).not.toHaveBeenCalled();
-    expect(box.getAttribute("aria-expanded")).toBe("true");
+    expect(box.getAttribute("aria-controls")).toBe("messaging-mention-suggestions");
     box.setSelectionRange(0, 5);
     fireEvent.keyDown(box, { code: "KeyB", key: "b", ctrlKey: true, isComposing: true });
     expect(box.value).toBe("hello @Nu");

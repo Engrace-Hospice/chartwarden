@@ -6,7 +6,7 @@ import type { FormEvent, JSX, KeyboardEvent, RefObject } from "react";
 import { AttachButton, AttachmentChips } from "./attachment-composer";
 import { ComposerFooter } from "./composer-footer";
 import { DraftSyncNotice } from "./draft-conflict-prompt";
-import { MentionMenu } from "./mention-menu";
+import { MentionMenu, mentionOptionId } from "./mention-menu";
 import { activeMentionQuery, reconcileReferences } from "./mention-utils";
 import type { ChannelSummary, MessageReferenceInput } from "./messaging-types";
 import { channelLabel } from "./messaging-utils";
@@ -105,8 +105,12 @@ export function ThreadComposer({
           value={draft}
           disabled={sending}
           aria-autocomplete="list"
-          aria-expanded={mentionQuery !== null && !pendingAdd}
           aria-controls={mentionQuery && !pendingAdd ? "messaging-mention-suggestions" : undefined}
+          aria-activedescendant={
+            mentionQuery && !pendingAdd && mentionMenu.candidates.length > 0
+              ? mentionOptionId(mentionMenu.activeIndex)
+              : undefined
+          }
           onChange={(event) => {
             const next = event.target.value;
             const nextReferences = reconcileReferences(draft, next, draftReferences);

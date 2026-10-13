@@ -110,7 +110,7 @@ describe("M36 messaging organization switching", () => {
     fireEvent.change(composer, {
       target: { value: "@Nurse Two hello", selectionStart: 16 },
     });
-    expect(composer.getAttribute("aria-expanded")).toBe("false");
+    expect(composer.getAttribute("aria-controls")).toBeNull();
     expect(screen.queryByText("Searching…")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
