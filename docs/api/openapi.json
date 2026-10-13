@@ -159946,6 +159946,1235 @@
         }
       }
     },
+    "/api/v1/messaging/template-admin": {
+      "get": {
+        "operationId": "getApiV1MessagingTemplateadmin",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Template administration view: the platform wording and required phrases, this organization's overlay on each, and its shared templates (messaging.template.manage)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "platform",
+                    "shared"
+                  ],
+                  "properties": {
+                    "platform": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "templateKey",
+                          "category",
+                          "floorTitle",
+                          "floorBody",
+                          "requiredPhrases",
+                          "overlay"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "templateKey": {
+                            "type": "string"
+                          },
+                          "category": {
+                            "anyOf": [
+                              {
+                                "const": "scheduling",
+                                "type": "string"
+                              },
+                              {
+                                "const": "administrative",
+                                "type": "string"
+                              },
+                              {
+                                "const": "logistics",
+                                "type": "string"
+                              },
+                              {
+                                "const": "confirmation",
+                                "type": "string"
+                              },
+                              {
+                                "const": "general",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "floorTitle": {
+                            "type": "string"
+                          },
+                          "floorBody": {
+                            "type": "string"
+                          },
+                          "requiredPhrases": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "overlay": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "title",
+                                  "body",
+                                  "isEnabled",
+                                  "updatedAt"
+                                ],
+                                "properties": {
+                                  "title": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "body": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "isEnabled": {
+                                    "type": "boolean"
+                                  },
+                                  "updatedAt": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "shared": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "scope",
+                          "templateKey",
+                          "category",
+                          "title",
+                          "body",
+                          "customized"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "scope": {
+                            "anyOf": [
+                              {
+                                "const": "platform",
+                                "type": "string"
+                              },
+                              {
+                                "const": "org",
+                                "type": "string"
+                              },
+                              {
+                                "const": "personal",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "templateKey": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "category": {
+                            "anyOf": [
+                              {
+                                "const": "scheduling",
+                                "type": "string"
+                              },
+                              {
+                                "const": "administrative",
+                                "type": "string"
+                              },
+                              {
+                                "const": "logistics",
+                                "type": "string"
+                              },
+                              {
+                                "const": "confirmation",
+                                "type": "string"
+                              },
+                              {
+                                "const": "general",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "body": {
+                            "type": "string"
+                          },
+                          "customized": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/template-admin/platform/{id}/overlay": {
+      "delete": {
+        "operationId": "deleteApiV1MessagingTemplateadminPlatformByIdOverlay",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Remove this organization's overlay, restoring the platform text (204)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1MessagingTemplateadminPlatformByIdOverlay",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Re-word or disable a platform template for this organization (204). An overlay can never loosen the platform floor: a body that drops a required phrase is 422 TEMPLATE_FLOOR_VIOLATION; text is held to the PHI lint (422 TEMPLATE_PHI_DETECTED)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "title",
+                  "body",
+                  "isEnabled"
+                ],
+                "properties": {
+                  "title": {
+                    "anyOf": [
+                      {
+                        "maxLength": 1000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "body": {
+                    "anyOf": [
+                      {
+                        "maxLength": 20000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "isEnabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/template-admin/shared": {
+      "post": {
+        "operationId": "postApiV1MessagingTemplateadminShared",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Author a shared template every sender in the organization sees (messaging.template.manage; 422 PHI lint; 409 title taken or limit; Idempotency-Key required)",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "scope",
+                    "templateKey",
+                    "category",
+                    "title",
+                    "body",
+                    "customized"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "anyOf": [
+                        {
+                          "const": "platform",
+                          "type": "string"
+                        },
+                        {
+                          "const": "org",
+                          "type": "string"
+                        },
+                        {
+                          "const": "personal",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "templateKey": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "category": {
+                      "anyOf": [
+                        {
+                          "const": "scheduling",
+                          "type": "string"
+                        },
+                        {
+                          "const": "administrative",
+                          "type": "string"
+                        },
+                        {
+                          "const": "logistics",
+                          "type": "string"
+                        },
+                        {
+                          "const": "confirmation",
+                          "type": "string"
+                        },
+                        {
+                          "const": "general",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "body": {
+                      "type": "string"
+                    },
+                    "customized": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "title",
+                  "body",
+                  "category"
+                ],
+                "properties": {
+                  "title": {
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "body": {
+                    "maxLength": 20000,
+                    "type": "string"
+                  },
+                  "category": {
+                    "anyOf": [
+                      {
+                        "const": "scheduling",
+                        "type": "string"
+                      },
+                      {
+                        "const": "administrative",
+                        "type": "string"
+                      },
+                      {
+                        "const": "logistics",
+                        "type": "string"
+                      },
+                      {
+                        "const": "confirmation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "general",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/template-admin/shared/{id}": {
+      "delete": {
+        "operationId": "deleteApiV1MessagingTemplateadminSharedById",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Delete a shared template (204; messaging.template.manage)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1MessagingTemplateadminSharedById",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Edit a shared template (messaging.template.manage; 422 PHI lint)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "scope",
+                    "templateKey",
+                    "category",
+                    "title",
+                    "body",
+                    "customized"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "anyOf": [
+                        {
+                          "const": "platform",
+                          "type": "string"
+                        },
+                        {
+                          "const": "org",
+                          "type": "string"
+                        },
+                        {
+                          "const": "personal",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "templateKey": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "category": {
+                      "anyOf": [
+                        {
+                          "const": "scheduling",
+                          "type": "string"
+                        },
+                        {
+                          "const": "administrative",
+                          "type": "string"
+                        },
+                        {
+                          "const": "logistics",
+                          "type": "string"
+                        },
+                        {
+                          "const": "confirmation",
+                          "type": "string"
+                        },
+                        {
+                          "const": "general",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "body": {
+                      "type": "string"
+                    },
+                    "customized": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "minProperties": 1,
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "body": {
+                    "maxLength": 20000,
+                    "type": "string"
+                  },
+                  "category": {
+                    "anyOf": [
+                      {
+                        "const": "scheduling",
+                        "type": "string"
+                      },
+                      {
+                        "const": "administrative",
+                        "type": "string"
+                      },
+                      {
+                        "const": "logistics",
+                        "type": "string"
+                      },
+                      {
+                        "const": "confirmation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "general",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/templates": {
+      "get": {
+        "operationId": "getApiV1MessagingTemplates",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The caller's saved-reply picker: platform templates (tenant overlay applied, disabled ones omitted), the organization's shared templates and the caller's own personal replies (messaging.send)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "scope",
+                          "templateKey",
+                          "category",
+                          "title",
+                          "body",
+                          "customized"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "scope": {
+                            "anyOf": [
+                              {
+                                "const": "platform",
+                                "type": "string"
+                              },
+                              {
+                                "const": "org",
+                                "type": "string"
+                              },
+                              {
+                                "const": "personal",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "templateKey": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "category": {
+                            "anyOf": [
+                              {
+                                "const": "scheduling",
+                                "type": "string"
+                              },
+                              {
+                                "const": "administrative",
+                                "type": "string"
+                              },
+                              {
+                                "const": "logistics",
+                                "type": "string"
+                              },
+                              {
+                                "const": "confirmation",
+                                "type": "string"
+                              },
+                              {
+                                "const": "general",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "body": {
+                            "type": "string"
+                          },
+                          "customized": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/templates/{id}": {
+      "get": {
+        "operationId": "getApiV1MessagingTemplatesById",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "One template from the caller's picker; any id that is not theirs to read is the 404 a random id gets",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "scope",
+                    "templateKey",
+                    "category",
+                    "title",
+                    "body",
+                    "customized"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "anyOf": [
+                        {
+                          "const": "platform",
+                          "type": "string"
+                        },
+                        {
+                          "const": "org",
+                          "type": "string"
+                        },
+                        {
+                          "const": "personal",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "templateKey": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "category": {
+                      "anyOf": [
+                        {
+                          "const": "scheduling",
+                          "type": "string"
+                        },
+                        {
+                          "const": "administrative",
+                          "type": "string"
+                        },
+                        {
+                          "const": "logistics",
+                          "type": "string"
+                        },
+                        {
+                          "const": "confirmation",
+                          "type": "string"
+                        },
+                        {
+                          "const": "general",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "body": {
+                      "type": "string"
+                    },
+                    "customized": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/templates/personal": {
+      "post": {
+        "operationId": "postApiV1MessagingTemplatesPersonal",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Save a personal reply, private to the caller (201; 422 TEMPLATE_PHI_DETECTED names the field and reason code, never the text; 409 TEMPLATE_TITLE_TAKEN or TEMPLATE_LIMIT_REACHED; Idempotency-Key required)",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "scope",
+                    "templateKey",
+                    "category",
+                    "title",
+                    "body",
+                    "customized"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "anyOf": [
+                        {
+                          "const": "platform",
+                          "type": "string"
+                        },
+                        {
+                          "const": "org",
+                          "type": "string"
+                        },
+                        {
+                          "const": "personal",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "templateKey": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "category": {
+                      "anyOf": [
+                        {
+                          "const": "scheduling",
+                          "type": "string"
+                        },
+                        {
+                          "const": "administrative",
+                          "type": "string"
+                        },
+                        {
+                          "const": "logistics",
+                          "type": "string"
+                        },
+                        {
+                          "const": "confirmation",
+                          "type": "string"
+                        },
+                        {
+                          "const": "general",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "body": {
+                      "type": "string"
+                    },
+                    "customized": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "title",
+                  "body",
+                  "category"
+                ],
+                "properties": {
+                  "title": {
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "body": {
+                    "maxLength": 20000,
+                    "type": "string"
+                  },
+                  "category": {
+                    "anyOf": [
+                      {
+                        "const": "scheduling",
+                        "type": "string"
+                      },
+                      {
+                        "const": "administrative",
+                        "type": "string"
+                      },
+                      {
+                        "const": "logistics",
+                        "type": "string"
+                      },
+                      {
+                        "const": "confirmation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "general",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/templates/personal/{id}": {
+      "delete": {
+        "operationId": "deleteApiV1MessagingTemplatesPersonalById",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Delete one of the caller's own personal replies (204; 404 for anyone else's)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1MessagingTemplatesPersonalById",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Edit one of the caller's own personal replies (422 PHI lint; 404 for anyone else's)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "scope",
+                    "templateKey",
+                    "category",
+                    "title",
+                    "body",
+                    "customized"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "anyOf": [
+                        {
+                          "const": "platform",
+                          "type": "string"
+                        },
+                        {
+                          "const": "org",
+                          "type": "string"
+                        },
+                        {
+                          "const": "personal",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "templateKey": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "category": {
+                      "anyOf": [
+                        {
+                          "const": "scheduling",
+                          "type": "string"
+                        },
+                        {
+                          "const": "administrative",
+                          "type": "string"
+                        },
+                        {
+                          "const": "logistics",
+                          "type": "string"
+                        },
+                        {
+                          "const": "confirmation",
+                          "type": "string"
+                        },
+                        {
+                          "const": "general",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "body": {
+                      "type": "string"
+                    },
+                    "customized": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "minProperties": 1,
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "body": {
+                    "maxLength": 20000,
+                    "type": "string"
+                  },
+                  "category": {
+                    "anyOf": [
+                      {
+                        "const": "scheduling",
+                        "type": "string"
+                      },
+                      {
+                        "const": "administrative",
+                        "type": "string"
+                      },
+                      {
+                        "const": "logistics",
+                        "type": "string"
+                      },
+                      {
+                        "const": "confirmation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "general",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/metrics/route-efficiency": {
       "get": {
         "operationId": "getApiV1MetricsRouteefficiency",

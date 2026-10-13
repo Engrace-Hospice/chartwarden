@@ -74,6 +74,7 @@ import {
   channelMemberAdminPredicate,
   registerMessagingRoutes,
 } from "../src/modules/36-messaging/routes/messaging-routes";
+import { registerTemplateRoutes } from "../src/modules/36-messaging/routes/template-routes";
 import { registerMessagingWebhookRoutes } from "../src/modules/36-messaging/routes/webhook-routes";
 import { createDbConsentEvaluator } from "../src/modules/39-consent/index";
 import { appRoleConnectionString } from "./_live-app-role";
@@ -94,6 +95,8 @@ const A_NAME_TOKEN = "WP17-ORG-A-PERSON";
 type Verdict =
   | { readonly kind: "idor" | "scoped" }
   | { readonly kind: "excluded"; readonly reason: string };
+const TEMPLATE_SUITE =
+  "WP 2.8: org/owner isolation, random-id 404 parity and RLS are asserted in m36-message-templates.live";
 const ROUTES: Record<string, Verdict> = {
   "GET /api/v1/messaging/channels": { kind: "scoped" },
   "GET /api/v1/messaging/channels/:id": { kind: "idor" },
@@ -138,6 +141,27 @@ const ROUTES: Record<string, Verdict> = {
     kind: "excluded",
     reason: "platform_ops, deliberately cross-tenant; a tenant admin is refused (asserted below)",
   },
+  // WP 2.8 message templates: attacked in their own live suite (m36-message-templates.live), which owns the matrix.
+  "GET /api/v1/messaging/templates": { kind: "excluded", reason: TEMPLATE_SUITE },
+  "GET /api/v1/messaging/templates/:id": { kind: "excluded", reason: TEMPLATE_SUITE },
+  "POST /api/v1/messaging/templates/personal": { kind: "excluded", reason: TEMPLATE_SUITE },
+  "PATCH /api/v1/messaging/templates/personal/:id": { kind: "excluded", reason: TEMPLATE_SUITE },
+  "DELETE /api/v1/messaging/templates/personal/:id": { kind: "excluded", reason: TEMPLATE_SUITE },
+  "GET /api/v1/messaging/template-admin": { kind: "excluded", reason: TEMPLATE_SUITE },
+  "POST /api/v1/messaging/template-admin/shared": { kind: "excluded", reason: TEMPLATE_SUITE },
+  "PATCH /api/v1/messaging/template-admin/shared/:id": { kind: "excluded", reason: TEMPLATE_SUITE },
+  "DELETE /api/v1/messaging/template-admin/shared/:id": {
+    kind: "excluded",
+    reason: TEMPLATE_SUITE,
+  },
+  "PUT /api/v1/messaging/template-admin/platform/:id/overlay": {
+    kind: "excluded",
+    reason: TEMPLATE_SUITE,
+  },
+  "DELETE /api/v1/messaging/template-admin/platform/:id/overlay": {
+    kind: "excluded",
+    reason: TEMPLATE_SUITE,
+  },
   "POST /webhooks/twilio/sms-status": {
     kind: "excluded",
     reason: "vendor-signed, no tenant principal; unsigned call refused (asserted below)",
@@ -161,6 +185,8 @@ const REGISTRAR_FILES = [
   "messaging-typebox.ts", // schemas only
   "reaction-pin-routes.ts", // mounted by registerMessagingRoutes
   "reaction-pin-typebox.ts", // schemas only
+  "template-routes.ts",
+  "template-typebox.ts", // schemas only
   "webhook-routes.ts",
 ];
 
@@ -176,6 +202,7 @@ function registeredRoutes(): string[] {
   registerAttachmentRoutes(probe, { service: {} as never });
   registerDraftRoutes(probe, { service: {} as never });
   registerAdminAlertDeliveriesRoutes(probe, {} as never);
+  registerTemplateRoutes(probe, { service: {} as never });
   registerMessagingWebhookRoutes(probe, { publicBaseUrl: "https://x.test" } as never);
   return [...seen].sort();
 }

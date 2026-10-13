@@ -115,6 +115,8 @@ export function createDrizzleMessagingEraseStore(
   const RO = schema.tenantAlertRoutingOverride;
   const TPL = schema.notificationTemplate;
   const TPLO = schema.tenantNotificationTemplateOverlay;
+  const MTPL = schema.messageTemplates;
+  const MTPLO = schema.tenantMessageTemplateOverlays;
   const PRES = schema.presence;
   const DE = schema.deliveryEndpoints;
   const UNP = schema.userNotificationPreferences;
@@ -358,6 +360,14 @@ export function createDrizzleMessagingEraseStore(
         );
         deleted += await del(() =>
           tx.delete(TPL).where(eq(TPL.organizationId, orgId)).returning({ id: TPL.id }),
+        );
+        // WP 2.8: the tenant's saved replies, shared templates and overlays (platform templates carry no organization_id
+        // and are never matched). The overlay goes first only for readability: its FK points at the platform rows.
+        deleted += await del(() =>
+          tx.delete(MTPLO).where(eq(MTPLO.organizationId, orgId)).returning({ id: MTPLO.id }),
+        );
+        deleted += await del(() =>
+          tx.delete(MTPL).where(eq(MTPL.organizationId, orgId)).returning({ id: MTPL.id }),
         );
         return { deleted };
       });

@@ -400,3 +400,6 @@ export type {
   VendorCallbackKind,
   VendorTransition,
 } from "./dispatch";
+
+// ── M36 WP 2.8 message templates & saved replies: model, PHI lint, platform seed, in-memory service ─
+export * from "./templates";

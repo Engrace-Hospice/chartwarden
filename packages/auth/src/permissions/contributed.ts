@@ -289,6 +289,13 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "admin",
     abac: "none",
   },
+  // --- WP 2.8: author shared message templates and re-word/disable platform ones for the tenant (admin) ---
+  "messaging.template.manage": {
+    resource: "template",
+    action: "manage",
+    category: "admin",
+    abac: "none",
+  },
   // --- platform-ops admin (§4.5; platform-only — failures + delivery audit drill) ---
   "messaging.admin.read": {
     resource: "admin",

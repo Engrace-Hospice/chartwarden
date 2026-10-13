@@ -292,6 +292,8 @@ export const MODULES: ModuleDef[] = [
       "message_attachment",
       "attachment_access_event",
       "messaging_erase_block",
+      "message_template",
+      "tenant_message_template_overlay",
       "message_receipt",
       "notification_delivery",
       "presence",

@@ -127,6 +127,7 @@ export * from "./messaging/message-drafts";
 export * from "./messaging/message-attachments";
 export * from "./messaging/attachment-access-events";
 export * from "./messaging/messaging-erase-blocks";
+export * from "./messaging/message-templates";
 export * from "./messaging/message-receipts";
 export * from "./messaging/message-reactions";
 export * from "./messaging/message-pins";

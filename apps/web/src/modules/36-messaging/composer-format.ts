@@ -95,6 +95,19 @@ export function toggleWrap(value: string, start: number, end: number, marker: st
  * `execCommand("insertText")` does (1) and (2) natively. Where it is missing or refuses, `setRangeText` plus a
  * dispatched `input` event does (2); undo then falls back to the browser's default behaviour for programmatic edits.
  */
+/** WP 2.8: put `text` where the selection is (replacing it) and leave the caret after it. Pure; apply with `applyTextEdit`. */
+export function insertText(value: string, start: number, end: number, text: string): TextEdit {
+  const caret = start + text.length;
+  return {
+    value: `${value.slice(0, start)}${text}${value.slice(end)}`,
+    selectionStart: caret,
+    selectionEnd: caret,
+    replaceStart: start,
+    replaceEnd: end,
+    replacement: text,
+  };
+}
+
 export function applyTextEdit(textarea: HTMLTextAreaElement, edit: TextEdit): void {
   const before = textarea.value;
   textarea.focus();
