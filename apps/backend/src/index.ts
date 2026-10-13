@@ -1444,6 +1444,8 @@ import { buildM36FieldSafetyAlertConsumer } from "./modules/36-messaging/outbox-
 import { buildM36IpuAlertConsumer } from "./modules/36-messaging/outbox-consumers/ipu-alerts";
 import { buildM36IpuIvAlertConsumer } from "./modules/36-messaging/outbox-consumers/ipu-iv-alerts";
 import { buildM36ConsentRevokedConsumer } from "./modules/36-messaging/outbox-consumers/m39-consent-revoked";
+import { registerM36GlobalSearch } from "./modules/36-messaging/global-search/register";
+import { createUnavailableSearchKeyProvider } from "./modules/36-messaging/global-search/search-key-provider";
 import { buildM36MessageHintConsumer } from "./modules/36-messaging/outbox-consumers/message-hints";
 import { buildM36MessageMentionConsumer } from "./modules/36-messaging/outbox-consumers/message-mentions";
 import { buildM36OncallAlertConsumer } from "./modules/36-messaging/outbox-consumers/oncall-alerts";
@@ -9213,6 +9215,36 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       // one object, since createDrizzleInboundTriggerPorts's return type already satisfies both port
       // interfaces.
       const m19TriggerPorts = createDrizzleInboundTriggerPorts(dbHandle.db);
+      // WP 2.7b C2 (ADR-0058, Proposed) — global message search, writer side. INERT in production: the tenant flag
+      // defaults OFF, the platform flag is absent (= OFF) and the key provider is the `unavailable` one (throws) until
+      // WP 2.13 / P1 lands. One call builds the indexer consumer (bound below) and the `messaging.search_maintenance`
+      // worker; the worker needs the queue connection (the platform pool is already required by this block).
+      const m36GlobalSearch = await registerM36GlobalSearch({
+        db: dbHandle.db,
+        cipher: createMessageBodyCipher(),
+        keys: createUnavailableSearchKeyProvider(),
+        ...(queueConnection
+          ? {
+              worker: {
+                connection: queueConnection,
+                activeOrgs: buildActiveOrgEnumerator({
+                  platformDb: platformDbHandle.db,
+                  auditBypass: m34PlatformBypassAuditor,
+                  jobId: M36_INTEGRITY_PLATFORM_JOB_ID,
+                  reason: "M36 WP 2.7b search_maintenance active-org fan-out",
+                }),
+                onError: (context, err) =>
+                  app.log.error(
+                    { ...context, reason: err instanceof Error ? err.name : "unknown" },
+                    "M36 global search maintenance error",
+                  ),
+              },
+            }
+          : {}),
+      });
+      for (const w of m36GlobalSearch.workers)
+        attachDlqPromotionAlert(w, `m36:${w.name}`, dlqPromotionSink);
+      app.addHook("onClose", () => m36GlobalSearch.close());
       const outboxDispatcher = createOutboxDispatcher({
         db: dbHandle.db,
         orgs: outboxRelayOrgs,
@@ -9510,6 +9542,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                 }
               : {}),
           }),
+          // WP 2.7b C2 — committed message sent/edited/deleted events (re)write or remove the blind-token rows.
+          m36GlobalSearch.consumer,
           // FY2027 — the 42 CFR 418.24(d) election-addendum window missed: the first M6 compliance-window fact
           // that pages anyone (care team + compliance), via `m6.election_addendum.overdue`.
           buildM36AdmissionComplianceAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
