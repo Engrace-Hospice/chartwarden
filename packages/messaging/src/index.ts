@@ -192,6 +192,26 @@ export {
   isEmptyDraft,
 } from "./drafts";
 export type { DraftKey, DraftView, MessageDraftService, SaveDraftInput } from "./drafts";
+// WP 2.6 scheduled send (pure rules + service interface shared with the backend's Drizzle impl and dispatcher).
+export {
+  DEFAULT_MAX_SCHEDULED_PER_USER,
+  MAX_DISPATCH_ATTEMPTS,
+  MAX_SCHEDULED_BODY_LENGTH,
+  MAX_SCHEDULE_HORIZON_MS,
+  MIN_SCHEDULE_LEAD_MS,
+  SCHEDULE_BLOCK_REASONS,
+  assertScheduleTime,
+  normalizeScheduleTimeZone,
+  scheduleBlockReasonFor,
+  scheduleBlockedMessage,
+} from "./scheduled-send";
+export type {
+  CreateScheduledMessageInput,
+  ScheduleBlockReason,
+  ScheduledMessageStatus,
+  ScheduledMessageView,
+  ScheduledSendService,
+} from "./scheduled-send";
 // WP 2.9 — announcement receipts + department channels (its own service; the in-memory slice implements both).
 export { RECEIPT_LIST_LIMIT } from "./interfaces/announcement-service";
 export type {

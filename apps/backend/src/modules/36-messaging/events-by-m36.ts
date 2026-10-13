@@ -126,6 +126,21 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m36.message.schedule_blocked",
+    moduleOwner: "m36",
+    description:
+      "A scheduled message came due and was NOT sent because a dispatch-time re-check failed (WP 2.6: membership, messaging.send, channel archived or closed with the patient's episode, announcement policy) or the send kept failing. Published in the same transaction that flips the row to blocked. PHI-free: ids and a reason code, never the body. M36 turns it into one generic in-app notification for the sender.",
+    payloadSchema: Type.Object({
+      organizationId: id,
+      scheduledMessageId: id,
+      channelId: id,
+      senderUserId: id,
+      reason: Type.String({ minLength: 1, maxLength: 64 }),
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m36.attachment.cleared",
     moduleOwner: "m36",
     description:

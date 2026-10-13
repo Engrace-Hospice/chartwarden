@@ -24,6 +24,7 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
     // or dropped silently.
     expect(PLATFORM_DEFAULT_ALERT_RULES.map((r) => r.eventType)).toEqual([
       "m36.message.mentioned",
+      "m36.message.schedule_blocked",
       "field_safety.sos",
       "m10.hope.sfv_created",
       "m10.hope.sfv_overdue",

@@ -27,6 +27,7 @@ import {
   registerAbacRegistry,
   registerDbEffectivePermissionResolver,
   registerIdentityAuth,
+  resolveActorPermissions,
   resolveMfaEnforcement,
   resolveTrustedOrigins,
 } from "@wardenx/auth";
@@ -1403,6 +1404,7 @@ import {
   createDrizzleMembershipUserLookup,
   createDrizzleMessagingEraseStore,
   createDrizzleRoleSetMembersReader,
+  createScheduledSendDispatcher,
   createRealtimeAuditWriter,
   createSosContactCaller,
   mountMessagingRoutes,
@@ -1410,11 +1412,13 @@ import {
   registerM36AttachmentScanWorker,
   registerM36DeliveryWorkers,
   registerM36IntegrityWorkers,
+  registerM36ScheduledSendWorker,
   registerMessagingErasers,
   registerMessagingSeams,
   scheduleM36AttachmentScanJobs,
   scheduleM36DeliveryJobs,
   scheduleM36IntegrityJobs,
+  scheduleM36ScheduledSendJobs,
   wireAlertRuleSeed,
   wireM36DeliveryTenancy,
 } from "./modules/36-messaging/index";
@@ -1444,6 +1448,7 @@ import { buildM36MessageHintConsumer } from "./modules/36-messaging/outbox-consu
 import { buildM36MessageMentionConsumer } from "./modules/36-messaging/outbox-consumers/message-mentions";
 import { buildM36OncallAlertConsumer } from "./modules/36-messaging/outbox-consumers/oncall-alerts";
 import { buildM36QualityAlertConsumer } from "./modules/36-messaging/outbox-consumers/quality-alerts";
+import { buildM36ScheduleBlockedConsumer } from "./modules/36-messaging/outbox-consumers/schedule-blocked";
 import { bindTransactionalEmail } from "./modules/36-messaging/transactional-email-binding";
 // M37 (Inpatient Unit / IPU Management) boot surface — the §4.7 ABAC predicates, the §4.4 outbox catalog,
 // and the §4.1 core route mount over the Drizzle route service. The write path emits `m37.*` through the
@@ -8311,6 +8316,59 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       }
     }
 
+    // ── M36 WP 2.6 — `messaging.scheduled_send` (every minute): sends the scheduled messages that came due. Each one is
+    // re-checked at dispatch (sender still a member holding messaging.send, channel not archived, announcement policy)
+    // and sent through the live write core in the same transaction that deletes the row; a failed re-check blocks the
+    // row and publishes `m36.message.schedule_blocked` (consumer below tells the sender). Active-org fan-out needs the
+    // platform pool; the sends themselves run per org under the sender's tenant context.
+    if (platformDbHandle) {
+      const m36ScheduledSendOrgs = buildActiveOrgEnumerator({
+        platformDb: platformDbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M36_INTEGRITY_PLATFORM_JOB_ID,
+        reason: "M36 WP 2.6 scheduled_send active-org fan-out",
+      });
+      const m36ScheduledSendWorkers = registerM36ScheduledSendWorker({
+        connection: queueConnection,
+        dispatcher: createScheduledSendDispatcher({
+          db: dbHandle.db,
+          cipher: createMessageBodyCipher(),
+          outbox: m36OutboxPublisher,
+          canViewChannel: createDbMessagingRouteService(dbHandle.db).canViewChannel,
+          permissionsFor: async (organizationId, userId) =>
+            resolveActorPermissions({ organizationId, userId }),
+          // Ids only: a DB/driver error can carry statement parameters, and a sealed body must never reach a log.
+          onRowError: (context, err) =>
+            app.log.error(
+              { ...context, reason: err instanceof Error ? err.message : "unknown" },
+              "M36 scheduled send row failed",
+            ),
+        }),
+        activeOrgs: m36ScheduledSendOrgs,
+        onError: (context, err) =>
+          app.log.error(
+            { ...context, reason: err instanceof Error ? err.message : "unknown" },
+            "M36 scheduled send error",
+          ),
+      });
+      attachDlqAlertsToAll(m36ScheduledSendWorkers, "m36");
+      app.addHook("onClose", async () => {
+        await Promise.all(m36ScheduledSendWorkers.map((w) => w.close()));
+      });
+      try {
+        const m36ScheduledSendQueues = await scheduleM36ScheduledSendJobs(queueConnection);
+        app.addHook("onClose", async () => {
+          await Promise.all(m36ScheduledSendQueues.map((q) => q.close()));
+        });
+      } catch (err) {
+        app.log.error(err, "M36 scheduled-send schedule registration failed");
+      }
+    } else {
+      app.log.warn(
+        "M36 scheduled send disabled: DATABASE_PLATFORM_URL (active-org fan-out) is required; scheduled messages stay queued",
+      );
+    }
+
     // ── M36 WP 1.9 (audit F8) — nightly `messaging.hash_verify` (message heads + revision chain) and weekly
     // `messaging.retention_scan` (plan only, hold-aware). Active-org fan-out needs the platform pool; each org's
     // run opens its own tenant transaction and records its summary through @wardenx/audit.
@@ -9392,6 +9450,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             messaging: createDbMessagingRouteService(dbHandle.db),
             actorDisplayName: createMentionActorNameResolver(dbHandle.db),
           }),
+          // WP 2.6 — tells the sender a scheduled message was blocked at dispatch (generic in-app text, no PHI).
+          buildM36ScheduleBlockedConsumer({ alerts: getSeam("AlertEmitter") as AlertEmitter }),
           // GAP-039/040 — M13's missed-dose / PRN-reassessment-overdue / reconciliation / kit-return alerts
           // (M13 spec §4.9): previously unconsumed (M36 sat on the seam-consumer list).
           buildM36EmarAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),

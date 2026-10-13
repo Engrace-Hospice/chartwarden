@@ -109,6 +109,7 @@ export function createDrizzleMessagingEraseStore(
   const RCPT = schema.messageReceipts;
   const ATT = schema.messageAttachments;
   const DRAFT = schema.messageDrafts;
+  const SCHED = schema.scheduledMessages;
   const EB = schema.messagingEraseBlocks;
   const AL = schema.alerts;
   const ND = schema.notificationDeliveries;
@@ -335,6 +336,11 @@ export function createDrizzleMessagingEraseStore(
         // destruction connection (RLS pins app-role reads to the owner); the channel FK cascade below is the backstop.
         deleted += await del(() =>
           tx.delete(DRAFT).where(eq(DRAFT.organizationId, orgId)).returning({ id: DRAFT.id }),
+        );
+        // WP 2.6: scheduled messages (sealed under the tenant DEK, owner-pinned like drafts) go with the tenant too; the
+        // channel FK cascade is the backstop.
+        deleted += await del(() =>
+          tx.delete(SCHED).where(eq(SCHED.organizationId, orgId)).returning({ id: SCHED.id }),
         );
         deleted += await del(() =>
           tx.delete(RCPT).where(eq(RCPT.organizationId, orgId)).returning({ id: RCPT.id }),

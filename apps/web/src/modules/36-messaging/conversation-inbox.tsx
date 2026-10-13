@@ -26,6 +26,8 @@ export interface ConversationInboxProps {
   onNewConversation: () => void;
   /** WP 2.9: offered only to someone who may create department channels. */
   onNewDepartment?: () => void;
+  /** WP 2.6: opens the sender's Scheduled list. */
+  onShowScheduled?: () => void;
 }
 
 export function ConversationInbox({
@@ -41,6 +43,7 @@ export function ConversationInbox({
   onRetry,
   onNewConversation,
   onNewDepartment,
+  onShowScheduled,
 }: ConversationInboxProps): JSX.Element {
   function moveFocus(event: KeyboardEvent<HTMLUListElement>): void {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -62,6 +65,16 @@ export function ConversationInbox({
           <span>{channels?.length ?? 0}</span>
         </div>
         <div className="wx-messaging-inbox-actions">
+          {onShowScheduled ? (
+            <Button
+              size="sm"
+              tone="secondary"
+              onClick={onShowScheduled}
+              aria-label="Scheduled messages"
+            >
+              <Glyph name="clock" size={15} /> Scheduled
+            </Button>
+          ) : null}
           {onNewDepartment ? (
             <Button
               size="sm"
