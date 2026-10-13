@@ -63,7 +63,7 @@ const pe = (over: Partial<ProviderEntityDetail> & { id: string }): ProviderEntit
   ...over,
 });
 
-function makeServer(opts: { cipher?: boolean } = {}) {
+function makeServer(opts: { cipher?: boolean | "throws" } = {}) {
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore(
       ["admin_a", "ops_1"].map((userId) => ({
@@ -100,6 +100,7 @@ function makeServer(opts: { cipher?: boolean } = {}) {
       : {
           taxIdCipher: {
             async encrypt(input) {
+              if (opts.cipher === "throws") throw new Error("TenantKeyMissing: org_secret");
               encrypted.push(input);
               return `enc:${input.plaintext}`;
             },
@@ -255,6 +256,22 @@ describe("provider entities", () => {
     });
     expect(res.statusCode).toBe(503);
     expect(res.json().error.code).toBe("TAX_ID_CIPHER_UNBOUND");
+    expect(store.state.pes.size).toBe(before);
+    await app.close();
+  });
+
+  it("a failing tenant key ring answers 503 TAX_ID_KEY_UNAVAILABLE without echoing the cause", async () => {
+    const { app, store } = makeServer({ cipher: "throws" });
+    const before = store.state.pes.size;
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/provider-entities",
+      headers: TENANT,
+      payload: NEW_PE,
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error.code).toBe("TAX_ID_KEY_UNAVAILABLE");
+    expect(res.body).not.toContain("org_secret");
     expect(store.state.pes.size).toBe(before);
     await app.close();
   });

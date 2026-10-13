@@ -53,14 +53,26 @@ export function createTaxIdCipher(keys: TaxIdKeyProvider): TaxIdCipher {
     },
 
     async decrypt({ organizationId, sealed }) {
-      const [scheme, version, nonce, tag, ciphertext] = sealed.split(".");
-      if (scheme !== SCHEME || !version || !nonce || !tag || ciphertext === undefined) {
+      const parts = sealed.split(".");
+      const [scheme, version, nonce, tag, ciphertext] = parts;
+      if (
+        parts.length !== 5 ||
+        scheme !== SCHEME ||
+        !version ||
+        !nonce ||
+        !tag ||
+        ciphertext === undefined
+      ) {
         throw new Error("tax-id envelope is malformed");
       }
       const authTag = Buffer.from(tag, "base64url");
-      if (authTag.byteLength !== TAG_BYTES) throw new Error("tax-id envelope is malformed");
+      const nonceBytes = Buffer.from(nonce, "base64url");
+      if (authTag.byteLength !== TAG_BYTES || nonceBytes.byteLength !== NONCE_BYTES) {
+        throw new Error("tax-id envelope is malformed");
+      }
       const { key } = await keys.dekForOrgVersion(organizationId, version);
-      const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(nonce, "base64url"), {
+      if (key.byteLength !== DEK_BYTES) throw new Error("tenant DEK must be 32 bytes");
+      const decipher = createDecipheriv("aes-256-gcm", key, nonceBytes, {
         authTagLength: TAG_BYTES,
       });
       decipher.setAAD(aadFor(organizationId));

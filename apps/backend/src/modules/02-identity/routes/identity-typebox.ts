@@ -82,9 +82,7 @@ export const UserProvisionRequestSchema = Type.Object({
   temporaryPassword: Type.Optional(Type.String({ minLength: 12, maxLength: 256 })),
   generateTemporaryPassword: Type.Optional(Type.Boolean()),
   roleIds: Type.Array(Type.String({ minLength: 1 }), { minItems: 1, uniqueItems: true }),
-  defaultLocationIds: Type.Optional(
-    Type.Array(Type.String({ minLength: 1 }), { uniqueItems: true }),
-  ),
+  defaultLocationIds: Type.Optional(Type.Array(Type.String({ minLength: 1 }), { uniqueItems: true })),
 });
 
 export const AdminPasswordResetRequestSchema = Type.Object({
@@ -136,7 +134,10 @@ export const MembershipViewSchema = Type.Object({
   displayName: Type.Union([Type.String(), Type.Null()]),
   email: Type.Union([Type.String(), Type.Null()]),
   username: Type.Union([Type.String(), Type.Null()]),
-  credentialState: Type.Union([Type.Literal("active"), Type.Literal("password_change_required")]),
+  credentialState: Type.Union([
+    Type.Literal("active"),
+    Type.Literal("password_change_required"),
+  ]),
   lastLoginAt: Type.Union([Type.String(), Type.Null()]),
   accountStatus: Type.Union([AccountStatusSchema, Type.Null()]),
 });

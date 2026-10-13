@@ -91,6 +91,23 @@ describe("createTaxIdCipher", () => {
     ).rejects.toThrow(/malformed/);
   });
 
+  it("refuses an envelope with extra segments or a wrong-length nonce", async () => {
+    const keys = keyRing();
+    const cipher = createTaxIdCipher(keys);
+    const sealed = await cipher.encrypt({ organizationId: ORG_A, plaintext: "12-3456789" });
+    const [scheme, version, nonce, tag, ciphertext] = sealed.split(".");
+
+    await expect(
+      cipher.decrypt({ organizationId: ORG_A, sealed: `${sealed}.extra` }),
+    ).rejects.toThrow(/malformed/);
+    await expect(
+      cipher.decrypt({
+        organizationId: ORG_A,
+        sealed: [scheme, version, nonce?.slice(0, 6), tag, ciphertext].join("."),
+      }),
+    ).rejects.toThrow(/malformed/);
+  });
+
   it("fails closed when the key ring hands back a key that is not 256 bits", async () => {
     const cipher = createTaxIdCipher({
       dekForOrg: async () => ({ version: "v1", key: Buffer.alloc(16) }),

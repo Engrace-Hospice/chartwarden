@@ -228,10 +228,18 @@ export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRoute
         "the tax-id envelope cipher (KMS-backed key ring) is not bound; a provider entity cannot be created until it is",
         503,
       );
-    const taxIdEncrypted = await deps.taxIdCipher.encrypt({
-      organizationId: orgId,
-      plaintext: taxId as string,
-    });
+    // A missing/destroyed tenant key ring or an unbound KEK is an operator problem, not a bug: say so (503) without
+    // echoing the provider's message, and log the cause.
+    const taxIdEncrypted = await deps.taxIdCipher
+      .encrypt({ organizationId: orgId, plaintext: taxId as string })
+      .catch((cause: unknown) => {
+        request.log.error({ err: cause, organizationId: orgId }, "tax-id encryption failed");
+        throw new WardenXError(
+          "TAX_ID_KEY_UNAVAILABLE",
+          "the tenant encryption key is unavailable; contact platform support",
+          503,
+        );
+      });
     const created = await store.createProviderEntity(orgId, { ...input, taxIdEncrypted });
     if ("conflict" in created)
       throw conflict(
