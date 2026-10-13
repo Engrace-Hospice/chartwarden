@@ -174,6 +174,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
   const warns: Array<{ message: string; context: Record<string, string> }> = [];
   const redactedIds = new Set<string>();
   const authorityBatches: number[] = [];
+  let authorityDelayMs = 0;
   let limiter: (request: FastifyRequest, reply: FastifyReply) => Promise<void> = async () => {};
   const spy = {
     reads: [] as string[],
@@ -420,6 +421,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       part2Gate: part2.gate as never,
       authority: async (o, u, c, g, w) => {
         authorityBatches.push(c.length);
+        if (authorityDelayMs > 0) await new Promise((r) => setTimeout(r, authorityDelayMs));
         return effectivelyVisibleChannels(o, u, [...c], g, w);
       },
       isRedactedOrPending: (row) => redactedIds.has(row.id),
@@ -1847,6 +1849,160 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
         ORG_A,
       ]);
     });
+  });
+
+  // ═══ second fix round: the leak paths themselves (M1, M2, L1, L2) ════════════════════════════════
+  describe("hidden candidates through the real prefilter and authority", () => {
+    /** `count` filler messages in `channelId` carrying a stale prefix tag of `term` (synthetic hidden candidates). */
+    async function plantRows(
+      channelId: string,
+      author: string,
+      term: string,
+      count: number,
+      startIso: string,
+    ) {
+      const filler = cipher.seal(ORG_A, "unrelated filler text without the searched word");
+      await q(
+        `INSERT INTO message (channel_id, organization_id, author_user_id, author_kind, body_cipher, body_sha256, created_at)
+         SELECT $1,$2,$3,'user',$4,$5, $6::timestamptz + g * interval '1 second' FROM generate_series(1,$7::int) g`,
+        [channelId, ORG_A, author, filler.cipher, filler.sha256, startIso, count],
+      );
+      const tag = tagForPrefix(await keys.tagKey(ORG_A, VERSION), term.slice(0, 12), TAG_BITS);
+      await q(
+        `INSERT INTO message_search_token (organization_id, key_version, tag, message_id)
+         SELECT $1,$2,$3,id FROM message WHERE channel_id=$4
+            AND NOT EXISTS (SELECT 1 FROM message_search_token t WHERE t.message_id = message.id AND t.tag=$3)`,
+        [ORG_A, VERSION, tag, channelId],
+      );
+    }
+    const hiddenChannel = async (user: string) => {
+      const ch = await newChannel(ORG_A, { kind: "care_team", members: [[user, "manual"]] });
+      part2.denied.add(ch.subject as string);
+      return ch;
+    };
+    const noMatch = () => ({ results: [], scanned: 0, scanCapped: false, refine: false });
+
+    it("M2 more than 500 hidden candidates only: the response equals a no-match query", async () => {
+      const u = await newUser(ORG_A);
+      const ch = await hiddenChannel(u);
+      await plantRows(ch.id, u, "overflowhiddenword", 620, "2026-09-01T00:00:00Z");
+      spy.reset();
+      const res = await ok(u, "overflowhiddenword");
+      expect(res).toEqual(noMatch());
+      expect(spy.reads).toEqual([]);
+    }, 120_000);
+
+    it("M2 more than 50 hidden channels: the response equals a no-match query", async () => {
+      const u = await newUser(ORG_A);
+      for (let i = 0; i < 60; i += 1) {
+        const ch = await hiddenChannel(u);
+        await plantRows(
+          ch.id,
+          u,
+          "manyhiddenchanword",
+          1,
+          new Date(Date.UTC(2026, 9, 1, 0, i)).toISOString(),
+        );
+      }
+      authorityBatches.length = 0;
+      expect(await ok(u, "manyhiddenchanword")).toEqual(noMatch());
+      expect(Math.max(...authorityBatches)).toBeLessThanOrEqual(50);
+      expect(authorityBatches.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(100);
+    }, 120_000);
+
+    it("L1 channels sent to the authority across rounds never exceed 100 per request", async () => {
+      const u = await newUser(ORG_A);
+      for (let i = 0; i < 130; i += 1) {
+        const ch = await hiddenChannel(u);
+        await plantRows(
+          ch.id,
+          u,
+          "totalcapchanword",
+          1,
+          new Date(Date.UTC(2026, 10, 1, 0, i)).toISOString(),
+        );
+      }
+      authorityBatches.length = 0;
+      expect(await ok(u, "totalcapchanword")).toEqual(noMatch());
+      expect(authorityBatches.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(100);
+    }, 180_000);
+
+    it("M2 five hidden rounds followed by a visible row: EMPTY, identical to a no-match query (accepted recall cost)", async () => {
+      const u = await newUser(ORG_A);
+      const visible = await newChannel(ORG_A, { members: [[u, "manual"]] });
+      await send(ORG_A, visible.id, u, "Fiveroundshiddenword visible note", {
+        at: "2026-01-01T00:00:00Z",
+      });
+      const ch = await hiddenChannel(u);
+      await plantRows(ch.id, u, "fiveroundshiddenword", 2600, "2026-09-02T00:00:00Z");
+      spy.reset();
+      expect(await ok(u, "fiveroundshiddenword")).toEqual(noMatch());
+      expect(spy.reads).toEqual([]);
+    }, 180_000);
+
+    it("M2 a visible match preceded by hidden candidates within the bounds is still found", async () => {
+      const u = await newUser(ORG_A);
+      const visible = await newChannel(ORG_A, { members: [[u, "manual"]] });
+      const m = await send(ORG_A, visible.id, u, "Withinboundshiddenword visible note", {
+        at: "2026-01-01T00:00:00Z",
+      });
+      const ch = await hiddenChannel(u);
+      await plantRows(ch.id, u, "withinboundshiddenword", 1100, "2026-09-03T00:00:00Z");
+      const res = await ok(u, "withinboundshiddenword");
+      expect(res.results.map((h) => h.messageId)).toEqual([m]);
+      expect(res.refine).toBe(false);
+    }, 180_000);
+
+    it("M1 slow hidden-driven fill rounds do not turn a visible result into refine / no cursor", async () => {
+      const u = await newUser(ORG_A);
+      const visible = await newChannel(ORG_A, { members: [[u, "manual"]] });
+      const m = await send(ORG_A, visible.id, u, "Slowfillhiddenword visible note", {
+        at: "2026-01-01T00:00:00Z",
+      });
+      for (let i = 0; i < 3; i += 1) {
+        const ch = await hiddenChannel(u);
+        await plantRows(
+          ch.id,
+          u,
+          "slowfillhiddenword",
+          500,
+          new Date(Date.UTC(2026, 8, 10 + i)).toISOString(),
+        );
+      }
+      authorityDelayMs = 1200; // four authority calls: ~4.8 s of fill time, more than DECRYPT_TIMEOUT_MS
+      try {
+        const started = performance.now();
+        const res = await ok(u, "slowfillhiddenword");
+        expect(performance.now() - started).toBeGreaterThan(3000);
+        expect(res.results.map((h) => h.messageId)).toEqual([m]);
+        expect(res.refine).toBe(false);
+        expect(res.scanned).toBe(1);
+      } finally {
+        authorityDelayMs = 0;
+      }
+    }, 120_000);
+
+    it("L2 a full page costs at most ONE extra round to decide the cursor", async () => {
+      const u = await newUser(ORG_A);
+      const ch = await newChannel(ORG_A, { members: [[u, "manual"]] });
+      await send(ORG_A, ch.id, u, "Fullpagecursorword visible note", {
+        at: "2026-12-01T00:00:00Z",
+      });
+      const hidden = await hiddenChannel(u);
+      await plantRows(hidden.id, u, "fullpagecursorword", 1600, "2026-11-01T00:00:00Z");
+      if (pgss) await q("SELECT pg_stat_statements_reset()");
+      const res = await ok(u, "fullpagecursorword", "&limit=1");
+      expect(res.results).toHaveLength(1);
+      expect(res.nextCursor).toBeUndefined(); // nothing further is VISIBLE
+      if (pgss) {
+        const calls = await one(
+          `SELECT coalesce(sum(calls),0)::int AS n FROM pg_stat_statements WHERE query ILIKE '%hit_messages%'`,
+        );
+        expect(calls.n).toBe(2); // the first round, plus exactly one extra
+      } else {
+        exclusions.push("pg_stat_statements unavailable: L2 round count not proven");
+      }
+    }, 120_000);
   });
 
   // ═══ performance ═══════════════════════════════════════════════════════════════════════════════════

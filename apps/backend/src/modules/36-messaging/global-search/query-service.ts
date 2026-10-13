@@ -26,8 +26,20 @@
 // that lands after the authority call and before the page is returned is not seen by this request (milliseconds to seconds,
 // bounded by the 5 s statement timeout and the 3 s decrypt budget). The next request sees it.
 //
-// DECRYPT_TIMEOUT_MS is checked BETWEEN opens, so a request overshoots it by at most one body open (one AES-GCM open, or one
-// key-vault call after WP 2.13); the 5 s statement timeout bounds each SQL statement independently.
+// DECRYPT_TIMEOUT_MS counts time spent OPENING bodies only (checked between opens, so it overshoots by at most one open: one
+// AES-GCM open, or one key-vault call after WP 2.13). Fill rounds have their own bounds (rounds, statement timeout) and never
+// consume it, so hidden-driven slowness cannot turn a visible result into refine / no cursor.
+//
+// WORST-CASE COST PER REQUEST (L1): at most MAX_PAGES_PER_QUERY (5) rounds; each round is one prefilter statement (<= 501 rows,
+// keyset applied before the aggregate on continuation pages), at most ONE authority call over <= 50 channels, and one re-select
+// of <= 500 ids; the authority is asked about at most MAX_TOTAL_CHANNELS_PER_REQUEST (100) distinct channels in total (each
+// care-team channel costs one Part 2 call and, for an auto member, one roster call), after which scanning stops and the cursor
+// from the last visible row reaches the rest. Plus at most 200 body opens (3 s) and one final transaction. A full page costs at
+// most ONE extra round, only to decide whether a cursor exists (visible-derived, never hidden-shaped).
+//
+// SEAM OUTAGES (L5): a Part 2 / roster outage excludes the channel (fail closed, an empty 200: the ADR makes a seam error a silent
+// exclusion, not an error response). It is observable: `effectivelyVisibleChannels` logs ids per patient and this service logs
+// one warn per authority call with the organisation id and the outage COUNT.
 //
 // This is the ONLY module of the query path that holds a `BodyReader`, and it opens bodies only after the authority call.
 // Fail closed: key derivation, the authority call, the transactions and the audit write all propagate as errors, never as a
@@ -73,6 +85,8 @@ import type { ServeContext } from "./serve-gate";
 
 /** Distinct channels authorised per authority call (ADR "bounded seam cost"); further channels are reached by a later round. */
 export const MAX_CHANNELS_PER_REQUEST = 50;
+/** ... and across all rounds of one request (cost amplification bound; later channels are reached by the cursor). */
+export const MAX_TOTAL_CHANNELS_PER_REQUEST = 100;
 export const GLOBAL_SEARCH_DEFAULT_LIMIT = 20;
 export const GLOBAL_SEARCH_MAX_LIMIT = 50;
 
@@ -80,6 +94,8 @@ export interface GlobalSearchLimits {
   readonly decryptBudget: number;
   readonly decryptTimeoutMs: number;
   readonly maxChannels: number;
+  /** Distinct channels sent to the authority across ALL rounds of one request. */
+  readonly maxTotalChannels: number;
 }
 
 export interface AuthorityCandidate {
@@ -96,6 +112,7 @@ export type ChannelAuthority = (
   candidates: readonly AuthorityCandidate[],
   part2Gate: Part2ChannelGate,
   warn?: (message: string, context: Record<string, string>) => void,
+  onSeamUnavailable?: () => void,
 ) => Promise<readonly AuthorityCandidate[]>;
 
 export interface GlobalSearchDeps {
@@ -155,17 +172,17 @@ function pageSize(requested: number | undefined): number {
   return Math.min(GLOBAL_SEARCH_MAX_LIMIT, Math.max(1, Math.trunc(requested)));
 }
 
-/** The candidates up to the first one whose (not yet decided) channel would exceed `maxChannels`, and those channels' first rows. */
+/** The candidates up to the first one whose (not yet decided) channel would exceed `allowance`, and those channels' first rows. */
 function boundChannels(
   candidates: readonly Candidate[],
   decided: ReadonlyMap<string, boolean>,
-  maxChannels: number,
+  allowance: number,
 ): { list: readonly Candidate[]; fresh: readonly Candidate[]; cut: boolean } {
   const fresh = new Map<string, Candidate>();
   let cutAt = candidates.length;
   for (const [i, candidate] of candidates.entries()) {
     if (decided.has(candidate.channelId) || fresh.has(candidate.channelId)) continue;
-    if (fresh.size >= maxChannels) {
+    if (fresh.size >= allowance) {
       cutAt = i;
       break;
     }
@@ -199,6 +216,7 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
     decryptBudget: deps.limits?.decryptBudget ?? DECRYPT_BUDGET,
     decryptTimeoutMs: deps.limits?.decryptTimeoutMs ?? DECRYPT_TIMEOUT_MS,
     maxChannels: deps.limits?.maxChannels ?? MAX_CHANNELS_PER_REQUEST,
+    maxTotalChannels: deps.limits?.maxTotalChannels ?? MAX_TOTAL_CHANNELS_PER_REQUEST,
   };
   const clock = deps.clock ?? (() => performance.now());
   const inTenantTx = <T>(input: GlobalSearchInput, fn: (tx: Tx) => Promise<T>) =>
@@ -215,6 +233,7 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
   async function decide(input: GlobalSearchInput, scan: Scan, fresh: readonly Candidate[]) {
     if (fresh.length === 0) return;
     let allowed: readonly AuthorityCandidate[];
+    let seamOutages = 0;
     try {
       allowed = await authority(
         input.organizationId,
@@ -227,6 +246,9 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
         })),
         deps.part2Gate,
         deps.warn,
+        () => {
+          seamOutages += 1;
+        },
       );
     } catch (error) {
       deps.warn?.("global search authority check could not run", {
@@ -234,6 +256,14 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
         reason: error instanceof Error ? error.name : "unknown",
       });
       throw unavailable();
+    }
+    if (seamOutages > 0) {
+      // L5: a consent/roster outage is observable per request (ids and a count only). The channel stays excluded (fail closed,
+      // an empty 200): the ADR makes a seam error a silent exclusion, not an error response.
+      deps.warn?.("global search excluded channels because a visibility seam was unavailable", {
+        organizationId: input.organizationId,
+        outages: String(seamOutages),
+      });
     }
     const ok = new Set(allowed.map((c) => c.channelId));
     for (const c of fresh) scan.decided.set(c.channelId, ok.has(c.channelId));
@@ -249,10 +279,14 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
       selectCandidates(tx, input.organizationId, input.userId, queries, scan.position),
     );
     const covered = raw.slice(0, CANDIDATE_CAP);
-    const { list, fresh, cut } = boundChannels(covered, scan.decided, limits.maxChannels);
+    const remaining = limits.maxTotalChannels - scan.decided.size;
+    const allowance = Math.min(limits.maxChannels, remaining);
+    const { list, fresh, cut } = boundChannels(covered, scan.decided, allowance);
     await decide(input, scan, fresh);
     scan.rounds += 1;
-    scan.exhausted = raw.length <= CANDIDATE_CAP && !cut;
+    // Out of the per-request channel budget: stop scanning (the cursor, from the last visible row, reaches the rest).
+    const outOfChannels = cut && scan.decided.size >= limits.maxTotalChannels;
+    scan.exhausted = (raw.length <= CANDIDATE_CAP && !cut) || outOfChannels;
     const last = list[list.length - 1];
     if (last) scan.position = { createdAtIso: last.createdAtIso, id: last.id };
     const survivors = list.filter((c) => scan.decided.get(c.channelId) === true && !isRedacted(c));
@@ -282,19 +316,29 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
     scan: Scan,
     limit: number,
   ) {
-    const started = clock();
+    // The decrypt timer counts time spent OPENING bodies only: (hidden-driven) fill rounds must not shape the answer.
+    let decryptMs = 0;
     const rows: SurvivorRow[] = [];
     let opened = 0;
     let lastExamined: Candidate | null = null;
     for (;;) {
-      while (scan.queue.length === 0 && canFill(scan)) await fillRound(input, queries, scan);
+      const full = rows.length >= limit;
+      // L2: a full page needs ONE extra round at most, only to decide whether a cursor exists.
+      if (scan.queue.length === 0 && canFill(scan)) {
+        await fillRound(input, queries, scan);
+        if (!full) continue;
+      }
       const next = scan.queue[0];
-      if (!next || rows.length >= limit) break;
-      if (opened >= limits.decryptBudget || clock() - started >= limits.decryptTimeoutMs) break;
+      if (!next || full) break;
+      if (opened >= limits.decryptBudget) break;
+      if (decryptMs >= limits.decryptTimeoutMs) break;
       scan.queue.shift();
       opened += 1;
       lastExamined = next.candidate;
-      if (await matches(input, terms, next.row)) rows.push(next.row);
+      const openedAt = clock();
+      const matched = await matches(input, terms, next.row);
+      decryptMs += clock() - openedAt;
+      if (matched) rows.push(next.row);
     }
     return { rows, opened, lastExamined, more: scan.queue.length > 0 };
   }

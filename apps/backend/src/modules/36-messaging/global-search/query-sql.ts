@@ -65,12 +65,22 @@ export async function selectCandidates(
     ),
     sql`, `,
   );
+  // On a continuation page the keyset (and the tombstone test) is applied BEFORE the aggregate, so rows already served are not
+  // grouped again. Equivalent to filtering afterwards: both predicates depend on the message only, and every token row of a
+  // message shares it, so a message is kept or dropped as a whole and `count(DISTINCT tag)` per message is unchanged.
+  const early = after
+    ? sql`JOIN message m0 ON m0.organization_id = t.organization_id AND m0.id = t.message_id
+                AND m0.status <> 'deleted'
+                AND (date_trunc('milliseconds', m0.created_at), m0.id)
+                    < (${after.createdAtIso}::timestamptz, ${after.id}::uuid)`
+    : sql``;
   const result = await tx.execute<CandidateRow>(sql`
     WITH q(key_version, tag, k) AS (VALUES ${values}),
     hits AS (
       SELECT t.message_id, t.key_version
         FROM message_search_token t
         JOIN q ON q.key_version = t.key_version AND q.tag = t.tag
+        ${early}
        WHERE t.organization_id = ${organizationId}
        GROUP BY t.message_id, t.key_version, q.k
       HAVING count(DISTINCT t.tag) = q.k
