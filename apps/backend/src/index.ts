@@ -1386,6 +1386,11 @@ import {
 } from "./modules/35-subscription/index";
 import { emitWithRecipientFallback } from "./modules/36-messaging/alert-recipient-fallback";
 import { setMessageBodyKeyProvider } from "./modules/36-messaging/body-key-ring";
+import {
+  M36_BODY_LEGACY_COUNT_JOB_ID,
+  assertLegacyBodyKeyAvailable,
+  countLegacyBodiesAllTenants,
+} from "./modules/36-messaging/body-legacy-key-check";
 import { cronAlertCorrelationId } from "./modules/36-messaging/cron-alert-correlation";
 import {
   M36_DELIVERY_PLATFORM_JOB_ID,
@@ -3198,6 +3203,31 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   if (platformDbHandle) registerPlatformJob(M36_SOLE_TENANT_JOB_ID);
   // M34 tenant shred — the identity eraser's sole-tenant subjects, resolved by the SAME rule as M36's.
   if (platformDbHandle) registerPlatformJob(M34_SHRED_SOLE_TENANT_JOB_ID);
+  // M36 WP 2.13 / ADR-0058 P1 — legacy message-body envelope rows vs MESSAGING_ENCRYPTION_KEY. A production boot with
+  // legacy rows and no usable key FAILS CLOSED (unreadable history); otherwise the count is logged. A count that cannot
+  // be taken (platform login not yet re-provisioned for the column grant) is reported, never a boot failure of its own:
+  // `assertProductionEnv` still requires the key.
+  if (platformDbHandle) {
+    registerPlatformJob(M36_BODY_LEGACY_COUNT_JOB_ID);
+    let legacyCounts: Awaited<ReturnType<typeof countLegacyBodiesAllTenants>> | undefined;
+    try {
+      legacyCounts = await countLegacyBodiesAllTenants({
+        platformDb: platformDbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M36_BODY_LEGACY_COUNT_JOB_ID,
+      });
+    } catch (err) {
+      console.warn(
+        `M36 legacy message-body count unavailable at boot: ${err instanceof Error ? err.message : "unknown error"}`,
+      );
+    }
+    if (legacyCounts) {
+      const legacyStatus = assertLegacyBodyKeyAvailable(legacyCounts);
+      console.info(
+        `M36 message bodies: ${legacyStatus.state} (legacy rows: message ${legacyCounts.message}, message_revision ${legacyCounts.message_revision})`,
+      );
+    }
+  }
   // audit C1 — RLS is the tenancy control, and a role with BYPASSRLS makes every policy decorative.
   // The migrator now gates that grant on WARDENX_DEV_BYPASSRLS + non-production, but a grant applied
   // by hand (or by an older migrate run against this cluster) would leave no trace at boot. Ask the

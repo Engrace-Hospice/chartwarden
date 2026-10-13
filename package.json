@@ -469,6 +469,8 @@
     "test:m36:channel-membership:live": "vitest run apps/backend/__tests__/m36-channel-membership-lifecycle.live.test.ts",
     "test:m36:realtime:live": "vitest run apps/backend/__tests__/m36-realtime.live.test.ts",
     "test:m36:integrity-jobs:live": "vitest run apps/backend/__tests__/m36-integrity-jobs.live.test.ts",
+    "test:m36:body-key-ring:live": "vitest run apps/backend/__tests__/m36-body-key-ring.live.test.ts",
+    "m36:body-backfill": "bun run scripts/m36-body-backfill.ts",
     "test:m30:cost-report-filing-measure:live": "vitest run apps/backend/__tests__/gap-065-cost-report-filing-measure.live.test.ts",
     "test:m30:hci-inputs:live": "vitest run apps/backend/__tests__/m30-hci-indicator-inputs.live.test.ts",
     "test:m30:scheduled-jobs:live": "vitest run apps/backend/__tests__/m30-quality-scheduled-jobs.live.test.ts",

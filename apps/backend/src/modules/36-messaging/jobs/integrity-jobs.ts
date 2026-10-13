@@ -24,6 +24,7 @@ import {
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { and, eq, lt } from "drizzle-orm";
 import type { MessageBodyCipher } from "../messaging-write-core";
+import { countLegacyBodiesInTx } from "./body-backfill";
 import {
   HASH_VERIFY_RANDOM_SAMPLE_SIZE,
   HASH_VERIFY_RECENT_OVERLAP_MS,
@@ -205,6 +206,8 @@ export async function runHashVerifyForOrg(
         },
       });
     }
+    // WP 2.13: how many rows still sit on the legacy envelope (the standing signal that the P1 backfill is not done).
+    const legacyBodies = await countLegacyBodiesInTx(tx, orgId);
     await audit(exec, ctx, {
       eventType: "m36.hash_verify.run",
       resourceKind: "message_integrity_run",
@@ -217,6 +220,7 @@ export async function runHashVerifyForOrg(
         passCounts: sampled.passCounts,
         recentSince: sampled.recentSince,
         recentOverflow: sampled.recentOverflow,
+        legacyBodies,
         ...(previous.cursorReset ? { cursorReset: previous.cursorReset } : {}),
         ...(previous.ignoredNonSystemRuns > 0
           ? { ignoredNonSystemRuns: previous.ignoredNonSystemRuns }
