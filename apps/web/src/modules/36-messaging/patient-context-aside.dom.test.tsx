@@ -26,7 +26,9 @@ describe("PatientContextAside focus", () => {
     const opener = screen.getByRole("button", { name: "Patient context" });
     opener.focus();
     fireEvent.click(opener);
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Close patient context" }));
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Close patient context" }),
+    );
 
     fireEvent.keyDown(screen.getByRole("complementary", { name: "Patient context" }), {
       key: "Escape",

@@ -380,7 +380,10 @@ function OrganizationStaffMessaging({
 
       <RealtimeBanner degraded={realtimeDegraded} refreshSeconds={POLL_INTERVAL_MS / 1000} />
 
-      <main className={`wx-messaging-layout ${activeChannel ? "has-active-thread" : ""}`}>
+      <section
+        aria-label="Messaging"
+        className={`wx-messaging-layout ${activeChannel ? "has-active-thread" : ""} ${accessEnded && !activeChannel ? "access-ended" : ""}`}
+      >
         <ConversationInbox
           channels={channels}
           visibleChannels={visibleChannels}
@@ -420,7 +423,7 @@ function OrganizationStaffMessaging({
           ) : (
             <div className="wx-messaging-no-selection">
               {accessEnded ? (
-                <AccessEndedNotice />
+                <AccessEndedNotice onBack={() => setAccessEnded(false)} />
               ) : (
                 <EmptyState
                   title="Select a conversation"
@@ -430,7 +433,7 @@ function OrganizationStaffMessaging({
             </div>
           )}
         </div>
-      </main>
+      </section>
     </div>
   );
 }

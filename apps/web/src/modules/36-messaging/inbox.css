@@ -16,8 +16,9 @@
 .wx-messaging-inbox-header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: 0.5rem 0.75rem;
   min-height: 4rem;
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--color-card-border);
@@ -27,6 +28,14 @@
   display: flex;
   align-items: baseline;
   gap: 0.5rem;
+}
+
+.wx-messaging-inbox-header > div {
+  flex-wrap: wrap;
+}
+
+.wx-messaging-inbox-actions .wx-button {
+  min-height: 2.75rem;
 }
 
 .wx-messaging-inbox-header h2,
