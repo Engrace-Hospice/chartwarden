@@ -118,6 +118,9 @@ const ROUTES: Record<string, Verdict> = {
   "DELETE /api/v1/messaging/channels/:id/messages/:messageId/pin": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/pins": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/search": { kind: "idor" },
+  // WP 2.12 presence/typing: the channel's guards run before anything else; ids only (asserted in m36-presence.live).
+  "POST /api/v1/messaging/channels/:id/presence": { kind: "idor" },
+  "GET /api/v1/messaging/channels/:id/presence": { kind: "idor" },
   // WP 2.5 drafts: the id is a channel's; a draft is also private to its author inside the channel (asserted below).
   "GET /api/v1/messaging/channels/:id/draft": { kind: "idor" },
   "PUT /api/v1/messaging/channels/:id/draft": { kind: "idor" },
@@ -771,7 +774,24 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       "GET /api/v1/messaging/channels/:id/messages",
       "GET /api/v1/messaging/channels/:id/mention-candidates",
       "GET /api/v1/messaging/channels/:id/mention-non-members",
+      "GET /api/v1/messaging/channels/:id/presence", // WP 2.12: the guard answers before the (off) tenant flag
     ];
+    it("POST presence (WP 2.12): org B and an in-org non-member get a random id's answer and write nothing", async () => {
+      const before = await fingerprint();
+      for (const attacker of [bUser, outsider]) {
+        for (const id of [dmA, locA, careTeamA]) {
+          await expectNoOracle(
+            "POST /api/v1/messaging/channels/:id/presence",
+            attacker,
+            { id },
+            {
+              typing: true,
+            },
+          );
+        }
+      }
+      expect(await fingerprint()).toEqual(before);
+    });
     it("legitimate members read (the attacks below are not vacuous)", async () => {
       for (const ch of [dmA, locA]) {
         const res = await call("GET /api/v1/messaging/channels/:id/messages", u2, { id: ch });

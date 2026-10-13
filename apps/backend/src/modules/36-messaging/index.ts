@@ -166,6 +166,7 @@ import {
   registerMessagingAbacPredicates as _registerMessagingAbacPredicates,
   registerMessagingRoutes as _registerMessagingRoutes,
 } from "./routes/messaging-routes";
+import type { PresenceRouteDeps } from "./routes/presence-routes";
 import { registerScheduledSendRoutes as _registerScheduledSendRoutes } from "./routes/scheduled-send-routes";
 import { registerTemplateRoutes as _registerTemplateRoutes } from "./routes/template-routes";
 import { createDbScheduledSendService as _createDbScheduledSendService } from "./scheduled/scheduled-send-service-db";
@@ -191,6 +192,8 @@ export function mountMessagingRoutes(
     globalSearch?: GlobalSearchMountOptions;
     /** WP 2.7b C4: true only once the ADR-0058 P2 per-route rate limit covers the search routes. Default false => ON refused. */
     globalSearchRateLimitActive?: boolean;
+    /** WP 2.12: presence/typing store (Valkey in production), the tenant-flag reader and an optional per-route limit. */
+    presence?: PresenceRouteDeps;
   } = {},
 ): void {
   // GAP-063 — the §4.2 OTP sender; with none bound, sms/email endpoint registration answers 503.
@@ -202,7 +205,11 @@ export function mountMessagingRoutes(
   });
   _registerMessagingAbacPredicates(service); // idempotent — single-owner registry, re-boot-safe
   const announcements = _createDbAnnouncementService(db);
-  _registerMessagingRoutes(app, { service, announcements }); // WP 2.9
+  _registerMessagingRoutes(app, {
+    service,
+    announcements,
+    ...(opts.presence ? { presence: opts.presence } : {}),
+  }); // WP 2.9, 2.12
   // WP 2.5 — private encrypted drafts (own row per user + channel + thread root).
   _registerDraftRoutes(app, { service: _createDbDraftService({ db }) });
   // WP 2.6 — scheduled send: the QUEUEING side. The `messaging.scheduled_send` sweep sends (see ./scheduled/*).
@@ -242,6 +249,10 @@ export function mountMessagingRoutes(
   _registerMessagingAdminPredicates();
   _registerAdminAlertDeliveriesRoutes(app, _buildAdminAlertDeliveriesDeps(db));
 }
+
+// WP 2.12 - ephemeral presence/typing: the composition-root binding (Valkey or in-memory store, tenant flag, route limit).
+export { buildPresenceDeps } from "./presence/binding";
+export { PRESENCE_FLAG_KEY } from "./routes/presence-routes";
 
 // GAP-010 — M36's consumer for M3's `m3.breakglass.invoked` (durable Compliance notification).
 export {

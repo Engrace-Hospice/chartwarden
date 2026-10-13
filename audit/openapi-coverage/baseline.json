@@ -162,7 +162,7 @@
       "mutatingNoBody": 0
     },
     "34-saas-tenant-platform": {
-      "routes": 56,
+      "routes": 58,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -172,7 +172,7 @@
       "mutatingNoBody": 1
     },
     "36-messaging": {
-      "routes": 62,
+      "routes": 67,
       "deficit": 0,
       "mutatingNoBody": 0
     },

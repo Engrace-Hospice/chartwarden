@@ -277,6 +277,7 @@ import {
   createOrgScopedAuditExecutor,
   createPortalInviteeUserPort,
   createPortalSignInStore,
+  createTaxIdCipher,
   membershipDisplayForOrg,
   mountDeviceAttestationRoutes,
   mountIdentityRoutes,
@@ -287,7 +288,6 @@ import {
   registerAuditorRedeemRoutes,
   registerIdentityErasers,
   registerIdentitySeams,
-  createTaxIdCipher,
 } from "./modules/02-identity/index";
 import {
   type ActorPermissionResolver,
@@ -1411,6 +1411,7 @@ import {
   buildIdgCarryForwardComplianceConsumer,
   buildM36BreakGlassAlertConsumer,
   buildM36ClinicalAlertConsumer,
+  buildPresenceDeps,
   createAttachmentService,
   createDbMessagingProvider,
   createDbMessagingRouteService,
@@ -4605,6 +4606,13 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               ...(m36SearchRateLimit.rateLimit ? { rateLimit: m36SearchRateLimit.rateLimit } : {}),
             },
             globalSearchRateLimitActive: m36SearchRateLimit.active,
+            // WP 2.12 - ephemeral presence/typing; Valkey when REDIS_URL is set, off unless the tenant flag is on.
+            presence: buildPresenceDeps({
+              redis: rateLimitRedisClient,
+              rateLimitStore,
+              flags: featureFlagReader,
+              onStoreError: (err) => app.log.warn({ err }, "presence rate-limit store unavailable"),
+            }),
           }); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05) + WP 1.5 attachments
           // GAP-101 — the §4.9 inbound vendor webhooks (Twilio sms/voice status, Postmark event): signature-authenticated
           // (replay window + HMAC / IP allowlist + bearer), reconciling `notification_delivery`. FAIL-CLOSED: a vendor

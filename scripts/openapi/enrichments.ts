@@ -696,6 +696,10 @@ import {
   TransitionCapabilityBody as M32TransitionCapabilityBody,
   TriageHallucinationReportBody as M32TriageHallucinationReportBody,
 } from "../../apps/backend/src/modules/32-ai-platform/routes/m32-typebox";
+import {
+  PresenceHeartbeatBodySchema as M36PresenceHeartbeatBodySchema,
+  PresenceResponseSchema as M36PresenceResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/presence-typebox";
 import { SearchQuerySchema as TerminologySearchQuerySchema } from "../../apps/backend/src/modules/38-terminology/routes/terminology-typebox";
 import {
   GriefResourceBodySchema as M40GriefResourceBody,
@@ -1175,6 +1179,8 @@ import {
   // responses
   BaaRecordViewSchema as M34PlatformBaaRecordViewSchema,
   TenantExportJobListResponseSchema as M34PlatformTenantExportJobListResponseSchema,
+  ProvisionRetryAckSchema as M34ProvisionRetryAckSchema,
+  ProvisionStatusViewSchema as M34ProvisionStatusViewSchema,
   ProvisionTenantRequest as M34ProvisionTenantRequest,
   QualifyIntentAckSchema as M34QualifyIntentAckSchema,
   QualifyIntentRequest as M34QualifyIntentRequest,
@@ -1187,8 +1193,6 @@ import {
   SignupIntentListResponseSchema as M34SignupIntentListResponseSchema,
   StartSessionAckSchema as M34StartSessionAckSchema,
   StartSessionRequest as M34StartSessionRequest,
-  ProvisionRetryAckSchema as M34ProvisionRetryAckSchema,
-  ProvisionStatusViewSchema as M34ProvisionStatusViewSchema,
   StatusTransitionRequest as M34StatusTransitionRequest,
   SupportSessionEventListResponseSchema as M34SupportSessionEventListResponseSchema,
   SupportSessionListQuerySchema as M34SupportSessionListQuerySchema,
@@ -1255,15 +1259,15 @@ import {
   DraftResponseSchema as M36DraftResponseSchema,
   SaveDraftBodySchema as M36SaveDraftBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/draft-typebox";
-import {
-  GlobalSearchQuerySchema as M36GlobalSearchQuerySchema,
-  GlobalSearchResponseSchema as M36GlobalSearchResponseSchema,
-} from "../../apps/backend/src/modules/36-messaging/routes/global-search-typebox";
 // M36 WP 2.7b C4 tenant global search switch.
 import {
   GlobalSearchSettingsViewSchema as M36GlobalSearchSettingsViewSchema,
   PutGlobalSearchSettingsBodySchema as M36PutGlobalSearchSettingsBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/global-search-settings-typebox";
+import {
+  GlobalSearchQuerySchema as M36GlobalSearchQuerySchema,
+  GlobalSearchResponseSchema as M36GlobalSearchResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/global-search-typebox";
 // ── M36 Secure Messaging & Alerts — request + response schema imports (all M36-aliased) ──
 import {
   // request schemas (query / body) — reused as-is
@@ -8806,7 +8810,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34TenantStatusAckSchema,
   },
   "GET /api/v1/platform/tenants/:orgSlug/provision-status": {
-    summary: "A tenant's lifecycle status next to its tenant.provision job state (queued/running/failed/…)",
+    summary:
+      "A tenant's lifecycle status next to its tenant.provision job state (queued/running/failed/…)",
     response: M34ProvisionStatusViewSchema,
   },
   "POST /api/v1/platform/tenants/:orgSlug/provision/retry": {
@@ -9013,6 +9018,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/messaging/channels/:id/pins": {
     summary: "The channel's pinned messages, most recently pinned first (read-audited)",
     response: M36PinListResponseSchema,
+  },
+  // WP 2.12 presence/typing (ephemeral, Valkey, never persisted; tenant flag messaging.presence_enabled, default off)
+  "POST /api/v1/messaging/channels/:id/presence": {
+    summary:
+      "Heartbeat / typing marker for the caller in a channel (ephemeral ids with a short TTL, never stored in Postgres; at most one write per 3 s per user per channel, extra calls are 204 no-ops; 403 PRESENCE_DISABLED when the tenant flag is off, and the channel guard's refusal for a non-member, removed member or other tenant)",
+    body: M36PresenceHeartbeatBodySchema,
+  },
+  "GET /api/v1/messaging/channels/:id/presence": {
+    summary:
+      "Ids of channel members currently present / typing (poll; ids only, no names; 403 PRESENCE_DISABLED when the tenant flag is off; a non-member gets what a random channel id gets)",
+    response: M36PresenceResponseSchema,
   },
   "GET /api/v1/messaging/search": {
     summary:
