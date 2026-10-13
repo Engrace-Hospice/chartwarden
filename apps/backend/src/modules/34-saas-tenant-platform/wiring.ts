@@ -308,6 +308,8 @@ export function buildDrizzlePlatformService(deps: {
   provisionJobs?: ProvisionJobPort;
   /** Emails first-admin invitations (the provision gateway); omitted, issuing/resending one fails closed. */
   invitationDelivery?: InvitationDeliveryPort;
+  /** M4's legal-hold check; omitted, scheduling a tenant's destruction fails closed (never assumes "no hold"). */
+  legalHoldClear?: (organizationId: string) => Promise<boolean>;
   auditBypass: PlatformBypassAuditor<PlatformTx>;
   /** #107 — the live transactional-outbox publisher (callerModule-pinned 'm34'). When omitted the lifecycle
    *  outbox stays fail-closed (the §2.5 emit throws, never a silent no-op). */
@@ -377,6 +379,14 @@ export function buildDrizzlePlatformService(deps: {
         );
       },
     },
+    legalHoldClear:
+      deps.legalHoldClear ??
+      (async () => {
+        throw new M34InfraPortUnbound(
+          "legalHoldClear",
+          "bind M4's legal-hold reader to schedule tenant destruction",
+        );
+      }),
     auditBypass: deps.auditBypass,
     outbox,
     organizations,

@@ -1,7 +1,9 @@
 // apps/admin/src/modules/34-saas-platform — the lifecycle "Transition status" dialog (spec §5.1
-// `/tenants/:orgSlug/status`): onboarding → active, active ⇄ suspended / at_risk. Backed by
-// POST /api/v1/platform/tenants/{orgSlug}/status; the server runs the §2.2 machine and its guards (canonical
-// onboarding tasks settled, BAA executed and >90d from expiry for activation), so a refusal carries the reason.
+// `/tenants/:orgSlug/status` + `/offboard`): onboarding → active, active ⇄ suspended / at_risk, and the offboarding
+// chain offboarding_initiated → final_export_pending → retained → destruction_pending (which is what makes the shred
+// ceremony reachable). Backed by POST .../status and POST .../offboard; the server runs the §2.2 machine and its
+// guards (canonical tasks + BAA for activation; retention elapsed and no legal hold for destruction), so a refusal
+// carries the reason.
 import { Button, InlineAlert, Modal, SelectField, TextAreaField, useApiClient } from "@wardenx/ui";
 import { useState } from "react";
 import type { JSX } from "react";
@@ -13,10 +15,28 @@ const MIN_REASON = 8;
 /** Targets the platform status route can reach from a status (the machine's source of truth is server-side). */
 const TARGETS: Readonly<Record<string, readonly string[]>> = {
   onboarding: ["active"],
-  active: ["suspended", "at_risk"],
-  suspended: ["active"],
-  at_risk: ["active", "suspended"],
+  active: ["suspended", "at_risk", "offboarding_initiated"],
+  suspended: ["active", "offboarding_initiated"],
+  at_risk: ["active", "suspended", "offboarding_initiated"],
+  offboarding_initiated: ["final_export_pending"],
+  final_export_pending: ["retained"],
+  retained: ["destruction_pending"],
 };
+
+/** The button wording for a transition whose generic "Apply" would hide how consequential it is. */
+const COMMIT_LABEL: Readonly<Record<string, string>> = {
+  active_from_onboarding: "Activate tenant",
+  offboarding_initiated: "Begin offboarding",
+  final_export_pending: "Start final export",
+  retained: "Mark export complete",
+  destruction_pending: "Schedule destruction",
+};
+
+type ExportPurpose = "migration" | "baa_termination";
+const EXPORT_PURPOSES: readonly { value: ExportPurpose; label: string }[] = [
+  { value: "migration", label: "Migration to another system" },
+  { value: "baa_termination", label: "BAA termination" },
+];
 
 export function transitionTargets(fromStatus: string): readonly string[] {
   return TARGETS[fromStatus] ?? [];
@@ -48,13 +68,17 @@ export function TenantTransitionDialog({
   const targets = transitionTargets(fromStatus);
   const [target, setTarget] = useState<string>(targets[0] ?? "");
   const [reason, setReason] = useState("");
+  const [purpose, setPurpose] = useState<ExportPurpose>("migration");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   // The dialog stays mounted while the tenant's status changes, so a remembered pick may no longer be reachable.
   const chosen = targets.includes(target) ? target : (targets[0] ?? "");
-  const activating = fromStatus === "onboarding" && chosen === "active";
-  const commitLabel = activating ? "Activate tenant" : "Apply";
+  const offboarding = chosen === "offboarding_initiated";
+  const commitLabel =
+    COMMIT_LABEL[
+      fromStatus === "onboarding" && chosen === "active" ? "active_from_onboarding" : chosen
+    ] ?? "Apply";
 
   async function submit(): Promise<void> {
     if (busy) return;
@@ -66,10 +90,15 @@ export function TenantTransitionDialog({
     setError(null);
     setBusy(true);
     try {
-      const { error: err } = await client.POST("/api/v1/platform/tenants/{orgSlug}/status", {
-        params: { path: { orgSlug } },
-        body: { toStatus: chosen as "active", transitionReason: trimmed },
-      });
+      const { error: err } = offboarding
+        ? await client.POST("/api/v1/platform/tenants/{orgSlug}/offboard", {
+            params: { path: { orgSlug } },
+            body: { transitionReason: trimmed, exportPurpose: purpose },
+          })
+        : await client.POST("/api/v1/platform/tenants/{orgSlug}/status", {
+            params: { path: { orgSlug } },
+            body: { toStatus: chosen as "active", transitionReason: trimmed },
+          });
       if (err) {
         setError(serverMessage(err) ?? "The transition was refused. The tenant is unchanged.");
         return;
@@ -105,6 +134,15 @@ export function TenantTransitionDialog({
                 value={chosen}
                 onChange={(e) => setTarget(e.target.value)}
                 options={targets.map((value) => ({ value, label: statusLabel(value) }))}
+              />
+            ) : null}
+            {offboarding ? (
+              <SelectField
+                label="Export purpose"
+                hint="What the tenant's final export is for."
+                value={purpose}
+                onChange={(e) => setPurpose(e.target.value as ExportPurpose)}
+                options={EXPORT_PURPOSES}
               />
             ) : null}
             <TextAreaField

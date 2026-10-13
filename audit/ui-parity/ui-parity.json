@@ -2135,6 +2135,14 @@
       "app": "web",
       "module": "34-saas",
       "moduleId": 34,
+      "id": "saas.agency-setup",
+      "path": "/admin/setup",
+      "permission": "org.manage"
+    },
+    {
+      "app": "web",
+      "module": "34-saas",
+      "moduleId": 34,
       "id": "saas.onboarding",
       "path": "/admin/onboarding",
       "permission": "onboarding.read_own"

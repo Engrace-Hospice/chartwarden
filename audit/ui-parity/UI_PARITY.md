@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 44 module screen-sets registered · 341 screens wired across web/portal/admin.
+**Coverage:** 113 documented screen specs · 44 module screen-sets registered · 342 screens wired across web/portal/admin.
 - **admin**: 39 screen(s)
 - **portal**: 18 screen(s)
-- **web**: 284 screen(s)
+- **web**: 285 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -288,6 +288,7 @@
 | web | 33-reporting | `reporting.schedules` | `/reports/schedules` | `report.schedule.list` | ✅ |
 | web | 33-reporting | `reporting.admin` | `/reports/admin` | `report.admin.mv_list` | ✅ |
 | web | 34-saas | `saas.account` | `/admin/account` | `tenant.read_own` | ✅ |
+| web | 34-saas | `saas.agency-setup` | `/admin/setup` | `org.manage` | ✅ |
 | web | 34-saas | `saas.onboarding` | `/admin/onboarding` | `onboarding.read_own` | ✅ |
 | web | 34-saas | `saas.support-grants` | `/admin/support-grants` | `support_consent_grant.list_own` | ✅ |
 | web | 35-subscription | `billing.overview` | `/subscription` | `subscription.read` | ✅ |

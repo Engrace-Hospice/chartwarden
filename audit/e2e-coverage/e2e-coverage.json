@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 176,
+  "totalStaticWebScreens": 177,
   "e2eReachedCount": 19,
-  "axeReachedCount": 167,
+  "axeReachedCount": 168,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -97,6 +97,14 @@
       "module": "17-scheduling",
       "path": "/admin/scheduling-metrics",
       "permission": "visit.read_metrics",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "saas.agency-setup",
+      "module": "34-saas",
+      "path": "/admin/setup",
+      "permission": "org.manage",
       "e2eReached": false,
       "axeReached": true
     },
@@ -1429,6 +1437,14 @@
       "module": "17-scheduling",
       "path": "/admin/scheduling-metrics",
       "permission": "visit.read_metrics",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "saas.agency-setup",
+      "module": "34-saas",
+      "path": "/admin/setup",
+      "permission": "org.manage",
       "e2eReached": false,
       "axeReached": true
     },

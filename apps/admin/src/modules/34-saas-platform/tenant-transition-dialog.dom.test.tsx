@@ -32,9 +32,12 @@ function renderDialog(
 describe("transitionTargets", () => {
   it.each([
     ["onboarding", ["active"]],
-    ["active", ["suspended", "at_risk"]],
-    ["suspended", ["active"]],
-    ["at_risk", ["active", "suspended"]],
+    ["active", ["suspended", "at_risk", "offboarding_initiated"]],
+    ["suspended", ["active", "offboarding_initiated"]],
+    ["at_risk", ["active", "suspended", "offboarding_initiated"]],
+    ["offboarding_initiated", ["final_export_pending"]],
+    ["final_export_pending", ["retained"]],
+    ["retained", ["destruction_pending"]],
     ["destroyed", []],
     ["provisioning", []],
   ])("from %s offers %j", (from, expected) => {
@@ -124,6 +127,62 @@ describe("TenantTransitionDialog", () => {
       "/api/v1/platform/tenants/{orgSlug}/status",
       expect.objectContaining({ body: expect.objectContaining({ toStatus: "suspended" }) }),
     );
+  });
+
+  it("begins offboarding through the offboard route, with an export purpose", async () => {
+    const post = vi.fn(async () => ({
+      data: { tenantAccountId: "t-1", status: "offboarding_initiated" },
+    }));
+    const { onDone } = renderDialog("active", post);
+
+    fireEvent.change(screen.getByLabelText(/new status/i), {
+      target: { value: "offboarding_initiated" },
+    });
+    fireEvent.change(screen.getByLabelText(/export purpose/i), {
+      target: { value: "baa_termination" },
+    });
+    fireEvent.change(screen.getByLabelText(/reason/i), {
+      target: { value: "BAA terminated by customer" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /begin offboarding/i }));
+
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(post).toHaveBeenCalledWith("/api/v1/platform/tenants/{orgSlug}/offboard", {
+      params: { path: { orgSlug: "cedar-ridge" } },
+      body: { transitionReason: "BAA terminated by customer", exportPurpose: "baa_termination" },
+    });
+  });
+
+  it("walks the offboarding chain through the status route", async () => {
+    const post = vi.fn(async () => ({ data: { tenantAccountId: "t-1", status: "retained" } }));
+    renderDialog("final_export_pending", post);
+
+    fireEvent.change(screen.getByLabelText(/reason/i), {
+      target: { value: "Customer downloaded the export" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /mark export complete/i }));
+
+    await waitFor(() => expect(post).toHaveBeenCalled());
+    expect(post).toHaveBeenCalledWith(
+      "/api/v1/platform/tenants/{orgSlug}/status",
+      expect.objectContaining({ body: expect.objectContaining({ toStatus: "retained" }) }),
+    );
+  });
+
+  it("labels the destruction step plainly and shows the server's refusal (retention not elapsed / legal hold)", async () => {
+    const post = vi.fn(async () => ({
+      error: {
+        error: { message: "retention_ends_at must be reached before scheduling destruction" },
+      },
+    }));
+    renderDialog("retained", post);
+
+    fireEvent.change(screen.getByLabelText(/reason/i), {
+      target: { value: "Retention window elapsed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /schedule destruction/i }));
+
+    expect((await screen.findByRole("alert")).textContent).toMatch(/retention_ends_at/);
   });
 
   it("says there is nothing to do from a state with no platform-ops transitions", () => {

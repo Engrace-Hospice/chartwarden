@@ -55,6 +55,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { type InvitationDeliveryPort, mintInvitationToken } from "../../invitation-token";
 import type { ProvisionJobPort } from "../../jobs/provision-job-port";
 import { evaluateActivationGuards } from "./activation-guards";
+import { evaluateDestructionGuards, retentionEndsAtFrom } from "./offboarding-guards";
 import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf, paginate } from "./concurrency";
 import type {
   BaaRecordView,
@@ -134,6 +135,8 @@ export interface DrizzleTenantPlatformDeps {
   readonly provisionJobs: ProvisionJobPort;
   /** Emails a first-admin invitation (the provision gateway in prod; fail-closed when it is not configured). */
   readonly invitationDelivery: InvitationDeliveryPort;
+  /** True when no active M4 legal hold references the organization (M4 owns the table; injected, never read here). */
+  readonly legalHoldClear: (organizationId: string) => Promise<boolean>;
   /** Emits the mandatory `platform.bypass_invoked` audit event for every platform-context entry (F09). */
   readonly auditBypass: PlatformBypassAuditor<PlatformTx>;
   /** Catalog-validated outbox publish, over the same platform tx. */
@@ -272,6 +275,25 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     return { account, orgSlug };
   }
 
+  /** retained → destruction_pending: feed the machine the §2.2 guards (retention elapsed, no legal hold). */
+  async function destructionEventFor(
+    account: schema.TenantAccount,
+    reason: string,
+  ): Promise<LifecycleEvent> {
+    const guards = evaluateDestructionGuards({
+      retentionEndsAt: account.retentionEndsAt,
+      now: new Date(),
+      legalHoldClear: await deps.legalHoldClear(account.organizationId),
+    });
+    return {
+      type: "scheduleDestruction",
+      actorKind: "platform_ops",
+      transitionReason: reason,
+      retentionElapsed: guards.retentionElapsed,
+      legalHoldClear: guards.legalHoldClear,
+    };
+  }
+
   /** onboarding → active: feed the machine the §2.4.12 / D11 guards read from the tenant's tasks and latest BAA. */
   async function activateEventFor(
     tx: PlatformTx,
@@ -327,6 +349,9 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     };
     for (const eff of res.effects) {
       if (eff.kind === "set_timestamp") patch[eff.field] = new Date();
+      // completeExport: the final export is done, so the §2.5 r6 retention window opens now.
+      if (eff.kind === "set_retention_window")
+        patch.retentionEndsAt = retentionEndsAtFrom(new Date());
     }
     const updated = await repo.updateStatus(account.id, patch);
 
@@ -568,7 +593,9 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const event =
           account.status === "onboarding" && args.toStatus === "active"
             ? await activateEventFor(tx, account.id, args.transitionReason)
-            : lifecycleEventForStatus(account.status, args.toStatus, args.transitionReason);
+            : account.status === "retained" && args.toStatus === "destruction_pending"
+              ? await destructionEventFor(account, args.transitionReason)
+              : lifecycleEventForStatus(account.status, args.toStatus, args.transitionReason);
         const updated = await applyTransition(tx, account, actorUserId, "platform_ops", event);
         return { tenantAccountId: updated.id, status: updated.status };
       });
@@ -1344,6 +1371,10 @@ export function lifecycleEventForStatus(
         : { type: "reactivate", actorKind: k, transitionReason: reason };
     case "at_risk":
       return { type: "flagAtRisk", actorKind: k, transitionReason: reason };
+    case "final_export_pending":
+      return { type: "requestFinalExport", actorKind: k, transitionReason: reason };
+    case "retained":
+      return { type: "completeExport", actorKind: k, transitionReason: reason };
     default:
       return illegal();
   }

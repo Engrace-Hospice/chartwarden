@@ -4546,6 +4546,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               platformDb: platformDbHandle?.db ?? dbHandle.db,
               enqueue: m34PlatformEnqueue.enqueue,
               provisionJobs: m34PlatformEnqueue.provisionJobs,
+              // Any active hold (org-wide or patient-scoped) blocks destroying the tenant's key.
+              legalHoldClear: async (organizationId) => {
+                const scope = await activeLegalHoldScopeForOrg(dbHandle.db, organizationId);
+                return !scope.orgWide && scope.patientIds.size === 0;
+              },
               ...(m34ProvisionGateway ? { invitationDelivery: m34ProvisionGateway.invitation } : {}),
               auditBypass: m34PlatformBypassAuditor,
               outbox: m34OutboxPublisher,

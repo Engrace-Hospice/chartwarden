@@ -125,6 +125,7 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
           return { jobId: `${queue}-${jobKey}` };
         },
       },
+      legalHoldClear: async () => true,
       invitationDelivery: {
         acceptBaseUrl: "http://localhost/tenant-invite",
         async send() {

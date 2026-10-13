@@ -12,6 +12,8 @@ describe("lifecycleEventForStatus", () => {
     { from: "active", to: "at_risk", type: "flagAtRisk" },
     { from: "at_risk", to: "active", type: "resolveAtRisk" },
     { from: "at_risk", to: "suspended", type: "suspendFromAtRisk" },
+    { from: "offboarding_initiated", to: "final_export_pending", type: "requestFinalExport" },
+    { from: "final_export_pending", to: "retained", type: "completeExport" },
   ] as const)("$from → $to is a $type event", ({ from, to, type }) => {
     const event = lifecycleEventForStatus(from, to, REASON);
 
