@@ -757,6 +757,8 @@ jobs:
           - { name: "M36 Mentions", scripts: "test:m36:mentions:live" }
           # WP 2.7a - in-conversation search: tenant/channel/tombstone/edit isolation, filters, audit without query text, p95 on a seeded history.
           - { name: "M36 In-conversation search", scripts: "test:m36:search:live" }
+          # WP 2.7b chunk C1 (ADR-0058, Proposed) - global search index storage: RLS, no UPDATE grant, the same-transaction removal hook, audit without tags.
+          - { name: "M36 Global search index storage", scripts: "test:m36:search-index:live" }
           - { name: "GAP-173 M40 license + grief RLS", scripts: "test:gap-173:live" }
           - { name: "M31 prefs + uploads", scripts: "test:gap-031:live" }
           - { name: "M30 CAHPS export + M2 auditor link", scripts: "test:gap-087:live" }
