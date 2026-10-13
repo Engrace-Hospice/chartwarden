@@ -2431,6 +2431,14 @@
       "app": "admin",
       "module": "34-saas-platform",
       "moduleId": 34,
+      "id": "saas.tenant-onboarding",
+      "path": "/tenants/:orgSlug/onboarding",
+      "permission": "onboarding.read_platform"
+    },
+    {
+      "app": "admin",
+      "module": "34-saas-platform",
+      "moduleId": 34,
       "id": "saas.support-sessions",
       "path": "/support/sessions",
       "permission": "support_session.list_platform"

@@ -51,6 +51,7 @@ import {
 import { type PlatformBypassAuditor, withPlatformContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, desc, eq } from "drizzle-orm";
+import { evaluateActivationGuards } from "./activation-guards";
 import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf, paginate } from "./concurrency";
 import type {
   BaaRecordView,
@@ -215,7 +216,9 @@ function outboxPayloadFor(
           }
         : null;
     default:
-      // `activated`/`final_export_pending`/`retained`/`destruction_pending` — the machine can name
+      // `activated` is deliberately not published here: the catalog has no `m34.tenant.activated`, and its mirror
+      // `m34.tenant.onboarding_completed` is already published by the onboarding-advance sweep once every canonical
+      // step settles. Also unreached: `final_export_pending`/`retained`/`destruction_pending` — the machine can name
       // these, but no current caller of applyTransition reaches the events that emit them (`activate`
       // fires from the onboarding worker outside this file; `requestFinalExport`/`completeExport`/
       // `scheduleDestruction`/`shred` have no route here at all — see lifecycleEventForStatus below).
@@ -260,6 +263,34 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     const account = await new TenantAccountRepository(tx).findByOrganizationId(org.id);
     if (!account) throw new NotFoundError("tenant");
     return { account, orgSlug };
+  }
+
+  /** onboarding → active: feed the machine the §2.4.12 / D11 guards read from the tenant's tasks and latest BAA. */
+  async function activateEventFor(
+    tx: PlatformTx,
+    tenantAccountId: string,
+    reason: string,
+  ): Promise<LifecycleEvent> {
+    const onboarding = new OnboardingRepository(tx);
+    const [templates, tasks, baaRows] = await Promise.all([
+      onboarding.listTemplates(),
+      onboarding.listTasksByTenant(tenantAccountId),
+      new BaaRegisterRepository(tx).listByTenantAccountId(tenantAccountId),
+    ]);
+    const guards = evaluateActivationGuards({
+      canonicalTemplateKeys: templates.filter((t) => t.isCanonical).map((t) => t.key),
+      tasks,
+      latestBaa: baaRows[0],
+      today: new Date(),
+    });
+    return {
+      type: "activate",
+      actorKind: "platform_ops",
+      transitionReason: reason,
+      canonicalTasksComplete: guards.canonicalTasksComplete,
+      baaExecuted: guards.baaExecuted,
+      baaExpiryClearsNinetyDays: guards.baaExpiryClearsNinetyDays,
+    };
   }
 
   /**
@@ -527,7 +558,10 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     async transitionStatus(orgSlug, actorUserId, args: StatusTransitionArgs) {
       return inPlatformCtx("platform-ops transition tenant status", async (tx) => {
         const { account } = await loadByOrgSlug(tx, orgSlug);
-        const event = lifecycleEventForStatus(args.toStatus, args.transitionReason);
+        const event =
+          account.status === "onboarding" && args.toStatus === "active"
+            ? await activateEventFor(tx, account.id, args.transitionReason)
+            : lifecycleEventForStatus(account.status, args.toStatus, args.transitionReason);
         const updated = await applyTransition(tx, account, actorUserId, "platform_ops", event);
         return { tenantAccountId: updated.id, status: updated.status };
       });
@@ -1206,22 +1240,36 @@ function dateOnly(v: string | Date | null): string | null {
   return typeof v === "string" ? v : v.toISOString().slice(0, 10);
 }
 
-/** Map a target lifecycle status to the §2.2 event that reaches it (the platform transition route). */
-function lifecycleEventForStatus(toStatus: string, reason: string): LifecycleEvent {
+/**
+ * Map a target lifecycle status to the §2.2 event that reaches it from the tenant's current status (the platform
+ * transition route). Several events share a target, so the source status decides: `active` is reactivate from
+ * suspended but resolveAtRisk from at_risk. onboarding → active is built separately (activateEventFor).
+ */
+export function lifecycleEventForStatus(
+  fromStatus: string,
+  toStatus: string,
+  reason: string,
+): LifecycleEvent {
   const k: LifecycleActorKind = "platform_ops";
+  const illegal = (): never => {
+    throw new WardenXError(
+      "ILLEGAL_TENANT_TRANSITION",
+      `no platform-ops transition reaches status '${toStatus}' from '${fromStatus}'`,
+      409,
+    );
+  };
   switch (toStatus) {
     case "suspended":
-      return { type: "suspend", actorKind: k, transitionReason: reason };
+      return fromStatus === "at_risk"
+        ? { type: "suspendFromAtRisk", actorKind: k, transitionReason: reason }
+        : { type: "suspend", actorKind: k, transitionReason: reason };
     case "active":
-      // reactivate is the only platform-ops path to `active` post-onboarding.
-      return { type: "reactivate", actorKind: k, transitionReason: reason };
+      return fromStatus === "at_risk"
+        ? { type: "resolveAtRisk", actorKind: k, transitionReason: reason }
+        : { type: "reactivate", actorKind: k, transitionReason: reason };
     case "at_risk":
       return { type: "flagAtRisk", actorKind: k, transitionReason: reason };
     default:
-      throw new WardenXError(
-        "ILLEGAL_TENANT_TRANSITION",
-        `no platform-ops transition reaches status '${toStatus}'`,
-        409,
-      );
+      return illegal();
   }
 }

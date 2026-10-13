@@ -19,7 +19,9 @@ import {
 // The redesign frame: a page head (identity + lifecycle pill + shred) over the five flat cards.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { BAA_TONE, cap, lifecycleTone, statusLabel } from "./saas-status";
+import { TenantTransitionDialog } from "./tenant-transition-dialog";
 
 interface StatusEvent {
   id: string;
@@ -68,7 +70,9 @@ export function TenantOverview(): JSX.Element {
   const [tenant, setTenant] = useState<TenantOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
   const [shredOpen, setShredOpen] = useState(false);
+  const [transitionOpen, setTransitionOpen] = useState(false);
   // The ceremony used to send `destructionCertificateId: ""` and a canned reason, then ignore the
   // result — so the shred failed validation every time and the console reported success anyway
   // (#29). These are the operator inputs the TODO in this file always said it needed.
@@ -203,13 +207,29 @@ export function TenantOverview(): JSX.Element {
         </header>
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <LifecycleCard tenant={tenant} />
-          <OnboardingCard tenant={tenant} />
+          <LifecycleCard tenant={tenant} onTransition={() => setTransitionOpen(true)} />
+          <OnboardingCard
+            tenant={tenant}
+            onOpen={() => navigate(`/tenants/${encodeURIComponent(tenant.orgSlug)}/onboarding`)}
+          />
           <KeyRingCard tenant={tenant} onRotate={() => void rotateDek()} />
           <SupportCard tenant={tenant} />
           <ExportsCard />
         </div>
       </div>
+
+      <TenantTransitionDialog
+        open={transitionOpen}
+        orgSlug={orgSlug}
+        tenantName={tenant.legalBusinessName}
+        fromStatus={tenant.status}
+        onClose={() => setTransitionOpen(false)}
+        onDone={() => {
+          setTransitionOpen(false);
+          toast.show("Tenant status updated.", { tone: "success" });
+          void load();
+        }}
+      />
 
       {/* §5.2 Card 1 / §6 D10 — the shred is irreversible: confirm-by-typing the legal business name. */}
       <CeremonyModal
@@ -304,13 +324,16 @@ function Card({
 }
 
 // ── Card 1 — Lifecycle: current status + last status event + Transition CTA ──────────────────────────
-function LifecycleCard({ tenant }: { tenant: TenantOverview }): JSX.Element {
+function LifecycleCard({
+  tenant,
+  onTransition,
+}: { tenant: TenantOverview; onTransition: () => void }): JSX.Element {
   const ev = tenant.latestStatusEvent;
   return (
     <Card
       title="Lifecycle"
       cta={
-        <Button tone="secondary" size="sm">
+        <Button tone="secondary" size="sm" onClick={onTransition}>
           Transition status
         </Button>
       }
@@ -339,14 +362,17 @@ function LifecycleCard({ tenant }: { tenant: TenantOverview }): JSX.Element {
 }
 
 // ── Card 2 — Onboarding: eleven-step progress + Open onboarding CTA ───────────────────────────────────
-function OnboardingCard({ tenant }: { tenant: TenantOverview }): JSX.Element {
+function OnboardingCard({
+  tenant,
+  onOpen,
+}: { tenant: TenantOverview; onOpen: () => void }): JSX.Element {
   const { totalTasks, doneTasks, currentStep } = tenant.onboarding;
   const pct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
   return (
     <Card
       title="Onboarding"
       cta={
-        <Button tone="secondary" size="sm">
+        <Button tone="secondary" size="sm" onClick={onOpen}>
           Open onboarding
         </Button>
       }
