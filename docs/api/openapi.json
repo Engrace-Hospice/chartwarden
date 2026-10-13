@@ -158332,6 +158332,76 @@
                           "pinned": {
                             "type": "boolean"
                           },
+                          "poll": {
+                            "type": "object",
+                            "required": [
+                              "pollId",
+                              "closed",
+                              "closedAt",
+                              "totalVotes",
+                              "myOptionId",
+                              "canClose",
+                              "options"
+                            ],
+                            "properties": {
+                              "pollId": {
+                                "type": "string"
+                              },
+                              "closed": {
+                                "type": "boolean"
+                              },
+                              "closedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "totalVotes": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "myOptionId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "canClose": {
+                                "type": "boolean"
+                              },
+                              "options": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "optionId",
+                                    "label",
+                                    "voteCount"
+                                  ],
+                                  "properties": {
+                                    "optionId": {
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "type": "string"
+                                    },
+                                    "voteCount": {
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
                           "references": {
                             "type": "array",
                             "items": {
@@ -158724,6 +158794,405 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/poll": {
+      "get": {
+        "operationId": "getApiV1MessagingChannelsByIdMessagesByMessageIdPoll",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "A poll's results with who voted for each option and the caller's own vote (WP 2.10; read-audited; never cached)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "pollId",
+                    "closed",
+                    "closedAt",
+                    "totalVotes",
+                    "myOptionId",
+                    "canClose",
+                    "options",
+                    "voters"
+                  ],
+                  "properties": {
+                    "pollId": {
+                      "type": "string"
+                    },
+                    "closed": {
+                      "type": "boolean"
+                    },
+                    "closedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "totalVotes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "myOptionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canClose": {
+                      "type": "boolean"
+                    },
+                    "options": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "optionId",
+                          "label",
+                          "voteCount"
+                        ],
+                        "properties": {
+                          "optionId": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "voteCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "voters": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^(.*)$": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "userId",
+                              "displayName",
+                              "votedAt"
+                            ],
+                            "properties": {
+                              "userId": {
+                                "type": "string"
+                              },
+                              "displayName": {
+                                "type": "string"
+                              },
+                              "votedAt": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/poll/close": {
+      "post": {
+        "operationId": "postApiV1MessagingChannelsByIdMessagesByMessageIdPollClose",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Close a poll (WP 2.10; the poll's author or a channel manager, else 403; idempotent; closed polls reject votes)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "poll"
+                  ],
+                  "properties": {
+                    "poll": {
+                      "type": "object",
+                      "required": [
+                        "pollId",
+                        "closed",
+                        "closedAt",
+                        "totalVotes",
+                        "myOptionId",
+                        "canClose",
+                        "options"
+                      ],
+                      "properties": {
+                        "pollId": {
+                          "type": "string"
+                        },
+                        "closed": {
+                          "type": "boolean"
+                        },
+                        "closedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "totalVotes": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "myOptionId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "canClose": {
+                          "type": "boolean"
+                        },
+                        "options": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "optionId",
+                              "label",
+                              "voteCount"
+                            ],
+                            "properties": {
+                              "optionId": {
+                                "type": "string"
+                              },
+                              "label": {
+                                "type": "string"
+                              },
+                              "voteCount": {
+                                "minimum": 0,
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/poll/vote": {
+      "put": {
+        "operationId": "putApiV1MessagingChannelsByIdMessagesByMessageIdPollVote",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Cast or change the caller's single vote (WP 2.10; idempotent; one vote per user, a change is audited; 409 POLL_CLOSED, 422 INVALID_POLL_OPTION, 410 archived)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "poll"
+                  ],
+                  "properties": {
+                    "poll": {
+                      "type": "object",
+                      "required": [
+                        "pollId",
+                        "closed",
+                        "closedAt",
+                        "totalVotes",
+                        "myOptionId",
+                        "canClose",
+                        "options"
+                      ],
+                      "properties": {
+                        "pollId": {
+                          "type": "string"
+                        },
+                        "closed": {
+                          "type": "boolean"
+                        },
+                        "closedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "totalVotes": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "myOptionId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "canClose": {
+                          "type": "boolean"
+                        },
+                        "options": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "optionId",
+                              "label",
+                              "voteCount"
+                            ],
+                            "properties": {
+                              "optionId": {
+                                "type": "string"
+                              },
+                              "label": {
+                                "type": "string"
+                              },
+                              "voteCount": {
+                                "minimum": 0,
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "optionId"
+                ],
+                "properties": {
+                  "optionId": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -159180,6 +159649,76 @@
                         "pinned": {
                           "type": "boolean"
                         },
+                        "poll": {
+                          "type": "object",
+                          "required": [
+                            "pollId",
+                            "closed",
+                            "closedAt",
+                            "totalVotes",
+                            "myOptionId",
+                            "canClose",
+                            "options"
+                          ],
+                          "properties": {
+                            "pollId": {
+                              "type": "string"
+                            },
+                            "closed": {
+                              "type": "boolean"
+                            },
+                            "closedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "totalVotes": {
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "myOptionId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "canClose": {
+                              "type": "boolean"
+                            },
+                            "options": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "optionId",
+                                  "label",
+                                  "voteCount"
+                                ],
+                                "properties": {
+                                  "optionId": {
+                                    "type": "string"
+                                  },
+                                  "label": {
+                                    "type": "string"
+                                  },
+                                  "voteCount": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
                         "references": {
                           "type": "array",
                           "items": {
@@ -159455,6 +159994,76 @@
                           },
                           "pinned": {
                             "type": "boolean"
+                          },
+                          "poll": {
+                            "type": "object",
+                            "required": [
+                              "pollId",
+                              "closed",
+                              "closedAt",
+                              "totalVotes",
+                              "myOptionId",
+                              "canClose",
+                              "options"
+                            ],
+                            "properties": {
+                              "pollId": {
+                                "type": "string"
+                              },
+                              "closed": {
+                                "type": "boolean"
+                              },
+                              "closedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "totalVotes": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "myOptionId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "canClose": {
+                                "type": "boolean"
+                              },
+                              "options": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "optionId",
+                                    "label",
+                                    "voteCount"
+                                  ],
+                                  "properties": {
+                                    "optionId": {
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "type": "string"
+                                    },
+                                    "voteCount": {
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    }
+                                  }
+                                }
+                              }
+                            }
                           },
                           "references": {
                             "type": "array",
@@ -159789,6 +160398,76 @@
                           "pinned": {
                             "type": "boolean"
                           },
+                          "poll": {
+                            "type": "object",
+                            "required": [
+                              "pollId",
+                              "closed",
+                              "closedAt",
+                              "totalVotes",
+                              "myOptionId",
+                              "canClose",
+                              "options"
+                            ],
+                            "properties": {
+                              "pollId": {
+                                "type": "string"
+                              },
+                              "closed": {
+                                "type": "boolean"
+                              },
+                              "closedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "totalVotes": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "myOptionId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "canClose": {
+                                "type": "boolean"
+                              },
+                              "options": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "optionId",
+                                    "label",
+                                    "voteCount"
+                                  ],
+                                  "properties": {
+                                    "optionId": {
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "type": "string"
+                                    },
+                                    "voteCount": {
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
                           "references": {
                             "type": "array",
                             "items": {
@@ -159898,6 +160577,172 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/channels/{id}/polls": {
+      "post": {
+        "operationId": "postApiV1MessagingChannelsByIdPolls",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Create a poll as a message (WP 2.10; Idempotency-Key required; 2-10 options, plain text only; 422 POLL_NOT_ALLOWED_IN_PATIENT_CHANNEL in a care_team/bereavement channel, 422 VALIDATION_FAILED on bad text/options, 410 archived; announcement channel needs messaging.announce)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "messageId",
+                    "channelId",
+                    "createdAt",
+                    "poll"
+                  ],
+                  "properties": {
+                    "messageId": {
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "poll": {
+                      "type": "object",
+                      "required": [
+                        "pollId",
+                        "closed",
+                        "closedAt",
+                        "totalVotes",
+                        "myOptionId",
+                        "canClose",
+                        "options"
+                      ],
+                      "properties": {
+                        "pollId": {
+                          "type": "string"
+                        },
+                        "closed": {
+                          "type": "boolean"
+                        },
+                        "closedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "totalVotes": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "myOptionId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "canClose": {
+                          "type": "boolean"
+                        },
+                        "options": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "optionId",
+                              "label",
+                              "voteCount"
+                            ],
+                            "properties": {
+                              "optionId": {
+                                "type": "string"
+                              },
+                              "label": {
+                                "type": "string"
+                              },
+                              "voteCount": {
+                                "minimum": 0,
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "question",
+                  "options"
+                ],
+                "properties": {
+                  "question": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "options": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "maxLength": 1000,
+                      "type": "string"
+                    }
+                  },
+                  "clientMessageId": {
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -160350,6 +161195,76 @@
                           },
                           "pinned": {
                             "type": "boolean"
+                          },
+                          "poll": {
+                            "type": "object",
+                            "required": [
+                              "pollId",
+                              "closed",
+                              "closedAt",
+                              "totalVotes",
+                              "myOptionId",
+                              "canClose",
+                              "options"
+                            ],
+                            "properties": {
+                              "pollId": {
+                                "type": "string"
+                              },
+                              "closed": {
+                                "type": "boolean"
+                              },
+                              "closedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "totalVotes": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "myOptionId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "canClose": {
+                                "type": "boolean"
+                              },
+                              "options": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "optionId",
+                                    "label",
+                                    "voteCount"
+                                  ],
+                                  "properties": {
+                                    "optionId": {
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "type": "string"
+                                    },
+                                    "voteCount": {
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    }
+                                  }
+                                }
+                              }
+                            }
                           },
                           "references": {
                             "type": "array",
@@ -161896,6 +162811,76 @@
                               },
                               "pinned": {
                                 "type": "boolean"
+                              },
+                              "poll": {
+                                "type": "object",
+                                "required": [
+                                  "pollId",
+                                  "closed",
+                                  "closedAt",
+                                  "totalVotes",
+                                  "myOptionId",
+                                  "canClose",
+                                  "options"
+                                ],
+                                "properties": {
+                                  "pollId": {
+                                    "type": "string"
+                                  },
+                                  "closed": {
+                                    "type": "boolean"
+                                  },
+                                  "closedAt": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "totalVotes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "myOptionId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "canClose": {
+                                    "type": "boolean"
+                                  },
+                                  "options": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "required": [
+                                        "optionId",
+                                        "label",
+                                        "voteCount"
+                                      ],
+                                      "properties": {
+                                        "optionId": {
+                                          "type": "string"
+                                        },
+                                        "label": {
+                                          "type": "string"
+                                        },
+                                        "voteCount": {
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
                               },
                               "references": {
                                 "type": "array",

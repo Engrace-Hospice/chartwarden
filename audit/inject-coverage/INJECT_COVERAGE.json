@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1550,
-    "coveredRoutes": 1550,
-    "directRoutesReferenced": 1467
+    "routes": 1554,
+    "coveredRoutes": 1554,
+    "directRoutesReferenced": 1471
   },
   "modules": [
     {
@@ -32,6 +32,7 @@
         "apps/backend/__tests__/m2-link-redemption.test.ts",
         "apps/backend/__tests__/m2-organization-lifecycle.live.test.ts",
         "apps/backend/__tests__/m2-platform-user-deactivate.test.ts",
+        "apps/backend/__tests__/m2-tax-id-cipher.live.test.ts",
         "apps/backend/__tests__/m31-portal-signin.live.test.ts",
         "apps/backend/__tests__/m36-transactional-email.live.test.ts",
         "apps/backend/__tests__/mfa-enrolment-matrix.test.ts",
@@ -484,7 +485,7 @@
     },
     {
       "module": "36-messaging",
-      "routes": 65,
+      "routes": 69,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
@@ -513,7 +514,7 @@
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 65
+      "directRoutesReferenced": 69
     },
     {
       "module": "37-ipu",
