@@ -14,6 +14,16 @@
 # contract (`s3ObjectStoreConfigFromEnv`, apps/backend/src/modules/22-documents/seams/
 # s3-object-store.ts) so M22's real S3 adapter binds instead of its refusing deny-stub.
 
+# DEV-ONLY M34 provision gateway wiring, shared by `api` AND `worker`. The worker role runs the outbox dispatcher and
+# the `tenant.provision` consumer, so an env set on only one of them leaves `m34.tenant.provision_started` with no live
+# consumer (deferred 30 min, tenant stuck "Provisioning"). Points at the `provision-gateway` stub service below;
+# production supplies the real gateway.
+x-m34-provision-gateway-env: &m34-provision-gateway-env
+  M34_PROVISION_GATEWAY_ENABLED: "true"
+  M34_PROVISION_GATEWAY_URL: http://provision-gateway:8080
+  M34_PROVISION_GATEWAY_TOKEN: wardenx-local-provision-gateway-dev-token-not-for-production
+  M34_INVITATION_ACCEPT_URL: http://localhost:5173/tenant-invite
+
 services:
   postgres:
     image: pgvector/pgvector:pg18
@@ -149,6 +159,7 @@ services:
       # own key from .env.production; this default exists so the documented Compose demo can finalize
       # encounters and seed DocLens/consent data instead of failing closed halfway through.
       M34_TENANT_KEK: ${M34_TENANT_KEK:-kek-local:Y2ktdGVuYW50LWtlay10ZXN0LTAxMjM0NTY3ODlhYmM=}
+      <<: *m34-provision-gateway-env
       # F-236 (ADR-0048) — DocLens stage 2. A worker-specific dev placeholder secret, not INTERNAL_SERVICE_TOKEN.
       DOCLING_WORKER_URL: http://docling-worker:8000
       DOCLING_WORKER_TOKEN: wardenx-local-docling-dev-token-not-for-production
@@ -184,6 +195,8 @@ services:
         condition: service_started
       clamav:
         condition: service_started
+      provision-gateway:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "bun", "-e", "process.exit((await fetch('http://localhost:3000/health')).ok ? 0 : 1)"]
       interval: 5s
@@ -219,6 +232,7 @@ services:
       BETTER_AUTH_SECRET: wardenx-local-compose-dev-secret-not-for-production-use
       TRUSTED_ORIGINS: http://localhost:3000,http://localhost:5173,http://localhost:5174,http://localhost:5175
       M34_TENANT_KEK: ${M34_TENANT_KEK:-kek-local:Y2ktdGVuYW50LWtlay10ZXN0LTAxMjM0NTY3ODlhYmM=}
+      <<: *m34-provision-gateway-env
       DOCLING_WORKER_URL: http://docling-worker:8000
       DOCLING_WORKER_TOKEN: wardenx-local-docling-dev-token-not-for-production
     ports:
@@ -235,6 +249,8 @@ services:
         condition: service_started
       clamav:
         condition: service_started
+      provision-gateway:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "bun", "-e", "process.exit((await fetch('http://localhost:3001/health')).ok ? 0 : 1)"]
       interval: 5s
@@ -257,6 +273,23 @@ services:
       timeout: 5s
       retries: 12
       start_period: 20s
+
+  # DEV-ONLY stand-in for the external M34 provision gateway (deploy/production/PROVISION_GATEWAY.md): acknowledges
+  # tenant storage prefixes and logs first-admin invitation links (read them with `docker compose logs provision-gateway`).
+  # Key custody and storage destruction answer 501 here. Same image as the api; not published on the host.
+  provision-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["bun", "run", "scripts/dev/m34-provision-gateway.ts"]
+    environment:
+      M34_PROVISION_GATEWAY_TOKEN: wardenx-local-provision-gateway-dev-token-not-for-production
+    healthcheck:
+      test: ["CMD", "bun", "-e", "process.exit((await fetch('http://localhost:8080/health')).ok ? 0 : 1)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
 
 networks:
   # Dedicated clamd network (api, worker, clamav only). Not `internal`: freshclam must reach the signature mirrors.

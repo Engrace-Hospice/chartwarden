@@ -48,6 +48,9 @@ import type { ComponentType } from "react";
 const AcceptInvitation = lazy(() =>
   import("./accept-invitation").then((m) => ({ default: m.AcceptInvitation })),
 );
+const AcceptTenantInvitation = lazy(() =>
+  import("./accept-tenant-invitation").then((m) => ({ default: m.AcceptTenantInvitation })),
+);
 const AuditorRedeem = lazy(() =>
   import("./auditor-redeem").then((m) => ({ default: m.AuditorRedeem })),
 );
@@ -137,6 +140,15 @@ export const identityScreens: ScreenRegistryModule<ComponentType> = {
       title: "Accept invitation",
       chrome: false,
       screen: AcceptInvitation,
+    },
+    {
+      // M34 first-admin invitation (`tenant_invitation`): the provisioning email links here, not to /invite/:token,
+      // whose M2 peek only knows `organization_invitation`. Pre-session, so no app chrome.
+      id: "identity.accept-tenant-invitation",
+      path: "/tenant-invite/:token",
+      title: "Accept invitation",
+      chrome: false,
+      screen: AcceptTenantInvitation,
     },
     {
       id: "identity.auditor-redeem",

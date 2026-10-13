@@ -73390,6 +73390,8 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         accepted: true;
+                        /** Format: email */
+                        email: string;
                     };
                 };
             };

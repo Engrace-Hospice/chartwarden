@@ -2826,7 +2826,7 @@ function buildFirstAdminAcceptanceService(deps: {
     },
     async acceptInvitation(rawToken, args) {
       const tokenHash = createHash("sha256").update(rawToken).digest("hex");
-      await withPlatformContext(
+      const acceptedEmail = await withPlatformContext(
         deps.platformDb,
         {
           jobId: "m34.platform_ops",
@@ -2959,9 +2959,10 @@ function buildFirstAdminAcceptanceService(deps: {
           if (consumed.length !== 1) {
             throw new WardenXError("INVITATION_INVALID", "invitation was already used", 409);
           }
+          return invitation.inviteeEmail.trim().toLowerCase();
         },
       );
-      return { accepted: true };
+      return { accepted: true, email: acceptedEmail };
     },
   };
 }

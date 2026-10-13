@@ -127,6 +127,14 @@
       "app": "web",
       "module": "02-identity",
       "moduleId": 2,
+      "id": "identity.accept-tenant-invitation",
+      "path": "/tenant-invite/:token",
+      "permission": "(none)"
+    },
+    {
+      "app": "web",
+      "module": "02-identity",
+      "moduleId": 2,
       "id": "identity.auditor-redeem",
       "path": "/auditor/redeem",
       "permission": "(none)"
