@@ -1,11 +1,4 @@
-import {
-  BACKGROUND_REQUEST_HEADERS,
-  Button,
-  EmptyState,
-  Glyph,
-  LoadingSpinner,
-  useApiClient,
-} from "@wardenx/ui";
+import { BACKGROUND_REQUEST_HEADERS, Button, Glyph, useApiClient } from "@wardenx/ui";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 import { AttachButton, AttachmentChips } from "./attachment-composer";
@@ -22,6 +15,7 @@ import { DraftSyncNotice, escapeKeepsMine } from "./draft-conflict-prompt";
 import { MentionMenu } from "./mention-menu";
 import { activeMentionQuery, insertMention, reconcileReferences } from "./mention-utils";
 import { MessageRow } from "./message-row";
+import { MessageSearch } from "./message-search";
 import type {
   ChannelSummary,
   MentionCandidate,
@@ -42,6 +36,7 @@ import { PinnedMessagesBar } from "./pinned-messages-bar";
 import { TemplatePicker } from "./template-picker";
 import { PatientContextAside, ThreadHeader } from "./thread-header";
 import { ThreadPanel } from "./thread-panel";
+import { TimelineState } from "./timeline-state";
 import { useAnnouncementTools } from "./use-announcement-tools";
 import { useAttachmentUploads } from "./use-attachment-upload";
 import { INITIAL_READ_VIEW, type ReadView, useJumpToMessage } from "./use-jump-to-message";
@@ -587,7 +582,13 @@ export function ConversationThread({
         onShowMembers={tools.onShowMembers}
       />
       {tools.dialogs}
-
+      <MessageSearch
+        channelId={channel.channelId}
+        archived={Boolean(channel.archivedAt)}
+        meId={meId}
+        messages={messages}
+        onJump={jump.jumpToMessage}
+      />
       <PinnedMessagesBar
         channelId={channel.channelId}
         messages={messages}
@@ -608,27 +609,13 @@ export function ConversationThread({
             if (element.scrollTop < 80 && olderCursor && !loadingOlder) void loadOlder();
           }}
         >
-          {loadError ? (
-            <div className="wx-message-state" role="alert">
-              <Glyph name="shield" size={24} />
-              <strong>Conversation unavailable</strong>
-              <span>{loadError}</span>
-              <Button size="sm" tone="secondary" onClick={() => void loadLatest()}>
-                Retry
-              </Button>
-            </div>
-          ) : messages === null ? (
-            <output className="wx-message-state">
-              <LoadingSpinner label="Loading messages" />
-            </output>
-          ) : messages.length === 0 ? (
-            <div className="wx-message-state">
-              <EmptyState
-                title="No messages yet"
-                description="Send the first secure message below."
-              />
-            </div>
-          ) : (
+          <TimelineState
+            loadError={loadError}
+            loading={messages === null}
+            empty={messages?.length === 0}
+            onRetry={() => void loadLatest()}
+          />
+          {!loadError && messages && messages.length > 0 ? (
             <>
               {olderCursor ? (
                 <button
@@ -663,7 +650,7 @@ export function ConversationThread({
                 />
               ))}
             </>
-          )}
+          ) : null}
         </div>
 
         {contextOpen && patient ? (

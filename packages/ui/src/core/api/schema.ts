@@ -13458,6 +13458,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search ONE channel's live messages (WP 2.7a, option A: decrypt-and-filter, no index; scans at most 5000 bodies per request and returns a continuation cursor; read-audited without the query text; 404 non-member, 410 archived, 422 bad query) */
+        get: operations["getApiV1MessagingChannelsByIdSearch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/department-channels": {
         parameters: {
             query?: never;
@@ -62544,6 +62561,88 @@ export interface operations {
                             }[];
                             hiddenAttachmentCount?: number;
                         }[];
+                        patientId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingChannelsByIdSearch: {
+        parameters: {
+            query?: {
+                q?: string;
+                senderUserId?: string;
+                from?: string;
+                to?: string;
+                hasAttachment?: boolean;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        results: {
+                            messageId: string;
+                            channelId: string;
+                            authorUserId: string | null;
+                            authorDisplayName: string | null;
+                            body: string;
+                            bodyKind: "plain" | "markdown" | "system" | "rich";
+                            bodyDoc?: {
+                                /** @constant */
+                                schemaVersion: 1;
+                                doc: {
+                                    /** @constant */
+                                    type: "doc";
+                                    content: unknown[];
+                                };
+                            };
+                            /** @constant */
+                            bodyUnreadable?: true;
+                            createdAt: string;
+                            parentMessageId: string | null;
+                            replyCount?: number;
+                            lastReplyAt?: string | null;
+                            reactions?: {
+                                emoji: "heart" | "thanks" | "smile" | "celebrate" | "sad" | "hug";
+                                count: number;
+                                reactedByMe: boolean;
+                            }[];
+                            pinned?: boolean;
+                            references: {
+                                kind: "staff" | "patient";
+                                entityId: string;
+                                start: number;
+                                end: number;
+                                displayLabel: string;
+                                navigable: boolean;
+                            }[];
+                            attachments?: {
+                                attachmentId: string;
+                                fileName: string;
+                                mimeType: string;
+                                byteSize: number;
+                                availability: "available" | "scanning";
+                            }[];
+                            hiddenAttachmentCount?: number;
+                        }[];
+                        nextCursor?: string;
+                        scanned: number;
+                        scanCapped: boolean;
                         patientId: string | null;
                     };
                 };
