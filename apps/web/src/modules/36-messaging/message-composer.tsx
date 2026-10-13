@@ -107,7 +107,11 @@ export function ThreadComposer({
           aria-autocomplete="list"
           aria-controls={mentionQuery && !pendingAdd ? "messaging-mention-suggestions" : undefined}
           aria-activedescendant={
-            mentionQuery && !pendingAdd && mentionMenu.candidates.length > 0
+            mentionQuery &&
+            !pendingAdd &&
+            !mentionMenu.loading &&
+            !mentionMenu.error &&
+            mentionMenu.candidates.length > 0
               ? mentionOptionId(mentionMenu.activeIndex)
               : undefined
           }
