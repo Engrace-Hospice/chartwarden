@@ -1352,6 +1352,8 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           "all canonical onboarding steps settled and the BAA executed (automatic activation)",
           "system_automated",
         );
+        // The machine's guards throw from inside applyTransition, so the streak is only cleared once it succeeded.
+        await applyTransition(tx, account, null, "system_automated", event);
         const metadata = account.metadata as Record<string, unknown>;
         if (readActivationRefusal(metadata)) {
           await tx
@@ -1359,7 +1361,6 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
             .set({ metadata: withoutActivationRefusal(metadata) })
             .where(eq(A.id, account.id));
         }
-        await applyTransition(tx, account, null, "system_automated", event);
         return { activated: true };
       } catch (err) {
         if (!(err instanceof TenantLifecycleError)) throw err;

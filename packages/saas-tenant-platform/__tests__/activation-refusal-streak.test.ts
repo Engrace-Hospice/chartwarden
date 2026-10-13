@@ -5,6 +5,7 @@ import {
   ACTIVATION_REFUSAL_ALERT_THRESHOLD,
   ACTIVATION_REFUSAL_METADATA_KEY,
   nextActivationRefusal,
+  shouldAlertActivationRefusal,
   withActivationRefusal,
   withoutActivationRefusal,
 } from "../src/services/activation-refusal-streak";
@@ -52,8 +53,22 @@ describe("nextActivationRefusal", () => {
     expect(nextActivationRefusal({ days: "lots" }, "X", D1).state.days).toBe(1);
   });
 
-  it("alerts from the third consecutive day", () => {
-    expect(ACTIVATION_REFUSAL_ALERT_THRESHOLD).toBe(3);
+  it("counts across a month boundary", () => {
+    const prev = { reason: "X", days: 4, lastDay: "2026-01-31" };
+    expect(nextActivationRefusal(prev, "X", "2026-02-01").state.days).toBe(5);
+  });
+
+  it("counts across a year boundary", () => {
+    const prev = { reason: "X", days: 4, lastDay: "2026-12-31" };
+    expect(nextActivationRefusal(prev, "X", "2027-01-01").state.days).toBe(5);
+  });
+
+  it("restarts at 1 when the reason flips and again when it flips back", () => {
+    const a1 = nextActivationRefusal(undefined, "A", D1).state;
+    const a2 = nextActivationRefusal(a1, "A", D2).state;
+    const b = nextActivationRefusal(a2, "B", "2026-10-12").state;
+    const a3 = nextActivationRefusal(b, "A", "2026-10-13").state;
+    expect([a2.days, b.days, a3.days]).toEqual([2, 1, 1]);
   });
 });
 
@@ -65,5 +80,49 @@ describe("metadata helpers", () => {
     expect(set).toEqual({ keep: 1, [ACTIVATION_REFUSAL_METADATA_KEY]: state });
     expect(withoutActivationRefusal(set)).toEqual({ keep: 1 });
     expect(meta).toEqual({ keep: 1 });
+  });
+});
+
+describe("alert condition over the real reducer", () => {
+  it("pins the policy: alert from the third consecutive daily refusal", () => {
+    expect(ACTIVATION_REFUSAL_ALERT_THRESHOLD).toBe(3);
+  });
+
+  const T = ACTIVATION_REFUSAL_ALERT_THRESHOLD;
+  const dayN = (n: number) => new Date(Date.UTC(2026, 11, 20 + n)).toISOString().slice(0, 10);
+
+  /** Feed `count` consecutive daily refusals; return the alert decision for each day. */
+  function alertsOverDays(count: number): boolean[] {
+    let stored: unknown;
+    const out: boolean[] = [];
+    for (let n = 0; n < count; n++) {
+      const { state, advanced } = nextActivationRefusal(stored, "BAA_NOT_EXECUTED", dayN(n));
+      stored = state;
+      out.push(shouldAlertActivationRefusal({ days: state.days, advanced }));
+    }
+    return out;
+  }
+
+  it("flips from quiet to alerting exactly on day THRESHOLD, and keeps alerting after it", () => {
+    const decisions = alertsOverDays(T + 2);
+    expect(decisions.slice(0, T - 1).every((d) => d === false)).toBe(true);
+    expect(decisions[T - 1]).toBe(true);
+    expect(decisions[T]).toBe(true); // day THRESHOLD + 1 alerts too
+    expect(decisions[T + 1]).toBe(true);
+  });
+
+  it("does not alert on a same-day retry even past the threshold", () => {
+    const state = { reason: "X", days: T + 1, lastDay: D1 };
+    const { advanced } = nextActivationRefusal(state, "X", D1);
+    expect(shouldAlertActivationRefusal({ days: state.days, advanced })).toBe(false);
+  });
+
+  it("a reason flip mid-streak silences the alert until it re-reaches the threshold", () => {
+    let stored: unknown;
+    for (let n = 0; n < T; n++) stored = nextActivationRefusal(stored, "A", dayN(n)).state;
+    const flipped = nextActivationRefusal(stored, "B", dayN(T));
+    expect(
+      shouldAlertActivationRefusal({ days: flipped.state.days, advanced: flipped.advanced }),
+    ).toBe(false);
   });
 });

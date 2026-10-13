@@ -50,6 +50,17 @@ export function nextActivationRefusal(
   return { state: { reason, days: continues ? prev.days + 1 : 1, lastDay: day }, advanced: true };
 }
 
+/**
+ * True on every newly counted day at or past the threshold (not only the first): a tenant stuck for weeks keeps
+ * nagging platform ops, bounded to one alert per tenant per day by the date-stamped correlationId and by `advanced`.
+ */
+export function shouldAlertActivationRefusal(streak: {
+  readonly days: number;
+  readonly advanced: boolean;
+}): boolean {
+  return streak.advanced && streak.days >= ACTIVATION_REFUSAL_ALERT_THRESHOLD;
+}
+
 export function readActivationRefusal(
   metadata: Record<string, unknown>,
 ): ActivationRefusalState | null {

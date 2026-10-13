@@ -6174,9 +6174,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       ];
       m34Workers.push(...m34SweepWorkers);
       const m34SweepSchedules = await scheduleM34PlatformSweepJobs(queueConnection);
+      const m34SweepSchedulesInfo = describeM34SweepSchedules();
       app.log.info(
-        { sweeps: describeM34SweepSchedules().map(({ sweep, cron }) => ({ sweep, cron })) },
-        "M34 platform sweeps scheduled: baa_expiry, support_session_close, onboarding_advance",
+        { sweeps: m34SweepSchedulesInfo.map(({ sweep, cron }) => ({ sweep, cron })) },
+        `M34 platform sweeps scheduled: ${m34SweepSchedulesInfo.map((s) => s.sweep).join(", ")}`,
       );
       app.addHook("onClose", () =>
         Promise.all([

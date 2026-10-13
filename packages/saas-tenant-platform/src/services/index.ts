@@ -181,6 +181,7 @@ export {
   ACTIVATION_REFUSAL_METADATA_KEY,
   nextActivationRefusal,
   readActivationRefusal,
+  shouldAlertActivationRefusal,
   withActivationRefusal,
   withoutActivationRefusal,
 } from "./activation-refusal-streak";

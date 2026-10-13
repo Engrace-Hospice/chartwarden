@@ -48,6 +48,8 @@ describe("M34 §4.8 alert-rule seed (GAP-098)", () => {
     const rule = M34_ALERT_RULES.find((r) => r.ruleKey === "tenant.onboarding_activation_stuck");
     expect(rule?.eventType).toBe(M34_ACTIVATION_STUCK_EVENT);
     expect(rule?.enabled).toBe(true);
+    // Emitted under the tenant's own org: locked so a tenant override cannot redirect or disable it (0334).
+    expect(rule?.systemLocked).toBe(true);
     expect(M36_BUILT_IN_RESOLVERS).toContain(rule?.recipientResolver);
     expect(rule?.resolverArgs).toEqual({ roleKeys: [PLATFORM_OPS_ROLE_KEY] });
   });

@@ -1,4 +1,5 @@
 // GAP-163 — the BAA radar, the support-session close sweep and the onboarding fan-out, over injected ports.
+import { ACTIVATION_REFUSAL_ALERT_THRESHOLD as THRESHOLD } from "@wardenx/saas-tenant-platform";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildActivateTenantPort,
@@ -179,31 +180,39 @@ describe("buildActivateTenantPort", () => {
         refusalStreak: { days, advanced },
       }));
 
-    it("raises the operator alert once the same refusal has run for 3 consecutive days", async () => {
+    it("raises the operator alert once the same refusal has run THRESHOLD consecutive days", async () => {
       const alertStuck = vi.fn(async () => undefined);
 
-      await buildActivateTenantPort(refuse(3), vi.fn(), { alertStuck })(input);
+      await buildActivateTenantPort(refuse(THRESHOLD), vi.fn(), { alertStuck })(input);
 
       expect(alertStuck).toHaveBeenCalledWith({
         tenantAccountId: "t1",
         orgId: "o1",
         reason: "BAA_NOT_EXECUTED",
-        consecutiveDays: 3,
+        consecutiveDays: THRESHOLD,
       });
     });
 
     it("stays quiet below the threshold", async () => {
       const alertStuck = vi.fn(async () => undefined);
 
-      await buildActivateTenantPort(refuse(2), vi.fn(), { alertStuck })(input);
+      await buildActivateTenantPort(refuse(THRESHOLD - 1), vi.fn(), { alertStuck })(input);
 
       expect(alertStuck).not.toHaveBeenCalled();
+    });
+
+    it("keeps alerting on every newly counted day past the threshold", async () => {
+      const alertStuck = vi.fn(async () => undefined);
+
+      await buildActivateTenantPort(refuse(THRESHOLD + 1), vi.fn(), { alertStuck })(input);
+
+      expect(alertStuck).toHaveBeenCalledTimes(1);
     });
 
     it("does not re-alert on a same-day retry (streak not advanced)", async () => {
       const alertStuck = vi.fn(async () => undefined);
 
-      await buildActivateTenantPort(refuse(5, false), vi.fn(), { alertStuck })(input);
+      await buildActivateTenantPort(refuse(THRESHOLD + 2, false), vi.fn(), { alertStuck })(input);
 
       expect(alertStuck).not.toHaveBeenCalled();
     });
@@ -214,9 +223,9 @@ describe("buildActivateTenantPort", () => {
         throw new Error("emitter down");
       });
 
-      await expect(buildActivateTenantPort(refuse(4), warn, { alertStuck })(input)).resolves.toBe(
-        "pending",
-      );
+      await expect(
+        buildActivateTenantPort(refuse(THRESHOLD), warn, { alertStuck })(input),
+      ).resolves.toBe("pending");
 
       expect(warn).toHaveBeenCalledWith(expect.stringContaining("emitter down"), {
         tenantAccountId: "t1",

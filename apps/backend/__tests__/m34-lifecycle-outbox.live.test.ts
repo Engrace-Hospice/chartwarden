@@ -23,6 +23,10 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import type { AlertEmitter } from "@wardenx/messaging";
+import {
+  ACTIVATION_REFUSAL_ALERT_THRESHOLD,
+  shouldAlertActivationRefusal,
+} from "@wardenx/saas-tenant-platform";
 import { registerPlatformJob } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -388,6 +392,57 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
         activated: false,
         reason: "BAA_NOT_EXECUTED",
         refusalStreak: { days: 1, advanced: false },
+      });
+    });
+
+    /** Pretend the stored streak was last counted yesterday (optionally under another reason). */
+    async function backdateStreak(reason?: string): Promise<void> {
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const { rows } = await admin.query("SELECT metadata FROM tenant_account WHERE id = $1", [
+        TENANT_ACCOUNT_B,
+      ]);
+      const stored = rows[0].metadata.onboardingActivationRefusal;
+      const metadata = {
+        ...rows[0].metadata,
+        onboardingActivationRefusal: {
+          ...stored,
+          lastDay: yesterday,
+          reason: reason ?? stored.reason,
+        },
+      };
+      await admin.query("UPDATE tenant_account SET metadata = $2::jsonb WHERE id = $1", [
+        TENANT_ACCOUNT_B,
+        JSON.stringify(metadata),
+      ]);
+    }
+
+    it("counts consecutive days and crosses the alert threshold exactly once per newly counted day", async () => {
+      const days: number[] = [];
+      const alerts: boolean[] = [];
+      for (let n = 0; n < ACTIVATION_REFUSAL_ALERT_THRESHOLD; n++) {
+        await backdateStreak();
+        const result = await backend().activateOnboardedTenant(TENANT_ACCOUNT_B);
+        if (result.activated || !result.refusalStreak) throw new Error("expected a refusal");
+        days.push(result.refusalStreak.days);
+        alerts.push(shouldAlertActivationRefusal(result.refusalStreak));
+      }
+
+      // The same-day retry above left the streak at 1, so each backdated pass counts the next day.
+      expect(days).toEqual(
+        Array.from({ length: ACTIVATION_REFUSAL_ALERT_THRESHOLD }, (_, i) => i + 2),
+      );
+      expect(alerts.at(-1)).toBe(true);
+    });
+
+    it("restarts the streak at 1 when the refusal reason changes class", async () => {
+      await backdateStreak("TASKS_NOT_SETTLED");
+
+      const result = await backend().activateOnboardedTenant(TENANT_ACCOUNT_B);
+
+      expect(result).toMatchObject({
+        activated: false,
+        reason: "BAA_NOT_EXECUTED",
+        refusalStreak: { days: 1, advanced: true },
       });
     });
 

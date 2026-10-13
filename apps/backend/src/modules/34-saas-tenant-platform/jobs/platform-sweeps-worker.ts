@@ -12,7 +12,6 @@
 import { auditPlatformEvent } from "@wardenx/audit";
 import { type DbClient, schema } from "@wardenx/db";
 import {
-  ACTIVATION_REFUSAL_ALERT_THRESHOLD,
   type ActivationOutcome,
   type BaaExpirySweepResult,
   BaaRegisterRepository,
@@ -25,6 +24,7 @@ import {
   closeExpiredSupportSessions,
   runBaaExpirySweep,
   runOnboardingAdvance,
+  shouldAlertActivationRefusal,
 } from "@wardenx/saas-tenant-platform";
 import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
@@ -236,7 +236,7 @@ export type AutoActivationResult =
 /** Operator-visible hooks of the activation port (both optional; a missing sink is simply silent). */
 export interface ActivationPortHooks {
   readonly info?: (message: string, context: Record<string, string>) => void;
-  /** Raised once per newly counted day from the 3rd consecutive identical refusal. */
+  /** Raised on every newly counted day at or past the threshold (see `shouldAlertActivationRefusal`). */
   readonly alertStuck?: (input: {
     tenantAccountId: string;
     orgId: string;
@@ -277,7 +277,7 @@ export function buildActivateTenantPort(
         context,
       );
       const streak = result.refusalStreak;
-      if (streak?.advanced && streak.days >= ACTIVATION_REFUSAL_ALERT_THRESHOLD) {
+      if (streak && shouldAlertActivationRefusal(streak)) {
         await raiseStuckAlert(hooks, warn, {
           ...context,
           reason: result.reason,
@@ -294,6 +294,8 @@ export function buildActivateTenantPort(
   };
 }
 
+// Trade-off: the streak is persisted (advanced=true) before this emit, so a failed emit loses that day's alert;
+// the next day's refusal advances the streak again and alerts again.
 async function raiseStuckAlert(
   hooks: ActivationPortHooks,
   warn: ((message: string, context: Record<string, string>) => void) | undefined,

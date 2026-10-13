@@ -156,8 +156,8 @@ export interface M34AlertRuleSeed {
   readonly resolverArgs: Record<string, unknown>;
   /** null ⇒ use recipient preferences (no channel override, §3.6). */
   readonly channelsOverride: readonly string[] | null;
-  /** M34 ships no `system_locked` floor — every rule is tenant-overridable (§7.4). */
-  readonly systemLocked: false;
+  /** Tenant-overridable (§7.4) unless locked; only `tenant.onboarding_activation_stuck` is (see its row). */
+  readonly systemLocked: boolean;
   readonly enabled: boolean;
 }
 
@@ -465,6 +465,10 @@ export const M34_ALERT_RULES: readonly M34AlertRuleSeed[] = [
   // settled, no executed BAA, BAA within 90 days of expiry) only logs; after 3 consecutive identical refusals the
   // sweep emits this so a tenant stuck in `onboarding` surfaces to a person. Routed at the built-in `role_set` over
   // `platform_ops` for the same reason as `tenant_export.oversized_hold` above.
+  // LOCKED (unlike oversized_hold): it is emitted under the tenant's own org, so without the lock a tenant admin's
+  // PATCH /api/v1/alert-rules/:id could clone it with another resolver and redirect it away from platform ops.
+  // The platform row's system_locked makes migration 0334's trigger and selectEffectiveAlertRules refuse any
+  // org row that changes the resolver, lowers the severity or disables it.
   {
     ruleKey: "tenant.onboarding_activation_stuck",
     eventType: "m34.tenant.onboarding_activation_stuck",
@@ -474,7 +478,7 @@ export const M34_ALERT_RULES: readonly M34AlertRuleSeed[] = [
     recipientResolver: "role_set",
     resolverArgs: { roleKeys: [PLATFORM_OPS_ROLE_KEY] },
     channelsOverride: null,
-    systemLocked: false,
+    systemLocked: true,
     enabled: true,
   },
   // §4.1/§4.7 kill-switch toggle — `severity=critical`. The kill-switch store emits this under the ACTING
