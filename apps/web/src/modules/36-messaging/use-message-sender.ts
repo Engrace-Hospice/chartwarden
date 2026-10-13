@@ -49,6 +49,8 @@ interface UseMessageSenderInput {
   onSettled?: (ok: boolean, submitted: string) => void;
   /** Channel composer only: a send with no attachments that got no response becomes an outbox item instead of an error. */
   onQueued?: (queued: QueuedSend) => void;
+  /** Channel composer only: true while an earlier message waits in the outbox, so this one queues behind it unsent. */
+  hasQueuedAhead?: () => boolean;
 }
 
 /**
@@ -72,6 +74,7 @@ export function useMessageSender({
   onIssued,
   onSettled,
   onQueued,
+  hasQueuedAhead,
 }: UseMessageSenderInput) {
   const client = useApiClient();
   const [sending, setSending] = useState(false);
@@ -108,12 +111,6 @@ export function useMessageSender({
       JSON.stringify([channelId, parentMessageId ?? null, submitted, references, attachmentIds]),
     );
     sendAttemptRef.current = attempt;
-    // Take the latch only after the attempt exists: sendAttemptFor can throw (crypto.randomUUID).
-    sendInFlightRef.current = true;
-    const generation = generationRef.current;
-    setSending(true);
-    setSendError(null);
-    onIssued?.(submitted);
     const requestBody = buildSendBody({
       submitted,
       references,
@@ -122,6 +119,33 @@ export function useMessageSender({
       parentMessageId,
       attachmentIds,
     });
+    // Offline outbox: a plain channel message goes to the owner's "Not sent" list instead of an error. The attempt is
+    // handed over (the next message mints fresh ids); files stay on the old preserved-draft path.
+    const queueIt = (): boolean => {
+      if (!onQueued || attachmentIds.length > 0) return false;
+      sendAttemptRef.current = null;
+      onQueued({
+        body: requestBody,
+        idempotencyKey: attempt.idempotencyKey,
+        sent: {
+          messageId: attempt.clientMessageId,
+          createdAt: new Date().toISOString(),
+          body: submitted,
+          ...(richBody ? { bodyDoc: richBody } : {}),
+          references: draftReferences,
+          attachments: [],
+        },
+      });
+      return true;
+    };
+    // An older message is still waiting: queue behind it rather than POSTing ahead of it.
+    if (hasQueuedAhead?.() && queueIt()) return;
+    // Take the latch only after the attempt exists: sendAttemptFor can throw (crypto.randomUUID).
+    sendInFlightRef.current = true;
+    const generation = generationRef.current;
+    setSending(true);
+    setSendError(null);
+    onIssued?.(submitted);
     const postMessage = () =>
       client.POST("/api/v1/messaging/channels/{id}/messages", {
         params: {
@@ -138,24 +162,7 @@ export function useMessageSender({
       if (generation !== generationRef.current) return;
       sendInFlightRef.current = false;
       setSending(false);
-      // Offline outbox: a plain channel message goes to the owner's "Not sent" list instead of an error. The attempt is
-      // handed over (the next message mints fresh ids); files stay on the old preserved-draft path.
-      if (onQueued && attachmentIds.length === 0) {
-        sendAttemptRef.current = null;
-        onQueued({
-          body: requestBody,
-          idempotencyKey: attempt.idempotencyKey,
-          sent: {
-            messageId: attempt.clientMessageId,
-            createdAt: new Date().toISOString(),
-            body: submitted,
-            ...(richBody ? { bodyDoc: richBody } : {}),
-            references: draftReferences,
-            attachments: [],
-          },
-        });
-        return;
-      }
+      if (queueIt()) return;
       setSendError(SEND_FAILED_MESSAGE);
       onSettled?.(false, submitted);
       return;

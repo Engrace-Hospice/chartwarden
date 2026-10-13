@@ -189,12 +189,8 @@ export function ConversationThread({
     resetMention();
     mergeSent(sent);
   };
-  const outbox = useOutbox({
-    channelId: channel.channelId,
-    generationRef,
-    onDelivered: mergeSent,
-  });
-  const { reset: outboxReset } = outbox;
+  const focusComposer = useCallback(() => textareaRef.current?.focus(), []);
+  const outbox = useOutbox({ channelId: channel.channelId, onDelivered: mergeSent });
   const { send, sending, sendError, clearSendError, resetSender } = useMessageSender({
     channelId: channel.channelId,
     archived: Boolean(channel.archivedAt),
@@ -203,6 +199,7 @@ export function ConversationThread({
     uploads,
     generationRef,
     onSent: handleSent,
+    hasQueuedAhead: outbox.hasQueued,
     onQueued: (queued) => {
       outbox.enqueue(queued);
       setDraft((current) => (current === queued.sent.body ? "" : current));
@@ -403,13 +400,12 @@ export function ConversationThread({
     rereadAfterFlight.current = false;
     handledAnchor.current = anchorRef.current;
     resetSender();
-    outboxReset();
     void loadLatest();
     return () => {
       generationRef.current += 1;
     };
     // loadLatest changes identity only with the channel (or client); every other input is read through a ref.
-  }, [loadLatest, resetSender, outboxReset, resetMention, jumpReset, panelReset]);
+  }, [loadLatest, resetSender, resetMention, jumpReset, panelReset]);
 
   // A new anchor on the same channel re-reads around it without touching the draft, chips or an in-flight send.
   useEffect(() => {
@@ -589,6 +585,8 @@ export function ConversationThread({
           pending={
             <PendingMessageList
               items={outbox.items}
+              channelId={channel.channelId}
+              onFocusComposer={focusComposer}
               meId={meId}
               meDisplayName={meDisplayName}
               onRetry={(localId) => void outbox.retry(localId)}
