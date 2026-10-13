@@ -296,6 +296,13 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "admin",
     abac: "none",
   },
+  // --- WP 2.7b C4: switch tenant global search on/off (ADR-0058 decision 2; the route also demands a fresh step-up) ---
+  "messaging.global_search.manage": {
+    resource: "global_search",
+    action: "manage",
+    category: "admin",
+    abac: "none",
+  },
   // --- platform-ops admin (§4.5; platform-only — failures + delivery audit drill) ---
   "messaging.admin.read": {
     resource: "admin",

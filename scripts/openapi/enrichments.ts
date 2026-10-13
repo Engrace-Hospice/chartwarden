@@ -1259,6 +1259,11 @@ import {
   GlobalSearchQuerySchema as M36GlobalSearchQuerySchema,
   GlobalSearchResponseSchema as M36GlobalSearchResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/global-search-typebox";
+// M36 WP 2.7b C4 tenant global search switch.
+import {
+  GlobalSearchSettingsViewSchema as M36GlobalSearchSettingsViewSchema,
+  PutGlobalSearchSettingsBodySchema as M36PutGlobalSearchSettingsBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/global-search-settings-typebox";
 // ── M36 Secure Messaging & Alerts — request + response schema imports (all M36-aliased) ──
 import {
   // request schemas (query / body) — reused as-is
@@ -9137,6 +9142,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "DELETE /api/v1/messaging/templates/personal/:id": {
     summary: "Delete one of the caller's own personal replies (204; 404 for anyone else's)",
+  },
+  "GET /api/v1/messaging/global-search/settings": {
+    summary:
+      "The organization's global search switch with the go-live checklist and the index rebuild progress (messaging.global_search.manage)",
+    response: M36GlobalSearchSettingsViewSchema,
+  },
+  "PUT /api/v1/messaging/global-search/settings": {
+    summary:
+      "Switch global search on or off for the organization (messaging.global_search.manage + a fresh step-up). ON is 409 GLOBAL_SEARCH_PREREQUISITES_UNMET naming each failing checklist item, or PURGE_IN_PROGRESS while the last switch-off purge is unfinished; OFF is always accepted and requests the token purge",
+    body: M36PutGlobalSearchSettingsBodySchema,
+    response: M36GlobalSearchSettingsViewSchema,
   },
   "GET /api/v1/messaging/template-admin": {
     summary:

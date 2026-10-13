@@ -160712,6 +160712,355 @@
         }
       }
     },
+    "/api/v1/messaging/global-search/settings": {
+      "get": {
+        "operationId": "getApiV1MessagingGlobalsearchSettings",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The organization's global search switch with the go-live checklist and the index rebuild progress (messaging.global_search.manage)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "changedAt",
+                    "purgeRequestedAt",
+                    "purgeCompletedAt",
+                    "checklist",
+                    "rebuild"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "changedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "purgeRequestedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "purgeCompletedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "checklist": {
+                      "type": "object",
+                      "required": [
+                        "platformEnabled",
+                        "legacyBodiesMigrated",
+                        "escrowAttested",
+                        "rateLimitActive"
+                      ],
+                      "properties": {
+                        "platformEnabled": {
+                          "type": "boolean"
+                        },
+                        "legacyBodiesMigrated": {
+                          "type": "boolean"
+                        },
+                        "escrowAttested": {
+                          "type": "boolean"
+                        },
+                        "rateLimitActive": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "rebuild": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "keyVersion",
+                            "status",
+                            "checkpointCreatedAt",
+                            "reconciledAt",
+                            "changedAt",
+                            "effectiveReady"
+                          ],
+                          "properties": {
+                            "keyVersion": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "building",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ready",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "stale",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "checkpointCreatedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "reconciledAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "changedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "effectiveReady": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1MessagingGlobalsearchSettings",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Switch global search on or off for the organization (messaging.global_search.manage + a fresh step-up). ON is 409 GLOBAL_SEARCH_PREREQUISITES_UNMET naming each failing checklist item, or PURGE_IN_PROGRESS while the last switch-off purge is unfinished; OFF is always accepted and requests the token purge",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "changedAt",
+                    "purgeRequestedAt",
+                    "purgeCompletedAt",
+                    "checklist",
+                    "rebuild"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "changedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "purgeRequestedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "purgeCompletedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "checklist": {
+                      "type": "object",
+                      "required": [
+                        "platformEnabled",
+                        "legacyBodiesMigrated",
+                        "escrowAttested",
+                        "rateLimitActive"
+                      ],
+                      "properties": {
+                        "platformEnabled": {
+                          "type": "boolean"
+                        },
+                        "legacyBodiesMigrated": {
+                          "type": "boolean"
+                        },
+                        "escrowAttested": {
+                          "type": "boolean"
+                        },
+                        "rateLimitActive": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "rebuild": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "keyVersion",
+                            "status",
+                            "checkpointCreatedAt",
+                            "reconciledAt",
+                            "changedAt",
+                            "effectiveReady"
+                          ],
+                          "properties": {
+                            "keyVersion": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "building",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ready",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "stale",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "checkpointCreatedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "reconciledAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "changedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "effectiveReady": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "enabled"
+                ],
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/messaging/messages/{id}": {
       "delete": {
         "operationId": "deleteApiV1MessagingMessagesById",

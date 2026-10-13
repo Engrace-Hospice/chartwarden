@@ -150,6 +150,8 @@ import {
   type GlobalSearchMountOptions,
   mountGlobalSearchRoutes as _mountGlobalSearchRoutes,
 } from "./global-search/mount";
+import { createGlobalSearchPrerequisites as _createGlobalSearchPrerequisites } from "./global-search/prerequisites";
+import { createGlobalSearchSettingsService as _createGlobalSearchSettingsService } from "./global-search/settings-service";
 import { createDbMessagingRouteService as _createDbMessagingRouteService } from "./messaging-route-service-db";
 import type { MessagingOutboxPort } from "./messaging-route-service-db";
 import {
@@ -159,6 +161,7 @@ import {
 } from "./routes/admin-alert-deliveries-routes";
 import { registerAttachmentRoutes as _registerAttachmentRoutes } from "./routes/attachment-routes";
 import { registerDraftRoutes as _registerDraftRoutes } from "./routes/draft-routes";
+import { registerGlobalSearchSettingsRoutes as _registerGlobalSearchSettingsRoutes } from "./routes/global-search-settings-routes";
 import {
   registerMessagingAbacPredicates as _registerMessagingAbacPredicates,
   registerMessagingRoutes as _registerMessagingRoutes,
@@ -186,6 +189,8 @@ export function mountMessagingRoutes(
     attachments?: { storage: AttachmentStoragePort; scanner?: ScanPort | undefined };
     /** WP 2.7b: global search. Omitted => inert (throwing key provider, fail-closed limiter, flags OFF). */
     globalSearch?: GlobalSearchMountOptions;
+    /** WP 2.7b C4: true only once the ADR-0058 P2 per-route rate limit covers the search routes. Default false => ON refused. */
+    globalSearchRateLimitActive?: boolean;
   } = {},
 ): void {
   // GAP-063 — the §4.2 OTP sender; with none bound, sms/email endpoint registration answers 503.
@@ -222,6 +227,16 @@ export function mountMessagingRoutes(
   _registerTemplateRoutes(app, { service: _createDbTemplateService(db) });
   // WP 2.7b (ADR-0058, Proposed) — global search; INERT in production (see ./global-search/mount.ts).
   _mountGlobalSearchRoutes(app, db, opts.globalSearch);
+  // WP 2.7b C4 - the tenant global search switch + go-live checklist (registered, nothing enabled by default).
+  _registerGlobalSearchSettingsRoutes(app, {
+    service: _createGlobalSearchSettingsService({
+      db,
+      prerequisites: _createGlobalSearchPrerequisites({
+        db,
+        rateLimitActive: opts.globalSearchRateLimitActive === true,
+      }),
+    }),
+  });
   // GAP-165 — the platform-ops cross-tenant delivery drill (§4.1 `messaging.admin.read`): own predicate, own
   // SECURITY DEFINER reader (0474), audited per read. Not tenant-scoped, so it takes the pooled handle directly.
   _registerMessagingAdminPredicates();

@@ -69,6 +69,7 @@ import { buildM36MessageHintConsumer } from "../src/modules/36-messaging/outbox-
 import { registerAdminAlertDeliveriesRoutes } from "../src/modules/36-messaging/routes/admin-alert-deliveries-routes";
 import { registerAttachmentRoutes } from "../src/modules/36-messaging/routes/attachment-routes";
 import { registerDraftRoutes } from "../src/modules/36-messaging/routes/draft-routes";
+import { registerGlobalSearchSettingsRoutes } from "../src/modules/36-messaging/routes/global-search-settings-routes";
 import {
   CHANNEL_MEMBER_ADMIN_PREDICATE,
   CHANNEL_VISIBILITY_PREDICATE,
@@ -100,6 +101,8 @@ type Verdict =
   | { readonly kind: "excluded"; readonly reason: string };
 const TEMPLATE_SUITE =
   "WP 2.8: org/owner isolation, random-id 404 parity and RLS are asserted in m36-message-templates.live";
+const GLOBAL_SEARCH_SETTINGS_SUITE =
+  "WP 2.7b C4: org-scoped singleton (no id), permission + step-up + cross-tenant isolation are asserted in m36-global-search-settings.live";
 const ROUTES: Record<string, Verdict> = {
   "GET /api/v1/messaging/channels": { kind: "scoped" },
   "GET /api/v1/messaging/channels/:id": { kind: "idor" },
@@ -181,6 +184,14 @@ const ROUTES: Record<string, Verdict> = {
     kind: "excluded",
     reason: TEMPLATE_SUITE,
   },
+  "GET /api/v1/messaging/global-search/settings": {
+    kind: "excluded",
+    reason: GLOBAL_SEARCH_SETTINGS_SUITE,
+  },
+  "PUT /api/v1/messaging/global-search/settings": {
+    kind: "excluded",
+    reason: GLOBAL_SEARCH_SETTINGS_SUITE,
+  },
   "POST /webhooks/twilio/sms-status": {
     kind: "excluded",
     reason: "vendor-signed, no tenant principal; unsigned call refused (asserted below)",
@@ -210,6 +221,8 @@ const REGISTRAR_FILES = [
   "messaging-typebox.ts", // schemas only
   "reaction-pin-routes.ts", // mounted by registerMessagingRoutes
   "reaction-pin-typebox.ts", // schemas only
+  "global-search-settings-routes.ts", // WP 2.7b C4 tenant global search switch
+  "global-search-settings-typebox.ts", // schemas only
   "template-routes.ts",
   "template-typebox.ts", // schemas only
   "uuid-params.ts", // preHandler helper, no routes
@@ -230,6 +243,7 @@ function registeredRoutes(): string[] {
   registerScheduledSendRoutes(probe, { service: {} as never, announcements: {} as never });
   registerAdminAlertDeliveriesRoutes(probe, {} as never);
   registerTemplateRoutes(probe, { service: {} as never });
+  registerGlobalSearchSettingsRoutes(probe, { service: {} as never });
   registerMessagingWebhookRoutes(probe, { publicBaseUrl: "https://x.test" } as never);
   return [...seen].sort();
 }
