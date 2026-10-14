@@ -38,6 +38,12 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveRichWrite } from "../rich-body-codec";
 import { announcementSendGuard, registerAnnouncementRoutes } from "./announcement-routes";
 import {
+  type ClinicalLinkRouteDeps,
+  DISABLED_CLINICAL_LINKS,
+  registerClinicalLinkRoutes,
+  validateRichBodyLinks,
+} from "./clinical-link-routes";
+import {
   AddMemberBodySchema,
   AlertParamsSchema,
   AlertRuleParamsSchema,
@@ -86,6 +92,8 @@ export interface MessagingRouteDeps {
   announcements: AnnouncementService;
   /** WP 2.12: ephemeral presence/typing. Omitted => the routes are registered but the tenant flag reads off. */
   presence?: PresenceRouteDeps;
+  /** WP 3.2: clinical links (flag, source seams, link store). Omitted => flag off: links are refused and resolve 404s. */
+  clinicalLinks?: Omit<ClinicalLinkRouteDeps, "canViewChannel">;
 }
 
 /**
@@ -325,6 +333,13 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   // --- WP 3.1: patient context panel (own file; per-tile permission re-check, a denied tile is absent) ---------------
   registerPatientContextRoutes(app, { read: READ });
 
+  // --- WP 3.2: clinical links (message -> clinical record, read-through). Writes validate each link on send/edit. -----
+  const clinicalLinkDeps: ClinicalLinkRouteDeps = {
+    ...(deps.clinicalLinks ?? DISABLED_CLINICAL_LINKS),
+    canViewChannel: service.canViewChannel,
+  };
+  registerClinicalLinkRoutes(app, { read: READ }, clinicalLinkDeps);
+
   // Structured autocomplete is scoped to a channel whose effective visibility has already been
   // revalidated. Patient results are intentionally limited by the service to the linked care-team
   // patient; this route never acts as a general patient directory.
@@ -415,6 +430,8 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
       const { id } = parse(ChannelParamsSchema, request.params);
       const body = parse(SendMessageBodySchema, request.body);
       const rich = resolveRichWrite(body);
+      // WP 3.2: every clinicalLink node is authorised BEFORE the message commits (generic 422 on any failure).
+      const clinicalLinks = await validateRichBodyLinks(request, clinicalLinkDeps, rich?.richBody);
       const result = await service.sendMessage(organizationId, {
         channelId: id,
         authorUserId: userId,
@@ -427,6 +444,7 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
         attachments: body.attachments,
         correlationId: request.context.correlationId,
         references: rich ? rich.references : body.references,
+        clinicalLinks,
       });
       return reply.code(201).send(result);
     },
@@ -441,12 +459,14 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
       throw new WardenXError("VALIDATION_FAILED", "an edit needs a body or a bodyDoc", 422);
     }
     const rich = resolveRichWrite(body);
+    const clinicalLinks = await validateRichBodyLinks(request, clinicalLinkDeps, rich?.richBody);
     return service.editMessage(organizationId, {
       userId,
       messageId: id,
       body: rich?.plainText ?? body.body ?? "",
       richBody: rich?.richBody,
       references: rich ? rich.references : body.references,
+      clinicalLinks,
     });
   });
 

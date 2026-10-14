@@ -24,6 +24,7 @@ import type {
   ResolvedMessage as ServiceResolvedMessage,
 } from "@wardenx/messaging";
 import { MESSAGE_REACTION_KEYS, ValidationError } from "@wardenx/types";
+import { ClinicalLinkViewSchema } from "./clinical-link-typebox";
 
 // --- shared scalars ---------------------------------------------------------------------------
 
@@ -87,6 +88,7 @@ const UuidId = Type.String({ pattern: UUID_PATTERN });
 const AttachmentSchema = Type.Object({ attachmentId: UuidId });
 
 export const AttachmentParamsSchema = Type.Object({ id: UuidId });
+export const ClinicalLinkParamsSchema = Type.Object({ linkId: UuidId });
 export const AttachmentStatusResponseSchema = Type.Object({
   attachmentId: Type.String(),
   channelId: Type.String(),
@@ -390,6 +392,8 @@ export const ResolvedMessageSchema = Type.Object({
   pinned: Type.Optional(Type.Boolean()),
   // WP 2.10: the poll on this message (additive; absent when the message has none).
   poll: Type.Optional(PollViewSchema),
+  // WP 3.2: ids and kind only; open a chip with GET /clinical-links/:link_id/resolve.
+  clinicalLinks: Type.Optional(Type.Array(ClinicalLinkViewSchema)),
   references: Type.Array(
     Type.Object({
       kind: Type.Union([Type.Literal("staff"), Type.Literal("patient")]),

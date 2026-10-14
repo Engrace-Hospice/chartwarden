@@ -144,6 +144,7 @@ import type { FastifyInstance } from "fastify";
 import { createDbAnnouncementService as _createDbAnnouncementService } from "./announcement-service-db";
 import type { AttachmentStoragePort, ScanPort } from "./attachments/attachment-ports";
 import { createAttachmentService as _createAttachmentService } from "./attachments/attachment-service-db";
+import type { buildClinicalLinkDeps as _buildClinicalLinkDeps } from "./clinical-link/binding";
 import type { EndpointVerificationSender } from "./delivery/transport-binding";
 import { createDbDraftService as _createDbDraftService } from "./drafts/draft-service-db";
 import {
@@ -196,6 +197,8 @@ export function mountMessagingRoutes(
     globalSearchRateLimitActive?: boolean;
     /** WP 2.12: presence/typing store (Valkey in production), the tenant-flag reader and an optional per-route limit. */
     presence?: PresenceRouteDeps;
+    /** WP 3.2: clinical links (tenant flag + source seams + link store). Omitted => flag off. */
+    clinicalLinks?: ReturnType<typeof _buildClinicalLinkDeps>;
   } = {},
 ): void {
   // GAP-063 — the §4.2 OTP sender; with none bound, sms/email endpoint registration answers 503.
@@ -211,7 +214,8 @@ export function mountMessagingRoutes(
     service,
     announcements,
     ...(opts.presence ? { presence: opts.presence } : {}),
-  }); // WP 2.9, 2.12
+    ...(opts.clinicalLinks ? { clinicalLinks: opts.clinicalLinks } : {}),
+  }); // WP 2.9, 2.12, 3.2
   // WP 2.5 — private encrypted drafts (own row per user + channel + thread root).
   _registerDraftRoutes(app, { service: _createDbDraftService({ db }) });
   // WP 2.10 — polls (non-clinical, single choice, named votes); a poll is written through the message write core.
@@ -264,6 +268,7 @@ export function mountMessagingRoutes(
 
 // WP 2.12 - ephemeral presence/typing: the composition-root binding (Valkey or in-memory store, tenant flag, route limit).
 export { buildPresenceDeps } from "./presence/binding";
+export { buildClinicalLinkDeps } from "./clinical-link/binding";
 export { PRESENCE_FLAG_KEY } from "./routes/presence-routes";
 
 // GAP-010 — M36's consumer for M3's `m3.breakglass.invoked` (durable Compliance notification).

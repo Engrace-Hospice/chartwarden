@@ -73,6 +73,11 @@ export interface ResolvedMessage {
   /** WP 2.2: created_at of the newest live direct reply, or null. */
   readonly lastReplyAt?: string | null;
   readonly references: readonly ResolvedMessageReference[];
+  /**
+   * WP 3.2: the message's clinical links as ids and kind only. No status or label: the client calls
+   * `GET /clinical-links/:link_id/resolve` per chip, which re-checks the viewer. Absent when the message has none.
+   */
+  readonly clinicalLinks?: readonly { link_id: string; kind: string; entity_id: string }[];
   /** WP 2.4: non-clinical reactions (counts + the viewer's own); absent/empty means none. NEVER a sign-off. */
   readonly reactions?: readonly MessageReactionSummary[];
   /** WP 2.4: true when the message is pinned in its channel. */
