@@ -5,6 +5,7 @@ import { type JSX, type RefObject, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import type { ChannelSummary, PatientHeaderInfo } from "./messaging-types";
 import { initialsOf } from "./messaging-utils";
+import { PatientContextTiles } from "./patient-context-tiles";
 
 export interface ThreadHeaderProps {
   channel: ChannelSummary;
@@ -125,7 +126,7 @@ export function PatientContextAside({
           <span>MRN {patient.mrn}</span>
         </div>
       </div>
-      <p>Minimum identification details for this authorized care-team conversation.</p>
+      <PatientContextTiles patientId={patient.id} />
       <Link to={`/patients/${patient.id}`}>
         Open patient chart <Glyph name="arrow-right" size={14} />
       </Link>
