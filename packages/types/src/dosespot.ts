@@ -18,6 +18,7 @@
 // package surface stays unambiguous under `export *` — re-exporting would be a TS2308 collision) ───────
 import type { AdmissionId, PatientId } from "./admission";
 import type { IsoInstant } from "./care-plan";
+import type { ClinicalLinkSource } from "./clinical-link";
 
 // ── M12-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ──────────
 export type MedicationOrderId = string;
@@ -428,7 +429,7 @@ export interface FhirMedicationRequestPayload {
  * registry). The impl (`apps/backend/src/modules/12-dosespot/services/medication-order-provider.ts`)
  * registers into the M1 seam registry at boot (M12-T07).
  */
-export interface MedicationOrderProvider {
+export interface MedicationOrderProvider extends ClinicalLinkSource {
   // Read paths (the hot paths)
   getActiveMedications(orgId: string, patientId: string): Promise<MedicationOrderDto[]>;
   getMedicationsSince(

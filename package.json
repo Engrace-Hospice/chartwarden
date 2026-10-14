@@ -255,6 +255,7 @@
     "test:m11:link-summary:live": "vitest run apps/backend/__tests__/m11-link-summary.live.test.ts",
     "test:m17:next-visit:live": "vitest run apps/backend/__tests__/m17-next-scheduled-visit.live.test.ts",
     "test:m7:link-summary:live": "vitest run apps/backend/__tests__/m7-link-summary.live.test.ts",
+    "test:m12:link-summary:live": "vitest run apps/backend/__tests__/m12-link-summary.live.test.ts",
     "test:m2:consent-revoked:live": "vitest run apps/backend/__tests__/m2-consent-revoked.live.test.ts",
     "test:m37:admission-discharged-cascade:live": "vitest run apps/backend/__tests__/m37-admission-discharged-cascade.live.test.ts",
     "test:m37:death-recorded:live": "vitest run apps/backend/__tests__/m37-death-recorded.live.test.ts",

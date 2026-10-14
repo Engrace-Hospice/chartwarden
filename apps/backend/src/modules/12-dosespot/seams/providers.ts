@@ -118,6 +118,12 @@ export function createMedicationOrderProvider(store: DoseSpotSeamStore): Medicat
           return av < bv ? -1 : av > bv ? 1 : 0;
         });
     },
+    async linkSummary(organizationId, id) {
+      // Fail closed: no tenant or no id means no answer, never a guessed one.
+      if (!organizationId?.trim()) throw new Error("linkSummary: organizationId required");
+      if (!id?.trim()) throw new Error("linkSummary: id required");
+      return store.medicationOrderLinkSummary(organizationId, id);
+    },
     async getMedicationOrder(_orgId, medicationOrderId) {
       return store.medicationOrderById(medicationOrderId);
     },

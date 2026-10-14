@@ -348,6 +348,8 @@ jobs:
           - { name: "M7 care plan link summary seam", scripts: "test:m7:link-summary:live" }
           # M36 WP 3.2 — OrderProvider.linkSummary, as the NOBYPASSRLS app role.
           - { name: "M11 link summary seam", scripts: "test:m11:link-summary:live" }
+          # M36 WP 3.2 — MedicationOrderProvider.linkSummary (ids + status only), as the NOBYPASSRLS app role.
+          - { name: "M12 link summary seam", scripts: "test:m12:link-summary:live" }
           - { name: "M18 EVV", scripts: "test:m18:read:live test:m18:write:live test:m18:workers:live" }
           # F-153 (#248) — the D14 `m17.visit.cancelled` bracket close + the D6/§2.2.4
           # `m8.encounter.signed` missing-EVV auto-resolution.

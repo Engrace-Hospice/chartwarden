@@ -295,6 +295,35 @@ export function createDrizzleDoseSpotSeamStore(db: DbClient): DoseSpotSeamStore 
       });
     },
 
+    async medicationOrderLinkSummary(organizationId, medicationOrderId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [row] = await (tx as unknown as DbClient)
+          .select({
+            id: MO.id,
+            patientId: MO.patientId,
+            status: MO.status,
+            activatedAt: MO.activatedAt,
+            createdAt: MO.createdAt,
+          })
+          .from(MO)
+          .where(
+            and(
+              // Explicit second wall behind RLS (PHI-bearing seam).
+              eq(MO.organizationId, organizationId),
+              eq(MO.id, medicationOrderId),
+            ),
+          )
+          .limit(1);
+        if (!row) return null;
+        return {
+          id: row.id,
+          patientId: row.patientId,
+          status: row.status,
+          occurredAt: (row.activatedAt ?? row.createdAt).toISOString(),
+        };
+      });
+    },
+
     async medicationOrdersForPatient(patientId) {
       return withOrgContextFromRequest(db, async (tx) => {
         const rows = await tx
