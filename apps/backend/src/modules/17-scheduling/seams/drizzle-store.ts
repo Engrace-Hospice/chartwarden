@@ -32,6 +32,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
 import type {
+  ClinicalLinkSummary,
   DateRange,
   OnCallRosterEntry,
   PortalVisitSummary,
@@ -279,6 +280,36 @@ export function createDrizzleSchedulingSeamStore(db: DbClient): SchedulingSeamSt
             .orderBy(asc(V.scheduledStartedAt), asc(V.id))
             .limit(1);
           return row ? toVisitDto(row as VisitDtoRow) : null;
+        },
+      );
+    },
+
+    async linkSummary(organizationId, id) {
+      return withOrgContext(
+        db,
+        { organizationId, userId: "" },
+        async (tx): Promise<ClinicalLinkSummary | null> => {
+          // Ids + status + start only: scheduler_internal_notes, purpose, address, assignee are never selected.
+          const [row] = await (tx as unknown as DbClient)
+            .select({
+              id: V.id,
+              patientId: V.patientId,
+              status: V.status,
+              scheduledStartedAt: V.scheduledStartedAt,
+            })
+            .from(V)
+            // Explicit second wall behind RLS. Id-only lookup fans out across partitions (no time window known).
+            .where(and(eq(V.organizationId, organizationId), eq(V.id, id)))
+            .limit(1);
+          if (!row) return null;
+          return {
+            id: row.id,
+            patientId: row.patientId as ClinicalLinkSummary["patientId"],
+            status: row.status,
+            occurredAt: row.scheduledStartedAt
+              ? (row.scheduledStartedAt.toISOString() as ClinicalLinkSummary["occurredAt"])
+              : null,
+          };
         },
       );
     },

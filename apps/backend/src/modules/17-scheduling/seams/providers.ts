@@ -29,6 +29,12 @@ export function createVisitReader(store: SchedulingSeamStore): VisitReader {
     async completedVisitsForPatientSince(_orgId, patientId, sinceIso) {
       return [...(await store.completedVisitsForPatientSince(patientId, sinceIso))];
     },
+    async linkSummary(orgId, id) {
+      // Fail closed: no tenant or no id means no answer.
+      if (!orgId?.trim()) throw new Error("linkSummary: orgId required");
+      if (!id?.trim()) throw new Error("linkSummary: id required");
+      return store.linkSummary(orgId, id);
+    },
     async nextScheduledVisitForPatient(orgId, patientId, asOfIso) {
       // Fail closed: no tenant or no usable clock means no answer, never a guessed one.
       if (!orgId) throw new Error("nextScheduledVisitForPatient: orgId required");

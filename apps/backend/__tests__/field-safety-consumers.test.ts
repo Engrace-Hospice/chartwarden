@@ -760,6 +760,7 @@ describe("§4.4 — the M17 / M18 / M5 reads", () => {
       visitsScheduledForMembershipOnDate: async () => [],
       completedVisitsForPatientSince: async () => [],
       nextScheduledVisitForPatient: async () => null,
+      linkSummary: async () => null,
     });
     expect(await readVisitAnchors(ORG, VISIT)).toEqual(VISIT_ANCHORS);
 
