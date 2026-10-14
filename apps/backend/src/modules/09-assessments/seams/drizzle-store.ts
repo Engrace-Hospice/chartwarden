@@ -36,7 +36,7 @@
 // as "latest". Tolerance was considered and rejected — the DTO's `LocationId` is non-null, so any
 // tolerant projection would be a wire-type lie; the honest states are "sited" or "loud, named gap".
 import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContextFromRequest } from "@wardenx/tenancy";
+import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
 import type { LatestAssessment, ScaleSeriesPoint, ScaleType } from "@wardenx/types";
 import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import type { AssessmentReaderStore } from "./store";
@@ -172,6 +172,36 @@ export function createDrizzleAssessmentReaderStore(db: DbClient): AssessmentRead
   };
 
   return {
+    async linkSummary(organizationId, id) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [r] = await tx
+          .select({
+            id: CA.id,
+            patientId: CA.patientId,
+            status: CA.status,
+            capturedAt: CA.capturedAt,
+          })
+          .from(CA)
+          .where(
+            and(
+              // Explicit second wall behind RLS (PHI-bearing seam).
+              eq(CA.organizationId, organizationId),
+              eq(CA.id, id),
+              // Part 2: the consent join is not wired, so a SUD-context row is withheld like a missing one.
+              eq(CA.sudContext, false),
+            ),
+          )
+          .limit(1);
+        if (!r) return null;
+        return {
+          id: r.id,
+          patientId: r.patientId,
+          status: r.status,
+          occurredAt: toIso(r.capturedAt),
+        };
+      });
+    },
+
     async latestActive(patientId, scaleType) {
       return withOrgContextFromRequest(db, async (tx): Promise<LatestAssessment | null> => {
         const [r] = (await tx

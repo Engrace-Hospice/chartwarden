@@ -11,6 +11,7 @@
 // does NOT trust a caller-asserted scope (§4.7). The in-memory slice seeds the DTOs directly so provider
 // tests can exercise both the entitled and the redacted paths.
 import type {
+  ClinicalLinkSummary,
   IsoInstant,
   LatestAssessment,
   PatientId,
@@ -43,6 +44,11 @@ export interface AssessmentReaderStore {
     from: IsoInstant,
     to: IsoInstant,
   ): Promise<ReadonlyArray<ScaleSeriesPoint>>;
+  /**
+   * M36 clinical link: id/patient/status/captured_at of ONE assessment in `organizationId`, else null (absent, other
+   * org, or `sud_context` - withheld like absence). Org-explicit (opens its own tenant context).
+   */
+  linkSummary(organizationId: string, id: string): Promise<ClinicalLinkSummary | null>;
 }
 
 // ── in-memory slice store ─────────────────────────────────────────────────────────────────────────
@@ -51,6 +57,10 @@ export interface AssessmentReaderStore {
 export interface AssessmentReaderSeed {
   /** The latest active row per (patient, scale) the latest reads resolve. */
   readonly latest?: readonly LatestAssessment[];
+  /** Link-resolvable rows (any status); `sudContext` rows are withheld like the SQL store does. */
+  readonly links?: ReadonlyArray<
+    ClinicalLinkSummary & { readonly organizationId: string; readonly sudContext?: boolean }
+  >;
   /** Every scored capture the series reads window over (any order; the slice sorts ascending). */
   readonly points?: ReadonlyArray<
     ScaleSeriesPoint & { readonly patientId: PatientId; readonly scaleType: ScaleType }
@@ -69,8 +79,15 @@ export function createInMemoryAssessmentReaderStore(seed: AssessmentReaderSeed =
 } {
   const latest = seed.latest ?? [];
   const points = seed.points ?? [];
+  const links = seed.links ?? [];
   return {
     store: {
+      async linkSummary(organizationId, id) {
+        const row = links.find((l) => l.organizationId === organizationId && l.id === id);
+        if (!row || row.sudContext) return null;
+        const { id: rid, patientId, status, occurredAt } = row;
+        return { id: rid, patientId, status, occurredAt };
+      },
       async latestActive(patientId, scaleType) {
         return latest.find((l) => l.patientId === patientId && l.scaleType === scaleType) ?? null;
       },

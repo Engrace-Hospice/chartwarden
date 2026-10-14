@@ -941,6 +941,9 @@ export const latestAssessmentProviderDenyStub: LatestAssessmentProvider = {
   latestBatch() {
     throw new NotImplementedError("LatestAssessmentProvider");
   },
+  linkSummary() {
+    throw new NotImplementedError("LatestAssessmentProvider");
+  },
 };
 
 /** M9 — windowed scored series + latest-vs-window delta (IDG/FHIR/AI). Denies until M9 registers it. */
