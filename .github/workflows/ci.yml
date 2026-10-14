@@ -229,6 +229,8 @@ jobs:
           # GAP-027 — GET /encounters/:id `addenda[]` through the real route + Drizzle service + RLS.
           - { name: "M8 addenda read", scripts: "test:m8:addenda-read:live" }
           - { name: "M9 Assessments", scripts: "test:m9:read:live test:m9:write:live" }
+          # M36 WP 3.2 - LatestAssessmentProvider.linkSummary, as the NOBYPASSRLS app role.
+          - { name: "M9 link summary seam", scripts: "test:m9:link-summary:live" }
           - { name: "M10 HOPE", scripts: "test:m10:read:live test:m10:write:live" }
           # The HOPE spec registry / CMS spec import / answer engine suites landed on main after the
           # 2026-09-17 force-push with no runner; the restored live-suite gate caught them.
@@ -342,6 +344,14 @@ jobs:
             }
           # M36 WP 3.1 — the VisitReader.nextScheduledVisitForPatient read seam, as the NOBYPASSRLS app role.
           - { name: "M17 next scheduled visit seam", scripts: "test:m17:next-visit:live" }
+          # M36 WP 3.2 - the CarePlanReader.linkSummary clinical-link read seam, as the NOBYPASSRLS app role.
+          - { name: "M7 care plan link summary seam", scripts: "test:m7:link-summary:live" }
+          # M36 WP 3.2 — OrderProvider.linkSummary, as the NOBYPASSRLS app role.
+          - { name: "M11 link summary seam", scripts: "test:m11:link-summary:live" }
+          # M36 WP 3.2 — MedicationOrderProvider.linkSummary (ids + status only), as the NOBYPASSRLS app role.
+          - { name: "M12 link summary seam", scripts: "test:m12:link-summary:live" }
+          # M36 WP 3.2 — the DocumentReader.linkSummary clinical-link read seam, as the NOBYPASSRLS app role.
+          - { name: "M22 document link summary seam", scripts: "test:m22:link-summary:live" }
           - { name: "M18 EVV", scripts: "test:m18:read:live test:m18:write:live test:m18:workers:live" }
           # F-153 (#248) — the D14 `m17.visit.cancelled` bracket close + the D6/§2.2.4
           # `m8.encounter.signed` missing-EVV auto-resolution.
@@ -773,6 +783,8 @@ jobs:
           - { name: "M36 Tranche B review fixes", scripts: "test:m36:review:live" }
           # WP 2.3 - mentions: non-member lookup is names-only and tenant-bound, a non-member reference is refused, notification text is PHI-free.
           - { name: "M36 Mentions", scripts: "test:m36:mentions:live" }
+          # WP 3.2 - clinical links: ids-only table (FORCE RLS, no UPDATE), write-time validation, edit reconcile, resolve = identical unavailable, read-audit, flag.
+          - { name: "M36 Clinical links", scripts: "test:m36:clinical-link:live" }
           # WP 2.7a - in-conversation search: tenant/channel/tombstone/edit isolation, filters, audit without query text, p95 on a seeded history.
           - { name: "M36 In-conversation search", scripts: "test:m36:search:live" }
           # WP 2.7b chunk C1 (ADR-0058, Accepted) - global search index storage: RLS, no UPDATE grant, the same-transaction removal hook, audit without tags.

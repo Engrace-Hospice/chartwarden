@@ -258,4 +258,36 @@ describe.skipIf(!DB_URL)("M14 lastMeetingForPatient — LIVE Postgres as wardenx
       ),
     ).toBeNull();
   });
+
+  it("linkSummary: found meeting yields exactly four keys, null patientId, status, scheduled_start", async () => {
+    const provider = createIdgScheduleProvider(store);
+    const got = await provider.linkSummary(ORG_A, ids.latest);
+    expect(got).not.toBeNull();
+    expect(Object.keys(got ?? {}).sort()).toEqual(["id", "occurredAt", "patientId", "status"]);
+    expect(got?.id).toBe(ids.latest);
+    expect(got?.patientId).toBeNull();
+    expect(got?.status).toBe("adjourned");
+    const { rows } = await admin.query("SELECT scheduled_start FROM idg_meeting WHERE id = $1", [
+      ids.latest,
+    ]);
+    expect(got?.occurredAt).toBe((rows[0].scheduled_start as Date).toISOString());
+  });
+
+  it("linkSummary: unknown id is null; a cross-tenant meeting id is null both ways", async () => {
+    const provider = createIdgScheduleProvider(store);
+    expect(await provider.linkSummary(ORG_A, "dddddddd-dddd-dddd-dddd-dddddddddddd")).toBeNull();
+    expect(await provider.linkSummary(ORG_A, ids.orgB)).toBeNull();
+    expect(await provider.linkSummary(ORG_B, ids.latest)).toBeNull();
+    expect((await provider.linkSummary(ORG_B, ids.orgB))?.id).toBe(ids.orgB);
+  });
+
+  it("meetingLocation: returns the meeting's location in its own org only", async () => {
+    const provider = createIdgScheduleProvider(store);
+    expect(await provider.meetingLocation(ORG_A, ids.latest)).toBe(orgs[ORG_A].location);
+    expect(await provider.meetingLocation(ORG_B, ids.orgB)).toBe(orgs[ORG_B].location);
+    expect(await provider.meetingLocation(ORG_A, ids.orgB)).toBeNull();
+    expect(
+      await provider.meetingLocation(ORG_A, "dddddddd-dddd-dddd-dddd-dddddddddddd"),
+    ).toBeNull();
+  });
 });

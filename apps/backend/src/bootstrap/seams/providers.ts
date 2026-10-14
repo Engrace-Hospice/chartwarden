@@ -384,6 +384,9 @@ export const documentReaderDenyStub: DocumentReader = {
   documentMetadata() {
     throw new NotImplementedError("DocumentReader");
   },
+  linkSummary() {
+    throw new NotImplementedError("DocumentReader");
+  },
   activeVersionLink() {
     throw new NotImplementedError("DocumentReader");
   },
@@ -805,6 +808,9 @@ export const carePlanReaderDenyStub: CarePlanReader = {
   terminologyCodeUsageForOrg() {
     throw new NotImplementedError("CarePlanReader");
   },
+  linkSummary() {
+    throw new NotImplementedError("CarePlanReader");
+  },
 };
 
 // M8 (Encounters) owned seams (§4.7). LEAF-TYPED (interfaces in @wardenx/types) like M6/M7's readers,
@@ -941,6 +947,9 @@ export const latestAssessmentProviderDenyStub: LatestAssessmentProvider = {
   latestBatch() {
     throw new NotImplementedError("LatestAssessmentProvider");
   },
+  linkSummary() {
+    throw new NotImplementedError("LatestAssessmentProvider");
+  },
 };
 
 /** M9 — windowed scored series + latest-vs-window delta (IDG/FHIR/AI). Denies until M9 registers it. */
@@ -1029,6 +1038,9 @@ export const orderSignatureProviderDenyStub: OrderSignatureProvider = {
 /** M11 — the order read seam (active / by-patient / since / verbal-timeliness / discontinuation). Denies
  * until M11 registers it (M14/M23/M30/M7 resolve the real impl). */
 export const orderProviderDenyStub: OrderProvider = {
+  linkSummary() {
+    throw new NotImplementedError("OrderProvider");
+  },
   getOrder() {
     throw new NotImplementedError("OrderProvider");
   },
@@ -1096,6 +1108,9 @@ export const medicationOrderProviderDenyStub: MedicationOrderProvider = {
     throw new NotImplementedError("MedicationOrderProvider");
   },
   asFhirMedicationRequest() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
+  linkSummary() {
     throw new NotImplementedError("MedicationOrderProvider");
   },
 };
@@ -1226,6 +1241,12 @@ export const idgScheduleProviderDenyStub: IdgScheduleProvider = {
   getLastMeetingForPatient() {
     throw new NotImplementedError("IdgScheduleProvider");
   },
+  linkSummary() {
+    throw new NotImplementedError("IdgScheduleProvider");
+  },
+  meetingLocation() {
+    throw new NotImplementedError("IdgScheduleProvider");
+  },
 };
 
 /** M17 — the visit read seam (encounter context / EVV geofence target / IDG since-meeting) M8/M18/M14 consume.
@@ -1241,6 +1262,9 @@ export const visitReaderDenyStub: VisitReader = {
     throw new NotImplementedError("VisitReader");
   },
   nextScheduledVisitForPatient() {
+    throw new NotImplementedError("VisitReader");
+  },
+  linkSummary() {
     throw new NotImplementedError("VisitReader");
   },
 };

@@ -12,6 +12,7 @@ import {
 import { useMemo } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { ClinicalLinkChip, ClinicalLinkIdsContext, clinicalLinkKey } from "./clinical-link-chip";
 import { needsDestinationSuffix } from "./link-destination";
 import type { MessageReference } from "./messaging-types";
 
@@ -73,6 +74,9 @@ function Inline({
   if (node.type === "hardBreak") return <br />;
   if (node.type === "text") {
     return <span>{applyMarks(node.text, node.marks ?? [], node.text)}</span>;
+  }
+  if (node.type === "clinicalLink") {
+    return <ClinicalLinkChip kind={node.kind} entityId={node.entityId} />;
   }
   // The server's label (fresh from the directory) wins over the label frozen into the document.
   const reference = references.find(
@@ -164,11 +168,19 @@ export function RichBodyView({
   bodyDoc,
   references,
   fallbackText,
+  clinicalLinks,
 }: {
   bodyDoc: RichBody | undefined;
   references: readonly MessageReference[];
   fallbackText: string;
+  /** WP 3.2: the message's link ids; a chip with no entry here shows the plain placeholder. */
+  clinicalLinks?: readonly { link_id: string; kind: string; entity_id: string }[];
 }): JSX.Element {
+  const linkIds = useMemo(
+    () =>
+      new Map((clinicalLinks ?? []).map((l) => [clinicalLinkKey(l.kind, l.entity_id), l.link_id])),
+    [clinicalLinks],
+  );
   // Sanitised once per document, not once per render: typing in the composer re-renders the thread.
   const checked = useMemo(
     () => (bodyDoc === undefined ? null : sanitizeRichBody(bodyDoc)),
@@ -176,11 +188,13 @@ export function RichBodyView({
   );
   if (!checked?.ok) return <span className="wx-rich-fallback">{fallbackText}</span>;
   return (
-    <div className="wx-rich-body">
-      {checked.value.doc.content.map((block, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: the document is immutable; position is its identity
-        <Block key={index} node={block} references={references} />
-      ))}
-    </div>
+    <ClinicalLinkIdsContext.Provider value={linkIds}>
+      <div className="wx-rich-body">
+        {checked.value.doc.content.map((block, index) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: the document is immutable; position is its identity
+          <Block key={index} node={block} references={references} />
+        ))}
+      </div>
+    </ClinicalLinkIdsContext.Provider>
   );
 }

@@ -8,6 +8,7 @@ import { schema } from "@wardenx/db";
 import type { MessageBodyKind, ResolvedMessage } from "@wardenx/messaging";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { loadAttachmentViews } from "./attachments/attachment-service-db";
+import { loadClinicalLinkViews } from "./clinical-link/clinical-link-store-db";
 import { loadMessageAnnotations } from "./message-annotations";
 import type { MessageBodyCipher, Tx } from "./messaging-write-core";
 import { loadPollViews } from "./polls/poll-views";
@@ -143,6 +144,12 @@ export async function hydrateMessages(
   }
   // WP 1.5: scan-gated attachment metadata. A tombstoned message shows none; the loader hides quarantined
   // files from everyone and pending ones from everyone but their uploader.
+  // WP 3.2: clinical links as ids and kind only; the viewer's access is decided per chip by `resolve`.
+  const clinicalLinks = await loadClinicalLinkViews(
+    tx,
+    orgId,
+    rows.filter((row) => row.status !== "deleted").map((row) => row.id),
+  );
   const liveIds = rows.filter((row) => row.status !== "deleted").map((row) => row.id);
   const attachmentsByMessage = await loadAttachmentViews(tx, {
     orgId,
@@ -218,6 +225,7 @@ export async function hydrateMessages(
           0,
           (boundByMessage.get(m.id) ?? 0) - (attachmentsByMessage.get(m.id)?.length ?? 0),
         ),
+        ...(clinicalLinks.has(m.id) ? { clinicalLinks: clinicalLinks.get(m.id) } : {}),
         references: (referencesByMessage.get(m.id) ?? []).map((reference) => ({
           kind: reference.kind as "staff" | "patient",
           entityId: reference.entityId,

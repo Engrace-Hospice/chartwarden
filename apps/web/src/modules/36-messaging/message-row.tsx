@@ -26,6 +26,7 @@ export function MessageText({ message }: { message: Message }): JSX.Element {
       <RichBodyView
         bodyDoc={message.bodyDoc}
         references={message.references ?? []}
+        clinicalLinks={message.clinicalLinks}
         fallbackText={message.body || "Message deleted"}
       />
     );

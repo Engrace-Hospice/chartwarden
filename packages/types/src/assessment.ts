@@ -17,6 +17,7 @@
 // the package surface stays unambiguous under `export *` — re-exporting would be a TS2308 collision) ─
 import type { AdmissionId, DateRange, OrgId, PatientId, ProviderEntityId } from "./admission";
 import type { IsoInstant, LocationId, MembershipId } from "./care-plan";
+import type { ClinicalLinkSource, ClinicalLinkSummary } from "./clinical-link";
 
 // ── Assessment-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ──
 export type ClinicalAssessmentId = string;
@@ -279,7 +280,15 @@ export interface ScaleDelta {
  * (patient, scale); `latestBatch` resolves several scales for one patient in a single call (the
  * `/internal/assessments/latest-batch` route). Resolved within the caller's tenant context.
  */
-export interface LatestAssessmentProvider {
+export interface LatestAssessmentProvider extends ClinicalLinkSource {
+  /**
+   * M36 WP 3.2 clinical link - by assessment id, ids and status only: `{id, patientId, status, occurredAt}` where
+   * `occurredAt` is `captured_at`. Never a score, interpretation, scale response or note. A Part 2 / SUD-context
+   * assessment (`sud_context = true`) resolves to `null`, exactly like a missing row: the M39 consent join is not
+   * wired SQL-side, so even the existence of the record is withheld (fail closed). Org-explicit; throws on a blank
+   * org or id; `null` when no such row in that org.
+   */
+  linkSummary(organizationId: string, id: string): Promise<ClinicalLinkSummary | null>;
   latest(patientId: PatientId, scaleType: ScaleType): Promise<LatestAssessment | null>;
   latestBatch(
     patientId: PatientId,

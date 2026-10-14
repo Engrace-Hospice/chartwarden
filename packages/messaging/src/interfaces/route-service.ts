@@ -15,7 +15,7 @@
 // is the backstop; the slice default (createInMemoryMessagingService) keeps it all in memory so
 // the route inventory is integration-testable with no live infra.
 
-import type { RichBody } from "@wardenx/types";
+import type { ClinicalLinkKind, RichBody } from "@wardenx/types";
 import type { MemberAdminActor } from "../member-admin";
 import type { QuietHoursConfig, RoutingMap } from "../resolution";
 import type { MessageSearchService } from "../search/message-search";
@@ -94,6 +94,13 @@ export interface AlertRulePatch {
   readonly enabled?: boolean;
   readonly severityFloor?: AlertSeverity;
   readonly recipientResolver?: AlertRecipientResolver;
+}
+
+/** WP 3.2: a clinical link the route has already authorised. `patientId` is null only for an IDG meeting. */
+export interface ValidatedClinicalLinkInput {
+  readonly kind: ClinicalLinkKind;
+  readonly sourceId: string;
+  readonly patientId: string | null;
 }
 
 /** The actor's notification preferences (§4.2 GET/PUT /notifications/preferences). */
@@ -245,6 +252,12 @@ export interface MessagingRouteService extends MessageReactionPinService, Messag
       attachments?: readonly AttachmentInput[];
       correlationId?: string;
       references?: readonly MessageReferenceInput[];
+      /**
+       * WP 3.2: the body's clinicalLink nodes AFTER the route validated each one (permission + scope + source exists).
+       * The write core refuses a `richBody` whose link nodes differ from this list, so a path that skips the route cannot
+       * persist an unvalidated link.
+       */
+      clinicalLinks?: readonly ValidatedClinicalLinkInput[];
     },
   ): Promise<{ messageId: string; channelId: string; createdAt: string }>;
   /** Edit within the edit window; FORBIDDEN unless the actor authored it (§4.2 PATCH). */
@@ -257,6 +270,8 @@ export interface MessagingRouteService extends MessageReactionPinService, Messag
       /** WP 2.1: as on send. An edit that carries no `richBody` makes the message plain/markdown again. */
       richBody?: RichBody;
       references?: readonly MessageReferenceInput[];
+      /** WP 3.2: as on send; the edit reconciles the message's links to exactly this list. */
+      clinicalLinks?: readonly ValidatedClinicalLinkInput[];
     },
   ): Promise<{ messageId: string; editedAt: string }>;
   /** Soft-delete (tombstone); FORBIDDEN unless the actor authored it (§4.2 DELETE). */

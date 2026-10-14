@@ -14,6 +14,7 @@
 // The shared tenancy/patient/admission id aliases are owned by `./admission` (single definition site);
 // import for internal use here (not re-exported) so the package surface stays unambiguous.
 import type { AdmissionId, OrgId, PatientId, ProviderEntityId } from "./admission";
+import type { ClinicalLinkSummary } from "./clinical-link";
 
 export type CarePlanId = string;
 export type CarePlanVersionId = string;
@@ -344,4 +345,11 @@ export interface CarePlanReader {
     organizationId: string,
     codes: ReadonlyArray<{ readonly systemId: string; readonly code: string }>,
   ): Promise<ReadonlyArray<CarePlanCodeUsageRecord>>;
+
+  /**
+   * M36 clinical link (WP 3.2) - id, patient, `care_plan.status` and `updated_at` ONLY: no plan text, goals or
+   * interventions (those can carry SUD-filtered free text). Org-explicit (opens its own tenant context, callable
+   * outside a request); throws on a blank org or id; null when no such plan exists in that org.
+   */
+  linkSummary(organizationId: string, id: CarePlanId): Promise<ClinicalLinkSummary | null>;
 }

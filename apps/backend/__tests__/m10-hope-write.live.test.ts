@@ -616,6 +616,9 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
         latest: async () => {
           throw new Error("single-scale `latest` is not exercised by this suite");
         },
+        linkSummary: async () => {
+          throw new Error("`linkSummary` is not exercised by this suite");
+        },
         // (#211, restored) The M9 seam publishes the WHOLE `LatestAssessment`, not the two fields M10
         // reads off it; a `{ scaleType, score }` fake satisfies nothing but its own consumer.
         latestBatch: async (_patientId: string, scaleTypes: readonly ScaleType[]) => {

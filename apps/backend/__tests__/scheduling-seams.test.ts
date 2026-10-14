@@ -201,6 +201,36 @@ describe("VisitReader.nextScheduledVisitForPatient (messaging hub WP 3.1)", () =
   });
 });
 
+describe("VisitReader.linkSummary (messaging hub WP 3.2)", () => {
+  const readerOver = (visits: VisitDto[]) =>
+    createVisitReader(createInMemorySchedulingSeamStore({ visits }).store);
+
+  it("returns exactly id, patientId, status, occurredAt", async () => {
+    const out = await readerOver([
+      visit({ id: "v1", status: "published", scheduledStartedAt: "2026-03-06T14:00:00.000Z" }),
+    ]).linkSummary(ORG, "v1");
+    expect(out).toEqual({
+      id: "v1",
+      patientId: PAT,
+      status: "published",
+      occurredAt: "2026-03-06T14:00:00.000Z",
+    });
+    expect(Object.keys(out ?? {}).sort()).toEqual(["id", "occurredAt", "patientId", "status"]);
+  });
+
+  it("returns null for an unknown id and for another org's visit", async () => {
+    const r = readerOver([visit({ id: "v1", organizationId: "org-2" })]);
+    expect(await r.linkSummary(ORG, "nope")).toBeNull();
+    expect(await r.linkSummary(ORG, "v1")).toBeNull();
+  });
+
+  it("fails closed on a blank org or id", async () => {
+    const r = readerOver([visit({ id: "v1" })]);
+    await expect(r.linkSummary("", "v1")).rejects.toThrow();
+    await expect(r.linkSummary(ORG, " ")).rejects.toThrow();
+  });
+});
+
 describe("VisitAssignmentReader (§4.5 D11 caseload contribution)", () => {
   const reader = () => createVisitAssignmentReader(createInMemorySchedulingSeamStore(seed()).store);
 

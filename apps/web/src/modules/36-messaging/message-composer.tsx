@@ -2,8 +2,16 @@
 // out of it unchanged in WP 2.11 to keep that file under the line ceiling). State and effects stay in the thread; this
 // only renders what it is given.
 import { Button, Glyph } from "@wardenx/ui";
+import { useEffect, useRef } from "react";
 import type { FormEvent, JSX, KeyboardEvent, RefObject } from "react";
 import { AttachButton, AttachmentChips } from "./attachment-composer";
+import type { ClinicalLinkCandidateSource, DraftClinicalLink } from "./clinical-link-kinds";
+import {
+  ClinicalLinkPicker,
+  ClinicalLinkTray,
+  triggerIndex,
+  useClinicalLinkPicker,
+} from "./clinical-link-picker";
 import { ComposerFooter } from "./composer-footer";
 import { DraftSyncNotice } from "./draft-conflict-prompt";
 import { MentionMenu, mentionOptionId } from "./mention-menu";
@@ -32,6 +40,12 @@ export interface ThreadComposerProps {
   setDraft: (draft: string) => void;
   draftReferences: MessageReferenceInput[];
   setDraftReferences: (references: MessageReferenceInput[]) => void;
+  /** WP 3.2: links chosen for this draft, and how to change them. */
+  draftLinks: readonly DraftClinicalLink[];
+  addDraftLink: (link: DraftClinicalLink) => void;
+  removeDraftLink: (link: DraftClinicalLink) => void;
+  /** Overrides the default candidate source (the owning modules' patient-scoped list routes). */
+  linkCandidateSource?: ClinicalLinkCandidateSource;
   uploads: AttachmentUploads;
   sending: boolean;
   send: (event?: FormEvent) => Promise<void>;
@@ -65,6 +79,10 @@ export function ThreadComposer({
   setDraft,
   draftReferences,
   setDraftReferences,
+  draftLinks,
+  addDraftLink,
+  removeDraftLink,
+  linkCandidateSource,
   uploads,
   sending,
   send,
@@ -84,6 +102,52 @@ export function ThreadComposer({
   addToConversation,
   dismissMentionAdd,
 }: ThreadComposerProps): JSX.Element {
+  // Links need a patient scope: only a care-team conversation has one.
+  const linkPicker = useClinicalLinkPicker(
+    channel.kind === "care_team" ? channel.subjectId : null,
+    linkCandidateSource,
+  );
+  // Where the `#`/`+` was typed, so closing the picker puts the caret back there instead of at the end.
+  const triggerAtRef = useRef<number | null>(null);
+  const pickerOpen = linkPicker.open;
+  // The swallowed `#`/`+`, and whether a record was chosen: closing the picker without a choice gives the symbol back.
+  const triggerCharRef = useRef<string | null>(null);
+  const linkChosenRef = useRef(false);
+  const pendingCaretRef = useRef<number | null>(null);
+  const latestDraft = useRef({ draft, draftReferences });
+  latestDraft.current = { draft, draftReferences };
+  // A channel switch needs no reset here: ConversationThread is keyed by channel, so the picker remounts closed.
+  useEffect(() => {
+    if (pickerOpen) return;
+    const at = triggerAtRef.current;
+    const char = triggerCharRef.current;
+    if (at !== null && char !== null && !linkChosenRef.current) {
+      const { draft: current, draftReferences: refs } = latestDraft.current;
+      const restored = current.slice(0, at) + char + current.slice(at);
+      setDraftReferences(reconcileReferences(current, restored, refs));
+      setDraft(restored);
+      pendingCaretRef.current = at + char.length;
+    }
+    triggerAtRef.current = null;
+    triggerCharRef.current = null;
+    linkChosenRef.current = false;
+  }, [pickerOpen, setDraft, setDraftReferences]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs after the restored symbol lands in the textarea
+  useEffect(() => {
+    const caret = pendingCaretRef.current;
+    if (caret === null) return;
+    pendingCaretRef.current = null;
+    textareaRef.current?.setSelectionRange(caret, caret);
+  }, [draft]);
+  function restoreComposerFocus(): void {
+    const box = textareaRef.current;
+    box?.focus();
+    const at = triggerAtRef.current;
+    if (box && at !== null) {
+      const caret = Math.min(at, box.value.length);
+      box.setSelectionRange(caret, caret);
+    }
+  }
   return composerHidden ? (
     <output className="wx-messaging-archived">
       <Glyph name="lock" size={16} />
@@ -120,11 +184,27 @@ export function ThreadComposer({
               : undefined
           }
           onChange={(event) => {
-            const next = event.target.value;
+            const typed = event.target.value;
+            const cursorAt = event.target.selectionStart ?? typed.length;
+            // `#` / `+` at the start of a word opens the link picker instead of landing in the text.
+            // Not mid-composition (IME), and not a paste: only a typed character counts.
+            const inputType = (event.nativeEvent as { inputType?: string }).inputType;
+            const typedByHand =
+              !composingRef.current && (inputType === undefined || inputType === "insertText");
+            const trigger =
+              linkPicker.enabled && typedByHand ? triggerIndex(draft, typed, cursorAt) : null;
+            const next =
+              trigger === null ? typed : typed.slice(0, trigger) + typed.slice(trigger + 1);
+            if (trigger !== null) {
+              triggerAtRef.current = trigger;
+              triggerCharRef.current = typed.charAt(trigger);
+              linkChosenRef.current = false;
+              linkPicker.setOpen(true);
+            }
             const nextReferences = reconcileReferences(draft, next, draftReferences);
             setDraftReferences(nextReferences);
             setDraft(next);
-            const cursor = event.target.selectionStart ?? next.length;
+            const cursor = trigger === null ? cursorAt : trigger;
             setMentionQuery(activeMentionQuery(next, cursor, nextReferences));
             dismissMentionAdd();
             if (sendError) clearSendError();
@@ -137,8 +217,26 @@ export function ThreadComposer({
             composingRef.current = false;
           }}
         />
+        <ClinicalLinkTray
+          links={draftLinks}
+          textEmpty={!draft.trim()}
+          onRemove={(link) => {
+            removeDraftLink(link);
+            textareaRef.current?.focus();
+          }}
+        />
         <AttachmentChips uploads={uploads} disabled={sending} attachButtonRef={attachButtonRef} />
         <AttachButton uploads={uploads} disabled={sending} buttonRef={attachButtonRef} />
+        <ClinicalLinkPicker
+          picker={linkPicker}
+          links={draftLinks}
+          disabled={sending}
+          onAdd={(link) => {
+            linkChosenRef.current = true;
+            addDraftLink(link);
+          }}
+          onClosed={restoreComposerFocus}
+        />
         <TemplatePicker
           disabled={sending}
           onInsert={onInsertSavedReply}

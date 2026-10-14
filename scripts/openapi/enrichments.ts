@@ -1254,6 +1254,7 @@ import {
   AlertDeliveriesQuerySchema as M36AlertDeliveriesQuerySchema,
   AlertDeliveriesResponseSchema as M36AlertDeliveriesResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/admin-alert-deliveries-routes";
+import { ClinicalLinkResolveResponseSchema as M36ClinicalLinkResolveResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/clinical-link-typebox";
 import {
   DraftQuerySchema as M36DraftQuerySchema,
   DraftResponseSchema as M36DraftResponseSchema,
@@ -9072,6 +9073,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Patient context panel (WP 3.1): a read-only projection through the owning modules' seams. Each tile re-checks that module's permission on the request; a tile the caller may not see is ABSENT (never null/403) and its source is not read; a failing seam makes only its own tile `unavailable`; `as_of` is when the panel read the source. Read-audited against the patient.",
     response: M36PatientContextResponseSchema,
+  },
+  "GET /api/v1/messaging/clinical-links/:linkId/resolve": {
+    summary:
+      "Open a message's clinical link (WP 3.2): READ-THROUGH, GET only. Requires messaging.read and that the caller can view the message's channel, then re-runs the linked record's own permission + scope NOW on the live `linkSummary`. Missing, forbidden, other-tenant, erased and failing sources, a hidden channel and a deleted message are ONE answer, `{state:\"unavailable\"}`; 404 only when the tenant flag `messaging.clinical_links` is off. `as_of` is when M36 read the source. Read-audited (resource = the link).",
+    response: M36ClinicalLinkResolveResponseSchema,
   },
   "GET /api/v1/messaging/channels/:id/search": {
     summary:

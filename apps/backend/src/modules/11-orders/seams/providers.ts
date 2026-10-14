@@ -146,6 +146,12 @@ export function createOrderProvider(store: OrderSeamStore): OrderProvider {
     getOrder(input) {
       return store.getOrder(input.orderId);
     },
+    async linkSummary(organizationId, id) {
+      // Fail closed: no tenant or no id means no answer.
+      if (!organizationId?.trim()) throw new Error("linkSummary: organizationId required");
+      if (!id?.trim()) throw new Error("linkSummary: id required");
+      return store.linkSummary(organizationId, id);
+    },
     async findActiveOrder(input) {
       const all = await store.ordersForPatient(input.patientId);
       const covers = (o: OrderRecordDto): boolean =>

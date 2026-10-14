@@ -268,4 +268,38 @@ describe.skipIf(!DB_URL)("M17 nextScheduledVisitForPatient — LIVE Postgres as 
     );
     expect(JSON.stringify(next)).not.toContain("SECRET-NOTE");
   });
+
+  describe("linkSummary (M36 WP 3.2 clinical link)", () => {
+    it("finds a visit: 4 keys only, scheduled start as occurredAt, no scheduler note leaked", async () => {
+      await clearVisits();
+      const id = await seedVisit(ORG_A, PATIENT, at(3), "published");
+      const out = await store.linkSummary(ORG_A, id);
+      expect(out).toEqual({
+        id,
+        patientId: PATIENT,
+        status: "published",
+        occurredAt: at(3).toISOString(),
+      });
+      expect(Object.keys(out ?? {}).sort()).toEqual(["id", "occurredAt", "patientId", "status"]);
+      expect(JSON.stringify(out)).not.toContain("SECRET-NOTE");
+    });
+
+    it("resolves a past, terminal-status visit too (a link outlives the schedule)", async () => {
+      await clearVisits();
+      const id = await seedVisit(ORG_A, PATIENT, at(-72), "completed");
+      expect((await store.linkSummary(ORG_A, id))?.status).toBe("completed");
+    });
+
+    it("returns null for an unknown id", async () => {
+      await clearVisits();
+      expect(await store.linkSummary(ORG_A, "99999999-9999-9999-9999-999999999999")).toBeNull();
+    });
+
+    it("cross-tenant: org B's visit id is null under org A, found under org B", async () => {
+      await clearVisits();
+      const bVisit = await seedVisit(ORG_B, PATIENT, at(2), "published");
+      expect(await store.linkSummary(ORG_A, bVisit)).toBeNull();
+      expect((await store.linkSummary(ORG_B, bVisit))?.id).toBe(bVisit);
+    });
+  });
 });

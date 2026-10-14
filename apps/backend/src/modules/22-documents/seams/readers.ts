@@ -65,6 +65,21 @@ export function createDocumentReader(store: DocumentReaderStore): DocumentReader
     async documentMetadata({ documentId, organizationId }) {
       return store.documentMetadata({ documentId, organizationId });
     },
+    async linkSummary(organizationId, id) {
+      // Fail closed: no tenant or no id means no answer, never a guessed one.
+      if (!organizationId?.trim()) throw new Error("linkSummary: organizationId required");
+      if (!id?.trim()) throw new Error("linkSummary: id required");
+      const row = await store.linkSummaryForDocument({ documentId: id, organizationId });
+      // A destroyed or legal-hold document is withheld like a missing one: its lifecycle state is itself sensitive and a
+      // destroyed record must not be linkable. `active` and `superseded` (still a real, readable record) resolve.
+      if (!row || row.status === "destroyed_tombstone" || row.status === "legal_hold") return null;
+      return {
+        id: row.documentId,
+        patientId: row.patientId,
+        status: row.status,
+        occurredAt: row.createdAt,
+      };
+    },
     async activeVersionLink({ documentId, documentVersionId, organizationId }) {
       return store.activeVersionLink({ documentId, documentVersionId, organizationId });
     },

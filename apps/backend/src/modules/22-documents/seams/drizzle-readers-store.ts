@@ -16,7 +16,7 @@
 // M21 precedent); the `organizationId` the port carries is ASSERTED via the explicit predicate as
 // the second wall, never used to switch tenants.
 import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContextFromRequest } from "@wardenx/tenancy";
+import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
 import { DegradedError } from "@wardenx/types";
 import type { DocumentDigest, IntakeMetrics, ProvenanceRecord } from "@wardenx/types";
 import { and, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
@@ -166,6 +166,31 @@ export function createDrizzleDocumentReaderStore(db: DbClient): DocumentReaderSt
           .where(and(eq(DOC.organizationId, args.organizationId), eq(DOC.id, args.documentId)))
           .limit(1);
         return rows[0] ? toDigest(rows[0]) : null;
+      });
+    },
+
+    async linkSummaryForDocument(args) {
+      // Org-explicit (own tenant context; the M36 caller may not be a request). Columns: no title.
+      return withOrgContext(db, { organizationId: args.organizationId, userId: "" }, async (tx) => {
+        const [row] = await (tx as unknown as DbClient)
+          .select({
+            documentId: DOC.id,
+            patientId: DOC.patientId,
+            status: DOC.status,
+            createdAt: DOC.createdAt,
+          })
+          .from(DOC)
+          // Explicit second wall behind RLS.
+          .where(and(eq(DOC.organizationId, args.organizationId), eq(DOC.id, args.documentId)))
+          .limit(1);
+        return row
+          ? {
+              documentId: row.documentId,
+              patientId: row.patientId,
+              status: row.status as DocumentDigest["status"],
+              createdAt: row.createdAt.toISOString(),
+            }
+          : null;
       });
     },
 

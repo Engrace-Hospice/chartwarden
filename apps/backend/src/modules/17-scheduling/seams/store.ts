@@ -10,6 +10,7 @@
 // metadata carries NO clinical free-text (the encounter is M8's, the scheduler-internal notes never cross the
 // PortalVisitReader projection) — only visit times, ids, and the lay-language portal summary cross.
 import type {
+  ClinicalLinkSummary,
   IsoDate,
   IsoInstant,
   MembershipId,
@@ -69,6 +70,8 @@ export interface SchedulingSeamStore {
     patientId: PatientId,
     asOfIso: IsoInstant,
   ): Promise<VisitDto | null>;
+  /** M36 clinical link (WP 3.2): ids + status + scheduled start only. Org-explicit; null = no such visit in the org. */
+  linkSummary(organizationId: string, id: string): Promise<ClinicalLinkSummary | null>;
   // ── assignment reads (VisitAssignmentReader) ───────────────────────────────────────────────────────────
   activeAssignmentsForMembershipOnDate(
     membershipId: MembershipId,
@@ -172,6 +175,17 @@ export function createInMemorySchedulingSeamStore(seed: SchedulingSeamSeed = {})
           )
           .sort((a, b) => a.scheduledStartedAt.localeCompare(b.scheduledStartedAt))[0];
         return next ?? null;
+      },
+      async linkSummary(organizationId, id) {
+        const v = visits.find((x) => x.organizationId === organizationId && x.id === id);
+        return v
+          ? {
+              id: v.id,
+              patientId: v.patientId,
+              status: v.status,
+              occurredAt: v.scheduledStartedAt,
+            }
+          : null;
       },
       async activeAssignmentsForMembershipOnDate(membershipId, date) {
         return visits

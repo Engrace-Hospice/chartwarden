@@ -3,7 +3,7 @@ import { useApiClient } from "@wardenx/ui";
 import { useCallback, useRef, useState } from "react";
 import type { FormEvent, MutableRefObject } from "react";
 import { apiErrorCode, toSentAttachments } from "./attachment-utils";
-import { draftToRichBody } from "./draft-to-rich-body";
+import { type ClinicalLinkRef, draftToRichBody } from "./draft-to-rich-body";
 import { type SendBody, buildSendBody, referenceInput } from "./message-send-body";
 import type { Message, MessageAttachment, MessageReferenceInput } from "./messaging-types";
 import {
@@ -16,6 +16,11 @@ import type { SendAttempt } from "./messaging-utils";
 import type { AttachmentUploads } from "./use-attachment-upload";
 
 const SEND_FAILED_MESSAGE = "Message could not be sent. Your draft has been preserved.";
+/** The server answers every refused link (missing, forbidden, erased, flag off) with the same generic code. */
+const CLINICAL_LINK_REFUSED_MESSAGE = "That record can't be linked.";
+/** The sanitiser refused a draft that carries links; sending its plain text would silently drop them. */
+const CLINICAL_LINK_NOT_ATTACHABLE_MESSAGE =
+  "Couldn't attach the linked record. Shorten the message or remove the link and try again.";
 const ATTACHMENT_NOT_BINDABLE_MESSAGE =
   "One or more files can no longer be attached. Remove them and attach again. Your draft has been preserved.";
 
@@ -44,6 +49,8 @@ interface UseMessageSenderInput {
   archived: boolean;
   draft: string;
   draftReferences: readonly MessageReferenceInput[];
+  /** WP 3.2: clinical links chosen for this draft (ids only). */
+  draftLinks?: readonly ClinicalLinkRef[];
   uploads: AttachmentUploads;
   /** The thread's generation: bumped on channel switch and unmount, so a late reply is dropped. */
   generationRef: MutableRefObject<number>;
@@ -73,6 +80,7 @@ export function useMessageSender({
   archived,
   draft,
   draftReferences,
+  draftLinks = [],
   uploads,
   generationRef,
   onSent,
@@ -107,13 +115,25 @@ export function useMessageSender({
     const references = draftReferences
       .filter((reference) => reference.end <= submitted.length)
       .map(referenceInput);
-    const richBody = draftToRichBody(submitted, draftReferences);
+    const richBody = draftToRichBody(submitted, draftReferences, draftLinks);
+    // Links ride only in the structured body: without one the send would succeed minus the links. Keep draft and tray.
+    if (draftLinks.length > 0 && !richBody) {
+      setSendError(CLINICAL_LINK_NOT_ATTACHABLE_MESSAGE);
+      return;
+    }
     // WP 1.2: one stable id pair per composed message, reused on retry (see sendAttemptFor).
     const attachmentIds = uploads.sendableIds;
     const sentAttachments = toSentAttachments(uploads.chips);
     const attempt = sendAttemptFor(
       sendAttemptRef.current,
-      JSON.stringify([channelId, parentMessageId ?? null, submitted, references, attachmentIds]),
+      JSON.stringify([
+        channelId,
+        parentMessageId ?? null,
+        submitted,
+        references,
+        attachmentIds,
+        draftLinks.map((l) => [l.kind, l.entityId]),
+      ]),
     );
     sendAttemptRef.current = attempt;
     const requestBody = buildSendBody({
@@ -199,9 +219,14 @@ export function useMessageSender({
     // same key would replay the failure. Keep the key only when no response arrived (lost reply).
     if (response && response.status >= 400) sendAttemptRef.current = rotateIdempotencyKey(attempt);
     if (error || !data) {
-      const notBindable = apiErrorCode(error) === "ATTACHMENT_NOT_BINDABLE";
+      const code = apiErrorCode(error);
+      const notBindable = code === "ATTACHMENT_NOT_BINDABLE";
       setSendError(
-        notBindable ? ATTACHMENT_NOT_BINDABLE_MESSAGE : apiErrorMessage(error, SEND_FAILED_MESSAGE),
+        notBindable
+          ? ATTACHMENT_NOT_BINDABLE_MESSAGE
+          : code === "CLINICAL_LINK_NOT_AVAILABLE"
+            ? CLINICAL_LINK_REFUSED_MESSAGE
+            : apiErrorMessage(error, SEND_FAILED_MESSAGE),
       );
       // Flag which chips went bad (blocked, gone) so the user knows what to remove; the others stay.
       if (notBindable) void uploads.recheck();

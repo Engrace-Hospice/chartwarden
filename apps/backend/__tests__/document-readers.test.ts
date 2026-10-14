@@ -159,6 +159,59 @@ describe("DocumentReader", () => {
   });
 });
 
+describe("DocumentReader.linkSummary (M36 WP 3.2)", () => {
+  const SEEDED: DocumentReaderSeed = {
+    documents: [
+      digest({ documentId: "d1", createdAt: "2026-06-20T00:00:00.000Z", title: "Jane Doe NOR" }),
+      digest({
+        documentId: "d-old",
+        createdAt: "2026-06-01T00:00:00.000Z",
+        status: "superseded",
+      }),
+      digest({ documentId: "d-org", createdAt: "2026-06-02T00:00:00.000Z", patientId: null }),
+      digest({
+        documentId: "d-gone",
+        createdAt: "2026-06-03T00:00:00.000Z",
+        status: "destroyed_tombstone",
+      }),
+      digest({ documentId: "d-hold", createdAt: "2026-06-04T00:00:00.000Z", status: "legal_hold" }),
+    ],
+  };
+  const reader = () => createDocumentReader(createInMemoryDocumentReaderStore(SEEDED).store);
+
+  it("withholds a destroyed or legal-hold document exactly like a missing one", async () => {
+    expect(await reader().linkSummary(ORG, "d-gone")).toBeNull();
+    expect(await reader().linkSummary(ORG, "d-hold")).toBeNull();
+  });
+
+  it("returns exactly id, patientId, status, occurredAt (no title)", async () => {
+    const r = await reader().linkSummary(ORG, "d1");
+    expect(r).toEqual({
+      id: "d1",
+      patientId: "pat-1",
+      status: "active",
+      occurredAt: "2026-06-20T00:00:00.000Z",
+    });
+    expect(Object.keys(r ?? {}).sort()).toEqual(["id", "occurredAt", "patientId", "status"]);
+    expect(JSON.stringify(r)).not.toContain("Jane");
+  });
+
+  it("returns null for an unknown id and for another org's document", async () => {
+    expect(await reader().linkSummary(ORG, "ghost")).toBeNull();
+    expect(await reader().linkSummary("org-2", "d1")).toBeNull();
+  });
+
+  it("does not hide a superseded document and passes a null patient through", async () => {
+    expect((await reader().linkSummary(ORG, "d-old"))?.status).toBe("superseded");
+    expect((await reader().linkSummary(ORG, "d-org"))?.patientId).toBeNull();
+  });
+
+  it("throws on a blank org or id", async () => {
+    await expect(reader().linkSummary("", "d1")).rejects.toThrow(/organizationId/);
+    await expect(reader().linkSummary(ORG, " ")).rejects.toThrow(/id required/);
+  });
+});
+
 describe("PortalDocumentReader", () => {
   function makePortal(seed = SEED) {
     const { store } = createInMemoryDocumentReaderStore(seed);

@@ -57,6 +57,7 @@ import { createDbAnnouncementService } from "../src/modules/36-messaging/announc
 import type { AttachmentStoragePort } from "../src/modules/36-messaging/attachments/attachment-ports";
 import { createBuiltinScanner } from "../src/modules/36-messaging/attachments/attachment-scanners";
 import { createAttachmentService } from "../src/modules/36-messaging/attachments/attachment-service-db";
+import { createDbClinicalLinkStore } from "../src/modules/36-messaging/clinical-link/clinical-link-store-db";
 import { createDbDraftService } from "../src/modules/36-messaging/drafts/draft-service-db";
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
 import {
@@ -146,6 +147,9 @@ const ROUTES: Record<string, Verdict> = {
   // WP 3.1 patient context panel: per-tile permission re-check; a caller with no tile access gets an empty projection for
   // a real and a random patient alike (asserted below). Tile DATA isolation rests on each owning seam's RLS.
   "GET /api/v1/messaging/patients/:patientId/context": { kind: "idor" },
+  // WP 3.2 clinical links: the id is a link's; org B, an in-org non-member, a hidden source and a random id all get the
+  // identical `{state:"unavailable"}` (asserted below), and the source seam is never consulted for them.
+  "GET /api/v1/messaging/clinical-links/:linkId/resolve": { kind: "idor" },
   // Admin screens PR 1a: org_admin member list + archive; attacked in m36-channel-admin.live.test.ts.
   "GET /api/v1/messaging/channels/:id/members": { kind: "idor" },
   "POST /api/v1/messaging/channels/:id/archive": { kind: "idor" },
@@ -235,6 +239,8 @@ const REGISTRAR_FILES = [
   "presence-typebox.ts", // schemas only
   "global-search-settings-routes.ts", // WP 2.7b C4 tenant global search switch
   "global-search-settings-typebox.ts", // schemas only
+  "clinical-link-routes.ts", // WP 3.2 link resolve, mounted by registerMessagingRoutes
+  "clinical-link-typebox.ts", // schemas only
   "patient-context-routes.ts", // WP 3.1 context panel, mounted by registerMessagingRoutes
   "patient-context-typebox.ts", // schemas only
   "template-routes.ts",
@@ -328,6 +334,9 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
   let dmB: string;
   let msgDmA: string;
   let msgLocA: string;
+  let linkA: string; // WP 3.2: a clinical link on a message in dmA
+  const LINK_SOURCE = randomUUID();
+  let linkSourceCalls = 0;
   let endpointA: string;
   let alertA: string;
   let ruleA: string;
@@ -422,6 +431,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     "message_search_token",
     "attachment_access_event",
     "message_entity_reference",
+    "clinical_link",
     "message_reaction",
     "message_pin",
     "delivery_endpoint",
@@ -535,7 +545,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       sendEndpointVerificationCode: async () => undefined,
     });
 
-    const base = ["messaging.read", "messaging.send", "messaging.dm"];
+    const base = ["messaging.read", "messaging.send", "messaging.dm", "orders.read"];
     const self = ["notifications.preferences.manage", "notifications.endpoint.manage"];
     const adminKeys = [
       "messaging.manage_members",
@@ -569,6 +579,8 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       return service.canViewChannel(ctx.organizationId, ctx.userId, channelId);
     });
     registry.register(CHANNEL_MEMBER_ADMIN_PREDICATE, channelMemberAdminPredicate(service));
+    // WP 3.2: the attackers HOLD the order permission and pass this scope; only channel visibility / tenancy can stop them.
+    registry.register("caseload_or_scope", async (_ctx, target) => target.patientId === patientA);
     registerAbacRegistry(registry);
 
     app = buildServer({
@@ -579,6 +591,18 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     registerMessagingRoutes(app, {
       service,
       announcements: createDbAnnouncementService(handle.db),
+      clinicalLinks: {
+        isEnabled: async () => true,
+        sources: {
+          summary: async (_kind, _org, id) => {
+            linkSourceCalls += 1;
+            return id === LINK_SOURCE
+              ? { id, patientId: patientA as never, status: "active", occurredAt: null }
+              : null;
+          },
+        },
+        store: createDbClinicalLinkStore(handle.db),
+      },
     });
     const blobs = new Map<string, Uint8Array>();
     const fakeStorage: AttachmentStoragePort = {
@@ -689,6 +713,30 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         body: SECRET_BODY,
       })
     ).messageId;
+    // WP 3.2: a message in A's private DM that links an order (the link row is written by the real write core).
+    const linkMsg = (
+      await service.sendMessage(orgA, {
+        channelId: dmA,
+        authorUserId: u1.userId,
+        body: "[linked record]",
+        bodyKind: "rich",
+        richBody: {
+          schemaVersion: 1,
+          doc: {
+            type: "doc",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "clinicalLink", kind: "order", entityId: LINK_SOURCE }],
+              },
+            ],
+          },
+        } as never,
+        clinicalLinks: [{ kind: "order", sourceId: LINK_SOURCE, patientId: patientA }],
+      })
+    ).messageId;
+    linkA = (await admin.query("SELECT id FROM clinical_link WHERE message_id=$1", [linkMsg]))
+      .rows[0].id as string;
     await service.editMessage(orgA, {
       userId: u1.userId,
       messageId: msgDmA,
@@ -1629,6 +1677,28 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       const route = "POST /api/v1/messaging/patients/:patientId/care-team-channel";
       await expectNoOracle(route, bUser, { patientId: patientA });
       await expectNoOracle(route, outsider, { patientId: patientA });
+    });
+    it("WP 3.2: org B and an in-org non-member get the identical `unavailable` for A's link as for a random id, and A's source seam is never consulted", async () => {
+      const route = "GET /api/v1/messaging/clinical-links/:linkId/resolve";
+      const member = await call(route, u2, { linkId: linkA });
+      expect(member.json()).toMatchObject({
+        state: "ok",
+        kind: "order",
+        link: `/orders/${LINK_SOURCE}`,
+      });
+      for (const attacker of [bUser, outsider, adminB]) {
+        attackers.add(attacker.name);
+        const consulted = linkSourceCalls;
+        const real = await call(route, attacker, { linkId: linkA });
+        const ctl = await call(route, attacker, { linkId: randomUUID() });
+        expect(real.statusCode).toBe(200);
+        expect(shape(real)).toBe(shape(ctl));
+        expect(real.json()).toEqual({ state: "unavailable" });
+        expect(linkSourceCalls, `${attacker.name} reached the source seam`).toBe(consulted);
+        expectNoLeak(real.body, attacker, `${attacker.name} ${route}`);
+        expect(real.body).not.toContain(LINK_SOURCE);
+        expect(real.body).not.toContain(patientA);
+      }
     });
     it("the WP 3.1 context panel gives org B and an in-org outsider the same empty projection for A's patient as for a random id", async () => {
       const route = "GET /api/v1/messaging/patients/:patientId/context";

@@ -10,6 +10,7 @@
 // tests can exercise both the entitled and the redacted paths.
 import type {
   CarePlanCodeUsageRecord,
+  ClinicalLinkSummary,
   CarePlanId,
   IsoInstant,
   PatientId,
@@ -81,6 +82,9 @@ export interface CarePlanReaderStore {
     organizationId: string,
     codes: readonly { readonly systemId: string; readonly code: string }[],
   ): Promise<readonly CarePlanCodeUsageRecord[]>;
+
+  /** M36 clinical link: id, patient, status, updated_at of ONE plan in `organizationId`; null if absent. Org-explicit. */
+  linkSummary(organizationId: string, id: CarePlanId): Promise<ClinicalLinkSummary | null>;
 }
 
 // ── in-memory slice store ─────────────────────────────────────────────────────────────────────────
@@ -91,6 +95,8 @@ export interface CarePlanReaderSeed {
   readonly clocks?: readonly CarePlanClockRecord[];
   /** Problem-list code usage the slice serves M38's remediation rollup (filtered by the caller's set). */
   readonly codeUsage?: readonly CarePlanCodeUsageRecord[];
+  /** Plans the by-id link read serves, each tagged with its owning org. */
+  readonly links?: readonly (ClinicalLinkSummary & { readonly organizationId: string })[];
 }
 
 /** An in-memory {@link CarePlanReaderStore} for the slice/tests — no DB, deterministic, RLS-free. */
@@ -100,6 +106,7 @@ export function createInMemoryCarePlanReaderStore(seed: CarePlanReaderSeed = {})
   const elements = seed.elements ?? [];
   const clocks = seed.clocks ?? [];
   const codeUsage = seed.codeUsage ?? [];
+  const links = seed.links ?? [];
   return {
     store: {
       async activeCarePlanElements(patientId, _admissionId) {
@@ -116,6 +123,12 @@ export function createInMemoryCarePlanReaderStore(seed: CarePlanReaderSeed = {})
         // Same filter the SQL applies, so a seeded row only surfaces when the caller asked for its code.
         const wanted = new Set(codes.map((c) => `${c.systemId} ${c.code}`));
         return codeUsage.filter((r) => wanted.has(`${r.systemId} ${r.code}`));
+      },
+      async linkSummary(organizationId, id) {
+        const hit = links.find((l) => l.organizationId === organizationId && l.id === id);
+        if (!hit) return null;
+        const { organizationId: _org, ...summary } = hit;
+        return summary;
       },
     },
   };

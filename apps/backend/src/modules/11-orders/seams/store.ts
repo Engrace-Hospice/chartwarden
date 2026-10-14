@@ -16,6 +16,7 @@
 import { DEFAULT_VERBAL_POLICY, type VerbalDeadlinePolicy } from "@wardenx/orders";
 import type {
   AdmissionId,
+  ClinicalLinkSummary,
   IsoInstant,
   OrderDiscontinuationDto,
   OrderDiscontinuationId,
@@ -101,6 +102,8 @@ export interface InsertDiscontinuationInput {
 export interface OrderSeamStore {
   // ── reads (OrderProvider) ──────────────────────────────────────────────────────────────────────────
   getOrder(orderId: OrderRecordId): Promise<OrderRecordDto | null>;
+  /** M36 WP 3.2 - org-explicit (opens its own tenant context); the 4 link columns only. */
+  linkSummary(organizationId: string, id: string): Promise<ClinicalLinkSummary | null>;
   ordersForPatient(patientId: PatientId): Promise<ReadonlyArray<OrderRecordDto>>;
   ordersForAdmission(admissionId: AdmissionId): Promise<ReadonlyArray<OrderRecordDto>>;
   ordersForTriggeringAssessment(assessmentId: string): Promise<ReadonlyArray<OrderRecordDto>>;
@@ -151,6 +154,8 @@ export interface VerbalSeedRow extends VerbalTimeliness {}
 export interface OrderSeamSeed {
   /** Order rows the reads resolve (any order; filtered/projected per call). */
   readonly orders?: readonly OrderRecordDto[];
+  /** Owning organization per order id (`linkSummary` is org-explicit; the DTO carries no org). */
+  readonly orderOrganizations?: Readonly<Record<string, string>>;
   /** Discontinuation rows keyed by their `orderId` (`getDiscontinuationReason`). */
   readonly discontinuations?: readonly OrderDiscontinuationDto[];
   /** Verbal-order timeliness rows keyed by their `orderId` (`getVerbalOrderTimeliness`). */
@@ -187,6 +192,17 @@ export function createInMemoryOrderSeamStore(seed: OrderSeamSeed = {}): { store:
     store: {
       async getOrder(orderId) {
         return orders.get(orderId) ?? null;
+      },
+      async linkSummary(organizationId, id) {
+        // The DTO carries no organization, so the seed names each order's org; an unlisted order is in no org.
+        const o = orders.get(id as OrderRecordId);
+        if (!o || seed.orderOrganizations?.[id] !== organizationId) return null;
+        return {
+          id: o.orderId,
+          patientId: o.patientId,
+          status: o.status,
+          occurredAt: o.signedAt ?? o.createdAt,
+        };
       },
       async ordersForPatient(patientId) {
         return [...orders.values()].filter((o) => o.patientId === patientId);

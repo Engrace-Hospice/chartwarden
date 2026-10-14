@@ -74,6 +74,8 @@ import { getSeam } from "../../bootstrap/index";
 import { projectAlertInboxPresentation } from "./alert-inbox-presentation";
 import { attachmentPreviewLabel } from "./attachment-preview-label";
 import { bindAttachmentsInTx, loadAttachmentViews } from "./attachments/attachment-service-db";
+import { assertLinksMatchBody } from "./clinical-link/clinical-link-service";
+import { reconcileClinicalLinksInTx } from "./clinical-link/clinical-link-store-db";
 import {
   MAX_VERIFICATION_ATTEMPTS,
   VERIFICATION_CODE_TTL_MS,
@@ -1349,6 +1351,7 @@ export function createDbMessagingRouteService(
       // WP 1.5: a message is valid with text OR an attachment. A blank body is stored as the empty string, sealed
       // like any other body, so edit/revision/idempotency/integrity treat it uniformly.
       const input = withValidMessageContent(rawInput);
+      const clinicalLinks = assertLinksMatchBody(input.richBody, input.clinicalLinks);
       const references = input.references ?? [];
       validateReferenceRanges(input.body, references);
       const candidates = references.length
@@ -1415,6 +1418,15 @@ export function createDbMessagingRouteService(
               attachmentIds: input.attachments.map((attachment) => attachment.attachmentId),
             });
           }
+          // WP 3.2: the link rows ride the message transaction; a refusal anywhere rolls both back.
+          if (clinicalLinks.length > 0) {
+            await reconcileClinicalLinksInTx(tx, {
+              orgId,
+              messageId,
+              authorUserId: input.authorUserId,
+              links: clinicalLinks,
+            });
+          }
           if (references.length > 0) {
             await tx.insert(MER).values(
               references.map((reference) => ({
@@ -1463,6 +1475,7 @@ export function createDbMessagingRouteService(
 
     // --- edit within the window (author only): re-encrypt + re-hash, status='edited' -----------
     async editMessage(orgId, input) {
+      const clinicalLinks = assertLinksMatchBody(input.richBody, input.clinicalLinks);
       await assertMessageChannelAccess(orgId, input.userId, input.messageId, true);
       const references = input.references ?? [];
       validateReferenceRanges(input.body, references);
@@ -1590,6 +1603,13 @@ export function createDbMessagingRouteService(
         await tx
           .delete(MER)
           .where(and(eq(MER.organizationId, orgId), eq(MER.messageId, input.messageId)));
+        // WP 3.2: links follow the new body exactly (dropped ones deleted, new ones inserted, unchanged ones untouched).
+        await reconcileClinicalLinksInTx(tx, {
+          orgId,
+          messageId: input.messageId,
+          authorUserId: input.userId,
+          links: clinicalLinks,
+        });
         if (references.length > 0) {
           // Edits never emit new mention alerts: this avoids duplicate/ambiguous clinical notices.
           // The same structural range validation still prevents stale tokens.

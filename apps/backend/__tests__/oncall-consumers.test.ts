@@ -399,6 +399,7 @@ describe("M19 §4.4 — the M17 VisitReader read-back", () => {
       visitsScheduledForMembershipOnDate: async () => [],
       completedVisitsForPatientSince: async () => [],
       nextScheduledVisitForPatient: async () => null,
+      linkSummary: async () => null,
       ...impl,
     } satisfies VisitReader);
   }

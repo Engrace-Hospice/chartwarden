@@ -158402,6 +158402,59 @@
                               }
                             }
                           },
+                          "clinicalLinks": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "link_id",
+                                "kind",
+                                "entity_id"
+                              ],
+                              "properties": {
+                                "link_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "anyOf": [
+                                    {
+                                      "const": "medication",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "order",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "care_plan",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "assessment",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "visit",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "document",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "idg_meeting",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "entity_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
                           "references": {
                             "type": "array",
                             "items": {
@@ -159719,6 +159772,59 @@
                             }
                           }
                         },
+                        "clinicalLinks": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "link_id",
+                              "kind",
+                              "entity_id"
+                            ],
+                            "properties": {
+                              "link_id": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "anyOf": [
+                                  {
+                                    "const": "medication",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "order",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "care_plan",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "assessment",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "visit",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "document",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "idg_meeting",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "entity_id": {
+                                "format": "uuid",
+                                "type": "string"
+                              }
+                            }
+                          }
+                        },
                         "references": {
                           "type": "array",
                           "items": {
@@ -160061,6 +160167,59 @@
                                       "type": "integer"
                                     }
                                   }
+                                }
+                              }
+                            }
+                          },
+                          "clinicalLinks": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "link_id",
+                                "kind",
+                                "entity_id"
+                              ],
+                              "properties": {
+                                "link_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "anyOf": [
+                                    {
+                                      "const": "medication",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "order",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "care_plan",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "assessment",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "visit",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "document",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "idg_meeting",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "entity_id": {
+                                  "format": "uuid",
+                                  "type": "string"
                                 }
                               }
                             }
@@ -160464,6 +160623,59 @@
                                       "type": "integer"
                                     }
                                   }
+                                }
+                              }
+                            }
+                          },
+                          "clinicalLinks": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "link_id",
+                                "kind",
+                                "entity_id"
+                              ],
+                              "properties": {
+                                "link_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "anyOf": [
+                                    {
+                                      "const": "medication",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "order",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "care_plan",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "assessment",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "visit",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "document",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "idg_meeting",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "entity_id": {
+                                  "format": "uuid",
+                                  "type": "string"
                                 }
                               }
                             }
@@ -161365,6 +161577,59 @@
                               }
                             }
                           },
+                          "clinicalLinks": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "link_id",
+                                "kind",
+                                "entity_id"
+                              ],
+                              "properties": {
+                                "link_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "anyOf": [
+                                    {
+                                      "const": "medication",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "order",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "care_plan",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "assessment",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "visit",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "document",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "idg_meeting",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "entity_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
                           "references": {
                             "type": "array",
                             "items": {
@@ -161509,6 +161774,138 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/clinical-links/{linkId}/resolve": {
+      "get": {
+        "operationId": "getApiV1MessagingClinicallinksByLinkIdResolve",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Open a message's clinical link (WP 3.2): READ-THROUGH, GET only. Requires messaging.read and that the caller can view the message's channel, then re-runs the linked record's own permission + scope NOW on the live `linkSummary`. Missing, forbidden, other-tenant, erased and failing sources, a hidden channel and a deleted message are ONE answer, `{state:\"unavailable\"}`; 404 only when the tenant flag `messaging.clinical_links` is off. `as_of` is when M36 read the source. Read-audited (resource = the link).",
+        "parameters": [
+          {
+            "name": "linkId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "state",
+                        "kind",
+                        "status",
+                        "occurred_at",
+                        "as_of",
+                        "link",
+                        "patient_id"
+                      ],
+                      "properties": {
+                        "state": {
+                          "const": "ok",
+                          "type": "string"
+                        },
+                        "kind": {
+                          "anyOf": [
+                            {
+                              "const": "medication",
+                              "type": "string"
+                            },
+                            {
+                              "const": "order",
+                              "type": "string"
+                            },
+                            {
+                              "const": "care_plan",
+                              "type": "string"
+                            },
+                            {
+                              "const": "assessment",
+                              "type": "string"
+                            },
+                            {
+                              "const": "visit",
+                              "type": "string"
+                            },
+                            {
+                              "const": "document",
+                              "type": "string"
+                            },
+                            {
+                              "const": "idg_meeting",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "occurred_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "as_of": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "link": {
+                          "type": "string"
+                        },
+                        "patient_id": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "state"
+                      ],
+                      "properties": {
+                        "state": {
+                          "const": "unavailable",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -163376,6 +163773,59 @@
                                           "type": "integer"
                                         }
                                       }
+                                    }
+                                  }
+                                }
+                              },
+                              "clinicalLinks": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "link_id",
+                                    "kind",
+                                    "entity_id"
+                                  ],
+                                  "properties": {
+                                    "link_id": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "anyOf": [
+                                        {
+                                          "const": "medication",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "order",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "care_plan",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "assessment",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "visit",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "document",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "idg_meeting",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "entity_id": {
+                                      "format": "uuid",
+                                      "type": "string"
                                     }
                                   }
                                 }

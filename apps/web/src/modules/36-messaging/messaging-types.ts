@@ -1,4 +1,4 @@
-import type { MessageReactionSummary, PollView, RichBody } from "@wardenx/types";
+import type { ClinicalLinkKind, MessageReactionSummary, PollView, RichBody } from "@wardenx/types";
 
 export type ChannelKind =
   | "care_team"
@@ -56,6 +56,8 @@ export interface Message {
   poll?: PollView;
   /** WP 1.5: absent on older payloads. `scanning` is only ever listed to the uploader. */
   attachments?: MessageAttachment[];
+  /** WP 3.2: ids of the clinical links in a rich body, to match a `clinicalLink` node to its link_id. No status or label. */
+  clinicalLinks?: { link_id: string; kind: ClinicalLinkKind; entity_id: string }[];
   /** Files this viewer cannot see yet (scanning for others, or withheld): a bare count, no detail. */
   hiddenAttachmentCount?: number;
 }
