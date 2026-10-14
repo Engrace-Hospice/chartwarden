@@ -18,14 +18,7 @@ export const PatientContextResponseSchema = Type.Object({
   // A tile the caller may not see is ABSENT, so every key is optional.
   tiles: Type.Object({
     status: Type.Optional(Tile(Type.Object({ status: Type.Union([Type.String(), Type.Null()]) }))),
-    care_team: Type.Optional(
-      Tile(
-        Type.Object({
-          member_count: Type.Integer(),
-          member_user_ids: Type.Array(Type.String()),
-        }),
-      ),
-    ),
+    care_team: Type.Optional(Tile(Type.Object({ member_count: Type.Integer() }))),
     allergies: Type.Optional(
       Tile(
         Type.Object({

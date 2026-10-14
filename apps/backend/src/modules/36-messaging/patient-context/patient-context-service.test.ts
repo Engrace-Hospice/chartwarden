@@ -68,17 +68,20 @@ describe("buildPatientContext", () => {
   });
 
   it("marks one tile unavailable when its seam throws and keeps the others", async () => {
+    const unavailable: string[] = [];
     const ctx = await buildPatientContext(
       { organizationId: ORG, patientId: PATIENT, allowed: ALL },
       ports({
         activeMedications: async () => {
           throw new Error("deny-stub");
         },
+        onTileUnavailable: (t) => unavailable.push(t),
       }),
     );
 
     expect(ctx?.tiles.medications).toMatchObject({ state: "unavailable" });
     expect(ctx?.tiles.status).toMatchObject({ state: "ok" });
+    expect(unavailable).toEqual(["medications"]);
   });
 
   it("treats an unreadable allergy list (null) as unavailable, never as no allergies", async () => {
@@ -113,5 +116,19 @@ describe("buildPatientContext", () => {
 
     expect(ctx).toEqual({ patient_id: PATIENT, tiles: {} });
     expect(read).toBe(false);
+  });
+
+  it("keeps the other tiles when the patient lookup itself throws", async () => {
+    const ctx = await buildPatientContext(
+      { organizationId: ORG, patientId: PATIENT, allowed: ALL },
+      ports({
+        findPatient: async () => {
+          throw new Error("deny-stub");
+        },
+      }),
+    );
+
+    expect(ctx?.tiles.status).toMatchObject({ state: "unavailable" });
+    expect(ctx?.tiles.medications).toMatchObject({ state: "ok", data: { active_count: 3 } });
   });
 });

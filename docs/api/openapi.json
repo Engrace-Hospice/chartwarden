@@ -162571,18 +162571,11 @@
                                 "data": {
                                   "type": "object",
                                   "required": [
-                                    "member_count",
-                                    "member_user_ids"
+                                    "member_count"
                                   ],
                                   "properties": {
                                     "member_count": {
                                       "type": "integer"
-                                    },
-                                    "member_user_ids": {
-                                      "type": "array",
-                                      "items": {
-                                        "type": "string"
-                                      }
                                     }
                                   }
                                 }

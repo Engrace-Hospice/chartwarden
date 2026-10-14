@@ -29,6 +29,8 @@ export interface PatientContextPorts {
     patientId: string,
   ): Promise<readonly MedicationOrderDto[]>;
   now(): Date;
+  /** Called with the tile name only (never the error text, which may carry PHI) when a tile degrades to unavailable. */
+  onTileUnavailable?(tile: PatientContextTile): void;
 }
 
 interface TileBase {
@@ -41,7 +43,7 @@ export type TileResult<T> =
 
 export interface PatientContextTiles {
   readonly status?: TileResult<{ status: PatientLifecycleStatus | null }>;
-  readonly care_team?: TileResult<{ member_count: number; member_user_ids: readonly string[] }>;
+  readonly care_team?: TileResult<{ member_count: number }>;
   readonly allergies?: TileResult<{
     entries: ReadonlyArray<{ allergen: string; severity: PatientAllergyEntry["severity"] }>;
   }>;
@@ -67,8 +69,14 @@ export async function buildPatientContext(
   const { organizationId: org, patientId, allowed } = req;
   if (allowed.size === 0) return { patient_id: patientId, tiles: {} };
 
-  const patient = await ports.findPatient(org, patientId);
-  if (!patient) return null;
+  // A failing lookup (DB error, unbound deny-stub) costs only the status tile; the other tiles read their own seams.
+  let patient: PatientIdentity | null | undefined;
+  try {
+    patient = await ports.findPatient(org, patientId);
+  } catch {
+    patient = undefined;
+  }
+  if (patient === null) return null;
 
   const link = `/patients/${patientId}`;
   const settle = async <T>(
@@ -81,15 +89,19 @@ export async function buildPatientContext(
       const data = await read();
       return [tile, { state: "ok", as_of: ports.now().toISOString(), data, link: tileLink }];
     } catch {
+      ports.onTileUnavailable?.(tile);
       return [tile, { state: "unavailable", link: tileLink }];
     }
   };
 
   const results = await Promise.all([
-    settle("status", link, async () => ({ status: patient.status ?? null })),
+    settle("status", link, async () => {
+      if (!patient) throw new Error("patient unreadable");
+      return { status: patient.status ?? null };
+    }),
     settle("care_team", link, async () => {
       const ids = await ports.careTeamMembers(org, patientId);
-      return { member_count: ids.length, member_user_ids: ids };
+      return { member_count: ids.length };
     }),
     settle("allergies", link, async () => {
       const list = await ports.activeAllergies(org, patientId);

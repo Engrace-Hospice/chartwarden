@@ -63762,7 +63762,6 @@ export interface operations {
                                 link: string;
                                 data: {
                                     member_count: number;
-                                    member_user_ids: string[];
                                 };
                             } | {
                                 /** @constant */

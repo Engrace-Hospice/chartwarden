@@ -56,6 +56,10 @@ const KEYS: Record<string, string[]> = {
   nurse: ["messaging.read", "patient.read", "prescribing.read"],
   aide: ["messaging.read", "patient.read"],
   outsider: ["messaging.read"],
+  // holds the keys but is out of scope for the patient (caseload_or_scope denies)
+  scopeless: ["messaging.read", "patient.read", "prescribing.read"],
+  // medication access without chart access
+  prescriber: ["messaging.read", "prescribing.read"],
 };
 
 function makeServer() {
@@ -69,7 +73,10 @@ function makeServer() {
     ).store,
   );
   const registry = createPredicateRegistry();
-  registry.register("caseload_or_scope", async (_ctx, target) => target.patientId === PATIENT);
+  registry.register(
+    "caseload_or_scope",
+    async (ctx, target) => ctx.userId !== "scopeless" && target.patientId === PATIENT,
+  );
   registerAbacRegistry(registry);
   const app = buildServer({
     db: fakeDb,
@@ -145,6 +152,22 @@ describe("GET /patients/:patientId/context", () => {
     const app = makeServer();
     expect((await get(app, null)).statusCode).toBe(401);
     expect((await get(app, "nurse", "nope")).statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("denies every tile to a user who holds the keys but fails the caseload scope", async () => {
+    const app = makeServer();
+    const res = await get(app, "scopeless");
+    expect(res.statusCode).toBe(200);
+    expect(res.json().tiles).toEqual({});
+    expect(medsCalls).toBe(0);
+    await app.close();
+  });
+
+  it("gives medication access alone only the medication tile", async () => {
+    const app = makeServer();
+    const res = await get(app, "prescriber");
+    expect(Object.keys(res.json().tiles)).toEqual(["medications"]);
     await app.close();
   });
 });

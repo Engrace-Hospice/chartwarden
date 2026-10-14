@@ -10,6 +10,9 @@
 // access cannot fetch the tile through this API. Break-glass is deliberately NOT honoured here: this is a convenience
 // projection, and an emergency grant must open the owning module's screen (which audits it), not a side door.
 // A caller who may see no tile gets the same empty answer for a missing patient as for a real one (no existence leak).
+// KNOWN LIMIT: `auditRead.fields` is static (the read-audit plugin takes one list per route), so the audit row names all
+// four tiles even when the caller was shown fewer, and a no-tile 200 is still audited against the param patient id.
+// That over-reports disclosure; it never under-reports.
 import { type GuardHandler, composeGuards, requireAbac, requirePermission } from "@wardenx/auth";
 import { ForbiddenError, NotFoundError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -91,13 +94,21 @@ export function registerPatientContextRoutes(
       if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
       const { patientId } = parse(PatientConversationParamsSchema, request.params);
 
+      // Tiles that share a guard (the three chart tiles) are evaluated once, not once per tile.
+      const verdicts = new Map<GuardHandler, boolean>();
       const allowed = new Set<PatientContextTile>();
       for (const tile of PATIENT_CONTEXT_TILES) {
-        if (await permits(TILE_GUARDS[tile], request)) allowed.add(tile);
+        const guard = TILE_GUARDS[tile];
+        if (!verdicts.has(guard)) verdicts.set(guard, await permits(guard, request));
+        if (verdicts.get(guard)) allowed.add(tile);
       }
       const context = await buildPatientContext(
         { organizationId: ctx.organizationId, patientId, allowed },
-        ports,
+        {
+          ...ports,
+          onTileUnavailable: (tile) =>
+            request.log.warn({ tile }, "patient context tile unavailable"),
+        },
       );
       if (!context) throw new NotFoundError("patient", patientId);
       return context;
