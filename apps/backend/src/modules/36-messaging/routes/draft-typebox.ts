@@ -1,12 +1,35 @@
 // apps/backend/src/modules/36-messaging/routes/draft-typebox.ts — WP 2.5 draft request/response schemas (kept apart
 // from draft-routes.ts so the OpenAPI emitter imports schemas only, not the auth stack).
 import { Type } from "@sinclair/typebox";
+import { SBAR_MAX_SECTION_CHARS } from "@wardenx/types";
 import { UUID_PATTERN } from "./messaging-typebox";
 
 const Id = Type.String({ minLength: 1, maxLength: 64 });
 
 /** A thread root is a message uuid: a malformed one is a 422 here, never a cast error in the service. */
 const RootId = Type.String({ pattern: UUID_PATTERN });
+
+/** An in-progress SBAR form: plain section text. The service re-checks bounds (422); the schema rejects extra keys. */
+const SbarSection = Type.String({ maxLength: SBAR_MAX_SECTION_CHARS });
+export const DraftSbarSchema = Type.Object(
+  {
+    urgencyHint: Type.Union([
+      Type.Literal("routine"),
+      Type.Literal("important"),
+      Type.Literal("urgent"),
+    ]),
+    sections: Type.Object(
+      {
+        situation: SbarSection,
+        background: SbarSection,
+        assessment: SbarSection,
+        recommendation: SbarSection,
+      },
+      { additionalProperties: false },
+    ),
+  },
+  { additionalProperties: false },
+);
 
 export const DraftQuerySchema = Type.Object({ parentMessageId: Type.Optional(RootId) });
 
@@ -25,6 +48,7 @@ export const SaveDraftBodySchema = Type.Object({
       { maxItems: 25 },
     ),
   ),
+  sbar: Type.Optional(DraftSbarSchema),
   /** Client-minted, stable per browser tab/device (a uuid kept in the tab's session). */
   deviceId: Type.String({ minLength: 1, maxLength: 64 }),
   /** The revision this client last saw; 0 when it has none. */
@@ -43,6 +67,7 @@ export const DraftViewSchema = Type.Object({
       end: Type.Integer(),
     }),
   ),
+  sbar: Type.Optional(DraftSbarSchema),
   revision: Type.Integer({ minimum: 1 }),
   deviceId: Type.String(),
   updatedAt: Type.String(),

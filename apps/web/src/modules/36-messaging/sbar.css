@@ -1,0 +1,150 @@
+/* M36 WP 3.3 - SBAR form (composer dialog), message block and admin panel. Tokens from the shared kit only. */
+.wx-sbar-form {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.25rem;
+}
+
+.wx-sbar-form h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.125rem;
+}
+
+.wx-sbar-notice {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-low);
+  color: var(--color-on-surface);
+  font-size: 0.8125rem;
+}
+
+.wx-sbar-field {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.wx-sbar-field label {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.wx-sbar-field textarea {
+  width: 100%;
+  min-height: 4.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+  color: var(--color-on-surface);
+  font: inherit;
+  resize: vertical;
+}
+
+.wx-sbar-field textarea[aria-invalid="true"] {
+  border-color: var(--color-error);
+}
+
+.wx-sbar-field textarea:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.wx-sbar-hint,
+.wx-sbar-count {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.75rem;
+}
+
+.wx-sbar-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.wx-sbar-error {
+  margin: 0;
+  color: var(--color-error);
+  font-size: 0.8125rem;
+}
+
+.wx-sbar-urgency {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+}
+
+.wx-sbar-urgency legend {
+  padding: 0 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.wx-sbar-urgency .wx-sbar-notice {
+  flex-basis: 100%;
+}
+
+.wx-sbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* message block */
+.wx-sbar-block {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-low);
+}
+
+.wx-sbar-block dl {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+}
+
+.wx-sbar-block dt {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-on-surface-variant);
+}
+
+.wx-sbar-block dd {
+  margin: 0;
+}
+
+.wx-sbar-urgency-label {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* admin panel */
+.wx-sbar-policy-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+
+.wx-sbar-policy-grid label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+}
+
+/* A restored or cancelled SBAR draft is waiting: text plus a glyph, never colour alone. */
+.wx-sbar-draft-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--color-on-surface);
+}

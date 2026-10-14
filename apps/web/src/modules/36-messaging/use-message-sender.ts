@@ -1,4 +1,9 @@
-import { type RichBody, richBodyMentions, richBodyToPlainText } from "@wardenx/types";
+import {
+  type RichBody,
+  type SbarIssue,
+  richBodyMentions,
+  richBodyToPlainText,
+} from "@wardenx/types";
 import { useApiClient } from "@wardenx/ui";
 import { useCallback, useRef, useState } from "react";
 import type { FormEvent, MutableRefObject } from "react";
@@ -13,6 +18,7 @@ import {
   sendAttemptFor,
 } from "./messaging-utils";
 import type { SendAttempt } from "./messaging-utils";
+import { SBAR_SEND_ERRORS, sbarIssuesFromError } from "./sbar-utils";
 import type { AttachmentUploads } from "./use-attachment-upload";
 
 const SEND_FAILED_MESSAGE = "Message could not be sent. Your draft has been preserved.";
@@ -94,6 +100,7 @@ export function useMessageSender({
   const [sendError, setSendError] = useState<string | null>(null);
   const sendAttemptRef = useRef<SendAttempt | null>(null);
   const sendInFlightRef = useRef(false);
+  const [sbarIssues, setSbarIssues] = useState<readonly SbarIssue[]>([]);
 
   /** Channel switch: forget the attempt, the latch and any shown error. */
   const resetSender = useCallback(() => {
@@ -101,29 +108,39 @@ export function useMessageSender({
     sendInFlightRef.current = false;
     setSending(false);
     setSendError(null);
+    setSbarIssues([]);
   }, []);
 
-  const clearSendError = useCallback(() => setSendError(null), []);
+  const clearSendError = useCallback(() => {
+    setSendError(null);
+    setSbarIssues([]);
+  }, []);
 
-  async function send(event?: FormEvent): Promise<void> {
+  /**
+   * `ready` (WP 3.3 SBAR) is a finished structured body from its own form: it replaces the draft, carries no draft
+   * mentions, links or files, and goes through the same attempt, outbox and error path as any other send.
+   */
+  async function send(event?: FormEvent, ready?: RichBody): Promise<void> {
     event?.preventDefault();
-    const submitted = draft;
+    const submitted = ready ? richBodyToPlainText(ready) : draft;
+    const links = ready ? [] : draftLinks;
+    const mentions = ready ? [] : draftReferences;
     // WP 1.5: text OR at least one sendable file (a still-scanning one counts, as before).
-    if (!submitted.trim() && uploads.sendableIds.length === 0) return;
+    if (!submitted.trim() && uploads.sendableIds.length === 0 && !ready) return;
     if (sending || sendInFlightRef.current || archived) return;
-    if (uploads.blocksSend) return;
-    const references = draftReferences
+    if (uploads.blocksSend && !ready) return;
+    const references = mentions
       .filter((reference) => reference.end <= submitted.length)
       .map(referenceInput);
-    const richBody = draftToRichBody(submitted, draftReferences, draftLinks);
+    const richBody = ready ?? draftToRichBody(submitted, mentions, links);
     // Links ride only in the structured body: without one the send would succeed minus the links. Keep draft and tray.
-    if (draftLinks.length > 0 && !richBody) {
+    if (links.length > 0 && !richBody) {
       setSendError(CLINICAL_LINK_NOT_ATTACHABLE_MESSAGE);
       return;
     }
     // WP 1.2: one stable id pair per composed message, reused on retry (see sendAttemptFor).
-    const attachmentIds = uploads.sendableIds;
-    const sentAttachments = toSentAttachments(uploads.chips);
+    const attachmentIds = ready ? [] : uploads.sendableIds;
+    const sentAttachments = ready ? [] : toSentAttachments(uploads.chips);
     const attempt = sendAttemptFor(
       sendAttemptRef.current,
       JSON.stringify([
@@ -132,7 +149,7 @@ export function useMessageSender({
         submitted,
         references,
         attachmentIds,
-        draftLinks.map((l) => [l.kind, l.entityId]),
+        links.map((l) => [l.kind, l.entityId]),
       ]),
     );
     sendAttemptRef.current = attempt;
@@ -160,7 +177,7 @@ export function useMessageSender({
             createdAt: new Date().toISOString(),
             body: submitted,
             ...(richBody ? { bodyDoc: richBody } : {}),
-            references: draftReferences,
+            references: mentions,
             attachments: [],
           },
         },
@@ -175,6 +192,7 @@ export function useMessageSender({
     const generation = generationRef.current;
     setSending(true);
     setSendError(null);
+    setSbarIssues([]);
     onIssued?.(submitted);
     // A hung connection counts as no response too (same timeout as the outbox's retries).
     const controller = new AbortController();
@@ -221,12 +239,15 @@ export function useMessageSender({
     if (error || !data) {
       const code = apiErrorCode(error);
       const notBindable = code === "ATTACHMENT_NOT_BINDABLE";
+      const sbarMessage = code ? SBAR_SEND_ERRORS[code] : undefined;
+      if (code === "SBAR_INVALID") setSbarIssues(sbarIssuesFromError(error));
       setSendError(
-        notBindable
-          ? ATTACHMENT_NOT_BINDABLE_MESSAGE
-          : code === "CLINICAL_LINK_NOT_AVAILABLE"
-            ? CLINICAL_LINK_REFUSED_MESSAGE
-            : apiErrorMessage(error, SEND_FAILED_MESSAGE),
+        sbarMessage ??
+          (notBindable
+            ? ATTACHMENT_NOT_BINDABLE_MESSAGE
+            : code === "CLINICAL_LINK_NOT_AVAILABLE"
+              ? CLINICAL_LINK_REFUSED_MESSAGE
+              : apiErrorMessage(error, SEND_FAILED_MESSAGE)),
       );
       // Flag which chips went bad (blocked, gone) so the user knows what to remove; the others stay.
       if (notBindable) void uploads.recheck();
@@ -234,19 +255,19 @@ export function useMessageSender({
       return;
     }
     sendAttemptRef.current = null;
-    uploads.reset();
+    if (!ready) uploads.reset();
     onSent({
       messageId: data.messageId,
       createdAt: data.createdAt,
       body: submitted,
       ...(richBody ? { bodyDoc: richBody } : {}),
-      references: draftReferences,
+      references: mentions,
       attachments: sentAttachments,
     });
     onSettled?.(true, submitted);
   }
 
-  return { send, sending, sendError, clearSendError, resetSender };
+  return { send, sending, sendError, sbarIssues, clearSendError, resetSender };
 }
 
 /** The optimistic row for a message the server just accepted. */

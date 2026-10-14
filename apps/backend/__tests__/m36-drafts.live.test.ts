@@ -167,6 +167,48 @@ describe.skipIf(!DB_URL)("WP 2.5 - message drafts - LIVE Postgres", () => {
     expect(Buffer.from(row.body_cipher).byteLength).toBeGreaterThan(29);
   });
 
+  it("seals the sbar with the body, keeps an sbar-only draft, and still decodes a document sealed without sbar", async () => {
+    await wipe();
+    const sbar = {
+      urgencyHint: "urgent" as const,
+      sections: {
+        situation: "Quillfeather SBAR situation text",
+        background: "",
+        assessment: "",
+        recommendation: "",
+      },
+    };
+    const saved = await save(alice, { body: "", sbar });
+    expect(saved?.sbar).toEqual(sbar);
+    expect((await drafts.getDraft(orgA, { userId: alice, channelId: chanA }))?.sbar).toEqual(sbar);
+    const [row] = await draftRows(orgA);
+    expect(Buffer.from(row.body_cipher).toString("utf8")).not.toContain("Quillfeather SBAR");
+    // Clearing the sbar while text remains drops the field; blank text and blank sbar discard the row.
+    expect((await save(alice, { baseRevision: 1 }))?.sbar).toBeUndefined();
+    expect(
+      await save(alice, {
+        body: "",
+        baseRevision: 2,
+        sbar: { ...sbar, sections: { ...sbar.sections, situation: " " } },
+      }),
+    ).toBeNull();
+    expect(await draftRows(orgA)).toHaveLength(0);
+
+    // A draft sealed by an older build (no sbar key) reads back with no sbar.
+    const legacy = await createMessageBodyCipher({ kek: KEK }).seal(
+      orgA,
+      JSON.stringify({ body: "legacy text", references: [] }),
+    );
+    await admin.query(
+      `INSERT INTO message_draft (organization_id, channel_id, user_id, body_cipher, device_id)
+       VALUES ($1,$2,$3,$4,'dev_old')`,
+      [orgA, chanA, alice, legacy.cipher],
+    );
+    const old = await drafts.getDraft(orgA, { userId: alice, channelId: chanA });
+    expect(old?.body).toBe("legacy text");
+    expect(old?.sbar).toBeUndefined();
+  });
+
   it("is invisible to a colleague in the same org: service, raw SQL as the colleague, and with no user context", async () => {
     await wipe();
     await save(alice);
@@ -347,6 +389,93 @@ describe.skipIf(!DB_URL)("WP 2.5 - message drafts - LIVE Postgres", () => {
       ),
     ).rejects.toThrow();
     expect((await draftRows(orgA))[0].user_id).toBe(alice);
+  });
+
+  it("an SBAR send strips only the sbar from the sender's draft; a plain send still deletes the slot", async () => {
+    await wipe();
+    const chan = (
+      await admin.query(
+        `INSERT INTO channel (organization_id, channel_kind, subject_id, title, retention_class)
+         VALUES ($1,'discipline',gen_random_uuid(),'sbar chan','care_related') RETURNING id`,
+        [orgA],
+      )
+    ).rows[0].id as string;
+    const svc = createDbMessagingRouteService(handle.db, { kek: KEK });
+    const text = (value: string) => ({ type: "text", text: value });
+    const block = (value: string) => [{ type: "paragraph", content: [text(value)] }];
+    const sbarBody = {
+      schemaVersion: 1,
+      doc: {
+        type: "doc",
+        content: [
+          {
+            type: "sbar",
+            urgencyHint: "routine",
+            situation: block("Fever overnight"),
+            background: block("Day 3"),
+            assessment: block("Infection"),
+            recommendation: block("Call today"),
+          },
+        ],
+      },
+    };
+    const sbarDraft = {
+      urgencyHint: "routine" as const,
+      sections: {
+        situation: "Fever overnight",
+        background: "Day 3",
+        assessment: "Infection",
+        recommendation: "Call today",
+      },
+    };
+    const key = { userId: alice, channelId: chan };
+    const sendSbar = () =>
+      svc.sendMessage(orgA, {
+        channelId: chan,
+        authorUserId: alice,
+        body: "Fever overnight",
+        bodyKind: "rich",
+        richBody: sbarBody as never,
+      });
+
+    // text + sbar: the SBAR send leaves the text (and its reference) and drops only the sbar
+    await save(alice, {
+      channelId: chan,
+      body: "half typed note",
+      references: [{ kind: "staff", entityId: bob, start: 0, end: 4 }],
+      sbar: sbarDraft,
+    });
+    await sendSbar();
+    const kept = await drafts.getDraft(orgA, key);
+    expect(kept?.body).toBe("half typed note");
+    expect(kept?.references).toEqual([{ kind: "staff", entityId: bob, start: 0, end: 4 }]);
+    expect(kept?.sbar).toBeUndefined();
+    expect(kept?.revision).toBe(2);
+
+    // sbar only: nothing else remains, the row goes
+    await wipe();
+    await save(alice, { channelId: chan, body: "", sbar: sbarDraft });
+    await sendSbar();
+    expect(await draftRows(orgA)).toHaveLength(0);
+
+    // a colleague's draft in the same slot is never touched
+    await save(alice, { channelId: chan, body: "", sbar: sbarDraft });
+    await save(bob, { channelId: chan, body: "bob note", sbar: sbarDraft });
+    await sendSbar();
+    expect((await drafts.getDraft(orgA, { userId: bob, channelId: chan }))?.sbar).toEqual(
+      sbarDraft,
+    );
+
+    // a plain send keeps today's behaviour: the whole slot goes, sbar included
+    await wipe();
+    await save(alice, { channelId: chan, body: "note", sbar: sbarDraft });
+    await svc.sendMessage(orgA, {
+      channelId: chan,
+      authorUserId: alice,
+      body: "hello",
+      bodyKind: "plain",
+    });
+    expect(await draftRows(orgA)).toHaveLength(0);
   });
 
   it("removes a thread draft with its root's channel and every draft with the tenant erase", async () => {

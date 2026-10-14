@@ -51,4 +51,5 @@ export * from "./render-payloads";
 export * from "./messaging-polls";
 export * from "./messaging-reactions";
 export * from "./messaging-rich-body";
+export * from "./messaging-sbar";
 export * from "./messaging-xss-corpus";

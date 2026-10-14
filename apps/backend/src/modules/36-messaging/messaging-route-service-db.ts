@@ -68,6 +68,7 @@ import {
   NotFoundError,
   ValidationError,
   WardenXError,
+  richBodySbar,
 } from "@wardenx/types";
 import { type SQL, and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
@@ -76,6 +77,7 @@ import { attachmentPreviewLabel } from "./attachment-preview-label";
 import { bindAttachmentsInTx, loadAttachmentViews } from "./attachments/attachment-service-db";
 import { assertLinksMatchBody } from "./clinical-link/clinical-link-service";
 import { reconcileClinicalLinksInTx } from "./clinical-link/clinical-link-store-db";
+import { settleDraftAfterSend } from "./drafts/draft-after-send";
 import {
   MAX_VERIFICATION_ATTEMPTS,
   VERIFICATION_CODE_TTL_MS,
@@ -102,6 +104,7 @@ import {
 import { type Part2ChannelGate, createSeamPart2ChannelGate } from "./part2-channel-gate";
 import { createDbReactionPinService } from "./reaction-pin-service-db";
 import { decodeStoredBody, sameMentionToken, storedBodyFor } from "./rich-body-codec";
+import { assertSbarWritable } from "./sbar/sbar-write-check";
 
 const CH = schema.channels;
 const CM = schema.channelMembers;
@@ -111,7 +114,6 @@ const MER = schema.messageEntityReferences;
 const MREV = schema.messageRevisions;
 const MATT = schema.messageAttachments;
 const MPIN = schema.messagePins;
-const MDRAFT = schema.messageDrafts;
 
 // ADR-0055 item 3: the author may edit for this long after the message was created (server clock). Tenant shortening
 // arrives with per-tenant messaging settings; the platform maximum is this value.
@@ -1379,6 +1381,8 @@ export function createDbMessagingRouteService(
         async (tx) => {
           const ch = await channelOr404(tx, orgId, input.channelId);
           if (ch.isArchived) throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+          // WP 3.3: channel kind, tenant policy and section lengths; a refusal rolls the whole send back.
+          await assertSbarWritable(tx, orgId, input.richBody, ch.kind);
           const { messageId, createdAt, replayed } = await insertEncryptedMessage(tx, cipher, {
             orgId,
             channelId: input.channelId,
@@ -1394,19 +1398,14 @@ export function createDbMessagingRouteService(
           if (replayed) return { messageId, channelId: input.channelId, createdAt };
           // WP 2.5: what was just sent is no longer a draft. The sender's OWN draft for this slot (channel composer, or
           // this thread root's reply composer) goes in the same transaction, so a client that closed its panel mid-send
-          // can never save the sent text back. Owner-pinned twice: by this filter and by the draft table's RLS.
-          await tx
-            .delete(MDRAFT)
-            .where(
-              and(
-                eq(MDRAFT.organizationId, orgId),
-                eq(MDRAFT.userId, input.authorUserId),
-                eq(MDRAFT.channelId, input.channelId),
-                input.parentMessageId
-                  ? eq(MDRAFT.parentMessageId, input.parentMessageId)
-                  : isNull(MDRAFT.parentMessageId),
-              ),
-            );
+          // can never save the sent text back. An SBAR send keeps the text draft (drafts/draft-after-send.ts).
+          await settleDraftAfterSend(tx, cipher, {
+            orgId,
+            userId: input.authorUserId,
+            channelId: input.channelId,
+            parentMessageId: input.parentMessageId,
+            sentSbar: input.richBody !== undefined && richBodySbar(input.richBody) !== null,
+          });
           // WP 1.5: bind the caller's own completed uploads inside this transaction; any refusal rolls the
           // message back with it (one uniform 422, so no id-existence oracle).
           if (input.attachments?.length) {
@@ -1553,6 +1552,11 @@ export function createDbMessagingRouteService(
             "the edit window has closed; send a new message that quotes this one",
             409,
           );
+        }
+        // WP 3.3: an edit is held to the same SBAR rules as a send (channel kind, tenant policy, lengths).
+        if (input.richBody) {
+          const channel = await channelOr404(tx, orgId, m.channelId);
+          await assertSbarWritable(tx, orgId, input.richBody, channel.kind);
         }
         // ADR-0055 item 2: keep the body being replaced (and its mention snapshot) before overwriting the head.
         const [{ lastNo }] = (await tx

@@ -13785,6 +13785,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/sbar/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The effective SBAR policy for the composer (WP 3.3): the platform floor tightened by this organization's policy, per-section minimum length, the 2000 character maximum, whether a patient channel is required, and the hint text. messaging.send; 404 while the tenant flag `messaging.sbar` is off. Organization configuration, no patient data */
+        get: operations["getApiV1MessagingSbarPolicy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/scheduled-messages": {
         parameters: {
             query?: never;
@@ -13867,6 +13884,24 @@ export interface paths {
         post?: never;
         /** Remove this organization's overlay, restoring the platform text (204) */
         delete: operations["deleteApiV1MessagingTemplateadminPlatformByIdOverlay"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/template-admin/sbar-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace this organization's tighten-only SBAR policy (WP 3.3; messaging.template.manage). A minimum below the platform floor is 422 SBAR_POLICY_FLOOR_VIOLATION; a hint that looks like a patient identifier is 422 SBAR_HINT_PHI_DETECTED. Omitted fields return to the platform default. Returns the effective policy */
+        put: operations["putApiV1MessagingTemplateadminSbarpolicy"];
+        post?: never;
+        /** Remove this organization's SBAR policy, restoring the platform defaults (204; messaging.template.manage) */
+        delete: operations["deleteApiV1MessagingTemplateadminSbarpolicy"];
         options?: never;
         head?: never;
         patch?: never;
@@ -62268,6 +62303,15 @@ export interface operations {
                                 start: number;
                                 end: number;
                             }[];
+                            sbar?: {
+                                urgencyHint: "routine" | "important" | "urgent";
+                                sections: {
+                                    situation: string;
+                                    background: string;
+                                    assessment: string;
+                                    recommendation: string;
+                                };
+                            };
                             revision: number;
                             deviceId: string;
                             updatedAt: string;
@@ -62299,6 +62343,15 @@ export interface operations {
                         start: number;
                         end: number;
                     }[];
+                    sbar?: {
+                        urgencyHint: "routine" | "important" | "urgent";
+                        sections: {
+                            situation: string;
+                            background: string;
+                            assessment: string;
+                            recommendation: string;
+                        };
+                    };
                     deviceId: string;
                     baseRevision: number;
                 };
@@ -62322,6 +62375,15 @@ export interface operations {
                                 start: number;
                                 end: number;
                             }[];
+                            sbar?: {
+                                urgencyHint: "routine" | "important" | "urgent";
+                                sections: {
+                                    situation: string;
+                                    background: string;
+                                    assessment: string;
+                                    recommendation: string;
+                                };
+                            };
                             revision: number;
                             deviceId: string;
                             updatedAt: string;
@@ -63896,6 +63958,44 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingSbarPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        minChars: {
+                            situation: number;
+                            background: number;
+                            assessment: number;
+                            recommendation: number;
+                        };
+                        maxChars: number;
+                        requirePatientChannel: boolean;
+                        hints: {
+                            situation: string;
+                            background: string;
+                            assessment: string;
+                            recommendation: string;
+                        };
+                        customized: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1MessagingScheduledmessages: {
         parameters: {
             query?: {
@@ -64182,6 +64282,82 @@ export interface operations {
             path: {
                 id: string;
             };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1MessagingTemplateadminSbarpolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    minChars?: {
+                        situation?: number;
+                        background?: number;
+                        assessment?: number;
+                        recommendation?: number;
+                    };
+                    requirePatientChannel?: boolean;
+                    hints?: {
+                        situation?: string | null;
+                        background?: string | null;
+                        assessment?: string | null;
+                        recommendation?: string | null;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        minChars: {
+                            situation: number;
+                            background: number;
+                            assessment: number;
+                            recommendation: number;
+                        };
+                        maxChars: number;
+                        requirePatientChannel: boolean;
+                        hints: {
+                            situation: string;
+                            background: string;
+                            assessment: string;
+                            recommendation: string;
+                        };
+                        customized: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MessagingTemplateadminSbarpolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;

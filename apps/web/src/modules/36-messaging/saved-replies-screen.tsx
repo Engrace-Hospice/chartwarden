@@ -14,6 +14,7 @@ import {
 } from "./saved-replies-types";
 import { SavedReplySection } from "./saved-reply-section";
 import type { ReplyWrites } from "./saved-reply-section";
+import { SbarPolicySection } from "./sbar-policy-section";
 import { useSavedReplies } from "./use-saved-replies";
 import "./saved-replies.css";
 
@@ -213,6 +214,7 @@ export function SavedReplies(): JSX.Element {
             writes={sharedWrites}
           />
           <PlatformReplyPanel items={admin.platform} writes={overlayWrites} />
+          <SbarPolicySection />
         </>
       ) : null}
     </div>

@@ -4,7 +4,13 @@
 // first action when focus is somewhere else. Tab stays natural. Escape keeps the user's own text (never discards it)
 // both from inside the prompt and from the composer while the prompt is showing (`escapeKeepsMine`).
 import { useEffect, useId, useRef } from "react";
-import type { DraftConflict, DraftResolution, ServerDraftSync } from "./use-server-draft";
+import { SBAR_URGENCY_LABEL } from "./sbar-utils";
+import type {
+  DraftConflict,
+  DraftContent,
+  DraftResolution,
+  ServerDraftSync,
+} from "./use-server-draft";
 import "./draft-conflict.css";
 
 const PREVIEW_LENGTH = 240;
@@ -12,6 +18,26 @@ const PREVIEW_LENGTH = 240;
 function preview(body: string): string {
   const flat = body.replace(/\s+/g, " ").trim();
   return flat.length > PREVIEW_LENGTH ? `${flat.slice(0, PREVIEW_LENGTH)}…` : flat;
+}
+
+const SBAR_SITUATION_PREVIEW_LENGTH = 60;
+
+/** One plain-text line per side so two SBAR versions can be told apart: urgency, then the start of Situation. */
+function sbarSummary(sbar: DraftContent["sbar"]): string {
+  if (!sbar) return "";
+  const parts = ["SBAR", SBAR_URGENCY_LABEL[sbar.urgencyHint] ?? sbar.urgencyHint];
+  const situation = (sbar.sections.situation ?? "").replace(/\s+/g, " ").trim();
+  if (situation)
+    parts.push(
+      situation.length > SBAR_SITUATION_PREVIEW_LENGTH
+        ? `${situation.slice(0, SBAR_SITUATION_PREVIEW_LENGTH)}…`
+        : situation,
+    );
+  return parts.join(" · ");
+}
+
+function sideSummary(content: DraftContent): string {
+  return [preview(content.body), sbarSummary(content.sbar)].filter(Boolean).join(" · ");
 }
 
 /** True when the user is typing in a text field (or an editable region) right now. */
@@ -79,12 +105,18 @@ export function DraftConflictPrompt({
       <div id={bodyId} className="wx-draft-conflict-body">
         <p>
           <span>Here: </span>
-          {preview(conflict.mine.body)}
+          {sideSummary(conflict.mine)}
         </p>
         <p>
           <span>Other device: </span>
-          {preview(conflict.server.body)}
+          {sideSummary(conflict.server)}
         </p>
+        {conflict.mine.sbar || conflict.server.sbar ? (
+          <p>
+            Combine both keeps the SBAR form from here when it has content, otherwise the other
+            device's.
+          </p>
+        ) : null}
       </div>
       <div className="wx-draft-conflict-actions">
         <button ref={firstActionRef} type="button" onClick={() => onResolve("mine")}>

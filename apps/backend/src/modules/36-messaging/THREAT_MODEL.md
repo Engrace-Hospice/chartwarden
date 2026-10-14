@@ -26,6 +26,18 @@ already lives in code or in a sibling task.
 | E-1 | EoP | Break out of `care_team` ABAC | The shared effective-access policy used by `listChannels` and `canViewChannel` (`messaging-route-service-db.ts`): active organization membership, an active `channel_member` row, plus — for a `care_team` channel and an `auto` member — a live `CareTeamProvider.careTeamMembers` roster check (GAP-104; `manual` admin-override members are authorized by the override itself). Channel detail/history/send routes compose `canViewChannel`; RLS remains the tenant backstop. There is NO direct M5 schema import and no M3 `evaluate('caseload_membership')` call. |
 | E-2 | EoP | Disable a `system_locked` rule | `alert_rule_update` RLS `WITH CHECK (system_locked = false)` (migration 0017); §7.4 invariant test |
 
+### SBAR messages (WP 3.3, ADR-0060)
+
+The SBAR threats below are scoped to the `messaging.sbar` flow. The controls are in the files named, and they are
+built on `feat/m36-wp33-sbar` and not yet merged.
+
+| # | Class | Threat | Control (where it lives) |
+|---|---|---|---|
+| I-3 | Info disclosure | PHI in SBAR sections leaks beyond the message (previews, search, notifications, logs, audit) | The `sbar` node lives inside the encrypted rich body (`body_cipher`, `body_sha256`), so there is no new column or PHI store. Previews, search and notifications see only the fixed plain-text projection (`SBAR_SECTION_LABELS`), which is the same exposure as an ordinary body. Audit and error responses carry field and code only: `SBAR_INVALID` never echoes section text. Structure is checked by the sanitiser in `packages/types/src/messaging-rich-body.ts` and lengths by `validateSbar` in `packages/types/src/messaging-sbar.ts`. |
+| T-4 | Tampering | Hint text injection: a tenant or a crafted hint carries markup, a fake instruction, or an emergency-looking claim into the composer | Tenant hint text is plain text only. It is linted with `lintTemplateText` on save and on read, and falls back to the platform hint when the lint fails. The hint is never projected into the body, so it cannot become part of the stored message. The static fallback is the platform hint text, which is fixed. |
+| E-3 | EoP | Tenant loosening: a tenant lowers a section minimum or disables SBAR to weaken a clinical structure | `tenant_sbar_policy` is tighten-only. The DB CHECK sets the platform floor (`situation_min_chars BETWEEN 1 AND 500`, and the same for each section). `effectiveSbarPolicy(stored)` takes the larger minimum and ORs the booleans on every read, so a stored lower value cannot win. A write below the floor returns `422 SBAR_POLICY_FLOOR_VIOLATION`. There is no disable column, and the ops flag `messaging.sbar` is the only off switch. Policy edits require `messaging.template.manage`. Live proof: a raised floor beats a stored lower value (`m36-sbar.live.test.ts`). |
+| E-4 | EoP | Urgency mistaken for escalation: a sender marks `urgent` and believes that someone is paged, or a reader treats the label as an alarm | `urgencyHint` is a sender-marked label only. It has no column, alert, notification, acknowledgment or event. The form always shows that messaging is not the emergency path, and it adds that marking urgent does not page or escalate anyone. The static test `m36-sbar-no-escalation.test.ts` fails the build if any M36 code outside the codec and validator reads `urgencyHint`. Mapping urgency to escalation is Phase 4 work under ADR-0057. |
+
 **Sign-off gate (spec §4.10):** Security Officer (S-1, S-2, I-1, I-2, E-1, E-2); Compliance Officer
 (T-1, T-2, R-1); Platform team (D-1, D-2) — a PR-merge gate on changes to `packages/messaging/`,
 `packages/messaging/notification/`, or the M36 migrations.

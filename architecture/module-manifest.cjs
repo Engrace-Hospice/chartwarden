@@ -235,6 +235,7 @@ exports.MODULES = [
       "message",
       "message_entity_reference",
       "clinical_link",
+      "tenant_sbar_policy",
       "message_pin",
       "message_poll",
       "message_poll_option",

@@ -9,7 +9,14 @@
 // wins per device: a retried or reordered autosave from one tab must not fight itself). A save from a DIFFERENT device
 // that has not seen the latest revision is a 409 DRAFT_CONFLICT; the client then reads the server draft and offers the
 // user a merge prompt, and re-saves with the server's revision as its base.
-import { ValidationError, WardenXError } from "@wardenx/types";
+import {
+  SBAR_MAX_SECTION_CHARS,
+  SBAR_SECTION_KEYS,
+  SBAR_URGENCY_HINTS,
+  type SbarSections,
+  ValidationError,
+  WardenXError,
+} from "@wardenx/types";
 import type { MessageReferenceInput } from "../interfaces/provider";
 
 /** Same ceiling as a sent message body. */
@@ -21,6 +28,8 @@ export interface DraftView {
   readonly parentMessageId: string | null;
   readonly body: string;
   readonly references: readonly MessageReferenceInput[];
+  /** An in-progress SBAR form (plain section text), sealed with the body; absent when there is none. */
+  readonly sbar?: SbarSections | undefined;
   readonly revision: number;
   readonly deviceId: string;
   readonly updatedAt: string;
@@ -35,6 +44,7 @@ export interface DraftKey {
 export interface SaveDraftInput extends DraftKey {
   readonly body: string;
   readonly references?: readonly MessageReferenceInput[] | undefined;
+  readonly sbar?: SbarSections | null | undefined;
   readonly deviceId: string;
   /** The revision the client last saw; 0 when it has none. */
   readonly baseRevision: number;
@@ -69,12 +79,25 @@ export function draftConflictError(): WardenXError {
 }
 
 /** True when a save carries nothing worth keeping (the client's way to discard). */
-export function isEmptyDraft(input: Pick<SaveDraftInput, "body">): boolean {
-  return input.body.trim() === "";
+export function isEmptyDraft(input: Pick<SaveDraftInput, "body" | "sbar">): boolean {
+  return input.body.trim() === "" && isEmptySbar(input.sbar);
+}
+
+/** An SBAR with every section blank (or none at all) holds nothing; the urgency hint alone is not content. */
+export function isEmptySbar(sbar: SbarSections | null | undefined): boolean {
+  return !sbar || SBAR_SECTION_KEYS.every((key) => sbar.sections[key].trim() === "");
+}
+
+/** What the store keeps of an SBAR: undefined when empty, so a blank form is never persisted. */
+export function sbarToStore(sbar: SbarSections | null | undefined): SbarSections | undefined {
+  return sbar && !isEmptySbar(sbar) ? sbar : undefined;
 }
 
 /** Throws a 422 for a draft the store must not hold. */
-export function assertDraftWithinLimits(input: Pick<SaveDraftInput, "body" | "references">): void {
+export function assertDraftWithinLimits(
+  input: Pick<SaveDraftInput, "body" | "references" | "sbar">,
+): void {
+  assertSbarWithinLimits(input.sbar);
   if (input.body.length > MAX_DRAFT_BODY_LENGTH) {
     throw new ValidationError("draft is too long", [
       { field: "body", code: "TOO_LONG", message: `at most ${MAX_DRAFT_BODY_LENGTH} characters` },
@@ -91,6 +114,31 @@ export function assertDraftWithinLimits(input: Pick<SaveDraftInput, "body" | "re
     throw new ValidationError("too many references", [
       { field: "references", code: "TOO_MANY", message: `at most ${MAX_DRAFT_REFERENCES}` },
     ]);
+  }
+}
+
+function assertSbarWithinLimits(sbar: SbarSections | null | undefined): void {
+  if (!sbar) return;
+  if (!(SBAR_URGENCY_HINTS as readonly string[]).includes(sbar.urgencyHint)) {
+    throw new ValidationError("invalid sbar", [
+      { field: "sbar.urgencyHint", code: "BAD_VALUE", message: "unknown urgency" },
+    ]);
+  }
+  for (const key of SBAR_SECTION_KEYS) {
+    if (typeof sbar.sections[key] !== "string") {
+      throw new ValidationError("invalid sbar", [
+        { field: `sbar.sections.${key}`, code: "BAD_TYPE", message: "must be text" },
+      ]);
+    }
+    if (sbar.sections[key].length > SBAR_MAX_SECTION_CHARS) {
+      throw new ValidationError("sbar section is too long", [
+        {
+          field: `sbar.sections.${key}`,
+          code: "TOO_LONG",
+          message: `at most ${SBAR_MAX_SECTION_CHARS} characters`,
+        },
+      ]);
+    }
   }
 }
 
@@ -117,6 +165,7 @@ export function createInMemoryDraftService(): MessageDraftService {
         parentMessageId: input.parentMessageId ?? null,
         body: input.body,
         references: input.references ?? [],
+        ...(sbarToStore(input.sbar) ? { sbar: sbarToStore(input.sbar) } : {}),
         revision: (current?.revision ?? 0) + 1,
         deviceId: input.deviceId,
         updatedAt: new Date().toISOString(),

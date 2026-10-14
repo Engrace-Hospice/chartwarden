@@ -1,6 +1,7 @@
 // The composer area of ConversationThread: the read-only notice, or the draft sync notice plus the message form (moved
 // out of it unchanged in WP 2.11 to keep that file under the line ceiling). State and effects stay in the thread; this
 // only renders what it is given.
+import type { RichBody, SbarIssue } from "@wardenx/types";
 import { Button, Glyph } from "@wardenx/ui";
 import { useEffect, useRef } from "react";
 import type { FormEvent, JSX, KeyboardEvent, RefObject } from "react";
@@ -20,10 +21,14 @@ import type { ChannelSummary, MessageReferenceInput } from "./messaging-types";
 import { channelLabel } from "./messaging-utils";
 import { NonMemberMentionPrompt } from "./non-member-mention-prompt";
 import { PollCreateButton } from "./poll-create-button";
+import { SbarFormDialog } from "./sbar-form-dialog";
+import { sbarAllowedInChannel, sbarOfferedInChannel } from "./sbar-utils";
 import { ScheduleSendButton } from "./schedule-send-button";
 import { TemplatePicker } from "./template-picker";
 import type { AttachmentUploads } from "./use-attachment-upload";
 import type { useMentionPicker } from "./use-mention-picker";
+import type { SbarCompose } from "./use-sbar-compose";
+import { useSbarFlag, useSbarPolicy } from "./use-sbar-policy";
 import type { ServerDraftSync } from "./use-server-draft";
 
 type MentionPicker = ReturnType<typeof useMentionPicker>;
@@ -40,6 +45,10 @@ export interface ThreadComposerProps {
   setDraft: (draft: string) => void;
   draftReferences: MessageReferenceInput[];
   setDraftReferences: (references: MessageReferenceInput[]) => void;
+  /** WP 3.3: the SBAR form's state, the server's field errors for it, and how to send a finished SBAR body. */
+  sbar: SbarCompose;
+  sbarIssues: readonly SbarIssue[];
+  onSendSbar: (body: RichBody) => void;
   /** WP 3.2: links chosen for this draft, and how to change them. */
   draftLinks: readonly DraftClinicalLink[];
   addDraftLink: (link: DraftClinicalLink) => void;
@@ -79,6 +88,9 @@ export function ThreadComposer({
   setDraft,
   draftReferences,
   setDraftReferences,
+  sbar,
+  sbarIssues,
+  onSendSbar,
   draftLinks,
   addDraftLink,
   removeDraftLink,
@@ -102,6 +114,26 @@ export function ThreadComposer({
   addToConversation,
   dismissMentionAdd,
 }: ThreadComposerProps): JSX.Element {
+  // WP 3.3: SBAR is offered when the flag is on, the channel kind allows it and the policy loads (the policy may also
+  // require a care-team conversation). Anything else hides the item.
+  const sbarFlag = useSbarFlag();
+  const policyState = useSbarPolicy(sbarFlag && sbarAllowedInChannel(channel.kind));
+  const sbarPolicy = policyState.status === "ready" ? policyState.policy : null;
+  const sbarOffered =
+    sbarPolicy !== null && sbarOfferedInChannel(channel.kind, sbarPolicy.requirePatientChannel);
+  // "saved" is claimed only once the server confirmed exactly what the composer holds now.
+  const sbarNote =
+    serverDraft.saveFailed || serverDraft.saveGaveUp
+      ? "SBAR draft (not saved)"
+      : serverDraft.sbarSaved
+        ? "SBAR draft saved"
+        : "SBAR draft";
+  const pickerToggleRef = useRef<HTMLButtonElement>(null);
+  const closeSbar = (discard: boolean): void => {
+    if (discard) sbar.finish();
+    else sbar.hide();
+    pickerToggleRef.current?.focus();
+  };
   // Links need a patient scope: only a care-team conversation has one.
   const linkPicker = useClinicalLinkPicker(
     channel.kind === "care_team" ? channel.subjectId : null,
@@ -241,7 +273,37 @@ export function ThreadComposer({
           disabled={sending}
           onInsert={onInsertSavedReply}
           onClosed={() => textareaRef.current?.focus()}
+          toggleRef={pickerToggleRef}
+          onOpened={() => {
+            if (policyState.status === "transient") policyState.reload();
+          }}
+          {...(sbarOffered
+            ? {
+                onChooseSbar: () => {
+                  clearSendError();
+                  sbar.show();
+                },
+              }
+            : {})}
         />
+        {sbarOffered && sbarPolicy && !sbar.open && sbar.draft !== null ? (
+          <span className="wx-sbar-draft-note">
+            <Glyph name="file-text" size={14} />
+            <output aria-label={sbarNote}>{sbarNote}</output>
+            <Button
+              type="button"
+              tone="secondary"
+              disabled={sending}
+              aria-label="Open SBAR draft"
+              onClick={() => {
+                clearSendError();
+                sbar.show();
+              }}
+            >
+              Open
+            </Button>
+          </span>
+        ) : null}
         <PollCreateButton
           channelId={channel.channelId}
           kind={channel.kind}
@@ -289,6 +351,20 @@ export function ThreadComposer({
         />
         <ComposerFooter sendHint={sendHint} sendError={sendError} sending={sending} />
       </form>
+      {sbarOffered && sbarPolicy && sbar.open ? (
+        <SbarFormDialog
+          policy={sbarPolicy}
+          values={sbar.values}
+          onChange={sbar.setValues}
+          sending={sending}
+          serverIssues={sbarIssues}
+          onEdit={clearSendError}
+          sendError={sendError}
+          onSubmit={onSendSbar}
+          onCancel={() => closeSbar(false)}
+          onDiscard={() => closeSbar(true)}
+        />
+      ) : null}
     </>
   );
 }

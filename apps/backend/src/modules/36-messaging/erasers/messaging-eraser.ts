@@ -117,6 +117,7 @@ export function createDrizzleMessagingEraseStore(
   const TPLO = schema.tenantNotificationTemplateOverlay;
   const MTPL = schema.messageTemplates;
   const MTPLO = schema.tenantMessageTemplateOverlays;
+  const SBARP = schema.tenantSbarPolicies;
   const PRES = schema.presence;
   const DE = schema.deliveryEndpoints;
   const UNP = schema.userNotificationPreferences;
@@ -373,6 +374,13 @@ export function createDrizzleMessagingEraseStore(
         );
         deleted += await del(() =>
           tx.delete(MTPL).where(eq(MTPL.organizationId, orgId)).returning({ id: MTPL.id }),
+        );
+        // WP 3.3: the tenant's SBAR policy (org configuration, one row).
+        deleted += await del(() =>
+          tx
+            .delete(SBARP)
+            .where(eq(SBARP.organizationId, orgId))
+            .returning({ id: SBARP.organizationId }),
         );
         return { deleted };
       });
