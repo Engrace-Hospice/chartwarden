@@ -13,7 +13,7 @@
   `docs/runbooks/m36-body-key-ring.md`). The tenant switch still refuses ON until its go-live checklist passes. WP 2.7b was additionally
   **blocked on the two prerequisite work packages** in "Prerequisites" (WP 2.13 key-ring migration of message bodies; WP 2.14 per-route
   rate limit). In-conversation search (WP 2.7a, option A) does not depend on this ADR.
-- **Date:** 2026-10-11 (revised 2026-10-13 after design review feedback, and again 2026-10-13 to record the open-question decisions; Status unchanged)
+- **Date:** 2026-10-11 (revised 2026-10-13 after design review feedback, and again 2026-10-13 to record the open-question decisions; Status: Accepted since 2026-10-13, see line 3)
 - **Phase:** Messaging Hub Phase 2 (WP 2.7b). Needed before Phase 2 work on global search starts.
 - **Extends:** [ADR-0038](ADR-0038-app-layer-envelope-encryption.md) (app-layer envelope encryption) and
   [ADR-0045](ADR-0045-platform-kek-custody.md) (KEK custody) for key derivation; plan `02` §6.
@@ -100,7 +100,7 @@ Scope of P1 (WP 2.13, its own WP; sized as a data migration, not a code tweak):
 6. Live tests: pre- and post-migration envelopes both open; mixed-version rows during backfill; after ring destruction every body and
    revision fails to open; rotation re-encrypts under the new version; revision rows migrate.
 
-**Status of P1 (WP 2.13, implemented on branch `feat/m36-wp213-body-key-ring`; this ADR stays Proposed):** items 1, 2, 3 and 6 are built and proved live (envelope `VERSION` byte 2 recording the ring version; reads open both schemes; new writes seal on the ring behind `M36_BODY_SEAL_SCHEME=ring`, default `legacy`; the resumable, tenant-scoped, hash-checked backfill with the revision re-seal through the audited definer function `m36_reseal_message_revision`, migration 1089; both-scheme and mixed-version live tests, revisions migrate, `body_sha256` unchanged, `hash_verify` clean). Item 4 is satisfied by M34's existing four-phase shred (module erasers, then `m34_destroy_tenant_key_ring`): after it every ring-sealed body fails to open (live test); legacy-sealed rows and their backups are not shredded until backfilled and aged out. Item 5 is **partly** done: a new DEK version seals new bodies and old ring bodies stay readable by their recorded version (live test); re-sealing existing ring rows to a newer version is NOT built, and the ops runbook section 8.3.3 and `02` section 6 are not yet edited (the operator side is `docs/runbooks/m36-body-key-ring.md`). Escrow: the restore drill is an operational precondition and is not automated; the backfill refuses to run in a production environment unless `M36_BODY_BACKFILL_ESCROW_DRILL_CONFIRMED=true`. The legacy derivation and `MESSAGING_ENCRYPTION_KEY` are untouched; retirement is a later, separately gated step.
+**Status of P1 (WP 2.13, implemented on branch `feat/m36-wp213-body-key-ring`; this ADR is Accepted by the user's decision, with the design review requirement not satisfied):** items 1, 2, 3 and 6 are built and proved live (envelope `VERSION` byte 2 recording the ring version; reads open both schemes; new writes seal on the ring behind `M36_BODY_SEAL_SCHEME=ring`, default `legacy`; the resumable, tenant-scoped, hash-checked backfill with the revision re-seal through the audited definer function `m36_reseal_message_revision`, migration 1089; both-scheme and mixed-version live tests, revisions migrate, `body_sha256` unchanged, `hash_verify` clean). Item 4 is satisfied by M34's existing four-phase shred (module erasers, then `m34_destroy_tenant_key_ring`): after it every ring-sealed body fails to open (live test); legacy-sealed rows and their backups are not shredded until backfilled and aged out. Item 5 is **partly** done: a new DEK version seals new bodies and old ring bodies stay readable by their recorded version (live test); re-sealing existing ring rows to a newer version is NOT built, and the ops runbook section 8.3.3 and `02` section 6 are not yet edited (the operator side is `docs/runbooks/m36-body-key-ring.md`). Escrow: the restore drill is an operational precondition and is not automated; the backfill refuses to run in a production environment unless `M36_BODY_BACKFILL_ESCROW_DRILL_CONFIRMED=true`. The legacy derivation and `MESSAGING_ENCRYPTION_KEY` are untouched; retirement is a later, separately gated step.
 
 Doing P1 before launch is far cheaper than after (there is no production search to re-key). P1 is also the only way the claims in
 "Keys" and the eraser verification below are true.
@@ -384,7 +384,7 @@ the padding rule to the mean `n`; the mean of `N` over a skewed message-length d
 pads to 32), so 8 x 10^7 is a lower bound on rows; **all of these are assumptions to be replaced by measurement** (the 10^5 prefix
 tags, the 4.4 tokens per message and the token-length profile are not measured).
 
-| `T` | Buckets `B = 2^T` | Tags per bucket `D/B` | Share of tags that share a bucket `1 - e^(-D/B)` | Rows per bucket `1.6e8 / B` |
+| `T` | Buckets `B = 2^T` | Tags per bucket `D/B` | Share of tags that share a bucket `1 - e^(-D/B)` | Rows per bucket `8e7 / B` |
 |---|---|---|---|---|
 | 32 (earlier draft) | 4.29 x 10^9 | 4.7 x 10^-5 | 0.005% | 0.02 |
 | 24 | 1.68 x 10^7 | 0.012 | 1.2% | 4.8 |
@@ -444,7 +444,7 @@ reference tenant and is unchanged. Whether to default to 18 is a reviewer decisi
 - **Acceptance item (leakage experiment and go-live):** **measure `P(candidates > CANDIDATE_CAP)` on a production-shaped corpus**
   for single-term and two-term queries, at the chosen `T`, and compare it with the 1% to 6% estimate above; the go-live checklist
   fails if the measured single-term rate, after the head-bucket refusal, leaves a typical clinical vocabulary query unusable.
-- **Dummies** add about 76 +/- 9 rows to every bucket (Poisson), so even a tag alone in its bucket is not read exactly.
+- **Dummies** add about 14 +/- 4 rows to every bucket at the default `T = 19` (Poisson: 7.5 x 10^6 dummy rows / 2^19 = 5.24 x 10^5 buckets = 14.3 per bucket, standard deviation sqrt(14.3) = 3.8; the other 138 of the 153 rows per bucket are real), so even a tag alone in its bucket is not read exactly.
 - **What `T` cannot do.** A word in 10^6 messages sits in a bucket with about 10^6 rows at any `T`; the head of the frequency
   distribution stays identifiable by rank, and padding does not change that. Truncation protects the long tail (rare words, which
   include names), not the head. This is the known limit of option B (see the leakage table).
@@ -493,7 +493,9 @@ reference tenant and is unchanged. Whether to default to 18 is a reviewer decisi
    be tenant-tightenable. Built: step-up operation keys are free-form lower-case dotted strings (`OPERATION_KEY_PATTERN`), so nothing needs registering.
    Every change is **audit-logged with who, when, old value and new value** (the write-audit trigger on the table; as built, no separate domain event, the trigger is the only audit).
 3. **Turning ON requires the go-live checklist**, enforced where code can enforce it and attested where it cannot: (a) the
-   **leakage review record is linked in this ADR** and the Status has changed, attested by ops turning the platform flag below on;
+   **leakage review record is linked in this ADR** and the leakage review requirement is satisfied, attested by ops setting the separate platform flag
+   `messaging.global_search_leakage_attested` (org-NULL row only, fail closed; checklist item `LEAKAGE_NOT_ATTESTED`, the fifth checklist
+   item; it is a statement of fact set only after the measured experiment passed and the humans signed, and it gates the tenant ON only);
    (b) **P1 is done** for the tenant (no `message` or `message_revision` row on the legacy envelope; checked by the route, which
    refuses with 409 otherwise) **and the key escrow and restore drill are on record**; (c) **P2 is deployed** (the rate limit is
    active); (d) the **index rebuild is complete** for the tenant (checkpoint complete; the query path stays closed until then, as in
@@ -518,8 +520,9 @@ reference tenant and is unchanged. Whether to default to 18 is a reviewer decisi
    value), **not** through the merged `forOrg` map, so a tenant-scoped `feature_flag` row for the same key, written by a seed, a
    migration or plain SQL, can never turn search on when the platform row is off or absent. The test inserts such a tenant row and
    asserts search stays refused. Defence in depth: a follow-up makes M34's `FeatureFlagAdmin` upsert refuse an org-scoped write for
-   it, also with a test. The platform flag also carries the production-enablement gate: ops does
-   not turn it on until the leakage test has passed.
+   it, also with a test. This flag is the kill switch plus the feature-on switch and nothing else; the leakage attestation is the
+   separate `messaging.global_search_leakage_attested` flag of decision 3(a). By convention ops sets the leakage attestation first
+   and only then turns this flag on.
 6. **The patient-name flag stays dropped for v1** (see decision 3).
 
 ## Access control
@@ -728,7 +731,7 @@ user's pre-join-history decision, the escrow arrangement in P1, the flag and kil
 measured experiment on synthetic hospice notes estimating how many top-N words an auxiliary-vocabulary frequency attack recovers
 at the chosen `T` and the chosen tokenizer parameters (minimum token length, stop words, ID-like rule, caps), which also serves as the **production-enablement leakage test** (D10) and must pass before any tenant is enabled; (3) a record of the HIPAA risk-analysis entry for the new PHI-derived store **and covering the user's pre-join-history decision
 (see "Pre-join history": consequences) and the prefix-hierarchy residual leakage**; (4) product-owner acceptance of the
-residual risk. The review record is linked from this ADR before Status changes.
+residual risk. The review record is linked from this ADR (see Status); Status was changed to Accepted by the user before items (1) to (4) were satisfied, so they remain outstanding and gate production enablement.
 
 ## Alternatives considered
 

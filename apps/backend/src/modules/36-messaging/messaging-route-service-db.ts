@@ -96,7 +96,7 @@ import {
   markMessagesRead,
   withValidMessageContent,
 } from "./messaging-write-core";
-import { assertMemberCategoryAllowed } from "./member-category-gate";
+import { assertMemberCategoryAllowed, excludedMemberUserIds } from "./member-category-gate";
 import { type Part2ChannelGate, createSeamPart2ChannelGate } from "./part2-channel-gate";
 import { createDbReactionPinService } from "./reaction-pin-service-db";
 import { decodeStoredBody, sameMentionToken, storedBodyFor } from "./rich-body-codec";
@@ -390,6 +390,22 @@ async function assertActiveMessagingUser(
     // One indistinguishable response for absent, suspended, revoked, deactivated, and foreign users.
     throw new NotFoundError("eligible staff member", userId);
   }
+}
+
+/**
+ * DM-open peer check. An excluded-category peer (patient_family / external_auditor / platform_staff) must be
+ * indistinguishable from an absent one, or openDm becomes a role-category oracle for any workforce user. Both
+ * lookups always run (no short-circuit) and the refusal is the same NotFoundError as `assertActiveMessagingUser`.
+ * The distinct 422 stays only on addMember (the caller there is a member manager).
+ */
+async function assertDmPeerEligible(
+  tx: Parameters<typeof channelOr404>[0],
+  orgId: string,
+  peerUserId: string,
+): Promise<void> {
+  const active = await isActiveMessagingUser(tx, orgId, peerUserId);
+  const excluded = await excludedMemberUserIds(tx, orgId, [peerUserId]);
+  if (!active || excluded.size > 0) throw new NotFoundError("eligible staff member", peerUserId);
 }
 
 // ── value-level mirrors of the §3.2 enum unions (for routing-map / resolver validation) ──────
@@ -1727,7 +1743,7 @@ export function createDbMessagingRouteService(
       if (peerUserId === userId) throw new ConflictError("cannot open a DM with yourself");
       return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
         await assertActiveMessagingUser(tx, orgId, userId);
-        await assertActiveMessagingUser(tx, orgId, peerUserId);
+        await assertDmPeerEligible(tx, orgId, peerUserId);
         const participantKey = dmParticipantKey(userId, peerUserId);
         const inserted = (await tx
           .insert(CH)

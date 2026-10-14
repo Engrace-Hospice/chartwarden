@@ -106,6 +106,33 @@ Then:
    (`POST /api/v1/platform/feature-flags/:flagKey/kill-switch` is the audited emergency form). It overrides every tenant ON and stops the query
    path and the indexer on the next request.
 
+## Stage 6b: pre-enablement check for excluded identities already in channels (KNOWN GAP)
+
+The member-category gate (`member-category-gate.ts`, review finding F6) refuses NEW `channel_member` writes for an identity holding a
+`patient_family`, `external_auditor` or `platform_staff` role. It does not sweep rows written before the gate shipped, nor rows whose
+holder was granted an excluded role afterwards. Such a member still reads channel history through the channel-member path. So, per tenant,
+before Stage 7 (read-only; run as a role that can read the tenant, with `:org_id` set):
+
+```sql
+SELECT cm.channel_id, cm.user_id, cm.role, cm.source, r.key AS excluded_role, r.category
+FROM channel_member cm
+JOIN membership m       ON m.user_id = cm.user_id AND m.organization_id = cm.organization_id
+JOIN membership_role mr ON mr.membership_id = m.id AND mr.organization_id = m.organization_id
+JOIN role r             ON r.id = mr.role_id
+WHERE cm.organization_id = :org_id
+  AND cm.removed_at IS NULL
+  AND r.category IN ('patient_family', 'external_auditor', 'platform_staff')
+  AND (mr.expires_at IS NULL OR mr.expires_at > now());
+```
+
+A disabled role still counts (the gate lets deny win), so the query does not filter on `r.enabled`. Require **zero rows**, or a recorded
+removal decision per row (remove the member through the admin screen, or document why the identity stays) before the tenant switch.
+
+Second known gap: neither `addMember` nor the DM path requires the target to hold a membership in the same organization
+(`channel_member.user_id` references users only); `assertActiveMessagingUser` does check an active same-org membership on both of those paths,
+but the gate itself and the provider and announcement creator rows do not, and the SQL above cannot see a user with no membership in the org.
+Tracked as a follow-up in the review record (F6 residual).
+
 ## Stage 7: switch one tenant on, then verify the index build
 
 1. An org admin with a fresh step-up: `PUT /api/v1/messaging/global-search/settings {"enabled":true}`. A 409 lists the failing checks; fix those,

@@ -1858,13 +1858,25 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       expect(added.length).toBe(1);
     });
 
-    it("ensureDmMember (openDm) refuses an excluded-category peer and creates no channel (F6)", async () => {
+    it("openDm with an excluded-category peer is byte-identical to a nonexistent peer and creates no channel (F6, no role oracle)", async () => {
       const caller = await newUser(ORG_A);
-      const peer = await newUser(ORG_A, "patient_family");
+      const nonexistent = "00000000-0000-4000-8000-00000000d0d0";
       const before = await q(`SELECT 1 FROM channel WHERE organization_id=$1 AND channel_kind='dm'`, [ORG_A]);
-      await expect(routeService.openDm(ORG_A, caller, peer)).rejects.toMatchObject({
-        code: "MEMBER_CATEGORY_NOT_ALLOWED",
-      });
+      const refusal = async (peer: string) => {
+        const err = (await routeService.openDm(ORG_A, caller, peer).then(
+          () => null,
+          (e: unknown) => e,
+        )) as { code?: string; message?: string; statusCode?: number; status?: number } | null;
+        expect(err).not.toBeNull();
+        // the peer id is echoed in the NotFoundError message, so compare with it normalised out
+        return { code: err?.code, status: err?.statusCode ?? err?.status, message: err?.message?.replace(peer, "<peer>") };
+      };
+      const absent = await refusal(nonexistent);
+      for (const category of ["patient_family", "external_auditor", "platform_staff"] as const) {
+        const peer = await newUser(ORG_A, category);
+        expect(await refusal(peer), category).toEqual(absent);
+      }
+      expect(absent.code).not.toBe("MEMBER_CATEGORY_NOT_ALLOWED");
       const after = await q(`SELECT 1 FROM channel WHERE organization_id=$1 AND channel_kind='dm'`, [ORG_A]);
       expect(after.length).toBe(before.length);
     });

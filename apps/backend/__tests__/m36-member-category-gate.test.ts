@@ -51,4 +51,14 @@ describe("static ratchet: every channel_member write path is category-gated (F6)
       .sort();
     expect(deny).toEqual(["external_auditor", "patient_family", "platform_staff"]);
   });
+
+  it("openDm answers an excluded peer with the absent-user refusal, never the distinct 422 (no role-category oracle)", () => {
+    const route = readFileSync(join(MODULE_DIR, "messaging-route-service-db.ts"), "utf8");
+    const open = route.slice(route.indexOf("async openDm("), route.indexOf("async openCareTeamChannel("));
+    expect(open).toContain("assertDmPeerEligible(tx, orgId, peerUserId)");
+    const helper = route.slice(route.indexOf("async function assertDmPeerEligible"), route.indexOf("// ── value-level mirrors"));
+    expect(helper).toContain("excludedMemberUserIds");
+    expect(helper).toContain('new NotFoundError("eligible staff member"');
+    expect(helper).not.toContain("MEMBER_CATEGORY_NOT_ALLOWED");
+  });
 });
