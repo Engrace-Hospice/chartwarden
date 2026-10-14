@@ -30,7 +30,8 @@ type State =
 
 /** Only an in-app absolute path becomes an anchor; "//host" and anything else is dropped. */
 export const isInAppPath = (link: string): boolean =>
-  link.startsWith("/") && !link.startsWith("//") && !link.includes("\\");
+  /^\/(?!\/)/.test(link) &&
+  ![...link].some((c) => c === "\\" || c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f);
 
 /** True once the element has been on screen. Without IntersectionObserver (old browsers, jsdom) it is true at once. */
 function useSeen(element: Element | null): boolean {
@@ -46,7 +47,11 @@ function useSeen(element: Element | null): boolean {
   return seen;
 }
 
-const asOfLabel = (iso: string): string => `as of ${new Date(iso).toLocaleString()}`;
+/** "as of ..." or null when the server's timestamp does not parse. */
+const asOfLabel = (iso: string): string | null => {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : `as of ${date.toLocaleString()}`;
+};
 const statusLabel = (status: string): string => status.replaceAll("_", " ");
 
 function useResolvedLink(linkId: string | undefined, enabled: boolean) {
@@ -57,9 +62,13 @@ function useResolvedLink(linkId: string | undefined, enabled: boolean) {
   useEffect(() => {
     if (!linkId || !enabled) return;
     let stale = false;
+    const controller = new AbortController();
     setState({ kind: "loading" });
     client
-      .GET("/api/v1/messaging/clinical-links/{linkId}/resolve", { params: { path: { linkId } } })
+      .GET("/api/v1/messaging/clinical-links/{linkId}/resolve", {
+        params: { path: { linkId } },
+        signal: controller.signal,
+      })
       .then(({ data, response }) => {
         if (stale) return;
         if (data?.state === "ok") {
@@ -75,6 +84,7 @@ function useResolvedLink(linkId: string | undefined, enabled: boolean) {
       });
     return () => {
       stale = true;
+      controller.abort();
     };
   }, [client, linkId, enabled, attempt]);
   return { state, retry: () => setAttempt((n) => n + 1) };
@@ -127,20 +137,24 @@ function ResolvedChip({ kindLabel, value }: { kindLabel: string; value: Resolved
     <>
       <strong>{kindLabel}</strong>
       <span>{statusLabel(value.status)}</span>
-      <small>{asOf}</small>
+      {asOf ? <small>{asOf}</small> : null}
     </>
   );
   return isInAppPath(value.link) ? (
     <Link
       className="wx-clinical-link"
       to={value.link}
-      aria-label={`Open linked ${summary}, ${asOf}`}
+      aria-label={`Open linked ${summary}${asOf ? `, ${asOf}` : ""}`}
     >
       {body}
     </Link>
   ) : (
-    // biome-ignore lint/a11y/noNoninteractiveTabindex: no safe destination, but the chip is still readable by keyboard
-    <span className="wx-clinical-link" tabIndex={0} aria-label={`Linked ${summary}, ${asOf}`}>
+    <span
+      className="wx-clinical-link"
+      // biome-ignore lint/a11y/noNoninteractiveTabindex: no safe destination, but the chip is still readable by keyboard
+      tabIndex={0}
+      aria-label={`Linked ${summary}${asOf ? `, ${asOf}` : ""}`}
+    >
       {body}
     </span>
   );

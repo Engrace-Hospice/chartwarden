@@ -299,4 +299,34 @@ describe("default candidate source", () => {
       source.list("assessment", "p-1", new AbortController().signal),
     ).rejects.toBeTruthy();
   });
+
+  it("never shows one kind's records for another kind, and a reopen fetches nothing for the old step", async () => {
+    let settleAssessments: (items: readonly ClinicalLinkCandidate[]) => void = () => {};
+    const list = vi.fn((kind: string) =>
+      kind === "medication"
+        ? Promise.resolve([candidate(1)])
+        : new Promise<readonly ClinicalLinkCandidate[]>((resolve) => {
+            settleAssessments = resolve;
+          }),
+    );
+    const source = { kinds: ["medication", "assessment"], list } as ClinicalLinkCandidateSource;
+    mount(<Harness source={source} />);
+    await userEvent.click(screen.getByRole("button", { name: /Link record/ }));
+    await userEvent.keyboard("{Enter}");
+    await screen.findByRole("option", { name: /Drug 1/ });
+
+    await userEvent.keyboard("{Backspace}{ArrowDown}{Enter}");
+
+    await screen.findByRole("combobox", { name: "Find a assessment" });
+    expect(screen.queryByRole("option", { name: /Drug 1/ })).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("Loading records");
+    settleAssessments([]);
+    await screen.findByText("No records to link.");
+
+    await userEvent.keyboard("{Escape}");
+    const calls = list.mock.calls.length;
+    await userEvent.click(screen.getByRole("button", { name: /Link record/ }));
+    await screen.findByRole("combobox", { name: "Choose a record type" });
+    expect(list).toHaveBeenCalledTimes(calls);
+  });
 });

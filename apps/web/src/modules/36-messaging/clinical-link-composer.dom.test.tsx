@@ -32,7 +32,13 @@ const channel = (kind: string, subjectId: string | null) => ({
   lastMessage: null,
 });
 
-function mount(kind: string, subjectId: string | null, flag: boolean, refuseLinks = false) {
+function mount(
+  kind: string,
+  subjectId: string | null,
+  flag: boolean,
+  refuseLinks = false,
+  secondChannel = false,
+) {
   const POST = vi.fn(() =>
     refuseLinks
       ? Promise.resolve({
@@ -47,7 +53,17 @@ function mount(kind: string, subjectId: string | null, flag: boolean, refuseLink
   );
   const GET = vi.fn((path: string) => {
     if (path === "/api/v1/messaging/channels")
-      return Promise.resolve({ data: { channels: [channel(kind, subjectId)] }, error: undefined });
+      return Promise.resolve({
+        data: {
+          channels: [
+            channel(kind, subjectId),
+            ...(secondChannel
+              ? [{ ...channel(kind, subjectId), channelId: "ch-2", title: "Other" }]
+              : []),
+          ],
+        },
+        error: undefined,
+      });
     if (path === "/api/v1/medication-orders")
       return Promise.resolve({
         data: { orders: [{ id: ORDER, drugName: "Morphine", strength: "5 mg", status: "active" }] },
@@ -143,5 +159,125 @@ describe("link picker in the composer", () => {
 
     expect(box.value).toBe("#");
     expect(screen.queryByRole("button", { name: /Link record/ })).toBeNull();
+  });
+
+  async function pickMedication() {
+    await screen.findByRole("combobox", { name: "Choose a record type" });
+    await userEvent.keyboard("{ArrowDown}{Enter}");
+    await screen.findByRole("option", { name: /Morphine 5 mg/ });
+    await userEvent.keyboard("{Enter}");
+  }
+
+  it("does not send, and keeps the draft and tray, when the sanitiser refuses a draft that has links", async () => {
+    const { POST } = mount("care_team", PATIENT, true);
+    const box = await composer();
+    typeAt(box, "see ");
+    typeAt(box, "see #");
+    await pickMedication();
+    const tooLong = `see ${"x".repeat(10_001)}`;
+    typeAt(box, tooLong);
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    expect(await screen.findByText(/Couldn't attach the linked record/)).toBeTruthy();
+    expect(POST).not.toHaveBeenCalled();
+    expect(box.value).toBe(tooLong);
+    expect(screen.getByRole("list", { name: "Linked records" })).toBeTruthy();
+  });
+
+  it("says why a links-only message cannot be sent, and stops once there is text", async () => {
+    mount("care_team", PATIENT, true);
+    const box = await composer();
+    await userEvent.click(screen.getByRole("button", { name: /Link record/ }));
+    await pickMedication();
+
+    expect(screen.getByText("Add a message to send these links.")).toBeTruthy();
+    typeAt(box, "hi");
+    expect(screen.queryByText("Add a message to send these links.")).toBeNull();
+  });
+
+  it("does not open the picker for # typed during an IME composition", async () => {
+    mount("care_team", PATIENT, true);
+    const box = await composer();
+    typeAt(box, "see ");
+    fireEvent.compositionStart(box);
+    typeAt(box, "see #");
+
+    expect(box.value).toBe("see #");
+    expect(screen.queryByRole("combobox", { name: "Choose a record type" })).toBeNull();
+  });
+
+  it.each(["insertFromPaste", "insertCompositionText"])(
+    "does not open the picker for a single # that arrives as %s",
+    async (inputType) => {
+      mount("care_team", PATIENT, true);
+      const box = await composer();
+      typeAt(box, "see ");
+      fireEvent.input(box, {
+        target: { value: "see #", selectionStart: 5, selectionEnd: 5 },
+        inputType,
+      });
+
+      expect(box.value).toBe("see #");
+      expect(screen.queryByRole("combobox", { name: "Choose a record type" })).toBeNull();
+    },
+  );
+
+  it("opens the picker for a typed # (insertText)", async () => {
+    mount("care_team", PATIENT, true);
+    const box = await composer();
+    typeAt(box, "see ");
+    fireEvent.input(box, {
+      target: { value: "see #", selectionStart: 5, selectionEnd: 5 },
+      inputType: "insertText",
+    });
+
+    expect(await screen.findByRole("combobox", { name: "Choose a record type" })).toBeTruthy();
+  });
+
+  it("puts the caret back where # was typed when the picker closes", async () => {
+    mount("care_team", PATIENT, true);
+    const box = await composer();
+    typeAt(box, "see more");
+    fireEvent.change(box, { target: { value: "see #more", selectionStart: 5, selectionEnd: 5 } });
+    await screen.findByRole("combobox", { name: "Choose a record type" });
+    expect(box.value).toBe("see more");
+
+    await userEvent.keyboard("{Escape}");
+
+    expect(document.activeElement).toBe(box);
+    expect(box.selectionStart).toBe(4);
+    expect(box.selectionEnd).toBe(4);
+  });
+
+  it("closes the picker when Escape is pressed on its toggle button", async () => {
+    mount("care_team", PATIENT, true);
+    await composer();
+    const toggle = screen.getByRole("button", { name: /Link record/ });
+    await userEvent.click(toggle);
+    await screen.findByRole("combobox", { name: "Choose a record type" });
+    toggle.focus();
+
+    await userEvent.keyboard("{Escape}");
+
+    expect(screen.queryByRole("combobox", { name: "Choose a record type" })).toBeNull();
+  });
+
+  it("closes the picker and starts the next one clean when the channel changes", async () => {
+    mount("care_team", PATIENT, true, false, true);
+    const box = await composer();
+    typeAt(box, "see ");
+    typeAt(box, "see #");
+    await screen.findByRole("combobox", { name: "Choose a record type" });
+    await userEvent.keyboard("{ArrowDown}{Enter}");
+    await screen.findByRole("option", { name: /Morphine 5 mg/ });
+
+    // A bare click (no mousedown), as a keyboard or programmatic switch would be: only the channel change can close it.
+    fireEvent.click(await screen.findByText("Other"));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("combobox", { name: /Find a|Choose a record type/ })).toBeNull(),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Link record/ }));
+    expect(await screen.findByRole("combobox", { name: "Choose a record type" })).toBeTruthy();
   });
 });

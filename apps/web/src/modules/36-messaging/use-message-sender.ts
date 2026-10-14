@@ -18,6 +18,9 @@ import type { AttachmentUploads } from "./use-attachment-upload";
 const SEND_FAILED_MESSAGE = "Message could not be sent. Your draft has been preserved.";
 /** The server answers every refused link (missing, forbidden, erased, flag off) with the same generic code. */
 const CLINICAL_LINK_REFUSED_MESSAGE = "That record can't be linked.";
+/** The sanitiser refused a draft that carries links; sending its plain text would silently drop them. */
+const CLINICAL_LINK_NOT_ATTACHABLE_MESSAGE =
+  "Couldn't attach the linked record. Shorten the message or remove the link and try again.";
 const ATTACHMENT_NOT_BINDABLE_MESSAGE =
   "One or more files can no longer be attached. Remove them and attach again. Your draft has been preserved.";
 
@@ -113,6 +116,11 @@ export function useMessageSender({
       .filter((reference) => reference.end <= submitted.length)
       .map(referenceInput);
     const richBody = draftToRichBody(submitted, draftReferences, draftLinks);
+    // Links ride only in the structured body: without one the send would succeed minus the links. Keep draft and tray.
+    if (draftLinks.length > 0 && !richBody) {
+      setSendError(CLINICAL_LINK_NOT_ATTACHABLE_MESSAGE);
+      return;
+    }
     // WP 1.2: one stable id pair per composed message, reused on retry (see sendAttemptFor).
     const attachmentIds = uploads.sendableIds;
     const sentAttachments = toSentAttachments(uploads.chips);

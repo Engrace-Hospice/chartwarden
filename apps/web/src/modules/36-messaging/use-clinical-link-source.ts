@@ -11,7 +11,10 @@ import type { ClinicalLinkCandidate, ClinicalLinkCandidateSource } from "./clini
 
 const SCALE_LABEL = (scale: string): string => scale.replaceAll("_", " ").toUpperCase();
 const readable = (value: string): string => value.replaceAll("_", " ");
-const day = (iso: string): string => new Date(iso).toLocaleDateString();
+const day = (iso: string): string | undefined => {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? undefined : date.toLocaleDateString();
+};
 
 class ListFailed extends Error {}
 

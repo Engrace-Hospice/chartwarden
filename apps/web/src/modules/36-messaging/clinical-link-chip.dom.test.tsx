@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { RichBodyView } from "./rich-body-view";
 
 // WP 3.2: the chip resolves read-through, says "unavailable" without saying why, links only to in-app paths, degrades to
-// the plain placeholder when the tenant flag is off, and ignores an answer that lands after it unmounted.
+// the plain placeholder when the tenant flag is off, aborts and ignores a superseded request.
 afterEach(cleanup);
 
 const ENTITY = "22222222-2222-4222-8222-222222222222";
@@ -66,6 +66,7 @@ describe("ClinicalLinkChip", () => {
     expect(link.textContent).toContain("on hold");
     expect(get).toHaveBeenCalledWith("/api/v1/messaging/clinical-links/{linkId}/resolve", {
       params: { path: { linkId: LINK_ID } },
+      signal: expect.any(AbortSignal),
     });
     const results = await axe.run(document.body, {
       rules: { "color-contrast": { enabled: false }, region: { enabled: false } },
@@ -73,17 +74,21 @@ describe("ClinicalLinkChip", () => {
     expect(results.violations).toEqual([]);
   });
 
-  it.each(["https://evil.example/x", "//evil.example/x", "javascript:alert(1)", "patients/p-1"])(
-    "renders no anchor for the destination %s",
-    async (link) => {
-      mount(ok(link));
+  it.each([
+    "https://evil.example/x",
+    "//evil.example/x",
+    "javascript:alert(1)",
+    "patients/p-1",
+    "/\t/evil.com",
+    "/\n/evil.com",
+  ])("renders no anchor for the destination %s", async (link) => {
+    mount(ok(link));
 
-      const chip = await screen.findByLabelText(/^Linked Medication, on hold/);
-      expect(chip.tagName).toBe("SPAN");
-      expect(chip.getAttribute("tabindex")).toBe("0");
-      expect(screen.queryByRole("link")).toBeNull();
-    },
-  );
+    const chip = await screen.findByLabelText(/^Linked Medication, on hold/);
+    expect(chip.tagName).toBe("SPAN");
+    expect(chip.getAttribute("tabindex")).toBe("0");
+    expect(screen.queryByRole("link")).toBeNull();
+  });
 
   it("says Record unavailable without a reason, and stays keyboard reachable", async () => {
     mount(vi.fn().mockResolvedValue({ data: { state: "unavailable" } }));
@@ -137,22 +142,64 @@ describe("ClinicalLinkChip", () => {
     expect(get).not.toHaveBeenCalled();
   });
 
-  it("ignores an answer that arrives after unmount", async () => {
-    let settle: (value: unknown) => void = () => {};
-    const get = vi.fn().mockReturnValue(
-      new Promise((resolve) => {
-        settle = resolve;
-      }),
-    );
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("aborts the resolve request on unmount", async () => {
+    const get = vi.fn().mockReturnValue(new Promise(() => {}));
     const view = mount(get);
     await waitFor(() => expect(get).toHaveBeenCalled());
+    const signal = (get.mock.calls[0]?.[1] as { signal: AbortSignal }).signal;
+    expect(signal.aborted).toBe(false);
 
     view.unmount();
-    await act(async () => settle({ data: { state: "unavailable" } }));
 
-    expect(error).not.toHaveBeenCalled();
-    error.mockRestore();
+    expect(signal.aborted).toBe(true);
+  });
+
+  it("does not let a superseded request overwrite the chip for the new link id", async () => {
+    const OTHER_ID = "44444444-4444-4444-8444-444444444444";
+    let settleFirst: (value: unknown) => void = () => {};
+    const get = vi
+      .fn()
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          settleFirst = resolve;
+        }),
+      )
+      .mockResolvedValueOnce({
+        data: { state: "ok", status: "active", as_of: AS_OF, link: "/patients/p-2" },
+      });
+    const view = mount(get);
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(1));
+
+    view.rerender(
+      <ApiClientProvider client={{ GET: get } as unknown as ApiClient}>
+        <MemoryRouter>
+          <RichBodyView
+            bodyDoc={body}
+            references={[]}
+            fallbackText="[linked record]"
+            clinicalLinks={[{ link_id: OTHER_ID, kind: "medication", entity_id: ENTITY }]}
+          />
+        </MemoryRouter>
+      </ApiClientProvider>,
+    );
+    expect((await screen.findByRole("link")).getAttribute("href")).toBe("/patients/p-2");
+
+    await act(async () => settleFirst({ data: { state: "unavailable" } }));
+
+    expect(screen.getByRole("link").getAttribute("href")).toBe("/patients/p-2");
+    expect(screen.queryByText("Record unavailable")).toBeNull();
+  });
+
+  it("omits the as-of text when the server's timestamp is not a date", async () => {
+    mount(
+      vi.fn().mockResolvedValue({
+        data: { state: "ok", status: "active", as_of: "not-a-date", link: "/patients/p-1" },
+      }),
+    );
+
+    const link = await screen.findByRole("link");
+    expect(link.textContent).not.toMatch(/Invalid Date|as of/);
+    expect(link.getAttribute("aria-label")).toBe("Open linked Medication, active");
   });
 
   it("waits until the chip is on screen when IntersectionObserver exists", async () => {

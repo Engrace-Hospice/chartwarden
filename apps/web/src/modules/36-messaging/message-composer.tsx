@@ -2,6 +2,7 @@
 // out of it unchanged in WP 2.11 to keep that file under the line ceiling). State and effects stay in the thread; this
 // only renders what it is given.
 import { Button, Glyph } from "@wardenx/ui";
+import { useEffect, useRef } from "react";
 import type { FormEvent, JSX, KeyboardEvent, RefObject } from "react";
 import { AttachButton, AttachmentChips } from "./attachment-composer";
 import type { ClinicalLinkCandidateSource, DraftClinicalLink } from "./clinical-link-kinds";
@@ -106,6 +107,22 @@ export function ThreadComposer({
     channel.kind === "care_team" ? channel.subjectId : null,
     linkCandidateSource,
   );
+  // Where the `#`/`+` was typed, so closing the picker puts the caret back there instead of at the end.
+  const triggerAtRef = useRef<number | null>(null);
+  const pickerOpen = linkPicker.open;
+  // A channel switch needs no reset here: ConversationThread is keyed by channel, so the picker remounts closed.
+  useEffect(() => {
+    if (!pickerOpen) triggerAtRef.current = null;
+  }, [pickerOpen]);
+  function restoreComposerFocus(): void {
+    const box = textareaRef.current;
+    box?.focus();
+    const at = triggerAtRef.current;
+    if (box && at !== null) {
+      const caret = Math.min(at, box.value.length);
+      box.setSelectionRange(caret, caret);
+    }
+  }
   return composerHidden ? (
     <output className="wx-messaging-archived">
       <Glyph name="lock" size={16} />
@@ -145,10 +162,18 @@ export function ThreadComposer({
             const typed = event.target.value;
             const cursorAt = event.target.selectionStart ?? typed.length;
             // `#` / `+` at the start of a word opens the link picker instead of landing in the text.
-            const trigger = linkPicker.enabled ? triggerIndex(draft, typed, cursorAt) : null;
+            // Not mid-composition (IME), and not a paste: only a typed character counts.
+            const inputType = (event.nativeEvent as { inputType?: string }).inputType;
+            const typedByHand =
+              !composingRef.current && (inputType === undefined || inputType === "insertText");
+            const trigger =
+              linkPicker.enabled && typedByHand ? triggerIndex(draft, typed, cursorAt) : null;
             const next =
               trigger === null ? typed : typed.slice(0, trigger) + typed.slice(trigger + 1);
-            if (trigger !== null) linkPicker.setOpen(true);
+            if (trigger !== null) {
+              triggerAtRef.current = trigger;
+              linkPicker.setOpen(true);
+            }
             const nextReferences = reconcileReferences(draft, next, draftReferences);
             setDraftReferences(nextReferences);
             setDraft(next);
@@ -167,6 +192,7 @@ export function ThreadComposer({
         />
         <ClinicalLinkTray
           links={draftLinks}
+          textEmpty={!draft.trim()}
           onRemove={(link) => {
             removeDraftLink(link);
             textareaRef.current?.focus();
@@ -179,7 +205,7 @@ export function ThreadComposer({
           links={draftLinks}
           disabled={sending}
           onAdd={addDraftLink}
-          onClosed={() => textareaRef.current?.focus()}
+          onClosed={restoreComposerFocus}
         />
         <TemplatePicker
           disabled={sending}
