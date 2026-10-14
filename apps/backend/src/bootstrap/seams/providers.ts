@@ -1029,6 +1029,9 @@ export const orderSignatureProviderDenyStub: OrderSignatureProvider = {
 /** M11 — the order read seam (active / by-patient / since / verbal-timeliness / discontinuation). Denies
  * until M11 registers it (M14/M23/M30/M7 resolve the real impl). */
 export const orderProviderDenyStub: OrderProvider = {
+  linkSummary() {
+    throw new NotImplementedError("OrderProvider");
+  },
   getOrder() {
     throw new NotImplementedError("OrderProvider");
   },

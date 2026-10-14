@@ -397,3 +397,42 @@ describe("boot wiring (registerOrderSeams)", () => {
     ).toThrow(/not implemented/);
   });
 });
+
+describe("OrderProvider.linkSummary (messaging hub WP 3.2)", () => {
+  const provider = () =>
+    createOrderProvider(
+      createInMemoryOrderSeamStore({
+        orders: [
+          order({ orderId: "ord-signed" }),
+          order({ orderId: "ord-draft", signedAt: null, status: "pending_signature" }),
+        ],
+        orderOrganizations: { "ord-signed": "org-1", "ord-draft": "org-1" },
+      }).store,
+    );
+
+  it("returns exactly the 4 contract keys, occurredAt = signedAt", async () => {
+    const out = await provider().linkSummary("org-1", "ord-signed");
+    expect(out).toEqual({
+      id: "ord-signed",
+      patientId: PAT,
+      status: "active",
+      occurredAt: "2026-03-01T12:00:00.000Z",
+    });
+    expect(Object.keys(out ?? {}).sort()).toEqual(["id", "occurredAt", "patientId", "status"]);
+  });
+
+  it("falls back to createdAt when unsigned", async () => {
+    const out = await provider().linkSummary("org-1", "ord-draft");
+    expect(out?.occurredAt).toBe("2026-03-01T10:00:00.000Z");
+  });
+
+  it("returns null for an unknown id and for the wrong org", async () => {
+    expect(await provider().linkSummary("org-1", "nope")).toBeNull();
+    expect(await provider().linkSummary("org-2", "ord-signed")).toBeNull();
+  });
+
+  it("fails closed on a blank org or id", async () => {
+    await expect(provider().linkSummary("", "ord-signed")).rejects.toThrow();
+    await expect(provider().linkSummary("org-1", " ")).rejects.toThrow();
+  });
+});

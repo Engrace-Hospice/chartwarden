@@ -251,6 +251,7 @@
     "test:m17:evv-checkout-corrected:live": "vitest run apps/backend/__tests__/m17-evv-checkout-corrected.live.test.ts",
     "test:m17:volunteer-triage-consumers:live": "vitest run apps/backend/__tests__/m17-volunteer-triage-consumers.live.test.ts",
     "test:m17:reassignment-reminder:live": "vitest run apps/backend/__tests__/gap-052-m17-reassignment-reminder.live.test.ts",
+    "test:m11:link-summary:live": "vitest run apps/backend/__tests__/m11-link-summary.live.test.ts",
     "test:m17:next-visit:live": "vitest run apps/backend/__tests__/m17-next-scheduled-visit.live.test.ts",
     "test:m2:consent-revoked:live": "vitest run apps/backend/__tests__/m2-consent-revoked.live.test.ts",
     "test:m37:admission-discharged-cascade:live": "vitest run apps/backend/__tests__/m37-admission-discharged-cascade.live.test.ts",

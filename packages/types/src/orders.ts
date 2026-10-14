@@ -17,6 +17,7 @@
 // the package surface stays unambiguous under `export *` — re-exporting would be a TS2308 collision) ─
 import type { AdmissionId, PatientId, ProviderEntityId } from "./admission";
 import type { IsoInstant, LocationId } from "./care-plan";
+import type { ClinicalLinkSummary } from "./clinical-link";
 
 // ── M11-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ─────────
 export type OrderRecordId = string;
@@ -488,6 +489,12 @@ export interface OrderSignatureProvider {
  * The impl + M1-registry wiring land in M11-T05.
  */
 export interface OrderProvider {
+  /**
+   * M36 WP 3.2 clinical links - id + patient + status + `signedAt ?? createdAt` ONLY (no order text or
+   * kind-specific payload). Org-explicit (opens its own tenant context, callable outside a request); null when no
+   * such order in that org. Throws on a blank organizationId or id (fails closed).
+   */
+  linkSummary(organizationId: string, id: string): Promise<ClinicalLinkSummary | null>;
   /**
    * M21-T04 — resolve ONE order by id. Added for the M21 supply cascade: `m11.order.supply_fulfillment_
    * requested` carries `orderId` but no patient or admission, and every M21 PHI row needs both, so the
