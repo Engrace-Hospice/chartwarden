@@ -355,6 +355,14 @@ function fakeTx(selects: unknown[][], captured: { insert?: unknown; update?: unk
   };
   return {
     select: () => chain(selects[n++] ?? []),
+    // member-category-gate reads the excluded-category holders with selectDistinct(...).from().innerJoin()...where().
+    selectDistinct: () => {
+      const c: Record<string, unknown> = {};
+      c.from = () => c;
+      c.innerJoin = () => c;
+      c.where = async () => [];
+      return c;
+    },
     insert: () => ({
       values: async (v: unknown) => {
         captured.insert = v;

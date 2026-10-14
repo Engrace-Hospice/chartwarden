@@ -27,6 +27,8 @@ const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
     "alert-rule descriptions for M19/M23 ack crons and unacknowledged escalations (other modules' lifecycles)",
   "packages/messaging/src/seed/alert-rules-billing-cap.ts":
     "names the M23 ack crons the rule fires on",
+  "apps/web/src/modules/36-messaging/global-search-settings.tsx":
+    "the admin screen for the ADR-0058 F5 tenant notice acknowledgement, not a message receipt",
   "apps/backend/src/modules/36-messaging/global-search/notice.ts":
     "ADR-0058 F5 tenant notice acknowledgement (an org admin accepting the discoverability notice), not a message receipt",
   "apps/backend/src/modules/36-messaging/global-search/settings-service.ts":
