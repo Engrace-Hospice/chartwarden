@@ -77,6 +77,7 @@ import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import Redis, { type RedisOptions } from "ioredis";
 import { parseTrustedProxies } from "./bootstrap";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
+import { bindPlatformStaffToOrg } from "./bootstrap/bind-platform-staff";
 import { attachDlqPromotionAlert, buildDlqPromotionSink } from "./bootstrap/dlq-alerts";
 import { buildF2fClinicianRoleReader } from "./bootstrap/f2f-clinician-roles";
 import {
@@ -1627,6 +1628,8 @@ export function wireModuleSeams(
       ? {
           onTenantOrganizationAvailable: async (organizationId: string) => {
             await materializeRoleTemplatesForOrg(deps.db as DbClient, organizationId);
+            // Platform-ops operators join the new org so `role_set[platform_ops]` alerts have a recipient.
+            await bindPlatformStaffToOrg(deps.db as DbClient, organizationId);
           },
         }
       : {}),
