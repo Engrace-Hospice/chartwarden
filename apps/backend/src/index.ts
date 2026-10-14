@@ -366,6 +366,7 @@ import {
   patientDisplayLabelsForOrg,
   patientIdsPageForOrg,
   patientIsDeceasedForOrg,
+  patientNameFragmentsPageForOrg,
   rebuildPrivacySnapshotsForOrg,
   registerAmendmentSlaWorker,
   registerPatientErasers,
@@ -1401,6 +1402,7 @@ import {
   runLegacyBodyBootCheck,
 } from "./modules/36-messaging/body-legacy-key-check";
 import { cronAlertCorrelationId } from "./modules/36-messaging/cron-alert-correlation";
+import { createNameExclusions } from "./modules/36-messaging/global-search/name-exclusion";
 import { registerM36GlobalSearch } from "./modules/36-messaging/global-search/register";
 import { createRingSearchKeyProvider } from "./modules/36-messaging/global-search/search-key-provider";
 import {
@@ -3447,6 +3449,18 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   // Both are shared by the route mount and the indexer/worker; the ring cache is resolved per call (bound later at boot).
   const m36SearchRateLimit = buildGlobalSearchRateLimit(rateLimitStore);
   const m36SearchKeys = createRingSearchKeyProvider(() => sharedRingDekCache());
+  // ADR-0058 name exclusion: patient / caregiver / contact names never reach the index. M5's keyset name enumeration is injected as a
+  // port (M36 reads no M5 table); one instance is shared by the query route and the indexer / maintenance worker.
+  const m36NameExclusions = dbHandle
+    ? createNameExclusions({
+        db: dbHandle.db,
+        keys: m36SearchKeys,
+        names: {
+          fragmentsPage: (organizationId, afterId, limit) =>
+            patientNameFragmentsPageForOrg(dbHandle.db, organizationId, afterId, limit),
+        },
+      })
+    : undefined;
   // TASK-040B — the outbox dispatcher (below, ~worker-runner section) is constructed AFTER
   // buildServer() returns `app` (it needs `app.addHook`/`app.log`), but the readinessProbe is
   // built and passed INTO buildServer() before that. This ref lets the probe's outbox-depth check
@@ -4604,6 +4618,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             attachments: m36AttachmentBinding,
             globalSearch: {
               keys: m36SearchKeys,
+              ...(m36NameExclusions ? { exclusions: m36NameExclusions } : {}),
               ...(m36SearchRateLimit.rateLimit ? { rateLimit: m36SearchRateLimit.rateLimit } : {}),
             },
             globalSearchRateLimitActive: m36SearchRateLimit.active,
@@ -9350,6 +9365,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         db: dbHandle.db,
         cipher: createMessageBodyCipher(),
         keys: m36SearchKeys,
+        exclusions:
+          m36NameExclusions ?? createNameExclusions({ db: dbHandle.db, keys: m36SearchKeys }),
         // Ids and a fixed reason only; never a tag, token or body text.
         onIndexError: (info) => app.log.warn(info, "M36 global search index write skipped"),
         ...(queueConnection

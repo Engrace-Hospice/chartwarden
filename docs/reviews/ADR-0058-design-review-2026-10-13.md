@@ -180,3 +180,21 @@ rare tail fail, the fallback is the bounded multi-channel option A in the ADR.
 
 Before ADR-0055 redaction ships: F1 fixed with a ratchet test, and F5 fixed or documented.
 Tracked follow-ups, not blockers: F7, F8, bounding the removal gap on the history read path, aligning 2.7a archived-channel behaviour.
+
+## Update 2026-10-13 (after the leakage experiment): product-owner decisions and what was built
+
+Not a review. The product owner decided, on the evidence of the [leakage experiment](./ADR-0058-leakage-experiment-2026-10-13.md) (channel-linked name recovery about 93% at any `T`):
+(1) patient and contact names are excluded from the index; (2) tags are keyed per channel. Built on `feat/m36-phase2-closeout` (migration 1096, ADR amendment "name exclusion
+and per-channel keys"). The Status stays **Accepted by decision with the design review requirement NOT satisfied**: nobody has signed this record, the vocabulary attacks were not re-run against
+per-channel keys, no production-shaped corpus exists, and the HIPAA entry and residual-risk acceptance are pending.
+
+| Review item | State after this change |
+|---|---|
+| Security architect: "Patient names indexed as ordinary words (v1)": exclusion becomes a blocker if recovery is high | **Superseded by decision**: names excluded; the experiment re-run shows 0.0% channel-linked recovery with the production exclusion path (condition 2, names part). Residuals in the ADR leakage table (unrecorded names, name-words, new-name window). |
+| Security architect H2: size `T` on stored rows | **Built**: `T = clamp(round(log2(totalRows / 150)), 12, 20)`, estimated at state creation, re-measured at each verified build, rebuild at a 2-bit difference; unit test recomputes the ADR table. |
+| Security architect M1 / condition 11: delete old-version rows on rotation | **Built and proven live**: `ready` removes the other versions' token rows and state rows in the same transaction. The "rotation = rebuild, search closed" behaviour is unchanged. |
+| Security architect L3: bind `T` and epoch into key derivation | **Built for the channel key**: the HKDF info carries the ring version label and `T`. There is no separate index epoch counter (a rebuild at the same version and `T` re-derives the same keys by design, because queries need them). |
+| Security architect M3 and "Part 2" items | **Skipped on purpose**: they need counsel; nothing changed. |
+| Condition 3 "head-bucket statistics re-measured" | Head buckets are now `(channel, tag)` pairs; not re-measured on a production-shaped corpus. |
+| Privacy officer: "above threshold, exclusion becomes mandatory before enablement" | The rule's trigger fired (about 93% against the 1% allowance); exclusion is built, residual-risk acceptance is still the product owner's and pending. |
+| New residuals to enter the HIPAA risk analysis | per-channel frequency histograms with a plaintext `channel_id` beside each row; weaker in-channel masking at the sized `T`; the channel-scoped head-bucket signal (membership-dependent, narrower than the old tenant-wide one); the name-exclusion window of minutes and its dependence on M5 name completeness; the digest set stored at rest (keyed, scrubbed from audit). |

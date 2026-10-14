@@ -6,16 +6,18 @@
 //      insert, so no tokens for a vanished body are left behind; the edit/delete trigger runs under the writer's lock);
 //   3. re-check eligibility (status <> 'deleted', not redacted/pending) and that the body we opened still hashes to the
 //      CURRENT `body_sha256`; otherwise delete the message's tokens and stop;
-//   4. tokenise the PLAIN TEXT projection (never raw stored JSON), derive + pad the tags, delete-then-bulk-insert.
+//   4. tokenise the PLAIN TEXT projection (never raw stored JSON; excluded patient/contact name tokens are dropped like stop words),
+//      derive the tags under the message's CHANNEL key (ADR-0058: K_ch = HKDF(K_search, version, T, channel)), pad, delete-then-bulk-insert.
 // Nothing happens while the platform kill switch or the tenant flag is OFF (an inert no-op that still completes the event). The same-transaction
 // delete hook in migration 1091 never consults a flag; `removeMessage` here is the unconditional repair path.
 // Key and tag-width errors THROW: the caller (outbox retry, maintenance tick) fails closed and tries again.
 import { type DbClient, schema } from "@wardenx/db";
-import { type SearchKeyProvider, buildMessageTags } from "@wardenx/messaging";
+import { type SearchKeyProvider, buildMessageTags, deriveChannelKey } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq } from "drizzle-orm";
 import { deleteSearchTokens } from "../message-search-tokens";
 import { ensureIndexState } from "./index-state";
+import type { NameExclusions } from "./name-exclusion";
 import type { PlatformSearchFlag } from "./platform-flag";
 import {
   type BodyReader,
@@ -27,7 +29,7 @@ import { readTenantSearchSettingInTx } from "./tenant-setting-store";
 
 const MESSAGE = schema.messages;
 const TOKENS = schema.messageSearchTokens;
-/** 4 bound parameters per row; keep a statement far below the 65535-parameter protocol limit. */
+/** 5 bound parameters per row; keep a statement far below the 65535-parameter protocol limit. */
 const INSERT_CHUNK_ROWS = 2000;
 
 export type IndexOutcome = "indexed" | "removed" | "skipped_off" | "skipped_stale";
@@ -36,6 +38,8 @@ export interface IndexWriterDeps {
   readonly db: DbClient;
   readonly bodies: BodyReader;
   readonly keys: SearchKeyProvider;
+  /** The excluded patient/contact name tokens. Explicit on purpose: there is no default that would index names. */
+  readonly exclusions: NameExclusions;
   readonly platformFlag: PlatformSearchFlag;
   readonly isRedactedOrPending?: IsRedactedOrPending;
   /** Ids and a fixed reason only: never a tag, a token or any body content. */
@@ -60,7 +64,9 @@ export function createIndexWriter(deps: IndexWriterDeps): IndexWriter {
     async indexMessage(organizationId, messageId) {
       if (!(await deps.platformFlag.read(organizationId)).enabled) return "skipped_off";
       const keyVersion = await deps.keys.activeVersion(organizationId);
-      const key = await deps.keys.tagKey(organizationId, keyVersion);
+      const searchKey = await deps.keys.tagKey(organizationId, keyVersion);
+      // Read outside the tenant transaction: the first read of a tenant pages through the name source.
+      const excluded = await deps.exclusions.current(organizationId, keyVersion);
       return withOrgContext(deps.db, { organizationId, userId: "" }, async (tx) => {
         const setting = await readTenantSearchSettingInTx(tx, organizationId, { lock: "share" });
         if (!setting.enabled) return "skipped_off";
@@ -68,6 +74,7 @@ export function createIndexWriter(deps: IndexWriterDeps): IndexWriter {
         const rows = await tx
           .select({
             id: MESSAGE.id,
+            channelId: MESSAGE.channelId,
             status: MESSAGE.status,
             bodyKind: MESSAGE.bodyKind,
             bodyCipher: MESSAGE.bodyCipher,
@@ -91,7 +98,8 @@ export function createIndexWriter(deps: IndexWriterDeps): IndexWriter {
         }
 
         const { tagBits } = await ensureIndexState(tx, organizationId, keyVersion);
-        const tags = buildMessageTags(key, body.text, tagBits);
+        const channelKey = deriveChannelKey(searchKey, keyVersion, tagBits, row.channelId);
+        const tags = buildMessageTags(channelKey, body.text, tagBits, excluded);
         await tx
           .delete(TOKENS)
           .where(
@@ -102,13 +110,15 @@ export function createIndexWriter(deps: IndexWriterDeps): IndexWriter {
             ),
           );
         for (let i = 0; i < tags.length; i += INSERT_CHUNK_ROWS) {
-          await tx
-            .insert(TOKENS)
-            .values(
-              tags
-                .slice(i, i + INSERT_CHUNK_ROWS)
-                .map((tag) => ({ organizationId, keyVersion, tag, messageId })),
-            );
+          await tx.insert(TOKENS).values(
+            tags.slice(i, i + INSERT_CHUNK_ROWS).map((tag) => ({
+              organizationId,
+              keyVersion,
+              channelId: row.channelId,
+              tag,
+              messageId,
+            })),
+          );
         }
         return "indexed";
       });

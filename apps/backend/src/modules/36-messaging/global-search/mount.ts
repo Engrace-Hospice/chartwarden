@@ -14,6 +14,7 @@ import {
   type GlobalSearchRateLimit,
   registerGlobalSearchRoutes,
 } from "../routes/global-search-routes";
+import { type NameExclusions, createNameExclusions } from "./name-exclusion";
 import { createPlatformSearchFlag } from "./platform-flag";
 import {
   type BodyReader,
@@ -25,11 +26,13 @@ import { type ChannelAuthority, createGlobalSearchService } from "./query-servic
 import { createRoleGate } from "./role-gate";
 import { createUnavailableSearchKeyProvider } from "./search-key-provider";
 import { createServeGates } from "./serve-gate";
-import type { ResponseFloorConfig } from "./timing-floor";
 import { createTenantSearchSettingStore } from "./tenant-setting-store";
+import type { ResponseFloorConfig } from "./timing-floor";
 
 export interface GlobalSearchMountOptions {
   readonly keys?: SearchKeyProvider;
+  /** Default: an exclusion set with NO name source, which fails closed (every query answers 503) rather than matching names. */
+  readonly exclusions?: NameExclusions;
   readonly rateLimit?: GlobalSearchRateLimit;
   /** Tests only: override the response-time floor (default: production values, env-overridable outside production). */
   readonly responseFloor?: ResponseFloorConfig;
@@ -57,6 +60,7 @@ export function mountGlobalSearchRoutes(
       db,
       bodies: opts.bodies ?? createBodyReader(cipher),
       keys,
+      exclusions: opts.exclusions ?? createNameExclusions({ db, keys }),
       part2Gate: opts.part2Gate ?? createSeamPart2ChannelGate(db),
       cipher,
       ...(opts.authority ? { authority: opts.authority } : {}),

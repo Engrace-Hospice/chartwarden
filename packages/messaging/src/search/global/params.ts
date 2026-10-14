@@ -26,8 +26,17 @@ export const DEFAULT_TAG_BITS = 19;
 export const MIN_TAG_BITS = 12;
 /** The `message_search_token.tag` CHECK allows 0 <= tag < 2^20. */
 export const MAX_TAG_BITS = 20;
-/** `D_org / B` the per-tenant sizing rule aims for. */
-export const TARGET_TAGS_PER_BUCKET = 0.75;
+/** Rows per bucket the per-tenant sizing rule aims for (security review H2: sized on STORED ROWS, not on distinct tags). */
+export const TARGET_ROWS_PER_BUCKET = 150;
+/** A stored T is rebuilt only when the rule's T differs from it by at least this many bits (4x the rows): hysteresis, so a 1-bit rounding wobble never takes search down. */
+export const TAG_BITS_REBUILD_DELTA = 2;
+/**
+ * Most channels one query searches (per-channel keys: every channel costs one tag per term). Above it the most recently active
+ * channels are searched and the response says the scan was capped (never silent).
+ */
+export const MAX_QUERY_CHANNELS = 300;
+/** Most (channel, tag) head pairs recorded per index state; the largest buckets win. */
+export const MAX_HEAD_PAIRS = 2000;
 
 export const PADDING_FLOOR = 16;
 
@@ -40,13 +49,21 @@ export const MAX_PAGES_PER_QUERY = 5;
 export const RATE_LIMIT_PER_USER_PER_MINUTE = 30;
 export const RATE_LIMIT_PER_ORG_PER_MINUTE = 300;
 
-/** The per-tenant sizing rule: T = clamp(round(log2(D_org / 0.75)), 12, 20); 19 when D_org is not yet known. */
-export function tagBitsForDistinctTags(distinctTags: number | null | undefined): number {
-  if (distinctTags === null || distinctTags === undefined || !(distinctTags > 0)) {
-    return DEFAULT_TAG_BITS;
-  }
-  const raw = Math.round(Math.log2(distinctTags / TARGET_TAGS_PER_BUCKET));
+/**
+ * The per-tenant sizing rule (security review H2): T = clamp(round(log2(totalRows / 150)), 12, 20), where totalRows is the number of
+ * stored token rows (real + dummy) of the (org, key version); 19 when it is not yet known. This is the ADR table's "rows per
+ * bucket ~ 150" row: the reference tenant (8 x 10^7 rows) gives 19.
+ */
+export function tagBitsForTotalRows(totalRows: number | null | undefined): number {
+  if (totalRows === null || totalRows === undefined || !(totalRows > 0)) return DEFAULT_TAG_BITS;
+  const raw = Math.round(Math.log2(totalRows / TARGET_ROWS_PER_BUCKET));
   return Math.min(MAX_TAG_BITS, Math.max(MIN_TAG_BITS, raw));
+}
+
+/** True when the stored width is far enough from the rule's width (for the current row count) to justify a rebuild. */
+export function shouldResizeTagBits(currentBits: number, totalRows: number): boolean {
+  if (!(totalRows > 0)) return false; // an empty index has no row count to size on (the rule's "unknown" answer is the default 19)
+  return Math.abs(tagBitsForTotalRows(totalRows) - currentBits) >= TAG_BITS_REBUILD_DELTA;
 }
 
 export function assertTagBits(tagBits: number): number {

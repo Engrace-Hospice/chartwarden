@@ -117,6 +117,13 @@ export {
 } from "./seams/patient-display-for-org";
 // GAP-084 — the org-explicit keyset patient-id enumeration M28's bulk-export worker needs (injected as a port).
 export { PATIENT_IDS_PAGE_MAX, patientIdsPageForOrg } from "./seams/patient-ids-page-for-org";
+// ADR-0058 name exclusion — the org-explicit keyset enumeration of patient / caregiver / contact name TEXT (no ids), injected into
+// M36's global search as a port at the composition root (M36 imports no M5 code/schema).
+export {
+  PATIENT_NAME_PAGE_MAX,
+  type PatientNameFragmentsPage,
+  patientNameFragmentsPageForOrg,
+} from "./seams/patient-name-fragments-page-for-org";
 // GAP-115 — the deceased-status fact M2's funeral-home link needs, injected into M2 as a port.
 export { patientIsDeceasedForOrg } from "./seams/patient-deceased-for-org";
 // GAP-115 follow-up — the minimum decedent facts (legal name + date of death) a redeemed funeral-home session reads.

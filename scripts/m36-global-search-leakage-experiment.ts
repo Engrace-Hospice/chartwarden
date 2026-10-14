@@ -4,7 +4,11 @@
 // packages/messaging/src/search/global. The ONLY non-production pieces are (a) the dense 3..12 prefix chain (the production
 // constant is the sparse set, so the dense variant is rebuilt from the production wholeWordInput/prefixInput), (b) dummies are
 // drawn from the seeded PRNG instead of the CSPRNG so the run is deterministic (same distribution: uniform T-bit values; the
-// count comes from the production paddedSize), (c) the optional patient-name exclusion (not implemented in production).
+// count comes from the production paddedSize). 2026-10-13 (product-owner decisions): "names excluded" now runs the PRODUCTION path
+// (`digestExclusion` over `nameTokenDigest`s of every patient / family name token, applied INSIDE `tokenizeForSearch`, exactly as the
+// writer does), and the per-channel-key scheme (`deriveChannelKey`) is measured for the channel-linked name attack ("--channel-keys").
+// The vocabulary attacks (rank / co-occurrence over one global bucket space) only exist for a single global key; they are kept for
+// comparability with the 2026-10-13 run and labelled "global key (superseded scheme)".
 import { createHash } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import {
@@ -12,12 +16,15 @@ import {
   DEFAULT_TAG_BITS,
   PREFIX_TAG_LENGTHS,
   STOP_WORDS,
+  deriveChannelKey,
   deriveSearchKey,
+  digestExclusion,
   indexTagStrings,
+  nameTokenDigest,
   padTags,
   paddedSize,
   prefixInput,
-  tagBitsForDistinctTags,
+  tagBitsForTotalRows,
   tagForPrefix,
   tagForWord,
   tokenizeForSearch,
@@ -432,14 +439,23 @@ function tokenStats(tokens: readonly (readonly string[])[]): TokenStats {
  * indistinguishable by frequency or nesting, so demanding the exact tag kind would understate the leak.
  */
 function makeRecovered(truth: Map<string, number>) {
-  return (words: readonly string[], idx: Index, assign: Map<number, string>, filter?: (w: string) => boolean): number => {
+  return (
+    words: readonly string[],
+    idx: Index,
+    assign: Map<number, string>,
+    filter?: (w: string) => boolean,
+  ): number => {
     const ws = filter ? words.filter(filter) : words;
     if (ws.length === 0) return Number.NaN;
     const hit = (w: string): boolean => {
       const l = assign.get(idx.tagOf(`w:${w}`));
       if (l === undefined) return false;
       if (l === `w:${w}`) return true;
-      return l.startsWith("p:") && w.startsWith(l.slice(2)) && (truth.get(l) ?? Infinity) <= 1.25 * (truth.get(`w:${w}`) ?? 1);
+      return (
+        l.startsWith("p:") &&
+        w.startsWith(l.slice(2)) &&
+        (truth.get(l) ?? Number.POSITIVE_INFINITY) <= 1.25 * (truth.get(`w:${w}`) ?? 1)
+      );
     };
     return ws.filter(hit).length / ws.length;
   };
@@ -543,10 +559,105 @@ function nameLinkage(
     base += candidates > 0 ? 1 / candidates : 0;
     // family-level hit: the surname's whole-word bucket or one of its own prefix buckets that holds (about) the same messages
     const whole = idx.tagOf(`w:${p.surname}`);
-    const family = labelKeys([p.surname], scheme).map(idx.tagOf).filter((b) => b === whole || (idx.counts[b] as number) <= 1.25 * (idx.counts[whole] as number));
+    const family = labelKeys([p.surname], scheme)
+      .map(idx.tagOf)
+      .filter(
+        (b) => b === whole || (idx.counts[b] as number) <= 1.25 * (idx.counts[whole] as number),
+      );
     if (family.includes(top)) hit += 1;
   });
   return { rate: n ? hit / n : Number.NaN, baseline: n ? base / n : Number.NaN, n };
+}
+
+// ---------------------------------------------------------------- per-channel keys (production scheme)
+interface ChannelRow {
+  readonly tagBits: number;
+  readonly names: "indexed" | "excluded";
+  readonly n: number;
+  readonly top1: number;
+  readonly top3: number;
+  readonly baseline: number;
+  readonly present: number;
+}
+
+/**
+ * The production scheme: every channel has its own key (`deriveChannelKey`), so the same word is a different bucket in every channel
+ * and NO cross-channel baseline (concentration lift) exists. The adversary with the channel-to-patient link can only look inside the
+ * channel: the strongest simple test is the raw message frequency of its buckets (a surname in ~30% of a patient's messages is a
+ * frequent bucket). "present" is the share of patients whose surname family tags occur in ANY row of their channel at all: with
+ * the production exclusion it is the residual of shared-prefix and collision buckets.
+ */
+function channelKeyNameExperiment(
+  corpus: Corpus,
+  tokIndexed: readonly (readonly string[])[],
+  tokExcluded: readonly (readonly string[])[],
+  tagBitsList: readonly number[],
+  surnames: ReadonlySet<string>,
+): ChannelRow[] {
+  const out: ChannelRow[] = [];
+  const searchKey = deriveSearchKey(sha(`${SEED}:tenant:dek`), "org-tenant", "v1");
+  for (const tagBits of tagBitsList) {
+    for (const names of ["indexed", "excluded"] as const) {
+      const toks = names === "indexed" ? tokIndexed : tokExcluded;
+      const r = mulberry32(SEED ^ 0x51ed ^ tagBits);
+      const keyOf = new Map<number, Buffer>();
+      const channelKey = (c: number): Buffer => {
+        const known = keyOf.get(c);
+        if (known) return known;
+        const derived = deriveChannelKey(searchKey, "v1", tagBits, `channel-${c}`);
+        keyOf.set(c, derived);
+        return derived;
+      };
+      const tagIn = (c: number, label: string): number =>
+        label.startsWith("w:")
+          ? tagForWord(channelKey(c), label.slice(2), tagBits)
+          : tagForPrefix(channelKey(c), label.slice(2), tagBits);
+      // per channel: bucket -> number of messages holding it (real + dummy rows, distinct per message)
+      const perChannel = new Map<number, Map<number, number>>();
+      const msgsOf = new Map<number, number>();
+      corpus.messages.forEach((m, i) => {
+        const real = labelKeys(toks[i] as readonly string[], "sparse").map((l) =>
+          tagIn(m.channel, l),
+        );
+        const rows = [...real];
+        for (let n = paddedSize(real.length) - real.length; n > 0; n -= 1)
+          rows.push(Math.floor(r() * 2 ** tagBits));
+        const tally = perChannel.get(m.channel) ?? new Map<number, number>();
+        for (const b of new Set(rows)) tally.set(b, (tally.get(b) ?? 0) + 1);
+        perChannel.set(m.channel, tally);
+        msgsOf.set(m.channel, (msgsOf.get(m.channel) ?? 0) + 1);
+      });
+      let n = 0;
+      let top1 = 0;
+      let top3 = 0;
+      let present = 0;
+      let base = 0;
+      corpus.lexicon.patients.forEach((p, pi) => {
+        const total = msgsOf.get(pi) ?? 0;
+        const tally = perChannel.get(pi);
+        if (total < 20 || !tally || !surnames.has(p.surname)) return;
+        const family = new Set(labelKeys([p.surname], "sparse").map((l) => tagIn(pi, l)));
+        const ranked = [...tally.entries()]
+          .filter(([, c]) => c >= 3)
+          .sort((a, b) => b[1] - a[1] || a[0] - b[0]);
+        n += 1;
+        base += ranked.length > 0 ? 1 / ranked.length : 0;
+        if (ranked[0] && family.has(ranked[0][0])) top1 += 1;
+        if (ranked.slice(0, 3).some(([b]) => family.has(b))) top3 += 1;
+        if ([...family].some((b) => (tally.get(b) ?? 0) >= 3)) present += 1;
+      });
+      out.push({
+        tagBits,
+        names,
+        n,
+        top1: n ? top1 / n : Number.NaN,
+        top3: n ? top3 / n : Number.NaN,
+        baseline: n ? base / n : Number.NaN,
+        present: n ? present / n : Number.NaN,
+      });
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- experiment
@@ -598,7 +709,20 @@ function main(): void {
   const auxNames = shuffle([...new Set(publicNames)], r);
   const aux = generate(lexicon, SEED + 2, { count: MESSAGES, auxMode: true, auxNames });
   const tokAll = tenant.messages.map((m) => tokenizeForSearch(m.text));
-  const tokNoNames = tokAll.map((t) => t.filter((w) => !lexicon.nameRegistry.has(w)));
+  // PRODUCTION name exclusion: the tenant's name tokens are tokenised by the production tokenizer, replaced by keyed digests and
+  // applied through `tokenizeForSearch(text, excluded)` - the very call the index writer makes.
+  const tenantSearchKey = deriveSearchKey(sha(`${SEED}:tenant:dek`), "org-tenant", "v1");
+  const excludedNames = digestExclusion(
+    tenantSearchKey,
+    new Set(
+      lexicon.patients.flatMap((p) =>
+        [p.surname, p.first, p.family].flatMap((part) =>
+          tokenizeForSearch(part).map((token) => nameTokenDigest(tenantSearchKey, token)),
+        ),
+      ),
+    ),
+  );
+  const tokNoNames = tenant.messages.map((m) => tokenizeForSearch(m.text, excludedNames));
   const auxTok = aux.messages.map((m) => tokenizeForSearch(m.text));
   const auxTokNoNames = auxTok.map((t) => t.filter((w) => !lexicon.nameRegistry.has(w) || false));
   const perfect = generate(lexicon, SEED + 3, { count: MESSAGES, auxMode: false }); // control: aux drawn from the tenant's own distribution
@@ -609,10 +733,13 @@ function main(): void {
   const nameLabelCount = auxNames.length;
 
   const sparseD = new Set(tokAll.flatMap((t) => labelKeys(t, "sparse"))).size;
-  const ruleBits = tagBitsForDistinctTags(sparseD);
-  const tagBitsList = arg("T", "") ? arg("T", "").split(",").map(Number) : [...new Set([ruleBits, DEFAULT_TAG_BITS])];
+  const storedRows = tokAll.reduce((sum, t) => sum + paddedSize(labelKeys(t, "sparse").length), 0);
+  const ruleBits = tagBitsForTotalRows(storedRows); // security review H2: sized on stored ROWS, not on distinct tags
+  const tagBitsList = arg("T", "")
+    ? arg("T", "").split(",").map(Number)
+    : [...new Set([ruleBits, DEFAULT_TAG_BITS])];
   console.error(
-    `corpus: ${MESSAGES} msgs, distinct sparse tags D=${sparseD}, rule T=${ruleBits}, T list ${tagBitsList}`,
+    `corpus: ${MESSAGES} msgs, distinct sparse tags D=${sparseD}, stored rows=${storedRows}, rule T=${ruleBits}, T list ${tagBitsList}`,
   );
 
   const rows: Row[] = [];
@@ -633,13 +760,13 @@ function main(): void {
             const idx = buildIndex(toks, scheme, tagBits, dummies, SEED, "tenant");
             const auxIdx = buildIndex(atoks, scheme, tagBits, dummies, SEED + 7, "aux-calibration"); // adversary's own key
             const auxM = auxModel(atoks, scheme);
-          const recoveredRate = makeRecovered(auxModel(toks, scheme).df);
+            const recoveredRate = makeRecovered(auxModel(toks, scheme).df);
             const ts = tokenStats(toks);
             const auxTs = tokenStats(atoks);
             const base = rankAttack(idx, auxM);
             const refined = refineAttack(idx, auxM, base);
             const len = lengthLeak(idx, ts, auxIdx, auxTs);
-            const linked = nameLinkage(idx, tenant, names === "indexed" ? surnames : new Set(), scheme);
+            const linked = nameLinkage(idx, tenant, surnames, scheme);
             const inAux = (w: string): boolean => auxM.df.has(`w:${w}`);
             const rpb = idx.counts.reduce((a, b) => a + b, 0) / 2 ** tagBits;
             for (const [attack, assign] of [
@@ -686,7 +813,7 @@ function main(): void {
   const pct = (x: number): string => (Number.isNaN(x) ? "n/a" : `${(x * 100).toFixed(1)}%`);
   const out: string[] = [];
   out.push(
-    `seed=${SEED} messages=${MESSAGES} D_sparse=${sparseD} ruleT=${ruleBits} sparseLengths=${PREFIX_TAG_LENGTHS.join(",")} candidateCap=${CANDIDATE_CAP}`,
+    `GLOBAL KEY (superseded scheme, kept for comparability) seed=${SEED} messages=${MESSAGES} D_sparse=${sparseD} storedRows=${storedRows} ruleT=${ruleBits} sparseLengths=${PREFIX_TAG_LENGTHS.join(",")} candidateCap=${CANDIDATE_CAP}`,
   );
   out.push(
     "aux | T | prefix | dummies | names | attack | top50 | top100 | top500 | tail500-2000 (inAux) | nameBlind (base) | nameLinked (base) | lenExact/band (base) | rows/bucket",
@@ -696,12 +823,22 @@ function main(): void {
       `${x.auxKind} | ${x.tagBits} | ${x.scheme} | ${x.dummies ? "yes" : "no"} | ${x.names} | ${x.attack} | ${pct(x.top[50] as number)} | ${pct(x.top[100] as number)} | ${pct(x.top[500] as number)} | ${pct(x.tail)} (${pct(x.tailInAux)}) | ${pct(x.nameBlind)} (${pct(x.nameBlindBaseline)}) | ${pct(x.nameLinked)} (${pct(x.nameLinkedBaseline)}) | ${pct(x.lenExact)}/${pct(x.lenBand)} (${pct(x.lenBaseline)}) | ${x.rowsPerBucket.toFixed(1)}`,
     );
   }
-  out.push("", "VERDICT per proposed criteria (production config: sparse, dummies on, names indexed; best of rank/refine)");
+  out.push(
+    "",
+    "VERDICT per proposed criteria (production config: sparse, dummies on, names indexed; best of rank/refine)",
+  );
   const best = (f: (x: Row) => number, sel: Row[]): number => Math.max(...sel.map(f));
   const pf = (ok: boolean): string => (ok ? "PASS" : "FAIL");
   for (const auxKind of ["mismatched", "perfect"] as const) {
     for (const tagBits of tagBitsList) {
-      const sel = rows.filter((x) => x.auxKind === auxKind && x.tagBits === tagBits && x.scheme === "sparse" && x.dummies && x.names === "indexed");
+      const sel = rows.filter(
+        (x) =>
+          x.auxKind === auxKind &&
+          x.tagBits === tagBits &&
+          x.scheme === "sparse" &&
+          x.dummies &&
+          x.names === "indexed",
+      );
       const t500 = best((x) => x.top[500] as number, sel);
       const tail = best((x) => x.tail, sel);
       const nb = best((x) => x.nameBlind, sel);
@@ -712,12 +849,29 @@ function main(): void {
       );
     }
   }
+  const channelRows = channelKeyNameExperiment(tenant, tokAll, tokNoNames, tagBitsList, surnames);
+  out.push(
+    "",
+    "PER-CHANNEL KEYS (production scheme): channel-linked name identification, sparse prefixes, dummies on",
+  );
+  out.push(
+    "T | names | patients | raw-frequency top-1 hit (baseline 1/candidates) | surname bucket in channel top-3 | surname tags present in any message of its channel",
+  );
+  for (const x of channelRows) {
+    out.push(
+      `${x.tagBits} | ${x.names} | ${x.n} | ${pct(x.top1)} (${pct(x.baseline)}) | ${pct(x.top3)} | ${pct(x.present)}`,
+    );
+  }
   console.log(out.join("\n"));
   const jsonPath = arg("json", "");
   if (jsonPath)
     writeFileSync(
       jsonPath,
-      JSON.stringify({ seed: SEED, messages: MESSAGES, sparseD, ruleBits, rows }, null, 1),
+      JSON.stringify(
+        { seed: SEED, messages: MESSAGES, sparseD, ruleBits, rows, channelRows },
+        null,
+        1,
+      ),
     );
   console.error(`total ${((Date.now() - t0) / 1000).toFixed(0)}s`);
 }

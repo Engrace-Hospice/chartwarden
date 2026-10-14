@@ -1,8 +1,12 @@
 // WP 2.7b C3 (ADR-0058 decisions 8, 9, 13) - the global search query pipeline. The route has already run the gates (permission,
 // rate limit, kill switches, serve gate, role gate) and hands this service the `ServeContext` they produced.
 //
-//   1. terms + tags (the query tokenised like the index; one tag per term per live key version)
-//   2. isActiveMessagingUser, then the head-bucket refusal (refine:true, NO candidate SQL, NO decrypt)
+//   1. terms (the query tokenised like the index; a patient/contact NAME stays an ordinary term that can match nothing - no index
+//      row holds it and the body check ignores it - so it is indistinguishable from an unknown word: no name-existence oracle),
+//      then isActiveMessagingUser
+//   2. the caller's searchable channels (active membership + announcement, the MAX_QUERY_CHANNELS most recently active) and ONE tag
+//      per term PER CHANNEL per live key version (per-channel keys). A channel where every term is a head bucket is skipped; if all
+//      are, the head-bucket refusal (refine:true, NO candidate SQL, NO decrypt). Channel cap / head skip => scanCapped:true.
 //   3. ROUNDS (at most MAX_PAGES_PER_QUERY per request), each: TRANSACTION 1 coarse SQL prefilter (tags -> messages the caller
 //      is a member of, or announcements; distinct messages across key versions; keyset; cap 500) -> AUTHORITY outside any
 //      transaction (`authority`, by default `effectivelyVisibleChannels`, the only decider; at most 50 distinct channels per
@@ -55,7 +59,9 @@ import {
   CANDIDATE_CAP,
   DECRYPT_BUDGET,
   DECRYPT_TIMEOUT_MS,
+  type ExcludedTokens,
   MAX_PAGES_PER_QUERY,
+  MAX_QUERY_CHANNELS,
   type ResolvedMessage,
   STATEMENT_TIMEOUT_MS,
   type SearchKeyProvider,
@@ -71,6 +77,7 @@ import { type HydrationContext, hydrateMessages } from "../messaging-message-hyd
 import { effectivelyVisibleChannels, isActiveMessagingUser } from "../messaging-route-service-db";
 import type { MessageBodyCipher, Tx } from "../messaging-write-core";
 import type { Part2ChannelGate } from "../part2-channel-gate";
+import type { NameExclusions } from "./name-exclusion";
 import { type BodyReader, type IsRedactedOrPending, neverRedacted } from "./ports";
 import {
   type Candidate,
@@ -78,12 +85,12 @@ import {
   type SurvivorRow,
   reselectSurvivors,
   selectCandidates,
+  selectQueryChannels,
 } from "./query-sql";
 import {
   type VersionQuery,
   bodyMatchesQueryTerms,
   buildVersionQueries,
-  isHeadBucketQuery,
   parseQueryTerms,
 } from "./query-terms";
 import type { ServeContext } from "./serve-gate";
@@ -124,6 +131,8 @@ export interface GlobalSearchDeps {
   readonly db: DbClient;
   readonly bodies: BodyReader;
   readonly keys: SearchKeyProvider;
+  /** The excluded patient/contact name tokens (ADR-0058 name exclusion). Explicit: there is no default that would match names. */
+  readonly exclusions: NameExclusions;
   readonly part2Gate: Part2ChannelGate;
   /** Hydration of the returned page only (the shared history read path), so a result never shows more than the channel does. */
   readonly cipher: MessageBodyCipher;
@@ -321,6 +330,7 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
     input: GlobalSearchInput,
     queries: readonly VersionQuery[],
     terms: readonly string[],
+    excluded: ExcludedTokens,
     scan: Scan,
     limit: number,
   ) {
@@ -344,7 +354,7 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
       opened += 1;
       lastExamined = next.candidate;
       const openedAt = clock();
-      const matched = await matches(input, terms, next.row);
+      const matched = await matches(input, terms, excluded, next.row);
       decryptMs += clock() - openedAt;
       if (matched) rows.push(next.row);
     }
@@ -356,6 +366,7 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
   async function matches(
     input: GlobalSearchInput,
     terms: readonly string[],
+    excluded: ExcludedTokens,
     row: SurvivorRow,
   ): Promise<boolean> {
     try {
@@ -367,7 +378,7 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
         });
         return false;
       }
-      return bodyMatchesQueryTerms(body.text, terms);
+      return bodyMatchesQueryTerms(body.text, terms, excluded);
     } catch {
       deps.warn?.("global search could not open a body", {
         organizationId: input.organizationId,
@@ -437,22 +448,53 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
     });
   }
 
-  async function prepare(input: GlobalSearchInput) {
+  /** The terms (names dropped like stop words) and the cursor; no channel or key work yet. */
+  async function parse(input: GlobalSearchInput) {
+    const active = input.serve.versions[0];
+    if (!active) throw unavailable();
+    let excluded: ExcludedTokens;
+    try {
+      excluded = await deps.exclusions.current(input.organizationId, active.keyVersion);
+    } catch (error) {
+      deps.warn?.("global search name exclusion is unavailable", {
+        organizationId: input.organizationId,
+        reason: error instanceof Error ? error.name : "unknown",
+      });
+      throw unavailable();
+    }
     const terms = parseQueryTerms(input.query);
     const cursor = input.cursor ? decodeSearchCursor(input.cursor) : null;
     if (input.cursor && !cursor) {
       throw new WardenXError("INVALID_SEARCH_QUERY", "the continuation cursor is not valid", 422);
     }
-    const active = input.serve.versions[0];
-    if (!active) throw unavailable();
-    let queries: VersionQuery[];
+    return { terms, cursor, excluded };
+  }
+
+  /**
+   * The per-channel tags of the caller's searchable channels (membership or announcement; the most recently active
+   * MAX_QUERY_CHANNELS of them). `partial` is true when the channel cap or the head-bucket skip left channels out: the response is
+   * then flagged scanCapped (never silent), and it reveals only that a bound was reached, never a channel or a count.
+   */
+  async function prepare(input: GlobalSearchInput, terms: readonly string[]) {
+    const found = await inTenantTx(input, (tx) =>
+      selectQueryChannels(tx, input.organizationId, input.userId),
+    );
+    const channelIds = found.slice(0, MAX_QUERY_CHANNELS);
     try {
-      queries = await buildVersionQueries(
+      const built = await buildVersionQueries(
         deps.keys,
         input.organizationId,
         input.serve.versions,
         terms,
+        channelIds,
       );
+      const searchable = built.queries.reduce((sum, query) => sum + query.channels.length, 0);
+      return {
+        queries: built.queries,
+        searchable,
+        partial: found.length > MAX_QUERY_CHANNELS || built.headSkipped > 0,
+        onlyHeads: searchable === 0 && built.headSkipped > 0,
+      };
     } catch (error) {
       deps.warn?.("global search key derivation failed", {
         organizationId: input.organizationId,
@@ -460,21 +502,21 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
       });
       throw unavailable();
     }
-    return { terms, cursor, queries, active };
   }
 
   return {
     async search(input) {
-      const { terms, cursor, queries, active } = await prepare(input);
+      const { terms, cursor, excluded } = await parse(input);
       const isActive = await withOrgContext(
         deps.db,
         { organizationId: input.organizationId, userId: input.userId },
         (tx) => isActiveMessagingUser(tx, input.organizationId, input.userId),
       );
       if (!isActive) return EMPTY;
-      const activeQuery = queries[0];
-      if (!activeQuery) throw unavailable();
-      if (isHeadBucketQuery(activeQuery.termTags, active.headBuckets)) return REFINE;
+      const { queries, searchable, partial, onlyHeads } = await prepare(input, terms);
+      // Every searched channel is a head bucket for this query: refused up front, no candidate SQL, no decrypt.
+      if (onlyHeads) return REFINE;
+      if (searchable === 0) return EMPTY;
 
       const limit = pageSize(input.limit);
       const page = cursor?.page ?? 0;
@@ -487,7 +529,7 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
         queue: [],
       };
       try {
-        const drained = await drain(input, queries, terms, scan, limit);
+        const drained = await drain(input, queries, terms, excluded, scan, limit);
         const hits = await finish(input, drained.rows);
         const next =
           drained.more && page < MAX_PAGES_PER_QUERY - 1 && drained.lastExamined
@@ -504,7 +546,8 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
           results: hits,
           ...(next ? { nextCursor: next } : {}),
           scanned: drained.opened,
-          scanCapped: refine || drained.truncated || (drained.more && hits.length < limit),
+          scanCapped:
+            partial || refine || drained.truncated || (drained.more && hits.length < limit),
           refine: refine || (drained.truncated && hits.length === 0),
         };
       } catch (error) {

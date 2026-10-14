@@ -24,7 +24,8 @@ const STATE = schema.messageSearchIndexStates;
 export interface VersionPlan {
   readonly keyVersion: string;
   readonly tagBits: number;
-  readonly headBuckets: ReadonlySet<number>;
+  /** Head (channel, tag) pairs as "<channel uuid>:<tag>" (stats.ts): with per-channel keys a bucket is channel-local. */
+  readonly headBuckets: ReadonlySet<string>;
 }
 
 /** What the service needs to run one query. Produced only by the `serve` gate. `versions[0]` is the active version. */

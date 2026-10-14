@@ -1,6 +1,7 @@
 # ADR-0058 leakage experiment (design review requirement, item 2) - 2026-10-13
 
-Status: **run once on a synthetic corpus; weak evidence only. It does not by itself satisfy the production-enablement leakage test.**
+Status: **run once on a synthetic corpus; weak evidence only. It does not by itself satisfy the production-enablement leakage test.** Section 7 records the
+re-run after the product owner's decisions (names excluded, per-channel keys); sections 1 to 6 are the original run and describe the single-global-key scheme, which is superseded.
 Script: `scripts/m36-global-search-leakage-experiment.ts` (`bun scripts/m36-global-search-leakage-experiment.ts`, about 2.3 minutes,
 seed 20261013, byte-identical output on two runs). Raw numbers: re-run with `--json out.json`.
 
@@ -124,3 +125,69 @@ Verdict by criterion (production config):
 (5e6 messages, real tenant text de-identified, or a much larger synthetic one) with a stronger attack and several seeds, evaluate C4, and decide
 what to do about the channel-linkage name result (it fails regardless of `T`). The script runs unchanged with `--messages N --seed S`; the
 production tokenizer and tag code were runnable standalone because they are pure functions with no I/O.
+
+## 7. Re-run after the product-owner decisions (2026-10-13): names excluded, per-channel keys
+
+Decisions that followed finding 5 above (see the ADR amendment "name exclusion and per-channel keys"): patient and contact names are not indexed, and tags are
+keyed per channel. The script (`scripts/m36-global-search-leakage-experiment.ts`, same seed 20261013, 20,000 messages, about 2.6 minutes) changed as follows.
+
+- **"Names excluded" now runs the production path.** The tenant's name tokens (every patient's surname, first name and family name) are tokenised with the production
+  tokenizer, replaced by `nameTokenDigest` (keyed HMAC digests), wrapped in `digestExclusion`, and applied inside `tokenizeForSearch(text, excluded)`, the very call
+  the index writer makes. The earlier registry filter is gone for the tenant corpus (the adversary's own auxiliary corpus still drops names by registry: the adversary
+  knows the scheme).
+- **The sizing rule is the new one** (`tagBitsForTotalRows`, security review H2): the corpus stores 1,423,136 padded rows, so the rule gives **T = 13** (the
+  earlier distinct-tag rule gave 14). T = 19 is still run.
+- **A per-channel-key section** (`PER-CHANNEL KEYS (production scheme)`) builds the index with `deriveChannelKey` per patient channel. There is then no cross-channel
+  baseline (the same word is an unrelated bucket in every channel), so the concentration-lift attack of finding 5 cannot be run. The strongest simple attack left to an
+  adversary who holds the channel-to-patient link is the raw in-channel message frequency of a bucket; the section reports whether the surname's bucket is the channel's
+  top bucket (top-1), within its top three, and whether any of the surname's tags occur in at least 3 messages of the channel ("present").
+- The global-key vocabulary grid (rank and co-occurrence attacks, length leak) is unchanged in method and is kept only to compare with section 3. **It does not apply to
+  per-channel keys and no vocabulary attack was run against them** (a per-channel version would need per-channel aggregation and much smaller samples; it is the first thing
+  to measure on a production-shaped corpus).
+
+### 7.1 Channel-linked name recovery (the number the decision turned on)
+
+Global key (superseded scheme; mismatched auxiliary data; sparse prefixes; dummies on; best of rank/refine; baseline = random guess among the channel's candidate buckets):
+
+| T | names indexed | names excluded (production path) |
+|---|---|---|
+| 13 (sizing rule) | **93.0%** (baseline 0.8%) | **0.0%** (baseline 0.9%) |
+| 19 | **93.4%** (baseline 1.2%) | **0.0%** (baseline 1.3%) |
+
+Per-channel keys (production scheme; 272 patients with at least 20 messages; raw in-channel frequency attack; baseline 1 / candidate buckets):
+
+| T | names | top-1 (baseline) | surname bucket in top 3 | surname tags present in at least 3 messages of the channel |
+|---|---|---|---|---|
+| 13 | indexed | 3.3% (0.9%) | 8.1% | 99.6% |
+| 13 | excluded | **0.0%** (1.0%) | 0.0% | 16.5% |
+| 19 | indexed | 2.6% (1.2%) | 7.0% | 99.6% |
+| 19 | excluded | **0.0%** (1.3%) | 0.0% | 8.8% |
+
+The "present" column with names excluded is not leakage of the name: it counts buckets of the surname's tag set that hold at least 3 messages by chance (dummies and
+collisions at 2^13 or 2^19 buckets, plus a prefix tag shared with another word). **Reading:** the 93% result is closed twice over. Excluding names takes the global-key attack from
+93% to 0.0%; per-channel keys alone take the strongest attack that remains from 93% to 3.3% top-1 (still 3.7x the random baseline, and 8.1% within the top three).
+
+### 7.2 What the vocabulary rows say now (global key only)
+
+Mismatched auxiliary data, sparse prefixes, dummies on: top-50 / top-100 / top-500 recovery 4.0% / 2.0% / 0.4% at T = 13 and 6.0% / 3.0-4.0% / 1.0-1.2% at T = 19, tail 0.0%, and the
+same with names excluded. With perfect auxiliary data (control) top-500 is 1.4% at T = 13 and 2.6% at T = 19. Exact word-length recovery of rare words is 14.4% at T = 13 (modal-guess
+baseline 14.6%) and 24.2% at T = 19 (baseline 14.6%, advantage 9.6 points; unchanged by exclusion). Criteria C1 and C2 (blind) pass as before; C3 as written still cannot pass and
+should be restated as advantage over the modal baseline.
+
+### 7.3 Verdict on the proposed criteria
+
+| Criterion | Production configuration (names excluded, per-channel keys) | Note |
+|---|---|---|
+| C1 top-500 and tail | not measured against per-channel keys | global-key figures above are for the superseded scheme |
+| C2 name recovery with channel linkage <= baseline + 1% | **PASS** on this corpus (0.0% against 1.0% and 1.3%) | requires the names to be in M5; unrecorded names, nicknames and staff names are not covered |
+| C3 exact length | not measured against per-channel keys; global key: FAIL at T = 19 (advantage 9.6 points) | restate as advantage over baseline |
+| C4 refine rate | not evaluated | needs the 5 x 10^6-message corpus |
+
+### 7.4 Limits (in addition to section 5)
+
+- Single seed, one 20,000-message corpus, no confidence intervals; the per-channel section has 272 patients, so one patient is 0.4 points.
+- "Excluded" assumes the exclusion set is complete for the surname, first name and family name tokens. Real data has nicknames, misspellings, a name split by a digit or a space,
+  staff names and place names, none of which are modelled; production recall of the exclusion equals the completeness of M5's name data.
+- The per-channel raw-frequency attack is simple. A stronger one (an auxiliary model of expected in-channel frequencies per clinical word, annealing across a channel's buckets) was not
+  tried; the 3.3% / 8.1% figures are a lower bound on what an adversary with the channel link can do when names are NOT excluded.
+- Determinism: two consecutive `--quick --T 13` runs after the change are byte-identical (`cmp`); the full-run figures above were produced once (`bun scripts/m36-global-search-leakage-experiment.ts`, 158 s).

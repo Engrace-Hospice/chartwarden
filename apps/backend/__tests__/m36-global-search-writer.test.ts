@@ -123,6 +123,16 @@ describe("wiring (bound is not computing: the factories are reachable from index
     expect(indexSource).toContain("m36GlobalSearch.consumer");
   });
 
+  it("the name exclusion is wired into BOTH the route mount and the writer, from M5's name enumeration (names never reach the index)", () => {
+    expect(indexSource).toContain(
+      "patientNameFragmentsPageForOrg(dbHandle.db, organizationId, afterId, limit)",
+    );
+    expect(indexSource).toContain(
+      "...(m36NameExclusions ? { exclusions: m36NameExclusions } : {})",
+    );
+    expect(indexSource).toMatch(/exclusions:\s+m36NameExclusions \?\? createNameExclusions/);
+  });
+
   it("production never wires the test key provider", () => {
     expect(indexSource).not.toContain("createLegacyTestSearchKeyProvider");
   });
