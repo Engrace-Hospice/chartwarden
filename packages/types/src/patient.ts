@@ -138,6 +138,15 @@ export interface ExternalMrn {
  * transparently by the seam; `mergedIntoId` is exposed only for chain traversal. PHI-minimal — the
  * read surface M29's patient-match cascade consumes, not the full chart.
  */
+/** `patient.status` (M5 lifecycle). Mirrors the `patient_status` enum; exposed read-only for context panels. */
+export type PatientLifecycleStatus =
+  | "prospective"
+  | "active"
+  | "on_hold"
+  | "discharged"
+  | "deceased"
+  | "merged";
+
 export interface PatientIdentity {
   readonly id: string;
   readonly organizationId: string;
@@ -162,6 +171,8 @@ export interface PatientIdentity {
    * Optional and possibly `null`, same caveats as {@link providerEntityId}.
    */
   readonly locationId?: string | null;
+  /** The patient's lifecycle status (WP 3.1 context panel). Optional: a reader built before this field omits it. */
+  readonly status?: PatientLifecycleStatus;
 }
 
 /**

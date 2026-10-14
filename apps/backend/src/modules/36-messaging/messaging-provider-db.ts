@@ -29,6 +29,7 @@ import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { bindAttachmentsInTx } from "./attachments/attachment-service-db";
+import { assertMemberCategoryAllowed, excludedMemberUserIds } from "./member-category-gate";
 import { publishMessageHint } from "./message-hint-events";
 import {
   type MessagingOutboxPort,
@@ -151,6 +152,7 @@ export function createDbMessagingProvider(
             })
             .returning({ id: CH.id })) as Array<{ id: string }>;
           const channelId = inserted[0]!.id;
+          await assertMemberCategoryAllowed(tx, orgId, spec.creatorUserId);
           await tx.insert(CM).values({
             organizationId: orgId,
             channelId,
@@ -240,22 +242,26 @@ export function createDbMessagingProvider(
           createdAt: Date;
           parentMessageId: string | null;
         }>;
-        const messages = rows.map(
-          (m): ResolvedMessage => ({
-            messageId: m.id,
-            channelId: m.channelId,
-            authorUserId: m.authorUserId,
-            authorDisplayName: null,
-            body:
-              m.status === "deleted"
-                ? ""
-                : decodeStoredBody(m.bodyKind as MessageBodyKind, cipher.open(orgId, m.bodyCipher))
-                    .body,
-            bodyKind: m.bodyKind as MessageBodyKind,
-            createdAt: m.createdAt.toISOString(),
-            parentMessageId: m.parentMessageId,
-            references: [],
-          }),
+        const messages = await Promise.all(
+          rows.map(
+            async (m): Promise<ResolvedMessage> => ({
+              messageId: m.id,
+              channelId: m.channelId,
+              authorUserId: m.authorUserId,
+              authorDisplayName: null,
+              body:
+                m.status === "deleted"
+                  ? ""
+                  : decodeStoredBody(
+                      m.bodyKind as MessageBodyKind,
+                      await cipher.open(orgId, m.bodyCipher),
+                    ).body,
+              bodyKind: m.bodyKind as MessageBodyKind,
+              createdAt: m.createdAt.toISOString(),
+              parentMessageId: m.parentMessageId,
+              references: [],
+            }),
+          ),
         );
         return { messages };
       });
@@ -367,9 +373,11 @@ export function createDbMessagingProvider(
 
           // GAP-104 — an archived (discharged/deceased) channel takes no NEW members; removals still apply
           // (a clinician unassigned after discharge must lose access) and history stays readable.
+          // An excluded-category identity on the roster is skipped, never added (F6).
+          const excluded = await excludedMemberUserIds(tx, orgId, [...roster]);
           const toAdd = channelArchived
             ? []
-            : [...roster].filter((userId) => !activeUserIds.has(userId));
+            : [...roster].filter((userId) => !activeUserIds.has(userId) && !excluded.has(userId));
           const toRemove = activeMembers.filter(
             (m) => m.source === "auto" && !roster.has(m.userId),
           );

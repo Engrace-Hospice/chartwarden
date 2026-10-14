@@ -1190,6 +1190,13 @@ of the three as requiring a **re-encryption project**, not a rotation — and no
 data is recoverable by re-entry (a user re-enrols 2FA; an operator re-enters a trading-partner
 secret) except for message bodies, which are not.
 
+> **Update (M36 WP 2.13, ADR-0058 P1; code on branch `feat/m36-wp213-body-key-ring`, backfill not yet run anywhere):** message
+> bodies are moving off `MESSAGING_ENCRYPTION_KEY` onto the M34 wrapped-DEK ring (`tenant_key_ring`), which rotates (a new DEK
+> version; old rows stay readable by their recorded version) and shreds (destroying the ring makes ring-sealed bodies unreadable).
+> Until the backfill has finished for every tenant, and the backups that hold legacy ciphertext have aged out, the paragraph above
+> still applies to the rows still on the legacy envelope. Operator procedure, escrow-drill checklist and rollback limits:
+> [`docs/runbooks/m36-body-key-ring.md`](../runbooks/m36-body-key-ring.md).
+
 **Losing `M34_TENANT_KEK` without a retired copy is unrecoverable by design** — it is the same
 property that makes the M34 cryptographic shred real, pointed the wrong way. It belongs in the sealed
 off-site envelope alongside `SOPS_AGE_KEY` (§8.4).

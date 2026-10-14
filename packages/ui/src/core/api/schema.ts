@@ -13346,7 +13346,7 @@ export interface paths {
         /** Full active member list of a channel (messaging.manage_members + channel_member_admin; 403 for a DM) */
         get: operations["getApiV1MessagingChannelsByIdMembers"];
         put?: never;
-        /** Add a manual member (admin override on auto channels; 204) */
+        /** Add a manual member (admin override on auto channels; 204). 422 MEMBER_CATEGORY_NOT_ALLOWED when the identity holds a patient_family, external_auditor or platform_staff role */
         post: operations["postApiV1MessagingChannelsByIdMembers"];
         delete?: never;
         options?: never;
@@ -13441,6 +13441,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/poll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A poll's results with who voted for each option and the caller's own vote (WP 2.10; read-audited; never cached) */
+        get: operations["getApiV1MessagingChannelsByIdMessagesByMessageIdPoll"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/poll/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close a poll (WP 2.10; the poll's author or a channel manager, else 403; idempotent; closed polls reject votes) */
+        post: operations["postApiV1MessagingChannelsByIdMessagesByMessageIdPollClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/poll/vote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Cast or change the caller's single vote (WP 2.10; idempotent; one vote per user, a change is audited; 409 POLL_CLOSED, 422 INVALID_POLL_OPTION, 410 archived) */
+        put: operations["putApiV1MessagingChannelsByIdMessagesByMessageIdPollVote"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/channels/{id}/messages/{messageId}/reactions/{emoji}": {
         parameters: {
             query?: never;
@@ -13487,6 +13538,41 @@ export interface paths {
         get: operations["getApiV1MessagingChannelsByIdPins"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/channels/{id}/polls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a poll as a message (WP 2.10; Idempotency-Key required; 2-10 options, plain text only; 422 POLL_NOT_ALLOWED_IN_PATIENT_CHANNEL in a care_team/bereavement channel, 422 VALIDATION_FAILED on bad text/options, 410 archived; announcement channel needs messaging.announce) */
+        post: operations["postApiV1MessagingChannelsByIdPolls"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/channels/{id}/presence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ids of channel members currently present / typing (poll; ids only, no names; 403 PRESENCE_DISABLED when the tenant flag is off; a non-member gets what a random channel id gets) */
+        get: operations["getApiV1MessagingChannelsByIdPresence"];
+        put?: never;
+        /** Heartbeat / typing marker for the caller in a channel (ephemeral ids with a short TTL, never stored in Postgres; at most one write per 3 s per user per channel, extra calls are 204 no-ops; 403 PRESENCE_DISABLED when the tenant flag is off, and the channel guard's refusal for a non-member, removed member or other tenant) */
+        post: operations["postApiV1MessagingChannelsByIdPresence"];
         delete?: never;
         options?: never;
         head?: never;
@@ -13595,6 +13681,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/global-search/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's global search switch with the go-live checklist and the index rebuild progress (messaging.global_search.manage) */
+        get: operations["getApiV1MessagingGlobalsearchSettings"];
+        /** Switch global search on or off for the organization (messaging.global_search.manage + a fresh step-up). ON needs acknowledgedNoticeVersion equal to the GET notice.version (409 GLOBAL_SEARCH_NOTICE_NOT_ACKNOWLEDGED, NOTICE_ACK_REQUIRED or NOTICE_ACK_STALE) and is 409 GLOBAL_SEARCH_PREREQUISITES_UNMET naming each failing checklist item (including EXCLUDED_MEMBERS_PRESENT), or PURGE_IN_PROGRESS while the last switch-off purge is unfinished; OFF is always accepted without an acknowledgement and requests the token purge */
+        put: operations["putApiV1MessagingGlobalsearchSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/messages/{id}": {
         parameters: {
             query?: never;
@@ -13647,6 +13751,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/patients/{patientId}/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Patient context panel (WP 3.1): a read-only projection through the owning modules' seams. Each tile re-checks that module's permission on the request; a tile the caller may not see is ABSENT (never null/403) and its source is not read; a failing seam makes only its own tile `unavailable`; `as_of` is when the panel read the source. Read-audited against the patient. */
+        get: operations["getApiV1MessagingPatientsByPatientIdContext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/scheduled-messages": {
         parameters: {
             query?: never;
@@ -13680,6 +13801,23 @@ export interface paths {
         head?: never;
         /** Reschedule one of the caller's scheduled messages (a blocked one becomes pending again) */
         patch: operations["patchApiV1MessagingScheduledmessagesById"];
+        trace?: never;
+    };
+    "/api/v1/messaging/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search every channel the caller may read (WP 2.7b, ADR-0058 Proposed, INERT until enabled: whole words, last word is a word beginning; blind-token index, authority re-checked per request; 403 GLOBAL_SEARCH_DISABLED / GLOBAL_SEARCH_ROLE_NOT_PERMITTED, 503 GLOBAL_SEARCH_INDEX_NOT_READY / DEGRADED, 422 bad query; `refine: true` asks the user to add a word; read-audited without the query or cursor; never cached) */
+        get: operations["getApiV1MessagingSearch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/messaging/template-admin": {
@@ -16447,6 +16585,40 @@ export interface paths {
         put?: never;
         /** Skip an onboarding task with a recorded rationale (platform ops; step-up) */
         post: operations["postApiV1PlatformTenantsByOrgSlugOnboardingByTaskIdSkip"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/provision-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's lifecycle status next to its tenant.provision job state (queued/running/failed/…) */
+        get: operations["getApiV1PlatformTenantsByOrgSlugProvisionstatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/provision/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-run a failed tenant.provision job for a tenant still in provisioning (step-up) */
+        post: operations["postApiV1PlatformTenantsByOrgSlugProvisionRetry"];
         delete?: never;
         options?: never;
         head?: never;
@@ -62368,6 +62540,19 @@ export interface operations {
                                 reactedByMe: boolean;
                             }[];
                             pinned?: boolean;
+                            poll?: {
+                                pollId: string;
+                                closed: boolean;
+                                closedAt: string | null;
+                                totalVotes: number;
+                                myOptionId: string | null;
+                                canClose: boolean;
+                                options: {
+                                    optionId: string;
+                                    label: string;
+                                    voteCount: number;
+                                }[];
+                            };
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
@@ -62503,6 +62688,134 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingChannelsByIdMessagesByMessageIdPoll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        pollId: string;
+                        closed: boolean;
+                        closedAt: string | null;
+                        totalVotes: number;
+                        myOptionId: string | null;
+                        canClose: boolean;
+                        options: {
+                            optionId: string;
+                            label: string;
+                            voteCount: number;
+                        }[];
+                        voters: {
+                            [key: string]: {
+                                userId: string;
+                                displayName: string;
+                                votedAt: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingChannelsByIdMessagesByMessageIdPollClose: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        poll: {
+                            pollId: string;
+                            closed: boolean;
+                            closedAt: string | null;
+                            totalVotes: number;
+                            myOptionId: string | null;
+                            canClose: boolean;
+                            options: {
+                                optionId: string;
+                                label: string;
+                                voteCount: number;
+                            }[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1MessagingChannelsByIdMessagesByMessageIdPollVote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    optionId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        poll: {
+                            pollId: string;
+                            closed: boolean;
+                            closedAt: string | null;
+                            totalVotes: number;
+                            myOptionId: string | null;
+                            canClose: boolean;
+                            options: {
+                                optionId: string;
+                                label: string;
+                                voteCount: number;
+                            }[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     putApiV1MessagingChannelsByIdMessagesByMessageIdReactionsByEmoji: {
         parameters: {
             query?: never;
@@ -62618,6 +62931,19 @@ export interface operations {
                                 reactedByMe: boolean;
                             }[];
                             pinned?: boolean;
+                            poll?: {
+                                pollId: string;
+                                closed: boolean;
+                                closedAt: string | null;
+                                totalVotes: number;
+                                myOptionId: string | null;
+                                canClose: boolean;
+                                options: {
+                                    optionId: string;
+                                    label: string;
+                                    voteCount: number;
+                                }[];
+                            };
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
@@ -62664,6 +62990,19 @@ export interface operations {
                                 reactedByMe: boolean;
                             }[];
                             pinned?: boolean;
+                            poll?: {
+                                pollId: string;
+                                closed: boolean;
+                                closedAt: string | null;
+                                totalVotes: number;
+                                myOptionId: string | null;
+                                canClose: boolean;
+                                options: {
+                                    optionId: string;
+                                    label: string;
+                                    voteCount: number;
+                                }[];
+                            };
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
@@ -62737,6 +63076,19 @@ export interface operations {
                                 reactedByMe: boolean;
                             }[];
                             pinned?: boolean;
+                            poll?: {
+                                pollId: string;
+                                closed: boolean;
+                                closedAt: string | null;
+                                totalVotes: number;
+                                myOptionId: string | null;
+                                canClose: boolean;
+                                options: {
+                                    optionId: string;
+                                    label: string;
+                                    voteCount: number;
+                                }[];
+                            };
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
@@ -62757,6 +63109,113 @@ export interface operations {
                         patientId: string | null;
                     };
                 };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingChannelsByIdPolls: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    question: string;
+                    options: string[];
+                    clientMessageId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        messageId: string;
+                        channelId: string;
+                        createdAt: string;
+                        poll: {
+                            pollId: string;
+                            closed: boolean;
+                            closedAt: string | null;
+                            totalVotes: number;
+                            myOptionId: string | null;
+                            canClose: boolean;
+                            options: {
+                                optionId: string;
+                                label: string;
+                                voteCount: number;
+                            }[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingChannelsByIdPresence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        present: string[];
+                        typing: string[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingChannelsByIdPresence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    typing?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -62864,6 +63323,19 @@ export interface operations {
                                 reactedByMe: boolean;
                             }[];
                             pinned?: boolean;
+                            poll?: {
+                                pollId: string;
+                                closed: boolean;
+                                closedAt: string | null;
+                                totalVotes: number;
+                                myOptionId: string | null;
+                                canClose: boolean;
+                                options: {
+                                    optionId: string;
+                                    label: string;
+                                    voteCount: number;
+                                }[];
+                            };
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
@@ -63008,6 +63480,117 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingGlobalsearchSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        changedAt: string | null;
+                        purgeRequestedAt: string | null;
+                        purgeCompletedAt: string | null;
+                        checklist: {
+                            platformEnabled: boolean;
+                            legacyBodiesMigrated: boolean;
+                            escrowAttested: boolean;
+                            leakageAttested: boolean;
+                            rateLimitActive: boolean;
+                            excludedMembersCleared: boolean;
+                        };
+                        notice: {
+                            version: string;
+                            text: string;
+                        };
+                        noticeAcknowledgement: {
+                            version: string;
+                            byUserId: string;
+                            at: string;
+                        } | null;
+                        rebuild: {
+                            keyVersion: string;
+                            status: "building" | "ready" | "stale";
+                            checkpointCreatedAt: string | null;
+                            reconciledAt: string | null;
+                            changedAt: string | null;
+                            effectiveReady: boolean;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1MessagingGlobalsearchSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    enabled: boolean;
+                    acknowledgedNoticeVersion?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        changedAt: string | null;
+                        purgeRequestedAt: string | null;
+                        purgeCompletedAt: string | null;
+                        checklist: {
+                            platformEnabled: boolean;
+                            legacyBodiesMigrated: boolean;
+                            escrowAttested: boolean;
+                            leakageAttested: boolean;
+                            rateLimitActive: boolean;
+                            excludedMembersCleared: boolean;
+                        };
+                        notice: {
+                            version: string;
+                            text: string;
+                        };
+                        noticeAcknowledgement: {
+                            version: string;
+                            byUserId: string;
+                            at: string;
+                        } | null;
+                        rebuild: {
+                            keyVersion: string;
+                            status: "building" | "ready" | "stale";
+                            checkpointCreatedAt: string | null;
+                            reconciledAt: string | null;
+                            changedAt: string | null;
+                            effectiveReady: boolean;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     deleteApiV1MessagingMessagesById: {
         parameters: {
             query?: never;
@@ -63136,6 +63719,94 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingPatientsByPatientIdContext: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                patientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        patient_id: string;
+                        tiles: {
+                            status?: {
+                                /** @constant */
+                                state: "ok";
+                                /** Format: date-time */
+                                as_of: string;
+                                link: string;
+                                data: {
+                                    status: string | null;
+                                };
+                            } | {
+                                /** @constant */
+                                state: "unavailable";
+                                link: string;
+                            };
+                            care_team?: {
+                                /** @constant */
+                                state: "ok";
+                                /** Format: date-time */
+                                as_of: string;
+                                link: string;
+                                data: {
+                                    member_count: number;
+                                };
+                            } | {
+                                /** @constant */
+                                state: "unavailable";
+                                link: string;
+                            };
+                            allergies?: {
+                                /** @constant */
+                                state: "ok";
+                                /** Format: date-time */
+                                as_of: string;
+                                link: string;
+                                data: {
+                                    entries: {
+                                        allergen: string;
+                                        severity: string | null;
+                                    }[];
+                                };
+                            } | {
+                                /** @constant */
+                                state: "unavailable";
+                                link: string;
+                            };
+                            medications?: {
+                                /** @constant */
+                                state: "ok";
+                                /** Format: date-time */
+                                as_of: string;
+                                link: string;
+                                data: {
+                                    active_count: number;
+                                };
+                            } | {
+                                /** @constant */
+                                state: "unavailable";
+                                link: string;
+                            };
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1MessagingScheduledmessages: {
         parameters: {
             query?: {
@@ -63233,6 +63904,98 @@ export interface operations {
                         blockedReason: "channel_archived" | "not_member" | "permission_revoked" | "announcement_not_permitted" | "parent_unavailable" | "dispatch_failed" | null;
                         createdAt: string;
                         updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingSearch: {
+        parameters: {
+            query: {
+                q: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        results: ({
+                            messageId: string;
+                            channelId: string;
+                            authorUserId: string | null;
+                            authorDisplayName: string | null;
+                            body: string;
+                            bodyKind: "plain" | "markdown" | "system" | "rich";
+                            bodyDoc?: {
+                                /** @constant */
+                                schemaVersion: 1;
+                                doc: {
+                                    /** @constant */
+                                    type: "doc";
+                                    content: unknown[];
+                                };
+                            };
+                            /** @constant */
+                            bodyUnreadable?: true;
+                            createdAt: string;
+                            editedAt?: string | null;
+                            parentMessageId: string | null;
+                            replyCount?: number;
+                            lastReplyAt?: string | null;
+                            reactions?: {
+                                emoji: "heart" | "thanks" | "smile" | "celebrate" | "sad" | "hug";
+                                count: number;
+                                reactedByMe: boolean;
+                            }[];
+                            pinned?: boolean;
+                            poll?: {
+                                pollId: string;
+                                closed: boolean;
+                                closedAt: string | null;
+                                totalVotes: number;
+                                myOptionId: string | null;
+                                canClose: boolean;
+                                options: {
+                                    optionId: string;
+                                    label: string;
+                                    voteCount: number;
+                                }[];
+                            };
+                            references: {
+                                kind: "staff" | "patient";
+                                entityId: string;
+                                start: number;
+                                end: number;
+                                displayLabel: string;
+                                navigable: boolean;
+                            }[];
+                            attachments?: {
+                                attachmentId: string;
+                                fileName: string;
+                                mimeType: string;
+                                byteSize: number;
+                                availability: "available" | "scanning";
+                            }[];
+                            hiddenAttachmentCount?: number;
+                        } & {
+                            archived: boolean;
+                        })[];
+                        nextCursor?: string;
+                        scanned: number;
+                        scanCapped: boolean;
+                        refine: boolean;
                     };
                 };
             };
@@ -71628,6 +72391,66 @@ export interface operations {
                         completedAt: string | null;
                         blockerReason: string | null;
                         skipRationale: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantsByOrgSlugProvisionstatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        tenantAccountId: string;
+                        orgSlug: string;
+                        tenantStatus: string;
+                        job: {
+                            state: "queued" | "running" | "completed" | "failed" | "missing";
+                            attemptsMade: number;
+                            failedReason: string | null;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugProvisionRetry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        tenantAccountId: string;
+                        state: string;
                     };
                 };
             };

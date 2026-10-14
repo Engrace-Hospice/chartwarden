@@ -157802,7 +157802,7 @@
         "tags": [
           "36-messaging"
         ],
-        "summary": "Add a manual member (admin override on auto channels; 204)",
+        "summary": "Add a manual member (admin override on auto channels; 204). 422 MEMBER_CATEGORY_NOT_ALLOWED when the identity holds a patient_family, external_auditor or platform_staff role",
         "parameters": [
           {
             "name": "id",
@@ -158332,6 +158332,76 @@
                           "pinned": {
                             "type": "boolean"
                           },
+                          "poll": {
+                            "type": "object",
+                            "required": [
+                              "pollId",
+                              "closed",
+                              "closedAt",
+                              "totalVotes",
+                              "myOptionId",
+                              "canClose",
+                              "options"
+                            ],
+                            "properties": {
+                              "pollId": {
+                                "type": "string"
+                              },
+                              "closed": {
+                                "type": "boolean"
+                              },
+                              "closedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "totalVotes": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "myOptionId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "canClose": {
+                                "type": "boolean"
+                              },
+                              "options": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "optionId",
+                                    "label",
+                                    "voteCount"
+                                  ],
+                                  "properties": {
+                                    "optionId": {
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "type": "string"
+                                    },
+                                    "voteCount": {
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
                           "references": {
                             "type": "array",
                             "items": {
@@ -158724,6 +158794,405 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/poll": {
+      "get": {
+        "operationId": "getApiV1MessagingChannelsByIdMessagesByMessageIdPoll",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "A poll's results with who voted for each option and the caller's own vote (WP 2.10; read-audited; never cached)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "pollId",
+                    "closed",
+                    "closedAt",
+                    "totalVotes",
+                    "myOptionId",
+                    "canClose",
+                    "options",
+                    "voters"
+                  ],
+                  "properties": {
+                    "pollId": {
+                      "type": "string"
+                    },
+                    "closed": {
+                      "type": "boolean"
+                    },
+                    "closedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "totalVotes": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "myOptionId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canClose": {
+                      "type": "boolean"
+                    },
+                    "options": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "optionId",
+                          "label",
+                          "voteCount"
+                        ],
+                        "properties": {
+                          "optionId": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "voteCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "voters": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^(.*)$": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "userId",
+                              "displayName",
+                              "votedAt"
+                            ],
+                            "properties": {
+                              "userId": {
+                                "type": "string"
+                              },
+                              "displayName": {
+                                "type": "string"
+                              },
+                              "votedAt": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/poll/close": {
+      "post": {
+        "operationId": "postApiV1MessagingChannelsByIdMessagesByMessageIdPollClose",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Close a poll (WP 2.10; the poll's author or a channel manager, else 403; idempotent; closed polls reject votes)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "poll"
+                  ],
+                  "properties": {
+                    "poll": {
+                      "type": "object",
+                      "required": [
+                        "pollId",
+                        "closed",
+                        "closedAt",
+                        "totalVotes",
+                        "myOptionId",
+                        "canClose",
+                        "options"
+                      ],
+                      "properties": {
+                        "pollId": {
+                          "type": "string"
+                        },
+                        "closed": {
+                          "type": "boolean"
+                        },
+                        "closedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "totalVotes": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "myOptionId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "canClose": {
+                          "type": "boolean"
+                        },
+                        "options": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "optionId",
+                              "label",
+                              "voteCount"
+                            ],
+                            "properties": {
+                              "optionId": {
+                                "type": "string"
+                              },
+                              "label": {
+                                "type": "string"
+                              },
+                              "voteCount": {
+                                "minimum": 0,
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/poll/vote": {
+      "put": {
+        "operationId": "putApiV1MessagingChannelsByIdMessagesByMessageIdPollVote",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Cast or change the caller's single vote (WP 2.10; idempotent; one vote per user, a change is audited; 409 POLL_CLOSED, 422 INVALID_POLL_OPTION, 410 archived)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "poll"
+                  ],
+                  "properties": {
+                    "poll": {
+                      "type": "object",
+                      "required": [
+                        "pollId",
+                        "closed",
+                        "closedAt",
+                        "totalVotes",
+                        "myOptionId",
+                        "canClose",
+                        "options"
+                      ],
+                      "properties": {
+                        "pollId": {
+                          "type": "string"
+                        },
+                        "closed": {
+                          "type": "boolean"
+                        },
+                        "closedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "totalVotes": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "myOptionId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "canClose": {
+                          "type": "boolean"
+                        },
+                        "options": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "optionId",
+                              "label",
+                              "voteCount"
+                            ],
+                            "properties": {
+                              "optionId": {
+                                "type": "string"
+                              },
+                              "label": {
+                                "type": "string"
+                              },
+                              "voteCount": {
+                                "minimum": 0,
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "optionId"
+                ],
+                "properties": {
+                  "optionId": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -159180,6 +159649,76 @@
                         "pinned": {
                           "type": "boolean"
                         },
+                        "poll": {
+                          "type": "object",
+                          "required": [
+                            "pollId",
+                            "closed",
+                            "closedAt",
+                            "totalVotes",
+                            "myOptionId",
+                            "canClose",
+                            "options"
+                          ],
+                          "properties": {
+                            "pollId": {
+                              "type": "string"
+                            },
+                            "closed": {
+                              "type": "boolean"
+                            },
+                            "closedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "totalVotes": {
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "myOptionId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "canClose": {
+                              "type": "boolean"
+                            },
+                            "options": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "optionId",
+                                  "label",
+                                  "voteCount"
+                                ],
+                                "properties": {
+                                  "optionId": {
+                                    "type": "string"
+                                  },
+                                  "label": {
+                                    "type": "string"
+                                  },
+                                  "voteCount": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
                         "references": {
                           "type": "array",
                           "items": {
@@ -159455,6 +159994,76 @@
                           },
                           "pinned": {
                             "type": "boolean"
+                          },
+                          "poll": {
+                            "type": "object",
+                            "required": [
+                              "pollId",
+                              "closed",
+                              "closedAt",
+                              "totalVotes",
+                              "myOptionId",
+                              "canClose",
+                              "options"
+                            ],
+                            "properties": {
+                              "pollId": {
+                                "type": "string"
+                              },
+                              "closed": {
+                                "type": "boolean"
+                              },
+                              "closedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "totalVotes": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "myOptionId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "canClose": {
+                                "type": "boolean"
+                              },
+                              "options": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "optionId",
+                                    "label",
+                                    "voteCount"
+                                  ],
+                                  "properties": {
+                                    "optionId": {
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "type": "string"
+                                    },
+                                    "voteCount": {
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    }
+                                  }
+                                }
+                              }
+                            }
                           },
                           "references": {
                             "type": "array",
@@ -159789,6 +160398,76 @@
                           "pinned": {
                             "type": "boolean"
                           },
+                          "poll": {
+                            "type": "object",
+                            "required": [
+                              "pollId",
+                              "closed",
+                              "closedAt",
+                              "totalVotes",
+                              "myOptionId",
+                              "canClose",
+                              "options"
+                            ],
+                            "properties": {
+                              "pollId": {
+                                "type": "string"
+                              },
+                              "closed": {
+                                "type": "boolean"
+                              },
+                              "closedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "totalVotes": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "myOptionId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "canClose": {
+                                "type": "boolean"
+                              },
+                              "options": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "optionId",
+                                    "label",
+                                    "voteCount"
+                                  ],
+                                  "properties": {
+                                    "optionId": {
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "type": "string"
+                                    },
+                                    "voteCount": {
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
                           "references": {
                             "type": "array",
                             "items": {
@@ -159898,6 +160577,271 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/channels/{id}/polls": {
+      "post": {
+        "operationId": "postApiV1MessagingChannelsByIdPolls",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Create a poll as a message (WP 2.10; Idempotency-Key required; 2-10 options, plain text only; 422 POLL_NOT_ALLOWED_IN_PATIENT_CHANNEL in a care_team/bereavement channel, 422 VALIDATION_FAILED on bad text/options, 410 archived; announcement channel needs messaging.announce)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "messageId",
+                    "channelId",
+                    "createdAt",
+                    "poll"
+                  ],
+                  "properties": {
+                    "messageId": {
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "poll": {
+                      "type": "object",
+                      "required": [
+                        "pollId",
+                        "closed",
+                        "closedAt",
+                        "totalVotes",
+                        "myOptionId",
+                        "canClose",
+                        "options"
+                      ],
+                      "properties": {
+                        "pollId": {
+                          "type": "string"
+                        },
+                        "closed": {
+                          "type": "boolean"
+                        },
+                        "closedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "totalVotes": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "myOptionId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "canClose": {
+                          "type": "boolean"
+                        },
+                        "options": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "optionId",
+                              "label",
+                              "voteCount"
+                            ],
+                            "properties": {
+                              "optionId": {
+                                "type": "string"
+                              },
+                              "label": {
+                                "type": "string"
+                              },
+                              "voteCount": {
+                                "minimum": 0,
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "question",
+                  "options"
+                ],
+                "properties": {
+                  "question": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "options": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "maxLength": 1000,
+                      "type": "string"
+                    }
+                  },
+                  "clientMessageId": {
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/channels/{id}/presence": {
+      "get": {
+        "operationId": "getApiV1MessagingChannelsByIdPresence",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Ids of channel members currently present / typing (poll; ids only, no names; 403 PRESENCE_DISABLED when the tenant flag is off; a non-member gets what a random channel id gets)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "present",
+                    "typing"
+                  ],
+                  "properties": {
+                    "present": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "typing": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1MessagingChannelsByIdPresence",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Heartbeat / typing marker for the caller in a channel (ephemeral ids with a short TTL, never stored in Postgres; at most one write per 3 s per user per channel, extra calls are 204 no-ops; 403 PRESENCE_DISABLED when the tenant flag is off, and the channel guard's refusal for a non-member, removed member or other tenant)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {
+                  "typing": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -160351,6 +161295,76 @@
                           "pinned": {
                             "type": "boolean"
                           },
+                          "poll": {
+                            "type": "object",
+                            "required": [
+                              "pollId",
+                              "closed",
+                              "closedAt",
+                              "totalVotes",
+                              "myOptionId",
+                              "canClose",
+                              "options"
+                            ],
+                            "properties": {
+                              "pollId": {
+                                "type": "string"
+                              },
+                              "closed": {
+                                "type": "boolean"
+                              },
+                              "closedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "totalVotes": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "myOptionId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "canClose": {
+                                "type": "boolean"
+                              },
+                              "options": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "optionId",
+                                    "label",
+                                    "voteCount"
+                                  ],
+                                  "properties": {
+                                    "optionId": {
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "type": "string"
+                                    },
+                                    "voteCount": {
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
                           "references": {
                             "type": "array",
                             "items": {
@@ -160712,6 +161726,461 @@
         }
       }
     },
+    "/api/v1/messaging/global-search/settings": {
+      "get": {
+        "operationId": "getApiV1MessagingGlobalsearchSettings",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The organization's global search switch with the go-live checklist and the index rebuild progress (messaging.global_search.manage)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "changedAt",
+                    "purgeRequestedAt",
+                    "purgeCompletedAt",
+                    "checklist",
+                    "notice",
+                    "noticeAcknowledgement",
+                    "rebuild"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "changedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "purgeRequestedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "purgeCompletedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "checklist": {
+                      "type": "object",
+                      "required": [
+                        "platformEnabled",
+                        "legacyBodiesMigrated",
+                        "escrowAttested",
+                        "leakageAttested",
+                        "rateLimitActive",
+                        "excludedMembersCleared"
+                      ],
+                      "properties": {
+                        "platformEnabled": {
+                          "type": "boolean"
+                        },
+                        "legacyBodiesMigrated": {
+                          "type": "boolean"
+                        },
+                        "escrowAttested": {
+                          "type": "boolean"
+                        },
+                        "leakageAttested": {
+                          "type": "boolean"
+                        },
+                        "rateLimitActive": {
+                          "type": "boolean"
+                        },
+                        "excludedMembersCleared": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "notice": {
+                      "type": "object",
+                      "required": [
+                        "version",
+                        "text"
+                      ],
+                      "properties": {
+                        "version": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "noticeAcknowledgement": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "version",
+                            "byUserId",
+                            "at"
+                          ],
+                          "properties": {
+                            "version": {
+                              "type": "string"
+                            },
+                            "byUserId": {
+                              "type": "string"
+                            },
+                            "at": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rebuild": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "keyVersion",
+                            "status",
+                            "checkpointCreatedAt",
+                            "reconciledAt",
+                            "changedAt",
+                            "effectiveReady"
+                          ],
+                          "properties": {
+                            "keyVersion": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "building",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ready",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "stale",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "checkpointCreatedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "reconciledAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "changedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "effectiveReady": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1MessagingGlobalsearchSettings",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Switch global search on or off for the organization (messaging.global_search.manage + a fresh step-up). ON needs acknowledgedNoticeVersion equal to the GET notice.version (409 GLOBAL_SEARCH_NOTICE_NOT_ACKNOWLEDGED, NOTICE_ACK_REQUIRED or NOTICE_ACK_STALE) and is 409 GLOBAL_SEARCH_PREREQUISITES_UNMET naming each failing checklist item (including EXCLUDED_MEMBERS_PRESENT), or PURGE_IN_PROGRESS while the last switch-off purge is unfinished; OFF is always accepted without an acknowledgement and requests the token purge",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "changedAt",
+                    "purgeRequestedAt",
+                    "purgeCompletedAt",
+                    "checklist",
+                    "notice",
+                    "noticeAcknowledgement",
+                    "rebuild"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "changedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "purgeRequestedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "purgeCompletedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "checklist": {
+                      "type": "object",
+                      "required": [
+                        "platformEnabled",
+                        "legacyBodiesMigrated",
+                        "escrowAttested",
+                        "leakageAttested",
+                        "rateLimitActive",
+                        "excludedMembersCleared"
+                      ],
+                      "properties": {
+                        "platformEnabled": {
+                          "type": "boolean"
+                        },
+                        "legacyBodiesMigrated": {
+                          "type": "boolean"
+                        },
+                        "escrowAttested": {
+                          "type": "boolean"
+                        },
+                        "leakageAttested": {
+                          "type": "boolean"
+                        },
+                        "rateLimitActive": {
+                          "type": "boolean"
+                        },
+                        "excludedMembersCleared": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "notice": {
+                      "type": "object",
+                      "required": [
+                        "version",
+                        "text"
+                      ],
+                      "properties": {
+                        "version": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "noticeAcknowledgement": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "version",
+                            "byUserId",
+                            "at"
+                          ],
+                          "properties": {
+                            "version": {
+                              "type": "string"
+                            },
+                            "byUserId": {
+                              "type": "string"
+                            },
+                            "at": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rebuild": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "keyVersion",
+                            "status",
+                            "checkpointCreatedAt",
+                            "reconciledAt",
+                            "changedAt",
+                            "effectiveReady"
+                          ],
+                          "properties": {
+                            "keyVersion": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "building",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ready",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "stale",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "checkpointCreatedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "reconciledAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "changedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "effectiveReady": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "enabled"
+                ],
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "acknowledgedNoticeVersion": {
+                    "maxLength": 64,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/messaging/messages/{id}": {
       "delete": {
         "operationId": "deleteApiV1MessagingMessagesById",
@@ -160966,6 +162435,299 @@
                     },
                     "archived": {
                       "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/patients/{patientId}/context": {
+      "get": {
+        "operationId": "getApiV1MessagingPatientsByPatientIdContext",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Patient context panel (WP 3.1): a read-only projection through the owning modules' seams. Each tile re-checks that module's permission on the request; a tile the caller may not see is ABSENT (never null/403) and its source is not read; a failing seam makes only its own tile `unavailable`; `as_of` is when the panel read the source. Read-audited against the patient.",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "patient_id",
+                    "tiles"
+                  ],
+                  "properties": {
+                    "patient_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "tiles": {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "state",
+                                "as_of",
+                                "link",
+                                "data"
+                              ],
+                              "properties": {
+                                "state": {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                "as_of": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                "link": {
+                                  "type": "string"
+                                },
+                                "data": {
+                                  "type": "object",
+                                  "required": [
+                                    "status"
+                                  ],
+                                  "properties": {
+                                    "status": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "state",
+                                "link"
+                              ],
+                              "properties": {
+                                "state": {
+                                  "const": "unavailable",
+                                  "type": "string"
+                                },
+                                "link": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        "care_team": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "state",
+                                "as_of",
+                                "link",
+                                "data"
+                              ],
+                              "properties": {
+                                "state": {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                "as_of": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                "link": {
+                                  "type": "string"
+                                },
+                                "data": {
+                                  "type": "object",
+                                  "required": [
+                                    "member_count"
+                                  ],
+                                  "properties": {
+                                    "member_count": {
+                                      "type": "integer"
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "state",
+                                "link"
+                              ],
+                              "properties": {
+                                "state": {
+                                  "const": "unavailable",
+                                  "type": "string"
+                                },
+                                "link": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        "allergies": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "state",
+                                "as_of",
+                                "link",
+                                "data"
+                              ],
+                              "properties": {
+                                "state": {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                "as_of": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                "link": {
+                                  "type": "string"
+                                },
+                                "data": {
+                                  "type": "object",
+                                  "required": [
+                                    "entries"
+                                  ],
+                                  "properties": {
+                                    "entries": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "required": [
+                                          "allergen",
+                                          "severity"
+                                        ],
+                                        "properties": {
+                                          "allergen": {
+                                            "type": "string"
+                                          },
+                                          "severity": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "state",
+                                "link"
+                              ],
+                              "properties": {
+                                "state": {
+                                  "const": "unavailable",
+                                  "type": "string"
+                                },
+                                "link": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        "medications": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "state",
+                                "as_of",
+                                "link",
+                                "data"
+                              ],
+                              "properties": {
+                                "state": {
+                                  "const": "ok",
+                                  "type": "string"
+                                },
+                                "as_of": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                "link": {
+                                  "type": "string"
+                                },
+                                "data": {
+                                  "type": "object",
+                                  "required": [
+                                    "active_count"
+                                  ],
+                                  "properties": {
+                                    "active_count": {
+                                      "type": "integer"
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "state",
+                                "link"
+                              ],
+                              "properties": {
+                                "state": {
+                                  "const": "unavailable",
+                                  "type": "string"
+                                },
+                                "link": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
                     }
                   }
                 }
@@ -161302,6 +163064,447 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/search": {
+      "get": {
+        "operationId": "getApiV1MessagingSearch",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Search every channel the caller may read (WP 2.7b, ADR-0058 Proposed, INERT until enabled: whole words, last word is a word beginning; blind-token index, authority re-checked per request; 403 GLOBAL_SEARCH_DISABLED / GLOBAL_SEARCH_ROLE_NOT_PERMITTED, 503 GLOBAL_SEARCH_INDEX_NOT_READY / DEGRADED, 422 bad query; `refine: true` asks the user to add a word; read-audited without the query or cursor; never cached)",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "results",
+                    "scanned",
+                    "scanCapped",
+                    "refine"
+                  ],
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "allOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "messageId",
+                              "channelId",
+                              "authorUserId",
+                              "authorDisplayName",
+                              "body",
+                              "bodyKind",
+                              "createdAt",
+                              "parentMessageId",
+                              "references"
+                            ],
+                            "properties": {
+                              "messageId": {
+                                "type": "string"
+                              },
+                              "channelId": {
+                                "type": "string"
+                              },
+                              "authorUserId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "authorDisplayName": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "body": {
+                                "type": "string"
+                              },
+                              "bodyKind": {
+                                "anyOf": [
+                                  {
+                                    "const": "plain",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "markdown",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "system",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "rich",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "bodyDoc": {
+                                "type": "object",
+                                "required": [
+                                  "schemaVersion",
+                                  "doc"
+                                ],
+                                "properties": {
+                                  "schemaVersion": {
+                                    "const": 1,
+                                    "type": "number"
+                                  },
+                                  "doc": {
+                                    "type": "object",
+                                    "required": [
+                                      "type",
+                                      "content"
+                                    ],
+                                    "properties": {
+                                      "type": {
+                                        "const": "doc",
+                                        "type": "string"
+                                      },
+                                      "content": {
+                                        "maxItems": 500,
+                                        "type": "array",
+                                        "items": {}
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "bodyUnreadable": {
+                                "const": true,
+                                "type": "boolean"
+                              },
+                              "createdAt": {
+                                "type": "string"
+                              },
+                              "editedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "parentMessageId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "replyCount": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "lastReplyAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "reactions": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "emoji",
+                                    "count",
+                                    "reactedByMe"
+                                  ],
+                                  "properties": {
+                                    "emoji": {
+                                      "anyOf": [
+                                        {
+                                          "const": "heart",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "thanks",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "smile",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "celebrate",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "sad",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "hug",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "count": {
+                                      "minimum": 1,
+                                      "type": "integer"
+                                    },
+                                    "reactedByMe": {
+                                      "type": "boolean"
+                                    }
+                                  }
+                                }
+                              },
+                              "pinned": {
+                                "type": "boolean"
+                              },
+                              "poll": {
+                                "type": "object",
+                                "required": [
+                                  "pollId",
+                                  "closed",
+                                  "closedAt",
+                                  "totalVotes",
+                                  "myOptionId",
+                                  "canClose",
+                                  "options"
+                                ],
+                                "properties": {
+                                  "pollId": {
+                                    "type": "string"
+                                  },
+                                  "closed": {
+                                    "type": "boolean"
+                                  },
+                                  "closedAt": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "totalVotes": {
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "myOptionId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "canClose": {
+                                    "type": "boolean"
+                                  },
+                                  "options": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "required": [
+                                        "optionId",
+                                        "label",
+                                        "voteCount"
+                                      ],
+                                      "properties": {
+                                        "optionId": {
+                                          "type": "string"
+                                        },
+                                        "label": {
+                                          "type": "string"
+                                        },
+                                        "voteCount": {
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "references": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "kind",
+                                    "entityId",
+                                    "start",
+                                    "end",
+                                    "displayLabel",
+                                    "navigable"
+                                  ],
+                                  "properties": {
+                                    "kind": {
+                                      "anyOf": [
+                                        {
+                                          "const": "staff",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "patient",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "entityId": {
+                                      "type": "string"
+                                    },
+                                    "start": {
+                                      "type": "integer"
+                                    },
+                                    "end": {
+                                      "type": "integer"
+                                    },
+                                    "displayLabel": {
+                                      "type": "string"
+                                    },
+                                    "navigable": {
+                                      "type": "boolean"
+                                    }
+                                  }
+                                }
+                              },
+                              "attachments": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "attachmentId",
+                                    "fileName",
+                                    "mimeType",
+                                    "byteSize",
+                                    "availability"
+                                  ],
+                                  "properties": {
+                                    "attachmentId": {
+                                      "type": "string"
+                                    },
+                                    "fileName": {
+                                      "type": "string"
+                                    },
+                                    "mimeType": {
+                                      "type": "string"
+                                    },
+                                    "byteSize": {
+                                      "type": "integer"
+                                    },
+                                    "availability": {
+                                      "anyOf": [
+                                        {
+                                          "const": "available",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "scanning",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              },
+                              "hiddenAttachmentCount": {
+                                "minimum": 0,
+                                "type": "integer"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "archived"
+                            ],
+                            "properties": {
+                              "archived": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    },
+                    "scanned": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "scanCapped": {
+                      "type": "boolean"
+                    },
+                    "refine": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -196398,6 +198601,157 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/provision-status": {
+      "get": {
+        "operationId": "getApiV1PlatformTenantsByOrgSlugProvisionstatus",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "A tenant's lifecycle status next to its tenant.provision job state (queued/running/failed/…)",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "tenantAccountId",
+                    "orgSlug",
+                    "tenantStatus",
+                    "job"
+                  ],
+                  "properties": {
+                    "tenantAccountId": {
+                      "type": "string"
+                    },
+                    "orgSlug": {
+                      "type": "string"
+                    },
+                    "tenantStatus": {
+                      "type": "string"
+                    },
+                    "job": {
+                      "type": "object",
+                      "required": [
+                        "state",
+                        "attemptsMade",
+                        "failedReason"
+                      ],
+                      "properties": {
+                        "state": {
+                          "anyOf": [
+                            {
+                              "const": "queued",
+                              "type": "string"
+                            },
+                            {
+                              "const": "running",
+                              "type": "string"
+                            },
+                            {
+                              "const": "completed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "failed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "missing",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "attemptsMade": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "failedReason": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/provision/retry": {
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugProvisionRetry",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Re-run a failed tenant.provision job for a tenant still in provisioning (step-up)",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "tenantAccountId",
+                    "state"
+                  ],
+                  "properties": {
+                    "tenantAccountId": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

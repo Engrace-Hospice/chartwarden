@@ -26,7 +26,9 @@ import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import type { AlertEmitter } from "@wardenx/messaging";
 import {
+  ACTIVATION_REFUSAL_METADATA_KEY,
   BaaRegisterRepository,
+  FIRST_ADMIN_INVITATION_TTL_DAYS,
   OnboardingRepository,
   SignupIntentRepository,
   SupportRepository,
@@ -34,6 +36,11 @@ import {
   TenantAccountRepository,
   TenantExportRepository,
   TenantKeyRingRepository,
+  TenantLifecycleError,
+  nextActivationRefusal,
+  readActivationRefusal,
+  withActivationRefusal,
+  withoutActivationRefusal,
 } from "@wardenx/saas-tenant-platform";
 import {
   type LifecycleActorKind,
@@ -51,6 +58,16 @@ import {
 import { type PlatformBypassAuditor, withPlatformContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, desc, eq } from "drizzle-orm";
+import {
+  type InvitationDeliveryPort,
+  canInviteFirstAdmin,
+  mintInvitationToken,
+} from "../../invitation-token";
+import type { ProvisionJobPort } from "../../jobs/provision-job-port";
+import type { AutoActivationResult } from "../../jobs/platform-sweeps-worker";
+import { evaluateActivationGuards, pickGoverningBaa } from "./activation-guards";
+import { partitionEffects } from "./effect-ledger";
+import { evaluateDestructionGuards, retentionEndsAtFrom } from "./offboarding-guards";
 import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf, paginate } from "./concurrency";
 import type {
   BaaRecordView,
@@ -126,6 +143,12 @@ export interface DrizzleTenantPlatformDeps {
   readonly platformDb: DbClient;
   /** The §4.3 worker-trigger port (BullMQ producer in prod; the slice records the call in tests). */
   readonly enqueue: EnqueuePort;
+  /** Reads/retries the BullMQ `tenant.provision` job (BullMQ in prod; fail-closed when no queue is configured). */
+  readonly provisionJobs: ProvisionJobPort;
+  /** Emails a first-admin invitation (the provision gateway in prod; fail-closed when it is not configured). */
+  readonly invitationDelivery: InvitationDeliveryPort;
+  /** True when no active M4 legal hold references the organization (M4 owns the table; injected, never read here). */
+  readonly legalHoldClear: (organizationId: string) => Promise<boolean>;
   /** Emits the mandatory `platform.bypass_invoked` audit event for every platform-context entry (F09). */
   readonly auditBypass: PlatformBypassAuditor<PlatformTx>;
   /** Catalog-validated outbox publish, over the same platform tx. */
@@ -215,7 +238,9 @@ function outboxPayloadFor(
           }
         : null;
     default:
-      // `activated`/`final_export_pending`/`retained`/`destruction_pending` — the machine can name
+      // `activated` is deliberately not published here: the catalog has no `m34.tenant.activated`, and its mirror
+      // `m34.tenant.onboarding_completed` is already published by the onboarding-advance sweep once every canonical
+      // step settles. Also unreached: `final_export_pending`/`retained`/`destruction_pending` — the machine can name
       // these, but no current caller of applyTransition reaches the events that emit them (`activate`
       // fires from the onboarding worker outside this file; `requestFinalExport`/`completeExport`/
       // `scheduleDestruction`/`shred` have no route here at all — see lifecycleEventForStatus below).
@@ -229,6 +254,8 @@ function outboxPayloadFor(
 
 export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDeps): {
   service: TenantPlatformRouteService;
+  /** The onboarding sweep's system-actor `onboarding → active` (not a route: no human is on the other end). */
+  activateOnboardedTenant: (tenantAccountId: string) => Promise<AutoActivationResult>;
 } {
   /** Run `fn` in one audited platform-context tx (the only place cross-tenant rows are read/written). */
   const inPlatformCtx = <T>(reason: string, fn: (tx: PlatformTx) => Promise<T>): Promise<T> =>
@@ -262,6 +289,54 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     return { account, orgSlug };
   }
 
+  /** retained → destruction_pending: feed the machine the §2.2 guards (retention elapsed, no legal hold). */
+  async function destructionEventFor(
+    account: schema.TenantAccount,
+    reason: string,
+  ): Promise<LifecycleEvent> {
+    const guards = evaluateDestructionGuards({
+      retentionEndsAt: account.retentionEndsAt,
+      now: new Date(),
+      legalHoldClear: await deps.legalHoldClear(account.organizationId),
+    });
+    return {
+      type: "scheduleDestruction",
+      actorKind: "platform_ops",
+      transitionReason: reason,
+      retentionElapsed: guards.retentionElapsed,
+      legalHoldClear: guards.legalHoldClear,
+    };
+  }
+
+  /** onboarding → active: feed the machine the §2.4.12 / D11 guards read from the tenant's tasks and latest BAA. */
+  async function activateEventFor(
+    tx: PlatformTx,
+    tenantAccountId: string,
+    reason: string,
+    actorKind: LifecycleActorKind = "platform_ops",
+  ): Promise<LifecycleEvent> {
+    const onboarding = new OnboardingRepository(tx);
+    const [templates, tasks, baaRows] = await Promise.all([
+      onboarding.listTemplates(),
+      onboarding.listTasksByTenant(tenantAccountId),
+      new BaaRegisterRepository(tx).listByTenantAccountId(tenantAccountId),
+    ]);
+    const guards = evaluateActivationGuards({
+      canonicalTemplateKeys: templates.filter((t) => t.isCanonical).map((t) => t.key),
+      tasks,
+      latestBaa: pickGoverningBaa(baaRows),
+      today: new Date(),
+    });
+    return {
+      type: "activate",
+      actorKind,
+      transitionReason: reason,
+      canonicalTasksComplete: guards.canonicalTasksComplete,
+      baaExecuted: guards.baaExecuted,
+      baaExpiryClearsNinetyDays: guards.baaExpiryClearsNinetyDays,
+    };
+  }
+
   /**
    * Run the lifecycle machine + commit the §2.5 in-tx effects (ledger / timestamps / enqueue / outbox /
    * session revocation / M36 alert).
@@ -276,7 +351,8 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
   async function applyTransition(
     tx: PlatformTx,
     account: schema.TenantAccount,
-    actorMembershipId: string,
+    /** Null for the system actor (the onboarding sweep): the ledger column is nullable. */
+    actorMembershipId: string | null,
     actorKind: LifecycleActorKind,
     event: LifecycleEvent,
   ): Promise<schema.TenantAccount> {
@@ -289,6 +365,9 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     };
     for (const eff of res.effects) {
       if (eff.kind === "set_timestamp") patch[eff.field] = new Date();
+      // completeExport: the final export is done, so the §2.5 r6 retention window opens now.
+      if (eff.kind === "set_retention_window")
+        patch.retentionEndsAt = retentionEndsAtFrom(new Date());
     }
     const updated = await repo.updateStatus(account.id, patch);
 
@@ -301,7 +380,9 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       transitionReason: event.transitionReason,
       actorMembershipId,
       actorKind,
-      sideEffectsRecorded: { effects: res.effects.map((e) => e.kind) },
+      // `notRun` names machine effects with no runner here (welcome email, M4 requestDestruction, ...), so the
+      // ledger never claims an effect happened that was dropped.
+      sideEffectsRecorded: partitionEffects(res.effects),
     });
 
     // 3) enqueue worker jobs + 4) emit catalog outbox + 5) session revocation + 6) M36 alert, same tx
@@ -313,7 +394,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     tx: PlatformTx,
     account: schema.TenantAccount,
     event: LifecycleEvent,
-    actorMembershipId: string,
+    actorMembershipId: string | null,
     effects: ReadonlyArray<LifecycleSideEffect>,
   ): Promise<void> {
     const occurredAt = new Date().toISOString();
@@ -325,7 +406,14 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         }
         // tenant.shred_eligibility_check is a scheduled cron job, not a request-thread enqueue.
       } else if (eff.kind === "outbox") {
-        const payload = outboxPayloadFor(eff.event, account, event, actorMembershipId, occurredAt);
+        // An empty id would fail the catalog's id schema and roll back loudly: no system-actor path reaches an event that needs one.
+        const payload = outboxPayloadFor(
+          eff.event,
+          account,
+          event,
+          actorMembershipId ?? "",
+          occurredAt,
+        );
         if (payload) {
           await deps.outbox.publish(tx, {
             eventName: eff.event,
@@ -527,7 +615,12 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     async transitionStatus(orgSlug, actorUserId, args: StatusTransitionArgs) {
       return inPlatformCtx("platform-ops transition tenant status", async (tx) => {
         const { account } = await loadByOrgSlug(tx, orgSlug);
-        const event = lifecycleEventForStatus(args.toStatus, args.transitionReason);
+        const event =
+          account.status === "onboarding" && args.toStatus === "active"
+            ? await activateEventFor(tx, account.id, args.transitionReason)
+            : account.status === "retained" && args.toStatus === "destruction_pending"
+              ? await destructionEventFor(account, args.transitionReason)
+              : lifecycleEventForStatus(account.status, args.toStatus, args.transitionReason);
         const updated = await applyTransition(tx, account, actorUserId, "platform_ops", event);
         return { tenantAccountId: updated.id, status: updated.status };
       });
@@ -593,6 +686,48 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       });
     },
 
+    async getProvisionStatus(orgSlug) {
+      const { account } = await inPlatformCtx("platform-ops read provision status", (tx) =>
+        loadByOrgSlug(tx, orgSlug),
+      );
+      return {
+        tenantAccountId: account.id,
+        orgSlug,
+        tenantStatus: account.status,
+        job: await deps.provisionJobs.status(account.id),
+      };
+    },
+
+    async retryProvision(orgSlug) {
+      const { account } = await inPlatformCtx("platform-ops retry tenant provision", (tx) =>
+        loadByOrgSlug(tx, orgSlug),
+      );
+      if (account.status !== "provisioning") {
+        throw new WardenXError(
+          "PROVISION_NOT_RETRYABLE",
+          `only a tenant in 'provisioning' can be retried; this one is '${account.status}'`,
+          409,
+        );
+      }
+      const result = await deps.provisionJobs.retry(account.id);
+      if (result === "missing") {
+        throw new WardenXError(
+          "PROVISION_JOB_MISSING",
+          "no provisioning job exists for this tenant; it was never enqueued or has been cleared",
+          409,
+        );
+      }
+      if (result === "not_failed") {
+        const { state } = await deps.provisionJobs.status(account.id);
+        throw new WardenXError(
+          "PROVISION_JOB_NOT_FAILED",
+          `the provisioning job is '${state}', not failed — nothing to retry`,
+          409,
+        );
+      }
+      return { tenantAccountId: account.id, state: "queued" };
+    },
+
     // ── tenant-invitations ──
     async listInvitations(filter, cursor, limit) {
       return inPlatformCtx("platform-ops list invitations", async (tx) => {
@@ -616,19 +751,54 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       });
     },
 
-    async issueInvitation(actorUserId, args) {
+    async issueInvitation(actorMembershipId, args) {
       return inPlatformCtx("platform-ops issue invitation", async (tx) => {
         const { account } = await loadByOrgSlug(tx, args.orgSlug);
+        if (!canInviteFirstAdmin(account.status)) {
+          throw new WardenXError(
+            "TENANT_NOT_INVITABLE",
+            `a first-admin invitation cannot be issued while the tenant is '${account.status}'`,
+            409,
+          );
+        }
         const repo = new TenantAccountRepository(tx);
-        const expiresAt = new Date(Date.now() + (args.expiresInDays ?? 7) * 86_400_000);
+        const email = args.firstAdminEmail.trim();
+        const existing = await repo.listInvitations(account.id);
+        // A resend replaces the earlier pending link for this address: only the newest token may be redeemed.
+        for (const invite of existing) {
+          if (
+            invite.status === "pending" &&
+            invite.inviteeEmail.toLowerCase() === email.toLowerCase()
+          ) {
+            await repo.updateInvitationStatus(invite.id, { status: "revoked" });
+          }
+        }
+        const inviteeFullName =
+          existing.find((i) => i.inviteeEmail.toLowerCase() === email.toLowerCase())
+            ?.inviteeFullName ?? email;
+        const expiresAt = new Date(
+          Date.now() + (args.expiresInDays ?? FIRST_ADMIN_INVITATION_TTL_DAYS) * 86_400_000,
+        );
+        const { tokenHash, invitationUrl } = mintInvitationToken(
+          deps.invitationDelivery.acceptBaseUrl,
+        );
+        // Insert, then send, in one transaction: a failed send rolls the new row back and leaves the old link intact.
+        // Known window: a commit failure AFTER a successful send leaves an emailed link with no row (the old link stays
+        // valid, so the invitee can ask again); the HTTP call also holds a platform connection while it runs.
         const row = await repo.createInvitation({
           tenantAccountId: account.id,
           organizationId: account.organizationId,
-          inviteeEmail: args.firstAdminEmail,
-          inviteeFullName: args.firstAdminEmail,
-          inviterMembershipId: actorUserId,
-          tokenHash: `pending-${account.id}-${Date.now()}`,
+          inviteeEmail: email,
+          inviteeFullName,
+          inviterMembershipId: actorMembershipId,
+          tokenHash,
           status: "pending",
+          expiresAt,
+        });
+        await deps.invitationDelivery.send({
+          to: email,
+          inviteeFullName,
+          invitationUrl,
           expiresAt,
         });
         return {
@@ -1159,7 +1329,66 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     },
   };
 
-  return { service };
+  /**
+   * Automatic `onboarding → active` once the sweep sees every canonical step settled. Same guards and effects as the
+   * platform route, with a system actor and no membership. The tenant row is locked and re-read so two overlapping
+   * sweeps cannot both apply it, and an unmet guard is a normal "not yet" (returned, not thrown).
+   */
+  async function activateOnboardedTenant(tenantAccountId: string): Promise<AutoActivationResult> {
+    return inPlatformCtx("m34 onboarding sweep: automatic activation", async (tx) => {
+      const [account] = await tx
+        .select()
+        .from(A)
+        .where(eq(A.id, tenantAccountId))
+        .limit(1)
+        .for("update");
+      if (!account || account.status !== "onboarding") {
+        return { activated: false, reason: "NOT_IN_ONBOARDING" };
+      }
+      try {
+        const event = await activateEventFor(
+          tx,
+          account.id,
+          "all canonical onboarding steps settled and the BAA executed (automatic activation)",
+          "system_automated",
+        );
+        // The machine's guards throw from inside applyTransition, so the streak is only cleared once it succeeded.
+        await applyTransition(tx, account, null, "system_automated", event);
+        const metadata = account.metadata as Record<string, unknown>;
+        if (readActivationRefusal(metadata)) {
+          await tx
+            .update(A)
+            .set({ metadata: withoutActivationRefusal(metadata) })
+            .where(eq(A.id, account.id));
+        }
+        return { activated: true };
+      } catch (err) {
+        if (!(err instanceof TenantLifecycleError)) throw err;
+        // The reason is the server-side guard's own code (never tenant-written status). The streak is counted in
+        // this same row-locked transaction, so overlapping sweeps cannot double count and a retry the same UTC
+        // day is a no-op.
+        const metadata = account.metadata as Record<string, unknown>;
+        const { state, advanced } = nextActivationRefusal(
+          metadata[ACTIVATION_REFUSAL_METADATA_KEY],
+          err.code,
+          new Date().toISOString().slice(0, 10),
+        );
+        if (advanced) {
+          await tx
+            .update(A)
+            .set({ metadata: withActivationRefusal(metadata, state) })
+            .where(eq(A.id, account.id));
+        }
+        return {
+          activated: false,
+          reason: err.code,
+          refusalStreak: { days: state.days, advanced },
+        };
+      }
+    });
+  }
+
+  return { service, activateOnboardedTenant };
 }
 
 // ── projection + mapping helpers ─────────────────────────────────────────────────────────────────────
@@ -1206,22 +1435,40 @@ function dateOnly(v: string | Date | null): string | null {
   return typeof v === "string" ? v : v.toISOString().slice(0, 10);
 }
 
-/** Map a target lifecycle status to the §2.2 event that reaches it (the platform transition route). */
-function lifecycleEventForStatus(toStatus: string, reason: string): LifecycleEvent {
+/**
+ * Map a target lifecycle status to the §2.2 event that reaches it from the tenant's current status (the platform
+ * transition route). Several events share a target, so the source status decides: `active` is reactivate from
+ * suspended but resolveAtRisk from at_risk. onboarding → active is built separately (activateEventFor).
+ */
+export function lifecycleEventForStatus(
+  fromStatus: string,
+  toStatus: string,
+  reason: string,
+): LifecycleEvent {
   const k: LifecycleActorKind = "platform_ops";
+  const illegal = (): never => {
+    throw new WardenXError(
+      "ILLEGAL_TENANT_TRANSITION",
+      `no platform-ops transition reaches status '${toStatus}' from '${fromStatus}'`,
+      409,
+    );
+  };
   switch (toStatus) {
     case "suspended":
-      return { type: "suspend", actorKind: k, transitionReason: reason };
+      return fromStatus === "at_risk"
+        ? { type: "suspendFromAtRisk", actorKind: k, transitionReason: reason }
+        : { type: "suspend", actorKind: k, transitionReason: reason };
     case "active":
-      // reactivate is the only platform-ops path to `active` post-onboarding.
-      return { type: "reactivate", actorKind: k, transitionReason: reason };
+      return fromStatus === "at_risk"
+        ? { type: "resolveAtRisk", actorKind: k, transitionReason: reason }
+        : { type: "reactivate", actorKind: k, transitionReason: reason };
     case "at_risk":
       return { type: "flagAtRisk", actorKind: k, transitionReason: reason };
+    case "final_export_pending":
+      return { type: "requestFinalExport", actorKind: k, transitionReason: reason };
+    case "retained":
+      return { type: "completeExport", actorKind: k, transitionReason: reason };
     default:
-      throw new WardenXError(
-        "ILLEGAL_TENANT_TRANSITION",
-        `no platform-ops transition reaches status '${toStatus}'`,
-        409,
-      );
+      return illegal();
   }
 }

@@ -26,13 +26,14 @@ import {
   registerPredicate,
   requireAbac,
   requirePermission,
+  resolveActorPermissions,
 } from "@wardenx/auth";
 import type {
   AnnouncementService,
   MemberAdminActor,
   MessagingRouteService,
 } from "@wardenx/messaging";
-import { UnauthorizedError, WardenXError } from "@wardenx/types";
+import { ForbiddenError, UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveRichWrite } from "../rich-body-codec";
 import { announcementSendGuard, registerAnnouncementRoutes } from "./announcement-routes";
@@ -62,6 +63,8 @@ import {
   VerifyEndpointBodySchema,
   parse,
 } from "./messaging-typebox";
+import { registerPatientContextRoutes } from "./patient-context-routes";
+import { type PresenceRouteDeps, registerPresenceRoutes } from "./presence-routes";
 import { registerReactionPinRoutes } from "./reaction-pin-routes";
 import { registerMessageSearchRoutes } from "./search-routes";
 
@@ -81,6 +84,8 @@ export interface MessagingRouteDeps {
   service: MessagingRouteService;
   /** WP 2.9: announcement receipts, department channels and the org_admin-only announcement send guard. */
   announcements: AnnouncementService;
+  /** WP 2.12: ephemeral presence/typing. Omitted => the routes are registered but the tenant flag reads off. */
+  presence?: PresenceRouteDeps;
 }
 
 /**
@@ -157,6 +162,17 @@ export const REQUIRE_IDEMPOTENCY_KEY: PreHandler = async (request) => {
 };
 
 const READ = requirePermission("messaging.read") as PreHandler;
+// The caller's OWN alert inbox / mark-read. Both service methods filter on recipient_user_id = the actor (never a
+// body/param user id), so they expose nothing of anyone else's. `alert.inbox.self` exists so the zero-authority
+// platform_alert_audience role (migration 1097) can read the alerts addressed to it without `messaging.read`
+// (which opens channels). Either key suffices.
+const OWN_ALERTS: PreHandler = async (request) => {
+  const ctx = request.context;
+  if (!ctx?.organizationId) throw new UnauthorizedError();
+  const granted = await resolveActorPermissions(ctx);
+  if (!granted.has("messaging.read") && !granted.has("alert.inbox.self"))
+    throw new ForbiddenError("requires permission 'messaging.read' or 'alert.inbox.self'");
+};
 const SEND = requirePermission("messaging.send") as PreHandler;
 const DM = requirePermission("messaging.dm") as PreHandler;
 const MANAGE_MEMBERS = requirePermission("messaging.manage_members") as PreHandler;
@@ -299,6 +315,15 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     sendToChannel: SEND_TO_CHANNEL,
     announcementOnly: announceGuard,
   });
+
+  // --- WP 2.12: ephemeral presence + typing (own file; the channel's guards, flag-gated, never persisted) ----------
+  registerPresenceRoutes(app, deps.presence ?? { isEnabled: async () => false }, {
+    read: READ,
+    viewChannel: VIEW_CHANNEL,
+  });
+
+  // --- WP 3.1: patient context panel (own file; per-tile permission re-check, a denied tile is absent) ---------------
+  registerPatientContextRoutes(app, { read: READ });
 
   // Structured autocomplete is scoped to a channel whose effective visibility has already been
   // revalidated. Patient results are intentionally limited by the service to the linked care-team
@@ -672,7 +697,7 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   app.get(
     "/api/v1/alerts/inbox",
     {
-      preHandler: [READ],
+      preHandler: [OWN_ALERTS],
       // GAP-064: alert summaries are clinical (SFV due, safety); account the list read.
       config: { auditRead: { resourceKind: "alert", list: true } },
     },
@@ -683,7 +708,7 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   );
 
   // --- mark one alert read for the current actor -----------------------------------------------
-  app.post("/api/v1/alerts/:id/read", { preHandler: [READ] }, async (request, reply) => {
+  app.post("/api/v1/alerts/:id/read", { preHandler: [OWN_ALERTS] }, async (request, reply) => {
     const { organizationId, userId } = actorOf(request);
     const { id } = parse(AlertParamsSchema, request.params);
 

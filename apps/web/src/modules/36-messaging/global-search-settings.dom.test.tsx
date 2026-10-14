@@ -1,0 +1,419 @@
+// M36 WP 2.7b - the tenant global search settings screen (jsdom): checklist, gated enable, confirmation, server refusals.
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { GlobalSearchSettings } from "./global-search-settings";
+
+const READY = {
+  enabled: false,
+  changedAt: null,
+  purgeRequestedAt: null,
+  purgeCompletedAt: null,
+  checklist: {
+    platformEnabled: true,
+    legacyBodiesMigrated: true,
+    escrowAttested: true,
+    leakageAttested: true,
+    rateLimitActive: true,
+    excludedMembersCleared: true,
+  },
+  notice: { version: "v1", text: "Everything becomes discoverable." },
+  noticeAcknowledgement: null,
+  rebuild: null,
+};
+const UNMET = { ...READY, checklist: { ...READY.checklist, escrowAttested: false } };
+const ON = { ...READY, enabled: true, changedAt: "2026-10-13T10:00:00.000Z" };
+const failure = (status: number, error: unknown) => ({
+  data: undefined,
+  error,
+  response: { status },
+});
+const ok = (data: unknown) => ({ data, error: undefined, response: { status: 200 } });
+
+function Where(): null {
+  document.title = useLocation().pathname;
+  return null;
+}
+
+function mount(get: unknown, put?: unknown) {
+  const api = {
+    GET: vi.fn().mockResolvedValue(get),
+    PUT: vi.fn().mockResolvedValue(put),
+  } as unknown as ApiClient;
+  render(
+    <ApiClientProvider client={api}>
+      <MemoryRouter initialEntries={["/messaging/search-settings"]}>
+        <Where />
+        <Routes>
+          <Route path="/messaging/search-settings" element={<GlobalSearchSettings />} />
+          <Route path="*" element={null} />
+        </Routes>
+      </MemoryRouter>
+    </ApiClientProvider>,
+  );
+  return api;
+}
+const putCalls = (api: ApiClient): Array<[string, { body: unknown }]> =>
+  (api.PUT as unknown as ReturnType<typeof vi.fn>).mock.calls as Array<[string, { body: unknown }]>;
+const firstPut = (api: ApiClient): [string, { body: unknown }] => {
+  const call = putCalls(api)[0];
+  if (!call) throw new Error("no PUT was sent");
+  return call;
+};
+
+const ACCEPT = "I have read and accept this notice";
+
+async function confirm(label: string) {
+  const dialog = await screen.findByRole("alertdialog");
+  const accept = within(dialog).queryByRole("checkbox", { name: ACCEPT });
+  if (accept && !(accept as HTMLInputElement).checked) fireEvent.click(accept);
+  fireEvent.click(within(dialog).getByRole("button", { name: label }));
+}
+
+afterEach(() => vi.useRealTimers());
+
+describe("Global search settings", () => {
+  it("keeps the PUT result when a poll reply that started before it lands afterwards", async () => {
+    vi.useFakeTimers();
+    const building = { ...ON, rebuild: { status: "building", effectiveReady: false } };
+    const READY_ON = { ...ON, rebuild: { status: "ready", effectiveReady: true } };
+    let releasePoll: (v: unknown) => void = () => undefined;
+    const api = mount(ok(building), ok(READY));
+    const get = api.GET as unknown as ReturnType<typeof vi.fn>;
+    const advance = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+    await advance(0);
+    get.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          releasePoll = r;
+        }),
+    );
+    await advance(15_000); // the poll fires and stays pending
+    expect(get).toHaveBeenCalledTimes(2); // guards against a poll that never started
+    fireEvent.click(screen.getByRole("button", { name: "Switch off global search" }));
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Switch off" }),
+    );
+    await advance(0);
+    expect(screen.getByRole("button", { name: "Switch on global search" })).toBeTruthy();
+    await act(async () => releasePoll(ok(READY_ON))); // stale: read before the write
+    expect(screen.getByRole("button", { name: "Switch on global search" })).toBeTruthy();
+  });
+
+  it("keeps the PUT result when a poll that started during the PUT replies after it", async () => {
+    vi.useFakeTimers();
+    const building = { ...ON, rebuild: { status: "building", effectiveReady: false } };
+    const READY_ON = { ...ON, rebuild: { status: "ready", effectiveReady: true } };
+    let releasePoll: (v: unknown) => void = () => undefined;
+    let releasePut: (v: unknown) => void = () => undefined;
+    const api = mount(ok(building));
+    const get = api.GET as unknown as ReturnType<typeof vi.fn>;
+    const advance = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+    await advance(0);
+    (api.PUT as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      () =>
+        new Promise((r) => {
+          releasePut = r;
+        }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Switch off global search" }));
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Switch off" }),
+    );
+    await advance(0); // the PUT is pending
+    get.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          releasePoll = r;
+        }),
+    );
+    await advance(15_000); // a poll starts while the write is in flight
+    expect(get).toHaveBeenCalledTimes(2);
+    await act(async () => releasePut(ok(READY)));
+    await act(async () => releasePoll(ok(READY_ON))); // read before the write committed
+    expect(screen.getByRole("button", { name: "Switch on global search" })).toBeTruthy();
+  });
+
+  it("applies a quiet poll reply when no write happened since it started", async () => {
+    vi.useFakeTimers();
+    const building = { ...ON, rebuild: { status: "building", effectiveReady: false } };
+    const api = mount(ok(building));
+    const get = api.GET as unknown as ReturnType<typeof vi.fn>;
+    const advance = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+    await advance(0);
+    get.mockResolvedValue(ok({ ...ON, rebuild: { status: "ready", effectiveReady: true } }));
+    await advance(15_000);
+    expect(screen.getByText(/index is ready/i)).toBeTruthy();
+  });
+
+  it("Refresh status re-reads without the full-page spinner", async () => {
+    const building = { ...ON, rebuild: { status: "building", effectiveReady: false } };
+    const api = mount(ok(building));
+    const get = api.GET as unknown as ReturnType<typeof vi.fn>;
+    await screen.findByText(/still being built/i);
+    get.mockResolvedValue(ok({ ...ON, rebuild: { status: "ready", effectiveReady: true } }));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh status" }));
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(await screen.findByText(/index is ready/i)).toBeTruthy();
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it("closes the dialog on Escape and on Cancel, sending nothing", async () => {
+    const api = mount(ok(READY));
+    fireEvent.click(await screen.findByRole("button", { name: "Switch on global search" }));
+    fireEvent.keyDown(await screen.findByRole("alertdialog"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Switch on global search" }));
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Cancel" }),
+    );
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(putCalls(api)).toHaveLength(0);
+  });
+
+  it("does not gate Switch off on the notice checkbox", async () => {
+    mount(ok(ON), ok(READY));
+    fireEvent.click(await screen.findByRole("button", { name: "Switch off global search" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).queryByRole("checkbox")).toBeNull();
+    expect(
+      (within(dialog).getByRole("button", { name: "Switch off" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it("shows a stale-notice refusal inside the dialog and clears it on cancel", async () => {
+    const api = mount(ok(READY));
+    (api.PUT as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      failure(409, {
+        error: { code: "GLOBAL_SEARCH_NOTICE_NOT_ACKNOWLEDGED", message: "Acknowledge again." },
+      }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Switch on global search" }));
+    await confirm("Switch on");
+    const dialog = await screen.findByRole("alertdialog");
+    await waitFor(() =>
+      expect(within(dialog).getByRole("alert").textContent).toBe("Acknowledge again."),
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("lists every prerequisite with met or not met in words", async () => {
+    mount(ok(UNMET));
+    const list = await screen.findByRole("list", { name: "Go-live prerequisites" });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(6);
+    expect(within(list).getAllByText("Met")).toHaveLength(5);
+    expect(within(list).getAllByText("Not met")).toHaveLength(1);
+  });
+
+  it("disables switching on while a prerequisite is unmet and says why", async () => {
+    mount(ok(UNMET));
+    const button = await screen.findByRole("button", { name: "Switch on global search" });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(button.getAttribute("aria-describedby")).toBeTruthy();
+  });
+
+  it("disables switching on while the last purge has not finished", async () => {
+    mount(ok({ ...READY, purgeRequestedAt: "2026-10-13T09:00:00.000Z" }));
+    const button = await screen.findByRole("button", { name: "Switch on global search" });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/still being removed/i)).toBeTruthy();
+  });
+
+  it("asks for confirmation, explains the blind-token index, and sends nothing on cancel", async () => {
+    const api = mount(ok(READY));
+    fireEvent.click(await screen.findByRole("button", { name: "Switch on global search" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog.textContent).toMatch(/blind-token index/i);
+    expect(putCalls(api)).toHaveLength(0);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(putCalls(api)).toHaveLength(0);
+  });
+
+  it("switches on after confirmation and shows the state the server returned", async () => {
+    const api = mount(ok(READY), ok(ON));
+    fireEvent.click(await screen.findByRole("button", { name: "Switch on global search" }));
+    await confirm("Switch on");
+    expect(await screen.findByRole("button", { name: "Switch off global search" })).toBeTruthy();
+    expect(putCalls(api)).toHaveLength(1);
+    expect(firstPut(api)[0]).toBe("/api/v1/messaging/global-search/settings");
+    expect(firstPut(api)[1].body).toEqual({
+      enabled: true,
+      acknowledgedNoticeVersion: "v1",
+    });
+  });
+
+  it("shows the notice and keeps Switch on disabled until it is accepted", async () => {
+    const api = mount(ok(READY), ok(ON));
+    fireEvent.click(await screen.findByRole("button", { name: "Switch on global search" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog.textContent).toContain("Everything becomes discoverable.");
+    const go = within(dialog).getByRole("button", { name: "Switch on" }) as HTMLButtonElement;
+    expect(go.disabled).toBe(true);
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: ACCEPT }));
+    expect(go.disabled).toBe(false);
+    fireEvent.click(go);
+    await screen.findByRole("button", { name: "Switch off global search" });
+    expect(firstPut(api)[1].body).toEqual({ enabled: true, acknowledgedNoticeVersion: "v1" });
+  });
+
+  it("re-reads and re-prompts with the new notice when the acknowledgement is stale", async () => {
+    const NEWER = { ...READY, notice: { version: "v2", text: "A newer notice." } };
+    const api = mount(ok(READY), ok(ON));
+    (api.PUT as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(
+        failure(409, {
+          error: {
+            code: "GLOBAL_SEARCH_NOTICE_NOT_ACKNOWLEDGED",
+            message: "Acknowledge the notice.",
+            details: [{ code: "NOTICE_ACK_STALE", message: "The notice changed." }],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(ok(ON));
+    fireEvent.click(await screen.findByRole("button", { name: "Switch on global search" }));
+    (api.GET as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(ok(NEWER));
+    await confirm("Switch on");
+    await waitFor(() =>
+      expect(screen.getByRole("alertdialog").textContent).toContain("A newer notice."),
+    );
+    const dialog = screen.getByRole("alertdialog");
+    expect(
+      (within(dialog).getByRole("checkbox", { name: ACCEPT }) as HTMLInputElement).checked,
+    ).toBe(false);
+    expect(
+      (within(dialog).getByRole("button", { name: "Switch on" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    await confirm("Switch on");
+    await screen.findByRole("button", { name: "Switch off global search" });
+    expect(putCalls(api)[1]?.[1].body).toEqual({ enabled: true, acknowledgedNoticeVersion: "v2" });
+  });
+
+  it("words the excluded-members prerequisite and who last acknowledged the notice", async () => {
+    mount(
+      ok({
+        ...UNMET,
+        checklist: { ...UNMET.checklist, escrowAttested: true, excludedMembersCleared: false },
+        noticeAcknowledgement: {
+          version: "v1",
+          byUserId: "user-7",
+          at: "2026-10-13T10:00:00.000Z",
+        },
+      }),
+    );
+    const list = await screen.findByRole("list", { name: "Go-live prerequisites" });
+    const row = within(list)
+      .getByText(/patient-family, external-auditor or platform-staff/)
+      .closest("li");
+    expect(row?.textContent).toContain("Not met");
+    const line = screen.getByText(/version v1 was last acknowledged/).textContent;
+    expect(line).not.toContain("user-7");
+  });
+
+  it("shows the excluded-members refusal text from the server", async () => {
+    mount(
+      ok(READY),
+      failure(409, {
+        error: {
+          code: "GLOBAL_SEARCH_PREREQUISITES_UNMET",
+          message: "Not ready.",
+          details: [{ code: "EXCLUDED_MEMBERS_PRESENT", message: "Remove them first." }],
+        },
+      }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Switch on global search" }));
+    await confirm("Switch on");
+    expect((await screen.findByRole("alert")).textContent).toBe("Not ready. Remove them first.");
+  });
+
+  it("shows the server's refusal and does not claim success", async () => {
+    mount(
+      ok(READY),
+      failure(409, {
+        error: {
+          code: "GLOBAL_SEARCH_PREREQUISITES_UNMET",
+          message: "Global search cannot be switched on until the go-live checklist is satisfied.",
+          details: [
+            {
+              field: "enabled",
+              code: "ESCROW_NOT_ATTESTED",
+              message: "The key escrow and restore drill are not on record.",
+            },
+          ],
+        },
+      }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Switch on global search" }));
+    await confirm("Switch on");
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe(
+      "Global search cannot be switched on until the go-live checklist is satisfied. The key escrow and restore drill are not on record.",
+    );
+    expect(screen.queryByRole("button", { name: "Switch off global search" })).toBeNull();
+  });
+
+  it("keeps the server's refusal when the quiet re-read of the settings fails", async () => {
+    const api = mount(
+      ok(READY),
+      failure(409, { error: { code: "GLOBAL_SEARCH_PREREQUISITES_UNMET", message: "Not yet." } }),
+    );
+    (api.GET as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(ok(READY))
+      .mockRejectedValueOnce(new Error("offline"));
+    fireEvent.click(await screen.findByRole("button", { name: "Switch on global search" }));
+    await confirm("Switch on");
+    expect((await screen.findByRole("alert")).textContent).toBe("Not yet.");
+  });
+
+  it("words a stale index build separately from a first build", async () => {
+    mount(ok({ ...ON, rebuild: { status: "stale", effectiveReady: false } }));
+    expect(await screen.findByText(/catching up/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Refresh status" })).toBeTruthy();
+  });
+
+  it("sends the user to step-up when the session is not fresh", async () => {
+    mount(ok(READY), failure(403, { error: { code: "STEP_UP_REQUIRED", message: "Re-verify" } }));
+    fireEvent.click(await screen.findByRole("button", { name: "Switch on global search" }));
+    await confirm("Switch on");
+    await waitFor(() => expect(document.title).toBe("/step-up"));
+  });
+
+  it("shows a permission message on 403", async () => {
+    mount(failure(403, { error: { code: "FORBIDDEN", message: "no" } }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/permission/i);
+  });
+
+  it("shows an unavailable state with retry on 503", async () => {
+    const api = mount(failure(503, { error: { code: "UNAVAILABLE", message: "down" } }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/unavailable/i);
+    (api.GET as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(ok(READY));
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByRole("button", { name: "Switch on global search" })).toBeTruthy();
+  });
+
+  it("switches off after confirmation", async () => {
+    const api = mount(ok(ON), ok(READY));
+    fireEvent.click(await screen.findByRole("button", { name: "Switch off global search" }));
+    await confirm("Switch off");
+    expect(await screen.findByRole("button", { name: "Switch on global search" })).toBeTruthy();
+    expect(firstPut(api)[1].body).toEqual({ enabled: false });
+  });
+
+  it("reports the index build while it is not ready", async () => {
+    mount(
+      ok({
+        ...ON,
+        rebuild: {
+          keyVersion: "v1",
+          status: "building",
+          checkpointCreatedAt: null,
+          reconciledAt: null,
+          changedAt: ON.changedAt,
+          effectiveReady: false,
+        },
+      }),
+    );
+    expect(await screen.findByText(/still being built/i)).toBeTruthy();
+  });
+});

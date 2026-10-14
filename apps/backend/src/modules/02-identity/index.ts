@@ -636,4 +636,6 @@ export { createPortalInviteeUserPort } from "./portal-invitee-user";
 
 // GAP-115 — the org-admin surface's published types (the cipher port the composition root binds).
 export type { TaxIdCipherPort } from "./routes/org-admin-routes";
+export { createTaxIdCipher } from "./tax-id-cipher";
+export type { TaxIdCipher, TaxIdKeyProvider } from "./tax-id-cipher";
 export { validateOverrideInput } from "./step-up-override-admin";

@@ -296,6 +296,22 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "admin",
     abac: "none",
   },
+  // --- WP 2.7b C4: switch tenant global search on/off (ADR-0058 decision 2; the route also demands a fresh step-up) ---
+  "messaging.global_search.manage": {
+    resource: "global_search",
+    action: "manage",
+    category: "admin",
+    abac: "none",
+  },
+  // --- the caller's OWN alert inbox + mark-read (SELF only: both routes filter on recipient_user_id = the actor).
+  //     Held by the zero-authority platform_alert_audience role (migration 1097) so a bound platform operator can
+  //     read the alerts addressed to them; the routes also accept `messaging.read`, which every tenant role has. ---
+  "alert.inbox.self": {
+    resource: "alert_inbox",
+    action: "self",
+    category: "clinical",
+    abac: "none",
+  },
   // --- platform-ops admin (§4.5; platform-only — failures + delivery audit drill) ---
   "messaging.admin.read": {
     resource: "admin",

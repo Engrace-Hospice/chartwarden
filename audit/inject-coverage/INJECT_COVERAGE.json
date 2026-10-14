@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1545,
-    "coveredRoutes": 1545,
-    "directRoutesReferenced": 1462
+    "routes": 1557,
+    "coveredRoutes": 1557,
+    "directRoutesReferenced": 1474
   },
   "modules": [
     {
@@ -32,7 +32,9 @@
         "apps/backend/__tests__/m2-link-redemption.test.ts",
         "apps/backend/__tests__/m2-organization-lifecycle.live.test.ts",
         "apps/backend/__tests__/m2-platform-user-deactivate.test.ts",
+        "apps/backend/__tests__/m2-tax-id-cipher.live.test.ts",
         "apps/backend/__tests__/m31-portal-signin.live.test.ts",
+        "apps/backend/__tests__/m34-platform-alert-audience-no-authority.test.ts",
         "apps/backend/__tests__/m36-transactional-email.live.test.ts",
         "apps/backend/__tests__/mfa-enrolment-matrix.test.ts",
         "apps/backend/__tests__/session-step-up.test.ts",
@@ -54,7 +56,8 @@
         "apps/backend/__tests__/m2-auditor-enrolment.live.test.ts",
         "apps/backend/__tests__/m2-auditor-redemption.live.test.ts",
         "apps/backend/__tests__/m2-auth-hardening.live.test.ts",
-        "apps/backend/__tests__/m23-dde-queue-hardening.live.test.ts"
+        "apps/backend/__tests__/m23-dde-queue-hardening.live.test.ts",
+        "apps/backend/__tests__/m36-global-search-query.test.ts"
       ],
       "directRoutesReferenced": 16
     },
@@ -463,13 +466,13 @@
     },
     {
       "module": "34-saas-tenant-platform",
-      "routes": 56,
+      "routes": 58,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m34-ops-routes-inject.test.ts",
         "apps/backend/__tests__/saas-tenant-platform-inject.test.ts"
       ],
-      "directRoutesReferenced": 55
+      "directRoutesReferenced": 57
     },
     {
       "module": "35-subscription",
@@ -483,10 +486,11 @@
     },
     {
       "module": "36-messaging",
-      "routes": 62,
+      "routes": 72,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
+        "apps/backend/__tests__/m34-platform-alert-audience-no-authority.test.ts",
         "apps/backend/__tests__/m36-admin-alert-deliveries.test.ts",
         "apps/backend/__tests__/m36-announcements.live.test.ts",
         "apps/backend/__tests__/m36-announcements.test.ts",
@@ -494,11 +498,18 @@
         "apps/backend/__tests__/m36-channel-admin.live.test.ts",
         "apps/backend/__tests__/m36-delivery-sweep-and-webhooks.test.ts",
         "apps/backend/__tests__/m36-drafts-routes.test.ts",
+        "apps/backend/__tests__/m36-global-search-query.test.ts",
+        "apps/backend/__tests__/m36-global-search-settings.live.test.ts",
+        "apps/backend/__tests__/m36-global-search.live.test.ts",
         "apps/backend/__tests__/m36-idempotent-send.live.test.ts",
         "apps/backend/__tests__/m36-message-search-routes.test.ts",
         "apps/backend/__tests__/m36-message-search.live.test.ts",
         "apps/backend/__tests__/m36-message-templates.live.test.ts",
         "apps/backend/__tests__/m36-message-templates.test.ts",
+        "apps/backend/__tests__/m36-patient-context-routes.test.ts",
+        "apps/backend/__tests__/m36-poll-announce-guard.test.ts",
+        "apps/backend/__tests__/m36-presence.live.test.ts",
+        "apps/backend/__tests__/m36-presence.test.ts",
         "apps/backend/__tests__/m36-rich-body.test.ts",
         "apps/backend/__tests__/m36-scheduled-send-routes.test.ts",
         "apps/backend/__tests__/m36-tenant-idor.live.test.ts",
@@ -509,7 +520,7 @@
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 62
+      "directRoutesReferenced": 72
     },
     {
       "module": "37-ipu",

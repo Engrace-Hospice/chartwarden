@@ -82,6 +82,7 @@ import {
   generateVerificationCode,
   hashVerificationCode,
 } from "./endpoint-verification";
+import { assertMemberCategoryAllowed, excludedMemberUserIds } from "./member-category-gate";
 import { createDbMentionNonMemberSearch } from "./mention-non-member-service-db";
 import { decodeCursor, encodeCursor } from "./message-cursor";
 import { publishMessageHint } from "./message-hint-events";
@@ -182,7 +183,7 @@ interface EffectiveChannelAccessCandidate {
  * it is revalidated through the opaque CareTeamProvider seam on every effective-access decision.
  * Manual membership is an explicit audited override and remains authoritative by domain rule.
  */
-async function effectivelyVisibleChannels<T extends EffectiveChannelAccessCandidate>(
+export async function effectivelyVisibleChannels<T extends EffectiveChannelAccessCandidate>(
   orgId: string,
   userId: string,
   candidates: readonly T[],
@@ -359,7 +360,7 @@ async function assertLiveMembershipInTx(
   if (!live) throw new NotFoundError("message", messageId);
 }
 
-async function isActiveMessagingUser(
+export async function isActiveMessagingUser(
   tx: Parameters<typeof channelOr404>[0],
   orgId: string,
   userId: string,
@@ -389,6 +390,22 @@ async function assertActiveMessagingUser(
     // One indistinguishable response for absent, suspended, revoked, deactivated, and foreign users.
     throw new NotFoundError("eligible staff member", userId);
   }
+}
+
+/**
+ * DM-open peer check. An excluded-category peer (patient_family / external_auditor / platform_staff) must be
+ * indistinguishable from an absent one, or openDm becomes a role-category oracle for any workforce user. Both
+ * lookups always run (no short-circuit) and the refusal is the same NotFoundError as `assertActiveMessagingUser`.
+ * The distinct 422 stays only on addMember (the caller there is a member manager).
+ */
+async function assertDmPeerEligible(
+  tx: Parameters<typeof channelOr404>[0],
+  orgId: string,
+  peerUserId: string,
+): Promise<void> {
+  const active = await isActiveMessagingUser(tx, orgId, peerUserId);
+  const excluded = await excludedMemberUserIds(tx, orgId, [peerUserId]);
+  if (!active || excluded.size > 0) throw new NotFoundError("eligible staff member", peerUserId);
 }
 
 // ── value-level mirrors of the §3.2 enum unions (for routing-map / resolver validation) ──────
@@ -538,6 +555,7 @@ async function ensureDmMember(
     .where(and(eq(CM.organizationId, orgId), eq(CM.channelId, channelId), eq(CM.userId, userId)))
     .orderBy(desc(CM.joinedAt));
   if (rows.some((row) => row.removedAt === null)) return;
+  await assertMemberCategoryAllowed(tx, orgId, userId);
   const reusable = rows[0];
   if (reusable) {
     await tx
@@ -972,7 +990,7 @@ export function createDbMessagingRouteService(
               messagePreview(
                 decodeStoredBody(
                   row.bodyKind as MessageBodyKind,
-                  cipher.open(orgId, row.bodyCipher),
+                  await cipher.open(orgId, row.bodyCipher),
                 ).body,
               ),
             );
@@ -1557,7 +1575,7 @@ export function createDbMessagingRouteService(
           bodyKind: m.bodyKind === "rich" ? "plain" : (m.bodyKind as MessageBodyKind),
           richBody: input.richBody,
         });
-        const { cipher: bodyCipher, sha256 } = cipher.seal(orgId, next.plaintext);
+        const { cipher: bodyCipher, sha256 } = await cipher.seal(orgId, next.plaintext);
         const editedAt = new Date();
         await tx
           .update(MSG)
@@ -1725,7 +1743,7 @@ export function createDbMessagingRouteService(
       if (peerUserId === userId) throw new ConflictError("cannot open a DM with yourself");
       return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
         await assertActiveMessagingUser(tx, orgId, userId);
-        await assertActiveMessagingUser(tx, orgId, peerUserId);
+        await assertDmPeerEligible(tx, orgId, peerUserId);
         const participantKey = dmParticipantKey(userId, peerUserId);
         const inserted = (await tx
           .insert(CH)
@@ -1883,6 +1901,7 @@ export function createDbMessagingRouteService(
           )
           .limit(1)) as Array<{ id: string }>;
         if (active[0]) return; // already an active member — idempotent
+        await assertMemberCategoryAllowed(tx, orgId, input.userId);
         await tx.insert(CM).values({
           organizationId: orgId,
           channelId: input.channelId,

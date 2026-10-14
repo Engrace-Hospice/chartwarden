@@ -696,6 +696,10 @@ import {
   TransitionCapabilityBody as M32TransitionCapabilityBody,
   TriageHallucinationReportBody as M32TriageHallucinationReportBody,
 } from "../../apps/backend/src/modules/32-ai-platform/routes/m32-typebox";
+import {
+  PresenceHeartbeatBodySchema as M36PresenceHeartbeatBodySchema,
+  PresenceResponseSchema as M36PresenceResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/presence-typebox";
 import { SearchQuerySchema as TerminologySearchQuerySchema } from "../../apps/backend/src/modules/38-terminology/routes/terminology-typebox";
 import {
   GriefResourceBodySchema as M40GriefResourceBody,
@@ -1175,6 +1179,8 @@ import {
   // responses
   BaaRecordViewSchema as M34PlatformBaaRecordViewSchema,
   TenantExportJobListResponseSchema as M34PlatformTenantExportJobListResponseSchema,
+  ProvisionRetryAckSchema as M34ProvisionRetryAckSchema,
+  ProvisionStatusViewSchema as M34ProvisionStatusViewSchema,
   ProvisionTenantRequest as M34ProvisionTenantRequest,
   QualifyIntentAckSchema as M34QualifyIntentAckSchema,
   QualifyIntentRequest as M34QualifyIntentRequest,
@@ -1253,6 +1259,15 @@ import {
   DraftResponseSchema as M36DraftResponseSchema,
   SaveDraftBodySchema as M36SaveDraftBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/draft-typebox";
+// M36 WP 2.7b C4 tenant global search switch.
+import {
+  GlobalSearchSettingsViewSchema as M36GlobalSearchSettingsViewSchema,
+  PutGlobalSearchSettingsBodySchema as M36PutGlobalSearchSettingsBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/global-search-settings-typebox";
+import {
+  GlobalSearchQuerySchema as M36GlobalSearchQuerySchema,
+  GlobalSearchResponseSchema as M36GlobalSearchResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/global-search-typebox";
 // ── M36 Secure Messaging & Alerts — request + response schema imports (all M36-aliased) ──
 import {
   // request schemas (query / body) — reused as-is
@@ -1295,6 +1310,14 @@ import {
   ThreadResponseSchema as M36ThreadResponseSchema,
   VerifyEndpointBodySchema as M36VerifyEndpointBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/messaging-typebox";
+import { PatientContextResponseSchema as M36PatientContextResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/patient-context-typebox";
+import {
+  CreatePollBodySchema as M36CreatePollBodySchema,
+  CreatePollResponseSchema as M36CreatePollResponseSchema,
+  PollDetailViewSchema as M36PollDetailViewSchema,
+  PollResultResponseSchema as M36PollResultResponseSchema,
+  VotePollBodySchema as M36VotePollBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/poll-typebox";
 import {
   PinListResponseSchema as M36PinListResponseSchema,
   PinResponseSchema as M36PinResponseSchema,
@@ -8794,6 +8817,15 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M34StatusTransitionRequest,
     response: M34TenantStatusAckSchema,
   },
+  "GET /api/v1/platform/tenants/:orgSlug/provision-status": {
+    summary:
+      "A tenant's lifecycle status next to its tenant.provision job state (queued/running/failed/…)",
+    response: M34ProvisionStatusViewSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/provision/retry": {
+    summary: "Re-run a failed tenant.provision job for a tenant still in provisioning (step-up)",
+    response: M34ProvisionRetryAckSchema,
+  },
   "POST /api/v1/platform/tenants/:orgSlug/offboard": {
     summary: "Initiate offboarding cascade (step-up)",
     body: M34OffboardTenantRequest,
@@ -8995,6 +9027,52 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "The channel's pinned messages, most recently pinned first (read-audited)",
     response: M36PinListResponseSchema,
   },
+  // WP 2.10 polls (non-clinical; single choice; named votes; channel_visibility ABAC, refusals are the 404 a random id gets)
+  "POST /api/v1/messaging/channels/:id/polls": {
+    summary:
+      "Create a poll as a message (WP 2.10; Idempotency-Key required; 2-10 options, plain text only; 422 POLL_NOT_ALLOWED_IN_PATIENT_CHANNEL in a care_team/bereavement channel, 422 VALIDATION_FAILED on bad text/options, 410 archived; announcement channel needs messaging.announce)",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    body: M36CreatePollBodySchema,
+    response: M36CreatePollResponseSchema,
+  },
+  "GET /api/v1/messaging/channels/:id/messages/:messageId/poll": {
+    summary:
+      "A poll's results with who voted for each option and the caller's own vote (WP 2.10; read-audited; never cached)",
+    response: M36PollDetailViewSchema,
+  },
+  "PUT /api/v1/messaging/channels/:id/messages/:messageId/poll/vote": {
+    summary:
+      "Cast or change the caller's single vote (WP 2.10; idempotent; one vote per user, a change is audited; 409 POLL_CLOSED, 422 INVALID_POLL_OPTION, 410 archived)",
+    body: M36VotePollBodySchema,
+    response: M36PollResultResponseSchema,
+  },
+  "POST /api/v1/messaging/channels/:id/messages/:messageId/poll/close": {
+    summary:
+      "Close a poll (WP 2.10; the poll's author or a channel manager, else 403; idempotent; closed polls reject votes)",
+    response: M36PollResultResponseSchema,
+  },
+  // WP 2.12 presence/typing (ephemeral, Valkey, never persisted; tenant flag messaging.presence_enabled, default off)
+  "POST /api/v1/messaging/channels/:id/presence": {
+    summary:
+      "Heartbeat / typing marker for the caller in a channel (ephemeral ids with a short TTL, never stored in Postgres; at most one write per 3 s per user per channel, extra calls are 204 no-ops; 403 PRESENCE_DISABLED when the tenant flag is off, and the channel guard's refusal for a non-member, removed member or other tenant)",
+    body: M36PresenceHeartbeatBodySchema,
+  },
+  "GET /api/v1/messaging/channels/:id/presence": {
+    summary:
+      "Ids of channel members currently present / typing (poll; ids only, no names; 403 PRESENCE_DISABLED when the tenant flag is off; a non-member gets what a random channel id gets)",
+    response: M36PresenceResponseSchema,
+  },
+  "GET /api/v1/messaging/search": {
+    summary:
+      "Search every channel the caller may read (WP 2.7b, ADR-0058 Proposed, INERT until enabled: whole words, last word is a word beginning; blind-token index, authority re-checked per request; 403 GLOBAL_SEARCH_DISABLED / GLOBAL_SEARCH_ROLE_NOT_PERMITTED, 503 GLOBAL_SEARCH_INDEX_NOT_READY / DEGRADED, 422 bad query; `refine: true` asks the user to add a word; read-audited without the query or cursor; never cached)",
+    query: M36GlobalSearchQuerySchema,
+    response: M36GlobalSearchResponseSchema,
+  },
+  "GET /api/v1/messaging/patients/:patientId/context": {
+    summary:
+      "Patient context panel (WP 3.1): a read-only projection through the owning modules' seams. Each tile re-checks that module's permission on the request; a tile the caller may not see is ABSENT (never null/403) and its source is not read; a failing seam makes only its own tile `unavailable`; `as_of` is when the panel read the source. Read-audited against the patient.",
+    response: M36PatientContextResponseSchema,
+  },
   "GET /api/v1/messaging/channels/:id/search": {
     summary:
       "Search ONE channel's live messages (WP 2.7a, option A: decrypt-and-filter, no index; scans at most 5000 bodies per request and returns a continuation cursor; read-audited without the query text; 404 non-member, 410 archived, 422 bad query)",
@@ -9118,6 +9196,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "DELETE /api/v1/messaging/templates/personal/:id": {
     summary: "Delete one of the caller's own personal replies (204; 404 for anyone else's)",
   },
+  "GET /api/v1/messaging/global-search/settings": {
+    summary:
+      "The organization's global search switch with the go-live checklist and the index rebuild progress (messaging.global_search.manage)",
+    response: M36GlobalSearchSettingsViewSchema,
+  },
+  "PUT /api/v1/messaging/global-search/settings": {
+    summary:
+      "Switch global search on or off for the organization (messaging.global_search.manage + a fresh step-up). ON needs acknowledgedNoticeVersion equal to the GET notice.version (409 GLOBAL_SEARCH_NOTICE_NOT_ACKNOWLEDGED, NOTICE_ACK_REQUIRED or NOTICE_ACK_STALE) and is 409 GLOBAL_SEARCH_PREREQUISITES_UNMET naming each failing checklist item (including EXCLUDED_MEMBERS_PRESENT), or PURGE_IN_PROGRESS while the last switch-off purge is unfinished; OFF is always accepted without an acknowledgement and requests the token purge",
+    body: M36PutGlobalSearchSettingsBodySchema,
+    response: M36GlobalSearchSettingsViewSchema,
+  },
   "GET /api/v1/messaging/template-admin": {
     summary:
       "Template administration view: the platform wording and required phrases, this organization's overlay on each, and its shared templates (messaging.template.manage)",
@@ -9174,7 +9263,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Unarchive a discipline/location channel (org_admin only; 204, idempotent; 409 CHANNEL_LIFECYCLE_MANAGED for care_team/bereavement/on_call/announcement; 403 for a DM)",
   },
   "POST /api/v1/messaging/channels/:id/members": {
-    summary: "Add a manual member (admin override on auto channels; 204)",
+    summary:
+      "Add a manual member (admin override on auto channels; 204). 422 MEMBER_CATEGORY_NOT_ALLOWED when the identity holds a patient_family, external_auditor or platform_staff role",
     body: M36AddMemberBodySchema,
   },
   "DELETE /api/v1/messaging/channels/:id/members/:userId": {

@@ -56,6 +56,8 @@ function m34DsarDeriveTenantBucket(organizationId: string): string {
 import { type M34QueueName, M34_QUEUES } from "./jobs/index";
 import type { M34WorkerDeps } from "./jobs/saas-jobs";
 import type { TenantPlatformRouteService } from "./routes/platform/service";
+import type { InvitationDeliveryPort } from "./invitation-token";
+import { type ProvisionJobPort, createProvisionJobPort } from "./jobs/provision-job-port";
 import type { EnqueuePort as PlatformEnqueuePort } from "./routes/platform/service";
 import {
   type DrizzleTenantPlatformDeps,
@@ -189,10 +191,18 @@ export function registerLiveM34Seams(deps: {
  */
 export function buildPlatformEnqueue(connection: ConnectionOptions | undefined): {
   enqueue: PlatformEnqueuePort;
+  provisionJobs: ProvisionJobPort;
   queues: Queue[];
 } {
   if (!connection) {
+    const unbound = (): never => {
+      throw new M34InfraPortUnbound(
+        "provisionJobs",
+        "no Valkey connection configured — cannot read or retry the tenant.provision job",
+      );
+    };
     return {
+      provisionJobs: { status: async () => unbound(), retry: async () => unbound() },
       enqueue: {
         async enqueue(queue) {
           assertM34JobCapability(queue);
@@ -228,7 +238,9 @@ export function buildPlatformEnqueue(connection: ConnectionOptions | undefined):
       return { jobId: job.id ?? `${queue}:${jobKey}` };
     },
   };
-  return { enqueue, queues: [...cache.values()] };
+  // The provision job lives on the queue the outbox consumer fills; this handle only reads and retries it.
+  const provisionJobs = createProvisionJobPort(queueFor(M34_QUEUES.provision));
+  return { enqueue, provisionJobs, queues: [...cache.values()] };
 }
 
 /**
@@ -292,6 +304,12 @@ export function buildTenantEnqueue(connection: ConnectionOptions | undefined): {
 export function buildDrizzlePlatformService(deps: {
   platformDb: DbClient;
   enqueue: PlatformEnqueuePort;
+  /** Reads/retries the `tenant.provision` job; omitted, those two routes fail closed. */
+  provisionJobs?: ProvisionJobPort;
+  /** Emails first-admin invitations (the provision gateway); omitted, issuing/resending one fails closed. */
+  invitationDelivery?: InvitationDeliveryPort;
+  /** M4's legal-hold check; omitted, scheduling a tenant's destruction fails closed (never assumes "no hold"). */
+  legalHoldClear?: (organizationId: string) => Promise<boolean>;
   auditBypass: PlatformBypassAuditor<PlatformTx>;
   /** #107 — the live transactional-outbox publisher (callerModule-pinned 'm34'). When omitted the lifecycle
    *  outbox stays fail-closed (the §2.5 emit throws, never a silent no-op). */
@@ -300,7 +318,7 @@ export function buildDrizzlePlatformService(deps: {
    *  implementation is bound in the composition root and passed in here rather than constructed
    *  locally; omitted, the three admin routes keep the fail-closed stub below. */
   featureFlags?: FeatureFlagAdminPort;
-}): { service: TenantPlatformRouteService } {
+}): ReturnType<typeof createDrizzleTenantPlatformBackend> {
   const outbox: OutboxPublishPort = deps.outbox ?? {
     async publish(_tx, input) {
       throw new M34InfraPortUnbound(
@@ -344,6 +362,31 @@ export function buildDrizzlePlatformService(deps: {
   const drizzleDeps: DrizzleTenantPlatformDeps = {
     platformDb: deps.platformDb,
     enqueue: deps.enqueue,
+    provisionJobs: deps.provisionJobs ?? {
+      async status() {
+        throw new M34InfraPortUnbound("provisionJobs.status", "bind the provision job port");
+      },
+      async retry() {
+        throw new M34InfraPortUnbound("provisionJobs.retry", "bind the provision job port");
+      },
+    },
+    invitationDelivery: deps.invitationDelivery ?? {
+      acceptBaseUrl: "",
+      async send() {
+        throw new M34InfraPortUnbound(
+          "invitationDelivery",
+          "bind the provision gateway (M34_PROVISION_GATEWAY_URL / M34_INVITATION_ACCEPT_URL) to send invitations",
+        );
+      },
+    },
+    legalHoldClear:
+      deps.legalHoldClear ??
+      (async () => {
+        throw new M34InfraPortUnbound(
+          "legalHoldClear",
+          "bind M4's legal-hold reader to schedule tenant destruction",
+        );
+      }),
     auditBypass: deps.auditBypass,
     outbox,
     organizations,

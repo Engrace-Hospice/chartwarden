@@ -69,6 +69,7 @@ import { buildM36MessageHintConsumer } from "../src/modules/36-messaging/outbox-
 import { registerAdminAlertDeliveriesRoutes } from "../src/modules/36-messaging/routes/admin-alert-deliveries-routes";
 import { registerAttachmentRoutes } from "../src/modules/36-messaging/routes/attachment-routes";
 import { registerDraftRoutes } from "../src/modules/36-messaging/routes/draft-routes";
+import { registerGlobalSearchSettingsRoutes } from "../src/modules/36-messaging/routes/global-search-settings-routes";
 import {
   CHANNEL_MEMBER_ADMIN_PREDICATE,
   CHANNEL_VISIBILITY_PREDICATE,
@@ -100,6 +101,8 @@ type Verdict =
   | { readonly kind: "excluded"; readonly reason: string };
 const TEMPLATE_SUITE =
   "WP 2.8: org/owner isolation, random-id 404 parity and RLS are asserted in m36-message-templates.live";
+const GLOBAL_SEARCH_SETTINGS_SUITE =
+  "WP 2.7b C4: org-scoped singleton (no id), permission + step-up + cross-tenant isolation are asserted in m36-global-search-settings.live";
 const ROUTES: Record<string, Verdict> = {
   "GET /api/v1/messaging/channels": { kind: "scoped" },
   "GET /api/v1/messaging/channels/:id": { kind: "idor" },
@@ -115,6 +118,9 @@ const ROUTES: Record<string, Verdict> = {
   "DELETE /api/v1/messaging/channels/:id/messages/:messageId/pin": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/pins": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/search": { kind: "idor" },
+  // WP 2.12 presence/typing: the channel's guards run before anything else; ids only (asserted in m36-presence.live).
+  "POST /api/v1/messaging/channels/:id/presence": { kind: "idor" },
+  "GET /api/v1/messaging/channels/:id/presence": { kind: "idor" },
   // WP 2.5 drafts: the id is a channel's; a draft is also private to its author inside the channel (asserted below).
   "GET /api/v1/messaging/channels/:id/draft": { kind: "idor" },
   "PUT /api/v1/messaging/channels/:id/draft": { kind: "idor" },
@@ -137,6 +143,9 @@ const ROUTES: Record<string, Verdict> = {
   "GET /api/v1/messaging/attachments/:id/access": { kind: "idor" },
   "GET /api/v1/messaging/dm/staff": { kind: "scoped" },
   "POST /api/v1/messaging/patients/:patientId/care-team-channel": { kind: "idor" },
+  // WP 3.1 patient context panel: per-tile permission re-check; a caller with no tile access gets an empty projection for
+  // a real and a random patient alike (asserted below). Tile DATA isolation rests on each owning seam's RLS.
+  "GET /api/v1/messaging/patients/:patientId/context": { kind: "idor" },
   // Admin screens PR 1a: org_admin member list + archive; attacked in m36-channel-admin.live.test.ts.
   "GET /api/v1/messaging/channels/:id/members": { kind: "idor" },
   "POST /api/v1/messaging/channels/:id/archive": { kind: "idor" },
@@ -181,6 +190,14 @@ const ROUTES: Record<string, Verdict> = {
     kind: "excluded",
     reason: TEMPLATE_SUITE,
   },
+  "GET /api/v1/messaging/global-search/settings": {
+    kind: "excluded",
+    reason: GLOBAL_SEARCH_SETTINGS_SUITE,
+  },
+  "PUT /api/v1/messaging/global-search/settings": {
+    kind: "excluded",
+    reason: GLOBAL_SEARCH_SETTINGS_SUITE,
+  },
   "POST /webhooks/twilio/sms-status": {
     kind: "excluded",
     reason: "vendor-signed, no tenant principal; unsigned call refused (asserted below)",
@@ -210,6 +227,16 @@ const REGISTRAR_FILES = [
   "messaging-typebox.ts", // schemas only
   "reaction-pin-routes.ts", // mounted by registerMessagingRoutes
   "reaction-pin-typebox.ts", // schemas only
+  "global-search-routes.ts", // WP 2.7b global search (inert until enabled)
+  "global-search-typebox.ts", // schemas only
+  "poll-routes.ts", // WP 2.10 polls
+  "poll-typebox.ts", // schemas only
+  "presence-routes.ts", // WP 2.12 presence/typing
+  "presence-typebox.ts", // schemas only
+  "global-search-settings-routes.ts", // WP 2.7b C4 tenant global search switch
+  "global-search-settings-typebox.ts", // schemas only
+  "patient-context-routes.ts", // WP 3.1 context panel, mounted by registerMessagingRoutes
+  "patient-context-typebox.ts", // schemas only
   "template-routes.ts",
   "template-typebox.ts", // schemas only
   "uuid-params.ts", // preHandler helper, no routes
@@ -230,6 +257,7 @@ function registeredRoutes(): string[] {
   registerScheduledSendRoutes(probe, { service: {} as never, announcements: {} as never });
   registerAdminAlertDeliveriesRoutes(probe, {} as never);
   registerTemplateRoutes(probe, { service: {} as never });
+  registerGlobalSearchSettingsRoutes(probe, { service: {} as never });
   registerMessagingWebhookRoutes(probe, { publicBaseUrl: "https://x.test" } as never);
   return [...seen].sort();
 }
@@ -391,6 +419,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     "message_attachment",
     "message_draft",
     "scheduled_message",
+    "message_search_token",
     "attachment_access_event",
     "message_entity_reference",
     "message_reaction",
@@ -756,7 +785,24 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       "GET /api/v1/messaging/channels/:id/messages",
       "GET /api/v1/messaging/channels/:id/mention-candidates",
       "GET /api/v1/messaging/channels/:id/mention-non-members",
+      "GET /api/v1/messaging/channels/:id/presence", // WP 2.12: the guard answers before the (off) tenant flag
     ];
+    it("POST presence (WP 2.12): org B and an in-org non-member get a random id's answer and write nothing", async () => {
+      const before = await fingerprint();
+      for (const attacker of [bUser, outsider]) {
+        for (const id of [dmA, locA, careTeamA]) {
+          await expectNoOracle(
+            "POST /api/v1/messaging/channels/:id/presence",
+            attacker,
+            { id },
+            {
+              typing: true,
+            },
+          );
+        }
+      }
+      expect(await fingerprint()).toEqual(before);
+    });
     it("legitimate members read (the attacks below are not vacuous)", async () => {
       for (const ch of [dmA, locA]) {
         const res = await call("GET /api/v1/messaging/channels/:id/messages", u2, { id: ch });
@@ -1583,6 +1629,18 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       const route = "POST /api/v1/messaging/patients/:patientId/care-team-channel";
       await expectNoOracle(route, bUser, { patientId: patientA });
       await expectNoOracle(route, outsider, { patientId: patientA });
+    });
+    it("the WP 3.1 context panel gives org B and an in-org outsider the same empty projection for A's patient as for a random id", async () => {
+      const route = "GET /api/v1/messaging/patients/:patientId/context";
+      for (const attacker of [bUser, outsider]) {
+        attackers.add(attacker.name);
+        const real = await call(route, attacker, { patientId: patientA });
+        const ctl = await call(route, attacker, { patientId: randomUUID() });
+        expect(real.statusCode).toBe(ctl.statusCode);
+        expect(real.json().tiles).toEqual(ctl.json().tiles);
+        expect(real.json().tiles).toEqual({});
+        expectNoLeak(real.body, attacker, `${attacker.name} ${route}`);
+      }
     });
   });
 

@@ -1,3 +1,4 @@
+import Fastify from "fastify";
 /**
  * WX-PR-017 — the cluster-wide rate-limit store, proved against a real Valkey/Redis.
  *
@@ -13,7 +14,9 @@
  */
 import Redis from "ioredis";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { applyErrorHandler } from "../error-handler";
 import { createRedisRateLimitStore } from "../rate-limit-store";
+import { GLOBAL_SEARCH_ROUTE_RATE_LIMIT, createRouteRateLimit } from "../route-rate-limit";
 
 const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
 
@@ -75,5 +78,91 @@ describe.skipIf(!REDIS_URL)("createRedisRateLimitStore — LIVE Redis/Valkey (WX
     await new Promise((resolve) => setTimeout(resolve, 500));
     const afterExpiry = await store.increment(testKey, 300);
     expect(afterExpiry).toBe(1); // NOT 2 — the key expired and started a fresh window
+  });
+});
+
+// WP 2.14 / ADR-0058 P2 — the per-route limiter proved over a real Valkey with the ADR's decided
+// numbers: the 31st request in a minute by one user is 429; a second user in the same org is
+// unaffected until the org cap; the org cap is shared across replicas; a store outage is 503 on a
+// fail-closed route while a fail-open route still serves.
+describe.skipIf(!REDIS_URL)("createRouteRateLimit — LIVE Valkey (ADR-0058 P2)", () => {
+  const runId = crypto.randomUUID();
+  const org = crypto.randomUUID();
+  const clients: Redis[] = [];
+
+  function replica(redis: Redis, failMode: "closed" | "open" = "closed") {
+    const app = Fastify();
+    applyErrorHandler(app);
+    app.addHook("onRequest", async (request) => {
+      const user = request.headers["x-test-user"];
+      (request as { context?: unknown }).context = {
+        correlationId: "cid-live",
+        organizationId: org,
+        userId: user,
+      };
+    });
+    const limited = createRouteRateLimit({
+      store: createRedisRateLimitStore(redis),
+      limit: { ...GLOBAL_SEARCH_ROUTE_RATE_LIMIT, failMode },
+      keyPrefix: `live-${runId}`,
+    });
+    app.get("/search", { preHandler: [limited] }, async () => ({ ok: true }));
+    return app;
+  }
+  const as = (app: ReturnType<typeof replica>, user: string) =>
+    app.inject({ method: "GET", url: "/search", headers: { "x-test-user": user } });
+
+  afterAll(async () => {
+    const keys = await clients[0]?.keys(`ratelimit:live-${runId}:*`);
+    if (keys?.length) await clients[0]?.del(...keys);
+    await Promise.all(clients.map((c) => c.quit().catch(() => undefined)));
+  });
+
+  it("enforces 30/user and 300/org across two replicas, with TTL on every key", async () => {
+    const a = new Redis(REDIS_URL as string);
+    const b = new Redis(REDIS_URL as string);
+    clients.push(a, b);
+    const appA = replica(a);
+    const appB = replica(b);
+
+    for (let i = 0; i < 30; i++) {
+      expect((await as(i % 2 ? appA : appB, "u1")).statusCode).toBe(200);
+    }
+    const blocked = await as(appA, "u1");
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.headers["retry-after"]).toBe("60");
+    expect((await as(appB, "u2")).statusCode).toBe(200); // second user, same org: unaffected
+
+    // org used so far: 30 (u1) + 1 (u2) = 31; fill to 300 across both replicas with fresh users.
+    for (let i = 0; i < 269; i++) {
+      expect((await as(i % 2 ? appA : appB, `fill-${i % 20}`)).statusCode).toBe(200);
+    }
+    expect((await as(appB, "late-user")).statusCode).toBe(429);
+
+    const keys = await a.keys(`ratelimit:live-${runId}:*`);
+    expect(keys.length).toBeGreaterThan(2);
+    for (const key of keys) {
+      const ttl = await a.pttl(key);
+      expect(ttl).toBeGreaterThan(0);
+      expect(ttl).toBeLessThanOrEqual(60_000);
+    }
+  });
+
+  it("a store outage is 503 on a fail-closed route and allowed on a fail-open one", async () => {
+    // Port 1 refuses connections; no offline queue + no retries makes the command reject at once.
+    const dead = new Redis({
+      host: "127.0.0.1",
+      port: 1,
+      lazyConnect: true,
+      enableOfflineQueue: false,
+      maxRetriesPerRequest: 0,
+      retryStrategy: () => null,
+    });
+    dead.on("error", () => undefined);
+    clients.push(dead);
+    const closed = await as(replica(dead, "closed"), "u1");
+    expect(closed.statusCode).toBe(503);
+    expect(closed.json()).toMatchObject({ error: { code: "DEGRADED" } });
+    expect((await as(replica(dead, "open"), "u1")).statusCode).toBe(200);
   });
 });

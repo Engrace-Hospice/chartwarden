@@ -7,6 +7,7 @@ import { AccessEndedNotice } from "./access-ended-notice";
 import { ConversationInbox } from "./conversation-inbox";
 import { ConversationThread } from "./conversation-thread";
 import { DepartmentChannelDialog } from "./department-channel-dialog";
+import { GlobalSearch } from "./global-search";
 import type { ChannelSummary, ConversationFilter } from "./messaging-types";
 import {
   NARROW_MESSAGING_QUERY,
@@ -157,6 +158,11 @@ function OrganizationStaffMessaging({
   });
   const [newConversationOpen, setNewConversationOpen] = useState(false);
   const [departmentOpen, setDepartmentOpen] = useState(false);
+  // WP 2.7b: the message a global-search hit asked the thread to open at (wins over the route's own anchor).
+  const [searchAnchor, setSearchAnchor] = useState<{ channelId: string; messageId: string } | null>(
+    null,
+  );
+  const focusThreadAfterSearch = useRef(false);
   const [scheduledOpen, setScheduledOpen] = useState(requestedScheduled);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ConversationFilter>("all");
@@ -322,6 +328,25 @@ function OrganizationStaffMessaging({
     [loadChannels],
   );
 
+  // Leaving the conversation a hit opened ends its anchor, so coming back later does not jump to it again.
+  useEffect(() => {
+    setSearchAnchor((current) => (current && current.channelId !== activeId ? null : current));
+  }, [activeId]);
+
+  const openSearchHit = useCallback(
+    async (channelId: string, messageId: string): Promise<boolean> => {
+      // Cleared first so choosing the same hit again is a new anchor (the thread ignores an unchanged one).
+      setSearchAnchor(null);
+      const opened = await openConversation(channelId);
+      if (opened) {
+        focusThreadAfterSearch.current = true;
+        setSearchAnchor({ channelId, messageId });
+      }
+      return opened;
+    },
+    [openConversation],
+  );
+
   const onReadConfirmed = useCallback((channelId: string): void => {
     setChannels((current) => {
       const next =
@@ -367,6 +392,14 @@ function OrganizationStaffMessaging({
 
   const activeChannel = channels?.find((channel) => channel.channelId === activeId) ?? null;
 
+  // After a search hit opens a conversation, the thread heading takes focus (the panel that had it has closed).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `searchAnchor` is the trigger
+  useEffect(() => {
+    if (!focusThreadAfterSearch.current || !activeChannel) return;
+    focusThreadAfterSearch.current = false;
+    threadHeadingRef.current?.focus();
+  }, [searchAnchor, activeChannel]);
+
   return (
     <div className="wx-messaging-page">
       <PageHeader title="Messaging" breadcrumb="General / Messaging">
@@ -402,6 +435,14 @@ function OrganizationStaffMessaging({
           onCreated={openConversation}
         />
       ) : null}
+
+      <GlobalSearch
+        channelName={(channelId) => {
+          const known = channels?.find((channel) => channel.channelId === channelId);
+          return known ? channelLabel(known) : null;
+        }}
+        onOpenHit={openSearchHit}
+      />
 
       <RealtimeBanner degraded={realtimeDegraded} refreshSeconds={POLL_INTERVAL_MS / 1000} />
       <OfflineBanner />
@@ -450,7 +491,11 @@ function OrganizationStaffMessaging({
               canManageMembers={canManageMembers}
               onChannelChanged={refreshAfterChange}
               anchorMessageId={
-                activeChannel.channelId === requestedChannelId ? requestedMessageId : null
+                searchAnchor?.channelId === activeChannel.channelId
+                  ? searchAnchor.messageId
+                  : activeChannel.channelId === requestedChannelId
+                    ? requestedMessageId
+                    : null
               }
             />
           ) : (

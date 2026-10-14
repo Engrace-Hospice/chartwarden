@@ -151,6 +151,14 @@
       "app": "web",
       "module": "02-identity",
       "moduleId": 2,
+      "id": "identity.passkey-enrolment",
+      "path": "/login/passkey",
+      "permission": "(none)"
+    },
+    {
+      "app": "web",
+      "module": "02-identity",
+      "moduleId": 2,
       "id": "identity.security-passkeys",
       "path": "/security/passkeys",
       "permission": "(none)"
@@ -2127,6 +2135,14 @@
       "app": "web",
       "module": "34-saas",
       "moduleId": 34,
+      "id": "saas.agency-setup",
+      "path": "/admin/setup",
+      "permission": "org.manage"
+    },
+    {
+      "app": "web",
+      "module": "34-saas",
+      "moduleId": 34,
       "id": "saas.onboarding",
       "path": "/admin/onboarding",
       "permission": "onboarding.read_own"
@@ -2218,6 +2234,14 @@
       "id": "messaging.saved-replies",
       "path": "/messaging/saved-replies",
       "permission": "messaging.send"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
+      "id": "messaging.global-search-settings",
+      "path": "/messaging/search-settings",
+      "permission": "messaging.global_search.manage"
     },
     {
       "app": "web",
@@ -2426,6 +2450,14 @@
       "id": "saas.tenant-overview",
       "path": "/tenants/:orgSlug",
       "permission": "tenant.read_platform"
+    },
+    {
+      "app": "admin",
+      "module": "34-saas-platform",
+      "moduleId": 34,
+      "id": "saas.tenant-onboarding",
+      "path": "/tenants/:orgSlug/onboarding",
+      "permission": "onboarding.read_platform"
     },
     {
       "app": "admin",

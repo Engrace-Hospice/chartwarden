@@ -14,7 +14,7 @@
 // fail-closed (deny-stub) in the M1 registry; its DB-backed implementation lands with the routes
 // and realtime/jobs tasks (M36-T07/T08).
 
-import type { MessageReactionSummary, RichBody } from "@wardenx/types";
+import type { MessageReactionSummary, PollView, RichBody } from "@wardenx/types";
 import type { ChannelKind, MessageBodyKind } from "./kinds";
 
 /** An attachment supplied with {@link MessagingProvider.sendMessage} (§3.4, WP 1.5). It references an upload the SAME
@@ -77,6 +77,8 @@ export interface ResolvedMessage {
   readonly reactions?: readonly MessageReactionSummary[];
   /** WP 2.4: true when the message is pinned in its channel. */
   readonly pinned?: boolean;
+  /** WP 2.10: the poll on this message (non-clinical; counts + the viewer's own vote); absent when it has none. */
+  readonly poll?: PollView;
   /** WP 1.5: scan-gated attachment metadata (quarantined and, for non-uploaders, pending ones are omitted). */
   readonly attachments?: readonly MessageAttachmentView[];
   /** Bound files this viewer cannot see (scanning for others, or withheld): a bare count, never ids, names or state. */

@@ -63,7 +63,7 @@ const pe = (over: Partial<ProviderEntityDetail> & { id: string }): ProviderEntit
   ...over,
 });
 
-function makeServer(opts: { cipher?: boolean } = {}) {
+function makeServer(opts: { cipher?: boolean | "throws" } = {}) {
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore(
       ["admin_a", "ops_1"].map((userId) => ({
@@ -89,7 +89,7 @@ function makeServer(opts: { cipher?: boolean } = {}) {
     ],
   });
   const auditSink = createInMemoryAuditExecutor();
-  const encrypted: string[] = [];
+  const encrypted: { organizationId: string; providerEntityId: string; plaintext: string }[] = [];
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   registerOrgAdminRoutes(app, {
     actors: createContextActorResolver(),
@@ -99,9 +99,10 @@ function makeServer(opts: { cipher?: boolean } = {}) {
       ? {}
       : {
           taxIdCipher: {
-            async encrypt(plain) {
-              encrypted.push(plain);
-              return `enc:${plain}`;
+            async encrypt(input) {
+              if (opts.cipher === "throws") throw new Error("TenantKeyMissing: org_secret");
+              encrypted.push(input);
+              return `enc:${input.plaintext}`;
             },
           },
         }),
@@ -228,7 +229,7 @@ describe("organizations", () => {
 
 describe("provider entities", () => {
   it("creates one: tax id enveloped by the cipher and never echoed back", async () => {
-    const { app, encrypted, auditSink } = makeServer();
+    const { app, store, encrypted, auditSink } = makeServer();
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/provider-entities",
@@ -238,7 +239,12 @@ describe("provider entities", () => {
     expect(res.statusCode).toBe(201);
     expect(res.json()).toMatchObject({ ccn: "444444", status: "created", organizationId: "org_a" });
     expect(JSON.stringify(res.json())).not.toMatch(/tax|123456789|enc:/i);
-    expect(encrypted).toEqual(["123456789"]);
+    // The EIN is sealed under THIS tenant's key, so the route must hand the cipher the caller's org.
+    // ...and to THIS row: the AAD id is the id the store persisted, so the blob cannot be replayed onto another row.
+    expect(encrypted).toEqual([
+      { organizationId: "org_a", providerEntityId: res.json().id, plaintext: "123456789" },
+    ]);
+    expect(store.state.pes.get(res.json().id)?.organizationId).toBe("org_a");
     expect(auditSink.rows.some((r) => r.eventType === "m2.provider_entity.created")).toBe(true);
     await app.close();
   });
@@ -254,6 +260,22 @@ describe("provider entities", () => {
     });
     expect(res.statusCode).toBe(503);
     expect(res.json().error.code).toBe("TAX_ID_CIPHER_UNBOUND");
+    expect(store.state.pes.size).toBe(before);
+    await app.close();
+  });
+
+  it("a failing tenant key ring answers 503 TAX_ID_KEY_UNAVAILABLE without echoing the cause", async () => {
+    const { app, store } = makeServer({ cipher: "throws" });
+    const before = store.state.pes.size;
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/provider-entities",
+      headers: TENANT,
+      payload: NEW_PE,
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error.code).toBe("TAX_ID_KEY_UNAVAILABLE");
+    expect(res.body).not.toContain("org_secret");
     expect(store.state.pes.size).toBe(before);
     await app.close();
   });

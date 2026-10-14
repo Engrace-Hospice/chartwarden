@@ -50,20 +50,23 @@ import { Client } from "pg";
 const url = process.env.PROVISION_DATABASE_URL ?? process.env.DATABASE_SUPERUSER_URL;
 const platformPassword = process.env.WARDENX_PLATFORM_PASSWORD;
 const destructionPassword = process.env.WARDENX_DESTRUCTION_PASSWORD;
+// M36 WP 2.13: the only login that may call m36_reseal_message_revision (migration 1090). Operator-held, never an app credential.
+const bodyBackfillPassword = process.env.WARDENX_BODY_BACKFILL_PASSWORD;
 
 if (!url) {
   console.error("PROVISION_DATABASE_URL (superuser/owner) is required");
   process.exit(1);
 }
-if (!platformPassword && !destructionPassword) {
+if (!platformPassword && !destructionPassword && !bodyBackfillPassword) {
   console.error(
-    "set WARDENX_PLATFORM_PASSWORD and/or WARDENX_DESTRUCTION_PASSWORD (≥16 chars) — nothing to provision otherwise",
+    "set WARDENX_PLATFORM_PASSWORD, WARDENX_DESTRUCTION_PASSWORD and/or WARDENX_BODY_BACKFILL_PASSWORD (≥16 chars) — nothing to provision otherwise",
   );
   process.exit(1);
 }
 for (const [name, pw] of [
   ["WARDENX_PLATFORM_PASSWORD", platformPassword],
   ["WARDENX_DESTRUCTION_PASSWORD", destructionPassword],
+  ["WARDENX_BODY_BACKFILL_PASSWORD", bodyBackfillPassword],
 ] as const) {
   if (pw !== undefined && pw.length < 16) {
     console.error(`${name} must be ≥16 characters`);
@@ -252,6 +255,18 @@ async function main(): Promise<void> {
       for (const t of PLATFORM_READ_TABLES) {
         await run(`GRANT SELECT ON "${t}" TO wardenx_platform;`);
       }
+      // M36 WP 2.13 (migration 1089) — the boot check counts message rows still on the legacy body envelope across
+      // tenants. COLUMN grants on the scheme marker (generated from body_cipher's first byte) only: the platform login
+      // can count the scheme, never read a byte of ciphertext or any message content.
+      for (const t of ["message", "message_revision"]) {
+        await run(
+          `GRANT SELECT ("organization_id", "body_envelope_version") ON "${t}" TO wardenx_platform;`,
+        );
+      }
+      // Migration 1094: the poll option label carries the same marker under its own column name.
+      await run(
+        'GRANT SELECT ("organization_id", "label_envelope_version") ON "message_poll_option" TO wardenx_platform;',
+      );
       // F-236 — the M32 backend health sweep (worker) is the only writer of these two columns. A COLUMN
       // grant, not table UPDATE: the platform role may record a probe result, never re-pin a model, flip
       // `zdr_status`, or reactivate a backend (those stay `wardenx_admin`, db:sync:ai-backends).
@@ -351,6 +366,29 @@ async function main(): Promise<void> {
       );
       console.log(
         "  → set DATABASE_DESTRUCTION_URL=postgres://wardenx_destruction_login:<pw>@<host>/<db>",
+      );
+    }
+    if (bodyBackfillPassword) {
+      const carrier = await db.query(`SELECT 1 FROM pg_roles WHERE rolname = 'wardenx_m36_reseal'`);
+      if (carrier.rowCount === 0) {
+        throw new Error(
+          "the wardenx_m36_reseal carrier does not exist — run migrations through 1090 first",
+        );
+      }
+      await run(`DO $$ BEGIN
+        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'wardenx_body_backfill_login') THEN
+          CREATE ROLE wardenx_body_backfill_login LOGIN IN ROLE wardenx_m36_reseal;
+        END IF;
+      END $$;`);
+      await run(
+        `ALTER ROLE wardenx_body_backfill_login LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS PASSWORD ${quoteLiteral(bodyBackfillPassword)};`,
+      );
+      await run("GRANT wardenx_m36_reseal TO wardenx_body_backfill_login;");
+      console.log(
+        "✓ wardenx_body_backfill_login provisioned (carrier wardenx_m36_reseal, NOBYPASSRLS)",
+      );
+      console.log(
+        "  → set DATABASE_BODY_BACKFILL_URL=postgres://wardenx_body_backfill_login:<pw>@<host>/<db> for scripts/m36-body-backfill.ts only",
       );
     }
   } finally {

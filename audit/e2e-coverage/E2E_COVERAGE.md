@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 175 statically-routable `web` screen(s) — 19/175 E2E-reached, 167/175 axe-reached.
+**Coverage:** 178 statically-routable `web` screen(s) — 19/178 E2E-reached, 169/178 axe-reached.
 
 ## Zero E2E coverage
 
@@ -20,6 +20,7 @@
 | `assessment.scale-licenses` | 09-assessments | `/admin/scales/licenses` | assessment.license_read |
 | `assessment.scale-policies` | 09-assessments | `/admin/scales/policies` | assessment.policy_read |
 | `scheduling.metrics` | 17-scheduling | `/admin/scheduling-metrics` | visit.read_metrics |
+| `saas.agency-setup` | 34-saas | `/admin/setup` | org.manage |
 | `saas.support-grants` | 34-saas | `/admin/support-grants` | support_consent_grant.list_own |
 | `volunteer.compliance` | 15-discipline-care-plans | `/admin/volunteer-compliance` | volunteer_compliance.read |
 | `volunteer.ratio` | 15-discipline-care-plans | `/admin/volunteer-ratio` | volunteer_compliance.read_ratio |
@@ -82,6 +83,7 @@
 | `identity.mfa-challenge` | 02-identity | `/login/2fa` | (none) |
 | `identity.required-password-change` | 02-identity | `/login/change-password` | (none) |
 | `identity.organization-select` | 02-identity | `/login/organization` | (none) |
+| `identity.passkey-enrolment` | 02-identity | `/login/passkey` | (none) |
 | `mdm.console` | 40-mdm | `/mdm` | mdm.physician.read |
 | `ai.my-preferences` | 32-ai-platform | `/me/ai-preferences` | ai.clinician_opt_out.read |
 | `oncall.me` | 19-oncall | `/me/oncall` | oncall.read_schedule |
@@ -100,6 +102,7 @@
 | `medicaid.validation-worklist` | 24-billing-medicaid | `/medicaid/billing/validation-worklist` | medicaid.validation.read_run |
 | `messaging.staff` | 36-messaging | `/messaging` | messaging.read |
 | `messaging.saved-replies` | 36-messaging | `/messaging/saved-replies` | messaging.send |
+| `messaging.global-search-settings` | 36-messaging | `/messaging/search-settings` | messaging.global_search.manage |
 | `messaging.notifications` | 36-messaging | `/notifications` | (none) |
 | `orders.held-transmissions` | 11-orders | `/orders/held-transmissions` | orders.transmission.view_held |
 | `orders.results-review` | 11-orders | `/orders/results-pending-review` | orders.read |
@@ -175,6 +178,7 @@
 | `identity.forgot-password` | 02-identity | `/forgot` | (none) |
 | `identity.mfa-challenge` | 02-identity | `/login/2fa` | (none) |
 | `identity.required-password-change` | 02-identity | `/login/change-password` | (none) |
+| `identity.passkey-enrolment` | 02-identity | `/login/passkey` | (none) |
 | `messaging.notifications` | 36-messaging | `/notifications` | (none) |
 | `identity.reset-password` | 02-identity | `/reset-password` | (none) |
 

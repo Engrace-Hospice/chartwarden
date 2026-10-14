@@ -131,9 +131,7 @@ export function Onboarding(): JSX.Element {
         action:
           task.status === "pending"
             ? { label: "Start", onAction: () => void advance(task.id, "start") }
-            : task.status === "in_progress"
-              ? { label: "Mark complete", onAction: () => void advance(task.id, "complete") }
-              : undefined,
+            : undefined,
       })),
     [tasks, advance],
   );
@@ -152,7 +150,8 @@ export function Onboarding(): JSX.Element {
         >
           <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
             Complete each step to finish provisioning your organization. Blocked steps are surfaced
-            first; resolve them with your WardenX implementation contact.
+            first; resolve them with your WardenX implementation contact. Provider entity and
+            location steps are completed in <a href="/admin/setup">Agency setup</a>.
           </p>
         </PageHeader>
       }
@@ -196,8 +195,8 @@ export function Onboarding(): JSX.Element {
           <section style={railSectionStyle}>
             <h3 style={railTitleStyle}>Actions</h3>
             <p style={railTextStyle}>
-              Start and complete calls are sent per task. If preconditions are unmet, the server
-              refuses completion.
+              Steps complete on their own once the platform verifies them; you cannot mark them done
+              by hand.
             </p>
           </section>
         </div>

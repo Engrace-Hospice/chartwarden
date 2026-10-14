@@ -1,0 +1,94 @@
+/* M36 WP 2.7b - global search tenant settings. Flat panels, tokens only, 44px targets. */
+.wx-gss {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 48rem;
+}
+
+.wx-gss-lede,
+.wx-gss-hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-on-surface-variant);
+}
+
+.wx-gss-status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.wx-gss-status p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-on-surface);
+}
+
+.wx-gss-action {
+  min-height: 44px;
+  padding: 0 1.25rem;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wx-gss-action:disabled {
+  background: var(--color-surface-container);
+  color: var(--color-on-surface-variant);
+  cursor: not-allowed;
+}
+
+.wx-gss-action:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.wx-gss-hint {
+  margin-top: 0.5rem;
+}
+
+.wx-gss-checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.wx-gss-checks li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--color-card-border);
+  font-size: 0.875rem;
+}
+
+.wx-gss-checks li:last-child {
+  border-bottom: 0;
+}
+
+.wx-gss-notice {
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  max-height: 12rem;
+  overflow-y: auto;
+  border: 1px solid var(--color-card-border);
+  border-radius: 0.5rem;
+  color: var(--color-on-surface);
+}
+
+.wx-gss-accept {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: var(--color-on-surface);
+}

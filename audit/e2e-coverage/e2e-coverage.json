@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 175,
+  "totalStaticWebScreens": 178,
   "e2eReachedCount": 19,
-  "axeReachedCount": 167,
+  "axeReachedCount": 169,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -97,6 +97,14 @@
       "module": "17-scheduling",
       "path": "/admin/scheduling-metrics",
       "permission": "visit.read_metrics",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "saas.agency-setup",
+      "module": "34-saas",
+      "path": "/admin/setup",
+      "permission": "org.manage",
       "e2eReached": false,
       "axeReached": true
     },
@@ -597,6 +605,14 @@
       "axeReached": true
     },
     {
+      "id": "identity.passkey-enrolment",
+      "module": "02-identity",
+      "path": "/login/passkey",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
       "id": "mdm.console",
       "module": "40-mdm",
       "path": "/mdm",
@@ -737,6 +753,14 @@
       "module": "36-messaging",
       "path": "/messaging/saved-replies",
       "permission": "messaging.send",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "messaging.global-search-settings",
+      "module": "36-messaging",
+      "path": "/messaging/search-settings",
+      "permission": "messaging.global_search.manage",
       "e2eReached": false,
       "axeReached": true
     },
@@ -1303,6 +1327,14 @@
       "axeReached": false
     },
     {
+      "id": "identity.passkey-enrolment",
+      "module": "02-identity",
+      "path": "/login/passkey",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
       "id": "messaging.notifications",
       "module": "36-messaging",
       "path": "/notifications",
@@ -1413,6 +1445,14 @@
       "module": "17-scheduling",
       "path": "/admin/scheduling-metrics",
       "permission": "visit.read_metrics",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "saas.agency-setup",
+      "module": "34-saas",
+      "path": "/admin/setup",
+      "permission": "org.manage",
       "e2eReached": false,
       "axeReached": true
     },
@@ -1985,6 +2025,14 @@
       "axeReached": true
     },
     {
+      "id": "identity.passkey-enrolment",
+      "module": "02-identity",
+      "path": "/login/passkey",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
       "id": "mdm.console",
       "module": "40-mdm",
       "path": "/mdm",
@@ -2141,6 +2189,14 @@
       "module": "36-messaging",
       "path": "/messaging/saved-replies",
       "permission": "messaging.send",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "messaging.global-search-settings",
+      "module": "36-messaging",
+      "path": "/messaging/search-settings",
+      "permission": "messaging.global_search.manage",
       "e2eReached": false,
       "axeReached": true
     },

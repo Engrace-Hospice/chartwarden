@@ -26,6 +26,7 @@ import {
 } from "./messaging-utils";
 import { PendingMessageList } from "./pending-message-row";
 import { PinnedMessagesBar } from "./pinned-messages-bar";
+import { PresenceMembers, TypingIndicator } from "./presence-panel";
 import { PatientContextAside, ThreadHeader } from "./thread-header";
 import { ThreadPanel } from "./thread-panel";
 import { useAnnouncementTools } from "./use-announcement-tools";
@@ -38,6 +39,7 @@ import { sentMessageRow, useMessageSender } from "./use-message-sender";
 import type { SentMessage } from "./use-message-sender";
 import { type Outbox, useBindOutboxThread, useOutbox } from "./use-outbox";
 import { usePatientHeader } from "./use-patient-header";
+import { usePresence } from "./use-presence";
 import { useScanningRefresh } from "./use-scanning-refresh";
 import { useServerDraft } from "./use-server-draft";
 import type { LiveHint } from "./use-thread";
@@ -558,6 +560,9 @@ function ConversationThreadView({
   // A file the uploader sent while it was still scanning turns openable on the server with no push: re-read.
   useScanningRefresh(scanningKey, loadLatest, channel.channelId);
 
+  // WP 2.12: ephemeral presence + typing; inert (no requests, renders nothing) unless the tenant flag is on.
+  const presence = usePresence({ channelId: channel.channelId, meId, draft });
+
   const title = patient ? `${patient.firstName} ${patient.lastName}` : channelLabel(channel);
   const subtitle =
     channel.kind === "dm"
@@ -590,6 +595,8 @@ function ConversationThreadView({
         messages={messages}
         onJump={jump.jumpToMessage}
       />
+
+      <PresenceMembers presence={presence} />
 
       <div className="wx-messaging-thread-body">
         <MessageTimeline
@@ -670,6 +677,7 @@ function ConversationThreadView({
         </output>
       ) : null}
 
+      <TypingIndicator presence={presence} />
       <ThreadComposer
         channel={channel}
         composerHidden={composerHidden}
@@ -690,6 +698,7 @@ function ConversationThreadView({
         sendHint={sendHint}
         onKeyDown={handleComposerKey}
         onInsertSavedReply={insertSavedReply}
+        onPollCreated={() => void loadLatest(true)}
         mentionQuery={mentionQuery}
         setMentionQuery={setMentionQuery}
         pendingAdd={pendingAdd}

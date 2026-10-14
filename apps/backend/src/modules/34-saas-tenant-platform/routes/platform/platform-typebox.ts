@@ -481,6 +481,28 @@ export const TenantJobAckSchema = Type.Object({
   tenantAccountId: Type.String(),
   jobId: Type.String(),
 });
+/** GET provision-status → the tenant's lifecycle status next to its `tenant.provision` job state. */
+export const ProvisionStatusViewSchema = Type.Object({
+  tenantAccountId: Type.String(),
+  orgSlug: Type.String(),
+  tenantStatus: Type.String(),
+  job: Type.Object({
+    state: Type.Union([
+      Type.Literal("queued"),
+      Type.Literal("running"),
+      Type.Literal("completed"),
+      Type.Literal("failed"),
+      Type.Literal("missing"),
+    ]),
+    attemptsMade: Type.Integer({ minimum: 0 }),
+    failedReason: Type.Union([Type.String(), Type.Null()]),
+  }),
+});
+/** POST provision/retry → `{ tenantAccountId, state }` (the job is queued again). */
+export const ProvisionRetryAckSchema = Type.Object({
+  tenantAccountId: Type.String(),
+  state: Type.String(),
+});
 /** status-transition / offboard → `{ tenantAccountId, status }` (the resulting lifecycle status). */
 export const TenantStatusAckSchema = Type.Object({
   tenantAccountId: Type.String(),

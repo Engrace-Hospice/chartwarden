@@ -18,6 +18,8 @@ export interface ConfirmDialogProps {
   tone?: "default" | "danger";
   /** Disables both actions and swaps the confirm label to a busy state while a request is in flight. */
   pending?: boolean;
+  /** Disables only the confirm action (e.g. until a required acknowledgement is ticked); Cancel stays available. */
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -31,6 +33,7 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   tone = "default",
   pending = false,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps): JSX.Element | null {
@@ -62,9 +65,9 @@ export function ConfirmDialog({
           {title}
         </h2>
         {description ? (
-          <p id={descId} style={{ margin: 0, fontSize: "0.875rem", color: t.onSurfaceVariant }}>
+          <div id={descId} style={{ margin: 0, fontSize: "0.875rem", color: t.onSurfaceVariant }}>
             {description}
-          </p>
+          </div>
         ) : null}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: t.space2 }}>
           <button type="button" onClick={onCancel} disabled={pending} style={ghostButtonStyle}>
@@ -73,7 +76,7 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={onConfirm}
-            disabled={pending}
+            disabled={pending || confirmDisabled}
             style={isDanger ? dangerButtonStyle : primaryButtonStyle}
           >
             {pending ? "Working…" : confirmLabel}

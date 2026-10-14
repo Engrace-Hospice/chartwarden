@@ -167,9 +167,21 @@ export {
 // The §2.3 onboarding-advance worker (the IO-bearing consumer of the strictly-observable onboarding
 // machine — ../onboarding/machine.ts; pure over injected ports, the packages/mdm/src/jobs precedent).
 export {
+  type ActivationOutcome,
   type OnboardingAdvancePorts,
   type OnboardingAdvanceReport,
   type OnboardingOutboxPayload,
   BLOCKED_AGE_REFIRE_MS,
   runOnboardingAdvance,
 } from "./onboarding-advance-worker";
+// Consecutive-daily-refusal counter for the onboarding sweep's automatic activation (M34 sweep visibility).
+export {
+  type ActivationRefusalState,
+  ACTIVATION_REFUSAL_ALERT_THRESHOLD,
+  ACTIVATION_REFUSAL_METADATA_KEY,
+  nextActivationRefusal,
+  readActivationRefusal,
+  shouldAlertActivationRefusal,
+  withActivationRefusal,
+  withoutActivationRefusal,
+} from "./activation-refusal-streak";

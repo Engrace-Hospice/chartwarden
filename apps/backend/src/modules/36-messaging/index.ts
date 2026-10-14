@@ -146,8 +146,15 @@ import type { AttachmentStoragePort, ScanPort } from "./attachments/attachment-p
 import { createAttachmentService as _createAttachmentService } from "./attachments/attachment-service-db";
 import type { EndpointVerificationSender } from "./delivery/transport-binding";
 import { createDbDraftService as _createDbDraftService } from "./drafts/draft-service-db";
+import {
+  type GlobalSearchMountOptions,
+  mountGlobalSearchRoutes as _mountGlobalSearchRoutes,
+} from "./global-search/mount";
+import { createGlobalSearchPrerequisites as _createGlobalSearchPrerequisites } from "./global-search/prerequisites";
+import { createGlobalSearchSettingsService as _createGlobalSearchSettingsService } from "./global-search/settings-service";
 import { createDbMessagingRouteService as _createDbMessagingRouteService } from "./messaging-route-service-db";
 import type { MessagingOutboxPort } from "./messaging-route-service-db";
+import { createDbPollService as _createDbPollService } from "./polls/poll-service-db";
 import {
   buildAdminAlertDeliveriesDeps as _buildAdminAlertDeliveriesDeps,
   registerAdminAlertDeliveriesRoutes as _registerAdminAlertDeliveriesRoutes,
@@ -155,10 +162,13 @@ import {
 } from "./routes/admin-alert-deliveries-routes";
 import { registerAttachmentRoutes as _registerAttachmentRoutes } from "./routes/attachment-routes";
 import { registerDraftRoutes as _registerDraftRoutes } from "./routes/draft-routes";
+import { registerGlobalSearchSettingsRoutes as _registerGlobalSearchSettingsRoutes } from "./routes/global-search-settings-routes";
 import {
   registerMessagingAbacPredicates as _registerMessagingAbacPredicates,
   registerMessagingRoutes as _registerMessagingRoutes,
 } from "./routes/messaging-routes";
+import { registerPollRoutes as _registerPollRoutes } from "./routes/poll-routes";
+import type { PresenceRouteDeps } from "./routes/presence-routes";
 import { registerScheduledSendRoutes as _registerScheduledSendRoutes } from "./routes/scheduled-send-routes";
 import { registerTemplateRoutes as _registerTemplateRoutes } from "./routes/template-routes";
 import { createDbScheduledSendService as _createDbScheduledSendService } from "./scheduled/scheduled-send-service-db";
@@ -180,6 +190,12 @@ export function mountMessagingRoutes(
     outbox?: MessagingOutboxPort;
     /** WP 1.5: object storage + malware scanner. No scanner => attachments stay pending (nothing is delivered). */
     attachments?: { storage: AttachmentStoragePort; scanner?: ScanPort | undefined };
+    /** WP 2.7b: global search. Omitted => inert (throwing key provider, fail-closed limiter, flags OFF). */
+    globalSearch?: GlobalSearchMountOptions;
+    /** WP 2.7b C4: true only once the ADR-0058 P2 per-route rate limit covers the search routes. Default false => ON refused. */
+    globalSearchRateLimitActive?: boolean;
+    /** WP 2.12: presence/typing store (Valkey in production), the tenant-flag reader and an optional per-route limit. */
+    presence?: PresenceRouteDeps;
   } = {},
 ): void {
   // GAP-063 — the §4.2 OTP sender; with none bound, sms/email endpoint registration answers 503.
@@ -191,9 +207,23 @@ export function mountMessagingRoutes(
   });
   _registerMessagingAbacPredicates(service); // idempotent — single-owner registry, re-boot-safe
   const announcements = _createDbAnnouncementService(db);
-  _registerMessagingRoutes(app, { service, announcements }); // WP 2.9
+  _registerMessagingRoutes(app, {
+    service,
+    announcements,
+    ...(opts.presence ? { presence: opts.presence } : {}),
+  }); // WP 2.9, 2.12
   // WP 2.5 — private encrypted drafts (own row per user + channel + thread root).
   _registerDraftRoutes(app, { service: _createDbDraftService({ db }) });
+  // WP 2.10 — polls (non-clinical, single choice, named votes); a poll is written through the message write core.
+  _registerPollRoutes(app, {
+    service: _createDbPollService({
+      db,
+      canViewChannel: service.canViewChannel,
+      ...(opts.outbox ? { outbox: opts.outbox } : {}),
+    }),
+    announcements,
+    canManageMembers: service.canManageMembers,
+  });
   // WP 2.6 — scheduled send: the QUEUEING side. The `messaging.scheduled_send` sweep sends (see ./scheduled/*).
   _registerScheduledSendRoutes(app, {
     service: _createDbScheduledSendService({ db, canViewChannel: service.canViewChannel }),
@@ -214,11 +244,27 @@ export function mountMessagingRoutes(
   }
   // WP 2.8 — message templates and saved replies (personal + shared + platform overlay).
   _registerTemplateRoutes(app, { service: _createDbTemplateService(db) });
+  // WP 2.7b (ADR-0058, Accepted) — global search; refused until operators enable it (see ./global-search/mount.ts).
+  _mountGlobalSearchRoutes(app, db, opts.globalSearch);
+  // WP 2.7b C4 - the tenant global search switch + go-live checklist (registered, nothing enabled by default).
+  _registerGlobalSearchSettingsRoutes(app, {
+    service: _createGlobalSearchSettingsService({
+      db,
+      prerequisites: _createGlobalSearchPrerequisites({
+        db,
+        rateLimitActive: opts.globalSearchRateLimitActive === true,
+      }),
+    }),
+  });
   // GAP-165 — the platform-ops cross-tenant delivery drill (§4.1 `messaging.admin.read`): own predicate, own
   // SECURITY DEFINER reader (0474), audited per read. Not tenant-scoped, so it takes the pooled handle directly.
   _registerMessagingAdminPredicates();
   _registerAdminAlertDeliveriesRoutes(app, _buildAdminAlertDeliveriesDeps(db));
 }
+
+// WP 2.12 - ephemeral presence/typing: the composition-root binding (Valkey or in-memory store, tenant flag, route limit).
+export { buildPresenceDeps } from "./presence/binding";
+export { PRESENCE_FLAG_KEY } from "./routes/presence-routes";
 
 // GAP-010 — M36's consumer for M3's `m3.breakglass.invoked` (durable Compliance notification).
 export {
@@ -287,6 +333,11 @@ export { registerAttachmentRoutes } from "./routes/attachment-routes";
 // WP 2.8 — message templates & saved replies: Drizzle service + routes (the in-memory twin lives in @wardenx/messaging).
 export { createDbTemplateService } from "./templates/template-service-db";
 export { registerTemplateRoutes } from "./routes/template-routes";
+
+// WP 2.10 — polls: Drizzle service + routes (non-clinical; refused in patient-linked channels).
+export { createDbPollService, pollBlockedChannelKinds } from "./polls/poll-service-db";
+export type { MessagePollService } from "./polls/poll-service-db";
+export { registerPollRoutes } from "./routes/poll-routes";
 
 // WP 2.6 — scheduled send: the dispatcher (re-check at dispatch, send, delete in one transaction), its per-minute BullMQ
 // sweep, and the consumer that tells the sender a message was blocked.

@@ -11,7 +11,8 @@
     "noEmit": true,
     "types": [
       "node",
-      "vite/client"
+      "vite/client",
+      "@testing-library/jest-dom/vitest"
     ],
     "lib": [
       "ES2023",

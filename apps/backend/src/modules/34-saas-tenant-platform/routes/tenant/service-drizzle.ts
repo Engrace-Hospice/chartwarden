@@ -32,6 +32,7 @@ import { getRequestContext, withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, type OrgId, WardenXError } from "@wardenx/types";
 import { eq } from "drizzle-orm";
 import { paginate } from "./concurrency";
+import { tenantMayCompleteStep } from "./onboarding-completion-guard";
 import type {
   BaaRecordView,
   DownloadUrlView,
@@ -352,7 +353,14 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
     async completeOnboardingTask(organizationId, taskId, completionEvidence) {
       return inOrgCtx(organizationId, async (tx) => {
         const repo = new OnboardingRepository(tx);
-        await loadOnboarding(tx, organizationId, taskId);
+        const task = await loadOnboarding(tx, organizationId, taskId);
+        const template = await repo.findTemplateByKey(task.templateKey);
+        if (!template || !tenantMayCompleteStep(template))
+          throw new WardenXError(
+            "ONBOARDING_STEP_PLATFORM_VERIFIED",
+            "this step is verified by the platform and completes on its own once its requirement is met",
+            422,
+          );
         const row = await repo.updateTaskStatus(taskId, {
           status: "done",
           completedAt: deps.now(),

@@ -21,8 +21,34 @@ interface MembershipView {
 
 type LoadState =
   | { kind: "loading" }
-  | { kind: "error"; message: string }
+  | { kind: "error"; message: string; action?: { href: string; label: string } }
   | { kind: "ready"; memberships: MembershipView[] };
+
+/**
+ * The server refuses to bind an org while the role's MFA requirement is unmet (403 MFA_ENROLMENT_REQUIRED). A
+ * first org_admin has no passkey yet, and the passkey screen inside the shell sits behind the pre-org guard, so
+ * the refusal links to the chromeless `/login/passkey` instead of a dead "contact your administrator".
+ */
+function selectionFailure(error: unknown): Extract<LoadState, { kind: "error" }> {
+  const envelope = (error as { error?: { code?: unknown; message?: unknown } } | null)?.error;
+  if (envelope?.code === "MFA_ENROLMENT_REQUIRED" && typeof envelope.message === "string") {
+    const mustSignInAgain = /sign in again/i.test(envelope.message);
+    return {
+      kind: "error",
+      message: envelope.message,
+      action: mustSignInAgain
+        ? { href: "/login", label: "Sign in again" }
+        : {
+            href: `/login/passkey?returnTo=${encodeURIComponent("/login/organization")}`,
+            label: "Register a passkey",
+          },
+    };
+  }
+  return {
+    kind: "error",
+    message: "That organization could not be selected. Contact your administrator.",
+  };
+}
 
 export function OrganizationSelect(): JSX.Element {
   const client = useApiClient();
@@ -71,10 +97,7 @@ export function OrganizationSelect(): JSX.Element {
     });
     if (error) {
       setSelecting(null);
-      setState({
-        kind: "error",
-        message: "That organization could not be selected. Contact your administrator.",
-      });
+      setState(selectionFailure(error));
       return;
     }
     // The session's active org is now bound server-side. Re-bootstrap the app with a full load (not
@@ -89,7 +112,10 @@ export function OrganizationSelect(): JSX.Element {
       <h1 style={{ marginTop: 0, fontSize: "1.1rem" }}>Select organization</h1>
       {state.kind === "loading" ? <LoadingSpinner /> : null}
       {state.kind === "error" ? (
-        <EmptyState title="Unavailable" description={state.message} />
+        <>
+          <EmptyState title="Unavailable" description={state.message} />
+          {state.action ? <a href={state.action.href}>{state.action.label}</a> : null}
+        </>
       ) : null}
       {state.kind === "ready" && state.memberships.length === 0 ? (
         <EmptyState

@@ -12,6 +12,8 @@ describe("M36-T08 action catalog (§8.1.2)", () => {
       "m36.integrity.hash_mismatch",
       "m36.integrity.systemic_decrypt_failure",
       "m36.hash_verify.run",
+      "m36.body_backfill.batch",
+      "m36.body_backfill.run",
       "m36.retention_scan.run",
       "m36.dlq_job",
       "m36.realtime.connected",

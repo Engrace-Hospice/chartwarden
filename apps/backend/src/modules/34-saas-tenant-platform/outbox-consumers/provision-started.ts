@@ -5,6 +5,7 @@ import type {
   OutboxConsumerBinding,
 } from "../../../bootstrap/outbox-dispatcher";
 import { M34_QUEUES } from "../jobs";
+import { enqueueProvisionJob } from "../jobs/provision-job-port";
 
 export interface M34ProvisionQueuePort {
   enqueue(jobId: string, payload: ProvisionJob): Promise<void>;
@@ -54,13 +55,7 @@ export function buildM34ProvisionQueue(connection: ConnectionOptions): {
   return {
     port: {
       async enqueue(jobId, payload) {
-        await queue.add(M34_QUEUES.provision, payload, {
-          jobId: `m34:${M34_QUEUES.provision}:${jobId}`,
-          attempts: 8,
-          backoff: { type: "exponential", delay: 5000 },
-          removeOnComplete: { count: 500 },
-          removeOnFail: false,
-        });
+        await enqueueProvisionJob(queue, jobId, payload);
       },
     },
     close: () => queue.close(),

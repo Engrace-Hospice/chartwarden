@@ -41,6 +41,24 @@ export const M36_ACTION_CATALOG: ModuleActionCatalog = [
     isPartTwoEligible: false,
   },
   {
+    action: "m36.body_backfill.batch", // WP 2.13 / ADR-0058 P1 — one row per committed re-seal batch
+    moduleOwner: "m36",
+    defaultRetentionClass: "operational",
+    description:
+      "One batch of message bodies was re-sealed from the legacy envelope to the M34 ring (runId, table, migrated, wouldMigrate, skippedConcurrent, hashMismatch, failed). Written in the batch's own transaction, so an interrupted run leaves an exact trail. Counts only; no body text or ciphertext.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
+    action: "m36.body_backfill.run", // WP 2.13 / ADR-0058 P1 — one row per finished (or stopped) per-tenant backfill run
+    moduleOwner: "m36",
+    defaultRetentionClass: "compliance",
+    description:
+      "A per-tenant message-body backfill run ended (runId, stoppedBy, complete, per-table counts, remainingLegacy). complete=true means zero rows remain on the legacy envelope: the completion evidence ADR-0058 P1 requires before the legacy key may be retired. Counts only.",
+    denylistCategories: [],
+    isPartTwoEligible: false,
+  },
+  {
     action: "m36.retention_scan.run", // WP 1.9 — one row per weekly messaging.retention_scan execution (plan only)
     moduleOwner: "m36",
     defaultRetentionClass: "operational",

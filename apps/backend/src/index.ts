@@ -77,6 +77,11 @@ import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import Redis, { type RedisOptions } from "ioredis";
 import { parseTrustedProxies } from "./bootstrap";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
+import {
+  bindPlatformStaffToOrg,
+  reconcilePlatformStaff,
+  setPlatformStaffFailureSink,
+} from "./bootstrap/bind-platform-staff";
 import { attachDlqPromotionAlert, buildDlqPromotionSink } from "./bootstrap/dlq-alerts";
 import { buildF2fClinicianRoleReader } from "./bootstrap/f2f-clinician-roles";
 import {
@@ -258,6 +263,7 @@ import {
   embedderUnavailable,
   licensedSourceDenyStub,
 } from "@wardenx/terminology-loader";
+import { buildGlobalSearchRateLimit } from "./bootstrap/plugins/global-search-rate-limit";
 import {
   type RealtimeHandle,
   createRealtimeEmitter,
@@ -276,6 +282,7 @@ import {
   createOrgScopedAuditExecutor,
   createPortalInviteeUserPort,
   createPortalSignInStore,
+  createTaxIdCipher,
   membershipDisplayForOrg,
   mountDeviceAttestationRoutes,
   mountIdentityRoutes,
@@ -364,6 +371,7 @@ import {
   patientDisplayLabelsForOrg,
   patientIdsPageForOrg,
   patientIsDeceasedForOrg,
+  patientNameFragmentsPageForOrg,
   rebuildPrivacySnapshotsForOrg,
   registerAmendmentSlaWorker,
   registerPatientErasers,
@@ -1338,6 +1346,7 @@ import {
   createDrizzleSaasTenantPlatformEraseStore,
   createDrizzleTenantAccountFlagsService,
   createM34ProvisionGateway,
+  describeM34SweepSchedules,
   enableM34JobCapability,
   getTenantKeyProvider,
   m34ProvisionGatewayConfigFromEnv,
@@ -1361,6 +1370,7 @@ import {
   wireM34AlertRuleSeed,
   wireM34Tenancy,
 } from "./modules/34-saas-tenant-platform/index";
+import { canInviteFirstAdmin } from "./modules/34-saas-tenant-platform/invitation-token";
 // M35 (Subscription Billing) boot surface — the §4.11 outbox catalog, the §4.8 ABAC predicates, and the
 // §4.1–4.3 route mount over the single Drizzle route service. The write path emits `m35.*` events through
 // the bound transactional-outbox publisher; the platform-ops cross-tenant reads/writes run through the
@@ -1385,7 +1395,21 @@ import {
   scheduleM35Jobs,
 } from "./modules/35-subscription/index";
 import { emitWithRecipientFallback } from "./modules/36-messaging/alert-recipient-fallback";
+import {
+  invalidateMessageBodyKeys,
+  setMessageBodyKeyProvider,
+  sharedRingDekCache,
+} from "./modules/36-messaging/body-key-ring";
+import {
+  M36_BODY_LEGACY_COUNT_JOB_ID,
+  assertM36BodyBootEnv,
+  countLegacyBodiesAllTenants,
+  runLegacyBodyBootCheck,
+} from "./modules/36-messaging/body-legacy-key-check";
 import { cronAlertCorrelationId } from "./modules/36-messaging/cron-alert-correlation";
+import { createNameExclusions } from "./modules/36-messaging/global-search/name-exclusion";
+import { registerM36GlobalSearch } from "./modules/36-messaging/global-search/register";
+import { createRingSearchKeyProvider } from "./modules/36-messaging/global-search/search-key-provider";
 import {
   M36_DELIVERY_PLATFORM_JOB_ID,
   M36_INTEGRITY_PLATFORM_JOB_ID,
@@ -1395,6 +1419,7 @@ import {
   buildIdgCarryForwardComplianceConsumer,
   buildM36BreakGlassAlertConsumer,
   buildM36ClinicalAlertConsumer,
+  buildPresenceDeps,
   createAttachmentService,
   createDbMessagingProvider,
   createDbMessagingRouteService,
@@ -1404,8 +1429,8 @@ import {
   createDrizzleMembershipUserLookup,
   createDrizzleMessagingEraseStore,
   createDrizzleRoleSetMembersReader,
-  createScheduledSendDispatcher,
   createRealtimeAuditWriter,
+  createScheduledSendDispatcher,
   createSosContactCaller,
   mountMessagingRoutes,
   mountMessagingWebhookRoutes,
@@ -1607,6 +1632,8 @@ export function wireModuleSeams(
       ? {
           onTenantOrganizationAvailable: async (organizationId: string) => {
             await materializeRoleTemplatesForOrg(deps.db as DbClient, organizationId);
+            // Platform-ops operators join the new org (self-only `platform_alert_audience`) so `role_set` alerts reach them.
+            await bindPlatformStaffToOrg(deps.db as DbClient, organizationId);
           },
         }
       : {}),
@@ -2459,6 +2486,11 @@ export function wireModuleSeams(
     bootstrapModule34(SLICE_MODULE_34_SEAM_DEPS);
   }
   validateModule34Seams();
+  // M36 WP 2.13 / ADR-0058 P1 — message bodies sealed under the tenant ring DEK resolve it through M34's provider.
+  // Bound lazily (resolved per use) so a DB-less slice boot keeps the fail-closed deny provider: a ring body then fails
+  // to open rather than falling back to anything. M36 cannot import M34 (M34 dependsOn M36); this is the one binding.
+  setMessageBodyKeyProvider(() => getTenantKeyProvider());
+  assertM36BodyBootEnv(process.env); // a M36_BODY_SEAL_SCHEME typo, or ring without the KEK / platform pool, stops the boot
   // ── TASK-001 ledger (production-readiness audit 2026-08-03, ARCH-003) ───────────────────────────
   // Every registrar above that STILL stands an in-memory store behind a published seam on a
   // db-present boot is recorded here, beside the wiring that chose it. A per-process Map wearing a
@@ -2852,6 +2884,23 @@ function buildFirstAdminAcceptanceService(deps: {
             );
           }
 
+          // An invitation issued earlier must not redeem once the tenant was suspended or offboarded.
+          const [tenant] = await platformTx
+            .select({ status: schema.tenantAccount.status })
+            .from(schema.tenantAccount)
+            .where(eq(schema.tenantAccount.id, invitation.tenantAccountId))
+            .limit(1)
+            // A share lock holds off a concurrent lifecycle transition (which updates this row) until we commit,
+            // so a tenant suspended between this check and the membership insert cannot slip an admin in.
+            .for("share");
+          if (!tenant || !canInviteFirstAdmin(tenant.status)) {
+            throw new WardenXError(
+              "INVITATION_INVALID",
+              "invitation is expired or already used",
+              409,
+            );
+          }
+
           const userId = await withOrgContext(
             deps.db,
             { organizationId: invitation.organizationId, userId: "" },
@@ -3193,6 +3242,27 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   if (platformDbHandle) registerPlatformJob(M36_SOLE_TENANT_JOB_ID);
   // M34 tenant shred — the identity eraser's sole-tenant subjects, resolved by the SAME rule as M36's.
   if (platformDbHandle) registerPlatformJob(M34_SHRED_SOLE_TENANT_JOB_ID);
+  // M36 WP 2.13 / ADR-0058 P1 — legacy message-body envelope rows vs MESSAGING_ENCRYPTION_KEY. A production boot with
+  // legacy rows and no usable key FAILS CLOSED (unreadable history); otherwise the count is logged. In production a count
+  // that cannot be taken is ALSO fatal (re-run db:provision-roles for the column grant BEFORE deploying); elsewhere it warns.
+  if (platformDbHandle) {
+    registerPlatformJob(M36_BODY_LEGACY_COUNT_JOB_ID);
+    await runLegacyBodyBootCheck({
+      count: () =>
+        countLegacyBodiesAllTenants({
+          platformDb: platformDbHandle.db,
+          auditBypass: m34PlatformBypassAuditor,
+          jobId: M36_BODY_LEGACY_COUNT_JOB_ID,
+        }),
+      log: console,
+    });
+  } else if (process.env.NODE_ENV === "production") {
+    // assertProductionEnv requires DATABASE_PLATFORM_URL, so this is unreachable in a validated boot; if validation is ever
+    // bypassed the legacy-row check must not silently not run.
+    throw new Error(
+      "M36 legacy message-body check cannot run in production without DATABASE_PLATFORM_URL; refusing to boot (ADR-0058 P1)",
+    );
+  }
   // audit C1 — RLS is the tenancy control, and a role with BYPASSRLS makes every policy decorative.
   // The migrator now gates that grant on WARDENX_DEV_BYPASSRLS + non-production, but a grant applied
   // by hand (or by an older migrate run against this cluster) would leave no trace at boot. Ask the
@@ -3381,6 +3451,22 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   rateLimitRedisClient?.on("error", () => {});
   const rateLimitStore = rateLimitRedisClient
     ? createRedisRateLimitStore(rateLimitRedisClient)
+    : undefined;
+  // WP 2.7b / ADR-0058 P2 - the global-search limiter (active only on the cluster-wide store) and P1 ring key provider.
+  // Both are shared by the route mount and the indexer/worker; the ring cache is resolved per call (bound later at boot).
+  const m36SearchRateLimit = buildGlobalSearchRateLimit(rateLimitStore);
+  const m36SearchKeys = createRingSearchKeyProvider(() => sharedRingDekCache());
+  // ADR-0058 name exclusion: patient / caregiver / contact names never reach the index. M5's keyset name enumeration is injected as a
+  // port (M36 reads no M5 table); one instance is shared by the query route and the indexer / maintenance worker.
+  const m36NameExclusions = dbHandle
+    ? createNameExclusions({
+        db: dbHandle.db,
+        keys: m36SearchKeys,
+        names: {
+          fragmentsPage: (organizationId, afterId, limit) =>
+            patientNameFragmentsPageForOrg(dbHandle.db, organizationId, afterId, limit),
+        },
+      })
     : undefined;
   // TASK-040B — the outbox dispatcher (below, ~worker-runner section) is constructed AFTER
   // buildServer() returns `app` (it needs `app.addHook`/`app.log`), but the readinessProbe is
@@ -4225,10 +4311,19 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             },
           });
           // GAP-115 — the M2 org-admin surface (organizations, provider entities, locations, tenant step-up
-          // overrides). The tax-id envelope cipher is NOT bound: it is the KMS-backed key ring (the same
-          // unbound port M8/M20/M32 refuse on), so `POST /provider-entities` answers 503 TAX_ID_CIPHER_UNBOUND
-          // until it is — an EIN is never stored in the clear.
-          mountOrgAdminRoutes(app, dbHandle.db, { outbox: m2OutboxPublisher });
+          // overrides). `POST /provider-entities` seals the EIN with the tax-id cipher bound below; unbound it would
+          // answer 503 TAX_ID_CIPHER_UNBOUND — an EIN is never stored in the clear.
+          mountOrgAdminRoutes(app, dbHandle.db, {
+            outbox: m2OutboxPublisher,
+            // The EIN is sealed under the tenant's own DEK from M34's key ring (resolved per call, so this is safe to
+            // build before M34 registers; until a platform KEK is bound the provider refuses and the create fails
+            // closed with a 5xx rather than storing an EIN in the clear).
+            taxIdCipher: createTaxIdCipher({
+              dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+              dekForOrgVersion: (orgId, version) =>
+                getTenantKeyProvider().dekForOrgVersion(orgId, version),
+            }),
+          });
           // M2 (ADR-0023 D2 / SecHardening §12.2/§12.4) — the device-attestation write path. This is what
           // puts rows in `device_attestation`, which is what lets the authenticate hook stamp
           // `attributes.deviceAttestation`, which is what M3's `device_attestation_valid` predicate has
@@ -4528,6 +4623,19 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             sendEndpointVerificationCode: outOfBandBinding.sendEndpointVerificationCode,
             outbox: m36OutboxPublisher,
             attachments: m36AttachmentBinding,
+            globalSearch: {
+              keys: m36SearchKeys,
+              ...(m36NameExclusions ? { exclusions: m36NameExclusions } : {}),
+              ...(m36SearchRateLimit.rateLimit ? { rateLimit: m36SearchRateLimit.rateLimit } : {}),
+            },
+            globalSearchRateLimitActive: m36SearchRateLimit.active,
+            // WP 2.12 - ephemeral presence/typing; Valkey when REDIS_URL is set, off unless the tenant flag is on.
+            presence: buildPresenceDeps({
+              redis: rateLimitRedisClient,
+              rateLimitStore,
+              flags: featureFlagReader,
+              onStoreError: (err) => app.log.warn({ err }, "presence rate-limit store unavailable"),
+            }),
           }); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05) + WP 1.5 attachments
           // GAP-101 — the §4.9 inbound vendor webhooks (Twilio sms/voice status, Postmark event): signature-authenticated
           // (replay window + HMAC / IP allowlist + bearer), reconciling `notification_delivery`. FAIL-CLOSED: a vendor
@@ -4545,6 +4653,15 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             platform: buildDrizzlePlatformService({
               platformDb: platformDbHandle?.db ?? dbHandle.db,
               enqueue: m34PlatformEnqueue.enqueue,
+              provisionJobs: m34PlatformEnqueue.provisionJobs,
+              // Any active hold (org-wide or patient-scoped) blocks destroying the tenant's key.
+              legalHoldClear: async (organizationId) => {
+                const scope = await activeLegalHoldScopeForOrg(dbHandle.db, organizationId);
+                return !scope.orgWide && scope.patientIds.size === 0;
+              },
+              ...(m34ProvisionGateway
+                ? { invitationDelivery: m34ProvisionGateway.invitation }
+                : {}),
               auditBypass: m34PlatformBypassAuditor,
               outbox: m34OutboxPublisher,
               // F-091 — M1 owns the `feature_flag` schema, so the §4.7 admin seam is built here and
@@ -5680,6 +5797,18 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         }
       })
       .catch((err) => app.log.error({ err }, "role-template backfill could not list orgs"));
+    // M34 - platform operators' alert-audience bindings: retry a provision-time bind that failed, pick up operators
+    // added since, and expire the binding of any operator who no longer holds platform_ops. Boot-only, idempotent,
+    // never resurrects a revoked membership (bootstrap/bind-platform-staff.ts). Failures are logged, never block boot.
+    setPlatformStaffFailureSink((fields, message) => app.log.error(fields, message));
+    void roleBackfillOrgs
+      .listActiveOrgs()
+      .then(async (orgs) => {
+        const r = await reconcilePlatformStaff(dbHandle.db, orgs);
+        if (r.bound + r.unbound + r.refreshed > 0)
+          app.log.info(r, "platform-staff alert-audience bindings reconciled");
+      })
+      .catch((err) => app.log.error({ err }, "platform-staff reconcile could not list orgs"));
   }
   mountMetricsRoute(app, metricsRegistry);
   // TASK-040D (OPS-012) — DLQ-promotion alerting, shared by BOTH the BullMQ worker-runner block and the
@@ -5925,7 +6054,18 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           auditBypass: m34PlatformBypassAuditor,
           keyMaterial: m34KeyMaterial ?? m34ProvisionGateway.keyMaterial,
           storage: m34ProvisionGateway.destructionStorage,
-          outbox: m34OutboxPublisher,
+          // WP 2.13: a published dek_rotation_completed drops this process's cached message-body DEKs for the org.
+          outbox: {
+            ...m34OutboxPublisher,
+            async publish(...args: Parameters<typeof m34OutboxPublisher.publish>) {
+              const result = await m34OutboxPublisher.publish(...args);
+              const event = args[1];
+              if (event.eventName === "m34.tenant.dek_rotation_completed") {
+                invalidateMessageBodyKeys(event.organizationId ?? undefined);
+              }
+              return result;
+            },
+          },
           async destroyTenantKeyRing(input) {
             await platformDbHandle.db.transaction(async (tx) => {
               await tx.execute(
@@ -5935,6 +6075,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                 sql`SELECT m34_destroy_tenant_key_ring(${input.tenantAccountId}, ${input.destructionCertId})`,
               );
             });
+            // WP 2.13: this process must stop using a cached message-body DEK the moment the ring is destroyed (other
+            // processes keep theirs for at most one cache TTL). The input names the tenant account, so drop every cached DEK.
+            invalidateMessageBodyKeys();
           },
           destructionWorkflow: (() => {
             const workflow = createM34DestructionWorkflow();
@@ -6032,7 +6175,22 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       // GAP-163 - the three remaining M34 consumers. Platform sweeps run on the audited platform credential
       // (required by this block); onboarding is org-scoped on the tenant pool.
       const getM34AlertEmitter = () => getSeam("AlertEmitter") as AlertEmitter;
+      // Automatic `onboarding → active`: the same lifecycle machine and guards as the platform route, driven by the
+      // sweep under a system actor. It never enqueues, so its enqueue port refuses; the lifecycle alert goes through
+      // the same lazily-resolved M36 emitter as the sweep's own alerts.
+      const m34Activation = buildDrizzlePlatformService({
+        platformDb: platformDbHandle.db,
+        enqueue: {
+          enqueue: async () => {
+            throw new Error("the onboarding sweep's activation never enqueues a job");
+          },
+        },
+        auditBypass: m34PlatformBypassAuditor,
+        outbox: m34OutboxPublisher,
+      });
       const m34SweepDeps = {
+        activate: ({ tenantAccountId }: { tenantAccountId: string }) =>
+          m34Activation.activateOnboardedTenant(tenantAccountId),
         connection: queueConnection,
         db: dbHandle.db,
         platformDb: platformDbHandle.db,
@@ -6049,6 +6207,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           ) => getM34AlertEmitter().emit(orgId, input),
         },
         warn: (message: string, context: Record<string, string>) => app.log.warn(context, message),
+        info: (message: string, context: Record<string, string>) => app.log.info(context, message),
       };
       const m34SweepWorkers = [
         registerM34BaaExpiryWorker(m34SweepDeps),
@@ -6057,6 +6216,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       ];
       m34Workers.push(...m34SweepWorkers);
       const m34SweepSchedules = await scheduleM34PlatformSweepJobs(queueConnection);
+      const m34SweepSchedulesInfo = describeM34SweepSchedules();
+      app.log.info(
+        { sweeps: m34SweepSchedulesInfo.map(({ sweep, cron }) => ({ sweep, cron })) },
+        `M34 platform sweeps scheduled: ${m34SweepSchedulesInfo.map((s) => s.sweep).join(", ")}`,
+      );
       app.addHook("onClose", () =>
         Promise.all([
           ...m34SweepWorkers.map((w) => w.close()),
@@ -9213,6 +9377,39 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       // one object, since createDrizzleInboundTriggerPorts's return type already satisfies both port
       // interfaces.
       const m19TriggerPorts = createDrizzleInboundTriggerPorts(dbHandle.db);
+      // WP 2.7b C2 (ADR-0058, Accepted) — global message search, writer side. Gated by data, not code: the tenant flag
+      // defaults OFF, the platform flag is absent (= OFF) and the ring key provider throws (fail closed) while no ring is bound. One call builds the indexer consumer (bound below) and the `messaging.search_maintenance`
+      // worker; the worker needs the queue connection (the platform pool is already required by this block).
+      const m36GlobalSearch = await registerM36GlobalSearch({
+        db: dbHandle.db,
+        cipher: createMessageBodyCipher(),
+        keys: m36SearchKeys,
+        exclusions:
+          m36NameExclusions ?? createNameExclusions({ db: dbHandle.db, keys: m36SearchKeys }),
+        // Ids and a fixed reason only; never a tag, token or body text.
+        onIndexError: (info) => app.log.warn(info, "M36 global search index write skipped"),
+        ...(queueConnection
+          ? {
+              worker: {
+                connection: queueConnection,
+                activeOrgs: buildActiveOrgEnumerator({
+                  platformDb: platformDbHandle.db,
+                  auditBypass: m34PlatformBypassAuditor,
+                  jobId: M36_INTEGRITY_PLATFORM_JOB_ID,
+                  reason: "M36 WP 2.7b search_maintenance active-org fan-out",
+                }),
+                onError: (context, err) =>
+                  app.log.error(
+                    { ...context, reason: err instanceof Error ? err.name : "unknown" },
+                    "M36 global search maintenance error",
+                  ),
+              },
+            }
+          : {}),
+      });
+      for (const w of m36GlobalSearch.workers)
+        attachDlqPromotionAlert(w, `m36:${w.name}`, dlqPromotionSink);
+      app.addHook("onClose", () => m36GlobalSearch.close());
       const outboxDispatcher = createOutboxDispatcher({
         db: dbHandle.db,
         orgs: outboxRelayOrgs,
@@ -9510,6 +9707,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                 }
               : {}),
           }),
+          // WP 2.7b C2 — committed message sent/edited/deleted events (re)write or remove the blind-token rows.
+          m36GlobalSearch.consumer,
           // FY2027 — the 42 CFR 418.24(d) election-addendum window missed: the first M6 compliance-window fact
           // that pages anyone (care team + compliance), via `m6.election_addendum.overdue`.
           buildM36AdmissionComplianceAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),

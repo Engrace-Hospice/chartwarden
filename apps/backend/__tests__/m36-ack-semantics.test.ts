@@ -27,6 +27,16 @@ const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
     "alert-rule descriptions for M19/M23 ack crons and unacknowledged escalations (other modules' lifecycles)",
   "packages/messaging/src/seed/alert-rules-billing-cap.ts":
     "names the M23 ack crons the rule fires on",
+  "apps/backend/src/modules/36-messaging/global-search/notice.ts":
+    "ADR-0058 F5 tenant notice acknowledgement (an org admin accepting the discoverability notice), not a message receipt",
+  "apps/backend/src/modules/36-messaging/global-search/settings-service.ts":
+    "ADR-0058 F5 tenant notice acknowledgement (an org admin accepting the discoverability notice), not a message receipt",
+  "apps/backend/src/modules/36-messaging/global-search/tenant-setting-store.ts":
+    "ADR-0058 F5 tenant notice acknowledgement (an org admin accepting the discoverability notice), not a message receipt",
+  "apps/backend/src/modules/36-messaging/routes/global-search-settings-routes.ts":
+    "ADR-0058 F5 tenant notice acknowledgement (an org admin accepting the discoverability notice), not a message receipt",
+  "apps/backend/src/modules/36-messaging/routes/global-search-settings-typebox.ts":
+    "ADR-0058 F5 tenant notice acknowledgement (an org admin accepting the discoverability notice), not a message receipt",
   "apps/web/src/modules/36-messaging/reaction-palette.ts":
     "WP 2.4 user-facing copy that NEGATES the word: a reaction does not mean a message was read, acknowledged or acted on",
 };

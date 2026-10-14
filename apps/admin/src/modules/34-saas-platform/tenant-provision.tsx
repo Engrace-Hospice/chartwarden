@@ -61,6 +61,12 @@ function stashDraft(draft: Draft): void {
 
 type Outcome = { ok: true } | { ok: false; message: string; stepUp: boolean };
 
+/** The server's own message from the error envelope, when it carries one. */
+function serverMessage(err: unknown): string | null {
+  const message = (err as { error?: { message?: unknown } } | null)?.error?.message;
+  return typeof message === "string" && message.trim().length > 0 ? message : null;
+}
+
 export function TenantProvisionDrawer({
   onClose,
   onAccepted,
@@ -97,24 +103,37 @@ export function TenantProvisionDrawer({
     if (!valid || busy || accepted) return;
     setBusy(true);
     setOutcome(null);
-    const { error } = await client.POST("/api/v1/platform/tenants", {
-      body: {
-        legalBusinessName: name,
-        billingContactEmail: billingEmail.trim(),
-        breachNotificationContactEmail: breachEmail.trim(),
-        firstAdminEmail: adminEmail.trim(),
-        firstAdminFullName: adminName.trim(),
-        planLabel: plan,
-      },
-    });
-    setBusy(false);
-    if (error) {
+    let error: unknown;
+    try {
+      ({ error } = await client.POST("/api/v1/platform/tenants", {
+        body: {
+          legalBusinessName: name,
+          billingContactEmail: billingEmail.trim(),
+          breachNotificationContactEmail: breachEmail.trim(),
+          firstAdminEmail: adminEmail.trim(),
+          firstAdminFullName: adminName.trim(),
+          planLabel: plan,
+        },
+      }));
+    } catch {
+      setBusy(false);
       setOutcome({
         ok: false,
-        stepUp: isStepUpRequired(error),
-        message: isStepUpRequired(error)
+        stepUp: false,
+        message: "Could not reach the server. Nothing was requested; try again.",
+      });
+      return;
+    }
+    setBusy(false);
+    if (error) {
+      const stepUp = isStepUpRequired(error);
+      setOutcome({
+        ok: false,
+        stepUp,
+        message: stepUp
           ? "Confirm it’s you before provisioning a tenant."
-          : "Could not request provisioning. Check the details and try again.",
+          : (serverMessage(error) ??
+            "Could not request provisioning. Check the details and try again."),
       });
       return;
     }
@@ -191,7 +210,7 @@ export function TenantProvisionDrawer({
           <div className="flex flex-wrap items-center gap-3">
             <InlineAlert tone={outcome.ok ? "success" : "error"}>
               {outcome.ok
-                ? "Provisioning requested. The tenant appears in the list once it has been created."
+                ? "Provisioning requested. Open the tenant to follow its progress once it appears in the list."
                 : outcome.message}
             </InlineAlert>
             {!outcome.ok && outcome.stepUp ? (
