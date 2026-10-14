@@ -148,6 +148,13 @@ rare tail fail, the fallback is the bounded multi-channel option A in the ADR.
 | F11 | Low | `pg_stat_statements` capture check soft-passes when the extension is absent | `m36-global-search.live.test.ts:1436` |
 | F12 | Medium | One flag is both kill switch and leakage attestation; nothing in code enforces the leakage test | `platform-flag.ts`, `prerequisites.ts` |
 
+**Resolutions (docs and code, implemented in the branch of this PR; the human sign-off above is still pending):**
+
+- **Prefix CHANGE to {3, 5, 8, 12}:** implemented in the branch of this PR (`PREFIX_TAG_LENGTHS` and `prefixTagLengthFor` in `packages/messaging/src/search/global/params.ts`, `indexTagStrings`, `query-terms.ts`); ADR parameter table, golden cases, leakage row and T arithmetic recomputed; unit tests updated. No tag-scheme version exists, so an already-built index would be stale; none exists in production (no tenant enabled), so no migration is needed.
+- **F3:** implemented in the branch of this PR: the ADR amendment now states 5 rounds / 100 channels, all fields from visible rows, threshold about 5 x 500 hidden candidates or 100 channels.
+- **F4:** implemented in the branch of this PR: the ADR amendment now records the head-bucket REFINE as a second membership-independent frequency-threshold oracle, and timing of up to five hidden rounds as a residual finer oracle.
+- **F10:** implemented in the branch of this PR: ADR header and "How to read decisions" text made consistent (Accepted by the user's decision, review requirement not yet satisfied); `ci.yml` comments changed from Proposed to Accepted.
+
 ## Conditions before ANY tenant is enabled in production
 
 1. A named human security architect and privacy officer adopt or amend this record (sign-off block above).

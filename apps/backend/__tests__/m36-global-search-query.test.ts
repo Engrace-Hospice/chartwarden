@@ -165,7 +165,7 @@ describe("query terms", () => {
     expect(() => parseQueryTerms(words.join(" "))).toThrowError(WardenXError);
   });
 
-  it("builds whole-word tags for all but the last term and a prefix tag (first 12 characters) for the last", () => {
+  it("builds whole-word tags for all but the last term and a sparse prefix tag (3, 5, 8 or 12 characters) for the last", () => {
     const key = Buffer.alloc(32, 7);
     const bits = 19;
     const terms = ["morphine", "esophagogastroduodenoscopy"];
@@ -174,6 +174,15 @@ describe("query terms", () => {
       tagForPrefix(key, "esophagogast", bits),
     ]);
     expect(tagsForTerms(key, ["morph"], bits)).toEqual([tagForPrefix(key, "morph", bits)]);
+    // sparse prefix tags {3,5,8,12}: a typed prefix queries the largest tag length <= its length
+    const lastTag = (term: string) => tagsForTerms(key, [term], bits)[0];
+    expect(lastTag("mor")).toBe(tagForPrefix(key, "mor", bits));
+    expect(lastTag("morp")).toBe(tagForPrefix(key, "mor", bits));
+    expect(lastTag("morphi")).toBe(tagForPrefix(key, "morph", bits));
+    expect(lastTag("morphine")).toBe(tagForPrefix(key, "morphine", bits));
+    expect(lastTag("esophagog")).toBe(tagForPrefix(key, "esophago", bits));
+    expect(lastTag("esophagogas")).toBe(tagForPrefix(key, "esophago", bits));
+    expect(lastTag("esophagogastr")).toBe(tagForPrefix(key, "esophagogast", bits));
   });
 
   it("detects a head-bucket query only when EVERY term is in a head bucket", () => {

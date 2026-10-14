@@ -1276,7 +1276,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
     it("a brute-forced T=19 truncation collision is selected by SQL but excluded from the response", async () => {
       const term = "collisionprobe";
       const key = await keys.tagKey(ORG_A, VERSION);
-      const target = tagForPrefix(key, term.slice(0, 12), TAG_BITS); // a prefix tag covers the first 12 characters
+      const target = tagForPrefix(key, term.slice(0, 12), TAG_BITS); // sparse prefix tags {3,5,8,12}: a 14-letter term is queried at its 12-character tag
       let found: string | null = null;
       const letters = "abcdefghijklmnopqrstuvwxyz";
       for (let i = 0; i < 4_000_000 && !found; i += 1) {

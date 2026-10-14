@@ -6,8 +6,20 @@ export const MIN_TOKEN_LENGTH = 3;
 export const MAX_TOKEN_LENGTH = 40;
 /** The shortest typed prefix a query may use; equal to the shortest prefix tag. */
 export const MIN_QUERY_PREFIX_LENGTH = 3;
-/** Prefix tags exist for lengths MIN_QUERY_PREFIX_LENGTH..min(len, MAX_PREFIX_TAG_LENGTH). */
+/**
+ * Prefix tags exist ONLY at these lengths (sparse, ADR-0058 2026-10-13 desk review; a dense 3..12 chain leaked word length
+ * and shared-prefix structure through tag-cluster size). A word shorter than a listed length contributes only the lengths
+ * <= its length.
+ */
+export const PREFIX_TAG_LENGTHS = [3, 5, 8, 12] as const;
 export const MAX_PREFIX_TAG_LENGTH = 12;
+
+/** The largest prefix tag length <= `typedLength` (a typed prefix is queried at this length, then verified after decrypt). */
+export function prefixTagLengthFor(typedLength: number): number {
+  let best = PREFIX_TAG_LENGTHS[0] as number;
+  for (const length of PREFIX_TAG_LENGTHS) if (length <= typedLength) best = length;
+  return best;
+}
 
 /** HMAC tag width T (bits). The single most leakage-relevant knob; the reviewers must confirm it. */
 export const DEFAULT_TAG_BITS = 19;

@@ -767,13 +767,13 @@ jobs:
           - { name: "M36 Mentions", scripts: "test:m36:mentions:live" }
           # WP 2.7a - in-conversation search: tenant/channel/tombstone/edit isolation, filters, audit without query text, p95 on a seeded history.
           - { name: "M36 In-conversation search", scripts: "test:m36:search:live" }
-          # WP 2.7b chunk C1 (ADR-0058, Proposed) - global search index storage: RLS, no UPDATE grant, the same-transaction removal hook, audit without tags.
+          # WP 2.7b chunk C1 (ADR-0058, Accepted) - global search index storage: RLS, no UPDATE grant, the same-transaction removal hook, audit without tags.
           - { name: "M36 Global search index storage", scripts: "test:m36:search-index:live" }
-          # WP 2.7b chunk C2 (ADR-0058, Proposed) - the index writer: real publisher + relay lifecycle, FOR SHARE races, padding, reconcile/purge, platform kill switch, fail-closed key provider, tenancy.
+          # WP 2.7b chunk C2 (ADR-0058, Accepted) - the index writer: real publisher + relay lifecycle, FOR SHARE races, padding, reconcile/purge, platform kill switch, fail-closed key provider, tenancy.
           - { name: "M36 Global search index writer", scripts: "test:m36:global-search-writer:live" }
-          # WP 2.7b chunk C3 (ADR-0058, Proposed) - the global search ACL acceptance suite: lost access => zero results, authority is the decider, role categories, flags, padding/leakage, read audit, bounds, p95 < 1 s on 50k indexed messages.
+          # WP 2.7b chunk C3 (ADR-0058, Accepted) - the global search ACL acceptance suite: lost access => zero results, authority is the decider, role categories, flags, padding/leakage, read audit, bounds, p95 < 1 s on 50k indexed messages.
           - { name: "M36 Global search ACL acceptance", scripts: "test:m36:global-search:live" }
-          # WP 2.7b chunk C4 (ADR-0058, Proposed) - the tenant switch: permission + step-up, the go-live checklist, OFF always accepted, changed_at + audit on every flip, tenancy.
+          # WP 2.7b chunk C4 (ADR-0058, Accepted) - the tenant switch: permission + step-up, the go-live checklist, OFF always accepted, changed_at + audit on every flip, tenancy.
           - { name: "M36 Global search settings", scripts: "test:m36:global-search-settings:live" }
           # WP 2.12 - ephemeral presence/typing: flag off stores nothing (Valkey keyspace + Postgres), TTL expiry, ids only; removed member / other tenant / Part 2 denied get a random id's answer (needs the Valkey this job provides).
           - { name: "M36 Presence/typing", scripts: "test:m36:presence:live" }
