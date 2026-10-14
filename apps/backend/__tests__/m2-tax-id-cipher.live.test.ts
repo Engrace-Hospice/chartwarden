@@ -2,9 +2,10 @@
  * M2 — POST /provider-entities seals the EIN through the real tax-id cipher, LIVE Postgres, real NOBYPASSRLS
  * `wardenx_app`. The unit suite (`tax-id-cipher.test.ts`, `gap-115-m2-org-admin.test.ts`) proves the cipher and the
  * route against an in-memory store and a stub cipher; this proves what only a real catalog can:
- *   - `provider_entity.tax_id_encrypted` holds a `v1.` envelope, never the EIN, and it opens back to the EIN;
+ *   - `provider_entity.tax_id_encrypted` holds a `v2.` envelope, never the EIN, and it opens back to the EIN;
  *   - a failing tenant key answers 503 and writes NO row (the NOT NULL column is never filled with a placeholder);
- *   - org B's session cannot read org A's provider entity, and A's envelope refuses to open under B (AAD binds the org).
+ *   - org B's session cannot read org A's provider entity, and A's envelope refuses to open under B (AAD binds the org);
+ *   - an envelope moved to another provider_entity row of the SAME org refuses to open (AAD binds the row id).
  * The key ring itself (KEK unwrap, wrapped-DEK table) is proven by `m34-tenant-key-provider.live.test.ts`; here a
  * per-org in-test provider stands in for it.
  *
@@ -154,7 +155,7 @@ describe.skipIf(!DB_URL)("M2 tax-id cipher — LIVE Postgres, real wardenx_app r
       [orgId],
     );
 
-  it("stores a v1 envelope, never the EIN, and the envelope opens back to the EIN", async () => {
+  it("stores a v2 envelope, never the EIN, and the envelope opens back to the EIN", async () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/provider-entities",
@@ -166,10 +167,12 @@ describe.skipIf(!DB_URL)("M2 tax-id cipher — LIVE Postgres, real wardenx_app r
     const { rows } = await rowsFor(ORG_A);
     expect(rows).toHaveLength(1);
     const sealed = rows[0].tax_id_encrypted as string;
-    expect(sealed.startsWith("v1.")).toBe(true);
+    expect(sealed.startsWith("v2.")).toBe(true);
     expect(sealed).not.toContain("123456789");
     expect(res.body).not.toContain("123456789");
-    expect(await cipher.decrypt({ organizationId: ORG_A, sealed })).toBe("123456789");
+    expect(
+      await cipher.decrypt({ organizationId: ORG_A, providerEntityId: rows[0].id, sealed }),
+    ).toBe("123456789");
   });
 
   it("answers 503 and writes no row when the tenant key is unavailable", async () => {
@@ -201,7 +204,49 @@ describe.skipIf(!DB_URL)("M2 tax-id cipher — LIVE Postgres, real wardenx_app r
     expect(read.statusCode).toBe(404);
 
     await expect(
-      cipher.decrypt({ organizationId: ORG_B, sealed: row.tax_id_encrypted as string }),
+      cipher.decrypt({
+        organizationId: ORG_B,
+        providerEntityId: row.id,
+        sealed: row.tax_id_encrypted as string,
+      }),
     ).rejects.toThrow();
+  });
+
+  it("an envelope moved to another provider entity of the same org refuses to open", async () => {
+    const [first] = (await rowsFor(ORG_A)).rows;
+    const second = await app.inject({
+      method: "POST",
+      url: "/api/v1/provider-entities",
+      headers: AS_A,
+      payload: { ...NEW_PE, ccn: "666666", npi: "1003000126", taxId: "98-7654321" },
+    });
+    expect(second.statusCode).toBe(201);
+    const secondId = second.json().id as string;
+
+    // Simulate the lift: copy row 1's sealed EIN into row 2 (admin connection, bypassing RLS).
+    await admin.query("UPDATE provider_entity SET tax_id_encrypted = $1 WHERE id = $2", [
+      first.tax_id_encrypted,
+      secondId,
+    ]);
+    const { rows } = await admin.query(
+      "SELECT tax_id_encrypted FROM provider_entity WHERE id = $1",
+      [secondId],
+    );
+
+    await expect(
+      cipher.decrypt({
+        organizationId: ORG_A,
+        providerEntityId: secondId,
+        sealed: rows[0].tax_id_encrypted as string,
+      }),
+    ).rejects.toThrow();
+    // ...while row 1's own id still opens it.
+    expect(
+      await cipher.decrypt({
+        organizationId: ORG_A,
+        providerEntityId: first.id,
+        sealed: first.tax_id_encrypted as string,
+      }),
+    ).toBe("123456789");
   });
 });
