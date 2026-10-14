@@ -152,6 +152,55 @@ describe("VisitReader (§4.3)", () => {
   });
 });
 
+describe("VisitReader.nextScheduledVisitForPatient (messaging hub WP 3.1)", () => {
+  const AS_OF = "2026-03-05T16:00:00.000Z";
+  const readerOver = (visits: VisitDto[]) =>
+    createVisitReader(createInMemorySchedulingSeamStore({ visits }).store);
+
+  it("returns the earliest future published visit as a free-text-free summary with asOf", async () => {
+    const out = await readerOver([
+      visit({ id: "later", scheduledStartedAt: "2026-03-08T14:00:00.000Z" }),
+      visit({ id: "soon", scheduledStartedAt: "2026-03-06T14:00:00.000Z" }),
+    ]).nextScheduledVisitForPatient(ORG, PAT, AS_OF);
+    expect(out).toEqual({
+      visitId: "soon",
+      visitPurpose: "routine_visit",
+      discipline: "rn",
+      scheduledStartedAt: "2026-03-06T14:00:00.000Z",
+      scheduledEndedAt: "2026-03-05T15:00:00.000Z",
+      status: "published",
+      asOf: AS_OF,
+    });
+  });
+
+  it("excludes cancelled/completed/no_show/rescheduled/proposed, past, and other patients", async () => {
+    const f = "2026-03-07T14:00:00.000Z";
+    const out = await readerOver([
+      visit({ id: "c", status: "cancelled", scheduledStartedAt: f }),
+      visit({ id: "d", status: "completed", scheduledStartedAt: f }),
+      visit({ id: "n", status: "no_show", scheduledStartedAt: f }),
+      visit({ id: "r", status: "rescheduled", scheduledStartedAt: f }),
+      visit({ id: "p", status: "proposed", scheduledStartedAt: f }),
+      visit({ id: "past", scheduledStartedAt: "2026-03-05T10:00:00.000Z" }),
+      visit({ id: "other", patientId: "pat-2", scheduledStartedAt: f }),
+    ]).nextScheduledVisitForPatient(ORG, PAT, AS_OF);
+    expect(out).toBeNull();
+  });
+
+  it("is org-explicit: a visit of another org is not returned", async () => {
+    const out = await readerOver([
+      visit({ id: "x", organizationId: "org-2", scheduledStartedAt: "2026-03-07T14:00:00.000Z" }),
+    ]).nextScheduledVisitForPatient(ORG, PAT, AS_OF);
+    expect(out).toBeNull();
+  });
+
+  it("fails closed on an empty org id or an unparseable asOf", async () => {
+    const r = readerOver([]);
+    await expect(r.nextScheduledVisitForPatient("", PAT, AS_OF)).rejects.toThrow();
+    await expect(r.nextScheduledVisitForPatient(ORG, PAT, "not-a-date")).rejects.toThrow();
+  });
+});
+
 describe("VisitAssignmentReader (§4.5 D11 caseload contribution)", () => {
   const reader = () => createVisitAssignmentReader(createInMemorySchedulingSeamStore(seed()).store);
 

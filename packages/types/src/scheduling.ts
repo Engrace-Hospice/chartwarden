@@ -306,6 +306,21 @@ export interface PortalVisitSummary {
 
 // ── §4.3 seams this module publishes (impls injected at boot in M17-T05; type-checked at boot) ─────────
 
+/**
+ * §4.3 — the patient's NEXT scheduled visit for the M36 context panel (messaging hub WP 3.1). Ids, enums and
+ * instants only: no clinician identity, no free text, no scheduler-internal notes. `asOf` is the instant the
+ * "next" was computed against, so a consumer can label stale data.
+ */
+export interface NextVisitSummary {
+  readonly visitId: VisitId;
+  readonly visitPurpose: VisitPurpose;
+  readonly discipline: string;
+  readonly scheduledStartedAt: IsoInstant;
+  readonly scheduledEndedAt: IsoInstant;
+  readonly status: VisitStatus;
+  readonly asOf: IsoInstant;
+}
+
 /** §4.3 — visit reads for M8 (encounter context), M18 (EVV geofence target), M14 (IDG packet digest). */
 export interface VisitReader {
   /** M8 encounter-authoring context. */
@@ -322,6 +337,16 @@ export interface VisitReader {
     patientId: PatientId,
     sinceIso: IsoInstant,
   ): Promise<VisitDto[]>;
+  /**
+   * M36 patient context (WP 3.1) — the earliest published/en_route visit starting at/after `asOfIso`, else
+   * null (none, or not visible under the org's RLS). Cancelled/completed/no-show/rescheduled/proposed never
+   * qualify. Org-explicit (callable from a non-request context); throws on a blank org or unparseable asOf.
+   */
+  nextScheduledVisitForPatient(
+    orgId: OrgId,
+    patientId: PatientId,
+    asOfIso: IsoInstant,
+  ): Promise<NextVisitSummary | null>;
 }
 
 /** §4.3 — assignment / roster / live-awareness reads for M5 (caseload), M19 (on-call), M20 (field safety). */

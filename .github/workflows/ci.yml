@@ -340,6 +340,8 @@ jobs:
               name: "M17 reassignment scan / caregiver reminder",
               scripts: "test:m17:reassignment-reminder:live",
             }
+          # M36 WP 3.1 — the VisitReader.nextScheduledVisitForPatient read seam, as the NOBYPASSRLS app role.
+          - { name: "M17 next scheduled visit seam", scripts: "test:m17:next-visit:live" }
           - { name: "M18 EVV", scripts: "test:m18:read:live test:m18:write:live test:m18:workers:live" }
           # F-153 (#248) — the D14 `m17.visit.cancelled` bracket close + the D6/§2.2.4
           # `m8.encounter.signed` missing-EVV auto-resolution.

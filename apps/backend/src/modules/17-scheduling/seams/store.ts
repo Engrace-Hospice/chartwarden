@@ -63,6 +63,12 @@ export interface SchedulingSeamStore {
     patientId: PatientId,
     sinceIso: IsoInstant,
   ): Promise<ReadonlyArray<VisitDto>>;
+  /** Org-explicit (opens its own tenant context; the caller may not be a request). */
+  nextScheduledVisitForPatient(
+    organizationId: string,
+    patientId: PatientId,
+    asOfIso: IsoInstant,
+  ): Promise<VisitDto | null>;
   // ── assignment reads (VisitAssignmentReader) ───────────────────────────────────────────────────────────
   activeAssignmentsForMembershipOnDate(
     membershipId: MembershipId,
@@ -118,6 +124,9 @@ export interface SchedulingSeamSeed {
  * is on the clinician's plate today (published or in-flight), not yet a terminal/historical state. */
 const ACTIVE_ASSIGNMENT_STATUSES = new Set(["published", "en_route", "in_visit"]);
 
+/** Statuses that make a visit the patient's "next scheduled visit" (committed, not yet started). */
+export const NEXT_VISIT_STATUSES: ReadonlySet<string> = new Set(["published", "en_route"]);
+
 /** The service date (org-tz `YYYY-MM-DD`) a visit belongs to — M17's `visit.service_date` column; the in-memory
  * slice derives it from the DTO's `serviceDate` directly. */
 function visitOnDate(visit: VisitDto, date: IsoDate): boolean {
@@ -151,6 +160,18 @@ export function createInMemorySchedulingSeamStore(seed: SchedulingSeamSeed = {})
             v.status === "completed" &&
             v.scheduledStartedAt >= sinceIso,
         );
+      },
+      async nextScheduledVisitForPatient(organizationId, patientId, asOfIso) {
+        const next = visits
+          .filter(
+            (v) =>
+              v.organizationId === organizationId &&
+              v.patientId === patientId &&
+              NEXT_VISIT_STATUSES.has(v.status) &&
+              v.scheduledStartedAt >= asOfIso,
+          )
+          .sort((a, b) => a.scheduledStartedAt.localeCompare(b.scheduledStartedAt))[0];
+        return next ?? null;
       },
       async activeAssignmentsForMembershipOnDate(membershipId, date) {
         return visits

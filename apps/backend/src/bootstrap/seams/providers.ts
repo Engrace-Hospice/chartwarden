@@ -1240,6 +1240,9 @@ export const visitReaderDenyStub: VisitReader = {
   completedVisitsForPatientSince() {
     throw new NotImplementedError("VisitReader");
   },
+  nextScheduledVisitForPatient() {
+    throw new NotImplementedError("VisitReader");
+  },
 };
 
 /** M17 — the assignment read seam (§4.5 D11 caseload contribution / on-call roster / live in_visit) M5/M19/M20
