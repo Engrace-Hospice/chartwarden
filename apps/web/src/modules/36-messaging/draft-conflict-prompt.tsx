@@ -4,7 +4,7 @@
 // first action when focus is somewhere else. Tab stays natural. Escape keeps the user's own text (never discards it)
 // both from inside the prompt and from the composer while the prompt is showing (`escapeKeepsMine`).
 import { useEffect, useId, useRef } from "react";
-import { SBAR_URGENCY_LABEL, isBlankSbar } from "./sbar-utils";
+import { SBAR_URGENCY_LABEL } from "./sbar-utils";
 import type {
   DraftConflict,
   DraftContent,
@@ -25,7 +25,7 @@ const SBAR_SITUATION_PREVIEW_LENGTH = 60;
 /** One plain-text line per side so two SBAR versions can be told apart: urgency, then the start of Situation. */
 function sbarSummary(sbar: DraftContent["sbar"]): string {
   if (!sbar) return "";
-  const parts = ["SBAR", SBAR_URGENCY_LABEL[sbar.urgencyHint]];
+  const parts = ["SBAR", SBAR_URGENCY_LABEL[sbar.urgencyHint] ?? sbar.urgencyHint];
   const situation = (sbar.sections.situation ?? "").replace(/\s+/g, " ").trim();
   if (situation)
     parts.push(

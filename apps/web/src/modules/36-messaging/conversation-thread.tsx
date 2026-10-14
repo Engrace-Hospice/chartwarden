@@ -267,10 +267,10 @@ function ConversationThreadView({
     references: draftReferences,
     sbar: sbar.draft,
     suspended: sending,
-    hydrate: (text, references, restoredSbar) => {
+    hydrate: (text, references, restoredSbar, initialRead) => {
       setDraft(text);
       setDraftReferences(references);
-      sbar.restore(restoredSbar);
+      sbar.restore(restoredSbar, initialRead);
     },
   });
 

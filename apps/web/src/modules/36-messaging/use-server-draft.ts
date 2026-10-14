@@ -155,7 +155,13 @@ export function useServerDraft(args: {
   /** A send of this composer's text is in flight: nothing is saved or flushed (the server deletes the draft on send). */
   suspended?: boolean;
   /** Put a restored draft into the composer (only ever called while the composer is empty). */
-  hydrate: (text: string, references: MessageReferenceInput[], sbar: SbarSections | null) => void;
+  hydrate: (
+    text: string,
+    references: MessageReferenceInput[],
+    sbar: SbarSections | null,
+    /** True only for the first restore after the read, where an urgency the user already picked is kept. */
+    initialRead?: boolean,
+  ) => void;
 }): ServerDraftSync {
   const { channelId, text, references } = args;
   const sbar = args.sbar && !isBlankSbar(args.sbar) ? args.sbar : null;
@@ -377,6 +383,7 @@ export function useServerDraft(args: {
             hydrateText ? server.body : local.body,
             hydrateText ? restored : [...local.references],
             hydrateSbar ? serverSbar : local.sbar,
+            true,
           );
         }
       } else if (!isEmptySnapshot(latestRef.current)) {

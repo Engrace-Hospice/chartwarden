@@ -13,9 +13,16 @@ describe("useSbarCompose.restore", () => {
   it("keeps an urgency picked before the read returned when the sections are still blank", () => {
     const { result } = renderHook(() => useSbarCompose("discipline"));
     act(() => result.current.setValues({ ...result.current.values, urgency: "urgent" }));
-    act(() => result.current.restore(SERVER));
+    act(() => result.current.restore(SERVER, true));
     expect(result.current.values.urgency).toBe("urgent");
     expect(result.current.values.sections).toEqual(SERVER.sections);
+  });
+
+  it("a conflict resolution takes the chosen side's urgency over a picked one", () => {
+    const { result } = renderHook(() => useSbarCompose("discipline"));
+    act(() => result.current.setValues({ ...result.current.values, urgency: "urgent" }));
+    act(() => result.current.restore(SERVER));
+    expect(result.current.values.urgency).toBe("important");
   });
 
   it("takes the server urgency when none was picked", () => {
@@ -27,7 +34,7 @@ describe("useSbarCompose.restore", () => {
   it("restoring nothing over a blank form leaves a picked urgency alone", () => {
     const { result } = renderHook(() => useSbarCompose("discipline"));
     act(() => result.current.setValues({ ...result.current.values, urgency: "urgent" }));
-    act(() => result.current.restore(null));
+    act(() => result.current.restore(null, true));
     expect(result.current.values.urgency).toBe("urgent");
   });
 

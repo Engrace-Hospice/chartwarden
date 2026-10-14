@@ -157,14 +157,14 @@ describe("useServerDraft with an sbar", () => {
   it("restores text and sbar together", async () => {
     const { hydrate } = setup(makeApi(serverDraft({ sbar: SBAR })));
     await flush();
-    expect(hydrate).toHaveBeenCalledWith("from the server", [], SBAR);
+    expect(hydrate).toHaveBeenCalledWith("from the server", [], SBAR, true);
   });
 
   it("restores an sbar-only draft and does not echo it back as a save", async () => {
     const api = makeApi(serverDraft({ body: "", sbar: SBAR }));
     const { hydrate } = setup(api);
     await flush();
-    expect(hydrate).toHaveBeenCalledWith("", [], SBAR);
+    expect(hydrate).toHaveBeenCalledWith("", [], SBAR, true);
     await tick(DRAFT_SAVE_DEBOUNCE_MS * 2);
     expect(api.PUT).not.toHaveBeenCalled();
   });
@@ -215,7 +215,7 @@ describe("useServerDraft", () => {
       DRAFT_PATH,
       expect.objectContaining({ params: expect.anything() }),
     );
-    expect(hydrate).toHaveBeenCalledWith("from the server", [], null);
+    expect(hydrate).toHaveBeenCalledWith("from the server", [], null, true);
   });
 
   it("does not overwrite text the user already has", async () => {
@@ -833,7 +833,7 @@ describe("useServerDraft SBAR review fixes", () => {
     const api = makeApi(serverDraft({ sbar: SBAR }));
     const { view, hydrate } = setup(api, "typed early");
     await flush();
-    expect(hydrate).toHaveBeenCalledWith("typed early", [], SBAR);
+    expect(hydrate).toHaveBeenCalledWith("typed early", [], SBAR, true);
     view.rerender({ text: "typed early", sbar: SBAR });
     await tick(DRAFT_SAVE_DEBOUNCE_MS * 2);
     expect(api.DELETE).not.toHaveBeenCalled();
@@ -844,7 +844,7 @@ describe("useServerDraft SBAR review fixes", () => {
     const api = makeApi(serverDraft());
     const { view, hydrate } = setup(api, "", SBAR);
     await flush();
-    expect(hydrate).toHaveBeenCalledWith("from the server", [], SBAR);
+    expect(hydrate).toHaveBeenCalledWith("from the server", [], SBAR, true);
     view.rerender({ text: "from the server", sbar: SBAR });
     await tick(DRAFT_SAVE_DEBOUNCE_MS * 2);
     expect(api.PUT.mock.calls.at(-1)?.[1].body).toMatchObject({

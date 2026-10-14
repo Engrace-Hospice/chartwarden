@@ -24,13 +24,15 @@ export function useSbarCompose(kind: ChannelKind) {
   }, [kind]);
   /**
    * A server draft was restored: fill the form (it stays closed until the user opens it) or clear it. An urgency the
-   * user already picked while the read was in flight is kept when the sections were still blank.
+   * user already picked while the first read was in flight is kept when the sections were still blank; resolving a
+   * conflict never keeps it, the chosen side's urgency wins.
    */
   const restore = useCallback(
-    (sbar: SbarSections | null) =>
+    (sbar: SbarSections | null, keepPickedUrgency = false) =>
       setValues((current) => {
         const sectionsBlank = SBAR_SECTION_KEYS.every((key) => current.sections[key].trim() === "");
-        const picked = sectionsBlank && current.urgency !== defaultSbarUrgency(kind);
+        const picked =
+          keepPickedUrgency && sectionsBlank && current.urgency !== defaultSbarUrgency(kind);
         if (!sbar) return sectionsBlank ? current : emptySbarValues(kind);
         const restored = sbarValuesOf(kind, sbar);
         return picked ? { ...restored, urgency: current.urgency } : restored;
