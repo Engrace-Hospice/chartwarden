@@ -22,6 +22,7 @@ import type { IsoInstant, LocationId, MembershipId } from "./care-plan";
 // `EvvBracketState` (`evv_present` | `evv_missing_documented`) is owned by `encounter.ts` (M8) and reused as
 // the §1.1 / D3 EVV-bracket flag on a visit — imported for internal use here, not re-exported (TS2308).
 import type { EvvBracketState, VisitId } from "./encounter";
+import type { ClinicalLinkSource } from "./clinical-link";
 
 /** A calendar date in ISO `YYYY-MM-DD` form (org-tz service date). M17-owned alias; no other leaf exports it. */
 export type IsoDate = string;
@@ -322,7 +323,7 @@ export interface NextVisitSummary {
 }
 
 /** §4.3 — visit reads for M8 (encounter context), M18 (EVV geofence target), M14 (IDG packet digest). */
-export interface VisitReader {
+export interface VisitReader extends ClinicalLinkSource {
   /** M8 encounter-authoring context. */
   visitForEncounter(orgId: OrgId, visitId: VisitId): Promise<VisitDto | null>;
   /** M18 EVV — the visits a geofence is evaluated against for a clinician's day. */
