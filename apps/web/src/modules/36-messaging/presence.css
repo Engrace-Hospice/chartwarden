@@ -1,0 +1,57 @@
+/* WP 2.12 presence: the "Online now" section and the typing indicator. Tokens only; no colour carries meaning alone. */
+
+.wx-presence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  padding: 0.35rem 1rem;
+  border-bottom: 1px solid var(--color-card-border);
+  background: var(--color-surface-lowest);
+  font-size: 0.75rem;
+}
+
+.wx-presence-title {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-on-surface-variant);
+}
+
+.wx-presence-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wx-presence-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.wx-presence-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--color-success);
+}
+
+.wx-typing-indicator {
+  display: block;
+  min-height: 1.25rem;
+  padding: 0 1rem;
+  font-size: 0.75rem;
+  font-style: italic;
+  color: var(--color-on-surface-variant);
+  transition: opacity 0.15s ease-in;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wx-typing-indicator {
+    transition: none;
+  }
+}

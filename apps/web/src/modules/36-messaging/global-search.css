@@ -1,0 +1,196 @@
+/* WP 2.7b global search: a trigger under the page header and a flat panel (no modal). Token-driven, same quiet pattern
+   as the in-conversation search. Targets are at least 44px; status never relies on colour alone. */
+
+.wx-gsearch {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+}
+
+.wx-gsearch-trigger {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  padding: 0 1rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: 999px;
+  background: var(--color-surface-lowest);
+  color: var(--color-on-surface-variant);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.wx-gsearch-trigger:hover,
+.wx-gsearch-trigger[aria-expanded="true"] {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.wx-gsearch-trigger:focus-visible,
+.wx-gsearch-close:focus-visible,
+.wx-gsearch-input:focus-visible,
+.wx-gsearch-results a:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.wx-gsearch-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  max-height: min(32rem, 70vh);
+  overflow-y: auto;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-lowest);
+  font-size: 0.8125rem;
+  color: var(--color-on-surface);
+}
+
+.wx-gsearch-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.wx-gsearch-input {
+  flex: 1;
+  min-height: 44px;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-lowest);
+  color: inherit;
+  font: inherit;
+}
+
+.wx-gsearch-close {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-on-surface-variant);
+  cursor: pointer;
+}
+
+.wx-gsearch-help,
+.wx-gsearch-status {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+}
+
+.wx-gsearch-status:empty {
+  display: none;
+}
+
+.wx-gsearch-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-md);
+  color: var(--color-error-pill-fg);
+}
+
+.wx-gsearch-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.wx-gsearch-skeleton-row {
+  display: block;
+  height: 2.5rem;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-low);
+  animation: wx-gsearch-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes wx-gsearch-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.wx-gsearch-results {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.wx-gsearch-results li + li {
+  border-top: 1px solid var(--color-card-border);
+}
+
+.wx-gsearch-results a {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-height: 44px;
+  padding: 0.55rem 0.4rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.wx-gsearch-results a:hover {
+  background: var(--color-surface-low);
+}
+
+.wx-gsearch-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.75rem;
+  color: var(--color-on-surface-variant);
+  font-size: 0.75rem;
+}
+
+.wx-gsearch-meta strong {
+  color: var(--color-on-surface);
+  font-size: 0.8125rem;
+}
+
+.wx-gsearch-tag {
+  padding: 0 0.4rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: 999px;
+}
+
+.wx-gsearch-snippet {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  color: var(--color-on-surface-variant);
+}
+
+.wx-gsearch-more {
+  display: flex;
+  justify-content: flex-start;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wx-gsearch-skeleton-row {
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .wx-gsearch-panel {
+    max-height: 75vh;
+  }
+}

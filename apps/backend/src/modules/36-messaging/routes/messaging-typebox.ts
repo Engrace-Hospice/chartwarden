@@ -343,6 +343,22 @@ const MessageAttachmentViewSchema = Type.Object({
   byteSize: Type.Integer(),
   availability: Type.Union([Type.Literal("available"), Type.Literal("scanning")]),
 });
+// WP 2.10: a poll as it rides on a message (defined here so the message schema does not import poll-typebox).
+export const PollViewSchema = Type.Object({
+  pollId: Type.String(),
+  closed: Type.Boolean(),
+  closedAt: NullableString(),
+  totalVotes: Type.Integer({ minimum: 0 }),
+  myOptionId: NullableString(),
+  canClose: Type.Boolean(),
+  options: Type.Array(
+    Type.Object({
+      optionId: Type.String(),
+      label: Type.String(),
+      voteCount: Type.Integer({ minimum: 0 }),
+    }),
+  ),
+});
 export const ResolvedMessageSchema = Type.Object({
   messageId: Type.String(),
   channelId: Type.String(),
@@ -372,6 +388,8 @@ export const ResolvedMessageSchema = Type.Object({
     ),
   ),
   pinned: Type.Optional(Type.Boolean()),
+  // WP 2.10: the poll on this message (additive; absent when the message has none).
+  poll: Type.Optional(PollViewSchema),
   references: Type.Array(
     Type.Object({
       kind: Type.Union([Type.Literal("staff"), Type.Literal("patient")]),

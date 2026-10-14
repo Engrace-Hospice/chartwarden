@@ -11,6 +11,7 @@ import { activeMentionQuery, reconcileReferences } from "./mention-utils";
 import type { ChannelSummary, MessageReferenceInput } from "./messaging-types";
 import { channelLabel } from "./messaging-utils";
 import { NonMemberMentionPrompt } from "./non-member-mention-prompt";
+import { PollCreateButton } from "./poll-create-button";
 import { ScheduleSendButton } from "./schedule-send-button";
 import { TemplatePicker } from "./template-picker";
 import type { AttachmentUploads } from "./use-attachment-upload";
@@ -39,6 +40,8 @@ export interface ThreadComposerProps {
   sendHint: string | null;
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   onInsertSavedReply: (text: string) => void;
+  /** WP 2.10: a poll was posted; the thread reloads so it shows without waiting for the next poll. */
+  onPollCreated: () => void;
   mentionQuery: MentionPicker["query"];
   setMentionQuery: MentionPicker["setQuery"];
   pendingAdd: MentionPicker["pendingAdd"];
@@ -70,6 +73,7 @@ export function ThreadComposer({
   sendHint,
   onKeyDown,
   onInsertSavedReply,
+  onPollCreated,
   mentionQuery,
   setMentionQuery,
   pendingAdd,
@@ -139,6 +143,12 @@ export function ThreadComposer({
           disabled={sending}
           onInsert={onInsertSavedReply}
           onClosed={() => textareaRef.current?.focus()}
+        />
+        <PollCreateButton
+          channelId={channel.channelId}
+          kind={channel.kind}
+          disabled={sending}
+          onCreated={onPollCreated}
         />
         <NonMemberMentionPrompt
           person={pendingAdd?.person ?? null}

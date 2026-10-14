@@ -62,6 +62,7 @@ import {
   VerifyEndpointBodySchema,
   parse,
 } from "./messaging-typebox";
+import { type PresenceRouteDeps, registerPresenceRoutes } from "./presence-routes";
 import { registerReactionPinRoutes } from "./reaction-pin-routes";
 import { registerMessageSearchRoutes } from "./search-routes";
 
@@ -81,6 +82,8 @@ export interface MessagingRouteDeps {
   service: MessagingRouteService;
   /** WP 2.9: announcement receipts, department channels and the org_admin-only announcement send guard. */
   announcements: AnnouncementService;
+  /** WP 2.12: ephemeral presence/typing. Omitted => the routes are registered but the tenant flag reads off. */
+  presence?: PresenceRouteDeps;
 }
 
 /**
@@ -298,6 +301,12 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     viewChannel: VIEW_CHANNEL,
     sendToChannel: SEND_TO_CHANNEL,
     announcementOnly: announceGuard,
+  });
+
+  // --- WP 2.12: ephemeral presence + typing (own file; the channel's guards, flag-gated, never persisted) ----------
+  registerPresenceRoutes(app, deps.presence ?? { isEnabled: async () => false }, {
+    read: READ,
+    viewChannel: VIEW_CHANNEL,
   });
 
   // Structured autocomplete is scoped to a channel whose effective visibility has already been
