@@ -4,8 +4,10 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
     HF_HOME=/opt/models/hf DOCLING_ARTIFACTS_PATH=/opt/models/docling
 
+# libcurl4t64 is named so the layer is rebuilt against the current security repo: tesseract pulls it in, and a
+# cached older layer kept the vulnerable 8.14.1-2+deb13u5 (CVE-2026-8286, CVE-2026-8927; fixed in deb13u7).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 tesseract-ocr tesseract-ocr-eng \
+ && apt-get install -y --no-install-recommends libcurl4t64 libgl1 libglib2.0-0 tesseract-ocr tesseract-ocr-eng \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /srv
