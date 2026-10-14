@@ -10,17 +10,25 @@
 //           reconciled_at, status='ready' and refreshes the statistics. Drift (a message sent mid-sweep, a failed write) moves
 //           the checkpoint just before the first drifting message so the next tick resumes there, not from the start.
 //
+// Name exclusion (ADR-0058): every pass first re-reads the tenant's patient/contact names (grow-only, keyed digests, see
+// name-exclusion.ts) and ends by rewriting the already-indexed messages that still carry a newly excluded name.
+// When 'ready' is written the OLD key versions' rows and state rows are removed in the same transaction (security review M1: after a
+// rotation the previous version's rows are unreachable dead PHI-derived weight), and the stored tag width is compared with the sizing
+// rule on the REAL row count (security review H2): 2 or more bits off means a rebuild at the right width.
+//
 // A 'ready' index is trusted only while reconciled_at is newer than BOTH the tenant setting's last change and the platform
 // flag row's last update (a flip OFF-then-ON in between invalidates it) and younger than RECHECK_AFTER_MS.
 // ponytail: each message is its own tenant transaction through the flag-checking writer (2 extra small reads per message);
 // batch the writer if the backfill of a very large tenant is too slow. The verify query prefilters on `status='deleted'`
 // only; when the redaction marker lands (WP 5.x) the verify scan must evaluate the port on every row, not only on candidates.
 import type { DbClient } from "@wardenx/db";
+import { shouldResizeTagBits, tagBitsForTotalRows } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
 import { sql } from "drizzle-orm";
 import type { Tx } from "../messaging-write-core";
 import { type IndexState, ensureIndexState, saveCheckpoint, setIndexStatus } from "./index-state";
 import type { IndexWriter, IndexWriterDeps } from "./index-writer";
+import { reindexPendingExclusions } from "./name-exclusion";
 import { isEligibleForIndex, neverRedacted } from "./ports";
 import { refreshIndexStats } from "./stats";
 import type { TenantSearchSettingStore } from "./tenant-setting-store";
@@ -177,10 +185,43 @@ async function verifyAndFinish(
       return "building" as const;
     }
     await setIndexStatus(tx, organizationId, keyVersion, "ready", { reconciledNow: true });
+    // M1: rows (and state) of every other key version are unreachable now that this version is verified.
+    await tx.execute(sql`
+      DELETE FROM message_search_token
+       WHERE organization_id = ${organizationId} AND key_version <> ${keyVersion}`);
+    await tx.execute(sql`
+      DELETE FROM message_search_index_state
+       WHERE organization_id = ${organizationId} AND key_version <> ${keyVersion}`);
     return "ready" as const;
   });
-  if (outcome === "ready") await refreshIndexStats(deps.db, organizationId, keyVersion);
-  return outcome;
+  if (outcome !== "ready") return outcome;
+  const stats = await refreshIndexStats(deps.db, organizationId, keyVersion);
+  const state = await inTenantTx(deps.db, organizationId, (tx) =>
+    ensureIndexState(tx, organizationId, keyVersion),
+  );
+  if (!shouldResizeTagBits(state.tagBits, stats.totalRows)) return "ready";
+  await resizeIndex(deps, organizationId, keyVersion, stats.totalRows);
+  return "building";
+}
+
+/** H2: rebuild at the width the sizing rule gives for the real row count. The old rows cannot be reused (a tag is the top T bits). */
+async function resizeIndex(
+  deps: ReconcileDeps,
+  organizationId: string,
+  keyVersion: string,
+  totalRows: number,
+): Promise<void> {
+  await inTenantTx(deps.db, organizationId, async (tx) => {
+    await tx.execute(sql`
+      DELETE FROM message_search_token
+       WHERE organization_id = ${organizationId} AND key_version = ${keyVersion}`);
+    await tx.execute(sql`
+      UPDATE message_search_index_state
+         SET tag_bits = ${tagBitsForTotalRows(totalRows)}, status = 'building',
+             checkpoint_created_at = NULL, checkpoint_message_id = NULL, reconciled_at = NULL,
+             head_buckets = '{}'::text[], distinct_tags = NULL, stats_at = NULL, updated_at = now()
+       WHERE organization_id = ${organizationId} AND key_version = ${keyVersion}`);
+  });
 }
 
 /** Exported for the query path (WP 2.7b C3): the serve gate trusts a 'ready' index by exactly this rule. */
@@ -200,6 +241,31 @@ export async function reconcileOrg(
   deps: ReconcileDeps,
   organizationId: string,
 ): Promise<ReconcileSummary> {
+  const summary = await reconcileIndex(deps, organizationId);
+  if (summary.state === "off") return summary;
+  // Name exclusion housekeeping runs on every non-OFF pass, ready or not (an early 'ready' return must not skip it).
+  const keyVersion = await deps.keys.activeVersion(organizationId);
+  const state = await inTenantTx(deps.db, organizationId, (tx) =>
+    ensureIndexState(tx, organizationId, keyVersion),
+  );
+  await reindexPendingExclusions(
+    {
+      db: deps.db,
+      keys: deps.keys,
+      exclusions: deps.exclusions,
+      indexMessage: (org, id) => deps.writer.indexMessage(org, id),
+    },
+    organizationId,
+    keyVersion,
+    state.tagBits,
+  );
+  return summary;
+}
+
+async function reconcileIndex(
+  deps: ReconcileDeps,
+  organizationId: string,
+): Promise<ReconcileSummary> {
   const batchSize = deps.batchSize ?? RECONCILE_BATCH_SIZE;
   const maxBatches = deps.maxBatches ?? RECONCILE_MAX_BATCHES_PER_RUN;
   const isRedactedOrPending = deps.isRedactedOrPending ?? neverRedacted;
@@ -211,6 +277,10 @@ export async function reconcileOrg(
   if (!platform.enabled) return OFF;
 
   const keyVersion = await deps.keys.activeVersion(organizationId);
+  // Names first: the sweep below and every writer exclude them from the moment their digests are recorded. Throttled per tenant
+  // (a full patient-name read is the tick's most expensive step); the first pass after enabling always runs it, so the query
+  // path never has to.
+  await deps.exclusions.syncIfDue(organizationId, keyVersion);
   let state = await inTenantTx(deps.db, organizationId, (tx) =>
     ensureIndexState(tx, organizationId, keyVersion),
   );

@@ -8,16 +8,22 @@ import {
   type SearchKeyProvider,
   buildMessageTags,
   decodeSearchCursor,
+  deriveChannelKey,
   deriveSearchKey,
+  digestExclusion,
   encodeSearchCursor,
   falseCandidateRate,
   headBucketProbability,
+  indexTagStrings,
+  nameTokenDigest,
   padTags,
   paddedSize,
+  shouldResizeTagBits,
   tagArithmetic,
-  tagBitsForDistinctTags,
+  tagBitsForTotalRows,
   tagForPrefix,
   tagForWord,
+  tokenizeForSearch,
 } from "../src/search/global";
 
 const KEK = Buffer.alloc(32, 7);
@@ -281,12 +287,86 @@ describe("T arithmetic (ADR-0058 table, recomputed from its stated assumptions)"
     expect(headBucketProbability(16, 3e4)).toBeCloseTo(0.367, 3);
   });
 
-  it("the per-tenant sizing rule gives 19 for D=4e5, 18 for D=2e5, 16 for a tenant ten times smaller, 19 when unknown", () => {
-    expect(tagBitsForDistinctTags(4e5)).toBe(19);
-    expect(tagBitsForDistinctTags(2e5)).toBe(18); // the sparse-prefix reference tenant; DEFAULT_TAG_BITS stays 19 (see ADR)
-    expect(tagBitsForDistinctTags(4e4)).toBe(16);
-    expect(tagBitsForDistinctTags(null)).toBe(19);
-    expect(tagBitsForDistinctTags(10)).toBe(12);
-    expect(tagBitsForDistinctTags(1e9)).toBe(20);
+  it("H2 sizing rule T = clamp(round(log2(totalRows / 150)), 12, 20) recomputes the ADR table", () => {
+    // The reference tenant's 8e7 stored rows give the chosen 19; every table row's own rows-per-bucket figure maps back to its T.
+    expect(tagBitsForTotalRows(ROWS)).toBe(19);
+    // ... and it picks the table row whose rows-per-bucket is closest (in log2) to the 150 target.
+    const nearest = [...TABLE].sort(
+      (a, b) => Math.abs(Math.log2(a[3] / 150)) - Math.abs(Math.log2(b[3] / 150)),
+    )[0];
+    expect(nearest?.[0]).toBe(tagBitsForTotalRows(ROWS));
+    for (const [t, , , rows] of TABLE) {
+      expect(tagArithmetic(t, D, ROWS).rowsPerBucket).toBeCloseTo(rows, -0.5);
+      expect(tagBitsForTotalRows(150 * 2 ** t)).toBe(Math.min(20, Math.max(12, t)));
+    }
+    expect(tagBitsForTotalRows(ROWS / 10)).toBe(16); // a tenant ten times smaller
+    expect(tagBitsForTotalRows(null)).toBe(19);
+    expect(tagBitsForTotalRows(0)).toBe(19);
+    expect(tagBitsForTotalRows(10)).toBe(12);
+    expect(tagBitsForTotalRows(1e12)).toBe(20);
+  });
+
+  it("a stored T is rebuilt only when the rule differs by 2 or more bits", () => {
+    expect(shouldResizeTagBits(19, ROWS)).toBe(false);
+    expect(shouldResizeTagBits(18, ROWS)).toBe(false); // one bit off is rounding, not a reason to take search down
+    expect(shouldResizeTagBits(17, ROWS)).toBe(true);
+    expect(shouldResizeTagBits(19, ROWS / 8)).toBe(true);
+    expect(shouldResizeTagBits(12, 0)).toBe(false); // an empty index is never "resized" to the unknown-tenant default
+  });
+});
+
+describe("per-channel keys and name exclusion", () => {
+  const searchKey = deriveSearchKey(Buffer.alloc(32, 0x42), ORG_A, "v1");
+  const CH1 = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+  const CH2 = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+
+  it("a channel key is deterministic and bound to channel, T and version", () => {
+    const k = deriveChannelKey(searchKey, "v1", 19, CH1);
+    expect(k).toHaveLength(32);
+    expect(deriveChannelKey(searchKey, "v1", 19, CH1).equals(k)).toBe(true);
+    expect(deriveChannelKey(searchKey, "v1", 19, CH2).equals(k)).toBe(false);
+    expect(deriveChannelKey(searchKey, "v1", 18, CH1).equals(k)).toBe(false);
+    expect(deriveChannelKey(searchKey, "v2", 19, CH1).equals(k)).toBe(false);
+    expect(k.equals(searchKey)).toBe(false);
+  });
+
+  it("the same word has unrelated tags in two channels (a bucket is not a cross-channel label)", () => {
+    const a = deriveChannelKey(searchKey, "v1", 19, CH1);
+    const b = deriveChannelKey(searchKey, "v1", 19, CH2);
+    const words = [
+      "morphine",
+      "hospice",
+      "agitation",
+      "lorazepam",
+      "family",
+      "visit",
+      "nausea",
+      "dyspnea",
+    ];
+    const same = words.filter((w) => tagForWord(a, w, 19) === tagForWord(b, w, 19));
+    expect(same.length).toBeLessThanOrEqual(1); // chance collision only: 8 words at p = 2^-19
+  });
+
+  it("excluded name tokens produce no whole-word and no prefix tag, and are dropped like a stop word", () => {
+    const excluded = digestExclusion(searchKey, new Set([nameTokenDigest(searchKey, "lindqvist")]));
+    expect(tokenizeForSearch("Mrs Lindqvist needs morphine", excluded)).toEqual([
+      "mrs",
+      "needs",
+      "morphine",
+    ]);
+    expect(tokenizeForSearch("Mrs Lindqvist needs morphine")).toContain("lindqvist");
+    const ch = deriveChannelKey(searchKey, "v1", 19, CH1);
+    const withName = new Set(indexTagStrings(tokenizeForSearch("lindqvist")).map((i) => i));
+    expect(withName.size).toBeGreaterThan(1); // whole word + prefixes exist without exclusion
+    // with exclusion a body that is ONLY the name has no real tags: padded dummies only (16 rows)
+    expect(buildMessageTags(ch, "lindqvist", 19, excluded)).toHaveLength(16);
+    expect(indexTagStrings(tokenizeForSearch("lindqvist", excluded))).toEqual([]);
+  });
+
+  it("the name digest is keyed: another key gives another digest, and it never equals a tag input", () => {
+    const other = deriveSearchKey(Buffer.alloc(32, 0x43), ORG_A, "v1");
+    expect(nameTokenDigest(searchKey, "lindqvist")).toHaveLength(16);
+    expect(nameTokenDigest(searchKey, "lindqvist")).not.toBe(nameTokenDigest(other, "lindqvist"));
+    expect(digestExclusion(searchKey, new Set()).has("lindqvist")).toBe(false);
   });
 });

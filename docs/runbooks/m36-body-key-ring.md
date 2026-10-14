@@ -15,7 +15,7 @@ runbook is the operator side. The design and its guarantees are in ADR-0058 sect
 | Envelope v2 (`2 ‖ verLen ‖ ringVersion ‖ nonce ‖ ct ‖ tag`, AAD binds org + version) | `packages/messaging/src/crypto/body-crypto.ts` | n/a |
 | Reads open either scheme (first byte picks the key) | `MessageBodyCipher.open` | always on |
 | New writes seal on the ring | `M36_BODY_SEAL_SCHEME=ring` | **`legacy`** (off) |
-| Per-row scheme marker | generated column `body_envelope_version` (0 erased, 1 legacy, 2 ring), migration 1089 | n/a |
+| Per-row scheme marker | generated column `body_envelope_version` (0 erased, 1 legacy, 2 ring), migration 1089; poll option labels carry the same marker as `label_envelope_version`, migration 1094 | n/a |
 | Ring DEK cache | `body-key-ring.ts`, TTL 60 s, `invalidateMessageBodyKeys(orgId)` | n/a |
 | Backfill | `bun run m36:body-backfill -- --org <uuid>` (`scripts/m36-body-backfill.ts`) | refused in production without the drill flag |
 | Boot check | boot log line `M36 message bodies: <state>`; production fails closed on legacy rows + unusable key, **and fails if the count cannot be taken** | on |
@@ -27,8 +27,8 @@ runbook is the operator side. The design and its guarantees are in ADR-0058 sect
 
 Deploy with `M36_BODY_SEAL_SCHEME` unset. Behaviour is unchanged for writes; reads can already open ring envelopes. Migration
 1089 rewrites `message` and `message_revision` once (generated column), which takes an ACCESS EXCLUSIVE lock: fine while the
-tables are small (demo data), check row counts first otherwise. **Before** deploying, re-run `bun run db:provision-roles` so the platform
-login gets the column grant on `body_envelope_version`: in production a boot that cannot take the legacy-row count is FATAL
+tables are small (demo data), check row counts first otherwise. **Order: migrate, then re-run `bun run db:provision-roles`, then deploy.** The re-run gives the platform
+login gets the column grant on `body_envelope_version` (and, from migration 1094, on `message_poll_option.label_envelope_version`; the migration grants it itself when the role already exists): in production a boot that cannot take the legacy-row count is FATAL
 (`LegacyBodyCountUnavailableError`), by design. Outside production it warns and continues.
 
 Verify: boot log shows `M36 message bodies: legacy_rows_key_present (...)` or `ring_only`; `check:boot:platform` is green.
@@ -85,7 +85,13 @@ forged ring envelope. Only `hash_verify` (decrypt + hash) catches that, and the 
 credential operator-held and use it only for the escrow-gated backfill.
 
 Revisions are re-sealed through `m36_reseal_message_revision` (migrations 1089/1090), the only path that may UPDATE a revision, callable
-only by members of `wardenx_m36_reseal`.
+only by members of `wardenx_m36_reseal`. Poll option labels (`message_poll_option.label_cipher`, sealed like a body) are part of
+the same run and the same completion count (`remainingLegacy.message_poll_option`): they are INSERT-only for the app role, so
+they are re-sealed through `m36_reseal_poll_option` (migration 1094), with the same carrier role and the same shape checks. A label
+has no stored plaintext digest, so the pre-seal check is GCM authenticity (the legacy open must succeed) and the post-seal check is
+plaintext equality. **Accepted residual (labels):** a label has no stored digest, so a holder of the `wardenx_m36_reseal` credential
+who swaps in a well-shaped forged or copied ring envelope of the same length would not be caught by `hash_verify` (the audit trigger
+still records who and when, and a forged blob cannot be made valid without the DEK). The AAD binds the org and key version, not the option id.
 
 Throttle with `--batch`, `--pause-ms`, `--max-rows`, `--deadline-sec`. New legacy rows keep appearing until stage 2 is on, so the
 completion count only converges after it. Drafts and scheduled messages are not backfilled (transient: a draft is overwritten, a

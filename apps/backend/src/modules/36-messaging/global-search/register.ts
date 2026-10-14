@@ -17,6 +17,7 @@ import {
   registerGlobalSearchMaintenanceWorker,
   scheduleGlobalSearchMaintenance,
 } from "./maintenance-worker";
+import type { NameExclusions } from "./name-exclusion";
 import { createPlatformSearchFlag } from "./platform-flag";
 import { type IsRedactedOrPending, createBodyReader, neverRedacted } from "./ports";
 import type { ReconcileDeps } from "./reconcile";
@@ -27,6 +28,8 @@ export interface RegisterGlobalSearchDeps {
   readonly cipher: Pick<MessageBodyCipher, "open">;
   /** Production: `createUnavailableSearchKeyProvider()` until P1 lands. */
   readonly keys: SearchKeyProvider;
+  /** Production: the shared `createNameExclusions` over M5's name enumeration. Required: no default would index names. */
+  readonly exclusions: NameExclusions;
   readonly isRedactedOrPending?: IsRedactedOrPending;
   readonly onIndexError?: IndexWriterDeps["onError"];
   /** Absent on a boot without a queue connection or platform pool: only the consumer is built then. */
@@ -54,6 +57,7 @@ export async function registerM36GlobalSearch(
     db: deps.db,
     bodies: createBodyReader(deps.cipher),
     keys: deps.keys,
+    exclusions: deps.exclusions,
     platformFlag,
     isRedactedOrPending: deps.isRedactedOrPending ?? neverRedacted,
     ...(deps.onIndexError ? { onError: deps.onIndexError } : {}),

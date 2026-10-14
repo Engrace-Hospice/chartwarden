@@ -3,7 +3,11 @@
 import { Type } from "@sinclair/typebox";
 
 export const PutGlobalSearchSettingsBodySchema = Type.Object(
-  { enabled: Type.Boolean() },
+  {
+    enabled: Type.Boolean(),
+    // F5: required when `enabled` is true (checked by the service so a missing/stale value is a typed 409, not a schema 400).
+    acknowledgedNoticeVersion: Type.Optional(Type.String({ maxLength: 64 })),
+  },
   { additionalProperties: false },
 );
 
@@ -20,7 +24,13 @@ export const GlobalSearchSettingsViewSchema = Type.Object({
     escrowAttested: Type.Boolean(),
     leakageAttested: Type.Boolean(),
     rateLimitActive: Type.Boolean(),
+    excludedMembersCleared: Type.Boolean(),
   }),
+  notice: Type.Object({ version: Type.String(), text: Type.String() }),
+  noticeAcknowledgement: Type.Union([
+    Type.Object({ version: Type.String(), byUserId: Type.String(), at: Type.String() }),
+    Type.Null(),
+  ]),
   rebuild: Type.Union([
     Type.Object({
       keyVersion: Type.String(),

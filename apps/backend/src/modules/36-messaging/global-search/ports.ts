@@ -50,3 +50,5 @@ export function isEligibleForIndex(
 ): boolean {
   return row.status !== "deleted" && !isRedactedOrPending(row);
 }
+
+export type IndexOutcome = "indexed" | "removed" | "skipped_off" | "skipped_stale";

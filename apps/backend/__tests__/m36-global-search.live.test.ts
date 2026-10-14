@@ -42,8 +42,10 @@ import {
   CANDIDATE_CAP,
   DECRYPT_BUDGET,
   MAX_PAGES_PER_QUERY,
+  MAX_QUERY_CHANNELS,
   buildMessageTags,
   decodeSearchCursor,
+  deriveChannelKey,
   deriveOrgDek,
   deriveSearchKey,
   eraseTenantMessaging,
@@ -62,6 +64,10 @@ import { createDbAnnouncementService } from "../src/modules/36-messaging/announc
 import { createDrizzleMessagingEraseStore } from "../src/modules/36-messaging/erasers/messaging-eraser";
 import { createIndexWriter } from "../src/modules/36-messaging/global-search/index-writer";
 import { mountGlobalSearchRoutes } from "../src/modules/36-messaging/global-search/mount";
+import {
+  createNameExclusions,
+  createNoNameExclusions,
+} from "../src/modules/36-messaging/global-search/name-exclusion";
 import {
   GLOBAL_SEARCH_PLATFORM_FLAG_KEY,
   createPlatformSearchFlag,
@@ -87,6 +93,10 @@ import { registerGlobalSearchRoutes } from "../src/modules/36-messaging/routes/g
 import { registerMessagingRoutes } from "../src/modules/36-messaging/routes/messaging-routes";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
+// F1: the production response floor would add seconds to every route call; tests shrink it (the floor itself is covered in the query unit test).
+process.env.WARDENX_GLOBAL_SEARCH_FLOOR_MS = "0";
+process.env.WARDENX_GLOBAL_SEARCH_JITTER_MS = "0";
+
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
@@ -96,9 +106,9 @@ const ORG_B = "22222222-2222-4222-8222-2222000f0279";
 const ORG_C = "33333333-3333-4333-8333-3333000f0279"; // erasure
 const ORG_P = "44444444-4444-4444-8444-4444000f0279"; // performance corpus
 const VERSION = "legacy";
-const TAG_BITS = 19;
+/** The H2 sizing rule gives every tenant here (< 25k messages of ~16 rows) the 12-bit minimum. */
+const TAG_BITS = 12;
 const PERF_MESSAGES = Number(process.env.WARDENX_GLOBAL_SEARCH_PERF_MESSAGES ?? 50_000);
-const FAST_SEED_ABOVE = 100_000;
 const PERF_RUNS = 30;
 const P95_BUDGET_MS = 1000;
 const PG_CONTAINER = process.env.WARDENX_TEST_PG_CONTAINER;
@@ -151,6 +161,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
 
   const cipher = createMessageBodyCipher({ kek: KEK });
   const keys = createLegacyTestSearchKeyProvider(KEK);
+  const noNames = createNoNameExclusions();
 
   // ── fakes for the seams the ADR names ────────────────────────────────────────────────────────────
   const part2 = {
@@ -287,11 +298,16 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
     return { id: row.id as string, subject };
   }
 
+  /** The channel key (K_ch) a query / the writer uses for (org, channel) at the test tag width. */
+  const channelKey = async (org: string, channelId: string, bits = TAG_BITS) =>
+    deriveChannelKey(await keys.tagKey(org, VERSION), VERSION, bits, channelId);
+
   const indexWriter = () =>
     createIndexWriter({
       db: handle.db,
       bodies: createBodyReader(cipher),
       keys,
+      exclusions: noNames,
       platformFlag: createPlatformSearchFlag(handle.db),
     });
   /** A real sealed message, inserted as the write core stores it and indexed by the REAL writer. */
@@ -354,6 +370,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       db: handle.db,
       bodies: createBodyReader(cipher),
       keys,
+      exclusions: noNames,
       platformFlag: createPlatformSearchFlag(handle.db),
     };
     return {
@@ -416,6 +433,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
     }
     mountGlobalSearchRoutes(server, handle.db, {
       keys,
+      exclusions: noNames,
       cipher,
       bodies: spy.reader,
       part2Gate: part2.gate as never,
@@ -454,6 +472,13 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       `INSERT INTO organization (id,slug,legal_name,display_name)
        VALUES ($1,'c3-a','A','A'),($2,'c3-b','B','B'),($3,'c3-c','C','C'),($4,'c3-p','P','P')`,
       [ORG_A, ORG_B, ORG_C, ORG_P],
+    );
+    // Pin the tag width per tenant: the H2 sizing rule would otherwise pick a width from the (changing) row count and the planted-tag
+    // tests below derive tags at a fixed T. 12 is the rule's value for these small tenants; the 3.2M-row perf tenant is 14.
+    await admin.query(
+      `INSERT INTO message_search_index_state (organization_id, key_version, tag_bits)
+       VALUES ($1,$5,$6),($2,$5,$6),($3,$5,$6),($4,$5,14)`,
+      [ORG_A, ORG_B, ORG_C, ORG_P, VERSION, TAG_BITS],
     );
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
@@ -854,6 +879,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
         db: handle.db,
         bodies: createBodyReader(cipher),
         keys,
+        exclusions: noNames,
         platformFlag: createPlatformSearchFlag(handle.db),
         isRedactedOrPending: (row) => row.id === m,
       });
@@ -867,12 +893,14 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
 
   /** Insert the real tags of `text` for a message by hand (a simulated missed removal hook). */
   async function plantTags(org: string, messageId: string, text: string) {
-    const key = await keys.tagKey(org, VERSION);
+    const channelId = (await one(`SELECT channel_id FROM message WHERE id=$1`, [messageId]))
+      .channel_id as string;
+    const key = await channelKey(org, channelId);
     const tags = buildMessageTags(key, text, TAG_BITS);
     await q(
-      `INSERT INTO message_search_token (organization_id, key_version, tag, message_id)
-       SELECT $1,$2,t,$3 FROM unnest($4::int[]) AS t`,
-      [org, VERSION, messageId, tags],
+      `INSERT INTO message_search_token (organization_id, key_version, channel_id, tag, message_id)
+       SELECT $1,$2,$5,t,$3 FROM unnest($4::int[]) AS t`,
+      [org, VERSION, messageId, tags, channelId],
     );
   }
 
@@ -1014,6 +1042,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
         db: handle.db,
         bodies: spy.reader,
         keys,
+        exclusions: noNames,
         part2Gate: part2.gate as never,
         cipher,
       });
@@ -1111,6 +1140,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
         security: { rateLimitEnabled: false },
       });
       mountGlobalSearchRoutes(server, handle.db, {
+        exclusions: noNames,
         rateLimit: async () => {},
         part2Gate: part2.gate as never,
       });
@@ -1139,6 +1169,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       });
       mountGlobalSearchRoutes(s, handle.db, {
         keys: failing,
+        exclusions: noNames,
         cipher,
         bodies: spy.reader,
         part2Gate: part2.gate as never,
@@ -1162,6 +1193,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       });
       mountGlobalSearchRoutes(s2, handle.db, {
         keys: unknownVersion,
+        exclusions: noNames,
         cipher,
         part2Gate: part2.gate as never,
         rateLimit: async () => {},
@@ -1222,7 +1254,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       "Esophagogastroduodenoscopy scheduled alongside abdominal ultrasound evaluation gastroenterology consult",
       "Zq",
     ];
-    it("row counts are max(16, 2^ceil(log2 n)), tags are < 2^T, the token table has exactly 4 columns", async () => {
+    it("row counts are max(16, 2^ceil(log2 n)), tags are < 2^T, the token table has exactly 5 columns (org, version, tag, message, channel)", async () => {
       const u = await newUser(ORG_A);
       const ch = await newChannel(ORG_A, { members: [[u, "manual"]] });
       for (const text of texts) {
@@ -1243,6 +1275,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
         "key_version",
         "tag",
         "message_id",
+        "channel_id",
       ]);
     });
 
@@ -1250,7 +1283,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       const u = await newUser(ORG_A);
       const ch = await newChannel(ORG_A, { members: [[u, "manual"]] });
       const m = await send(ORG_A, ch.id, u, "Dummyreplaceword note");
-      const key = await keys.tagKey(ORG_A, VERSION);
+      const key = await channelKey(ORG_A, ch.id);
       const real = new Set(
         indexTagStrings(tokenizeForSearch("Dummyreplaceword note")).map((s) => {
           const mac = createHmac("sha256", key).update(s, "utf8").digest();
@@ -1273,9 +1306,11 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       expect(dummies(first)).not.toEqual(dummies(second));
     });
 
-    it("a brute-forced T=19 truncation collision is selected by SQL but excluded from the response", async () => {
+    it("a brute-forced T=12 truncation collision is selected by SQL but excluded from the response", async () => {
       const term = "collisionprobe";
-      const key = await keys.tagKey(ORG_A, VERSION);
+      const u = await newUser(ORG_A);
+      const ch = await newChannel(ORG_A, { members: [[u, "manual"]] });
+      const key = await channelKey(ORG_A, ch.id);
       const target = tagForPrefix(key, term.slice(0, 12), TAG_BITS); // sparse prefix tags {3,5,8,12}: a 14-letter term is queried at its 12-character tag
       let found: string | null = null;
       const letters = "abcdefghijklmnopqrstuvwxyz";
@@ -1294,8 +1329,6 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
           found = w;
       }
       expect(found, "no collision found in the search space").not.toBeNull();
-      const u = await newUser(ORG_A);
-      const ch = await newChannel(ORG_A, { members: [[u, "manual"]] });
       const m = await send(ORG_A, ch.id, u, `${found} unrelated note`);
       spy.reset();
       const res = await ok(u, term);
@@ -1521,11 +1554,10 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
          SELECT $1,$2,$3,'user',$4,$5, timestamptz '2026-01-01' + g * interval '1 second' FROM generate_series(1,$6::int) g`,
         [ch.id, ORG_A, u, sealed.cipher, sealed.sha256, count],
       );
-      const key = await keys.tagKey(ORG_A, VERSION);
-      const tag = tagForPrefix(key, term.slice(0, 12), TAG_BITS);
+      const tag = tagForPrefix(await channelKey(ORG_A, ch.id), term.slice(0, 12), TAG_BITS);
       await q(
-        `INSERT INTO message_search_token (organization_id, key_version, tag, message_id)
-         SELECT $1,$2,$3,id FROM message WHERE channel_id=$4`,
+        `INSERT INTO message_search_token (organization_id, key_version, channel_id, tag, message_id)
+         SELECT $1,$2,$4,$3,id FROM message WHERE channel_id=$4`,
         [ORG_A, VERSION, tag, ch.id],
       );
       return { u, tag };
@@ -1582,11 +1614,23 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       const u = await newUser(ORG_A);
       const ch = await newChannel(ORG_A, { members: [[u, "manual"]] });
       const m = await send(ORG_A, ch.id, u, "Headbucketword together with raremateword");
-      const key = await keys.tagKey(ORG_A, VERSION);
-      const headTag = tagForPrefix(key, "headbucketwo", TAG_BITS);
+      // every channel this user searches (their own + the org's announcement channels) is a head bucket for the term
+      const searched = (
+        await q(
+          `SELECT c.id FROM channel c LEFT JOIN channel_member cm ON cm.channel_id=c.id AND cm.user_id=$2 AND cm.removed_at IS NULL
+            WHERE c.organization_id=$1 AND (cm.user_id IS NOT NULL OR c.channel_kind='announcement')`,
+          [ORG_A, u],
+        )
+      ).map((r) => r.id as string);
+      const pairs = await Promise.all(
+        searched.map(
+          async (id) =>
+            `${id}:${tagForPrefix(await channelKey(ORG_A, id), "headbucketwo", TAG_BITS)}`,
+        ),
+      );
       await q(
-        `UPDATE message_search_index_state SET head_buckets = ARRAY[${headTag}]::int[] WHERE organization_id=$1`,
-        [ORG_A],
+        `UPDATE message_search_index_state SET head_buckets = $2::text[] WHERE organization_id=$1`,
+        [ORG_A, pairs],
       );
       spy.reset();
       if (pgss) await q("SELECT pg_stat_statements_reset()");
@@ -1607,9 +1651,10 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       // a two-term query with one non-head term proceeds
       const mixed = await ok(u, "headbucketword raremateword");
       expect(mixed.results.map((h) => h.messageId)).toEqual([m]);
-      await q(`UPDATE message_search_index_state SET head_buckets='{}' WHERE organization_id=$1`, [
-        ORG_A,
-      ]);
+      await q(
+        `UPDATE message_search_index_state SET head_buckets='{}'::text[] WHERE organization_id=$1`,
+        [ORG_A],
+      );
     });
 
     it("two-term queries are an AND-intersection and a multi-word body needs both words", async () => {
@@ -1619,6 +1664,201 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       await send(ORG_A, ch.id, u, "Intersectionalpha alone here");
       await send(ORG_A, ch.id, u, "Intersectionbravo alone here");
       expect(idsOf(await search(u, "intersectionalpha intersectionbra"))).toEqual([both]);
+    });
+  });
+
+  // ═══ product-owner decisions 2026-10-13: name exclusion and per-channel keys ════════════════════════
+  describe("name exclusion and per-channel keys (ADR-0058 amendment 2026-10-13)", () => {
+    const nameFragments = ["Ingrid Lindqvist-Okafor"];
+    const realNames = createNameExclusions({
+      db: handle_db(),
+      keys,
+      names: {
+        fragmentsPage: async (_org, after) =>
+          after === null
+            ? { fragments: [...nameFragments], nextAfterId: null }
+            : { fragments: [], nextAfterId: null },
+      },
+    });
+    function handle_db(): DbClient {
+      // the handle is created in beforeAll; resolve it lazily on first use
+      return new Proxy({} as DbClient, { get: (_t, prop) => (handle.db as never)[prop] });
+    }
+    const nameWriter = () =>
+      createIndexWriter({
+        db: handle.db,
+        bodies: createBodyReader(cipher),
+        keys,
+        exclusions: realNames,
+        platformFlag: createPlatformSearchFlag(handle.db),
+      });
+    const sendNamed = async (channelId: string, author: string, text: string, at?: string) => {
+      const id = await send(ORG_A, channelId, author, text, {
+        index: false,
+        ...(at ? { at } : {}),
+      });
+      await nameWriter().indexMessage(ORG_A, id);
+      return id;
+    };
+    function appWith(exclusions: ReturnType<typeof createNameExclusions>) {
+      const server = buildServer({
+        db: handle.db,
+        authenticate: headerAuth,
+        security: { rateLimitEnabled: false },
+      });
+      mountGlobalSearchRoutes(server, handle.db, {
+        keys,
+        exclusions,
+        cipher,
+        bodies: spy.reader,
+        part2Gate: part2.gate as never,
+        authority: async (o, u, c, g, w) => effectivelyVisibleChannels(o, u, [...c], g, w),
+        rateLimit: async () => {},
+      });
+      return server;
+    }
+    const shape = (b: SearchBody) => [b.results.length, !!b.nextCursor, b.scanCapped, b.refine];
+
+    it("a name is never matched and a name query is indistinguishable from an unknown-word query", async () => {
+      const u = await newUser(ORG_A);
+      const ch = await newChannel(ORG_A, { members: [[u, "manual"]] });
+      const m1 = await sendNamed(ch.id, u, "Mrs Lindqvist asked for morphine overnight");
+      const m2 = await sendNamed(ch.id, u, "Ingrid is resting comfortably");
+      // control: the same name indexed by a writer WITHOUT the exclusion (what the old behaviour produced)
+      const m3 = await send(ORG_A, ch.id, u, "Okafor family visited");
+      expect(idsOf(await search(u, "morphine"))).toEqual([m1]);
+      expect(idsOf(await search(u, "comfortably"))).toEqual([m2]);
+
+      const named = appWith(realNames);
+      await named.ready();
+      const searchNamed = async (q: string) => {
+        const res = await named.inject({ method: "GET", url: searchUrl(q), headers: headers(u) });
+        expect(res.statusCode, `${q}: ${res.body}`).toBe(200);
+        return body(res);
+      };
+      const unknown = await searchNamed("qwertyzzzword");
+      for (const name of ["lindqvist", "ingrid", "okafor", "lindqvist morphine", "lindq"]) {
+        const got = await searchNamed(name);
+        expect(got.results, name).toEqual([]);
+        expect(shape(got), name).toEqual(shape(unknown)); // same status, same shape as an unknown word: no roster oracle
+      }
+      // the control row IS in the index under the noNames writer, but the name-aware verification never returns it
+      expect(await tokenCount(m3)).toBeGreaterThan(0);
+      expect((await searchNamed("okafor")).results).toEqual([]);
+      expect(idsOf(await search(u, "okafor"))).toEqual([m3]); // the non-name-aware app (control) finds it
+      await named.close();
+    });
+
+    it("a tenant whose names were never read and has no name source fails the query closed (503), never an unfiltered answer", async () => {
+      // ORG_B's index state has never been synced by a name-aware component in this suite (the standard fixtures use `noNames`).
+      const u = await newUser(ORG_B);
+      await newChannel(ORG_B, { members: [[u, "manual"]] });
+      const failing = createNameExclusions({ db: handle.db, keys });
+      const server = appWith(failing);
+      await server.ready();
+      const res = await server.inject({
+        method: "GET",
+        url: searchUrl("morphine"),
+        headers: headers(u, ORG_B),
+      });
+      expect([res.statusCode, errorCode(res)]).toEqual([503, "GLOBAL_SEARCH_UNAVAILABLE"]);
+      await server.close();
+    });
+
+    it("only the caller's member channels are probed: a word in a channel the caller is not in is neither found nor opened", async () => {
+      const mine = await newUser(ORG_A);
+      const other = await newUser(ORG_A);
+      const chMine = await newChannel(ORG_A, { members: [[mine, "manual"]] });
+      const chOther = await newChannel(ORG_A, { members: [[other, "manual"]] });
+      const a = await send(ORG_A, chMine.id, mine, "Perchannelprobeword in my channel");
+      const b = await send(ORG_A, chOther.id, other, "Perchannelprobeword in their channel");
+      spy.reset();
+      expect(idsOf(await search(mine, "perchannelprobeword"))).toEqual([a]);
+      expect(spy.reads).toEqual([a]); // b was never a candidate: its channel got no tag from this caller's query
+      expect(idsOf(await search(other, "perchannelprobeword"))).toEqual([b]);
+    });
+
+    it("above MAX_QUERY_CHANNELS the most recently active channels are searched and the response says it was capped", async () => {
+      const u = await newUser(ORG_A);
+      const old = await newChannel(ORG_A, { members: [[u, "manual"]] });
+      const oldMessage = await send(ORG_A, old.id, u, "Channelcapprobeword in the oldest channel", {
+        at: "2020-01-01T00:00:00Z",
+      });
+      const recent: string[] = [];
+      for (let i = 0; i < MAX_QUERY_CHANNELS; i += 1) {
+        const ch = await newChannel(ORG_A, { members: [[u, "manual"]] });
+        recent.push(ch.id);
+      }
+      await q(
+        `INSERT INTO message (channel_id, organization_id, author_user_id, author_kind, body_cipher, body_sha256, created_at)
+         SELECT c, $2, $3, 'user', $4, $5, now() FROM unnest($1::uuid[]) c`,
+        [
+          recent,
+          ORG_A,
+          u,
+          (await cipher.seal(ORG_A, "filler")).cipher,
+          (await cipher.seal(ORG_A, "filler")).sha256,
+        ],
+      );
+      const capped = await ok(u, "channelcapprobeword");
+      expect(capped.results).toEqual([]); // the oldest channel is the 301st: not searched
+      expect(capped.scanCapped).toBe(true); // ... and the response says a bound was reached
+      // Announcement channels count for every user: drop exactly enough memberships to land ON the cap, so the oldest is inside it.
+      const announcements = Number(
+        (
+          await one(
+            `SELECT count(*)::int AS n FROM channel WHERE organization_id=$1 AND channel_kind='announcement'`,
+            [ORG_A],
+          )
+        ).n,
+      );
+      await q(
+        `UPDATE channel_member SET removed_at = now() WHERE user_id = $2 AND channel_id = ANY($1::uuid[])`,
+        [recent.slice(0, announcements + 1), u],
+      );
+      const inside = await ok(u, "channelcapprobeword");
+      expect(idsOf({ json: () => inside })).toEqual([oldMessage]);
+      expect(inside.scanCapped).toBe(false);
+    }, 180_000);
+
+    it("a head bucket is channel-local: one channel's head pair skips only that channel and flags scanCapped; all heads is REFINE", async () => {
+      const u = await newUser(ORG_A);
+      const heavy = await newChannel(ORG_A, { members: [[u, "manual"]] });
+      const light = await newChannel(ORG_A, { members: [[u, "manual"]] });
+      const inHeavy = await send(ORG_A, heavy.id, u, "Channelheadword in the heavy channel");
+      const inLight = await send(ORG_A, light.id, u, "Channelheadword in the light channel");
+      const pair = async (channelId: string) =>
+        `${channelId}:${tagForPrefix(await channelKey(ORG_A, channelId), "channelheadw", TAG_BITS)}`;
+      await q(
+        `UPDATE message_search_index_state SET head_buckets = ARRAY[$2]::text[] WHERE organization_id=$1`,
+        [ORG_A, await pair(heavy.id)],
+      );
+      const partial = await ok(u, "channelheadword");
+      expect(idsOf({ json: () => partial })).toEqual([inLight]); // the heavy channel is skipped, the other still answers
+      expect(partial.scanCapped).toBe(true);
+      expect(partial.refine).toBe(false);
+      expect(idsOf({ json: () => partial })).not.toContain(inHeavy);
+      // every channel the user searches (their two plus the org's announcement channels) is a head bucket
+      const searched = (
+        await q(
+          `SELECT c.id FROM channel c LEFT JOIN channel_member cm ON cm.channel_id=c.id AND cm.user_id=$2 AND cm.removed_at IS NULL
+            WHERE c.organization_id=$1 AND (cm.user_id IS NOT NULL OR c.channel_kind='announcement')`,
+          [ORG_A, u],
+        )
+      ).map((r) => r.id as string);
+      await q(
+        `UPDATE message_search_index_state SET head_buckets = $2::text[] WHERE organization_id=$1`,
+        [ORG_A, await Promise.all(searched.map(pair))],
+      );
+      expect(await ok(u, "channelheadword")).toMatchObject({
+        results: [],
+        refine: true,
+        scanCapped: true,
+      });
+      await q(
+        `UPDATE message_search_index_state SET head_buckets='{}'::text[] WHERE organization_id=$1`,
+        [ORG_A],
+      );
     });
   });
 
@@ -1725,10 +1965,14 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
         [ch.id, ORG_A, u, real.cipher, filler.cipher, real.sha256, filler.sha256],
       );
       for (const version of [VERSION, "v2"]) {
-        const tag = tagForPrefix(await keys2.tagKey(ORG_A, version), "dualversionw", TAG_BITS);
+        const tag = tagForPrefix(
+          deriveChannelKey(await keys2.tagKey(ORG_A, version), version, 19, ch.id),
+          "dualversionw",
+          19,
+        );
         await q(
-          `INSERT INTO message_search_token (organization_id, key_version, tag, message_id)
-           SELECT $1,$2,$3,id FROM message WHERE channel_id=$4`,
+          `INSERT INTO message_search_token (organization_id, key_version, channel_id, tag, message_id)
+           SELECT $1,$2,$4,$3,id FROM message WHERE channel_id=$4`,
           [ORG_A, version, tag, ch.id],
         );
       }
@@ -1744,6 +1988,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       });
       mountGlobalSearchRoutes(dual, handle.db, {
         keys: keys2,
+        exclusions: noNames,
         cipher,
         bodies: spy.reader,
         part2Gate: part2.gate as never,
@@ -1797,6 +2042,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       });
       mountGlobalSearchRoutes(server, handle.db, {
         keys,
+        exclusions: noNames,
         cipher,
         bodies: spy.reader,
         part2Gate: part2.gate as never,
@@ -1842,7 +2088,11 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       const mixed = await newUser(ORG_A, "clinical_staff");
       await grantRole(ORG_A, mixed, "external_auditor", { enabled: false });
       await expect(
-        routeService.addMember(ORG_A, { channelId: ch.id, userId: mixed, actor: { kind: "system" } }),
+        routeService.addMember(ORG_A, {
+          channelId: ch.id,
+          userId: mixed,
+          actor: { kind: "system" },
+        }),
       ).rejects.toMatchObject({ code: "MEMBER_CATEGORY_NOT_ALLOWED" });
       // an allowed workforce identity is accepted
       const staff = await newUser(ORG_A, "clinical_staff");
@@ -1861,7 +2111,10 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
     it("openDm with an excluded-category peer is byte-identical to a nonexistent peer and creates no channel (F6, no role oracle)", async () => {
       const caller = await newUser(ORG_A);
       const nonexistent = "00000000-0000-4000-8000-00000000d0d0";
-      const before = await q(`SELECT 1 FROM channel WHERE organization_id=$1 AND channel_kind='dm'`, [ORG_A]);
+      const before = await q(
+        `SELECT 1 FROM channel WHERE organization_id=$1 AND channel_kind='dm'`,
+        [ORG_A],
+      );
       const refusal = async (peer: string) => {
         const err = (await routeService.openDm(ORG_A, caller, peer).then(
           () => null,
@@ -1869,7 +2122,11 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
         )) as { code?: string; message?: string; statusCode?: number; status?: number } | null;
         expect(err).not.toBeNull();
         // the peer id is echoed in the NotFoundError message, so compare with it normalised out
-        return { code: err?.code, status: err?.statusCode ?? err?.status, message: err?.message?.replace(peer, "<peer>") };
+        return {
+          code: err?.code,
+          status: err?.statusCode ?? err?.status,
+          message: err?.message?.replace(peer, "<peer>"),
+        };
       };
       const absent = await refusal(nonexistent);
       for (const category of ["patient_family", "external_auditor", "platform_staff"] as const) {
@@ -1877,22 +2134,27 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
         expect(await refusal(peer), category).toEqual(absent);
       }
       expect(absent.code).not.toBe("MEMBER_CATEGORY_NOT_ALLOWED");
-      const after = await q(`SELECT 1 FROM channel WHERE organization_id=$1 AND channel_kind='dm'`, [ORG_A]);
+      const after = await q(
+        `SELECT 1 FROM channel WHERE organization_id=$1 AND channel_kind='dm'`,
+        [ORG_A],
+      );
       expect(after.length).toBe(before.length);
     });
 
     it("an inactive user is answered before the head-bucket refusal (no term-level signal)", async () => {
       const u = await newUser(ORG_A);
-      const key = await keys.tagKey(ORG_A, VERSION);
+      const ch = await newChannel(ORG_A, { members: [[u, "manual"]] });
+      const headTag = tagForPrefix(await channelKey(ORG_A, ch.id), "inactiveheadw", TAG_BITS);
       await q(
-        `UPDATE message_search_index_state SET head_buckets = ARRAY[${tagForPrefix(key, "inactiveheadw", TAG_BITS)}]::int[] WHERE organization_id=$1`,
+        `UPDATE message_search_index_state SET head_buckets = ARRAY['${ch.id}:${headTag}']::text[] WHERE organization_id=$1`,
         [ORG_A],
       );
       await q(`UPDATE "user" SET status='suspended' WHERE id=$1`, [u]);
       expect(await ok(u, "inactiveheadword")).toMatchObject({ refine: false, results: [] });
-      await q(`UPDATE message_search_index_state SET head_buckets='{}' WHERE organization_id=$1`, [
-        ORG_A,
-      ]);
+      await q(
+        `UPDATE message_search_index_state SET head_buckets='{}'::text[] WHERE organization_id=$1`,
+        [ORG_A],
+      );
     });
   });
 
@@ -1912,10 +2174,10 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
          SELECT $1,$2,$3,'user',$4,$5, $6::timestamptz + g * interval '1 second' FROM generate_series(1,$7::int) g`,
         [channelId, ORG_A, author, filler.cipher, filler.sha256, startIso, count],
       );
-      const tag = tagForPrefix(await keys.tagKey(ORG_A, VERSION), term.slice(0, 12), TAG_BITS);
+      const tag = tagForPrefix(await channelKey(ORG_A, channelId), term.slice(0, 12), TAG_BITS);
       await q(
-        `INSERT INTO message_search_token (organization_id, key_version, tag, message_id)
-         SELECT $1,$2,$3,id FROM message WHERE channel_id=$4
+        `INSERT INTO message_search_token (organization_id, key_version, channel_id, tag, message_id)
+         SELECT $1,$2,$4,$3,id FROM message WHERE channel_id=$4
             AND NOT EXISTS (SELECT 1 FROM message_search_token t WHERE t.message_id = message.id AND t.tag=$3)`,
         [ORG_A, VERSION, tag, channelId],
       );
@@ -2096,9 +2358,8 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
     }
 
     it(`indexes ${PERF_MESSAGES} messages and holds p95 < ${P95_BUDGET_MS} ms for every query class`, async () => {
-      const fast = PERF_MESSAGES > FAST_SEED_ABOVE;
       process.stderr.write(
-        `\n[search-perf] tier: ${PERF_MESSAGES} messages, ${fast ? "SQL-synthesised token rows (manual tier)" : "REAL index writer"}\n`,
+        `\n[search-perf] tier: ${PERF_MESSAGES} messages, REAL index writer (per-channel keys: the pooled SQL-synthesis tier is gone)\n`,
       );
       const words = vocabulary();
       const weights = words.map((_, i) => 1 / (i + 1));
@@ -2185,50 +2446,25 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       await setTenantFlag(ORG_P, true); // the writer skips a tenant whose flag is OFF
 
       const indexStarted = performance.now();
-      if (!fast) {
-        const ids = (await q(`SELECT id FROM message WHERE organization_id=$1`, [ORG_P])).map(
-          (r) => r.id as string,
-        );
-        const writer = indexWriter();
-        let cursor = 0;
-        const worker = async () => {
-          while (cursor < ids.length) {
-            const id = ids[cursor++] as string;
-            await writer.indexMessage(ORG_P, id);
-          }
-        };
-        await Promise.all(Array.from({ length: 8 }, worker));
-      } else {
-        const key = await keys.tagKey(ORG_P, VERSION);
-        await q("CREATE TEMP TABLE IF NOT EXISTS perf_tags (idx int, tag int)");
-        await q("TRUNCATE perf_tags");
-        for (let i = 0; i < POOL; i += 1) {
-          const tags = buildMessageTags(key, pool[i] as string, TAG_BITS);
-          await q("INSERT INTO perf_tags SELECT $1, unnest($2::int[])", [i, tags]);
+      const ids = (await q(`SELECT id FROM message WHERE organization_id=$1`, [ORG_P])).map(
+        (r) => r.id as string,
+      );
+      const writer = indexWriter();
+      let cursor = 0;
+      const worker = async () => {
+        while (cursor < ids.length) {
+          const id = ids[cursor++] as string;
+          await writer.indexMessage(ORG_P, id);
         }
-        await q(
-          `INSERT INTO message_search_token (organization_id, key_version, tag, message_id)
-           SELECT $1,$2,t.tag,m.id FROM message m
-             JOIN perf_pool p ON p.sha = m.body_sha256
-             JOIN perf_tags t ON t.idx = p.idx
-            WHERE m.organization_id=$1`,
-          [ORG_P, VERSION],
-        );
-        // ~8 random dummies per message approximate the padding rule (the REAL writer draws them per message).
-        await q(
-          `INSERT INTO message_search_token (organization_id, key_version, tag, message_id)
-           SELECT $1,$2,floor(random() * ${2 ** TAG_BITS})::int,m.id FROM message m, generate_series(1,8)
-            WHERE m.organization_id=$1`,
-          [ORG_P, VERSION],
-        );
-      }
+      };
+      await Promise.all(Array.from({ length: 8 }, worker));
       process.stderr.write(
         `[search-perf] indexed in ${((performance.now() - indexStarted) / 1000).toFixed(1)}s\n`,
       );
       await makeReady(ORG_P);
       const stats = await refreshIndexStats(handle.db, ORG_P, VERSION);
       process.stderr.write(
-        `[search-perf] head buckets: ${stats.headBuckets.length}, distinct tags: ${stats.distinctTags}\n`,
+        `[search-perf] head (channel, tag) pairs: ${stats.headBuckets.length}, distinct tags: ${stats.distinctTags}, rows: ${stats.totalRows}\n`,
       );
 
       const classes: Array<[string, string, string]> = [

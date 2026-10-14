@@ -15,6 +15,11 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { GlobalSearchService } from "../global-search/query-service";
 import type { RoleGate } from "../global-search/role-gate";
 import type { ServeGates } from "../global-search/serve-gate";
+import {
+  type ResponseFloorConfig,
+  responseFloorFromEnv,
+  withResponseFloor,
+} from "../global-search/timing-floor";
 import { GlobalSearchQuerySchema } from "./global-search-typebox";
 import { parse } from "./messaging-typebox";
 
@@ -33,7 +38,12 @@ export interface GlobalSearchRouteDeps {
   readonly gates: ServeGates;
   readonly roleGate: RoleGate;
   readonly rateLimit?: GlobalSearchRateLimit;
+  /** Default: the production floor (ADR-0058 review F1). Tests shrink it through the env or pass zeros. */
+  readonly responseFloor?: ResponseFloorConfig;
 }
+
+/** Each search is held for >= 1.5 s by the timing floor, so a caller could otherwise pin many pool connections at once. */
+export const MAX_IN_FLIGHT_SEARCHES_PER_USER = 2;
 
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
   const ctx = request.context;
@@ -46,6 +56,8 @@ export function registerGlobalSearchRoutes(
   deps: GlobalSearchRouteDeps,
 ): void {
   const { service, gates, roleGate } = deps;
+  const floor = deps.responseFloor ?? responseFloorFromEnv();
+  const inFlight = new Map<string, number>();
   const noStore: PreHandler = async (_request, reply) => {
     reply.header("Cache-Control", "no-store");
   };
@@ -87,8 +99,32 @@ export function registerGlobalSearchRoutes(
         auditRead: { resourceKind: "message", list: true, filterOmit: ["q", "cursor"] },
       },
     },
+    // F1: every outcome after the gates (hits, empty, refine, error) takes at least the floor.
     async (request) => {
       const { organizationId, userId } = actorOf(request);
+      // Fail fast, BEFORE the floor starts: the refusal depends only on the caller's own concurrency, so it leaks nothing.
+      const slot = `${organizationId}:${userId}`;
+      const running = inFlight.get(slot) ?? 0;
+      if (running >= MAX_IN_FLIGHT_SEARCHES_PER_USER) {
+        throw new WardenXError(
+          "GLOBAL_SEARCH_TOO_MANY_REQUESTS",
+          "too many searches in progress; wait for one to finish",
+          429,
+        );
+      }
+      inFlight.set(slot, running + 1);
+      try {
+        return await runSearch(request, organizationId, userId);
+      } finally {
+        const left = (inFlight.get(slot) ?? 1) - 1;
+        if (left <= 0) inFlight.delete(slot);
+        else inFlight.set(slot, left);
+      }
+    },
+  );
+
+  const runSearch = (request: FastifyRequest, organizationId: string, userId: string) =>
+    withResponseFloor(async () => {
       const ctx = request.context;
       const query = parse(GlobalSearchQuerySchema, request.query);
       return service.search({
@@ -107,6 +143,5 @@ export function registerGlobalSearchRoutes(
           userAgent: ctx.userAgent,
         },
       });
-    },
-  );
+    }, floor);
 }

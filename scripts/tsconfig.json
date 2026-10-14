@@ -18,6 +18,7 @@
     { "path": "../packages/ui" },
     { "path": "../packages/ai-platform" },
     { "path": "../packages/saas-tenant-platform" },
-    { "path": "../packages/terminology-loader" }
+    { "path": "../packages/terminology-loader" },
+    { "path": "../packages/messaging" }
   ]
 }

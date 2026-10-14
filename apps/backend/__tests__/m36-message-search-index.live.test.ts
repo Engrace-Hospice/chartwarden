@@ -86,9 +86,9 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C1 search index storage - LIVE Postgres", 
   async function seedIndexedMessage(org: string, channel: string, user: string): Promise<string> {
     const message = await seedMessage(org, channel, user);
     await admin.query(
-      `INSERT INTO message_search_token (organization_id, key_version, tag, message_id)
-       SELECT $1, $2, (random() * 1048575)::int, $3 FROM generate_series(1, ${TAGS_PER_MESSAGE})`,
-      [org, VERSION, message],
+      `INSERT INTO message_search_token (organization_id, key_version, channel_id, tag, message_id)
+       SELECT $1, $2, $4, (random() * 1048575)::int, $3 FROM generate_series(1, ${TAGS_PER_MESSAGE})`,
+      [org, VERSION, message, channel],
     );
     return message;
   }
@@ -158,14 +158,14 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C1 search index storage - LIVE Postgres", 
   });
 
   describe("shape", () => {
-    it("the token table has exactly the four columns and no surrogate key", async () => {
+    it("the token table has exactly the five columns (org, version, channel, tag, message) and no surrogate key", async () => {
       const cols = (
         await admin.query(
           `SELECT column_name FROM information_schema.columns
             WHERE table_schema='public' AND table_name='message_search_token' ORDER BY column_name`,
         )
       ).rows.map((r) => r.column_name);
-      expect(cols).toEqual(["key_version", "message_id", "organization_id", "tag"]);
+      expect(cols).toEqual(["channel_id", "key_version", "message_id", "organization_id", "tag"]);
       const pk = await admin.query(
         `SELECT 1 FROM pg_constraint WHERE conrelid='message_search_token'::regclass AND contype='p'`,
       );
@@ -177,14 +177,14 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C1 search index storage - LIVE Postgres", 
       for (const bad of [-1, 1048576]) {
         await expect(
           admin.query(
-            `INSERT INTO message_search_token (organization_id,key_version,tag,message_id) VALUES ($1,$2,$3,$4)`,
-            [ORG_A, VERSION, bad, m],
+            `INSERT INTO message_search_token (organization_id,key_version,channel_id,tag,message_id) VALUES ($1,$2,$5,$3,$4)`,
+            [ORG_A, VERSION, bad, m, channelA],
           ),
         ).rejects.toThrow(/message_search_token_tag_range/);
       }
       await admin.query(
-        `INSERT INTO message_search_token (organization_id,key_version,tag,message_id) VALUES ($1,$2,1048575,$3)`,
-        [ORG_A, VERSION, m],
+        `INSERT INTO message_search_token (organization_id,key_version,channel_id,tag,message_id) VALUES ($1,$2,$4,1048575,$3)`,
+        [ORG_A, VERSION, m, channelA],
       );
       expect(await tokenCount(m)).toBe(1);
     });
@@ -232,6 +232,31 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C1 search index storage - LIVE Postgres", 
       ).rejects.toThrow(/permission denied/);
     });
 
+    it("the wardenx_platform carrier has no privilege, table or column level, on the index state or token tables (L2)", async () => {
+      // The carrier is created by scripts/db/provision-runtime-roles.ts, not by a migration: make the check non-vacuous here.
+      await admin.query(`DO $$ BEGIN
+        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'wardenx_platform') THEN CREATE ROLE wardenx_platform NOLOGIN; END IF;
+      END $$`);
+      const rows = (
+        await admin.query(
+          `SELECT t AS table_name,
+                  has_table_privilege('wardenx_platform', t, 'SELECT') AS table_select,
+                  has_any_column_privilege('wardenx_platform', t, 'SELECT') AS column_select
+             FROM unnest(ARRAY['message_search_index_state','message_search_token']) t`,
+        )
+      ).rows;
+      expect(rows).toEqual([
+        { table_name: "message_search_index_state", table_select: false, column_select: false },
+        { table_name: "message_search_token", table_select: false, column_select: false },
+      ]);
+      // and the provisioning script never grants them
+      const provision = readFileSync(
+        join(__dirname, "../../../scripts/db/provision-runtime-roles.ts"),
+        "utf8",
+      );
+      expect(provision).not.toMatch(/message_search_(token|index_state)/);
+    });
+
     it("wardenx_app cannot DELETE the setting row (switch OFF, never remove)", async () => {
       const priv = (
         await admin.query(
@@ -272,8 +297,8 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C1 search index storage - LIVE Postgres", 
       await expect(
         asApp(ORG_B, userB, () =>
           app.query(
-            `INSERT INTO message_search_token (organization_id,key_version,tag,message_id) VALUES ($1,$2,5,$3)`,
-            [ORG_A, VERSION, m],
+            `INSERT INTO message_search_token (organization_id,key_version,channel_id,tag,message_id) VALUES ($1,$2,$4,5,$3)`,
+            [ORG_A, VERSION, m, channelA],
           ),
         ),
       ).rejects.toThrow(/row-level security/);
@@ -285,8 +310,8 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C1 search index storage - LIVE Postgres", 
       await expect(
         asApp(ORG_B, userB, () =>
           app.query(
-            `INSERT INTO message_search_token (organization_id,key_version,tag,message_id) VALUES ($1,$2,5,$3)`,
-            [ORG_B, VERSION, m],
+            `INSERT INTO message_search_token (organization_id,key_version,channel_id,tag,message_id) VALUES ($1,$2,$4,5,$3)`,
+            [ORG_B, VERSION, m, channelA],
           ),
         ),
       ).rejects.toThrow(/message_search_token_message_org_fk/);
@@ -508,9 +533,9 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C1 search index storage - LIVE Postgres", 
         userA,
         () =>
           app.query(
-            `INSERT INTO message_search_token (organization_id,key_version,tag,message_id)
-             SELECT $1, $2, $3, $4 FROM generate_series(1, ${TAGS_PER_MESSAGE})`,
-            [ORG_A, sentinelVersion, sentinel, m],
+            `INSERT INTO message_search_token (organization_id,key_version,channel_id,tag,message_id)
+             SELECT $1, $2, $5, $3, $4 FROM generate_series(1, ${TAGS_PER_MESSAGE})`,
+            [ORG_A, sentinelVersion, sentinel, m, channelA],
           ),
         true,
       );
@@ -599,6 +624,29 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C1 search index storage - LIVE Postgres", 
       const text = JSON.stringify(rows);
       expect(text).not.toMatch(/123456|654321|111111/);
       expect(text).toContain("<changed>");
+    });
+
+    it("the index-state audit images scrub the excluded-name digests and the pending digests too", async () => {
+      await admin.query(
+        `INSERT INTO message_search_index_state (organization_id, key_version, excluded_name_digests, exclusion_pending)
+         VALUES ($1,'v8','{aaaabbbbccccdddd}','{1111222233334444}') ON CONFLICT DO NOTHING`,
+        [ORG_B],
+      );
+      await admin.query(
+        `UPDATE message_search_index_state SET status='ready', excluded_name_digests='{eeeeffff00001111}', exclusion_pending='{5555666677778888}'
+          WHERE organization_id=$1 AND key_version='v8'`,
+        [ORG_B],
+      );
+      const rows = (
+        await admin.query(
+          `SELECT before, after FROM audit_event WHERE resource_kind='message_search_index_state' AND organization_id=$1`,
+          [ORG_B],
+        )
+      ).rows;
+      expect(rows.length).toBeGreaterThanOrEqual(2);
+      expect(JSON.stringify(rows)).not.toMatch(
+        /aaaabbbbccccdddd|1111222233334444|eeeeffff00001111|5555666677778888/,
+      );
     });
 
     it("the setting audit records actor, old and new image", async () => {

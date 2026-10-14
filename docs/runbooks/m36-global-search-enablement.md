@@ -8,6 +8,10 @@ rollback. The design and the reasons are in [ADR-0058](../adr/ADR-0058-messaging
 preconditions of Stage 6 below. The review is an AI desk review pending human sign-off; do not set the leakage-attested flag until a
 named security architect and privacy officer have signed it and the measured leakage experiment has passed.
 
+**What changed on 2026-10-13 (product-owner decisions, ADR-0058 amendment).** Patient and contact **names are never indexed**, and tags are
+**keyed per channel**. Operationally: migration 1096 empties the token table and marks every index state `stale`, so a tenant that was already ON
+rebuilds from the start (queries answer 503 `GLOBAL_SEARCH_INDEX_NOT_READY` until `ready`); see Stage 6c.
+
 ## What gates a tenant
 
 | Gate | Where it is enforced | Who sets it |
@@ -93,8 +97,10 @@ Preconditions for the leakage-attested flag, all recorded:
 
 1. The design review's human sign-off (security architect and privacy officer), and every condition in the
    [review record](../reviews/ADR-0058-design-review-2026-10-13.md) closed.
-2. The measured leakage experiment (ADR "Design review requirement" item 2) run at `T = 19` on synthetic hospice notes, with the result and the
-   pass criterion in the record, and the person who attested named.
+2. The measured leakage experiment (ADR "Design review requirement" item 2) run at the sized `T` (and 19) on synthetic hospice notes, with the result and the
+   pass criterion in the record, and the person who attested named. The 2026-10-13 re-run (names excluded through the production path, per-channel keys
+   measured for the name attack only) is [section 7 of the experiment record](../reviews/ADR-0058-leakage-experiment-2026-10-13.md); the vocabulary attacks
+   against per-channel keys and a production-shaped corpus are still to be run.
 3. The HIPAA risk-analysis entry for the new PHI-derived store is filed.
 4. Product-owner acceptance of the residual risk.
 
@@ -106,7 +112,10 @@ Then:
    (`POST /api/v1/platform/feature-flags/:flagKey/kill-switch` is the audited emergency form). It overrides every tenant ON and stops the query
    path and the indexer on the next request.
 
-## Stage 6b: pre-enablement check for excluded identities already in channels (KNOWN GAP)
+## Stage 6b: pre-enablement check for excluded identities already in channels (now a checklist item)
+
+Since the F6 follow-up this check is computed: `GET /api/v1/messaging/global-search/settings` reports `checklist.excludedMembersCleared`, and the enable PUT is refused
+with `EXCLUDED_MEMBERS_PRESENT` while it is false. The manual SQL below is kept to list WHICH rows to remove (the checklist only says whether any exist).
 
 The member-category gate (`member-category-gate.ts`, review finding F6) refuses NEW `channel_member` writes for an identity holding a
 `patient_family`, `external_auditor` or `platform_staff` role. It does not sweep rows written before the gate shipped, nor rows whose
@@ -137,16 +146,55 @@ Second known gap: neither `addMember` nor the DM path requires the target to hol
 but the gate itself and the provider and announcement creator rows do not, and the SQL above cannot see a user with no membership in the org.
 Tracked as a follow-up in the review record (F6 residual).
 
+## Stage 6c: name exclusion and per-channel keys (operator view)
+
+1. **Deploy order.** Migrate (1096), then deploy. 1096 truncates `message_search_token` and sets every `message_search_index_state` row to `stale` with no
+   checkpoint. Search is inert until enabled, so a clean rebuild is the intended path; an environment where it was already ON loses search until the next
+   `messaging.search_maintenance` tick(s) finish the sweep (watch `rebuild` on `GET .../settings`).
+   **Migrating before the rollout is safe only while the platform flag is absent and the indexer is stopped.** 1096 adds `message_search_token.channel_id NOT
+   NULL`; pods still on the old image insert token rows without it and would fail (the indexer's writes error and retry). Do not set the platform flag, and keep
+   the indexer/maintenance worker off, until every pod runs the new image.
+2. **The name source must be wired.** `apps/backend/src/index.ts` injects M5's `patientNameFragmentsPageForOrg` into the writer, the maintenance worker and the
+   query route. Without it the first index write of a tenant and every query fail closed (503 `GLOBAL_SEARCH_UNAVAILABLE`, error name
+   `NameExclusionNotConfiguredError` in the logs). A tenant's first tick reads all patient, alias, caregiver and emergency-contact names and stores **keyed
+   digests only**. Check (read-only, as an RLS-bypassing role, never print the arrays):
+
+   ```sql
+   SELECT organization_id, key_version, status, tag_bits,
+          cardinality(excluded_name_digests) AS excluded_tokens,
+          cardinality(exclusion_pending) AS pending_reindex, exclusion_synced_at
+   FROM message_search_index_state;
+   ```
+
+   `excluded_tokens` should be roughly the number of distinct name tokens of the tenant (0 for a tenant with no patients is correct); `exclusion_synced_at` is within
+   the last tick. `pending_reindex` is non-zero only for a few minutes after a new patient or contact appears.
+3. **New and changed names.** A new patient's name is excluded at the next tick (at most 5 minutes) plus the writers' 1-minute cache; messages already indexed with
+   it are rewritten after a further 2-minute delay (targeted, at most 30 s of work per tenant per tick; `pending_reindex` returns to 0). A renamed or removed patient
+   leaves the old name excluded. Shrinking the set is a full rebuild (set the state `stale`), an operator decision, not a routine.
+4. **What users are told.** A patient's or contact's name cannot be found by search; a name that is also an ordinary word (Grace, Hope, Will, Young) is unsearchable as a
+   word; a name nobody recorded in M5 (a nickname, a misspelling) and staff or place names ARE indexed. The static statement belongs in the tenant notice and the search-box
+   contract; the query path deliberately returns an ordinary empty result for a name (a distinct response would let users enumerate patient names).
+5. **Tag width `T`** is sized per tenant from the stored row count (`clamp(round(log2(rows / 150)), 12, 20)`): a new index uses the tenant's messages x 16, a verified
+   build re-measures, and a stored width 2 or more bits off is rebuilt (search closed until `ready`). `tag_bits` is in the query above. A small tenant sitting at 12 is correct.
+6. **Channel cap.** A user searches at most their 300 most recently active channels (member channels plus announcements); above that the response carries
+   `scanCapped: true`. Head buckets are recorded per `(channel, tag)`; a channel whose every query term is a head bucket is skipped and the response is flagged `scanCapped`.
+7. **Rotation.** A new ring version is a rebuild with search closed; when the new version is `ready` its transaction removes every other version's rows and state (verify:
+   `SELECT key_version, count(*) FROM message_search_token WHERE organization_id = ... GROUP BY 1` shows one version).
+
 ## Stage 7: switch one tenant on, then verify the index build
 
-1. An org admin with a fresh step-up: `PUT /api/v1/messaging/global-search/settings {"enabled":true}`. A 409 lists the failing checks; fix those,
-   do not work around them.
+1. An org admin with a fresh step-up: first `GET /api/v1/messaging/global-search/settings`, show `notice.text` to the admin (the written tenant notice of
+   whole-history discoverability must already have been sent, review condition 12), then `PUT ... {"enabled":true,"acknowledgedNoticeVersion":"<notice.version>"}`.
+   A 409 `GLOBAL_SEARCH_NOTICE_NOT_ACKNOWLEDGED` means the acknowledgement is missing or the notice changed (re-read the GET). A 409
+   `GLOBAL_SEARCH_PREREQUISITES_UNMET` lists the failing checks; fix those, do not work around them. Who acknowledged which version and when is stored
+   on the setting row (`notice_ack_*`) and is in the audit trail.
+   Every search response is held to a fixed minimum duration (about 1.5 to 2 s, ADR-0058 amendment, F1): a search that returns instantly is a bug.
 2. Turning ON starts the rebuild: the `messaging.search_maintenance` worker reconciles each enabled tenant on its tick. There is no manual build
    command, and none is needed. It is resumable and safe to leave running.
 3. Watch `GET /api/v1/messaging/global-search/settings`: `rebuild` progresses to complete and the index to `ready`. Until then queries are
    refused (the path fails closed), which is correct.
 4. Smoke test as a user in that tenant: a known word in a channel they can read returns the message; the same word in a channel they cannot read
-   returns nothing; 31 queries in a minute return 429; the audit log has the read events and **no query text or tags** (check one row).
+   returns nothing; a patient's surname that appears in a message returns nothing (names are excluded) while another word of the same message finds it; 31 queries in a minute return 429; the audit log has the read events and **no query text or tags** (check one row).
 5. Enable the next tenant only after the first has run a day with a clean `hash_verify` and no search 5xx.
 
 ## Rollback and kill

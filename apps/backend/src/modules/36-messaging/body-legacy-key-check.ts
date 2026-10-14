@@ -31,7 +31,7 @@ export interface LegacyBodyKeyStatus {
 export class LegacyBodyKeyMissingError extends Error {
   constructor(readonly status: LegacyBodyKeyStatus) {
     super(
-      `${status.legacyRows.total} message body row(s) are still on the legacy envelope (message: ${status.legacyRows.message}, message_revision: ${status.legacyRows.message_revision}) but MESSAGING_ENCRYPTION_KEY is missing or malformed; refusing to boot with unreadable history (ADR-0058 P1)`,
+      `${status.legacyRows.total} message body row(s) are still on the legacy envelope (message: ${status.legacyRows.message}, message_revision: ${status.legacyRows.message_revision}, message_poll_option: ${status.legacyRows.message_poll_option}) but MESSAGING_ENCRYPTION_KEY is missing or malformed; refusing to boot with unreadable history (ADR-0058 P1)`,
     );
     this.name = "LegacyBodyKeyMissingError";
   }
@@ -51,7 +51,7 @@ export function assertLegacyBodyKeyAvailable(
   counts: LegacyBodyCounts,
   env: NodeJS.ProcessEnv = process.env,
 ): LegacyBodyKeyStatus {
-  const total = counts.message + counts.message_revision;
+  const total = counts.message + counts.message_revision + counts.message_poll_option;
   const usable = keyUsable(env.MESSAGING_ENCRYPTION_KEY);
   const state: LegacyBodyKeyState =
     total === 0 ? "ring_only" : usable ? "legacy_rows_key_present" : "legacy_rows_key_missing";
@@ -95,6 +95,14 @@ export async function countLegacyBodiesAllTenants(deps: {
       return {
         message: await count(schema.messages),
         message_revision: await count(schema.messageRevisions),
+        message_poll_option: Number(
+          (
+            await tx
+              .select({ n: sql<number>`count(*)::int` })
+              .from(schema.messagePollOptions)
+              .where(eq(schema.messagePollOptions.labelEnvelopeVersion, LEGACY_ENVELOPE))
+          )[0]?.n ?? 0,
+        ),
       };
     },
   );
@@ -130,7 +138,7 @@ export async function runLegacyBodyBootCheck(deps: {
   }
   const status = assertLegacyBodyKeyAvailable(counts, env);
   deps.log.info(
-    `M36 message bodies: ${status.state} (legacy rows: message ${counts.message}, message_revision ${counts.message_revision})`,
+    `M36 message bodies: ${status.state} (legacy rows: message ${counts.message}, message_revision ${counts.message_revision}, message_poll_option ${counts.message_poll_option})`,
   );
   return status;
 }

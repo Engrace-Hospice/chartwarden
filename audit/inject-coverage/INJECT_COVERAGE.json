@@ -504,6 +504,7 @@
         "apps/backend/__tests__/m36-message-search.live.test.ts",
         "apps/backend/__tests__/m36-message-templates.live.test.ts",
         "apps/backend/__tests__/m36-message-templates.test.ts",
+        "apps/backend/__tests__/m36-poll-announce-guard.test.ts",
         "apps/backend/__tests__/m36-presence.live.test.ts",
         "apps/backend/__tests__/m36-presence.test.ts",
         "apps/backend/__tests__/m36-rich-body.test.ts",

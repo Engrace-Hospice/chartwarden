@@ -17,7 +17,14 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
-import { tagForPrefix, tagForWord } from "@wardenx/messaging";
+import {
+  type SearchKeyProvider,
+  deriveChannelKey,
+  digestExclusion,
+  nameTokenDigest,
+  tagForPrefix,
+  tagForWord,
+} from "@wardenx/messaging";
 import { WardenXError } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -26,6 +33,7 @@ import { EXTERNAL_AUDITOR_PERMISSIONS } from "../src/modules/03-authorization/au
 import {
   MAX_QUERY_TERMS,
   bodyMatchesQueryTerms,
+  buildVersionQueries,
   isHeadBucketQuery,
   parseQueryTerms,
   tagsForTerms,
@@ -34,9 +42,16 @@ import {
   GLOBAL_SEARCH_ROLE_POLICY,
   mayUseGlobalSearch,
 } from "../src/modules/36-messaging/global-search/role-gate";
+import { headPairKey } from "../src/modules/36-messaging/global-search/stats";
 import { registerGlobalSearchRoutes } from "../src/modules/36-messaging/routes/global-search-routes";
 
+// F1: the production response floor would add seconds to every route call; tests shrink it (the floor itself is covered in the query unit test).
+process.env.WARDENX_GLOBAL_SEARCH_FLOOR_MS = "0";
+process.env.WARDENX_GLOBAL_SEARCH_JITTER_MS = "0";
+
 const ROOT = join(__dirname, "../../..");
+const CH_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+const CH_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 const EXCLUDED: readonly RoleCategory[] = ["patient_family", "external_auditor", "platform_staff"];
 const MESSAGING_READ = "messaging.read";
 
@@ -185,12 +200,67 @@ describe("query terms", () => {
     expect(lastTag("esophagogastr")).toBe(tagForPrefix(key, "esophagogast", bits));
   });
 
-  it("detects a head-bucket query only when EVERY term is in a head bucket", () => {
-    const heads = new Set([5, 6]);
-    expect(isHeadBucketQuery([5], heads)).toBe(true);
-    expect(isHeadBucketQuery([5, 6], heads)).toBe(true);
-    expect(isHeadBucketQuery([5, 9], heads)).toBe(false);
-    expect(isHeadBucketQuery([9], heads)).toBe(false);
+  it("detects a head-bucket query per channel, and only when EVERY term is in a head bucket of that channel", () => {
+    const heads = new Set([headPairKey(CH_A, 5), headPairKey(CH_A, 6)]);
+    expect(isHeadBucketQuery(CH_A, [5], heads)).toBe(true);
+    expect(isHeadBucketQuery(CH_A, [5, 6], heads)).toBe(true);
+    expect(isHeadBucketQuery(CH_A, [5, 9], heads)).toBe(false);
+    expect(isHeadBucketQuery(CH_A, [9], heads)).toBe(false);
+    // a head bucket is channel-local: the same tag number in another channel is an ordinary bucket
+    expect(isHeadBucketQuery(CH_B, [5], heads)).toBe(false);
+  });
+
+  it("derives a different tag set per channel and skips only the channels whose every term is a head bucket", async () => {
+    const searchKey = Buffer.alloc(32, 9);
+    const keys: SearchKeyProvider = {
+      activeVersion: async () => "v1",
+      liveVersions: async () => ["v1"],
+      tagKey: async () => searchKey,
+    };
+    const terms = ["morphine"];
+    const tagA = tagsForTerms(
+      deriveChannelKey(searchKey, "v1", 19, CH_A),
+      ["morphine"],
+      19,
+    )[0] as number;
+    const built = await buildVersionQueries(
+      keys,
+      "org",
+      [{ keyVersion: "v1", tagBits: 19, headBuckets: new Set([headPairKey(CH_A, tagA)]) }],
+      terms,
+      [CH_A, CH_B],
+    );
+    expect(built.headSkipped).toBe(1);
+    expect(built.queries[0]?.channels.map((c) => c.channelId)).toEqual([CH_B]);
+    const free = await buildVersionQueries(
+      keys,
+      "org",
+      [{ keyVersion: "v1", tagBits: 19, headBuckets: new Set() }],
+      terms,
+      [CH_A, CH_B],
+    );
+    const [a, b] = free.queries[0]?.channels ?? [];
+    expect(a?.tags).toEqual([tagA]);
+    expect(b?.tags).not.toEqual(a?.tags); // per-channel keys: the same word, unrelated tag (chance collision 2^-19)
+  });
+});
+
+describe("name exclusion at query time", () => {
+  const searchKey = Buffer.alloc(32, 5);
+  const excluded = digestExclusion(searchKey, new Set([nameTokenDigest(searchKey, "lindqvist")]));
+
+  it("the QUERY is not name-aware: a name is an ordinary term (no 422, no dropped term, no distinguishing response)", () => {
+    // Making the query name-aware would turn search into a roster oracle ("lindqvist" -> 422 / dropped, "qwertyuiop" -> 200 empty).
+    expect(parseQueryTerms("lindqvist morphine")).toEqual(["lindqvist", "morphine"]);
+    expect(parseQueryTerms("lindqvist")).toEqual(["lindqvist"]);
+    expect(parseQueryTerms("qwertyuiop")).toEqual(["qwertyuiop"]);
+  });
+
+  it("an excluded name in a body never satisfies a query, whole or as a typed prefix", () => {
+    const body = "smile and lindqvist and morphine";
+    expect(bodyMatchesQueryTerms(body, ["morphine", "lindq"], excluded)).toBe(false);
+    expect(bodyMatchesQueryTerms(body, ["morphine", "smil"], excluded)).toBe(true);
+    expect(bodyMatchesQueryTerms(body, ["lindqvist"])).toBe(true); // without exclusion it would match
   });
 });
 
@@ -230,6 +300,7 @@ describe("GET /api/v1/messaging/search gate order", () => {
     rateLimit?: (() => Promise<void>) | undefined;
     role?: boolean;
     withLimiter?: boolean;
+    responseFloor?: { floorMs: number; jitterMs: number };
   }) {
     registerEffectivePermissionResolver(
       createInMemoryEffectivePermissionStore([
@@ -269,6 +340,7 @@ describe("GET /api/v1/messaging/search gate order", () => {
         },
       },
       ...(opts.withLimiter === false ? {} : { rateLimit: opts.rateLimit ?? at("rateLimit") }),
+      ...(opts.responseFloor ? { responseFloor: opts.responseFloor } : {}),
     });
     await app.ready();
   }
@@ -287,6 +359,29 @@ describe("GET /api/v1/messaging/search gate order", () => {
     resetAbacRegistry();
     resetAuthorizationContract();
     resetRbacEngine();
+  });
+
+  it("holds an empty answer to the response floor on the route (F1)", async () => {
+    await build({ responseFloor: { floorMs: 150, jitterMs: 0 } });
+    const started = performance.now();
+    const res = await get();
+    expect(res.statusCode).toBe(200);
+    expect(performance.now() - started).toBeGreaterThanOrEqual(140);
+  });
+
+  it("caps in-flight searches per user: the third concurrent one is refused 429 at once, before the floor, and the slot frees up (M1)", async () => {
+    await build({ responseFloor: { floorMs: 400, jitterMs: 0 } });
+    const started = performance.now();
+    const first = get();
+    const second = get();
+    await new Promise((resolve) => setTimeout(resolve, 50)); // both are now parked inside the floor
+    const third = await get();
+    expect(third.statusCode).toBe(429);
+    expect(third.json()).toMatchObject({ error: { code: "GLOBAL_SEARCH_TOO_MANY_REQUESTS" } });
+    expect(performance.now() - started).toBeLessThan(300); // refused fast, not after the 400 ms floor
+    expect((await first).statusCode).toBe(200);
+    expect((await second).statusCode).toBe(200);
+    expect((await get()).statusCode).toBe(200); // released
   });
 
   it("runs permission, limiter, platform, tenant, serve, role, then the service, and sets Cache-Control: no-store", async () => {

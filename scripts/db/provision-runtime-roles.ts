@@ -263,6 +263,10 @@ async function main(): Promise<void> {
           `GRANT SELECT ("organization_id", "body_envelope_version") ON "${t}" TO wardenx_platform;`,
         );
       }
+      // Migration 1094: the poll option label carries the same marker under its own column name.
+      await run(
+        'GRANT SELECT ("organization_id", "label_envelope_version") ON "message_poll_option" TO wardenx_platform;',
+      );
       // F-236 — the M32 backend health sweep (worker) is the only writer of these two columns. A COLUMN
       // grant, not table UPDATE: the platform role may record a probe result, never re-pin a model, flip
       // `zdr_status`, or reactivate a backend (those stay `wardenx_admin`, db:sync:ai-backends).

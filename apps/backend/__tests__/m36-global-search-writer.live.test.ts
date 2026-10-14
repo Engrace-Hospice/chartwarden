@@ -12,7 +12,14 @@ import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { type DbClient, createDbClient } from "@wardenx/db";
-import { indexTagStrings, paddedSize, tokenizeForSearch } from "@wardenx/messaging";
+import {
+  deriveChannelKey,
+  digestExclusion,
+  indexTagStrings,
+  nameTokenDigest,
+  paddedSize,
+  tokenizeForSearch,
+} from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -21,10 +28,20 @@ import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
 import {
+  type IndexOutcome,
   type IndexWriterDeps,
   createIndexWriter,
 } from "../src/modules/36-messaging/global-search/index-writer";
 import { buildM36MessageSearchIndexerConsumer } from "../src/modules/36-messaging/global-search/indexer-consumer";
+import {
+  EXCLUSION_REINDEX_DELAY_MS,
+  NAME_ENUMERATION_BUDGET_MS,
+  NAME_SYNC_MIN_INTERVAL_MS,
+  type PatientNameSource,
+  createNameExclusions,
+  createNoNameExclusions,
+  reindexPendingExclusions,
+} from "../src/modules/36-messaging/global-search/name-exclusion";
 import {
   GLOBAL_SEARCH_PLATFORM_FLAG_KEY,
   createPlatformSearchFlag,
@@ -55,7 +72,8 @@ const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audi
 const ORG_A = "11111111-1111-4111-8111-1111000f0278";
 const ORG_B = "22222222-2222-4222-8222-2222000f0278";
 const VERSION = "legacy";
-const TAG_BITS = 19;
+/** The sizing rule gives the minimum width to a tiny tenant (security review H2): 150 rows per bucket needs 12 bits at most. */
+const TAG_BITS = 12;
 const KEK = randomBytes(32);
 
 describe.skipIf(!DB_URL)("M36 WP 2.7b C2 global search index writer - LIVE Postgres", () => {
@@ -78,6 +96,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C2 global search index writer - LIVE Postg
     db: handle.db,
     bodies: createBodyReader(cipher),
     keys,
+    exclusions: createNoNameExclusions(),
     platformFlag: createPlatformSearchFlag(handle.db),
     ...overrides,
   });
@@ -143,9 +162,9 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C2 global search index writer - LIVE Postg
   async function sendMessage(
     org: string,
     text: string,
-    opts: { rich?: unknown } = {},
+    opts: { rich?: unknown; channel?: string } = {},
   ): Promise<string> {
-    const channel = org === ORG_A ? channelA : channelB;
+    const channel = opts.channel ?? (org === ORG_A ? channelA : channelB);
     const user = org === ORG_A ? userA : userB;
     const stored = opts.rich
       ? storedBodyFor({ body: "", richBody: sanitizeRichBodyOrThrow(opts.rich).richBody })
@@ -222,17 +241,31 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C2 global search index writer - LIVE Postg
       ).rows[0].n,
     );
   /** The independent oracle: HMAC each tag input with the tenant's search key and keep the top T bits. */
-  async function realTagsOf(org: string, text: string): Promise<number[]> {
-    const key = await keys.tagKey(org, VERSION);
-    return [
-      ...new Set(
-        indexTagStrings(tokenizeForSearch(text)).map(
-          (input) =>
-            createHmac("sha256", key).update(input, "utf8").digest().readUInt32BE(0) >>>
-            (32 - TAG_BITS),
-        ),
-      ),
-    ];
+  async function realTagsOf(
+    org: string,
+    text: string,
+    channel?: string,
+    excluded?: ReturnType<typeof digestExclusion>,
+  ): Promise<number[]> {
+    const bits = Number(
+      (
+        await admin.query(
+          `SELECT tag_bits FROM message_search_index_state WHERE organization_id=$1`,
+          [org],
+        )
+      ).rows[0]?.tag_bits ?? TAG_BITS,
+    );
+    const key = deriveChannelKey(
+      await keys.tagKey(org, VERSION),
+      VERSION,
+      bits,
+      channel ?? (org === ORG_A ? channelA : channelB),
+    );
+    // One tag per tag INPUT (no dedupe by value: two inputs may collide at T bits and the writer stores both).
+    return indexTagStrings(tokenizeForSearch(text, excluded)).map(
+      (input) =>
+        createHmac("sha256", key).update(input, "utf8").digest().readUInt32BE(0) >>> (32 - bits),
+    );
   }
   const holdsAll = (stored: readonly number[], expected: readonly number[]) =>
     expected.every((tag) => stored.includes(tag));
@@ -314,7 +347,8 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C2 global search index writer - LIVE Postg
       expect(sent.delivered).toBeGreaterThanOrEqual(1);
 
       const first = await storedTags(id);
-      expect(first).toHaveLength(32);
+      // 13 real tags (whole word + the sparse prefix lengths 3/5/8/12 of each token, #436) pad to the next bucket, 16.
+      expect(first).toHaveLength(16);
       expect(holdsAll(first, await realTagsOf(ORG_A, "morphine given for breakthrough pain"))).toBe(
         true,
       );
@@ -587,6 +621,402 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C2 global search index writer - LIVE Postg
     });
   });
 
+  // ── per-channel keys, name exclusion, T sizing, old-version cleanup ─────────────────────────────────
+  describe("ADR-0058 product-owner decisions (per-channel keys, name exclusion, H2 sizing, M1 cleanup)", () => {
+    const nameSource = (fragments: string[]): PatientNameSource => ({
+      fragmentsPage: async (_org, after) =>
+        after === null
+          ? { fragments: [...fragments], nextAfterId: null }
+          : { fragments: [], nextAfterId: null },
+    });
+    const drainReconcile = async (deps: ReconcileDeps) => {
+      let result = await reconcileOrg(deps, ORG_A);
+      for (let i = 0; i < 8 && result.state !== "ready"; i += 1)
+        result = await reconcileOrg(deps, ORG_A);
+      return result;
+    };
+
+    it("the same text in two channels stores unrelated tags, each under its own channel key and channel_id", async () => {
+      await enableSearch(ORG_A);
+      const second = (
+        await admin.query(
+          `INSERT INTO channel (organization_id, channel_kind, dm_participant_key, title, retention_class)
+           VALUES ($1,'dm',$2,'DM2','care_related') RETURNING id`,
+          [ORG_A, `${userA}:peer2`],
+        )
+      ).rows[0].id as string;
+      const text = "morphine given for breakthrough pain";
+      const one = await sendMessage(ORG_A, text);
+      const two = await sendMessage(ORG_A, text, { channel: second });
+      const writer = createIndexWriter(writerDeps());
+      await writer.indexMessage(ORG_A, one);
+      await writer.indexMessage(ORG_A, two);
+      const channelOf = async (id: string) =>
+        (
+          await admin.query(
+            `SELECT DISTINCT channel_id FROM message_search_token WHERE message_id=$1`,
+            [id],
+          )
+        ).rows;
+      expect(await channelOf(one)).toEqual([{ channel_id: channelA }]);
+      expect(await channelOf(two)).toEqual([{ channel_id: second }]);
+      expect(holdsAll(await storedTags(one), await realTagsOf(ORG_A, text, channelA))).toBe(true);
+      expect(holdsAll(await storedTags(two), await realTagsOf(ORG_A, text, second))).toBe(true);
+      const real = new Set(await realTagsOf(ORG_A, text, channelA));
+      const overlap = (await realTagsOf(ORG_A, text, second)).filter((t) => real.has(t));
+      expect(overlap.length).toBeLessThanOrEqual(2); // chance collisions at T=12 only; a shared key would overlap on all 13
+      // L1: the plaintext label equals the message's real channel on every indexed row (it is deliberately not an FK)
+      const mismatched = (
+        await admin.query(
+          `SELECT count(*)::int AS n FROM message_search_token t JOIN message m ON m.id = t.message_id
+            WHERE t.organization_id = m.organization_id AND t.channel_id <> m.channel_id`,
+        )
+      ).rows[0].n;
+      expect(mismatched).toBe(0);
+    });
+
+    it("a patient / contact name is never tagged (whole word or prefix); the state holds keyed digests, not names", async () => {
+      await enableSearch(ORG_A);
+      const exclusions = createNameExclusions({
+        db: handle.db,
+        keys,
+        names: nameSource(["Astrid", "Lindqvist-Okafor", "J"]),
+      });
+      const writer = createIndexWriter(writerDeps({ exclusions }));
+      const text = "Mrs Lindqvist and Astrid need morphine";
+      const id = await sendMessage(ORG_A, text);
+      expect(await writer.indexMessage(ORG_A, id)).toBe("indexed");
+
+      const searchKey = await keys.tagKey(ORG_A, VERSION);
+      const excluded = digestExclusion(
+        searchKey,
+        new Set(["lindqvist", "okafor", "astrid"].map((t) => nameTokenDigest(searchKey, t))),
+      );
+      const stored = await storedTags(id);
+      const channelKeyTags = async (word: string) => realTagsOf(ORG_A, word);
+      for (const name of ["lindqvist", "astrid"]) {
+        const nameTags = await channelKeyTags(name); // whole word + prefix tags
+        // the words 'lindqvist' / 'astrid' alone would yield their whole-word and prefix tags; none may be stored as a REAL tag.
+        expect(holdsAll(stored, nameTags)).toBe(false);
+      }
+      expect(holdsAll(stored, await realTagsOf(ORG_A, text, undefined, excluded))).toBe(true);
+      expect(holdsAll(stored, await realTagsOf(ORG_A, "morphine"))).toBe(true);
+
+      const state = (
+        await admin.query(
+          `SELECT excluded_name_digests::text AS d, exclusion_synced_at FROM message_search_index_state WHERE organization_id=$1`,
+          [ORG_A],
+        )
+      ).rows[0];
+      expect(state.exclusion_synced_at).not.toBeNull();
+      expect(state.d).not.toMatch(/lindqvist|okafor|astrid/i);
+      expect((state.d.match(/[0-9a-f]{16}/g) ?? []).length).toBe(3);
+    });
+
+    it("fails closed: with no name source nothing is indexed (the error propagates, no row is written)", async () => {
+      await enableSearch(ORG_A);
+      const id = await sendMessage(ORG_A, "morphine");
+      const writer = createIndexWriter(
+        writerDeps({ exclusions: createNameExclusions({ db: handle.db, keys }) }),
+      );
+      await expect(writer.indexMessage(ORG_A, id)).rejects.toThrow(/no name source/);
+      expect(await rowCount(id)).toBe(0);
+    });
+
+    // The reindex delay and the sync throttle are measured on the DATABASE clock: tests age the column instead of a fake clock.
+    const backdate = (column: "exclusion_pending_since" | "exclusion_synced_at", ms: number) =>
+      admin.query(
+        `UPDATE message_search_index_state SET ${column} = now() - make_interval(secs => $2::double precision) WHERE organization_id=$1`,
+        [ORG_A, ms / 1000],
+      );
+    const pendingCount = async () =>
+      Number(
+        (
+          await admin.query(
+            `SELECT cardinality(exclusion_pending) AS n FROM message_search_index_state WHERE organization_id=$1`,
+            [ORG_A],
+          )
+        ).rows[0].n,
+      );
+    const reindexDepsFor = (
+      exclusions: ReturnType<typeof createNameExclusions>,
+      indexMessage: (org: string, id: string) => Promise<IndexOutcome>,
+    ) => ({ db: handle.db, keys, exclusions, indexMessage });
+
+    it("a digest added late restarts the delay for ALL pending digests (no early reindex or clear)", async () => {
+      await enableSearch(ORG_A);
+      const fragments: string[] = [];
+      const exclusions = createNameExclusions({
+        db: handle.db,
+        keys,
+        names: nameSource(fragments),
+      });
+      const writer = createIndexWriter(writerDeps({ exclusions }));
+      const a = await sendMessage(ORG_A, "Quirke asked about morphine");
+      const b = await sendMessage(ORG_A, "Zamora asked about lorazepam");
+      await writer.indexMessage(ORG_A, a);
+      await writer.indexMessage(ORG_A, b);
+      const deps = reindexDepsFor(exclusions, (org, id) => writer.indexMessage(org, id));
+
+      fragments.push("Quirke");
+      await exclusions.sync(ORG_A, VERSION);
+      await backdate("exclusion_pending_since", EXCLUSION_REINDEX_DELAY_MS - 1000); // 1 s short of due
+      fragments.push("Zamora"); // a second name arrives just before the first would have been reindexed
+      await exclusions.sync(ORG_A, VERSION);
+
+      expect(await reindexPendingExclusions(deps, ORG_A, VERSION, TAG_BITS)).toBe(0);
+      expect(await pendingCount()).toBe(2); // nothing cleared early
+      expect(holdsAll(await storedTags(b), await realTagsOf(ORG_A, "zamora"))).toBe(true);
+
+      await backdate("exclusion_pending_since", EXCLUSION_REINDEX_DELAY_MS + 1000);
+      expect(await reindexPendingExclusions(deps, ORG_A, VERSION, TAG_BITS)).toBe(2);
+      expect(await pendingCount()).toBe(0);
+      expect(holdsAll(await storedTags(b), await realTagsOf(ORG_A, "zamora"))).toBe(false);
+    });
+
+    it("a rewrite that is skipped (skipped_stale) leaves the digest pending for the next pass", async () => {
+      await enableSearch(ORG_A);
+      const fragments: string[] = [];
+      const exclusions = createNameExclusions({
+        db: handle.db,
+        keys,
+        names: nameSource(fragments),
+      });
+      const writer = createIndexWriter(writerDeps({ exclusions }));
+      const id = await sendMessage(ORG_A, "Quirke asked about morphine");
+      await writer.indexMessage(ORG_A, id);
+      fragments.push("Quirke");
+      await exclusions.sync(ORG_A, VERSION);
+      await backdate("exclusion_pending_since", EXCLUSION_REINDEX_DELAY_MS + 1000);
+
+      const stale = reindexDepsFor(exclusions, async () => "skipped_stale");
+      await reindexPendingExclusions(stale, ORG_A, VERSION, TAG_BITS);
+      expect(await pendingCount()).toBe(1);
+
+      const real = reindexDepsFor(exclusions, (org, m) => writer.indexMessage(org, m));
+      expect(await reindexPendingExclusions(real, ORG_A, VERSION, TAG_BITS)).toBe(1);
+      expect(await pendingCount()).toBe(0);
+    });
+
+    it("the tick re-reads the names at most once per NAME_SYNC_MIN_INTERVAL_MS (database clock)", async () => {
+      await enableSearch(ORG_A);
+      let pages = 0;
+      const exclusions = createNameExclusions({
+        db: handle.db,
+        keys,
+        names: {
+          fragmentsPage: async () => {
+            pages += 1;
+            return { fragments: ["Astrid"], nextAfterId: null };
+          },
+        },
+      });
+      await exclusions.syncIfDue(ORG_A, VERSION);
+      await exclusions.syncIfDue(ORG_A, VERSION);
+      expect(pages).toBe(1);
+      await backdate("exclusion_synced_at", NAME_SYNC_MIN_INTERVAL_MS + 1000);
+      await exclusions.syncIfDue(ORG_A, VERSION);
+      expect(pages).toBe(2);
+    });
+
+    /** A source whose every page eats the whole enumeration budget; page 2 (never reached) holds `unreached`. */
+    const slowSource = (
+      first: string[],
+      unreached: string[],
+      tick: () => void,
+    ): PatientNameSource => ({
+      fragmentsPage: async (_org, after) => {
+        tick();
+        return after === null
+          ? { fragments: [...first], nextAfterId: "more" }
+          : { fragments: [...unreached], nextAfterId: null };
+      },
+    });
+
+    it("a name enumeration over its time budget applies what it read and is not marked synced (fails closed)", async () => {
+      await enableSearch(ORG_A);
+      let clock = 0;
+      const exclusions = createNameExclusions({
+        db: handle.db,
+        keys,
+        names: slowSource(["Astrid"], ["Unreached"], () => {
+          clock += NAME_ENUMERATION_BUDGET_MS;
+        }),
+        now: () => clock,
+      });
+      expect(await exclusions.sync(ORG_A, VERSION)).toMatchObject({ added: 1, complete: false });
+      const state = (
+        await admin.query(
+          `SELECT exclusion_synced_at, cardinality(excluded_name_digests) AS n FROM message_search_index_state WHERE organization_id=$1`,
+          [ORG_A],
+        )
+      ).rows[0];
+      expect(state).toEqual({ exclusion_synced_at: null, n: 1 });
+      await expect(exclusions.currentReadOnly(ORG_A, VERSION)).rejects.toThrow(/not been synced/);
+    });
+
+    it("pending digests the cut-off enumeration could not see are NOT treated as orphans", async () => {
+      await enableSearch(ORG_A);
+      const fragments = ["Astrid", "Quirke"];
+      const full = createNameExclusions({ db: handle.db, keys, names: nameSource(fragments) });
+      await full.sync(ORG_A, VERSION);
+      await backdate("exclusion_pending_since", EXCLUSION_REINDEX_DELAY_MS + 1000);
+      let clock = 0;
+      const cut = createNameExclusions({
+        db: handle.db,
+        keys,
+        names: slowSource(["Astrid"], ["Quirke"], () => {
+          clock += NAME_ENUMERATION_BUDGET_MS;
+        }),
+        now: () => clock,
+      });
+      await reindexPendingExclusions(
+        reindexDepsFor(cut, async () => "indexed"),
+        ORG_A,
+        VERSION,
+        TAG_BITS,
+      );
+      expect(await pendingCount()).toBe(1); // astrid was read and done; quirke was never read, so it stays pending
+    });
+
+    it("the query path only reads: a never-synced tenant fails closed and no state row is created", async () => {
+      await enableSearch(ORG_A);
+      const exclusions = createNameExclusions({
+        db: handle.db,
+        keys,
+        names: nameSource(["Astrid"]),
+      });
+      await expect(exclusions.currentReadOnly(ORG_A, VERSION)).rejects.toThrow(/not been synced/);
+      const rows = await admin.query(
+        `SELECT 1 FROM message_search_index_state WHERE organization_id=$1`,
+        [ORG_A],
+      );
+      expect(rows.rowCount).toBe(0);
+      await exclusions.syncIfDue(ORG_A, VERSION); // what the first maintenance tick does
+      await expect(exclusions.currentReadOnly(ORG_A, VERSION)).resolves.toBeDefined();
+    });
+
+    it("a NEW name is added grow-only, and only the messages that carry it are rewritten (after the cache delay)", async () => {
+      await enableSearch(ORG_A);
+      const clock = Date.now();
+      const fragments = ["Astrid"];
+      const exclusions = createNameExclusions({
+        db: handle.db,
+        keys,
+        names: nameSource(fragments),
+        now: () => clock,
+      });
+      const writer = createIndexWriter(writerDeps({ exclusions }));
+      const carrier = await sendMessage(ORG_A, "Quirke asked about morphine");
+      const bystander = await sendMessage(ORG_A, "lorazepam anxiety plan");
+      await writer.indexMessage(ORG_A, carrier);
+      await writer.indexMessage(ORG_A, bystander);
+      const quirke = await realTagsOf(ORG_A, "quirke");
+      expect(holdsAll(await storedTags(carrier), quirke)).toBe(true);
+      const bystanderBefore = await storedTags(bystander);
+
+      fragments.push("Quirke"); // a patient named Quirke is admitted
+      expect(await exclusions.sync(ORG_A, VERSION)).toMatchObject({ added: 1 });
+      expect(await exclusions.sync(ORG_A, VERSION)).toMatchObject({ added: 0 }); // idempotent
+      const reindexDeps = {
+        db: handle.db,
+        keys,
+        exclusions,
+        indexMessage: (org: string, id: string) => writer.indexMessage(org, id),
+        now: () => clock,
+      };
+      // too early: a replica that has not refreshed its cache could still index the name behind the pass
+      expect(await reindexPendingExclusions(reindexDeps, ORG_A, VERSION, TAG_BITS)).toBe(0);
+      await backdate("exclusion_pending_since", 3 * 60_000);
+      expect(await reindexPendingExclusions(reindexDeps, ORG_A, VERSION, TAG_BITS)).toBe(1);
+      expect(holdsAll(await storedTags(carrier), quirke)).toBe(false);
+      expect(await storedTags(bystander)).toEqual(bystanderBefore); // untouched: not rewritten
+      const pending = (
+        await admin.query(
+          `SELECT exclusion_pending, exclusion_pending_since FROM message_search_index_state WHERE organization_id=$1`,
+          [ORG_A],
+        )
+      ).rows[0];
+      expect(pending).toEqual({ exclusion_pending: [], exclusion_pending_since: null });
+      // grow-only: the patient is renamed away, the old name stays excluded
+      fragments.splice(0, fragments.length, "Astrid");
+      await exclusions.sync(ORG_A, VERSION);
+      const digests = (
+        await admin.query(
+          `SELECT cardinality(excluded_name_digests) AS n FROM message_search_index_state WHERE organization_id=$1`,
+          [ORG_A],
+        )
+      ).rows[0].n;
+      expect(digests).toBe(2);
+    });
+
+    it("sizes T from the stored rows (H2): a new tiny index is 12 bits; a stored width 2+ bits off is rebuilt, 1 bit off is not", async () => {
+      await enableSearch(ORG_A);
+      await admin.query(`DELETE FROM message_search_index_state`);
+      await sendMessage(ORG_A, "morphine given");
+      await sendMessage(ORG_A, "family visited");
+      const deps = reconcileDeps();
+      expect((await drainReconcile(deps)).state).toBe("ready");
+      const bits = async () =>
+        Number(
+          (
+            await admin.query(
+              `SELECT tag_bits FROM message_search_index_state WHERE organization_id=$1`,
+              [ORG_A],
+            )
+          ).rows[0].tag_bits,
+        );
+      expect(await bits()).toBe(12);
+
+      await admin.query(
+        `UPDATE message_search_index_state SET tag_bits=13, reconciled_at=NULL, status='stale'`,
+      );
+      await admin.query(`DELETE FROM message_search_token`);
+      expect((await drainReconcile(deps)).state).toBe("ready"); // 13 vs rule 12: one bit off is left alone
+      expect(await bits()).toBe(13);
+
+      await admin.query(
+        `UPDATE message_search_index_state SET tag_bits=18, reconciled_at=NULL, status='stale'`,
+      );
+      await admin.query(`DELETE FROM message_search_token`);
+      const resized = await reconcileOrg(deps, ORG_A);
+      for (let i = 0; i < 8 && (await bits()) !== 12; i += 1) await reconcileOrg(deps, ORG_A);
+      expect(await bits()).toBe(12);
+      expect(resized.state === "building" || resized.state === "ready").toBe(true);
+      expect((await drainReconcile(deps)).state).toBe("ready");
+    });
+
+    it("M1: when the active version is ready, every OTHER version's rows and state are removed in the same step", async () => {
+      await enableSearch(ORG_A);
+      const id = await sendMessage(ORG_A, "morphine given");
+      await createIndexWriter(writerDeps()).indexMessage(ORG_A, id);
+      await admin.query(
+        `INSERT INTO message_search_index_state (organization_id, key_version) VALUES ($1,'old-v0')`,
+        [ORG_A],
+      );
+      await admin.query(
+        `INSERT INTO message_search_token (organization_id,key_version,channel_id,tag,message_id)
+         SELECT $1,'old-v0',$2,g,$3 FROM generate_series(1,16) g`,
+        [ORG_A, channelA, id],
+      );
+      await admin.query(
+        `UPDATE message_search_index_state SET status='stale' WHERE key_version=$1`,
+        [VERSION],
+      );
+      expect((await drainReconcile(reconcileDeps())).state).toBe("ready");
+      const left = await admin.query(
+        `SELECT key_version, count(*)::int AS n FROM message_search_token WHERE organization_id=$1 GROUP BY 1`,
+        [ORG_A],
+      );
+      expect(left.rows).toEqual([{ key_version: VERSION, n: 16 }]);
+      const states = await admin.query(
+        `SELECT key_version FROM message_search_index_state WHERE organization_id=$1`,
+        [ORG_A],
+      );
+      expect(states.rows).toEqual([{ key_version: VERSION }]);
+    });
+  });
+
   // ── tenancy ───────────────────────────────────────────────────────────────────────────────────────
   describe("tenancy", () => {
     it("an org A event never writes org B, even when its payload names a message of org B", async () => {
@@ -705,9 +1135,9 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C2 global search index writer - LIVE Postg
       const victim = [...byId.keys()][1] as string;
       await markDeleted(victim);
       await admin.query(
-        `INSERT INTO message_search_token (organization_id,key_version,tag,message_id)
-         SELECT $1,$2,g,$3 FROM generate_series(1,16) g`,
-        [ORG_A, VERSION, victim],
+        `INSERT INTO message_search_token (organization_id,key_version,channel_id,tag,message_id)
+         SELECT $1,$2,$4,g,$3 FROM generate_series(1,16) g`,
+        [ORG_A, VERSION, victim, channelA],
       );
       await admin.query(`UPDATE message_search_index_state SET status='stale'`);
       let again = await reconcileOrg(deps, ORG_A);
@@ -722,12 +1152,13 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C2 global search index writer - LIVE Postg
       const id = await sendMessage(ORG_A, "morphine");
       await createIndexWriter(writerDeps()).indexMessage(ORG_A, id);
       await admin.query(
-        `INSERT INTO message_search_token (organization_id,key_version,tag,message_id)
-         SELECT $1,$2,777,$3 FROM generate_series(1,5001)`,
-        [ORG_A, VERSION, id],
+        `INSERT INTO message_search_token (organization_id,key_version,channel_id,tag,message_id)
+         SELECT $1,$2,$4,777,$3 FROM generate_series(1,5001)`,
+        [ORG_A, VERSION, id, channelA],
       );
       const stats = await refreshIndexStats(handle.db, ORG_A, VERSION);
-      expect(stats.headBuckets).toEqual([777]);
+      expect(stats.headBuckets).toEqual([`${channelA}:777`]);
+      expect(stats.totalRows).toBeGreaterThan(5001);
       expect(stats.distinctTags).toBeGreaterThan(1);
       const row = (
         await admin.query(
@@ -735,7 +1166,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C2 global search index writer - LIVE Postg
           [ORG_A],
         )
       ).rows[0];
-      expect(row.head_buckets).toEqual([777]);
+      expect(row.head_buckets).toEqual([`${channelA}:777`]);
     });
 
     it("OFF-then-ON: a message sent and a message deleted while OFF are repaired before the index is ready again", async () => {
