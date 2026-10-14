@@ -41,6 +41,7 @@ wins until the spec is re-locked.
 | [`DEVELOPMENT.md`](./DEVELOPMENT.md) | Development runbook + "how to add a module". **Start here to build/extend.** |
 | [`runbooks/transactional-email-postmark.md`](./runbooks/transactional-email-postmark.md) | Operator runbook: Postmark account/BAA, verified sender + SPF/DKIM, env vars, verification and rollback for transactional email. |
 | [`runbooks/terminology-catalog-loading.md`](./runbooks/terminology-catalog-loading.md) | Operator runbook: loading CARC/RARC, LOINC, SNOMED CT and RxNorm into M38 — licence to hold, who attests, download, endpoints, expected counts, verification and rollback. |
+| [`runbooks/m36-global-search-enablement.md`](./runbooks/m36-global-search-enablement.md) | Operator runbook: enabling M36 global search in production (ADR-0058) — Valkey, ring seal scheme, escrow drill, body backfill, the platform/escrow flags, the tenant switch and the index build, with rollback. |
 | [`runbooks/m36-restore-drill.md`](./runbooks/m36-restore-drill.md) | Operator runbook: the M36 restore drill (`bun run m36:restore-drill`) — what production actually backs up, the restore procedure, the consistency checks, demo-scale RPO/RTO and the detection proof. |
 | [`APP_OVERVIEW.md`](./APP_OVERVIEW.md) | Guided map of what the codebase is and how it fits together — for an engineer joining the project. |
 | [`BUSINESS_LOGIC.md`](./BUSINESS_LOGIC.md) | Business logic, workflows & functionality **as built** across the 40 modules — state machines, validation, calculations, cross-module flows. |

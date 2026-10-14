@@ -1,10 +1,13 @@
 # ADR-0058 — Global message search is a per-tenant HMAC blind-token index (whole-word and prefix only), re-checked against current access at query time
 
 - **Status:** **Accepted** (2026-10-13, by the user's decision in conversation: "turn ADR-0058 to accepted").
-- **Review record:** the design review by the **security architect and the privacy officer** that this ADR named as a hard precondition has
-  **NOT been recorded**. Acceptance was granted by the user (product owner) without it, and the status line does not claim otherwise.
-  The review remains the condition for the production attestations below; link its record here when it exists. D10 (decided 2026-10-11 by
-  the product owner, who chose option B (D3) knowing it leaks token frequency) is unchanged.
+- **Review record:** [ADR-0058-design-review-2026-10-13.md](../reviews/ADR-0058-design-review-2026-10-13.md) records a security-architect review and a
+  privacy-officer review, **both performed by AI agents as desk reviews, not by humans, and unsigned**. Disposition of both: **approved with
+  conditions, design only; nothing approved for production enablement.** They changed one parameter (prefix tag lengths to 3, 5, 8, 12) and
+  found stale amendment text and several gaps (record F1 to F12). The **measured leakage experiment has not been run**, the HIPAA risk-analysis
+  entry is a draft with no owner, and human adoption and the product owner's residual-risk acceptance are pending, so the design review
+  requirement below is **not satisfied**. Acceptance was granted by the user (product owner) before any review. D10 (decided 2026-10-11 by the
+  product owner, who chose option B (D3) knowing it leaks token frequency) is unchanged.
 - **What acceptance does not do:** it does not set `messaging.global_search_escrow_attested` or the rate-limit attestation (`globalSearchRateLimitActive`),
   which are statements of fact about the escrow drill and the limiter and are set only when true (the escrow drill is in
   `docs/runbooks/m36-body-key-ring.md`). The tenant switch still refuses ON until its go-live checklist passes. WP 2.7b was additionally
