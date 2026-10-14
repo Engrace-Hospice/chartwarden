@@ -1,5 +1,5 @@
 // M36 WP 2.7b - the tenant global search settings screen (jsdom): checklist, gated enable, confirmation, server refusals.
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -81,24 +81,70 @@ describe("Global search settings", () => {
     let releasePoll: (v: unknown) => void = () => undefined;
     const api = mount(ok(building), ok(READY));
     const get = api.GET as unknown as ReturnType<typeof vi.fn>;
-    await vi.advanceTimersByTimeAsync(0);
+    const advance = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+    await advance(0);
     get.mockImplementationOnce(
       () =>
         new Promise((r) => {
           releasePoll = r;
         }),
     );
-    await vi.advanceTimersByTimeAsync(15_000); // the poll is now in flight
+    await advance(15_000); // the poll fires and stays pending
+    expect(get).toHaveBeenCalledTimes(2); // guards against a poll that never started
     fireEvent.click(screen.getByRole("button", { name: "Switch off global search" }));
-    (api.PUT as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(ok(READY));
-    get.mockResolvedValue(ok(READY));
     fireEvent.click(
       within(screen.getByRole("alertdialog")).getByRole("button", { name: "Switch off" }),
     );
-    await vi.advanceTimersByTimeAsync(0);
-    releasePoll(ok(READY_ON)); // stale: read before the write
-    await vi.advanceTimersByTimeAsync(0);
+    await advance(0);
     expect(screen.getByRole("button", { name: "Switch on global search" })).toBeTruthy();
+    await act(async () => releasePoll(ok(READY_ON))); // stale: read before the write
+    expect(screen.getByRole("button", { name: "Switch on global search" })).toBeTruthy();
+  });
+
+  it("keeps the PUT result when a poll that started during the PUT replies after it", async () => {
+    vi.useFakeTimers();
+    const building = { ...ON, rebuild: { status: "building", effectiveReady: false } };
+    const READY_ON = { ...ON, rebuild: { status: "ready", effectiveReady: true } };
+    let releasePoll: (v: unknown) => void = () => undefined;
+    let releasePut: (v: unknown) => void = () => undefined;
+    const api = mount(ok(building));
+    const get = api.GET as unknown as ReturnType<typeof vi.fn>;
+    const advance = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+    await advance(0);
+    (api.PUT as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      () =>
+        new Promise((r) => {
+          releasePut = r;
+        }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Switch off global search" }));
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Switch off" }),
+    );
+    await advance(0); // the PUT is pending
+    get.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          releasePoll = r;
+        }),
+    );
+    await advance(15_000); // a poll starts while the write is in flight
+    expect(get).toHaveBeenCalledTimes(2);
+    await act(async () => releasePut(ok(READY)));
+    await act(async () => releasePoll(ok(READY_ON))); // read before the write committed
+    expect(screen.getByRole("button", { name: "Switch on global search" })).toBeTruthy();
+  });
+
+  it("applies a quiet poll reply when no write happened since it started", async () => {
+    vi.useFakeTimers();
+    const building = { ...ON, rebuild: { status: "building", effectiveReady: false } };
+    const api = mount(ok(building));
+    const get = api.GET as unknown as ReturnType<typeof vi.fn>;
+    const advance = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+    await advance(0);
+    get.mockResolvedValue(ok({ ...ON, rebuild: { status: "ready", effectiveReady: true } }));
+    await advance(15_000);
+    expect(screen.getByText(/index is ready/i)).toBeTruthy();
   });
 
   it("Refresh status re-reads without the full-page spinner", async () => {
