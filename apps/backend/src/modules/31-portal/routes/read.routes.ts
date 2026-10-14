@@ -53,7 +53,11 @@ interface PortalPatientLayArm {
   ): Promise<{ category: string; problems: unknown[]; redacted: boolean }>;
 }
 interface MessagingArm {
-  syncCareTeamChannel?(orgId: string, patientId: string): Promise<{ channelId: string }>;
+  syncCareTeamChannel?(
+    orgId: string,
+    patientId: string,
+    portalUserId?: string,
+  ): Promise<{ channelId: string }>;
   openChannel(
     orgId: string,
     spec: { kind: string; subjectId?: string; creatorUserId: string },
@@ -373,12 +377,12 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
       const patientId = portalPatientIdOf(actor);
       try {
         const provider = arm<MessagingArm>("MessagingProvider");
-        await provider.syncCareTeamChannel?.(actor.organizationId, patientId);
-        const channel = await provider.openChannel(actor.organizationId, {
-          kind: "care_team",
-          subjectId: patientId,
-          creatorUserId: actor.userId,
-        });
+        const channel = await provider.syncCareTeamChannel?.(
+          actor.organizationId,
+          patientId,
+          actor.userId,
+        );
+        if (!channel) throw new WardenXError("MESSAGING_UNAVAILABLE", "messaging is unavailable", 503);
         return { channelId: channel.channelId, lastReadPointer: null };
       } catch {
         return { channelId: "", lastReadPointer: null };
@@ -399,12 +403,12 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
       const patientId = portalPatientIdOf(actor);
       const q = parseQuery(PortalMessageHistoryQuery, request.query);
       const provider = arm<MessagingArm>("MessagingProvider");
-      await provider.syncCareTeamChannel?.(actor.organizationId, patientId);
-      const channel = await provider.openChannel(actor.organizationId, {
-        kind: "care_team",
-        subjectId: patientId,
-        creatorUserId: actor.userId,
-      });
+      const channel = await provider.syncCareTeamChannel?.(
+        actor.organizationId,
+        patientId,
+        actor.userId,
+      );
+      if (!channel) throw new WardenXError("MESSAGING_UNAVAILABLE", "messaging is unavailable", 503);
       const page = await provider.listMessages(actor.organizationId, {
         channelId: channel.channelId,
         userId: actor.userId,

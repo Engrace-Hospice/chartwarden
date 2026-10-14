@@ -1,5 +1,18 @@
-import { Button, Glyph, InlineAlert, TextAreaField, useApiClient } from "@wardenx/ui";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  Button,
+  Glyph,
+  InlineAlert,
+  TextAreaField,
+  useApiClient,
+} from "@wardenx/ui";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { FormEvent, JSX } from "react";
 import { usePortalPatient } from "../patient-context";
 import { PortalPage } from "./portal-page";
@@ -35,13 +48,18 @@ const sortMessages = (messages: PortalMessage[]): PortalMessage[] =>
     const rightTime = Date.parse(right.sentAt);
     if (!Number.isFinite(leftTime) || !Number.isFinite(rightTime))
       return left.messageId.localeCompare(right.messageId);
-    return leftTime - rightTime || left.messageId.localeCompare(right.messageId);
+    return (
+      leftTime - rightTime || left.messageId.localeCompare(right.messageId)
+    );
   });
 
 function messageTime(value: string): string {
   const instant = new Date(value);
   if (!Number.isFinite(instant.getTime())) return "Time unavailable";
-  return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(instant);
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(instant);
 }
 
 function messageDay(value: string): string {
@@ -66,7 +84,10 @@ function messageDay(value: string): string {
 
 function MessagingSkeleton(): JSX.Element {
   return (
-    <output className="wx-portal-messaging-skeleton" aria-label="Loading messages">
+    <output
+      className="wx-portal-messaging-skeleton"
+      aria-label="Loading messages"
+    >
       <span />
       <span />
       <span />
@@ -81,7 +102,10 @@ function MessagingError({ onRetry }: { onRetry: () => void }): JSX.Element {
       <Glyph name="alert-circle" size={22} />
       <div>
         <strong>Messages are unavailable</strong>
-        <p>We couldn't load this conversation. Your typed message has not been removed.</p>
+        <p>
+          We couldn't load this conversation. Your typed message has not been
+          removed.
+        </p>
       </div>
       <button type="button" onClick={onRetry}>
         Try again
@@ -103,7 +127,10 @@ function MessageTimeline({
 }): JSX.Element {
   let previousDay: string | null = null;
   return (
-    <ol className="wx-portal-message-timeline" aria-label="Conversation with your care team">
+    <ol
+      className="wx-portal-message-timeline"
+      aria-label="Conversation with your care team"
+    >
       <li className="wx-portal-message-history-control">
         {olderCursor ? (
           <button type="button" onClick={onLoadOlder} disabled={loadingOlder}>
@@ -118,7 +145,10 @@ function MessageTimeline({
         const separator = day !== previousDay;
         previousDay = day;
         return (
-          <li key={message.messageId} className={`wx-portal-message-row is-${message.direction}`}>
+          <li
+            key={message.messageId}
+            className={`wx-portal-message-row is-${message.direction}`}
+          >
             {separator ? (
               <div className="wx-portal-message-day">
                 <span>{day}</span>
@@ -127,7 +157,9 @@ function MessageTimeline({
             <article className="wx-portal-message-bubble">
               <header>
                 <strong>{message.senderLabel}</strong>
-                <time dateTime={message.sentAt}>{messageTime(message.sentAt)}</time>
+                <time dateTime={message.sentAt}>
+                  {messageTime(message.sentAt)}
+                </time>
               </header>
               <p>{message.body}</p>
             </article>
@@ -158,7 +190,11 @@ function MessageComposer({
         id="portal-msg"
         label="Message your care team"
         hint={`${draft.length.toLocaleString()} of 8,000 characters · Enter adds a new line.`}
-        error={tooLong ? "Your message must be 8,000 characters or fewer." : undefined}
+        error={
+          tooLong
+            ? "Your message must be 8,000 characters or fewer."
+            : undefined
+        }
         value={draft}
         onChange={(event) => onDraft(event.target.value)}
         placeholder="Write a message…"
@@ -167,9 +203,14 @@ function MessageComposer({
       />
       <div className="wx-portal-message-composer__footer">
         <p>
-          <Glyph name="shield-check" size={16} /> Sent securely to the hospice care team.
+          <Glyph name="shield-check" size={16} /> Sent securely to the hospice
+          care team.
         </p>
-        <Button type="submit" loading={sending} disabled={!draft.trim() || tooLong || sending}>
+        <Button
+          type="submit"
+          loading={sending}
+          disabled={!draft.trim() || tooLong || sending}
+        >
           <Glyph name="send" size={16} /> Send message
         </Button>
       </div>
@@ -183,24 +224,53 @@ function MessageComposer({
 }
 
 export function PortalMessages(): JSX.Element {
+  const { patientId } = usePortalPatient();
+  // A fresh component per care record isolates the draft, channel and asynchronous
+  // pagination/send state even when React Router reuses the same route component.
+  return (
+    <PortalMessagesForPatient
+      key={patientId ?? "no-patient"}
+      patientId={patientId}
+    />
+  );
+}
+
+function PortalMessagesForPatient({
+  patientId,
+}: {
+  patientId: string | null;
+}): JSX.Element {
   const client = useApiClient();
   // Keep this screen insulated from openapi-fetch's repository-wide path-union recursion limit.
   const portalGet = useMemo(
-    () => client.GET as unknown as (path: string, init: unknown) => Promise<ApiResult>,
+    () =>
+      client.GET as unknown as (
+        path: string,
+        init: unknown,
+      ) => Promise<ApiResult>,
     [client],
   );
   const portalPost = useMemo(
-    () => client.POST as unknown as (path: string, init: unknown) => Promise<ApiResult>,
+    () =>
+      client.POST as unknown as (
+        path: string,
+        init: unknown,
+      ) => Promise<ApiResult>,
     [client],
   );
-  const { patientId } = usePortalPatient();
   const [channel, setChannel] = useState<Resource<Channel>>(loading);
   const [history, setHistory] = useState<Resource<HistoryPage>>(loading);
   const [attempt, setAttempt] = useState(0);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const [feedback, setFeedback] = useState<{ tone: "ok" | "err"; msg: string } | null>(null);
+  const [olderError, setOlderError] = useState(false);
+  const sendInFlight = useRef(false);
+  const pageGeneration = useRef(0);
+  const [feedback, setFeedback] = useState<{
+    tone: "ok" | "err";
+    msg: string;
+  } | null>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const previousHeightRef = useRef<number | null>(null);
 
@@ -208,8 +278,10 @@ export function PortalMessages(): JSX.Element {
     async (cursor?: string): Promise<HistoryPage | null> => {
       const query: { cursor?: string; limit: number } = { limit: 30 };
       if (cursor) query.cursor = cursor;
-      const response = await portalGet("/api/v1/portal/messages/history", { params: { query } });
-      if (response.error) return null;
+      const response = await portalGet("/api/v1/portal/messages/history", {
+        params: { query },
+      });
+      if ("error" in response) return null;
       const page = response.data as HistoryPage;
       return { ...page, messages: sortMessages(page.messages) };
     },
@@ -220,16 +292,19 @@ export function PortalMessages(): JSX.Element {
     void patientId;
     void attempt;
     let active = true;
+    pageGeneration.current += 1;
     setChannel(loading());
     setHistory(loading());
-    setDraft("");
-    setFeedback(null);
-    setSending(false);
+    setOlderError(false);
+    setLoadingOlder(false);
+    previousHeightRef.current = null;
+    // Refreshing a conversation must not delete an unsent draft.
+    // Switching patients remounts the patient-keyed component above.
     void (async () => {
       try {
         const response = await portalGet("/api/v1/portal/messages/channel", {});
         if (!active) return;
-        if (response.error) {
+        if ("error" in response) {
           setChannel({ status: "error", data: null });
           setHistory({ status: "error", data: null });
           return;
@@ -242,7 +317,11 @@ export function PortalMessages(): JSX.Element {
         }
         const page = await loadHistory();
         if (!active) return;
-        setHistory(page ? { status: "ready", data: page } : { status: "error", data: null });
+        setHistory(
+          page
+            ? { status: "ready", data: page }
+            : { status: "error", data: null },
+        );
       } catch {
         if (active) {
           setChannel({ status: "error", data: null });
@@ -258,26 +337,47 @@ export function PortalMessages(): JSX.Element {
   useLayoutEffect(() => {
     void history;
     if (previousHeightRef.current === null || !timelineRef.current) return;
-    timelineRef.current.scrollTop += timelineRef.current.scrollHeight - previousHeightRef.current;
+    timelineRef.current.scrollTop +=
+      timelineRef.current.scrollHeight - previousHeightRef.current;
     previousHeightRef.current = null;
   }, [history]);
 
   async function loadOlder(): Promise<void> {
-    if (history.status !== "ready" || !history.data.nextCursor || loadingOlder) return;
+    if (history.status !== "ready" || !history.data.nextCursor || loadingOlder)
+      return;
+    const generation = pageGeneration.current;
     setLoadingOlder(true);
+    setOlderError(false);
     previousHeightRef.current = timelineRef.current?.scrollHeight ?? null;
     try {
       const page = await loadHistory(history.data.nextCursor);
-      if (page)
-        setHistory({
-          status: "ready",
-          data: {
-            messages: sortMessages([...page.messages, ...history.data.messages]),
-            nextCursor: page.nextCursor,
-          },
-        });
+      if (generation !== pageGeneration.current) return;
+      if (!page) {
+        setOlderError(true);
+        previousHeightRef.current = null;
+        return;
+      }
+      setHistory((current) =>
+        current.status === "ready"
+          ? {
+              status: "ready",
+              data: {
+                messages: sortMessages([
+                  ...page.messages,
+                  ...current.data.messages,
+                ]),
+                nextCursor: page.nextCursor,
+              },
+            }
+          : current,
+      );
+    } catch {
+      if (generation === pageGeneration.current) {
+        setOlderError(true);
+        previousHeightRef.current = null;
+      }
     } finally {
-      setLoadingOlder(false);
+      if (generation === pageGeneration.current) setLoadingOlder(false);
     }
   }
 
@@ -286,16 +386,21 @@ export function PortalMessages(): JSX.Element {
     if (
       !draft.trim() ||
       draft.length > 8000 ||
-      sending ||
+      sendInFlight.current ||
       channel.status !== "ready" ||
       !channel.data.channelId
     )
       return;
+    sendInFlight.current = true;
     setSending(true);
     setFeedback(null);
+    const generation = pageGeneration.current;
     try {
-      const response = await portalPost("/api/v1/portal/messages/send", { body: { body: draft } });
-      if (response.error) {
+      const response = await portalPost("/api/v1/portal/messages/send", {
+        body: { body: draft },
+      });
+      if (generation !== pageGeneration.current) return;
+      if ("error" in response) {
         setFeedback({
           tone: "err",
           msg:
@@ -307,18 +412,38 @@ export function PortalMessages(): JSX.Element {
       }
       setDraft("");
       setFeedback({ tone: "ok", msg: "Message sent to your care team." });
-      const page = await loadHistory();
-      if (page) setHistory({ status: "ready", data: page });
+      // Sending and refreshing the timeline are separate operations. A failed
+      // refresh must never turn an acknowledged send into a failure message.
+      try {
+        const page = await loadHistory();
+        if (generation !== pageGeneration.current) return;
+        if (page) setHistory({ status: "ready", data: page });
+        else
+          setFeedback({
+            tone: "ok",
+            msg: "Message sent. Refresh the conversation to check for updates.",
+          });
+      } catch {
+        if (generation === pageGeneration.current)
+          setFeedback({
+            tone: "ok",
+            msg: "Message sent. Refresh the conversation to check for updates.",
+          });
+      }
       requestAnimationFrame(() =>
-        timelineRef.current?.scrollTo({ top: timelineRef.current.scrollHeight }),
+        timelineRef.current?.scrollTo({
+          top: timelineRef.current.scrollHeight,
+        }),
       );
     } catch {
-      setFeedback({
-        tone: "err",
-        msg: "We could not confirm that your message was sent. Check the conversation before trying again.",
-      });
+      if (generation === pageGeneration.current)
+        setFeedback({
+          tone: "err",
+          msg: "We could not confirm that your message was sent. Check the conversation before trying again.",
+        });
     } finally {
-      setSending(false);
+      sendInFlight.current = false;
+      if (generation === pageGeneration.current) setSending(false);
     }
   }
 
@@ -329,7 +454,10 @@ export function PortalMessages(): JSX.Element {
       subtitle="Communicate securely with your hospice care team."
       width="workspace"
     >
-      <section className="wx-portal-messaging" aria-labelledby="portal-conversation-title">
+      <section
+        className="wx-portal-messaging"
+        aria-labelledby="portal-conversation-title"
+      >
         <header className="wx-portal-conversation-header">
           <span>
             <Glyph name="users" size={22} />
@@ -343,6 +471,7 @@ export function PortalMessages(): JSX.Element {
           <button
             type="button"
             aria-label="Refresh conversation"
+            disabled={sending}
             onClick={() => setAttempt((value) => value + 1)}
           >
             <Glyph name="rotate-ccw" size={18} /> <span>Refresh</span>
@@ -362,7 +491,9 @@ export function PortalMessages(): JSX.Element {
               <p>Contact your hospice team directly if you need help.</p>
             </div>
           ) : null}
-          {history.status === "ready" && !unavailable && history.data.messages.length === 0 ? (
+          {history.status === "ready" &&
+          !unavailable &&
+          history.data.messages.length === 0 ? (
             <div className="wx-portal-messaging-empty">
               <Glyph name="message-square" size={28} />
               <strong>No messages yet</strong>
@@ -370,12 +501,19 @@ export function PortalMessages(): JSX.Element {
             </div>
           ) : null}
           {history.status === "ready" && history.data.messages.length > 0 ? (
-            <MessageTimeline
-              messages={history.data.messages}
-              olderCursor={history.data.nextCursor}
-              loadingOlder={loadingOlder}
-              onLoadOlder={() => void loadOlder()}
-            />
+            <>
+              {olderError ? (
+                <p role="alert" className="wx-portal-messaging-older-error">
+                  Earlier messages couldn't be loaded. You can try again.
+                </p>
+              ) : null}
+              <MessageTimeline
+                messages={history.data.messages}
+                olderCursor={history.data.nextCursor}
+                loadingOlder={loadingOlder}
+                onLoadOlder={() => void loadOlder()}
+              />
+            </>
           ) : null}
         </div>
         {channel.status === "ready" && channel.data.channelId ? (

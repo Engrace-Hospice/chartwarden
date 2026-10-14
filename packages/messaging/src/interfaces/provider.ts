@@ -146,6 +146,8 @@ export interface MessagingProvider {
   syncCareTeamChannel(
     orgId: string,
     patientId: string,
+    /** Portal user whose active patient grant has already been verified by M31. */
+    portalUserId?: string,
   ): Promise<{ channelId: string; membershipChanged: boolean }>;
   syncOnCallChannel(orgId: string, providerEntityId: string): Promise<void>;
   syncBereavementChannel(

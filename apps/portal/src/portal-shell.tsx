@@ -20,9 +20,16 @@ function currentPatientId(pathname: string): string | null {
 function Brand({
   destination,
   compact = false,
-}: { destination: string; compact?: boolean }): JSX.Element {
+}: {
+  destination: string;
+  compact?: boolean;
+}): JSX.Element {
   return (
-    <Link className="wx-portal-brand" to={destination} aria-label="WardenX Family Portal home">
+    <Link
+      className="wx-portal-brand"
+      to={destination}
+      aria-label="WardenX Family Portal home"
+    >
       <span className="wx-portal-brand__mark" aria-hidden="true">
         W
       </span>
@@ -39,7 +46,10 @@ function Brand({
 function NavigationLinks({
   patientId,
   onNavigate,
-}: { patientId: string; onNavigate?: () => void }): JSX.Element {
+}: {
+  patientId: string;
+  onNavigate?: () => void;
+}): JSX.Element {
   return (
     <>
       {(["primary", "secondary"] as const).map((section) => (
@@ -47,33 +57,72 @@ function NavigationLinks({
           <span className="wx-portal-nav-group__label">
             {section === "primary" ? "Your care" : "Support & settings"}
           </span>
-          {PORTAL_NAVIGATION.filter((item) => item.section === section).map((item) => (
-            <NavLink
-              key={item.id}
-              to={portalNavPath(item.id, patientId)}
-              end={item.id === "portal.dashboard"}
-              onClick={onNavigate}
-              className={({ isActive }) => `wx-portal-nav-link${isActive ? " is-active" : ""}`}
-            >
-              <Glyph name={item.icon} size={20} strokeWidth={1.8} />
-              <span>{item.label}</span>
-            </NavLink>
-          ))}
+          {PORTAL_NAVIGATION.filter((item) => item.section === section).map(
+            (item) => (
+              <NavLink
+                key={item.id}
+                to={portalNavPath(item.id, patientId)}
+                aria-label={item.label}
+                end={item.id === "portal.dashboard"}
+                onClick={onNavigate}
+                className={({ isActive }) =>
+                  `wx-portal-nav-link${isActive ? " is-active" : ""}`
+                }
+              >
+                <Glyph name={item.icon} size={20} strokeWidth={1.8} />
+                <span>{item.label}</span>
+              </NavLink>
+            ),
+          )}
         </div>
       ))}
     </>
   );
 }
 
-function PortalSidebar({ patientId }: { patientId: string | null }): JSX.Element {
+function PortalSidebar({
+  patientId,
+}: {
+  patientId: string | null;
+}): JSX.Element {
   return (
     <aside className="wx-portal-sidebar" aria-label="Family Portal sidebar">
-      <Brand destination={patientId ? `/p/${encodeURIComponent(patientId)}` : "/patient-picker"} />
+      <Brand
+        destination={
+          patientId ? `/p/${encodeURIComponent(patientId)}` : "/patient-picker"
+        }
+      />
       {patientId ? (
         <nav aria-label="Portal navigation">
           <NavigationLinks patientId={patientId} />
         </nav>
-      ) : null}
+      ) : (
+        <nav
+          aria-label="Portal account navigation"
+          className="wx-portal-no-patient-nav"
+        >
+          <NavLink
+            to="/patient-picker"
+            aria-label="Choose patient"
+            className={({ isActive }) =>
+              `wx-portal-nav-link${isActive ? " is-active" : ""}`
+            }
+          >
+            <Glyph name="users" size={20} strokeWidth={1.8} />
+            <span>Choose patient</span>
+          </NavLink>
+          <NavLink
+            to="/account"
+            aria-label="Account & security"
+            className={({ isActive }) =>
+              `wx-portal-nav-link${isActive ? " is-active" : ""}`
+            }
+          >
+            <Glyph name="shield-check" size={20} strokeWidth={1.8} />
+            <span>Account & security</span>
+          </NavLink>
+        </nav>
+      )}
       <div className="wx-portal-sidebar__footer">
         <span>Private and secure</span>
         <small>Your access is protected by WardenX.</small>
@@ -103,13 +152,21 @@ function PatientIdentity(): JSX.Element {
   );
 }
 
-function PortalHeader({ patientId }: { patientId: string | null }): JSX.Element {
+function PortalHeader({
+  patientId,
+}: {
+  patientId: string | null;
+}): JSX.Element {
   const { pathname } = useLocation();
   return (
     <header className="wx-portal-topbar">
       <div className="wx-portal-topbar__mobile-brand">
         <Brand
-          destination={patientId ? `/p/${encodeURIComponent(patientId)}` : "/patient-picker"}
+          destination={
+            patientId
+              ? `/p/${encodeURIComponent(patientId)}`
+              : "/patient-picker"
+          }
           compact
         />
       </div>
@@ -142,7 +199,15 @@ function PortalHeader({ patientId }: { patientId: string | null }): JSX.Element 
 }
 
 function PortalMobileNav({ patientId }: { patientId: string }): JSX.Element {
+  const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
+  const moreActive = PORTAL_NAVIGATION.some(
+    (item) => !item.mobile && pathname === portalNavPath(item.id, patientId),
+  );
+  // External navigation (including browser back/forward) must dismiss the sheet.
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname, patientId]);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const openerRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -155,7 +220,10 @@ function PortalMobileNav({ patientId }: { patientId: string }): JSX.Element {
         return;
       }
       if (event.key !== "Tab") return;
-      const focusable = [...(dialogRef.current?.querySelectorAll<HTMLElement>("a, button") ?? [])];
+      const focusable = [
+        ...(dialogRef.current?.querySelectorAll<HTMLElement>("a, button") ??
+          []),
+      ];
       if (focusable.length === 0) return;
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
@@ -187,6 +255,7 @@ function PortalMobileNav({ patientId }: { patientId: string }): JSX.Element {
           <dialog
             className="wx-portal-mobile-sheet"
             open
+            aria-modal="true"
             aria-label="More portal destinations"
             ref={dialogRef}
             onMouseDown={(event) => event.stopPropagation()}
@@ -206,7 +275,10 @@ function PortalMobileNav({ patientId }: { patientId: string }): JSX.Element {
           </dialog>
         </div>
       ) : null}
-      <nav className="wx-portal-mobile-nav" aria-label="Mobile portal navigation">
+      <nav
+        className="wx-portal-mobile-nav"
+        aria-label="Mobile portal navigation"
+      >
         {fixed.map((item) => (
           <NavLink
             key={item.id}
@@ -222,6 +294,7 @@ function PortalMobileNav({ patientId }: { patientId: string }): JSX.Element {
           type="button"
           aria-haspopup="dialog"
           aria-expanded={open}
+          className={moreActive ? "is-active" : undefined}
           onClick={() => setOpen(true)}
         >
           <Glyph name="more-horizontal" size={22} />
@@ -234,13 +307,16 @@ function PortalMobileNav({ patientId }: { patientId: string }): JSX.Element {
 
 function PortalUrgentHelp(): JSX.Element {
   return (
-    <aside className="wx-portal-urgent-help" aria-label="Urgent care information">
+    <aside
+      className="wx-portal-urgent-help"
+      aria-label="Urgent care information"
+    >
       <Glyph name="phone" size={20} />
       <div>
         <strong>Need urgent help?</strong>
         <p>
-          Contact your hospice team directly. Do not use portal messages for emergencies. In an
-          emergency, call local emergency services.
+          Contact your hospice team directly. Do not use portal messages for
+          emergencies. In an emergency, call local emergency services.
         </p>
       </div>
     </aside>
@@ -260,7 +336,10 @@ export function PortalAppShell(): JSX.Element {
         <div className="wx-portal-workspace">
           <PortalHeader patientId={patientId} />
           <main className="wx-portal-main" id="portal-main" tabIndex={-1}>
-            <Outlet />
+            {/* A patient ID alone never grants access (the server enforces that).
+                Remounting the routed screen on patient changes also ensures drafts,
+                request state, and prior patient data cannot flash before effects run. */}
+            <Outlet key={patientId ?? "no-active-patient"} />
           </main>
           <PortalUrgentHelp />
         </div>

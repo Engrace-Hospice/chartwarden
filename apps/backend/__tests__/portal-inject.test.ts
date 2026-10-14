@@ -732,10 +732,16 @@ function makeServer(
     "MedicationOrderProvider",
     fakeMedicationOrderProvider as unknown as MedicationOrderProvider,
   );
-  const messagingCalls = { sendMessage: 0, listMessages: 0, lastListInput: null as unknown };
+  const messagingCalls = {
+    sendMessage: 0,
+    listMessages: 0,
+    lastListInput: null as unknown,
+    lastSyncInput: null as unknown,
+  };
   const fakeMessagingProvider = {
-    async syncCareTeamChannel() {
+    async syncCareTeamChannel(orgId: string, patientId: string, portalUserId?: string) {
       if (opts.careTeamSyncThrows) throw new Error("care-team roster reconcile failed");
+      messagingCalls.lastSyncInput = { orgId, patientId, portalUserId };
       return { channelId: "channel-1" };
     },
     async openChannel() {
@@ -1083,6 +1089,11 @@ describe("M31 route smoke — the M1 boundary", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(messagingCalls.listMessages).toBe(1);
+    expect(messagingCalls.lastSyncInput).toEqual({
+      orgId: ORG,
+      patientId: PATIENT,
+      portalUserId: "caregiver_user",
+    });
     expect(messagingCalls.lastListInput).toMatchObject({
       channelId: "channel-1",
       userId: "caregiver_user",

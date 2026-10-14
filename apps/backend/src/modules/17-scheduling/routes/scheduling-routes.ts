@@ -207,7 +207,10 @@ async function authorityOf(request: FastifyRequest): Promise<CallerAuthority> {
 }
 const OPTIMIZE = P("route.optimize_on_demand");
 const ROUTE_METRICS = P("route.read_metrics");
-const PORTAL_READ = P("portal.visit.read_upcoming");
+// M17 originally published the singular key while M31's real portal session class publishes the
+// plural catalog key. Accept either catalogued capability during the compatibility window; patient
+// scope is still independently narrowed by the live M31/M39 ABAC gate below.
+const PORTAL_READ = anyPermission("portal.visits.read_upcoming", "portal.visit.read_upcoming");
 // GAP-132 — the portal session is paired with its pinned patient by an ACTIVE M31 grant AND a live M39 consent
 // (`portal_grant_active_for_patient`, resolved by name from the shared ABAC registry — no M31 import). Account and
 // patient come from the SESSION, never the request; a withdrawn consent refuses the read before any byte crosses.
@@ -223,7 +226,7 @@ const ABAC_PORTAL_GRANT = (action: string): PreHandler =>
     })) as never,
     notFoundOnDeny: false,
   }) as PreHandler;
-const PORTAL_GRANT = ABAC_PORTAL_GRANT("portal.visit.read_upcoming");
+const PORTAL_GRANT = ABAC_PORTAL_GRANT("portal.visits.read_upcoming");
 const CREDENTIAL_READ = P("membership_credential.read");
 const CREDENTIAL_GRANT = P("membership_credential.grant");
 const CREDENTIAL_REVOKE = P("membership_credential.revoke");

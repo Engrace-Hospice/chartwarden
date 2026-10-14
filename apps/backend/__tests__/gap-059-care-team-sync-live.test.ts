@@ -196,6 +196,33 @@ describe.skipIf(!DB_URL)(
       expect(channelRows.rows).toHaveLength(1);
     });
 
+    it("adds the verified portal participant with the portal role and does not prune it as a clinician", async () => {
+      const provider = createDbMessagingProvider(handle.db);
+      const synchronized = await provider.syncCareTeamChannel(org, patientId, aide);
+      const portalRow = await admin.query(
+        `SELECT role, source, removed_at FROM channel_member
+         WHERE organization_id=$1 AND channel_id=$2 AND user_id=$3 AND removed_at IS NULL`,
+        [org, synchronized.channelId, aide],
+      );
+      expect(portalRow.rows).toEqual([
+        expect.objectContaining({ role: "portal_caregiver", source: "auto", removed_at: null }),
+      ]);
+
+      await provider.syncCareTeamChannel(org, patientId);
+      const stillActive = await admin.query(
+        `SELECT role FROM channel_member WHERE channel_id=$1 AND user_id=$2 AND removed_at IS NULL`,
+        [synchronized.channelId, aide],
+      );
+      expect(stillActive.rows).toEqual([{ role: "portal_caregiver" }]);
+
+      // Keep this shared live-suite fixture isolated for the roster-change scenario below.
+      await admin.query(
+        `UPDATE channel_member SET removed_at=now()
+         WHERE channel_id=$1 AND user_id=$2 AND role='portal_caregiver' AND removed_at IS NULL`,
+        [synchronized.channelId, aide],
+      );
+    });
+
     it("reconciles a roster change while leaving a manually-added member untouched (D5 admin-override invariant)", async () => {
       const provider = createDbMessagingProvider(handle.db);
       const { channelId } = await provider.syncCareTeamChannel(org, patientId);

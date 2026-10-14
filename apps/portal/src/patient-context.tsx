@@ -25,7 +25,10 @@ const PatientContext = createContext<PatientContextValue | null>(null);
 export function PortalPatientContext({
   patientId,
   children,
-}: { patientId: string | null; children: ReactNode }): JSX.Element {
+}: {
+  patientId: string | null;
+  children: ReactNode;
+}): JSX.Element {
   const client = useApiClient();
   const [state, setState] = useState<{
     patientId: string | null;
@@ -39,25 +42,43 @@ export function PortalPatientContext({
     void attempt;
     let active = true;
     // Clear synchronously for the new key before any response can reveal the previous patient.
-    setState({ patientId, summary: null, loading: patientId !== null, error: null });
+    setState({
+      patientId,
+      summary: null,
+      loading: patientId !== null,
+      error: null,
+    });
     if (!patientId) return () => undefined;
     void (async () => {
-      const response = await client.GET("/api/v1/portal/care-summary", {});
-      if (!active) return;
-      if (response.error) {
-        setState({
-          patientId,
-          summary: null,
-          loading: false,
-          error: readError(response.response?.status),
-        });
-      } else {
-        setState({
-          patientId,
-          summary: (response.data as PortalCareSummary) ?? null,
-          loading: false,
-          error: null,
-        });
+      try {
+        const response = await client.GET("/api/v1/portal/care-summary", {});
+        if (!active) return;
+        if ("error" in response) {
+          setState({
+            patientId,
+            summary: null,
+            loading: false,
+            error: readError(response.response?.status),
+          });
+        } else {
+          setState({
+            patientId,
+            summary: (response.data as PortalCareSummary) ?? null,
+            loading: false,
+            error: null,
+          });
+        }
+      } catch {
+        // Network errors may throw instead of returning { error }. Never leave the
+        // patient identity in a permanent loading state or retain prior PHI.
+        if (active) {
+          setState({
+            patientId,
+            summary: null,
+            loading: false,
+            error: readError(undefined),
+          });
+        }
       }
     })();
     return () => {
@@ -75,11 +96,16 @@ export function PortalPatientContext({
     }),
     [patientId, state],
   );
-  return <PatientContext.Provider value={value}>{children}</PatientContext.Provider>;
+  return (
+    <PatientContext.Provider value={value}>{children}</PatientContext.Provider>
+  );
 }
 
 export function usePortalPatient(): PatientContextValue {
   const value = useContext(PatientContext);
-  if (!value) throw new Error("usePortalPatient must be used inside PortalPatientContext");
+  if (!value)
+    throw new Error(
+      "usePortalPatient must be used inside PortalPatientContext",
+    );
   return value;
 }

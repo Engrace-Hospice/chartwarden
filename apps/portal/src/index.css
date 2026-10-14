@@ -1281,7 +1281,9 @@
     font-weight: 650;
     text-decoration: none;
   }
-  .wx-portal-mobile-nav a[aria-current="page"] { background: var(--color-primary-tint); color: var(--color-primary-strong); }
+  .wx-portal-mobile-nav a[aria-current="page"], .wx-portal-mobile-nav button.is-active { background: var(--color-primary-tint); color: var(--color-primary-strong); }
+  .wx-portal-mobile-nav a:focus-visible, .wx-portal-mobile-nav button:focus-visible,
+  .wx-portal-mobile-sheet button:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 2px; }
   .wx-portal-mobile-sheet-backdrop { position: fixed; z-index: 40; inset: 0; display: flex; align-items: flex-end; background: var(--color-scrim); }
   .wx-portal-mobile-sheet { width: 100%; max-height: min(86dvh, 44rem); margin: 0; padding: var(--space-5) var(--space-4) calc(var(--space-5) + env(safe-area-inset-bottom)); overflow-y: auto; border: 0; border-radius: var(--radius-2xl) var(--radius-2xl) 0 0; background: var(--color-surface-lowest); color: var(--color-on-surface); box-shadow: var(--shadow-float); }
   .wx-portal-mobile-sheet__header { margin-bottom: var(--space-4); display: flex; align-items: center; justify-content: space-between; }
@@ -1535,4 +1537,494 @@
 @media (prefers-reduced-motion: reduce) {
   .wx-portal-conversation-body { scroll-behavior: auto; }
   .wx-portal-messaging-skeleton span { animation: none; }
+}
+
+/* PR3.3 — patient document library. Kept portal-local; all color, radius and motion values use Lantern. */
+.wx-documents-library {
+  overflow: hidden;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-lowest);
+  box-shadow: var(--shadow-soft);
+}
+.wx-documents-library__header {
+  min-height: 5.5rem;
+  padding: var(--space-5) var(--space-6);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  border-bottom: 1px solid var(--color-outline-variant);
+  background: var(--color-surface-low);
+}
+.wx-documents-library__header h2, .wx-documents-library__header p,
+.wx-document-row h3, .wx-documents-empty h2, .wx-documents-empty p,
+.wx-documents-error h3, .wx-documents-error p, .wx-documents-security p,
+.wx-document-upload h2, .wx-document-upload p { margin: 0; }
+.wx-documents-library__header h2 { font-family: var(--font-display); font-size: 1.125rem; font-weight: 650; }
+.wx-documents-library__header p { margin-top: var(--space-1); color: var(--color-on-surface-variant); font-size: .875rem; }
+.wx-documents-library__header > span { color: var(--color-on-surface-variant); font-size: .8125rem; font-weight: 650; white-space: nowrap; }
+.wx-document-list { margin: 0; padding: 0; list-style: none; }
+.wx-document-row { min-height: 6.25rem; padding: var(--space-4) var(--space-6); display: grid; grid-template-columns: 3rem minmax(0, 1fr) auto; align-items: center; gap: var(--space-4); border-bottom: 1px solid var(--color-outline-variant); }
+.wx-document-row:last-child { border-bottom: 0; }
+.wx-document-row:hover { background: var(--color-surface-low); }
+.wx-document-row__icon, .wx-documents-empty__icon { width: 3rem; height: 3rem; display: grid; place-items: center; border-radius: var(--radius-lg); background: var(--color-primary-tint); color: var(--color-primary-strong); }
+.wx-document-row__content { min-width: 0; }
+.wx-document-row h3 { overflow: hidden; color: var(--color-on-surface); font-size: .9375rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.wx-document-row__meta { margin-top: var(--space-2); display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-3); color: var(--color-on-surface-variant); font-size: .8125rem; }
+.wx-documents-security { max-width: 42rem; display: flex; align-items: flex-start; gap: var(--space-3); color: var(--color-on-surface-variant); }
+.wx-documents-security > svg { flex: 0 0 auto; color: var(--color-primary-strong); }
+.wx-documents-security strong { color: var(--color-on-surface); font-size: .875rem; }
+.wx-documents-security p { margin-top: .2rem; font-size: .8125rem; line-height: 1.5; }
+.wx-documents-empty { min-height: 17rem; padding: var(--space-7); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-4); text-align: center; }
+.wx-documents-empty h2 { font-family: var(--font-display); font-size: 1.125rem; }
+.wx-documents-empty p { margin-top: var(--space-1); color: var(--color-on-surface-variant); font-size: .875rem; }
+.wx-documents-error { min-height: 12rem; padding: var(--space-6); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-4); }
+.wx-documents-error > svg { color: var(--color-error); }
+.wx-documents-error h3 { font-size: .9375rem; }
+.wx-documents-error p { margin-top: var(--space-1); color: var(--color-on-surface-variant); font-size: .875rem; }
+.wx-documents-inline-error { padding: var(--space-3) var(--space-5); display: flex; align-items: center; gap: var(--space-3); border-bottom: 1px solid var(--color-error); background: color-mix(in srgb, var(--color-error) 9%, var(--color-surface-lowest)); color: var(--color-on-surface); font-size: .8125rem; }
+.wx-documents-inline-error span { flex: 1; }
+.wx-documents-inline-error button { min-height: 2.75rem; border: 0; background: transparent; color: var(--color-primary); font-weight: 700; cursor: pointer; }
+.wx-documents-skeleton { padding: var(--space-3) var(--space-6); display: flex; flex-direction: column; }
+.wx-documents-skeleton span { height: 5.5rem; border-bottom: 1px solid var(--color-outline-variant); background: linear-gradient(90deg, transparent, var(--color-surface-container), transparent); background-size: 200% 100%; animation: wx-portal-dashboard-pulse 1.5s ease-in-out infinite; }
+.wx-document-upload { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-5); }
+.wx-document-upload > header { display: flex; align-items: flex-start; gap: var(--space-3); }
+.wx-document-upload > header > span { width: 2.75rem; height: 2.75rem; flex: 0 0 auto; display: grid; place-items: center; border-radius: var(--radius-lg); background: var(--color-primary-tint); color: var(--color-primary-strong); }
+.wx-document-upload h2 { font-family: var(--font-display); font-size: 1.25rem; }
+.wx-document-upload header p { margin-top: var(--space-1); color: var(--color-on-surface-variant); font-size: .875rem; }
+.wx-document-upload .wx-field { width: 100%; }
+.wx-document-upload__picker { padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-2); border: 1px dashed var(--color-outline); border-radius: var(--radius-lg); background: var(--color-surface-low); }
+.wx-document-upload__picker > label { font-size: .875rem; font-weight: 700; }
+.wx-document-upload__picker input { min-height: 2.75rem; width: 100%; color: var(--color-on-surface); }
+.wx-document-upload__picker p { color: var(--color-on-surface-variant); font-size: .75rem; line-height: 1.45; }
+.wx-document-upload__file { padding: var(--space-3); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); border: 1px solid var(--color-outline-variant); border-radius: var(--radius-lg); }
+.wx-document-upload__file > svg { color: var(--color-primary-strong); }
+.wx-document-upload__file strong, .wx-document-upload__file span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wx-document-upload__file strong { font-size: .875rem; }
+.wx-document-upload__file span { margin-top: .15rem; color: var(--color-on-surface-variant); font-size: .75rem; }
+.wx-document-upload__file button { min-height: 2.75rem; border: 0; background: transparent; color: var(--color-primary); font-weight: 700; cursor: pointer; }
+.wx-document-upload__feedback { padding: var(--space-3); display: flex; align-items: flex-start; gap: var(--space-2); border-radius: var(--radius-md); font-size: .8125rem; line-height: 1.5; }
+.wx-document-upload__feedback--error, .wx-document-upload__error { color: var(--color-error); }
+.wx-document-upload__feedback--error { background: color-mix(in srgb, var(--color-error) 9%, transparent); }
+.wx-document-upload__feedback--complete { background: color-mix(in srgb, var(--color-success) 10%, transparent); color: var(--color-success); }
+.wx-document-upload__error, .wx-document-upload__stage { font-size: .8125rem; }
+.wx-document-upload__stage { color: var(--color-on-surface-variant); }
+.wx-document-upload > footer { display: flex; justify-content: flex-end; gap: var(--space-3); }
+
+@media (max-width: 47.99rem) {
+  .wx-documents-library__header { padding: var(--space-4); align-items: flex-start; flex-direction: column; gap: var(--space-2); }
+  .wx-document-row { padding: var(--space-4); grid-template-columns: 2.75rem minmax(0, 1fr); align-items: start; }
+  .wx-document-row__icon { width: 2.75rem; height: 2.75rem; }
+  .wx-document-row > button { grid-column: 1 / -1; width: 100%; }
+  .wx-documents-error { grid-template-columns: auto minmax(0, 1fr); }
+  .wx-documents-error > button { grid-column: 1 / -1; width: 100%; }
+  .wx-document-upload { padding: var(--space-5) var(--space-4); }
+  .wx-document-upload > footer { flex-direction: column-reverse; }
+  .wx-document-upload > footer button { width: 100%; }
+  .wx-modal-scrim { padding: var(--space-2) !important; padding-bottom: max(var(--space-2), env(safe-area-inset-bottom)) !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wx-documents-skeleton span { animation: none; }
+  .wx-document-row { transition: none; }
+}
+
+/* PR3.4 — patient-facing medication overview and caregiver administration flow. */
+.wx-medications-page { display: flex; flex-direction: column; gap: var(--space-7); }
+.wx-medications-intro { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-4) var(--space-5); border: 1px solid var(--color-outline-variant); border-radius: var(--radius-xl); background: var(--color-surface-low); color: var(--color-on-surface-variant); }
+.wx-medications-intro svg { flex: 0 0 auto; color: var(--color-primary-strong); }
+.wx-medications-intro p { margin: 0; max-width: 65rem; font-size: .8125rem; line-height: 1.6; }
+.wx-medications-section { min-width: 0; }
+.wx-medications-section__heading { margin-bottom: var(--space-4); display: flex; justify-content: space-between; align-items: center; gap: var(--space-4); }
+.wx-medications-eyebrow { display: block; margin-bottom: var(--space-2); color: var(--color-primary-strong); font-size: .6875rem; font-weight: 750; letter-spacing: .09em; }
+.wx-medications-section__heading h2 { margin: 0; color: var(--color-on-surface); font: 700 1.25rem/1.3 var(--font-display); }
+.wx-medications-section__heading p { margin: var(--space-1) 0 0; color: var(--color-on-surface-variant); font-size: .8125rem; }
+.wx-medications-count { flex: 0 0 auto; padding: .45rem .75rem; border-radius: 999px; background: var(--color-surface-container); color: var(--color-on-surface-variant); font-size: .75rem; font-weight: 650; }
+.wx-medications-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); padding: 0; margin: 0; list-style: none; }
+.wx-medication-card { min-width: 0; display: flex; flex-direction: column; padding: var(--space-5); border: 1px solid var(--color-card-border); border-radius: var(--radius-xl); background: var(--color-surface-lowest); box-shadow: var(--shadow-soft); }
+.wx-medication-card__header { display: flex; align-items: flex-start; gap: var(--space-3); min-width: 0; }
+.wx-medication-card__icon { flex: 0 0 auto; width: 2.9rem; height: 2.9rem; display: grid; place-items: center; border-radius: var(--radius-lg); background: var(--color-primary-tint); color: var(--color-primary-strong); }
+.wx-medication-card__name { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); }
+.wx-medication-card__name h3 { margin: 0; font: 700 1.02rem/1.4 var(--font-display); color: var(--color-on-surface); overflow-wrap: anywhere; }
+.wx-medication-card__details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); margin: var(--space-5) 0 0; padding-top: var(--space-4); border-top: 1px solid var(--color-outline-variant); }
+.wx-medication-card__details > div { min-width: 0; }
+.wx-medication-card__details dt { margin-bottom: var(--space-1); color: var(--color-muted); font-size: .725rem; }
+.wx-medication-card__details dd { margin: 0; color: var(--color-on-surface); font-size: .85rem; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.wx-medication-card__details .wx-medication-card__schedule { grid-column: 1 / -1; }
+.wx-medications-lower { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(15rem, 1fr); gap: var(--space-5); align-items: start; }
+.wx-medications-lower .wx-medications-section { min-width: 0; }
+.wx-medications-history { overflow: hidden; padding: 0; margin: 0; list-style: none; border: 1px solid var(--color-card-border); border-radius: var(--radius-xl); background: var(--color-surface-lowest); }
+.wx-medications-history > li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); padding: var(--space-4); }
+.wx-medications-history > li + li { border-top: 1px solid var(--color-outline-variant); }
+.wx-medications-history__icon { width: 2.25rem; height: 2.25rem; flex: 0 0 auto; display: grid; place-items: center; border-radius: var(--radius-lg); color: var(--color-success); background: color-mix(in srgb, var(--color-success) 10%, var(--color-surface-lowest)); }
+.wx-medications-history__body { display: flex; flex-direction: column; min-width: 0; gap: .2rem; }
+.wx-medications-history__body strong { color: var(--color-on-surface); font-size: .85rem; overflow-wrap: anywhere; }
+.wx-medications-history__body span { color: var(--color-on-surface-variant); font-size: .75rem; }
+.wx-medications-history__time { max-width: 11rem; color: var(--color-on-surface-variant); font-size: .73rem; text-align: right; line-height: 1.4; }
+.wx-medications-record-card { padding: var(--space-5); display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); border: 1px solid var(--color-outline-variant); border-radius: var(--radius-xl); background: var(--color-surface-low); }
+.wx-medications-record-card__icon { display: grid; place-items: center; width: 2.75rem; height: 2.75rem; border-radius: var(--radius-lg); background: var(--color-primary-tint); color: var(--color-primary-strong); }
+.wx-medications-record-card h2 { margin: 0; font: 700 1.025rem/1.4 var(--font-display); }
+.wx-medications-record-card p { margin: 0; color: var(--color-on-surface-variant); font-size: .8rem; line-height: 1.6; }
+.wx-medications-record-card button { margin-top: var(--space-2); width: 100%; display: inline-flex; justify-content: center; align-items: center; gap: var(--space-2); }
+.wx-medications-record-card__hint { color: var(--color-muted); font-size: .75rem; line-height: 1.5; }
+.wx-medications-empty, .wx-medications-history-empty { min-height: 12rem; padding: var(--space-6); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3); border: 1px dashed var(--color-outline); border-radius: var(--radius-xl); color: var(--color-on-surface-variant); text-align: center; }
+.wx-medications-empty svg, .wx-medications-history-empty svg { color: var(--color-primary-strong); }
+.wx-medications-empty h3 { margin: 0; font: 650 1rem var(--font-display); color: var(--color-on-surface); }
+.wx-medications-empty p, .wx-medications-history-empty p { margin: 0; max-width: 23rem; font-size: .8rem; line-height: 1.55; }
+.wx-medications-resource-error { min-height: 9rem; padding: var(--space-5); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); border: 1px solid var(--color-outline-variant); border-radius: var(--radius-xl); background: var(--color-surface-lowest); }
+.wx-medications-resource-error > svg { color: var(--color-error); }
+.wx-medications-resource-error h3 { margin: 0; font-size: .95rem; }
+.wx-medications-resource-error p { margin: var(--space-1) 0 0; color: var(--color-on-surface-variant); font-size: .8rem; }
+.wx-medications-resource-error button, .wx-medications-refresh { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); }
+.wx-medications-refresh { min-height: 2.75rem; padding: 0 var(--space-3); border: 1px solid var(--color-outline-variant); border-radius: var(--radius-lg); background: var(--color-surface-lowest); color: var(--color-on-surface); font-size: .8rem; font-weight: 650; cursor: pointer; }
+.wx-medications-refresh:disabled { opacity: .55; cursor: wait; }
+.wx-medications-skeleton { display: flex; flex-direction: column; gap: var(--space-3); padding: 0; }
+.wx-medications-skeleton span { height: 4.5rem; border-radius: var(--radius-lg); background: var(--color-surface-container); animation: wx-portal-dashboard-pulse 1.5s ease-in-out infinite; }
+.wx-medications-dialog { padding: var(--space-6); max-height: min(85dvh, 48rem); overflow-y: auto; overscroll-behavior: contain; }
+.wx-medications-dialog__header { display: flex; align-items: flex-start; gap: var(--space-3); margin-bottom: var(--space-5); }
+.wx-medications-dialog__header > span { flex: 0 0 auto; width: 2.75rem; height: 2.75rem; display: grid; place-items: center; border-radius: var(--radius-lg); background: var(--color-primary-tint); color: var(--color-primary-strong); }
+.wx-medications-dialog__header h2 { margin: 0; font: 700 1.25rem var(--font-display); }
+.wx-medications-dialog__header p { margin: var(--space-1) 0 0; color: var(--color-on-surface-variant); font-size: .82rem; line-height: 1.55; }
+.wx-medications-form { display: flex; flex-direction: column; gap: var(--space-4); }
+.wx-medications-form .wx-field { width: 100%; }
+.wx-medications-form__note { margin: 0; display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-lg); background: var(--color-surface-low); color: var(--color-on-surface-variant); font-size: .78rem; line-height: 1.5; }
+.wx-medications-form__note svg { flex: 0 0 auto; color: var(--color-primary-strong); }
+.wx-medications-form__prescription { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-3) var(--space-4); border-left: 3px solid var(--color-primary); border-radius: var(--radius-md); background: var(--color-primary-tint); }
+.wx-medications-form__prescription strong { color: var(--color-on-surface); font-size: .78rem; }
+.wx-medications-form__prescription span { color: var(--color-on-surface); font-size: .82rem; }
+.wx-medications-form__prescription small { color: var(--color-on-surface-variant); font-size: .73rem; }
+.wx-medications-form__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); align-items: start; }
+.wx-medications-form__date { display: flex; flex-direction: column; gap: var(--space-2); }
+.wx-medications-form__date label { font-size: .83rem; font-weight: 650; }
+.wx-medications-form__date input { width: 100%; min-width: 0; min-height: 2.75rem; padding: .55rem .75rem; border: 1px solid var(--color-outline); border-radius: var(--radius-lg); color: var(--color-on-surface); background: var(--color-surface-lowest); }
+.dark .wx-medications-form__date input { color-scheme: dark; }
+.wx-medications-form__date small { color: var(--color-muted); font-size: .73rem; line-height: 1.4; }
+.wx-medications-form__invalid, .wx-medications-dialog__feedback { margin: 0; padding: var(--space-3); border-radius: var(--radius-md); background: color-mix(in srgb, var(--color-error) 9%, transparent); color: var(--color-error); font-size: .8rem; line-height: 1.5; }
+.wx-medications-form footer, .wx-medications-review footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-3); padding-top: var(--space-2); }
+.wx-medications-review { display: flex; flex-direction: column; gap: var(--space-4); }
+.wx-medications-review h3 { margin: 0; font: 700 1rem var(--font-display); }
+.wx-medications-review > p { margin: 0; color: var(--color-on-surface-variant); font-size: .8rem; }
+.wx-medications-review dl { margin: 0; padding: var(--space-4); border: 1px solid var(--color-outline-variant); border-radius: var(--radius-lg); background: var(--color-surface-low); }
+.wx-medications-review dl > div { display: grid; grid-template-columns: minmax(6rem, 1fr) minmax(0, 1.5fr); gap: var(--space-3); padding: var(--space-2) 0; }
+.wx-medications-review dl > div + div { border-top: 1px solid var(--color-outline-variant); }
+.wx-medications-review dt { color: var(--color-muted); font-size: .76rem; }
+.wx-medications-review dd { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: .82rem; font-weight: 650; }
+.wx-medications-review__attestation { white-space: pre-wrap; }
+.wx-medications-review__check { display: flex; gap: var(--space-3); align-items: flex-start; font-size: .82rem; line-height: 1.55; cursor: pointer; }
+.wx-medications-review__check input { width: 1.1rem; height: 1.1rem; min-height: 1.1rem; margin-top: .2rem; accent-color: var(--color-primary); }
+.wx-medications-dialog__complete { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-3); padding: var(--space-5) var(--space-3); }
+.wx-medications-dialog__complete svg { color: var(--color-success); }
+.wx-medications-dialog__complete h3 { margin: 0; font: 700 1.125rem var(--font-display); }
+.wx-medications-dialog__complete p { margin: 0; color: var(--color-on-surface-variant); font-size: .82rem; line-height: 1.5; }
+.wx-medications-dialog__complete button { margin-top: var(--space-3); min-width: 8rem; }
+.wx-medications-page button:focus-visible, .wx-medications-dialog button:focus-visible, .wx-medications-dialog input:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 2px; }
+@media (max-width: 63.99rem) { .wx-medications-grid { grid-template-columns: minmax(0, 1fr); } .wx-medications-lower { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 47.99rem) {
+  .wx-medications-section__heading { align-items: flex-start; flex-wrap: wrap; }
+  .wx-medications-grid { grid-template-columns: minmax(0, 1fr); }
+  .wx-medication-card { padding: var(--space-4); }
+  .wx-medications-history > li { grid-template-columns: auto minmax(0, 1fr); }
+  .wx-medications-history__time { grid-column: 2; text-align: left; max-width: none; }
+  .wx-medications-resource-error { grid-template-columns: auto minmax(0, 1fr); }
+  .wx-medications-resource-error button { grid-column: 1 / -1; }
+  .wx-medications-dialog { padding: var(--space-4); max-height: 85dvh; }
+  .wx-medications-form__grid { grid-template-columns: minmax(0, 1fr); }
+  .wx-medications-form footer, .wx-medications-review footer { flex-direction: column-reverse; }
+  .wx-medications-form footer button, .wx-medications-review footer button { width: 100%; }
+  .wx-medications-review dl > div { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
+}
+@media (prefers-reduced-motion: reduce) { .wx-medications-skeleton span { animation: none; } }
+
+/* PR3.5 — Patient care-plan summary: read-only, lay-language, patient-scoped. */
+.wx-care-plan-page { display: flex; flex-direction: column; gap: var(--space-5); min-width: 0; }
+.wx-care-plan-eyebrow { display: block; margin-bottom: var(--space-2); color: var(--color-primary-strong); font-size: .6875rem; font-weight: 750; letter-spacing: .085em; text-transform: uppercase; }
+.wx-care-plan-intro { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-5); border: 1px solid var(--color-outline-variant); border-radius: var(--radius-xl); background: var(--color-surface-low); }
+.wx-care-plan-intro__icon { display: grid; flex: 0 0 auto; place-items: center; width: 3rem; height: 3rem; border-radius: var(--radius-lg); color: var(--color-primary-strong); background: var(--color-primary-tint); }
+.wx-care-plan-intro p { margin: 0; color: var(--color-on-surface); font-size: .9rem; line-height: 1.6; }
+.wx-care-plan-restricted { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-4) var(--space-5); border: 1px solid var(--color-outline); border-radius: var(--radius-xl); background: var(--color-surface-lowest); }
+.wx-care-plan-restricted__icon { display: grid; place-items: center; flex: 0 0 auto; width: 2.5rem; height: 2.5rem; border-radius: var(--radius-lg); background: var(--color-surface-container); color: var(--color-on-surface-variant); }
+.wx-care-plan-restricted strong { display: block; margin: 0 0 var(--space-1); color: var(--color-on-surface); font-size: .875rem; }
+.wx-care-plan-restricted p { margin: 0; color: var(--color-on-surface-variant); font-size: .8rem; line-height: 1.6; }
+.wx-care-plan-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(14rem, 17.5rem); gap: var(--space-5); align-items: start; min-width: 0; }
+.wx-care-plan-main { min-width: 0; }
+.wx-care-plan-section-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); }
+.wx-care-plan-section-head h2 { margin: 0; font: 700 1.25rem/1.3 var(--font-display); color: var(--color-on-surface); }
+.wx-care-plan-section-head p { margin: var(--space-1) 0 0; color: var(--color-on-surface-variant); font-size: .8rem; line-height: 1.5; }
+.wx-care-plan-count { flex: 0 0 auto; padding: .45rem .75rem; border-radius: 999px; background: var(--color-surface-container); color: var(--color-on-surface-variant); font-size: .75rem; font-weight: 650; }
+.wx-care-plan-area-list { display: flex; flex-direction: column; gap: var(--space-4); padding: 0; margin: 0; list-style: none; }
+.wx-care-plan-area { min-width: 0; border: 1px solid var(--color-card-border); border-radius: var(--radius-xl); background: var(--color-surface-lowest); box-shadow: var(--shadow-soft); overflow: hidden; }
+.wx-care-plan-area__heading { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-5); }
+.wx-care-plan-area__number { display: grid; flex: 0 0 auto; place-items: center; width: 2.75rem; height: 2.75rem; border-radius: var(--radius-lg); color: var(--color-primary-strong); background: var(--color-primary-tint); font: 700 .9rem/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.wx-care-plan-area__heading > div { min-width: 0; }
+.wx-care-plan-area__heading .wx-care-plan-eyebrow { margin-bottom: var(--space-1); }
+.wx-care-plan-area h3 { margin: 0; color: var(--color-on-surface); font: 700 1.065rem/1.4 var(--font-display); overflow-wrap: anywhere; }
+.wx-care-plan-area__content { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); padding: var(--space-4) var(--space-5) var(--space-5); border-top: 1px solid var(--color-outline-variant); }
+.wx-care-plan-area__content section { min-width: 0; }
+.wx-care-plan-area__content h4 { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-3); color: var(--color-on-surface); font-size: .815rem; font-weight: 700; }
+.wx-care-plan-area__content h4 svg { color: var(--color-primary-strong); flex: 0 0 auto; }
+.wx-care-plan-area__goals ul { display: flex; flex-direction: column; gap: var(--space-3); padding: 0; margin: 0; list-style: none; }
+.wx-care-plan-area__goals li { display: flex; align-items: flex-start; gap: var(--space-3); color: var(--color-on-surface-variant); font-size: .855rem; line-height: 1.6; overflow-wrap: anywhere; }
+.wx-care-plan-goal-mark { width: .5rem; height: .5rem; margin-top: .48rem; border: 2px solid var(--color-primary-strong); border-radius: 50%; flex: 0 0 auto; }
+.wx-care-plan-area__focus { padding-top: var(--space-4); border-top: 1px solid var(--color-outline-variant); }
+.wx-care-plan-area__focus ul { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: 0; margin: 0; list-style: none; }
+.wx-care-plan-area__focus li { max-width: 100%; overflow-wrap: anywhere; padding: .45rem .7rem; border: 1px solid var(--color-outline-variant); border-radius: var(--radius-md); background: var(--color-surface-low); color: var(--color-on-surface-variant); font-size: .79rem; line-height: 1.4; }
+.wx-care-plan-area__no-details { margin: 0; padding: var(--space-4) var(--space-5); border-top: 1px solid var(--color-outline-variant); color: var(--color-on-surface-variant); font-size: .82rem; line-height: 1.5; }
+.wx-care-plan-guide { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); padding: var(--space-5); border: 1px solid var(--color-outline-variant); border-radius: var(--radius-xl); background: var(--color-surface-low); }
+.wx-care-plan-guide__icon { display: grid; place-items: center; width: 2.5rem; height: 2.5rem; border-radius: var(--radius-lg); background: var(--color-primary-tint); color: var(--color-primary-strong); }
+.wx-care-plan-guide h2 { margin: 0; color: var(--color-on-surface); font: 700 1rem/1.4 var(--font-display); }
+.wx-care-plan-guide p, .wx-care-plan-guide__footnote { margin: 0; color: var(--color-on-surface-variant); font-size: .81rem; line-height: 1.65; }
+.wx-care-plan-guide__footnote { padding-top: var(--space-3); border-top: 1px solid var(--color-outline-variant); }
+.wx-care-plan-empty, .wx-care-plan-error { min-height: 15rem; padding: var(--space-7) var(--space-5); border: 1px dashed var(--color-outline); border-radius: var(--radius-xl); background: var(--color-surface-lowest); }
+.wx-care-plan-empty { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: var(--space-3); text-align: center; }
+.wx-care-plan-state-icon { width: 3rem; height: 3rem; display: grid; place-items: center; border-radius: var(--radius-xl); background: var(--color-primary-tint); color: var(--color-primary-strong); flex: 0 0 auto; }
+.wx-care-plan-empty h2, .wx-care-plan-error h2 { margin: 0; font: 700 1.075rem/1.4 var(--font-display); color: var(--color-on-surface); }
+.wx-care-plan-empty p, .wx-care-plan-error p { margin: 0; max-width: 29rem; color: var(--color-on-surface-variant); font-size: .85rem; line-height: 1.65; }
+.wx-care-plan-error { display: flex; align-items: flex-start; gap: var(--space-4); min-height: 10rem; border-style: solid; }
+.wx-care-plan-error .wx-care-plan-state-icon { color: var(--color-error); background: color-mix(in srgb, var(--color-error) 9%, var(--color-surface-lowest)); }
+.wx-care-plan-error > div { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); }
+.wx-care-plan-error button { display: inline-flex; align-items: center; gap: var(--space-2); }
+.wx-care-plan-skeleton { display: grid; grid-template-columns: minmax(0, 1fr) minmax(14rem, 17.5rem); gap: var(--space-4); }
+.wx-care-plan-skeleton span { display: block; border-radius: var(--radius-xl); background: var(--color-surface-container); animation: wx-portal-dashboard-pulse 1.5s ease-in-out infinite; }
+.wx-care-plan-skeleton__intro { grid-column: 1 / -1; height: 5rem; }
+.wx-care-plan-skeleton__card { grid-column: 1; height: 12rem; }
+.wx-care-plan-skeleton__side { grid-column: 2; grid-row: 2 / 4; }
+@media (max-width: 63.99rem) {
+  .wx-care-plan-layout { grid-template-columns: minmax(0, 1fr); }
+  .wx-care-plan-guide { max-width: none; }
+  .wx-care-plan-skeleton { grid-template-columns: minmax(0, 1fr); }
+  .wx-care-plan-skeleton__side { grid-column: 1; grid-row: auto; height: 8rem; }
+}
+@media (max-width: 47.99rem) {
+  .wx-care-plan-intro, .wx-care-plan-restricted { padding: var(--space-4); }
+  .wx-care-plan-intro__icon { width: 2.5rem; height: 2.5rem; }
+  .wx-care-plan-section-head { align-items: flex-start; flex-wrap: wrap; }
+  .wx-care-plan-area__heading { padding: var(--space-4); }
+  .wx-care-plan-area__content { padding: var(--space-4); }
+  .wx-care-plan-area__no-details { padding: var(--space-4); }
+  .wx-care-plan-guide { padding: var(--space-4); }
+  .wx-care-plan-error { padding: var(--space-4); }
+}
+@media (prefers-reduced-motion: reduce) { .wx-care-plan-skeleton span { animation: none; } }
+
+/* PR4.1–4.2: secure onboarding and account settings. Scoped to portal screens; Lantern tokens remain canonical. */
+.wx-portal-onboarding { display: grid; gap: var(--space-5); min-width: 0; }
+.wx-portal-onboarding__method { display: flex; gap: var(--space-2); padding: var(--space-1); border: 1px solid var(--color-outline-variant); border-radius: var(--radius-lg); background: var(--color-surface-low); }
+.wx-portal-onboarding__method span { flex: 1; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); color: var(--color-muted); text-align: center; font-size: .8rem; font-weight: 650; }
+.wx-portal-onboarding__method .is-current { color: var(--color-on-surface); background: var(--color-surface-lowest); box-shadow: var(--shadow-soft); }
+.wx-portal-auth-note { margin: 0; color: var(--color-on-surface-variant); font-size: .82rem; line-height: 1.6; }
+.wx-portal-auth-help { display: flex; align-items: flex-start; justify-content: center; gap: var(--space-2); max-width: 29rem; }
+.wx-portal-auth-help svg { flex: 0 0 auto; margin-top: .1rem; }
+.wx-portal-auth-heading h1 { font-size: clamp(1.45rem, 2.2vw, 1.85rem); line-height: 1.2; }
+.wx-portal-auth-heading p { line-height: 1.65; }
+.wx-portal-auth-primary-link { display: inline-flex; align-items: center; justify-content: center; min-height: 2.75rem; padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); background: var(--color-primary); color: var(--color-on-primary); text-decoration: none; font-weight: 700; }
+.wx-portal-auth-primary-link:hover { background: var(--color-primary-strong); color: var(--color-on-primary); }
+.wx-portal-auth-primary-link:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 3px; }
+.wx-portal-onboarding__busy { display: grid; gap: var(--space-4); }
+.wx-portal-onboarding__busy-icon { width: 3.25rem; height: 3.25rem; border-radius: var(--radius-xl); display: grid; place-items: center; background: var(--color-primary-tint); color: var(--color-primary-strong); }
+.wx-portal-account-choices { display: grid; gap: var(--space-3); }
+.wx-portal-account-choice { display: flex; align-items: center; width: 100%; min-height: 5.25rem; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--color-card-border); border-radius: var(--radius-xl); background: var(--color-surface-lowest); text-align: left; color: var(--color-on-surface); cursor: pointer; }
+.wx-portal-account-choice:hover:not(:disabled), .wx-portal-account-choice:focus-visible { border-color: var(--color-primary); background: var(--color-primary-tint); }
+.wx-portal-account-choice:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 2px; }
+.wx-portal-account-choice:disabled { opacity: .7; cursor: wait; }
+.wx-portal-account-choice__icon { display: grid; place-items: center; width: 2.5rem; height: 2.5rem; flex-shrink: 0; border-radius: var(--radius-lg); color: var(--color-primary-strong); background: var(--color-primary-tint); }
+.wx-portal-account-choice__content { flex: 1; min-width: 0; }
+.wx-portal-account-choice__content strong, .wx-portal-account-choice__content small { display: block; overflow-wrap: anywhere; }
+.wx-portal-account-choice__content strong { font-size: .95rem; font-weight: 700; }
+.wx-portal-account-choice__content small { margin-top: var(--space-1); color: var(--color-on-surface-variant); font-size: .78rem; }
+.wx-portal-picker-intro { display: flex; align-items: flex-start; gap: var(--space-4); padding: var(--space-5); border-radius: var(--radius-xl); background: var(--color-primary-tint); }
+.wx-portal-picker-intro__icon { display: grid; place-items: center; width: 3rem; height: 3rem; flex: 0 0 auto; background: var(--color-surface-lowest); border-radius: var(--radius-lg); color: var(--color-primary-strong); }
+.wx-portal-picker-intro h2 { margin: 0; font: 700 1.05rem/1.4 var(--font-display); color: var(--color-on-surface); }
+.wx-portal-picker-intro p { margin: var(--space-1) 0 0; line-height: 1.6; color: var(--color-on-surface-variant); font-size: .85rem; }
+.wx-portal-picker-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin: var(--space-5) 0 var(--space-3); }
+.wx-portal-picker-heading h2 { margin: 0; font: 700 1rem/1.4 var(--font-display); }
+.wx-portal-picker-heading > span { color: var(--color-muted); font-size: .8rem; }
+.wx-portal-picker-error { margin-top: var(--space-4); }
+.wx-portal-patient-option { position: relative; border-radius: var(--radius-xl); min-height: 7rem; }
+.wx-portal-patient-option .wx-portal-patient-option__avatar { width: 3.25rem; height: 3.25rem; }
+.wx-portal-patient-option .wx-portal-patient-option__copy small { display: block; margin-top: var(--space-2); color: var(--color-primary-strong); font-size: .75rem; font-weight: 650; }
+.wx-portal-patient-option::after { display: none; }
+.wx-portal-patient-option__arrow { font-size: 1.4rem; color: var(--color-primary-strong); flex-shrink: 0; }
+.wx-portal-picker-footer { display: flex; align-items: flex-start; gap: var(--space-2); margin-top: var(--space-5); color: var(--color-on-surface-variant); }
+.wx-portal-picker-footer > svg { margin-top: .1rem; flex: 0 0 auto; }
+.wx-portal-picker-footer p { margin: 0; font-size: .81rem; line-height: 1.55; }
+.wx-portal-picker-footer a, .wx-portal-account-back { color: var(--color-primary-strong); font-weight: 650; text-decoration: underline; text-underline-offset: 3px; }
+.wx-portal-account-back { display: inline-flex; align-items: center; min-height: 2.75rem; font-size: .85rem; }
+.wx-portal-settings-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(17rem, 1fr); gap: var(--space-5); align-items: start; }
+.wx-portal-settings-main, .wx-portal-settings-aside { min-width: 0; display: grid; gap: var(--space-5); }
+.wx-portal-settings-panel { padding: var(--space-5); border: 1px solid var(--color-card-border); border-radius: var(--radius-xl); background: var(--color-surface-lowest); box-shadow: var(--shadow-soft); }
+.wx-portal-settings-panel__heading { display: flex; gap: var(--space-3); align-items: flex-start; margin-bottom: var(--space-4); }
+.wx-portal-settings-panel__icon { width: 2.65rem; height: 2.65rem; display: grid; flex-shrink: 0; place-items: center; border-radius: var(--radius-lg); background: var(--color-primary-tint); color: var(--color-primary-strong); }
+.wx-portal-settings-panel__heading h2, .wx-portal-notification-intro h2 { margin: 0; font: 700 1rem/1.45 var(--font-display); }
+.wx-portal-settings-panel__heading p, .wx-portal-notification-intro p { margin: var(--space-1) 0 0; font-size: .82rem; line-height: 1.6; color: var(--color-on-surface-variant); }
+.wx-portal-settings-details { margin: 0; }
+.wx-portal-settings-details > div { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); min-height: 3.2rem; border-top: 1px solid var(--color-outline-variant); padding: var(--space-3) 0; }
+.wx-portal-settings-details dt { color: var(--color-muted); font-size: .85rem; }
+.wx-portal-settings-details dd { margin: 0; color: var(--color-on-surface); font-weight: 650; font-size: .85rem; }
+.wx-portal-settings-panel__footer { padding-top: var(--space-3); border-top: 1px solid var(--color-outline-variant); }
+.wx-portal-settings-verify { display: flex; align-items: end; gap: var(--space-3); }
+.wx-portal-settings-verify .wx-field { flex: 1; max-width: 15rem; }
+.wx-portal-settings-hint { display: block; margin: var(--space-3) 0 0; color: var(--color-muted); font-size: .77rem; line-height: 1.55; }
+.wx-portal-settings-feedback { margin-top: var(--space-3); }
+.wx-portal-theme-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.wx-portal-theme-options button { min-height: 2.75rem; padding: var(--space-2); border: 1px solid var(--color-outline-variant); border-radius: var(--radius-lg); color: var(--color-on-surface); background: var(--color-surface-low); cursor: pointer; font-weight: 600; }
+.wx-portal-theme-options button.is-active { border-color: var(--color-primary-strong); background: var(--color-primary-tint); color: var(--color-primary-strong); }
+.wx-portal-theme-options button:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 2px; }
+.wx-portal-settings-panel--signout .wx-button { margin-top: var(--space-2); }
+.wx-portal-notification-intro { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-5); margin-bottom: var(--space-5); border-radius: var(--radius-xl); background: var(--color-primary-tint); }
+.wx-portal-notification-list { list-style: none; margin: 0; padding: 0; }
+.wx-portal-notification-list li { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); min-height: 4.5rem; padding: var(--space-3) 0; border-top: 1px solid var(--color-outline-variant); }
+.wx-portal-notification-list strong, .wx-portal-notification-list small { display: block; }
+.wx-portal-notification-list strong { font-size: .88rem; }
+.wx-portal-notification-list small { margin-top: var(--space-1); font-size: .76rem; color: var(--color-muted); }
+.wx-portal-notification-time { margin: 0; font: 700 1.25rem/1.4 var(--font-display); }
+@media (max-width: 63.99rem) { .wx-portal-settings-layout { grid-template-columns: minmax(0, 1fr); } .wx-portal-settings-aside { grid-template-columns: repeat(2,minmax(0,1fr)); } .wx-portal-settings-aside > :last-child { grid-column: 1 / -1; } }
+@media (max-width: 47.99rem) { .wx-portal-settings-aside { grid-template-columns: 1fr; } .wx-portal-settings-aside > :last-child { grid-column: auto; } .wx-portal-picker-intro, .wx-portal-settings-panel, .wx-portal-notification-intro { padding: var(--space-4); } .wx-portal-settings-verify { align-items: stretch; flex-direction: column; } .wx-portal-settings-verify .wx-field { width: 100%; max-width: none; } .wx-portal-settings-verify .wx-button { width: 100%; } .wx-portal-patient-option { gap: var(--space-3); padding: var(--space-3); } .wx-portal-patient-option .wx-portal-patient-option__avatar { width: 2.65rem; height: 2.65rem; } }
+@media (prefers-reduced-motion: reduce) { .wx-portal-account-choice, .wx-portal-patient-option { transition: none; } }
+.wx-portal-no-patient-nav { display: grid; gap: var(--space-2); padding: var(--space-4) var(--space-3); }
+
+/* PR4.3 — Correction requests: separate reviewed submissions from status tracking. */
+.wx-amendments-intro {
+  display: flex; align-items: flex-start; gap: var(--space-4); padding: var(--space-5) var(--space-6);
+  border: 1px solid var(--color-outline-variant); border-radius: var(--radius-xl);
+  background: var(--color-primary-tint); color: var(--color-on-surface);
+}
+.wx-amendments-intro__icon, .wx-amendments-panel__icon {
+  display: grid; place-items: center; flex: 0 0 auto; width: 3rem; height: 3rem;
+  border-radius: var(--radius-lg); background: var(--color-surface-lowest); color: var(--color-primary-strong);
+}
+.wx-amendments-intro strong { display: block; font: 700 1rem/1.4 var(--font-display); }
+.wx-amendments-intro p { max-width: 62rem; margin: var(--space-2) 0 0; font-size: .875rem; line-height: 1.65; }
+.wx-amendments-layout { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); gap: var(--space-5); align-items: start; }
+.wx-amendments-panel {
+  min-width: 0; padding: var(--space-6); border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-xl); background: var(--color-surface-lowest); box-shadow: var(--shadow-soft);
+}
+.wx-amendments-panel__heading { display: flex; align-items: flex-start; gap: var(--space-3); padding-bottom: var(--space-5); border-bottom: 1px solid var(--color-outline-variant); }
+.wx-amendments-panel__heading h2 { margin: 0; font: 700 1.05rem/1.4 var(--font-display); }
+.wx-amendments-panel__heading p { margin: var(--space-1) 0 0; font-size: .82rem; line-height: 1.55; color: var(--color-on-surface-variant); }
+.wx-amendments-panel__icon { width: 2.75rem; height: 2.75rem; background: var(--color-primary-tint); }
+.wx-amendments-form { display: grid; gap: var(--space-5); padding-top: var(--space-5); }
+.wx-amendments-form .wx-field { min-width: 0; }
+.wx-amendments-form textarea { min-height: 9rem; line-height: 1.6; }
+.wx-amendments-muted { color: var(--color-on-surface-variant); margin: var(--space-3) 0 0; font-size: .82rem; line-height: 1.6; }
+.wx-amendments-actions { display: flex; flex-wrap: wrap; justify-content: flex-start; align-items: center; gap: var(--space-3); }
+.wx-amendments-actions .wx-button { min-height: 2.75rem; }
+.wx-amendments-review { padding-top: var(--space-5); }
+.wx-amendments-review h3 { margin: 0 0 var(--space-4); font: 700 .95rem var(--font-display); }
+.wx-amendments-review dl { margin: 0; display: grid; gap: var(--space-3); }
+.wx-amendments-review dl > div { padding: var(--space-4); border-radius: var(--radius-lg); background: var(--color-surface-low); }
+.wx-amendments-review dt { font-size: .75rem; font-weight: 650; color: var(--color-on-surface-variant); }
+.wx-amendments-review dd { margin: var(--space-2) 0 0; font-size: .9rem; line-height: 1.6; }
+.wx-amendments-review .wx-amendments-actions { margin-top: var(--space-5); }
+.wx-amendments-long-text { overflow-wrap: anywhere; white-space: pre-wrap; }
+.wx-amendments-feedback { display: flex; align-items: flex-start; gap: var(--space-2); margin-top: var(--space-4); padding: var(--space-3) var(--space-4); border: 1px solid var(--color-outline-variant); border-radius: var(--radius-lg); font-size: .84rem; line-height: 1.6; }
+.wx-amendments-feedback svg { flex: 0 0 auto; margin-top: .15rem; }
+.wx-amendments-feedback--success { background: var(--color-primary-tint); }
+.wx-amendments-feedback--error { border-color: var(--color-error); color: var(--color-on-surface); }
+.wx-amendments-requests { list-style: none; margin: 0; padding: 0; }
+.wx-amendments-request { padding: var(--space-5) 0; border-bottom: 1px solid var(--color-outline-variant); }
+.wx-amendments-request:last-child { border-bottom: 0; padding-bottom: 0; }
+.wx-amendments-request__top { display: flex; gap: var(--space-2); justify-content: space-between; align-items: center; color: var(--color-on-surface-variant); font-size: .76rem; }
+.wx-amendments-request h3 { margin: var(--space-3) 0 var(--space-2); font-size: .94rem; font-weight: 700; }
+.wx-amendments-request p { margin: 0; color: var(--color-on-surface-variant); font-size: .85rem; line-height: 1.6; }
+.wx-amendments-history-state { display: flex; align-items: flex-start; gap: var(--space-4); padding: var(--space-7) var(--space-2); }
+.wx-amendments-history-state > svg { flex: 0 0 auto; color: var(--color-primary-strong); }
+.wx-amendments-history-state h3 { margin: 0; font-size: .94rem; }
+.wx-amendments-history-state p { margin: var(--space-2) 0 var(--space-4); color: var(--color-on-surface-variant); font-size: .84rem; line-height: 1.6; }
+.wx-amendments-skeleton, .wx-bereavement-skeleton { display: grid; gap: var(--space-4); padding: var(--space-5) 0; }
+.wx-amendments-skeleton > span, .wx-bereavement-skeleton > span { height: 3.5rem; border-radius: var(--radius-lg); background: var(--color-surface-container); animation: wx-portal-dashboard-pulse 1.5s ease-in-out infinite; }
+.wx-amendments-skeleton > span:nth-child(2), .wx-bereavement-skeleton > span:nth-child(2) { width: 78%; }
+
+/* PR4.4 — Quiet, readable bereavement resources and carefully scoped outreach preferences. */
+.wx-bereavement-intro { display: flex; align-items: flex-start; gap: var(--space-5); padding: var(--space-7); border-radius: var(--radius-xl); background: var(--color-surface-low); border: 1px solid var(--color-outline-variant); }
+.wx-bereavement-intro__icon { display: grid; flex: 0 0 auto; place-items: center; width: 3.5rem; height: 3.5rem; border-radius: var(--radius-xl); color: var(--color-primary-strong); background: var(--color-primary-tint); }
+.wx-bereavement-eyebrow { display: block; color: var(--color-on-surface-variant); font-size: .72rem; font-weight: 700; letter-spacing: .025em; }
+.wx-bereavement-intro h2 { margin: var(--space-2) 0; font: 700 clamp(1.15rem, 2vw, 1.5rem)/1.35 var(--font-display); }
+.wx-bereavement-intro p { max-width: 46rem; margin: 0; color: var(--color-on-surface-variant); font-size: .9rem; line-height: 1.75; }
+.wx-bereavement-layout { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(17rem, .8fr); gap: var(--space-5); align-items: start; }
+.wx-bereavement-main { display: grid; gap: var(--space-5); min-width: 0; }
+.wx-bereavement-panel { min-width: 0; padding: var(--space-6); border: 1px solid var(--color-card-border); border-radius: var(--radius-xl); background: var(--color-surface-lowest); box-shadow: var(--shadow-soft); }
+.wx-bereavement-panel__heading { display: flex; gap: var(--space-3); align-items: flex-start; padding-bottom: var(--space-5); border-bottom: 1px solid var(--color-outline-variant); }
+.wx-bereavement-panel__icon { flex: 0 0 auto; display: grid; place-items: center; width: 2.75rem; height: 2.75rem; border-radius: var(--radius-lg); background: var(--color-surface-low); color: var(--color-primary-strong); }
+.wx-bereavement-panel__heading h2, .wx-bereavement-preferences h2 { margin: 0; font: 700 1.05rem/1.45 var(--font-display); }
+.wx-bereavement-panel__heading p { margin: var(--space-1) 0 0; color: var(--color-on-surface-variant); font-size: .82rem; line-height: 1.55; }
+.wx-bereavement-program, .wx-bereavement-resources { margin: 0; padding: 0; list-style: none; }
+.wx-bereavement-program li { display: flex; gap: var(--space-3); padding: var(--space-5) 0; border-bottom: 1px solid var(--color-outline-variant); }
+.wx-bereavement-program li:last-child, .wx-bereavement-resource:last-child { border-bottom: 0; padding-bottom: 0; }
+.wx-bereavement-program__mark { display: grid; place-items: center; flex: 0 0 auto; width: 1.9rem; height: 1.9rem; border-radius: 50%; background: var(--color-surface-low); color: var(--color-primary-strong); }
+.wx-bereavement-program h3, .wx-bereavement-resource h3 { margin: 0; font-size: .93rem; font-weight: 700; line-height: 1.5; }
+.wx-bereavement-program p, .wx-bereavement-resource p { margin: var(--space-2) 0 0; font-size: .86rem; line-height: 1.68; color: var(--color-on-surface-variant); white-space: pre-wrap; overflow-wrap: anywhere; }
+.wx-bereavement-resource { padding: var(--space-5) 0; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); border-bottom: 1px solid var(--color-outline-variant); }
+.wx-bereavement-resource__body { min-width: 0; }
+.wx-bereavement-resource__body h3 { margin-top: var(--space-2); }
+.wx-bereavement-resource__link { display: inline-flex; flex: 0 0 auto; align-items: center; gap: var(--space-2); min-height: 2.75rem; padding: var(--space-2) var(--space-3); border: 1px solid var(--color-outline-variant); border-radius: var(--radius-lg); color: var(--color-primary-strong); font-size: .8rem; font-weight: 700; text-decoration: none; }
+.wx-bereavement-resource__link:hover { background: var(--color-surface-low); }
+.wx-bereavement-resource__link:focus-visible { outline: 3px solid var(--color-focus-ring); outline-offset: 3px; }
+.wx-bereavement-empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); padding: var(--space-6) 0; }
+.wx-bereavement-empty svg { color: var(--color-primary-strong); }
+.wx-bereavement-empty strong { font-size: .94rem; }
+.wx-bereavement-empty p { max-width: 34rem; margin: 0; color: var(--color-on-surface-variant); font-size: .85rem; line-height: 1.6; }
+.wx-bereavement-section-state { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-6) 0; }
+.wx-bereavement-section-state > svg { color: var(--color-error); flex: 0 0 auto; }
+.wx-bereavement-section-state p { margin: var(--space-2) 0 var(--space-3); color: var(--color-on-surface-variant); font-size: .85rem; line-height: 1.6; }
+.wx-bereavement-preferences { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3); }
+.wx-bereavement-preferences > p, .wx-bereavement-confirm p { margin: 0; color: var(--color-on-surface-variant); font-size: .86rem; line-height: 1.7; }
+.wx-bereavement-preferences__note { padding-top: var(--space-4); border-top: 1px solid var(--color-outline-variant); }
+.wx-bereavement-confirm { display: grid; gap: var(--space-4); }
+.wx-bereavement-confirm__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.wx-bereavement-confirm__actions .wx-button { min-height: 2.75rem; }
+.wx-bereavement-opted-out { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-4); border-radius: var(--radius-lg); background: var(--color-primary-tint); }
+.wx-bereavement-opted-out svg { flex: 0 0 auto; }
+.wx-bereavement-opted-out strong { font-size: .88rem; }
+.wx-bereavement-opted-out p { margin: var(--space-2) 0 0; font-size: .82rem; line-height: 1.6; }
+.wx-bereavement-opt-error { color: var(--color-on-surface); border-left: 3px solid var(--color-error); padding: var(--space-3); background: var(--color-surface-low); font-size: .84rem; line-height: 1.6; }
+
+/* PR4.4 — Restricted funeral-home screen, intentionally limited to the two authorized fields. */
+.wx-funeral-case { display: grid; justify-items: start; gap: var(--space-4); }
+.wx-funeral-case__icon { width: 3.25rem; height: 3.25rem; display: grid; place-items: center; color: var(--color-primary-strong); background: var(--color-primary-tint); border-radius: var(--radius-xl); }
+.wx-funeral-case h1 { margin: 0; font: 700 1.4rem/1.3 var(--font-display); }
+.wx-funeral-case > p { margin: 0; color: var(--color-on-surface-variant); font-size: .9rem; line-height: 1.6; }
+.wx-funeral-case__details { display: grid; width: 100%; margin: 0; border: 1px solid var(--color-outline-variant); border-radius: var(--radius-lg); overflow: hidden; }
+.wx-funeral-case__details > div { display: grid; gap: var(--space-2); padding: var(--space-4); background: var(--color-surface-low); }
+.wx-funeral-case__details > div + div { border-top: 1px solid var(--color-outline-variant); }
+.wx-funeral-case__details dt { color: var(--color-on-surface-variant); font-size: .77rem; }
+.wx-funeral-case__details dd { margin: 0; font-size: 1rem; font-weight: 700; overflow-wrap: anywhere; }
+.wx-funeral-case__notice { display: flex; align-items: flex-start; gap: var(--space-2); }
+.wx-funeral-case__notice svg { flex: 0 0 auto; margin-top: .15rem; }
+.wx-funeral-case__ended { padding: var(--space-4); border-radius: var(--radius-lg); background: var(--color-surface-low); }
+.wx-funeral-case__ended p { margin: var(--space-2) 0 0; color: var(--color-on-surface-variant); font-size: .85rem; line-height: 1.6; }
+
+@media (max-width: 63.99rem) {
+  .wx-amendments-layout, .wx-bereavement-layout { grid-template-columns: minmax(0, 1fr); }
+  .wx-bereavement-preferences { max-width: none; }
+}
+@media (max-width: 47.99rem) {
+  .wx-amendments-intro, .wx-bereavement-intro { gap: var(--space-3); padding: var(--space-4); }
+  .wx-amendments-panel, .wx-bereavement-panel { padding: var(--space-4); }
+  .wx-amendments-intro__icon, .wx-bereavement-intro__icon { width: 2.75rem; height: 2.75rem; }
+  .wx-amendments-actions .wx-button { width: 100%; }
+  .wx-bereavement-resource { flex-direction: column; }
+  .wx-bereavement-resource__link { align-self: flex-start; }
+  .wx-bereavement-confirm__actions { width: 100%; }
+  .wx-bereavement-confirm__actions .wx-button { flex: 1 1 auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wx-amendments-skeleton > span, .wx-bereavement-skeleton > span { animation: none; }
+}
+
+/* PR5 — Consistent accessible feedback for older-message pagination failures. */
+.wx-portal-messaging-older-error {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--color-error);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-container);
+  color: var(--color-on-surface);
+  font-size: .85rem;
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wx-portal-conversation-body { scroll-behavior: auto; }
 }

@@ -290,7 +290,7 @@ export function createDbMessagingProvider(
     // GAP-059 / M36 spec D5 — reconcile the patient's `care_team` channel membership against the
     // real roster (M5 CareTeamProvider). Auto-sourced rows only: a `source:'manual'` add (admin
     // override) is left alone, never re-added and never removed by the reconciler.
-    async syncCareTeamChannel(orgId, patientId) {
+    async syncCareTeamChannel(orgId, patientId, portalUserId) {
       // The M5 roster read runs BEFORE the write transaction opens, and must stay there.
       //
       // `CareTeamProvider`'s production store is `createDrizzleCareTeamStore(db)`, whose `listMembers`
@@ -384,11 +384,16 @@ export function createDbMessagingProvider(
           const channelArchived = channel.isArchived;
 
           const activeMembers = (await tx
-            .select({ id: CM.id, userId: CM.userId, source: CM.source })
+            .select({ id: CM.id, userId: CM.userId, source: CM.source, role: CM.role })
             .from(CM)
             .where(
               and(eq(CM.organizationId, orgId), eq(CM.channelId, channelId), isNull(CM.removedAt)),
-            )) as Array<{ id: string; userId: string; source: "auto" | "manual" }>;
+            )) as Array<{
+              id: string;
+              userId: string;
+              source: "auto" | "manual";
+              role: "owner" | "member" | "read_only" | "portal_caregiver";
+            }>;
           const activeUserIds = new Set(activeMembers.map((m) => m.userId));
 
           // GAP-104 — an archived (discharged/deceased) channel takes no NEW members; removals still apply
@@ -399,8 +404,11 @@ export function createDbMessagingProvider(
             ? []
             : [...roster].filter((userId) => !activeUserIds.has(userId) && !excluded.has(userId));
           const toRemove = activeMembers.filter(
-            (m) => m.source === "auto" && !roster.has(m.userId),
+            (m) =>
+              m.source === "auto" && m.role !== "portal_caregiver" && !roster.has(m.userId),
           );
+          const addPortalCaregiver =
+            !channelArchived && Boolean(portalUserId) && !activeUserIds.has(portalUserId!);
 
           if (toAdd.length > 0) {
             await tx.insert(CM).values(
@@ -413,11 +421,28 @@ export function createDbMessagingProvider(
               })),
             );
           }
+          if (addPortalCaregiver) {
+            await tx
+              .insert(CM)
+              .values({
+                organizationId: orgId,
+                channelId,
+                userId: portalUserId!,
+                role: "portal_caregiver",
+                source: "auto",
+              })
+              // Two portal reads can reconcile concurrently. The partial active-membership unique
+              // index is the arbiter; the loser proceeds to the same authorized channel.
+              .onConflictDoNothing();
+          }
           for (const m of toRemove) {
             await tx.update(CM).set({ removedAt: new Date() }).where(eq(CM.id, m.id));
           }
 
-          return { channelId, membershipChanged: toAdd.length > 0 || toRemove.length > 0 };
+          return {
+            channelId,
+            membershipChanged: toAdd.length > 0 || toRemove.length > 0 || addPortalCaregiver,
+          };
         },
       );
     },

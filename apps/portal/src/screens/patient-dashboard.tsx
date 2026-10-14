@@ -323,7 +323,7 @@ export function PortalPatientDashboard(): JSX.Element {
       });
       if (!active) return;
       setUpcoming(
-        response.error
+        "error" in response
           ? {
               patientId: requestedPatient,
               items: [],

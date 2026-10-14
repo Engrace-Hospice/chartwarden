@@ -320,7 +320,7 @@ export function PortalVisitList(): JSX.Element {
         const response = await client.GET("/api/v1/portal/visits/upcoming", {});
         if (!active) return;
         setUpcoming(
-          response.error
+          "error" in response
             ? {
                 patientId: requestedPatient,
                 items: [],
@@ -360,7 +360,7 @@ export function PortalVisitList(): JSX.Element {
         const response = await client.GET("/api/v1/portal/visits/history", {});
         if (!active) return;
         setHistory(
-          response.error
+          "error" in response
             ? {
                 patientId: requestedPatient,
                 items: [],
