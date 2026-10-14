@@ -31,6 +31,8 @@ const fakeDb = {
 } as unknown as DbClient;
 
 let medsCalls = 0;
+let taskCalls: Array<[string, string, string]> = [];
+let tasksFlag = false;
 const ports: PatientContextPorts = {
   findPatient: async (_o, id) =>
     id === PATIENT ? ({ id, organizationId: ORG, status: "active" } as PatientIdentity) : null,
@@ -39,6 +41,10 @@ const ports: PatientContextPorts = {
   activeMedications: async () => {
     medsCalls += 1;
     return [{}, {}] as MedicationOrderDto[];
+  },
+  openTaskCount: async (org, patient, user) => {
+    taskCalls.push([org, patient, user]);
+    return 3;
   },
   now: () => new Date("2026-10-14T12:00:00.000Z"),
 };
@@ -92,6 +98,7 @@ function makeServer() {
       ) => Promise<void>,
     },
     ports,
+    async () => tasksFlag,
   );
   return app;
 }
@@ -104,6 +111,8 @@ const get = (app: ReturnType<typeof makeServer>, user: string | null, id = PATIE
 
 beforeEach(() => {
   medsCalls = 0;
+  taskCalls = [];
+  tasksFlag = false;
   resetAuthorizationContract();
   resetRbacEngine();
   resetAbacRegistry();
@@ -168,6 +177,38 @@ describe("GET /patients/:patientId/context", () => {
     const app = makeServer();
     const res = await get(app, "prescriber");
     expect(Object.keys(res.json().tiles)).toEqual(["medications"]);
+    await app.close();
+  });
+
+  it("omits the open-tasks tile and never counts while the tenant flag is off", async () => {
+    const app = makeServer();
+    const res = await get(app, "nurse");
+    expect("open_tasks" in res.json().tiles).toBe(false);
+    expect(taskCalls).toEqual([]);
+    await app.close();
+  });
+
+  it("returns the caller's own open-task count once the flag is on", async () => {
+    tasksFlag = true;
+    const app = makeServer();
+    const res = await get(app, "nurse");
+    expect(res.json().tiles.open_tasks).toMatchObject({
+      state: "ok",
+      data: { count: 3 },
+      link: "/notifications?tab=tasks",
+    });
+    expect(taskCalls).toEqual([[ORG, PATIENT, "nurse"]]);
+    await app.close();
+  });
+
+  it("keeps the tile behind the chart-read gate even with the flag on", async () => {
+    tasksFlag = true;
+    const app = makeServer();
+    for (const user of ["outsider", "scopeless", "prescriber"]) {
+      const res = await get(app, user);
+      expect("open_tasks" in res.json().tiles).toBe(false);
+    }
+    expect(taskCalls).toEqual([]);
     await app.close();
   });
 });

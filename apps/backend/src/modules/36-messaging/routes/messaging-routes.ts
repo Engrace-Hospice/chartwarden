@@ -69,7 +69,7 @@ import {
   VerifyEndpointBodySchema,
   parse,
 } from "./messaging-typebox";
-import { registerPatientContextRoutes } from "./patient-context-routes";
+import { registerPatientContextRoutes, seamPatientContextPorts } from "./patient-context-routes";
 import { type PresenceRouteDeps, registerPresenceRoutes } from "./presence-routes";
 import { registerReactionPinRoutes } from "./reaction-pin-routes";
 import {
@@ -79,6 +79,7 @@ import {
   registerSbarRoutes,
 } from "./sbar-routes";
 import { registerMessageSearchRoutes } from "./search-routes";
+import { DISABLED_TASKS, type TaskRouteDeps, registerTaskRoutes } from "./task-routes";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -102,6 +103,8 @@ export interface MessagingRouteDeps {
   clinicalLinks?: Omit<ClinicalLinkRouteDeps, "canViewChannel">;
   /** WP 3.3: SBAR (flag + policy store). Omitted => flag off: an sbar body is refused and the policy route 404s. */
   sbar?: SbarRouteDeps;
+  /** WP 3.4: communication tasks (flag + service). Omitted => flag off: every task route 404s and the list answers disabled. */
+  tasks?: TaskRouteDeps;
 }
 
 /**
@@ -339,7 +342,14 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   });
 
   // --- WP 3.1: patient context panel (own file; per-tile permission re-check, a denied tile is absent) ---------------
-  registerPatientContextRoutes(app, { read: READ });
+  // The open-tasks tile reads the task service (flag-gated); with no tasks bound the flag reads off and the tile is absent.
+  const taskDeps = deps.tasks ?? DISABLED_TASKS;
+  registerPatientContextRoutes(
+    app,
+    { read: READ },
+    { ...seamPatientContextPorts, openTaskCount: taskDeps.service.openTaskCount },
+    taskDeps.isEnabled,
+  );
 
   // --- WP 3.2: clinical links (message -> clinical record, read-through). Writes validate each link on send/edit. -----
   const clinicalLinkDeps: ClinicalLinkRouteDeps = {
@@ -351,6 +361,13 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   // --- WP 3.3: SBAR (policy read/admin routes; the flag check on a send/edit body; lengths are checked in the service) --
   const sbarDeps = deps.sbar ?? DISABLED_SBAR;
   registerSbarRoutes(app, sbarDeps);
+
+  // --- WP 3.4: communication tasks (message -> assignee task; thin row, no free text; flag-gated) -----------------------
+  registerTaskRoutes(app, taskDeps, {
+    read: READ,
+    send: SEND,
+    sendToChannel: SEND_TO_CHANNEL,
+  });
 
   // Structured autocomplete is scoped to a channel whose effective visibility has already been
   // revalidated. Patient results are intentionally limited by the service to the linked care-team

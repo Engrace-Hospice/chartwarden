@@ -32,5 +32,7 @@ export const PatientContextResponseSchema = Type.Object({
       ),
     ),
     medications: Type.Optional(Tile(Type.Object({ active_count: Type.Integer() }))),
+    // The caller's own active tasks on the patient; absent while the tenant flag `messaging.tasks` is off.
+    open_tasks: Type.Optional(Tile(Type.Object({ count: Type.Integer() }))),
   }),
 });

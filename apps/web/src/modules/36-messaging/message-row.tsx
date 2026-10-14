@@ -4,6 +4,7 @@ import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { MessageAnnotations } from "./message-annotations";
 import { MessageAttachments } from "./message-attachments";
+import { MessageTaskButton } from "./message-task-button";
 import type { Message } from "./messaging-types";
 import { absoluteTime, dayLabel, initialsOf } from "./messaging-utils";
 import { PollCard } from "./poll-card";
@@ -234,6 +235,13 @@ function MessageRowImpl({
             </div>
             {!deleted ? (
               <MessageAnnotations message={message} canAnnotate={canAnnotate} canPin={canPin} />
+            ) : null}
+            {!deleted && canAnnotate ? (
+              <MessageTaskButton
+                channelId={message.channelId}
+                messageId={message.messageId}
+                meId={meId}
+              />
             ) : null}
             {onShowReceipts && !deleted ? (
               <button

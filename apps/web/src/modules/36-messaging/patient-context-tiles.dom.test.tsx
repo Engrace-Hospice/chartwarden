@@ -62,4 +62,34 @@ describe("PatientContextTiles", () => {
 
     expect(await screen.findByText("No additional context available.")).toBeTruthy();
   });
+
+  it("shows the caller's open-task count with a link to the task list, and nothing when the tile is absent", async () => {
+    mount({
+      data: {
+        tiles: {
+          open_tasks: {
+            state: "ok",
+            as_of: AS_OF,
+            link: "/notifications?tab=tasks",
+            data: { count: 3 },
+          },
+        },
+      },
+    });
+
+    const card = await screen.findByRole("region", { name: "Your open tasks" });
+    expect(card.textContent).toMatch(/3 open/);
+    expect(screen.getByRole("link", { name: "Open tasks" }).getAttribute("href")).toBe(
+      "/notifications?tab=tasks",
+    );
+  });
+
+  it("omits the open-tasks card when the server left the tile out", async () => {
+    mount({
+      data: { tiles: { status: { state: "ok", as_of: AS_OF, link, data: { status: "on_hold" } } } },
+    });
+
+    await screen.findByRole("region", { name: "Status" });
+    expect(screen.queryByRole("region", { name: "Your open tasks" })).toBeNull();
+  });
 });

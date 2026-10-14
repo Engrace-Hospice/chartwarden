@@ -18,6 +18,7 @@ interface PatientContext {
     care_team?: Tile<{ member_count: number }>;
     allergies?: Tile<{ entries: Array<{ allergen: string; severity: string | null }> }>;
     medications?: Tile<{ active_count: number }>;
+    open_tasks?: Tile<{ count: number }>;
   };
 }
 type State = { kind: "loading" } | { kind: "error" } | { kind: "ready"; ctx: PatientContext };
@@ -27,10 +28,12 @@ const asOfLabel = (iso: string): string => `As of ${new Date(iso).toLocaleString
 function TileCard<T>({
   title,
   tile,
+  linkLabel = "Open in chart",
   children,
 }: {
   title: string;
   tile: Tile<T> | undefined;
+  linkLabel?: string;
   children: (data: T) => JSX.Element;
 }): JSX.Element | null {
   if (!tile) return null;
@@ -45,7 +48,7 @@ function TileCard<T>({
       ) : (
         <p role="status">Temporarily unavailable. Open the chart for the current value.</p>
       )}
-      {tile.link.startsWith("/") ? <Link to={tile.link}>Open in chart</Link> : null}
+      {tile.link.startsWith("/") ? <Link to={tile.link}>{linkLabel}</Link> : null}
     </section>
   );
 }
@@ -103,6 +106,9 @@ export function PatientContextTiles({ patientId }: { patientId: string }): JSX.E
       </TileCard>
       <TileCard title="Medications" tile={tiles.medications}>
         {(d) => <p>{d.active_count} active medications</p>}
+      </TileCard>
+      <TileCard title="Your open tasks" tile={tiles.open_tasks} linkLabel="Open tasks">
+        {(d) => <p>{d.count} open</p>}
       </TileCard>
     </div>
   );

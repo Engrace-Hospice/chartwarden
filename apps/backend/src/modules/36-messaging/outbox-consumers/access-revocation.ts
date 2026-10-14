@@ -29,7 +29,7 @@ export const M36_ACCESS_REVOCATION_EVENT_TYPES = [
   "m2.user.deactivated",
 ] as const;
 
-/** WP 1.4 stub: no owned items exist until P3/P4 (tasks, escalations). Replace with the real reassignment then. */
+/** WP 1.4 stub, kept for tests that exercise the consumer without owned items. Production binds the WP 3.4 task reassignment; escalations and handoffs are still P4. */
 export const reassignOwnedItemsNoop = async (_orgId: string, _userId: string): Promise<void> => {};
 
 export interface AccessRevocationDeps {
@@ -43,8 +43,9 @@ export interface AccessRevocationDeps {
    */
   readonly disconnectAccount?: (userId: string) => Promise<void>;
   /**
-   * WP 1.4 seam: hand the leaver's owned work (tasks, escalations, on-call duties) to their successor. NO-OP today:
-   * M36 has no owned items until P3 (tasks) / P4 (escalations) land. Wire the real reassignment here, not in the handler.
+   * WP 1.4 seam: hand the leaver's owned work to their successor. WP 3.4 landed the communication tasks (the boot binds
+   * `reassignTasksForLeaver`: creator, then care team, else flagged `needs_owner`); escalations and on-call duties are
+   * still P4. Wire further reassignment here, not in the handler.
    */
   readonly reassignOwnedItems?: (orgId: string, userId: string) => Promise<void>;
 }

@@ -287,6 +287,8 @@ export const MODULES: ModuleDef[] = [
       "message",
       "message_entity_reference",
       "clinical_link",
+      "communication_task",
+      "communication_task_event",
       "tenant_sbar_policy",
       "message_pin",
       "message_poll",

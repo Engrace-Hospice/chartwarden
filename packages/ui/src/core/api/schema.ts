@@ -13510,6 +13510,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Convert a message into a task for an assignee (WP 3.4; messaging.send + channel visibility; 404 while the tenant flag `messaging.tasks` is off). 201 created, or 200 with created:false when the assignee already holds an ACTIVE task on the message (replay changes nothing). The patient is derived from the channel, never the body. 422 TASK_ASSIGNEE_INVALID (the assignee cannot read the channel), TASK_DUE_INVALID; 404 is one answer for a hidden channel, missing or deleted message. Tasks do not page anyone and are not the emergency path */
+        post: operations["postApiV1MessagingChannelsByIdMessagesByMessageIdTasks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/channels/{id}/messages/{messageId}/thread": {
         parameters: {
             query?: never;
@@ -13848,6 +13865,108 @@ export interface paths {
         get: operations["getApiV1MessagingSearch"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's own tasks (WP 3.4; messaging.read): scope assigned|created, state active|closed|all, limit up to 100 (default 50), overdue first. Rows whose channel the caller can no longer view are omitted. 200 {enabled:false,tasks:[]} while the tenant flag `messaging.tasks` is off. Read-audited (list) */
+        get: operations["getApiV1MessagingTasks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/tasks/{taskId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One task and its append-only events (WP 3.4; messaging.read). Only the creator or assignee sees it, and only while they can still view the channel; a missing, foreign, hidden or flag-off task is ONE 404. `allowed_actions` is computed server-side. Read-audited against the task and its patient */
+        get: operations["getApiV1MessagingTasksByTaskId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/tasks/{taskId}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept a task (WP 3.4; messaging.send; assignee only). Repeating on an accepted task returns it unchanged. 403 when the caller may not take this action, 409 TASK_STATE_CONFLICT from a closed task, 404 uniform */
+        post: operations["postApiV1MessagingTasksByTaskIdAccept"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/tasks/{taskId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a task (WP 3.4; messaging.send; creator or assignee). Same closing-reason rule as complete. 403 when the caller may not cancel, 409 TASK_STATE_CONFLICT, 404 uniform */
+        post: operations["postApiV1MessagingTasksByTaskIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/tasks/{taskId}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete a task (WP 3.4; messaging.send; assignee only). A clinical task (patient channel, or flagged at creation) needs a closing reason CODE (422 TASK_CLOSE_REASON_REQUIRED; unknown code 422 TASK_CLOSE_REASON_INVALID); no free text. 403 when the caller may not complete, 409 TASK_STATE_CONFLICT, 404 uniform */
+        post: operations["postApiV1MessagingTasksByTaskIdComplete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/tasks/{taskId}/reassign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Hand a task to another user (WP 3.4; messaging.send; creator or assignee). The new assignee must be able to read the channel (422 TASK_ASSIGNEE_INVALID) and must not already hold an active task on the message (409 TASK_ASSIGNEE_ALREADY_HAS_ACTIVE). The task returns to open and any needs-owner flag clears. 403 when the caller may not reassign, 409 TASK_STATE_CONFLICT, 404 uniform */
+        post: operations["postApiV1MessagingTasksByTaskIdReassign"];
         delete?: never;
         options?: never;
         head?: never;
@@ -62966,6 +63085,67 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1MessagingChannelsByIdMessagesByMessageIdTasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    assignee_user_id: string;
+                    due_at?: string | null;
+                    clinical_concern?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        task: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            message_id: string;
+                            /** Format: uuid */
+                            channel_id: string;
+                            patient_id: string | null;
+                            /** Format: uuid */
+                            created_by: string;
+                            /** Format: uuid */
+                            assignee_id: string;
+                            assignee_display_name: string | null;
+                            created_by_display_name: string | null;
+                            due_at: string | null;
+                            status: "open" | "accepted" | "done" | "cancelled";
+                            clinical_concern: boolean;
+                            closed_reason: ("action_taken" | "handled_elsewhere" | "no_action_needed" | "unable_to_complete" | "duplicate") | null;
+                            needs_owner: boolean;
+                            overdue: boolean;
+                            /** Format: date-time */
+                            created_at: string;
+                            /** Format: date-time */
+                            updated_at: string;
+                            allowed_actions: ("accept" | "complete" | "cancel" | "reassign")[];
+                        };
+                        created: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1MessagingChannelsByIdMessagesByMessageIdThread: {
         parameters: {
             query?: {
@@ -63950,6 +64130,20 @@ export interface operations {
                                 state: "unavailable";
                                 link: string;
                             };
+                            open_tasks?: {
+                                /** @constant */
+                                state: "ok";
+                                /** Format: date-time */
+                                as_of: string;
+                                link: string;
+                                data: {
+                                    count: number;
+                                };
+                            } | {
+                                /** @constant */
+                                state: "unavailable";
+                                link: string;
+                            };
                         };
                     };
                 };
@@ -64192,6 +64386,349 @@ export interface operations {
                         scanned: number;
                         scanCapped: boolean;
                         refine: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingTasks: {
+        parameters: {
+            query?: {
+                scope?: "assigned" | "created";
+                state?: "active" | "closed" | "all";
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        tasks: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            message_id: string;
+                            /** Format: uuid */
+                            channel_id: string;
+                            patient_id: string | null;
+                            /** Format: uuid */
+                            created_by: string;
+                            /** Format: uuid */
+                            assignee_id: string;
+                            assignee_display_name: string | null;
+                            created_by_display_name: string | null;
+                            due_at: string | null;
+                            status: "open" | "accepted" | "done" | "cancelled";
+                            clinical_concern: boolean;
+                            closed_reason: ("action_taken" | "handled_elsewhere" | "no_action_needed" | "unable_to_complete" | "duplicate") | null;
+                            needs_owner: boolean;
+                            overdue: boolean;
+                            /** Format: date-time */
+                            created_at: string;
+                            /** Format: date-time */
+                            updated_at: string;
+                            allowed_actions: ("accept" | "complete" | "cancel" | "reassign")[];
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingTasksByTaskId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        task: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            message_id: string;
+                            /** Format: uuid */
+                            channel_id: string;
+                            patient_id: string | null;
+                            /** Format: uuid */
+                            created_by: string;
+                            /** Format: uuid */
+                            assignee_id: string;
+                            assignee_display_name: string | null;
+                            created_by_display_name: string | null;
+                            due_at: string | null;
+                            status: "open" | "accepted" | "done" | "cancelled";
+                            clinical_concern: boolean;
+                            closed_reason: ("action_taken" | "handled_elsewhere" | "no_action_needed" | "unable_to_complete" | "duplicate") | null;
+                            needs_owner: boolean;
+                            overdue: boolean;
+                            /** Format: date-time */
+                            created_at: string;
+                            /** Format: date-time */
+                            updated_at: string;
+                            allowed_actions: ("accept" | "complete" | "cancel" | "reassign")[];
+                        };
+                        events: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            task_id: string;
+                            event_type: "created" | "accepted" | "done" | "cancelled" | "reassigned" | "needs_owner";
+                            actor_kind: "user" | "system";
+                            actor_user_id: string | null;
+                            from_status: ("open" | "accepted" | "done" | "cancelled") | null;
+                            to_status: ("open" | "accepted" | "done" | "cancelled") | null;
+                            from_assignee_id: string | null;
+                            to_assignee_id: string | null;
+                            reason_code: string | null;
+                            /** Format: date-time */
+                            created_at: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingTasksByTaskIdAccept: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        task: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            message_id: string;
+                            /** Format: uuid */
+                            channel_id: string;
+                            patient_id: string | null;
+                            /** Format: uuid */
+                            created_by: string;
+                            /** Format: uuid */
+                            assignee_id: string;
+                            assignee_display_name: string | null;
+                            created_by_display_name: string | null;
+                            due_at: string | null;
+                            status: "open" | "accepted" | "done" | "cancelled";
+                            clinical_concern: boolean;
+                            closed_reason: ("action_taken" | "handled_elsewhere" | "no_action_needed" | "unable_to_complete" | "duplicate") | null;
+                            needs_owner: boolean;
+                            overdue: boolean;
+                            /** Format: date-time */
+                            created_at: string;
+                            /** Format: date-time */
+                            updated_at: string;
+                            allowed_actions: ("accept" | "complete" | "cancel" | "reassign")[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingTasksByTaskIdCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        task: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            message_id: string;
+                            /** Format: uuid */
+                            channel_id: string;
+                            patient_id: string | null;
+                            /** Format: uuid */
+                            created_by: string;
+                            /** Format: uuid */
+                            assignee_id: string;
+                            assignee_display_name: string | null;
+                            created_by_display_name: string | null;
+                            due_at: string | null;
+                            status: "open" | "accepted" | "done" | "cancelled";
+                            clinical_concern: boolean;
+                            closed_reason: ("action_taken" | "handled_elsewhere" | "no_action_needed" | "unable_to_complete" | "duplicate") | null;
+                            needs_owner: boolean;
+                            overdue: boolean;
+                            /** Format: date-time */
+                            created_at: string;
+                            /** Format: date-time */
+                            updated_at: string;
+                            allowed_actions: ("accept" | "complete" | "cancel" | "reassign")[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingTasksByTaskIdComplete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        task: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            message_id: string;
+                            /** Format: uuid */
+                            channel_id: string;
+                            patient_id: string | null;
+                            /** Format: uuid */
+                            created_by: string;
+                            /** Format: uuid */
+                            assignee_id: string;
+                            assignee_display_name: string | null;
+                            created_by_display_name: string | null;
+                            due_at: string | null;
+                            status: "open" | "accepted" | "done" | "cancelled";
+                            clinical_concern: boolean;
+                            closed_reason: ("action_taken" | "handled_elsewhere" | "no_action_needed" | "unable_to_complete" | "duplicate") | null;
+                            needs_owner: boolean;
+                            overdue: boolean;
+                            /** Format: date-time */
+                            created_at: string;
+                            /** Format: date-time */
+                            updated_at: string;
+                            allowed_actions: ("accept" | "complete" | "cancel" | "reassign")[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingTasksByTaskIdReassign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    assignee_user_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        task: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            message_id: string;
+                            /** Format: uuid */
+                            channel_id: string;
+                            patient_id: string | null;
+                            /** Format: uuid */
+                            created_by: string;
+                            /** Format: uuid */
+                            assignee_id: string;
+                            assignee_display_name: string | null;
+                            created_by_display_name: string | null;
+                            due_at: string | null;
+                            status: "open" | "accepted" | "done" | "cancelled";
+                            clinical_concern: boolean;
+                            closed_reason: ("action_taken" | "handled_elsewhere" | "no_action_needed" | "unable_to_complete" | "duplicate") | null;
+                            needs_owner: boolean;
+                            overdue: boolean;
+                            /** Format: date-time */
+                            created_at: string;
+                            /** Format: date-time */
+                            updated_at: string;
+                            allowed_actions: ("accept" | "complete" | "cancel" | "reassign")[];
+                        };
                     };
                 };
             };

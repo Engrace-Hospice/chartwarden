@@ -33,6 +33,39 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     enabled: true,
   },
   {
+    eventType: "m36.task.created",
+    category: "clinical_routine",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    // WP 3.4: the assignee is told, in-app only, with generic text (no message, channel or patient).
+    resolverArgs: { roleKeys: [], userIdPaths: ["assigneeUserId"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.task.reassigned",
+    category: "clinical_routine",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    // WP 3.4: only the NEW assignee is told, in-app only, with generic text.
+    resolverArgs: { roleKeys: [], userIdPaths: ["toUserId"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.task.needs_owner",
+    category: "clinical_routine",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    // WP 3.4: the creator is told a task lost its owner, in-app only, with generic text.
+    resolverArgs: { roleKeys: [], userIdPaths: ["creatorUserId"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
     eventType: "m36.message.schedule_blocked",
     category: "clinical_routine",
     severityFloor: "info",
