@@ -29,7 +29,7 @@ import type {
   IdgMeetingDigest,
   PacketSnapshot,
 } from "@wardenx/types";
-import { and, asc, eq, gte, inArray, isNotNull, lt, lte, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, lte, notInArray, sql } from "drizzle-orm";
 import type { IdgCadenceAdherence, IdgSeamStore, StoredIdgPacket } from "./store";
 
 const M = schema.idgMeeting;
@@ -245,6 +245,38 @@ export function createDrizzleIdgSeamStore(db: DbClient): IdgSeamStore {
           longestGapDays: Math.max(0, Math.floor(longestGapMs / MS_PER_DAY)),
         };
       });
+    },
+
+    /**
+     * Last meeting that took place and reviewed this patient. "Took place" = `status = 'adjourned'` AND a
+     * real `actual_start` (a scheduled / live / cancelled meeting never counts); "reviewed" = a FROZEN
+     * packet row for the patient (freeze is stamped at adjournment). Self-scopes under the explicit org
+     * (`withOrgContext`, RLS) with `organization_id` as the second wall. Selects id/instant/status only.
+     */
+    lastMeetingForPatient(organizationId, patientId) {
+      return withOrgContext(
+        db,
+        { organizationId, userId: IDG_READER_SYSTEM_USER_ID },
+        async (tx) => {
+          const [row] = await tx
+            .select({ id: M.id, actualStart: M.actualStart, status: M.status })
+            .from(M)
+            .where(
+              and(
+                eq(M.organizationId, organizationId),
+                eq(M.status, "adjourned"),
+                isNotNull(M.actualStart),
+                sql`exists (select 1 from ${PKT} where ${PKT.organizationId} = ${organizationId}
+                  and ${PKT.idgMeetingId} = ${M.id} and ${PKT.patientId} = ${patientId}
+                  and ${PKT.frozenAt} is not null)`,
+              ),
+            )
+            .orderBy(desc(M.actualStart), desc(M.id))
+            .limit(1);
+          if (!row || row.actualStart === null) return null;
+          return { meetingId: row.id, heldAt: iso(row.actualStart), status: row.status };
+        },
+      );
     },
 
     /**

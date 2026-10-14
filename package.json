@@ -119,6 +119,7 @@
     "test:m13:read:live": "vitest run apps/backend/__tests__/m13-emar-read-service.live.test.ts",
     "test:m13:emar-crons:live": "vitest run apps/backend/__tests__/m13-emar-crons.live.test.ts",
     "test:m14:write:live": "vitest run apps/backend/__tests__/m14-idg-write.live.test.ts",
+    "test:m14:last-meeting:live": "vitest run apps/backend/__tests__/m14-last-meeting-for-patient.live.test.ts",
     "test:m14:read:live": "vitest run apps/backend/__tests__/m14-idg-read-service.live.test.ts",
     "test:m14:enrichment:live": "vitest run apps/backend/__tests__/m14-idg-enrichment.live.test.ts",
     "test:m17:read:live": "vitest run apps/backend/__tests__/m17-scheduling-read-service.live.test.ts",
