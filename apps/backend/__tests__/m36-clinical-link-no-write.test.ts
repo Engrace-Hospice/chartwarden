@@ -28,7 +28,9 @@ describe("WP 3.2 clinical links are read-only toward the source modules", () => 
       const seamCalls = [...src.matchAll(/getSeam\(([^)]*)\)/g)];
       if (file.endsWith("link-sources.ts")) {
         expect(seamCalls).toHaveLength(1);
-        expect(src).toContain("as unknown as ClinicalLinkSource");
+        // Typed as the read-only ClinicalLinkSource, with no cast that could widen it to a write-capable seam type.
+        expect(src).toContain("): ClinicalLinkSource =>");
+        expect(src).not.toContain("as unknown as");
       } else {
         expect(seamCalls, file).toHaveLength(0);
       }

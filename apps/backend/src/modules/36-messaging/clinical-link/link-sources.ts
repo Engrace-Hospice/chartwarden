@@ -1,9 +1,8 @@
 // apps/backend/src/modules/36-messaging/clinical-link/link-sources.ts - WP 3.2: which owning-module seam answers each
 // link kind, and which permission + scope the caller must hold to link or open it.
 //
-// The seven seams gain `linkSummary(organizationId, id)` in their own modules (separate branches); until those merge the
-// seam types do not declare it, so the ONE cast below is the only place the gap shows. It is read-only by type:
-// `ClinicalLinkSource` has no write member.
+// Each of the seven seams declares `linkSummary(organizationId, id)` by extending `ClinicalLinkSource`, which has no
+// write member, so this module can read a source and nothing else.
 import { type GuardHandler, composeGuards, requireAbac, requirePermission } from "@wardenx/auth";
 import type { AbacTarget } from "@wardenx/auth";
 import type { ClinicalLinkKind, ClinicalLinkSource } from "@wardenx/types";
@@ -58,9 +57,8 @@ export const defaultMeetingScopeTarget: MeetingScopeTarget = async (_org, meetin
   id: meetingId,
 });
 
-// TODO(wp32-integration): remove cast once the seams declare linkSummary
 const sourceOf = (kind: ClinicalLinkKind): ClinicalLinkSource =>
-  getSeam(CLINICAL_LINK_SEAM_KEYS[kind]) as unknown as ClinicalLinkSource;
+  getSeam(CLINICAL_LINK_SEAM_KEYS[kind]);
 
 /** Production source ports: the owning seam, resolved at call time (an unbound deny-stub throws => unavailable). */
 export const seamClinicalLinkSources: ClinicalLinkSourcePorts = {
