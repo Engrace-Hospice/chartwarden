@@ -1,0 +1,152 @@
+/* M36 WP 3.2: clinical link chip (message body), link tray and picker (composer). Tokens come from the shared kit. */
+.wx-clinical-link-wrap {
+  display: inline-block;
+  max-width: 100%;
+}
+
+.wx-clinical-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  max-width: 100%;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-low);
+  color: var(--color-on-surface);
+  font-size: 0.75rem;
+  text-decoration: none;
+}
+
+a.wx-clinical-link:hover {
+  background: var(--color-surface-container);
+}
+
+.wx-clinical-link:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.wx-clinical-link small,
+.wx-clinical-link.is-pending,
+.wx-clinical-link.is-unavailable {
+  color: var(--color-on-surface-variant);
+}
+
+.wx-clinical-link.is-error {
+  border-color: var(--color-error-pill-fg);
+}
+
+.wx-clinical-link button {
+  min-height: 1.75rem;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Composer: the links chosen for this draft. */
+.wx-clinical-link-tray {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wx-clinical-link-tray li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.2rem 0.2rem 0.6rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-low);
+  font-size: 0.75rem;
+}
+
+.wx-clinical-link-tray button,
+.wx-clinical-link-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-low);
+  color: var(--color-on-surface-variant);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.wx-clinical-link-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.wx-clinical-link-picker {
+  position: relative;
+}
+
+.wx-clinical-link-popover {
+  position: absolute;
+  z-index: 20;
+  bottom: calc(100% + 0.25rem);
+  inset-inline-start: 0;
+  display: grid;
+  gap: 0.35rem;
+  width: min(22rem, 90vw);
+  padding: 0.5rem;
+  border: 1px solid var(--color-outline-variant);
+  border-radius: 0.75rem;
+  background: var(--color-surface-container-highest);
+  box-shadow: var(--shadow-ambient);
+}
+
+.wx-clinical-link-popover input {
+  min-height: 2.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-low);
+  color: var(--color-on-surface);
+  font: inherit;
+}
+
+.wx-clinical-link-list {
+  display: grid;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.wx-clinical-link-list [role="option"] {
+  display: flex;
+  min-height: 2.75rem;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--color-on-surface);
+  padding: 0.4rem 0.65rem;
+  text-align: left;
+  font: inherit;
+}
+
+.wx-clinical-link-list [role="option"].is-active,
+.wx-clinical-link-list [role="option"]:hover {
+  background: var(--color-surface-container);
+}
+
+.wx-clinical-link-list [role="option"] small,
+.wx-clinical-link-state {
+  color: var(--color-on-surface-variant);
+  font-size: 0.75rem;
+}

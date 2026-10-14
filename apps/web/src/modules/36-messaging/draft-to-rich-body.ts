@@ -1,4 +1,5 @@
 import {
+  type ClinicalLinkKind,
   RICH_BODY_SCHEMA_VERSION,
   type RichBlock,
   type RichBody,
@@ -11,6 +12,12 @@ import {
   sanitizeRichBody,
 } from "@wardenx/types";
 import type { MessageReferenceInput } from "./messaging-types";
+
+/** What the body needs of a chosen clinical link: ids only. */
+export interface ClinicalLinkRef {
+  readonly kind: ClinicalLinkKind;
+  readonly entityId: string;
+}
 
 // M36 WP 2.1 - the composer's markdown shortcuts. The textarea holds plain text; on send, the small markdown subset
 // below becomes the structured body: **bold**, *italic* / _italic_, `code`, [text](https://link), "- " / "* " /
@@ -257,9 +264,21 @@ function hasFormatting(blocks: readonly RichBlock[]): boolean {
 export function draftToRichBody(
   draft: string,
   references: readonly MessageReferenceInput[],
+  links: readonly ClinicalLinkRef[] = [],
 ): RichBody | null {
-  const blocks = blocksOf(draft.replace(/\r\n?/g, "\n"), references);
-  if (!hasFormatting(blocks)) return null;
+  const textBlocks = blocksOf(draft.replace(/\r\n?/g, "\n"), references);
+  // WP 3.2: chosen links ride in a trailing paragraph of `clinicalLink` nodes (ids only; the server validates each).
+  const blocks: RichBlock[] =
+    links.length === 0
+      ? textBlocks
+      : [
+          ...textBlocks,
+          {
+            type: "paragraph",
+            content: links.map(({ kind, entityId }) => ({ type: "clinicalLink", kind, entityId })),
+          },
+        ];
+  if (links.length === 0 && !hasFormatting(blocks)) return null;
   const checked = sanitizeRichBody({
     schemaVersion: RICH_BODY_SCHEMA_VERSION,
     doc: { type: "doc", content: blocks },

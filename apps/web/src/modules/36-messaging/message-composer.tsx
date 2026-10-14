@@ -4,6 +4,13 @@
 import { Button, Glyph } from "@wardenx/ui";
 import type { FormEvent, JSX, KeyboardEvent, RefObject } from "react";
 import { AttachButton, AttachmentChips } from "./attachment-composer";
+import type { ClinicalLinkCandidateSource, DraftClinicalLink } from "./clinical-link-kinds";
+import {
+  ClinicalLinkPicker,
+  ClinicalLinkTray,
+  triggerIndex,
+  useClinicalLinkPicker,
+} from "./clinical-link-picker";
 import { ComposerFooter } from "./composer-footer";
 import { DraftSyncNotice } from "./draft-conflict-prompt";
 import { MentionMenu, mentionOptionId } from "./mention-menu";
@@ -32,6 +39,12 @@ export interface ThreadComposerProps {
   setDraft: (draft: string) => void;
   draftReferences: MessageReferenceInput[];
   setDraftReferences: (references: MessageReferenceInput[]) => void;
+  /** WP 3.2: links chosen for this draft, and how to change them. */
+  draftLinks: readonly DraftClinicalLink[];
+  addDraftLink: (link: DraftClinicalLink) => void;
+  removeDraftLink: (link: DraftClinicalLink) => void;
+  /** Overrides the default candidate source (the owning modules' patient-scoped list routes). */
+  linkCandidateSource?: ClinicalLinkCandidateSource;
   uploads: AttachmentUploads;
   sending: boolean;
   send: (event?: FormEvent) => Promise<void>;
@@ -65,6 +78,10 @@ export function ThreadComposer({
   setDraft,
   draftReferences,
   setDraftReferences,
+  draftLinks,
+  addDraftLink,
+  removeDraftLink,
+  linkCandidateSource,
   uploads,
   sending,
   send,
@@ -84,6 +101,11 @@ export function ThreadComposer({
   addToConversation,
   dismissMentionAdd,
 }: ThreadComposerProps): JSX.Element {
+  // Links need a patient scope: only a care-team conversation has one.
+  const linkPicker = useClinicalLinkPicker(
+    channel.kind === "care_team" ? channel.subjectId : null,
+    linkCandidateSource,
+  );
   return composerHidden ? (
     <output className="wx-messaging-archived">
       <Glyph name="lock" size={16} />
@@ -120,11 +142,17 @@ export function ThreadComposer({
               : undefined
           }
           onChange={(event) => {
-            const next = event.target.value;
+            const typed = event.target.value;
+            const cursorAt = event.target.selectionStart ?? typed.length;
+            // `#` / `+` at the start of a word opens the link picker instead of landing in the text.
+            const trigger = linkPicker.enabled ? triggerIndex(draft, typed, cursorAt) : null;
+            const next =
+              trigger === null ? typed : typed.slice(0, trigger) + typed.slice(trigger + 1);
+            if (trigger !== null) linkPicker.setOpen(true);
             const nextReferences = reconcileReferences(draft, next, draftReferences);
             setDraftReferences(nextReferences);
             setDraft(next);
-            const cursor = event.target.selectionStart ?? next.length;
+            const cursor = trigger === null ? cursorAt : trigger;
             setMentionQuery(activeMentionQuery(next, cursor, nextReferences));
             dismissMentionAdd();
             if (sendError) clearSendError();
@@ -137,8 +165,22 @@ export function ThreadComposer({
             composingRef.current = false;
           }}
         />
+        <ClinicalLinkTray
+          links={draftLinks}
+          onRemove={(link) => {
+            removeDraftLink(link);
+            textareaRef.current?.focus();
+          }}
+        />
         <AttachmentChips uploads={uploads} disabled={sending} attachButtonRef={attachButtonRef} />
         <AttachButton uploads={uploads} disabled={sending} buttonRef={attachButtonRef} />
+        <ClinicalLinkPicker
+          picker={linkPicker}
+          links={draftLinks}
+          disabled={sending}
+          onAdd={addDraftLink}
+          onClosed={() => textareaRef.current?.focus()}
+        />
         <TemplatePicker
           disabled={sending}
           onInsert={onInsertSavedReply}

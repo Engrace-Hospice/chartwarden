@@ -32,6 +32,7 @@ import { ThreadPanel } from "./thread-panel";
 import { useAnnouncementTools } from "./use-announcement-tools";
 import { useAttachmentUploads } from "./use-attachment-upload";
 import { useAutoGrowTextarea } from "./use-auto-grow-textarea";
+import { useDraftClinicalLinks } from "./use-draft-clinical-links";
 import { INITIAL_READ_VIEW, type ReadView, useJumpToMessage } from "./use-jump-to-message";
 import { useLatestPolling } from "./use-latest-polling";
 import { useMentionPicker } from "./use-mention-picker";
@@ -114,6 +115,8 @@ function ConversationThreadView({
   const [newMessageCount, setNewMessageCount] = useState(0);
   const [draft, setDraft] = useState("");
   const [draftReferences, setDraftReferences] = useState<MessageReferenceInput[]>([]);
+  const draftLinks = useDraftClinicalLinks();
+  const clearDraftLinks = draftLinks.clear;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const {
     query: mentionQuery,
@@ -211,6 +214,7 @@ function ConversationThreadView({
   const handleSent = (sent: SentMessage): void => {
     setDraft((current) => (current === sent.body ? "" : current));
     setDraftReferences([]);
+    draftLinks.clear();
     resetMention();
     mergeSent(sent);
   };
@@ -224,6 +228,7 @@ function ConversationThreadView({
     archived: Boolean(channel.archivedAt),
     draft,
     draftReferences,
+    draftLinks: draftLinks.links,
     uploads,
     generationRef,
     onSent: handleSent,
@@ -233,6 +238,7 @@ function ConversationThreadView({
       if (!stillOpen) return;
       setDraft((current) => (current === queued.sent.body ? "" : current));
       setDraftReferences([]);
+      draftLinks.clear();
       resetMention();
     },
   });
@@ -413,6 +419,7 @@ function ConversationThreadView({
     setOlderCursor(null);
     setDraft("");
     setDraftReferences([]);
+    clearDraftLinks();
     resetMention();
     setLoadError(null);
     setLoadCorrelationId(null);
@@ -434,7 +441,7 @@ function ConversationThreadView({
       generationRef.current += 1;
     };
     // loadLatest changes identity only with the channel (or client); every other input is read through a ref.
-  }, [loadLatest, resetSender, resetMention, jumpReset, panelReset]);
+  }, [loadLatest, resetSender, resetMention, jumpReset, panelReset, clearDraftLinks]);
 
   // A new anchor on the same channel re-reads around it without touching the draft, chips or an in-flight send.
   useEffect(() => {
@@ -690,6 +697,9 @@ function ConversationThreadView({
         setDraft={setDraft}
         draftReferences={draftReferences}
         setDraftReferences={setDraftReferences}
+        draftLinks={draftLinks.links}
+        addDraftLink={draftLinks.add}
+        removeDraftLink={draftLinks.remove}
         uploads={uploads}
         sending={sending}
         send={send}
