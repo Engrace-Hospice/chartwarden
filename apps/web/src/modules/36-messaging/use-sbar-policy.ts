@@ -51,11 +51,21 @@ export function parseSbarPolicy(data: unknown): SbarPolicyView | null {
   const minChars = candidate?.minChars;
   if (!minChars || typeof minChars !== "object") return null;
   for (const key of SBAR_SECTION_KEYS) if (typeof minChars[key] !== "number") return null;
+  // Fail closed on a present-but-unusable cap: this is the only runtime check behind the SbarPolicyClient cast.
+  const rawMax = candidate?.maxChars as unknown;
+  if (rawMax !== undefined && !(typeof rawMax === "number" && Number.isFinite(rawMax))) return null;
+  // Hints reach React children: keep only known sections with string values.
+  const hints: Partial<Record<SbarSectionKey, string>> = {};
+  const rawHints = (candidate?.hints ?? {}) as Record<string, unknown>;
+  for (const key of SBAR_SECTION_KEYS) {
+    const hint = typeof rawHints === "object" ? rawHints[key] : undefined;
+    if (typeof hint === "string") hints[key] = hint;
+  }
   return {
     minChars,
-    maxChars: typeof candidate?.maxChars === "number" ? candidate.maxChars : 2000,
+    maxChars: rawMax === undefined ? 2000 : (rawMax as number),
     requirePatientChannel: candidate?.requirePatientChannel === true,
-    hints: candidate?.hints && typeof candidate.hints === "object" ? candidate.hints : {},
+    hints,
     customized: candidate?.customized === true,
   };
 }

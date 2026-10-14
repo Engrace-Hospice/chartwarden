@@ -330,6 +330,7 @@ export function ThreadComposer({
           onChange={sbar.setValues}
           sending={sending}
           serverIssues={sbarIssues}
+          onEdit={clearSendError}
           sendError={sendError}
           onSubmit={onSendSbar}
           onCancel={() => closeSbar(false)}

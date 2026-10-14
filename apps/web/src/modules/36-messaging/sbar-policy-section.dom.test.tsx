@@ -94,4 +94,27 @@ describe("SbarPolicySection", () => {
       expect(DELETE).toHaveBeenCalledWith("/api/v1/messaging/template-admin/sbar-policy"),
     );
   });
+
+  it("keeps 'SBAR policy saved.' when the reload brings back a changed policy", async () => {
+    let stored: typeof POLICY = POLICY;
+    const GET = vi.fn(() => Promise.resolve({ data: stored, error: undefined }));
+    const PUT = vi.fn(() => {
+      stored = { ...POLICY, minChars: { ...POLICY.minChars, situation: 30 } };
+      return Promise.resolve({ data: {}, error: undefined });
+    });
+    render(
+      <ApiClientProvider client={{ GET, PUT, DELETE: vi.fn() } as unknown as ApiClient}>
+        <SbarPolicySection />
+      </ApiClientProvider>,
+    );
+    const form = await screen.findByRole("form", { name: "SBAR policy" });
+    await userEvent.click(within(form).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect((screen.getByLabelText("Situation minimum length") as HTMLInputElement).value).toBe(
+        "30",
+      ),
+    );
+    expect(screen.getByText("SBAR policy saved.")).toBeTruthy();
+  });
 });

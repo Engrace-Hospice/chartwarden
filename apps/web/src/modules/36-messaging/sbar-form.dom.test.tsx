@@ -1,14 +1,29 @@
 // M36 WP 3.3: the SBAR form inside the real thread composer: offered only when the flag is on and the channel allows it,
 // accessible roles and keyboard, the emergency-path note always shown, urgency default per channel kind, server field
 // errors mapped to sections, and the text kept when the form is cancelled.
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@wardenx/ui";
+import type { ReactNode } from "react";
+import { useState } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";
+import { SbarFormDialog } from "./sbar-form-dialog";
+import { buildSbarBody, emptySbarValues } from "./sbar-utils";
 import { SBAR_FLAG_KEY } from "./sbar-utils";
 import { StaffMessaging } from "./staff-messaging";
+import type { AttachmentUploads } from "./use-attachment-upload";
+import { useMessageSender } from "./use-message-sender";
+import { type SbarPolicyView, parseSbarPolicy } from "./use-sbar-policy";
 
 vi.mock("socket.io-client", () => ({
   io: () => ({ on: () => {}, off: () => {}, close: () => {} }),
@@ -26,6 +41,12 @@ const POLICY = {
   requirePatientChannel: false,
   hints: { situation: "Agency wording for situation" },
   customized: true,
+};
+const SECTIONS = {
+  situation: "Pain is uncontrolled",
+  background: "Cancer, day 3 of care",
+  assessment: "Likely breakthrough",
+  recommendation: "Call me within the hour",
 };
 const NOTE =
   "Messaging is not the emergency path. For critical symptoms follow the agency telephone/emergency procedure.";
@@ -48,6 +69,8 @@ interface MountOptions {
   flag?: boolean;
   policy?: Record<string, unknown> | "404";
   post?: () => Promise<unknown>;
+  /** Adds a second channel titled "Other". */
+  second?: boolean;
 }
 
 function mount({
@@ -56,6 +79,7 @@ function mount({
   flag = true,
   policy = POLICY,
   post,
+  second = false,
 }: MountOptions = {}) {
   const POST = vi.fn(
     post ??
@@ -68,7 +92,12 @@ function mount({
   const GET = vi.fn((path: string) => {
     if (path === "/api/v1/messaging/channels")
       return Promise.resolve({
-        data: { channels: [channel(kind, subjectId)] },
+        data: {
+          channels: [
+            channel(kind, subjectId),
+            ...(second ? [{ ...channel(kind, subjectId), channelId: "ch-2", title: "Other" }] : []),
+          ],
+        },
         error: undefined,
       });
     if (path === "/api/v1/messaging/sbar/policy")
@@ -95,6 +124,11 @@ function mount({
   return { POST, GET };
 }
 
+const failure = (status: number, code: string, message: string) => ({
+  data: undefined,
+  error: { error: { code, message } },
+  response: { status },
+});
 const toggle = async () => screen.findByRole("button", { name: "Saved replies" });
 async function openForm() {
   await userEvent.click(await toggle());
@@ -216,9 +250,51 @@ describe("SBAR form", () => {
     mount();
     const dialog = await openForm();
     expect(dialog.contains(document.activeElement)).toBe(true);
+    // Modal's Tab trap: shift+Tab never leaves the dialog.
+    await userEvent.tab({ shift: true });
+    expect(dialog.contains(document.activeElement)).toBe(true);
     await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "SBAR message" })).toBeNull());
     expect(document.activeElement).toBe(await toggle());
+  });
+
+  it("keeps focus inside the dialog after a generic send failure, and Escape still closes it", async () => {
+    let reply: (value: unknown) => void = () => {};
+    mount({
+      post: () =>
+        new Promise((resolve) => {
+          reply = resolve;
+        }),
+    });
+    const dialog = await openForm();
+    await fillAll(dialog);
+    const last = field(dialog, "Recommendation");
+    last.focus();
+    fireEvent.keyDown(last, { key: "Enter", ctrlKey: true });
+    // jsdom keeps focus on a control that becomes disabled; a browser drops it to <body>. Do what the browser does.
+    await waitFor(() => expect(last.disabled).toBe(true));
+    last.disabled = false; // jsdom cannot blur a disabled control
+    last.blur();
+    last.disabled = true;
+    expect(document.activeElement).toBe(document.body);
+    await act(async () => reply(failure(500, "GENERIC", "Something broke")));
+    await within(dialog).findByText("Something broke");
+    const active = document.activeElement as HTMLElement;
+    expect(dialog.contains(active)).toBe(true);
+    expect(active.matches(":enabled")).toBe(true);
+    expect(last.value).toBe("Call me within the hour");
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "SBAR message" })).toBeNull());
+  });
+
+  it("clears the stale send error as soon as a section is edited", async () => {
+    mount({ post: () => Promise.resolve(failure(500, "GENERIC", "Something broke")) });
+    const dialog = await openForm();
+    await fillAll(dialog);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Send SBAR" }));
+    await within(dialog).findByText("Something broke");
+    await userEvent.type(field(dialog, "Situation"), "!");
+    expect(within(dialog).queryByText("Something broke")).toBeNull();
   });
 
   it("keeps the text on Cancel and restores it on reopen; Discard forgets it", async () => {
@@ -327,5 +403,192 @@ describe("SBAR form", () => {
     await waitFor(() => expect(within(dialog).getByText(text)).toBeTruthy());
     expect(screen.queryByText(/server detail/)).toBeNull();
     expect(field(dialog, "Situation").value).toBe("Pain is uncontrolled");
+  });
+});
+
+describe("SBAR dialog focus, on its own (Modal's restore, not the composer's)", () => {
+  function Harness() {
+    const [open, setOpen] = useState(false);
+    const [values, setValues] = useState(emptySbarValues("discipline"));
+    return (
+      <>
+        <button type="button" onClick={() => setOpen(true)}>
+          Opener
+        </button>
+        {open ? (
+          <SbarFormDialog
+            policy={parseSbarPolicy(POLICY) as SbarPolicyView}
+            values={values}
+            onChange={setValues}
+            sending={false}
+            serverIssues={[]}
+            sendError={null}
+            onEdit={() => {}}
+            onSubmit={() => {}}
+            onCancel={() => setOpen(false)}
+            onDiscard={() => setOpen(false)}
+          />
+        ) : null}
+      </>
+    );
+  }
+
+  it("Escape closes and Modal itself returns focus to the element that opened it", async () => {
+    render(<Harness />);
+    const opener = screen.getByRole("button", { name: "Opener" });
+    await userEvent.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: "SBAR message" });
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "SBAR message" })).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+});
+
+describe("SBAR send outcomes", () => {
+  const sentInits = (POST: ReturnType<typeof mount>["POST"]) =>
+    (POST.mock.calls as unknown as unknown[][]).map(
+      (call) =>
+        call[1] as {
+          params: { header: Record<string, string> };
+          body: { clientMessageId: string };
+        },
+    );
+
+  it("a network failure queues the SBAR in the outbox, closes the dialog and clears the form", async () => {
+    const { POST } = mount({ post: () => Promise.reject(new TypeError("Failed to fetch")) });
+    const dialog = await openForm();
+    await fillAll(dialog);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Send SBAR" }));
+    await screen.findByText("Not sent");
+    expect(screen.queryByRole("dialog", { name: "SBAR message" })).toBeNull();
+    expect(POST).toHaveBeenCalledTimes(1);
+    // The composer refocuses its textarea on the next frame; let that land before reopening.
+    await act(() => new Promise((resolve) => requestAnimationFrame(() => resolve(undefined))));
+    const reopened = await openForm();
+    expect(field(reopened, "Situation").value).toBe("");
+    expect(field(reopened, "Recommendation").value).toBe("");
+  });
+
+  it("a lost reply is retried from the outbox under the same Idempotency-Key and clientMessageId", async () => {
+    let call = 0;
+    const { POST } = mount({
+      post: () =>
+        ++call === 1
+          ? Promise.reject(new TypeError("Failed to fetch"))
+          : Promise.resolve({
+              data: { messageId: "m-9", channelId: "ch-1", createdAt: "2026-10-10T10:00:00.000Z" },
+              error: undefined,
+              response: { status: 200 },
+            }),
+    });
+    const dialog = await openForm();
+    await fillAll(dialog);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Send SBAR" }));
+    await screen.findByText("Not sent");
+    await userEvent.click(screen.getByRole("button", { name: "Retry sending message" }));
+    await waitFor(() => expect(POST).toHaveBeenCalledTimes(2));
+    const [first, second] = sentInits(POST);
+    expect(second?.params.header["Idempotency-Key"]).toBe(first?.params.header["Idempotency-Key"]);
+    expect(second?.body.clientMessageId).toBe(first?.body.clientMessageId);
+  });
+
+  it("rotates the Idempotency-Key after an answered 422 but keeps the clientMessageId", async () => {
+    let call = 0;
+    const { POST } = mount({
+      post: () =>
+        ++call === 1
+          ? Promise.resolve(failure(422, "SBAR_NOT_AVAILABLE", "x"))
+          : Promise.resolve({
+              data: { messageId: "m-9", channelId: "ch-1", createdAt: "2026-10-10T10:00:00.000Z" },
+              error: undefined,
+              response: { status: 200 },
+            }),
+    });
+    const dialog = await openForm();
+    await fillAll(dialog);
+    await userEvent.click(within(dialog).getByRole("button", { name: "Send SBAR" }));
+    await within(dialog).findByText("SBAR messages aren't available right now.");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Send SBAR" }));
+    await waitFor(() => expect(POST).toHaveBeenCalledTimes(2));
+    const [first, second] = sentInits(POST);
+    expect(second?.params.header["Idempotency-Key"]).not.toBe(
+      first?.params.header["Idempotency-Key"],
+    );
+    expect(second?.body.clientMessageId).toBe(first?.body.clientMessageId);
+  });
+
+  it("keeps each channel's SBAR text separate", async () => {
+    mount({ second: true });
+    let dialog = await openForm();
+    fireEvent.change(field(dialog, "Situation"), {
+      target: { value: "Text for the first channel" },
+    });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await userEvent.click(await screen.findByRole("button", { name: /Other/ }));
+    await screen.findByRole("region", { name: /Other/ });
+    dialog = await openForm();
+    expect(field(dialog, "Situation").value).toBe("");
+  });
+
+  it("with no outbox, a failed send keeps the attempt and reports the failure (hook level)", async () => {
+    const POST = vi.fn(() => Promise.reject(new TypeError("Failed to fetch")));
+    const onSettled = vi.fn();
+    const uploads = {
+      sendableIds: [],
+      blocksSend: false,
+      chips: [],
+      reset: vi.fn(),
+      recheck: vi.fn(),
+    } as unknown as AttachmentUploads;
+    const { result } = renderHook(
+      () =>
+        useMessageSender({
+          channelId: "ch-1",
+          archived: false,
+          draft: "",
+          draftReferences: [],
+          uploads,
+          generationRef: { current: 0 },
+          onSent: vi.fn(),
+          onSettled,
+        }),
+      {
+        wrapper: ({ children }: { children: ReactNode }) => (
+          <ApiClientProvider client={{ POST } as unknown as ApiClient}>
+            {children}
+          </ApiClientProvider>
+        ),
+      },
+    );
+    const body = buildSbarBody({ ...emptySbarValues("discipline"), sections: SECTIONS });
+    await act(async () => result.current.send(undefined, body));
+    await act(async () => result.current.send(undefined, body));
+    expect(result.current.sendError).toMatch(/draft has been preserved/);
+    expect(onSettled).toHaveBeenCalledWith(false, expect.any(String));
+    const keys = (POST.mock.calls as unknown as [string, any][]).map(
+      ([, init]) => init.params.header["Idempotency-Key"],
+    );
+    expect(keys).toHaveLength(2);
+    expect(keys[1]).toBe(keys[0]);
+  });
+});
+
+describe("a policy the client cannot trust", () => {
+  it.each([
+    ["an object", {}],
+    ["an array", []],
+    ["a number", 5],
+  ])("ignores a hint that is %s and shows the platform wording", async (_name, bad) => {
+    mount({ policy: { ...POLICY, hints: { situation: bad } } });
+    const dialog = await openForm();
+    expect(within(dialog).getByText("What is happening with the patient right now?")).toBeTruthy();
+  });
+
+  it("treats a non-numeric maxChars as an unreadable policy and does not offer SBAR", async () => {
+    mount({ policy: { ...POLICY, maxChars: "x" } });
+    await userEvent.click(await toggle());
+    await screen.findByText(/No saved replies yet/);
+    expect(screen.queryByRole("option", { name: /SBAR/ })).toBeNull();
   });
 });

@@ -37,12 +37,19 @@ const draftOf = (policy: SbarPolicyView): Draft => ({
 function PolicyForm({
   policy,
   onChanged,
-}: { policy: SbarPolicyView; onChanged: () => void }): JSX.Element {
+  saved,
+  setSaved,
+}: {
+  policy: SbarPolicyView;
+  onChanged: () => void;
+  /** Held by the section: the form remounts when the reload brings the stored policy back. */
+  saved: boolean;
+  setSaved: (saved: boolean) => void;
+}): JSX.Element {
   const client = useApiClient();
   const [draft, setDraft] = useState<Draft>(() => draftOf(policy));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
 
   async function run(work: () => ReturnType<ReturnType<typeof sbarPolicyClient>["PUT"]>) {
     setPending(true);
@@ -171,6 +178,7 @@ function PolicyForm({
 
 export function SbarPolicySection(): JSX.Element | null {
   const state = useSbarPolicy(true);
+  const [saved, setSaved] = useState(false);
   if (state.status !== "ready") return null;
   return (
     <Panel title="SBAR messages">
@@ -178,6 +186,8 @@ export function SbarPolicySection(): JSX.Element | null {
         key={JSON.stringify(state.policy)}
         policy={state.policy}
         onChanged={state.reload}
+        saved={saved}
+        setSaved={setSaved}
       />
     </Panel>
   );

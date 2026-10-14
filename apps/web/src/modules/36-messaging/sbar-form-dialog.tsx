@@ -28,6 +28,8 @@ export interface SbarFormDialogProps {
   readonly serverIssues: readonly SbarIssue[];
   /** The sender's failure text (network, refused channel, ...). */
   readonly sendError: string | null;
+  /** The user edited the form: the last failure no longer describes it. */
+  readonly onEdit: () => void;
   readonly onSubmit: (body: RichBody) => void;
   /** Close and keep the text. */
   readonly onCancel: () => void;
@@ -42,6 +44,7 @@ export function SbarFormDialog({
   sending,
   serverIssues,
   sendError,
+  onEdit,
   onSubmit,
   onCancel,
   onDiscard,
@@ -51,6 +54,7 @@ export function SbarFormDialog({
   const [clientIssues, setClientIssues] = useState<readonly SbarIssue[]>([]);
   // A change since the last server answer makes that answer stale; client checks then speak for themselves.
   const [staleServer, setStaleServer] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const issues = [...clientIssues, ...(staleServer ? [] : serverIssues)];
   const issueFor = (key: SbarSectionKey) => issues.find((issue) => issue.field === `sbar.${key}`);
 
@@ -61,6 +65,20 @@ export function SbarFormDialog({
     );
     if (first) refs.current[first]?.focus();
   }, [serverIssues]);
+
+  // The fields are disabled while sending, which drops focus to <body> and kills the Modal's Tab trap and Escape.
+  // When the send ends and the dialog stays open, put focus back on the first section. Declared before the
+  // server-issue effect so that one still wins when a section is named.
+  useEffect(() => {
+    if (sending) return;
+    const active = document.activeElement;
+    const form = formRef.current;
+    if (
+      form &&
+      !(active instanceof HTMLElement && form.contains(active) && active.matches(":enabled"))
+    )
+      refs.current[SBAR_SECTION_KEYS[0]]?.focus();
+  }, [sending]);
 
   function submit(): void {
     if (sending) return;
@@ -84,12 +102,14 @@ export function SbarFormDialog({
   const setSection = (key: SbarSectionKey, text: string): void => {
     setClientIssues([]);
     setStaleServer(true);
+    onEdit();
     onChange({ ...values, sections: { ...values.sections, [key]: text } });
   };
 
   return (
     <Modal open onClose={sending ? undefined : onCancel} ariaLabel="SBAR message" width="40rem">
       <form
+        ref={formRef}
         className="wx-sbar-form"
         noValidate
         onSubmit={(event) => {
