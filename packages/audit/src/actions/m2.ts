@@ -28,7 +28,7 @@ export const M2_ACTION_CATALOG: ModuleActionCatalog = [
   compliance("m2.user.provisioned", "An administrator directly provisioned a staff identity."),
   compliance(
     "m2.platform_staff.bound",
-    "A platform operator was bound into a tenant org with the zero-permission alert-audience role.",
+    "A platform operator was bound into a tenant org with the alert-audience role.",
   ),
   compliance(
     "m2.platform_staff.unbound",

@@ -14,7 +14,7 @@
 -- the tenant-provision hook (not an operator) needs it to exist.
 INSERT INTO "role" ("organization_id", "key", "name", "category", "scope_level", "system_default", "system_locked", "enabled", "description")
 VALUES (NULL, 'platform_alert_audience', 'Platform Alert Audience', 'platform_staff', 'organization', false, false, true,
-        'Zero-permission marker bound to platform operators in a tenant org so role_set alerts reach them. Grants nothing.')
+        'Bound to platform operators in a tenant org so role_set alerts reach them. Holds one self-only permission (alert.inbox.self): their own alert inbox.')
 ON CONFLICT ("key") WHERE "organization_id" IS NULL DO NOTHING;--> statement-breakpoint
 
 INSERT INTO "permission" ("key", "resource", "action", "category", "default_abac", "description") VALUES
@@ -49,6 +49,7 @@ AS $$
     AND r.enabled
     AND r.key = ANY (p_role_keys)
     AND r.key LIKE 'platform\_%'
+    AND r.key <> 'platform_alert_audience' -- the derived tenant binding is never itself a source of operators
     AND m.status = 'active'
     AND u.status <> 'deactivated'
     AND (mr.expires_at IS NULL OR mr.expires_at > now())

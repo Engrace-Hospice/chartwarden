@@ -30,7 +30,7 @@ import {
 import { M34_ACTIVATION_STUCK_EVENT } from "../src/modules/34-saas-tenant-platform/jobs/platform-sweeps-worker";
 
 describe("M34 §4.8 alert-rule seed (GAP-098)", () => {
-  it("routes tenant-org rules at the zero-permission audience role, never platform_ops", () => {
+  it("routes tenant-org rules at the audience role, never platform_ops", () => {
     expect(TENANT_ALERT_AUDIENCE_ROLE_KEY).toBe(PLATFORM_ALERT_AUDIENCE_ROLE_KEY);
     expect(PLATFORM_OPS_ROLE_KEY).toBe(AUTH_OPS_KEY);
     for (const key of ["tenant_export.oversized_hold", "tenant.onboarding_activation_stuck"]) {

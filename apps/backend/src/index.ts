@@ -1632,7 +1632,7 @@ export function wireModuleSeams(
       ? {
           onTenantOrganizationAvailable: async (organizationId: string) => {
             await materializeRoleTemplatesForOrg(deps.db as DbClient, organizationId);
-            // Platform-ops operators join the new org (zero-permission `platform_alert_audience`) so `role_set` alerts reach them.
+            // Platform-ops operators join the new org (self-only `platform_alert_audience`) so `role_set` alerts reach them.
             await bindPlatformStaffToOrg(deps.db as DbClient, organizationId);
           },
         }

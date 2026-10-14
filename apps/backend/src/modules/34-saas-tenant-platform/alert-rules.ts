@@ -454,7 +454,7 @@ export const M34_ALERT_RULES: readonly M34AlertRuleSeed[] = [
   //
   // `role_set` is an M36 built-in whose recipient source is a real `membership_role → role` join
   // (GAP-096) INSIDE the emit org. Operators hold `platform_ops` in their home org, not in the tenant, so
-  // bootstrap/bind-platform-staff.ts binds each of them into the tenant with the zero-permission
+  // bootstrap/bind-platform-staff.ts binds each of them into the tenant with the self-only-permission
   // `platform_alert_audience` role (migration 1097) and this rule routes at that key.
   {
     ruleKey: "tenant_export.oversized_hold",

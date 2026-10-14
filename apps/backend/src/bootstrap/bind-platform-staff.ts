@@ -20,7 +20,9 @@
 // holds `platform_ops` (revoked, deactivated, grant expired) has THEIR `platform_alert_audience` binding expired
 // (expires_at = now). Only that one binding row is touched, never the membership or any other role. A binding
 // whose operator holds `platform_ops` again is re-synced to the home grant's expiry.
-// LIMITS: boot-only (no interval job exists for this); a deploy is the retry cadence.
+// LIMITS: boot-only (no interval job exists for this); a deploy is the retry cadence. A binding a tenant admin ended
+// early by expiry (not deleted) is indistinguishable from one reconcile expired, so it is re-synced while the
+// operator still holds platform_ops; delete the row to remove it for good.
 //
 // NEVER RESURRECTS. A user with ANY existing membership in the org is not re-created: a non-active one (revoked,
 // pending, suspended) is skipped, and an active one that has no audience binding keeps whatever roles the tenant
@@ -100,6 +102,14 @@ export async function reconcilePlatformStaff(
     // Without the holder list nothing may be expired, so a read failure aborts the whole run.
     failure("*", "reconcile", err);
     return NONE;
+  }
+  // A successful but empty list expires every binding. That is right when the last operator really lapsed, wrong
+  // after a reseed/restore, so make it loud rather than silent.
+  if (operators.length === 0) {
+    reportFailure(
+      { phase: "reconcile" },
+      "platform-staff reconcile read ZERO operators; expiring all audience bindings",
+    );
   }
   let total = NONE;
   for (const { organizationId } of orgs) {
@@ -184,6 +194,8 @@ async function syncOrg(
       const [created] = await tx
         .insert(schema.memberships)
         .values({ userId, organizationId, status: "active", acceptedAt: new Date() })
+        // Concurrent boots race on membership_active_unique_idx; the loser must not abort the org's transaction.
+        .onConflictDoNothing()
         .returning({ id: schema.memberships.id });
       if (!created) continue;
       await tx

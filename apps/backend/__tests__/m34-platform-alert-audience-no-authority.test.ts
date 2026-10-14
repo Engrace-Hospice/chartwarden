@@ -1,4 +1,4 @@
-// An operator bound into a tenant with the zero-permission `platform_alert_audience` role (bind-platform-staff.ts,
+// An operator bound into a tenant with the self-only-permission `platform_alert_audience` role (bind-platform-staff.ts,
 // migration 1097) must hold NO authority over the tenant's users. The review finding: binding `platform_ops` there
 // let the operator call POST /api/v1/orgs/:orgId/users/:userId/password-reset (gated on requirePermission alone).
 // The live suite proves the DB side (the role holds only `alert.inbox.self`); this proves the routes refuse with 403.
@@ -42,7 +42,7 @@ function makeServer() {
       {
         orgId: ORG,
         userId: "operator",
-        // The migration-1097 role: bound, enabled, and carrying no permission keys at all.
+        // The migration-1097 role: bound, enabled, and carrying only alert.inbox.self.
         grants: [
           {
             roleKey: "platform_alert_audience",
@@ -89,7 +89,7 @@ describe("tenant password-reset vs. a bound platform_alert_audience operator", (
     resetRbacEngine();
   });
 
-  it("returns 403 and never reaches the service for the zero-permission operator", async () => {
+  it("returns 403 and never reaches the service for the audience-role operator", async () => {
     const { app, resetPassword } = makeServer();
     const res = await app.inject({
       method: "POST",
