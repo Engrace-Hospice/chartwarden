@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 // M36 WP 3.4 - choose who a task is for. The candidates are the conversation's own members, from the same lookup the
 // composer's @-menu uses (no new endpoint); "me" is offered separately because that lookup leaves the caller out.
 import { useSession } from "../../shell/session";
@@ -30,6 +30,9 @@ export function AssigneePicker({
   const baseId = useId();
   const session = useSession();
   const [text, setText] = useState("");
+  // A stable object per search text: the lookup's effect depends on its identity, so a fresh literal each render would
+  // re-run it forever.
+  const lookup = useMemo(() => ({ query: text, start: 0 }), [text]);
   const {
     candidates,
     loading,
@@ -38,7 +41,7 @@ export function AssigneePicker({
   } = useMentionCandidates({
     channelId,
     meId,
-    query: { query: text, start: 0 },
+    query: lookup,
   });
   const people = candidates.flatMap((c) => (c.kind === "staff" ? [c] : []));
   const choice = (assignee: Assignee, label: string): JSX.Element => (

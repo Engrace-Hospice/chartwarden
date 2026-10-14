@@ -51,6 +51,9 @@ CREATE TABLE "communication_task" (
 CREATE UNIQUE INDEX "communication_task_active_per_assignee"
   ON "communication_task" ("organization_id", "message_id", "assignee_id")
   WHERE "status" IN ('open', 'accepted');--> statement-breakpoint
+-- Plain index for the ON DELETE CASCADE lookup from the message FK (the partial unique index above cannot serve it).
+CREATE INDEX "communication_task_message_idx"
+  ON "communication_task" ("organization_id", "message_id");--> statement-breakpoint
 CREATE INDEX "communication_task_assignee_idx"
   ON "communication_task" ("organization_id", "assignee_id", "status", "due_at");--> statement-breakpoint
 CREATE INDEX "communication_task_creator_idx"
@@ -81,6 +84,20 @@ CREATE TABLE "communication_task_event" (
 );--> statement-breakpoint
 CREATE INDEX "communication_task_event_task_idx"
   ON "communication_task_event" ("organization_id", "task_id", "created_at");--> statement-breakpoint
+
+-- A closed task is final: refuse any UPDATE of a done/cancelled row (reopening is a new task). DELETE (cascade, the
+-- eraser) is not an UPDATE and is unaffected. Row-level BEFORE trigger, so it fires before the audit trigger.
+CREATE OR REPLACE FUNCTION communication_task_refuse_closed_update() RETURNS trigger
+LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
+BEGIN
+  IF OLD.status IN ('done', 'cancelled') THEN
+    RAISE EXCEPTION 'communication_task_closed: a closed task cannot be changed' USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$;--> statement-breakpoint
+CREATE TRIGGER "trg_communication_task_closed_final"
+  BEFORE UPDATE ON communication_task
+  FOR EACH ROW EXECUTE FUNCTION communication_task_refuse_closed_update();--> statement-breakpoint
 
 ALTER TABLE "communication_task" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "communication_task" FORCE ROW LEVEL SECURITY;--> statement-breakpoint

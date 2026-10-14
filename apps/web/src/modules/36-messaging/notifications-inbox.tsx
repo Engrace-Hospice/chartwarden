@@ -76,11 +76,12 @@ export function NotificationsInbox(): JSX.Element {
   const [tab, setTab] = useState<Tab>(
     searchParams.get("tab") === "tasks" ? "tasks" : "notifications",
   );
-  const initialTasks = useTasks("assigned", "active").view;
-  const [activeTaskCount, setActiveTaskCount] = useState<number | null>(null);
-  const tasksEnabled = initialTasks.status === "ready" && initialTasks.enabled;
-  const taskCount =
-    activeTaskCount ?? (initialTasks.status === "ready" ? initialTasks.tasks.length : 0);
+  // The one read of "my active tasks": it feeds the tab badge and is lent to the Tasks tab, so opening the tab (or
+  // switching tabs) does not read again and an action in the list updates the badge.
+  const myTasks = useTasks("assigned", "active", session?.userId ?? "");
+  const tasksView = myTasks.view;
+  const tasksEnabled = tasksView.status === "ready" && tasksView.enabled;
+  const taskCount = tasksView.status === "ready" ? tasksView.tasks.length : 0;
   const [searchQuery, setSearchQuery] = useState("");
   const [severityFilter, setSeverityFilter] = useState<
     "all" | "critical" | "high" | "warn" | "info"
@@ -263,7 +264,7 @@ export function NotificationsInbox(): JSX.Element {
       }
       table={
         tab === "tasks" ? (
-          <TasksList meId={session?.userId ?? ""} onActiveCount={setActiveTaskCount} />
+          <TasksList meId={session?.userId ?? ""} shared={myTasks} />
         ) : alerts === null && !loadFailed ? (
           <div className="wx-notif-state wx-notif-state-loading">
             <LoadingSpinner />

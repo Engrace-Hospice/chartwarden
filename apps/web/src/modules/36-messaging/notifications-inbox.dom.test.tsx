@@ -265,15 +265,13 @@ describe("Notifications inbox Tasks tab", () => {
     allowed_actions: ["accept"],
   };
 
-  function mountTasks(enabled: boolean, url = "/notifications") {
-    const client = {
-      GET: vi.fn(async (path: string) =>
-        path === "/api/v1/messaging/tasks"
-          ? { data: { enabled, tasks: enabled ? [TASK_ROW] : [] } }
-          : { data: { alerts: [] } },
-      ),
-      POST: vi.fn(),
-    } as unknown as ApiClient;
+  function mountTasks(enabled: boolean, url = "/notifications", post: unknown = vi.fn()) {
+    const GET = vi.fn(async (path: string) =>
+      path === "/api/v1/messaging/tasks"
+        ? { data: { enabled, tasks: enabled ? [TASK_ROW] : [] } }
+        : { data: { alerts: [] } },
+    );
+    const client = { GET, POST: post } as unknown as ApiClient;
     render(
       <MemoryRouter initialEntries={[url]}>
         <ApiClientProvider client={client}>
@@ -285,7 +283,31 @@ describe("Notifications inbox Tasks tab", () => {
         </ApiClientProvider>
       </MemoryRouter>,
     );
+    return GET;
   }
+  const taskReads = (GET: ReturnType<typeof vi.fn>) =>
+    GET.mock.calls.filter(([path]) => path === "/api/v1/messaging/tasks").length;
+
+  it("opens the Tasks tab with one read, and tab switches do not re-read", async () => {
+    const GET = mountTasks(true);
+    fireEvent.click(await screen.findByRole("tab", { name: "Tasks (1)" }));
+    await screen.findByRole("button", { name: "Accept" });
+    fireEvent.click(screen.getByRole("tab", { name: "Mentions" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Tasks (1)" }));
+    await screen.findByRole("button", { name: "Accept" });
+    expect(taskReads(GET)).toBe(1);
+  });
+
+  it("drops the count on the tab after a task leaves the active list", async () => {
+    const post = vi.fn().mockResolvedValue({
+      data: { task: { ...TASK_ROW, status: "done", allowed_actions: [] } },
+      response: { status: 200 },
+    });
+    mountTasks(true, "/notifications?tab=tasks", post);
+    fireEvent.click(await screen.findByRole("button", { name: "Accept" }));
+    await waitFor(() => expect(post).toHaveBeenCalled());
+    await screen.findByRole("tab", { name: "Tasks (0)" });
+  });
 
   it("lists the caller's tasks, with the count on the tab", async () => {
     mountTasks(true);

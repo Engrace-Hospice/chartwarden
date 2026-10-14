@@ -104,6 +104,16 @@ describe("convert", () => {
     expect(published).toHaveLength(1);
   });
 
+  it("a replay by a non-participant is a generic 409 with no task, while the creator and the assignee still read it", async () => {
+    const { service, published } = setup();
+    const first = await convert(service, ALICE, BOB);
+    expect(await code(convert(service, CAROL, BOB))).toBe("409:TASK_ASSIGNEE_ALREADY_HAS_ACTIVE");
+    const byAssignee = await convert(service, BOB, BOB);
+    expect(byAssignee.created).toBe(false);
+    expect(byAssignee.task.id).toBe(first.task.id);
+    expect(published).toHaveLength(1);
+  });
+
   it("allows a new task once the previous one for the pair is closed", async () => {
     const { service, store } = setup();
     const first = await convert(service);

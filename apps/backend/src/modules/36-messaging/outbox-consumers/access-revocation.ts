@@ -66,6 +66,23 @@ function requireString(p: Record<string, unknown>, key: string, eventName: strin
   return v;
 }
 
+/**
+ * Security ordering: the socket drop must not wait on, or be skipped by, owned-work reassignment. A reassignment
+ * failure still propagates (the dispatcher retries) but only after the leaver's sockets are gone.
+ */
+async function reassignThenDisconnect(
+  deps: AccessRevocationDeps,
+  orgId: string,
+  userId: string,
+  disconnect: () => Promise<void> | undefined,
+): Promise<void> {
+  try {
+    await deps.reassignOwnedItems?.(orgId, userId);
+  } finally {
+    await disconnect();
+  }
+}
+
 async function handleEvent(
   event: DispatchableOutboxEvent,
   deps: AccessRevocationDeps,
@@ -82,16 +99,19 @@ async function handleEvent(
       const userId = optionalString(p, "userId");
       if (!userId) return;
       await deps.endChannelMemberships(event.organizationId, userId);
-      await deps.reassignOwnedItems?.(event.organizationId, userId);
-      await deps.disconnectUser?.(event.organizationId, userId);
+      await reassignThenDisconnect(deps, event.organizationId, userId, () =>
+        deps.disconnectUser?.(event.organizationId, userId),
+      );
       return;
     }
     case "m2.user.deactivated": {
       const userId = requireString(p, "userId", event.eventType);
       await deps.endChannelMemberships(event.organizationId, userId);
-      await deps.reassignOwnedItems?.(event.organizationId, userId);
-      if (p.scope === "platform") await deps.disconnectAccount?.(userId);
-      else await deps.disconnectUser?.(event.organizationId, userId);
+      await reassignThenDisconnect(deps, event.organizationId, userId, () =>
+        p.scope === "platform"
+          ? deps.disconnectAccount?.(userId)
+          : deps.disconnectUser?.(event.organizationId, userId),
+      );
       return;
     }
     default:

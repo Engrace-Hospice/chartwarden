@@ -2,7 +2,7 @@
 // concern. The patient link is never sent: the server derives it from the channel. Server refusals land next to the
 // field they describe; the notice that tasks do not page anyone stays on screen.
 import { Button, Modal, useApiClient } from "@wardenx/ui";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 import { type Assignee, AssigneePicker } from "./task-assignee-picker";
 import {
@@ -42,6 +42,7 @@ export function TaskConvertDialog({
   onCreated,
 }: TaskConvertDialogProps): JSX.Element {
   const client = useApiClient();
+  const dueId = useId();
   const [assignee, setAssignee] = useState<Assignee | null>(null);
   const [due, setDue] = useState("");
   const [clinical, setClinical] = useState(false);
@@ -122,17 +123,18 @@ export function TaskConvertDialog({
           inputRef={searchRef}
         />
         <div className="wx-task-field">
-          <label htmlFor="wx-task-due">Due date (optional)</label>
+          <label htmlFor={dueId}>Due date (optional)</label>
           <input
-            id="wx-task-due"
+            id={dueId}
             type="date"
             min={todayInput()}
             value={due}
             aria-invalid={dueError ? true : undefined}
+            aria-describedby={dueError ? `${dueId}-error` : undefined}
             onChange={(event) => setDue(event.target.value)}
           />
           {dueError ? (
-            <p className="wx-task-error" role="alert">
+            <p className="wx-task-error" id={`${dueId}-error`} role="alert">
               {dueError}
             </p>
           ) : null}

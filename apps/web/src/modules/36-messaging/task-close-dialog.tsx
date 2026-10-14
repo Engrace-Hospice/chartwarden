@@ -5,7 +5,12 @@ import type { TaskDto } from "@wardenx/types";
 import { Button, Modal } from "@wardenx/ui";
 import { useId, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
-import { CHOOSE_REASON_TEXT, TASK_CLOSE_REASON_LABELS, taskErrorText } from "./task-wording";
+import {
+  CHOOSE_REASON_TEXT,
+  TASK_CLOSE_REASON_LABELS,
+  isStaleRefusal,
+  taskErrorText,
+} from "./task-wording";
 import { useTaskActions } from "./use-tasks";
 import "./tasks.css";
 
@@ -13,6 +18,8 @@ export interface TaskCloseDialogProps {
   readonly task: TaskDto;
   readonly action: "complete" | "cancel";
   readonly onClose: () => void;
+  /** The server said the task is gone or changed (404/409): the list behind should re-read. */
+  readonly onStale: () => void;
   readonly onDone: (task: TaskDto) => void;
 }
 
@@ -20,6 +27,7 @@ export function TaskCloseDialog({
   task,
   action,
   onClose,
+  onStale,
   onDone,
 }: TaskCloseDialogProps): JSX.Element {
   const id = useId();
@@ -45,7 +53,10 @@ export function TaskCloseDialog({
     inFlight.current = false;
     setSubmitting(false);
     if (result.ok) onDone(result.task);
-    else setError(taskErrorText(result.status, result.code));
+    else {
+      setError(taskErrorText(result.status, result.code));
+      if (isStaleRefusal(result.status)) onStale();
+    }
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLFormElement>): void {
@@ -76,6 +87,7 @@ export function TaskCloseDialog({
             value={reason}
             aria-required={task.clinical_concern}
             aria-invalid={error ? true : undefined}
+            aria-describedby={error ? `${id}-error` : undefined}
             onChange={(event) => setReason(event.target.value)}
           >
             <option value="">Choose a reason</option>
@@ -86,7 +98,7 @@ export function TaskCloseDialog({
             ))}
           </select>
           {error ? (
-            <p className="wx-task-error" role="alert">
+            <p className="wx-task-error" id={`${id}-error`} role="alert">
               {error}
             </p>
           ) : null}

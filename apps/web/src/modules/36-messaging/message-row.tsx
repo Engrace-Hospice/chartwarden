@@ -236,6 +236,9 @@ function MessageRowImpl({
             {!deleted ? (
               <MessageAnnotations message={message} canAnnotate={canAnnotate} canPin={canPin} />
             ) : null}
+            {/* Converting needs messaging.send, but the row only knows `canAnnotate` (writable channel) and `canReply`
+                (false in announcement channels, where sending needs messaging.announce), so neither matches exactly.
+                Gate on the wider one; a person without messaging.send gets the server's 403 text from the dialog. */}
             {!deleted && canAnnotate ? (
               <MessageTaskButton
                 channelId={message.channelId}

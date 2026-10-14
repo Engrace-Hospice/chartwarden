@@ -34,6 +34,8 @@ export interface TaskBindingInput {
   /** Defaults to the CareTeamProvider seam. */
   readonly careTeamMembers?: (orgId: string, patientId: string) => Promise<readonly string[]>;
   readonly now?: () => Date;
+  /** Offboarding failure log sink (ids and error class name only). */
+  readonly warn?: (message: string, context: Record<string, string>) => void;
 }
 
 export interface TaskBinding {
@@ -74,6 +76,7 @@ export function buildTaskBinding(input: TaskBindingInput): TaskBinding {
           store,
           isEligible: (org, userId, channelId) => messaging.canViewChannel(org, userId, channelId),
           careTeamMembers: input.careTeamMembers ?? seamCareTeamMembers,
+          ...(input.warn ? { warn: input.warn } : {}),
           ...clock,
         },
         orgId,

@@ -5,7 +5,7 @@ import { Button, Modal } from "@wardenx/ui";
 import { useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 import { type Assignee, AssigneePicker } from "./task-assignee-picker";
-import { CHOOSE_ASSIGNEE_TEXT, TASK_NOTICE, taskErrorText } from "./task-wording";
+import { CHOOSE_ASSIGNEE_TEXT, TASK_NOTICE, isStaleRefusal, taskErrorText } from "./task-wording";
 import { useTaskActions } from "./use-tasks";
 import "./tasks.css";
 
@@ -13,6 +13,8 @@ export interface TaskReassignDialogProps {
   readonly task: TaskDto;
   readonly meId: string;
   readonly onClose: () => void;
+  /** The server said the task is gone or changed (404/409): the list behind should re-read. */
+  readonly onStale: () => void;
   readonly onDone: (task: TaskDto) => void;
 }
 
@@ -20,6 +22,7 @@ export function TaskReassignDialog({
   task,
   meId,
   onClose,
+  onStale,
   onDone,
 }: TaskReassignDialogProps): JSX.Element {
   const actions = useTaskActions();
@@ -43,7 +46,10 @@ export function TaskReassignDialog({
     inFlight.current = false;
     setSubmitting(false);
     if (result.ok) onDone(result.task);
-    else setError(taskErrorText(result.status, result.code));
+    else {
+      setError(taskErrorText(result.status, result.code));
+      if (isStaleRefusal(result.status)) onStale();
+    }
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLFormElement>): void {

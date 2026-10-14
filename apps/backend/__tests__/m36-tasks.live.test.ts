@@ -377,6 +377,28 @@ describe.skipIf(!DB_URL)("M36 WP 3.4 communication tasks - LIVE Postgres", () =>
       expect(await outboxCount("m36.task.created", taskId)).toBe(1);
     });
 
+    it("answers a non-participant replay with a generic 409 and no task, while the creator and assignee replay 200", async () => {
+      const group = await mkChannel("care_team", randomUUID(), [creator, assignee, third]);
+      const { message, taskId } = await newTask(group, creator, assignee);
+      const probe = await convert(third, group, message, assignee);
+      expect(probe.statusCode).toBe(409);
+      expect(errorCode(probe)).toBe("TASK_ASSIGNEE_ALREADY_HAS_ACTIVE");
+      expect(probe.body).not.toContain(taskId);
+      expect(probe.body).not.toContain(creator);
+      expect(probe.body).not.toContain(assignee);
+      expect(probe.json().task).toBeUndefined();
+      const byCreator = await convert(creator, group, message, assignee);
+      expect(byCreator.statusCode).toBe(200);
+      expect(byCreator.json().task.id).toBe(taskId);
+      const byAssignee = await convert(assignee, group, message, assignee);
+      expect(byAssignee.statusCode).toBe(200);
+      expect(
+        await count("SELECT count(*)::int AS n FROM communication_task WHERE message_id=$1", [
+          message,
+        ]),
+      ).toBe(1);
+    });
+
     it("refuses an assignee who cannot read the channel with 422 and writes nothing", async () => {
       const message = await post(dm, creator);
       const res = await convert(creator, dm, message, outsider);
@@ -526,6 +548,35 @@ describe.skipIf(!DB_URL)("M36 WP 3.4 communication tasks - LIVE Postgres", () =>
           taskId,
         ]),
       ).rejects.toThrow(/communication_task_reason_only_when_closed/);
+    });
+
+    it("refuses any update of a closed task, even as wardenx_app via raw SQL", async () => {
+      const { taskId } = await newTask(dm, creator, assignee);
+      expect((await act(assignee, taskId, "complete", { reason: "action_taken" })).statusCode).toBe(
+        200,
+      );
+      for (const sql of [
+        "UPDATE communication_task SET status='open', closed_at=NULL, closed_reason=NULL WHERE id=$1",
+        "UPDATE communication_task SET needs_owner=true WHERE id=$1",
+        "UPDATE communication_task SET assignee_id=gen_random_uuid() WHERE id=$1",
+      ]) {
+        await appConn.query("BEGIN");
+        try {
+          await appConn.query("SELECT set_config('app.org_id', $1, true)", [ORG_A]);
+          await expect(appConn.query(sql, [taskId])).rejects.toThrow(/communication_task_closed/);
+        } finally {
+          await appConn.query("ROLLBACK");
+        }
+      }
+      expect((await taskRow(taskId))?.status).toBe("done");
+    });
+
+    it("has a plain (organization_id, message_id) index for the cascade lookup", async () => {
+      const rows = await one<{ indexdef: string }>(
+        `SELECT indexdef FROM pg_indexes WHERE tablename='communication_task'
+           AND indexdef LIKE '%(organization_id, message_id)%' AND indexdef NOT LIKE '%WHERE%'`,
+      );
+      expect(rows).toHaveLength(1);
     });
 
     it("gives wardenx_app no DELETE and no UPDATE of identity columns, and keeps events append-only", async () => {

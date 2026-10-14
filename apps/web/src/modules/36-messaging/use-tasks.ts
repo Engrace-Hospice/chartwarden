@@ -16,13 +16,18 @@ const isActive = (task: TaskDto): boolean => task.status === "open" || task.stat
 const matches = (state: TaskStateFilter, task: TaskDto): boolean =>
   state === "all" || (state === "active") === isActive(task);
 
-export function useTasks(scope: TaskScope, state: TaskStateFilter) {
+/** What a list needs from `useTasks`; the inbox owns one and lends it to the list for the default view. */
+export type TasksSource = ReturnType<typeof useTasks>;
+
+/** `skip` leaves the list unread (the caller is borrowing another source for this scope and state). */
+export function useTasks(scope: TaskScope, state: TaskStateFilter, meId: string, skip = false) {
   const client = useApiClient();
   const [view, setView] = useState<TasksView>({ status: "loading" });
   const [tick, setTick] = useState(0);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `tick` is the manual re-read trigger
   useEffect(() => {
+    if (skip) return;
     let current = true;
     setView({ status: "loading" });
     client
@@ -45,9 +50,14 @@ export function useTasks(scope: TaskScope, state: TaskStateFilter) {
     return () => {
       current = false;
     };
-  }, [client, scope, state, tick]);
+  }, [client, scope, state, tick, skip]);
 
   const reload = useCallback(() => setTick((value) => value + 1), []);
+  // A row leaves this list when the server's answer no longer fits its state filter, or (assigned scope) it was given away.
+  const belongs = useCallback(
+    (task: TaskDto) => matches(state, task) && (scope !== "assigned" || task.assignee_id === meId),
+    [scope, state, meId],
+  );
   const replace = useCallback(
     (task: TaskDto) =>
       setView((now) =>
@@ -56,11 +66,11 @@ export function useTasks(scope: TaskScope, state: TaskStateFilter) {
           : {
               ...now,
               tasks: now.tasks.flatMap((row) =>
-                row.id !== task.id ? [row] : matches(state, task) ? [task] : [],
+                row.id !== task.id ? [row] : belongs(task) ? [task] : [],
               ),
             },
       ),
-    [state],
+    [belongs],
   );
   return { view, reload, replace };
 }

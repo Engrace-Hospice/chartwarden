@@ -10,8 +10,6 @@ export const TASKS_LOAD_FAILED = "Tasks could not be loaded. Try again.";
 export const NEEDS_OWNER_LABEL = "Needs new owner";
 export const PATIENT_TASK_LABEL = "Patient task";
 export const OVERDUE_LABEL = "Overdue";
-export const CLINICAL_LOCKED_TEXT =
-  "Tasks on a patient conversation are clinical tasks and need a closing reason.";
 export const CLINICAL_CONCERN_LABEL = "Clinical concern (needs a closing reason)";
 
 export const TASK_STATUS_LABELS: Readonly<Record<TaskStatus, string>> = {
@@ -49,6 +47,10 @@ const FIELD_ERRORS: Readonly<Record<string, string>> = {
   TASK_STATE_CONFLICT:
     "This task changed since you opened it. Close this and check its current state.",
 };
+
+/** A refusal that means the row on screen is out of date (gone or changed): the list should re-read. */
+export const isStaleRefusal = (status: number | undefined): boolean =>
+  status === 404 || status === 409;
 
 /** A server refusal as text: the typed code wins, then the HTTP status, then a generic line. */
 export function taskErrorText(status: number | undefined, code: string | undefined): string {

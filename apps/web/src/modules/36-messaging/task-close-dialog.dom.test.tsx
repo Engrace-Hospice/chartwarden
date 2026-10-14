@@ -24,6 +24,7 @@ function mount(
         task={{ ...TASK_FIXTURE, clinical_concern: clinical }}
         action={action}
         onClose={onClose}
+        onStale={vi.fn()}
         onDone={onDone}
       />
     </ApiClientProvider>,

@@ -225,11 +225,13 @@ describe("POST /channels/:id/messages/:messageId/tasks", () => {
     for (const [status, code] of [
       [422, "TASK_ASSIGNEE_INVALID"],
       [409, "TASK_STATE_CONFLICT"],
+      [409, "TASK_ASSIGNEE_ALREADY_HAS_ACTIVE"],
     ] as const) {
       failWith = new WardenXError(code, "x", status);
       const res = await send(app, "nurse", "POST", convertUrl(), { assignee_user_id: ASSIGNEE });
       expect(res.statusCode).toBe(status);
       expect(res.json().error?.code ?? res.json().code).toBe(code);
+      expect(res.json().task).toBeUndefined();
     }
     await app.close();
   });

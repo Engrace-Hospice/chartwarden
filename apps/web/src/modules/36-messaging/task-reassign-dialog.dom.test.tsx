@@ -24,7 +24,13 @@ function mount(
   const onDone = vi.fn();
   render(
     <ApiClientProvider client={{ GET, POST } as unknown as ApiClient}>
-      <TaskReassignDialog task={TASK_FIXTURE} meId="u1" onClose={onClose} onDone={onDone} />
+      <TaskReassignDialog
+        task={TASK_FIXTURE}
+        meId="u1"
+        onClose={onClose}
+        onStale={vi.fn()}
+        onDone={onDone}
+      />
     </ApiClientProvider>,
   );
   return { GET, POST, onClose, onDone };

@@ -312,6 +312,10 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
             return r;
           },
         );
+        // A replay returns the existing row, which may be someone else's task: only its creator or assignee may read it.
+        const participant =
+          result.task.createdBy === actor.userId || result.task.assigneeId === actor.userId;
+        if (!result.created && !participant) throw assigneeHasActive();
         return { task: await dtoFor(result.task, actor.userId), created: result.created };
       } catch (err) {
         return mapStoreError(err);

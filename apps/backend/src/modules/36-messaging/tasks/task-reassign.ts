@@ -25,6 +25,8 @@ export interface ReassignDeps {
   /** Care-team user ids for a patient (CareTeamProvider seam). May throw: step 2 is then skipped. */
   readonly careTeamMembers: (orgId: string, patientId: string) => Promise<readonly string[]>;
   readonly now?: () => Date;
+  /** Failure log sink: ids and the error class name only, never the error message (a seam error may carry PHI). */
+  readonly warn?: (message: string, context: Record<string, string>) => void;
   readonly store?: TaskStore;
 }
 
@@ -136,8 +138,12 @@ export async function reassignTasksForLeaver(
         const outcome = await reassignOne(deps, store, orgId, leaverUserId, taskId);
         if (outcome === "reassigned") reassigned += 1;
         if (outcome === "flagged") flaggedNeedsOwner += 1;
-      } catch {
+      } catch (err) {
         failedIds.add(taskId);
+        deps.warn?.("offboarding task reassignment failed", {
+          task_id: taskId,
+          error_name: err instanceof Error ? err.name : "NonError",
+        });
       }
     }
   }

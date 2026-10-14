@@ -195,7 +195,19 @@ describe("reassignTasksForLeaver", () => {
         return d.isEligible(o, u, c);
       },
     };
-    const error = await reassignTasksForLeaver(failing, ORG, LEAVER).catch((e: Error) => e);
+    const warnings: Array<{ message: string; context: Record<string, string> }> = [];
+    const error = await reassignTasksForLeaver(
+      { ...failing, warn: (message, context) => void warnings.push({ message, context }) },
+      ORG,
+      LEAVER,
+    ).catch((e: Error) => e);
+    expect(warnings).toEqual([
+      {
+        message: "offboarding task reassignment failed",
+        context: { task_id: bad.task.id, error_name: "Error" },
+      },
+    ]);
+    expect(JSON.stringify(warnings)).not.toMatch(/MRN/);
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toMatch(/1 task\(s\)/);
     expect((error as Error).message).not.toMatch(/MRN/);

@@ -58,6 +58,7 @@ export const communicationTasks = pgTable(
       t.status,
       t.dueAt,
     ),
+    byMessage: index("communication_task_message_idx").on(t.organizationId, t.messageId),
     byCreator: index("communication_task_creator_idx").on(t.organizationId, t.createdBy, t.status),
     byPatient: index("communication_task_patient_idx")
       .on(t.organizationId, t.patientId)

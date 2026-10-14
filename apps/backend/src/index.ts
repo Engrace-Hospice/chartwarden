@@ -4143,8 +4143,14 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   const featureFlagReader = dbHandle ? createDrizzleFeatureFlagReader(dbHandle.db) : undefined;
   // WP 3.4 - communication tasks. ONE binding for the routes (flag + service) and the offboarding reassignment, so they
   // share a store; off unless the tenant flag `messaging.tasks` is on (revocation reassigns regardless of the flag).
+  // Late-bound: the logger exists only once `app` is built (assigned beside `m31Warn`).
+  let m36TaskWarn: (message: string, context: Record<string, string>) => void = (
+    message,
+    context,
+  ) => console.warn(message, context);
   const m36Tasks = dbHandle
     ? buildTaskDeps({
+        warn: (message, context) => m36TaskWarn(message, context),
         db: dbHandle.db,
         flags: featureFlagReader,
         outbox: m36OutboxPublisher,
@@ -5696,6 +5702,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       }),
   });
   m31Warn = (message, context) => app.log.warn(context, message);
+  m36TaskWarn = (message, context) => app.log.warn(context, message);
   if (m23SubmissionQueues) {
     app.addHook("onClose", async () => {
       await Promise.all(m23SubmissionQueues.queues.map((queue) => queue.close()));

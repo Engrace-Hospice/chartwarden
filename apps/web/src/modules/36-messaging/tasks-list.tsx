@@ -17,9 +17,16 @@ import {
   TASK_CLOSE_REASON_LABELS,
   TASK_NOTICE,
   TASK_STATUS_LABELS,
+  isStaleRefusal,
   taskErrorText,
 } from "./task-wording";
-import { type TaskScope, type TaskStateFilter, useTaskActions, useTasks } from "./use-tasks";
+import {
+  type TaskScope,
+  type TaskStateFilter,
+  type TasksSource,
+  useTaskActions,
+  useTasks,
+} from "./use-tasks";
 import "./tasks.css";
 
 type Dialog =
@@ -132,14 +139,16 @@ function TaskRow({
 
 export interface TasksListProps {
   readonly meId: string;
-  /** Reports the number of active tasks assigned to the caller whenever that list is read or changed. */
-  readonly onActiveCount?: (count: number) => void;
+  /** The caller's already-read "assigned, active" list (the inbox shares it with its tab badge), used for that view. */
+  readonly shared?: TasksSource;
 }
 
-export function TasksList({ meId, onActiveCount }: TasksListProps): JSX.Element {
+export function TasksList({ meId, shared }: TasksListProps): JSX.Element {
   const [scope, setScope] = useState<TaskScope>("assigned");
   const [state, setState] = useState<TaskStateFilter>("active");
-  const { view, replace } = useTasks(scope, state);
+  const borrowing = shared !== undefined && scope === "assigned" && state === "active";
+  const own = useTasks(scope, state, meId, borrowing);
+  const { view, replace, reload } = borrowing ? shared : own;
   const actions = useTaskActions();
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [busy, setBusy] = useState(false);
@@ -147,11 +156,7 @@ export function TasksList({ meId, onActiveCount }: TasksListProps): JSX.Element 
   const [failure, setFailure] = useState<string | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const refocus = useRef(false);
-
-  useEffect(() => {
-    if (view.status === "ready" && scope === "assigned" && state === "active")
-      onActiveCount?.(view.tasks.length);
-  }, [view, scope, state, onActiveCount]);
+  const inFlight = useRef(false);
 
   // A finished action can remove the row (and its button) that had focus: land on the heading instead of <body>.
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs when a dialog closes or the list changes
@@ -175,11 +180,15 @@ export function TasksList({ meId, onActiveCount }: TasksListProps): JSX.Element 
     if (action === "complete" || action === "cancel")
       return setDialog({ kind: "close", task, action });
     if (action === "reassign") return setDialog({ kind: "reassign", task });
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     const result = await actions.accept(task.id);
+    inFlight.current = false;
     setBusy(false);
-    if (result.ok) finished(result.task, "Task accepted.");
-    else setFailure(taskErrorText(result.status, result.code));
+    if (result.ok) return finished(result.task, "Task accepted.");
+    setFailure(taskErrorText(result.status, result.code));
+    if (isStaleRefusal(result.status)) reload();
   }
 
   return (
@@ -227,6 +236,7 @@ export function TasksList({ meId, onActiveCount }: TasksListProps): JSX.Element 
           task={dialog.task}
           action={dialog.action}
           onClose={() => setDialog(null)}
+          onStale={reload}
           onDone={(task) =>
             finished(task, dialog.action === "complete" ? "Task completed." : "Task cancelled.")
           }
@@ -237,6 +247,7 @@ export function TasksList({ meId, onActiveCount }: TasksListProps): JSX.Element 
           task={dialog.task}
           meId={meId}
           onClose={() => setDialog(null)}
+          onStale={reload}
           onDone={(task) => finished(task, "Task reassigned.")}
         />
       ) : null}
