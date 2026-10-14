@@ -110,10 +110,35 @@ export function ThreadComposer({
   // Where the `#`/`+` was typed, so closing the picker puts the caret back there instead of at the end.
   const triggerAtRef = useRef<number | null>(null);
   const pickerOpen = linkPicker.open;
+  // The swallowed `#`/`+`, and whether a record was chosen: closing the picker without a choice gives the symbol back.
+  const triggerCharRef = useRef<string | null>(null);
+  const linkChosenRef = useRef(false);
+  const pendingCaretRef = useRef<number | null>(null);
+  const latestDraft = useRef({ draft, draftReferences });
+  latestDraft.current = { draft, draftReferences };
   // A channel switch needs no reset here: ConversationThread is keyed by channel, so the picker remounts closed.
   useEffect(() => {
-    if (!pickerOpen) triggerAtRef.current = null;
-  }, [pickerOpen]);
+    if (pickerOpen) return;
+    const at = triggerAtRef.current;
+    const char = triggerCharRef.current;
+    if (at !== null && char !== null && !linkChosenRef.current) {
+      const { draft: current, draftReferences: refs } = latestDraft.current;
+      const restored = current.slice(0, at) + char + current.slice(at);
+      setDraftReferences(reconcileReferences(current, restored, refs));
+      setDraft(restored);
+      pendingCaretRef.current = at + char.length;
+    }
+    triggerAtRef.current = null;
+    triggerCharRef.current = null;
+    linkChosenRef.current = false;
+  }, [pickerOpen, setDraft, setDraftReferences]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs after the restored symbol lands in the textarea
+  useEffect(() => {
+    const caret = pendingCaretRef.current;
+    if (caret === null) return;
+    pendingCaretRef.current = null;
+    textareaRef.current?.setSelectionRange(caret, caret);
+  }, [draft]);
   function restoreComposerFocus(): void {
     const box = textareaRef.current;
     box?.focus();
@@ -172,6 +197,8 @@ export function ThreadComposer({
               trigger === null ? typed : typed.slice(0, trigger) + typed.slice(trigger + 1);
             if (trigger !== null) {
               triggerAtRef.current = trigger;
+              triggerCharRef.current = typed.charAt(trigger);
+              linkChosenRef.current = false;
               linkPicker.setOpen(true);
             }
             const nextReferences = reconcileReferences(draft, next, draftReferences);
@@ -204,7 +231,10 @@ export function ThreadComposer({
           picker={linkPicker}
           links={draftLinks}
           disabled={sending}
-          onAdd={addDraftLink}
+          onAdd={(link) => {
+            linkChosenRef.current = true;
+            addDraftLink(link);
+          }}
           onClosed={restoreComposerFocus}
         />
         <TemplatePicker

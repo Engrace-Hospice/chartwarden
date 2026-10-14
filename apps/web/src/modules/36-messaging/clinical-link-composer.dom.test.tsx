@@ -109,6 +109,8 @@ describe("link picker in the composer", () => {
     expect(kindBox).toBeTruthy();
     await userEvent.keyboard("{Enter}");
     expect(document.activeElement).toBe(box);
+    // A record was chosen, so the symbol stays consumed.
+    expect(box.value).toBe("see ");
     typeAt(box, "see this");
     fireEvent.keyDown(box, { key: "Enter" });
 
@@ -244,9 +246,11 @@ describe("link picker in the composer", () => {
 
     await userEvent.keyboard("{Escape}");
 
+    // Nothing was linked, so the typed symbol comes back and the caret sits just after it.
+    await waitFor(() => expect(box.value).toBe("see #more"));
     expect(document.activeElement).toBe(box);
-    expect(box.selectionStart).toBe(4);
-    expect(box.selectionEnd).toBe(4);
+    expect(box.selectionStart).toBe(5);
+    expect(box.selectionEnd).toBe(5);
   });
 
   it("closes the picker when Escape is pressed on its toggle button", async () => {
