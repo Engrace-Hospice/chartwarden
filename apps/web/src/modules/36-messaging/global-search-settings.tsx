@@ -16,7 +16,6 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { stepUpRedirectFor } from "../../shell/step-up-redirect";
-import { savedReplyErrorText } from "./saved-replies-types";
 import "./global-search-settings.css";
 
 interface Checklist {
@@ -52,6 +51,24 @@ const CHECKS: ReadonlyArray<{ key: keyof Checklist; label: string }> = [
   { key: "rateLimitActive", label: "Search requests are rate limited" },
 ];
 
+const POLL_MS = 15_000;
+
+/** The server's refusal as readable text: its message, then each failing check's own sentence (no field-name prefix). */
+function refusalText(error: unknown, fallback: string): string {
+  const envelope = (error as { error?: { message?: unknown; details?: unknown } } | null)?.error;
+  const message = typeof envelope?.message === "string" ? envelope.message : "";
+  const details = Array.isArray(envelope?.details) ? envelope.details : [];
+  const reasons = details
+    .map((d) =>
+      typeof (d as { message?: unknown }).message === "string"
+        ? (d as { message: string }).message
+        : "",
+    )
+    .filter(Boolean);
+  if (message && reasons.length > 0) return `${message} ${reasons.join(" ")}`;
+  return message || fallback;
+}
+
 const purgePending = (v: SettingsView): boolean =>
   !v.enabled && v.purgeRequestedAt !== null && v.purgeCompletedAt === null;
 
@@ -75,6 +92,9 @@ function indexStatus(view: SettingsView): string {
   }
   if (!view.enabled) return "Global search is off for your organization.";
   if (view.rebuild?.effectiveReady) return "The search index is ready.";
+  if (view.rebuild?.status === "stale") {
+    return "The search index is behind and is catching up. Search stays closed until it is ready.";
+  }
   return "The search index is still being built. Search stays closed until it is ready.";
 }
 
@@ -94,11 +114,14 @@ export function GlobalSearchSettings(): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   const inFlight = useRef(false);
+  // Bumped by every (re)load and on unmount: a reply from an older epoch never overwrites newer state.
+  const epoch = useRef(0);
   const reasonId = useId();
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `tick` is the manual retry trigger
   useEffect(() => {
     let current = true;
+    epoch.current += 1;
     setState({ kind: "loading" });
     client
       .GET(SETTINGS_PATH)
@@ -113,33 +136,68 @@ export function GlobalSearchSettings(): JSX.Element {
       .catch(() => current && setState({ kind: "error", status: undefined }));
     return () => {
       current = false;
+      epoch.current += 1;
     };
   }, [client, tick]);
+
+  // While the index builds the admin is waiting on it: re-read quietly (no spinner) until it reports ready.
+  const waitingOnIndex =
+    state.kind === "ready" && state.view.enabled && !state.view.rebuild?.effectiveReady;
+  useEffect(() => {
+    if (!waitingOnIndex) return;
+    let current = true;
+    const timer = setInterval(() => {
+      const mine = epoch.current;
+      client
+        .GET(SETTINGS_PATH)
+        .then(({ data }) => {
+          if (current && data && mine === epoch.current && !inFlight.current) {
+            setState({ kind: "ready", view: data as unknown as SettingsView });
+          }
+        })
+        .catch(() => undefined);
+    }, POLL_MS);
+    return () => {
+      current = false;
+      clearInterval(timer);
+    };
+  }, [client, waitingOnIndex]);
 
   const submit = useCallback(async () => {
     if (confirming === null || inFlight.current) return;
     inFlight.current = true;
+    const mine = epoch.current;
     setBusy(true);
     setRefusal(null);
+    const fresh = () => mine === epoch.current; // false once the screen reloaded or unmounted meanwhile
     try {
       const { data, error } = await client.PUT(SETTINGS_PATH, { body: { enabled: confirming } });
+      if (!fresh()) return;
       if (data) {
         setState({ kind: "ready", view: data as unknown as SettingsView });
       } else if (isStepUpRequired(error)) {
         const to = stepUpRedirectFor(error, `${location.pathname}${location.search}`);
         if (to) navigate(to);
+        else setRefusal("Confirm your identity to change this setting, then try again.");
       } else {
-        setRefusal(savedReplyErrorText(error, "The setting could not be changed."));
+        setRefusal(refusalText(error, "The setting could not be changed."));
         // Re-read quietly so the checklist shown is the server's current one (no spinner: the refusal stays visible).
-        const fresh = await client.GET(SETTINGS_PATH);
-        if (fresh.data) setState({ kind: "ready", view: fresh.data as unknown as SettingsView });
+        // A failed re-read must not replace the server's refusal, so it is ignored.
+        const latest = await client.GET(SETTINGS_PATH).catch(() => undefined);
+        if (latest?.data && fresh()) {
+          setState({ kind: "ready", view: latest.data as unknown as SettingsView });
+        }
       }
     } catch {
-      setRefusal("The setting could not be changed. Check your connection and try again.");
+      if (fresh()) {
+        setRefusal("The setting could not be changed. Check your connection and try again.");
+      }
     } finally {
       inFlight.current = false;
-      setBusy(false);
-      setConfirming(null);
+      if (fresh()) {
+        setBusy(false);
+        setConfirming(null);
+      }
     }
   }, [client, confirming, location.pathname, location.search, navigate]);
 
@@ -183,6 +241,11 @@ export function GlobalSearchSettings(): JSX.Element {
         >
           {view.enabled ? "Switch off global search" : "Switch on global search"}
         </button>
+        {view.enabled && !view.rebuild?.effectiveReady ? (
+          <button type="button" className="wx-gss-action" onClick={() => setTick((n) => n + 1)}>
+            Refresh status
+          </button>
+        ) : null}
         {blocked ? (
           <p id={reasonId} className="wx-gss-hint">
             {blocked}
@@ -214,6 +277,7 @@ export function GlobalSearchSettings(): JSX.Element {
             : "Search stops immediately and the search index for your organization is removed. Switching back on needs the removal to finish and the index to be rebuilt."
         }
         confirmLabel={turningOn ? "Switch on" : "Switch off"}
+        tone={turningOn ? "default" : "danger"}
         pending={busy}
         onConfirm={() => void submit()}
         onCancel={() => setConfirming(null)}

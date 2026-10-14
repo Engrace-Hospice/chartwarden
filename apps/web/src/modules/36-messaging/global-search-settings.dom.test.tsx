@@ -127,9 +127,29 @@ describe("Global search settings", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Switch on global search" }));
     await confirm("Switch on");
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("cannot be switched on");
-    expect(alert.textContent).toContain("key escrow");
+    expect(alert.textContent).toBe(
+      "Global search cannot be switched on until the go-live checklist is satisfied. The key escrow and restore drill are not on record.",
+    );
     expect(screen.queryByRole("button", { name: "Switch off global search" })).toBeNull();
+  });
+
+  it("keeps the server's refusal when the quiet re-read of the settings fails", async () => {
+    const api = mount(
+      ok(READY),
+      failure(409, { error: { code: "GLOBAL_SEARCH_PREREQUISITES_UNMET", message: "Not yet." } }),
+    );
+    (api.GET as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(ok(READY))
+      .mockRejectedValueOnce(new Error("offline"));
+    fireEvent.click(await screen.findByRole("button", { name: "Switch on global search" }));
+    await confirm("Switch on");
+    expect((await screen.findByRole("alert")).textContent).toBe("Not yet.");
+  });
+
+  it("words a stale index build separately from a first build", async () => {
+    mount(ok({ ...ON, rebuild: { status: "stale", effectiveReady: false } }));
+    expect(await screen.findByText(/catching up/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Refresh status" })).toBeTruthy();
   });
 
   it("sends the user to step-up when the session is not fresh", async () => {
