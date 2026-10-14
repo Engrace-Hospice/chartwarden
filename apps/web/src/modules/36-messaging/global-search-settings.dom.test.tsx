@@ -16,7 +16,10 @@ const READY = {
     escrowAttested: true,
     leakageAttested: true,
     rateLimitActive: true,
+    excludedMembersCleared: true,
   },
+  notice: { version: "v1", text: "Everything becomes discoverable." },
+  noticeAcknowledgement: null,
   rebuild: null,
 };
 const UNMET = { ...READY, checklist: { ...READY.checklist, escrowAttested: false } };
@@ -59,8 +62,12 @@ const firstPut = (api: ApiClient): [string, { body: unknown }] => {
   return call;
 };
 
+const ACCEPT = "I have read and accept this notice";
+
 async function confirm(label: string) {
   const dialog = await screen.findByRole("alertdialog");
+  const accept = within(dialog).queryByRole("checkbox", { name: ACCEPT });
+  if (accept && !(accept as HTMLInputElement).checked) fireEvent.click(accept);
   fireEvent.click(within(dialog).getByRole("button", { name: label }));
 }
 
@@ -68,8 +75,8 @@ describe("Global search settings", () => {
   it("lists every prerequisite with met or not met in words", async () => {
     mount(ok(UNMET));
     const list = await screen.findByRole("list", { name: "Go-live prerequisites" });
-    expect(within(list).getAllByRole("listitem")).toHaveLength(5);
-    expect(within(list).getAllByText("Met")).toHaveLength(4);
+    expect(within(list).getAllByRole("listitem")).toHaveLength(6);
+    expect(within(list).getAllByText("Met")).toHaveLength(5);
     expect(within(list).getAllByText("Not met")).toHaveLength(1);
   });
 
@@ -104,7 +111,92 @@ describe("Global search settings", () => {
     expect(await screen.findByRole("button", { name: "Switch off global search" })).toBeTruthy();
     expect(putCalls(api)).toHaveLength(1);
     expect(firstPut(api)[0]).toBe("/api/v1/messaging/global-search/settings");
-    expect(firstPut(api)[1].body).toEqual({ enabled: true });
+    expect(firstPut(api)[1].body).toEqual({
+      enabled: true,
+      acknowledgedNoticeVersion: "v1",
+    });
+  });
+
+  it("shows the notice and keeps Switch on disabled until it is accepted", async () => {
+    const api = mount(ok(READY), ok(ON));
+    fireEvent.click(await screen.findByRole("button", { name: "Switch on global search" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog.textContent).toContain("Everything becomes discoverable.");
+    const go = within(dialog).getByRole("button", { name: "Switch on" }) as HTMLButtonElement;
+    expect(go.disabled).toBe(true);
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: ACCEPT }));
+    expect(go.disabled).toBe(false);
+    fireEvent.click(go);
+    await screen.findByRole("button", { name: "Switch off global search" });
+    expect(firstPut(api)[1].body).toEqual({ enabled: true, acknowledgedNoticeVersion: "v1" });
+  });
+
+  it("re-reads and re-prompts with the new notice when the acknowledgement is stale", async () => {
+    const NEWER = { ...READY, notice: { version: "v2", text: "A newer notice." } };
+    const api = mount(ok(READY), ok(ON));
+    (api.PUT as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(
+        failure(409, {
+          error: {
+            code: "GLOBAL_SEARCH_NOTICE_NOT_ACKNOWLEDGED",
+            message: "Acknowledge the notice.",
+            details: [{ code: "NOTICE_ACK_STALE", message: "The notice changed." }],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(ok(ON));
+    fireEvent.click(await screen.findByRole("button", { name: "Switch on global search" }));
+    (api.GET as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(ok(NEWER));
+    await confirm("Switch on");
+    await waitFor(() =>
+      expect(screen.getByRole("alertdialog").textContent).toContain("A newer notice."),
+    );
+    const dialog = screen.getByRole("alertdialog");
+    expect(
+      (within(dialog).getByRole("checkbox", { name: ACCEPT }) as HTMLInputElement).checked,
+    ).toBe(false);
+    expect(
+      (within(dialog).getByRole("button", { name: "Switch on" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    await confirm("Switch on");
+    await screen.findByRole("button", { name: "Switch off global search" });
+    expect(putCalls(api)[1]?.[1].body).toEqual({ enabled: true, acknowledgedNoticeVersion: "v2" });
+  });
+
+  it("words the excluded-members prerequisite and who last acknowledged the notice", async () => {
+    mount(
+      ok({
+        ...UNMET,
+        checklist: { ...UNMET.checklist, escrowAttested: true, excludedMembersCleared: false },
+        noticeAcknowledgement: {
+          version: "v1",
+          byUserId: "user-7",
+          at: "2026-10-13T10:00:00.000Z",
+        },
+      }),
+    );
+    const list = await screen.findByRole("list", { name: "Go-live prerequisites" });
+    const row = within(list)
+      .getByText(/patient-family, external-auditor or platform-staff/)
+      .closest("li");
+    expect(row?.textContent).toContain("Not met");
+    expect(screen.getByText(/version v1 was last acknowledged/).textContent).toContain("user-7");
+  });
+
+  it("shows the excluded-members refusal text from the server", async () => {
+    mount(
+      ok(READY),
+      failure(409, {
+        error: {
+          code: "GLOBAL_SEARCH_PREREQUISITES_UNMET",
+          message: "Not ready.",
+          details: [{ code: "EXCLUDED_MEMBERS_PRESENT", message: "Remove them first." }],
+        },
+      }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Switch on global search" }));
+    await confirm("Switch on");
+    expect((await screen.findByRole("alert")).textContent).toBe("Not ready. Remove them first.");
   });
 
   it("shows the server's refusal and does not claim success", async () => {

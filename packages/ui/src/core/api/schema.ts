@@ -13690,7 +13690,7 @@ export interface paths {
         };
         /** The organization's global search switch with the go-live checklist and the index rebuild progress (messaging.global_search.manage) */
         get: operations["getApiV1MessagingGlobalsearchSettings"];
-        /** Switch global search on or off for the organization (messaging.global_search.manage + a fresh step-up). ON is 409 GLOBAL_SEARCH_PREREQUISITES_UNMET naming each failing checklist item, or PURGE_IN_PROGRESS while the last switch-off purge is unfinished; OFF is always accepted and requests the token purge */
+        /** Switch global search on or off for the organization (messaging.global_search.manage + a fresh step-up). ON needs acknowledgedNoticeVersion equal to the GET notice.version (409 GLOBAL_SEARCH_NOTICE_NOT_ACKNOWLEDGED, NOTICE_ACK_REQUIRED or NOTICE_ACK_STALE) and is 409 GLOBAL_SEARCH_PREREQUISITES_UNMET naming each failing checklist item (including EXCLUDED_MEMBERS_PRESENT), or PURGE_IN_PROGRESS while the last switch-off purge is unfinished; OFF is always accepted without an acknowledgement and requests the token purge */
         put: operations["putApiV1MessagingGlobalsearchSettings"];
         post?: never;
         delete?: never;
@@ -63489,7 +63489,17 @@ export interface operations {
                             escrowAttested: boolean;
                             leakageAttested: boolean;
                             rateLimitActive: boolean;
+                            excludedMembersCleared: boolean;
                         };
+                        notice: {
+                            version: string;
+                            text: string;
+                        };
+                        noticeAcknowledgement: {
+                            version: string;
+                            byUserId: string;
+                            at: string;
+                        } | null;
                         rebuild: {
                             keyVersion: string;
                             status: "building" | "ready" | "stale";
@@ -63516,6 +63526,7 @@ export interface operations {
             content: {
                 "application/json": {
                     enabled: boolean;
+                    acknowledgedNoticeVersion?: string;
                 };
             };
         };
@@ -63537,7 +63548,17 @@ export interface operations {
                             escrowAttested: boolean;
                             leakageAttested: boolean;
                             rateLimitActive: boolean;
+                            excludedMembersCleared: boolean;
                         };
+                        notice: {
+                            version: string;
+                            text: string;
+                        };
+                        noticeAcknowledgement: {
+                            version: string;
+                            byUserId: string;
+                            at: string;
+                        } | null;
                         rebuild: {
                             keyVersion: string;
                             status: "building" | "ready" | "stale";

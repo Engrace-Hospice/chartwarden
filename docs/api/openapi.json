@@ -161747,6 +161747,8 @@
                     "purgeRequestedAt",
                     "purgeCompletedAt",
                     "checklist",
+                    "notice",
+                    "noticeAcknowledgement",
                     "rebuild"
                   ],
                   "properties": {
@@ -161790,7 +161792,8 @@
                         "legacyBodiesMigrated",
                         "escrowAttested",
                         "leakageAttested",
-                        "rateLimitActive"
+                        "rateLimitActive",
+                        "excludedMembersCleared"
                       ],
                       "properties": {
                         "platformEnabled": {
@@ -161807,8 +161810,52 @@
                         },
                         "rateLimitActive": {
                           "type": "boolean"
+                        },
+                        "excludedMembersCleared": {
+                          "type": "boolean"
                         }
                       }
+                    },
+                    "notice": {
+                      "type": "object",
+                      "required": [
+                        "version",
+                        "text"
+                      ],
+                      "properties": {
+                        "version": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "noticeAcknowledgement": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "version",
+                            "byUserId",
+                            "at"
+                          ],
+                          "properties": {
+                            "version": {
+                              "type": "string"
+                            },
+                            "byUserId": {
+                              "type": "string"
+                            },
+                            "at": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "rebuild": {
                       "anyOf": [
@@ -161900,7 +161947,7 @@
         "tags": [
           "36-messaging"
         ],
-        "summary": "Switch global search on or off for the organization (messaging.global_search.manage + a fresh step-up). ON is 409 GLOBAL_SEARCH_PREREQUISITES_UNMET naming each failing checklist item, or PURGE_IN_PROGRESS while the last switch-off purge is unfinished; OFF is always accepted and requests the token purge",
+        "summary": "Switch global search on or off for the organization (messaging.global_search.manage + a fresh step-up). ON needs acknowledgedNoticeVersion equal to the GET notice.version (409 GLOBAL_SEARCH_NOTICE_NOT_ACKNOWLEDGED, NOTICE_ACK_REQUIRED or NOTICE_ACK_STALE) and is 409 GLOBAL_SEARCH_PREREQUISITES_UNMET naming each failing checklist item (including EXCLUDED_MEMBERS_PRESENT), or PURGE_IN_PROGRESS while the last switch-off purge is unfinished; OFF is always accepted without an acknowledgement and requests the token purge",
         "parameters": [],
         "responses": {
           "200": {
@@ -161915,6 +161962,8 @@
                     "purgeRequestedAt",
                     "purgeCompletedAt",
                     "checklist",
+                    "notice",
+                    "noticeAcknowledgement",
                     "rebuild"
                   ],
                   "properties": {
@@ -161958,7 +162007,8 @@
                         "legacyBodiesMigrated",
                         "escrowAttested",
                         "leakageAttested",
-                        "rateLimitActive"
+                        "rateLimitActive",
+                        "excludedMembersCleared"
                       ],
                       "properties": {
                         "platformEnabled": {
@@ -161975,8 +162025,52 @@
                         },
                         "rateLimitActive": {
                           "type": "boolean"
+                        },
+                        "excludedMembersCleared": {
+                          "type": "boolean"
                         }
                       }
+                    },
+                    "notice": {
+                      "type": "object",
+                      "required": [
+                        "version",
+                        "text"
+                      ],
+                      "properties": {
+                        "version": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "noticeAcknowledgement": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "version",
+                            "byUserId",
+                            "at"
+                          ],
+                          "properties": {
+                            "version": {
+                              "type": "string"
+                            },
+                            "byUserId": {
+                              "type": "string"
+                            },
+                            "at": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "rebuild": {
                       "anyOf": [
@@ -162075,6 +162169,10 @@
                 "properties": {
                   "enabled": {
                     "type": "boolean"
+                  },
+                  "acknowledgedNoticeVersion": {
+                    "maxLength": 64,
+                    "type": "string"
                   }
                 }
               }

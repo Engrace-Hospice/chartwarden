@@ -74,3 +74,21 @@
 .wx-gss-checks li:last-child {
   border-bottom: 0;
 }
+
+.wx-gss-notice {
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  max-height: 12rem;
+  overflow-y: auto;
+  border: 1px solid var(--color-card-border);
+  border-radius: 0.5rem;
+  color: var(--color-on-surface);
+}
+
+.wx-gss-accept {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: var(--color-on-surface);
+}

@@ -24,6 +24,16 @@ interface Checklist {
   readonly escrowAttested: boolean;
   readonly leakageAttested: boolean;
   readonly rateLimitActive: boolean;
+  readonly excludedMembersCleared: boolean;
+}
+interface Notice {
+  readonly version: string;
+  readonly text: string;
+}
+interface NoticeAcknowledgement {
+  readonly version: string;
+  readonly byUserId: string;
+  readonly at: string;
 }
 interface Rebuild {
   readonly status: "building" | "ready" | "stale";
@@ -35,6 +45,8 @@ interface SettingsView {
   readonly purgeRequestedAt: string | null;
   readonly purgeCompletedAt: string | null;
   readonly checklist: Checklist;
+  readonly notice: Notice;
+  readonly noticeAcknowledgement: NoticeAcknowledgement | null;
   readonly rebuild: Rebuild | null;
 }
 type LoadState =
@@ -49,7 +61,17 @@ const CHECKS: ReadonlyArray<{ key: keyof Checklist; label: string }> = [
   { key: "escrowAttested", label: "The encryption key escrow and restore drill are on record" },
   { key: "leakageAttested", label: "The leakage review is signed off" },
   { key: "rateLimitActive", label: "Search requests are rate limited" },
+  {
+    key: "excludedMembersCleared",
+    label: "No channel has patient-family, external-auditor or platform-staff members",
+  },
 ];
+const NOTICE_REFUSAL_CODE = "GLOBAL_SEARCH_NOTICE_NOT_ACKNOWLEDGED";
+
+/** True when the server refused because the acknowledged notice version is missing or out of date. */
+function isNoticeRefusal(error: unknown): boolean {
+  return (error as { error?: { code?: unknown } } | null)?.error?.code === NOTICE_REFUSAL_CODE;
+}
 
 const POLL_MS = 15_000;
 
@@ -112,6 +134,7 @@ export function GlobalSearchSettings(): JSX.Element {
   const [tick, setTick] = useState(0);
   const [confirming, setConfirming] = useState<boolean | null>(null); // the value to switch to
   const [busy, setBusy] = useState(false);
+  const [accepted, setAccepted] = useState(false); // the notice checkbox; reset whenever the dialog opens or re-prompts
   const [refusal, setRefusal] = useState<string | null>(null);
   const inFlight = useRef(false);
   // Bumped by every (re)load and on unmount: a reply from an older epoch never overwrites newer state.
@@ -163,15 +186,22 @@ export function GlobalSearchSettings(): JSX.Element {
     };
   }, [client, waitingOnIndex]);
 
+  const noticeVersion = state.kind === "ready" ? state.view.notice.version : undefined;
   const submit = useCallback(async () => {
     if (confirming === null || inFlight.current) return;
+    if (confirming && (!accepted || !noticeVersion)) return; // the server enforces it too; this is the convenience gate
+    let reprompt = false;
     inFlight.current = true;
     const mine = epoch.current;
     setBusy(true);
     setRefusal(null);
     const fresh = () => mine === epoch.current; // false once the screen reloaded or unmounted meanwhile
     try {
-      const { data, error } = await client.PUT(SETTINGS_PATH, { body: { enabled: confirming } });
+      const { data, error } = await client.PUT(SETTINGS_PATH, {
+        body: confirming
+          ? { enabled: true, acknowledgedNoticeVersion: noticeVersion }
+          : { enabled: false },
+      });
       if (!fresh()) return;
       if (data) {
         setState({ kind: "ready", view: data as unknown as SettingsView });
@@ -181,6 +211,8 @@ export function GlobalSearchSettings(): JSX.Element {
         else setRefusal("Confirm your identity to change this setting, then try again.");
       } else {
         setRefusal(refusalText(error, "The setting could not be changed."));
+        // A stale or missing acknowledgement: show the re-read notice again and ask for a fresh acceptance.
+        reprompt = isNoticeRefusal(error);
         // Re-read quietly so the checklist shown is the server's current one (no spinner: the refusal stays visible).
         // A failed re-read must not replace the server's refusal, so it is ignored.
         const latest = await client.GET(SETTINGS_PATH).catch(() => undefined);
@@ -196,10 +228,11 @@ export function GlobalSearchSettings(): JSX.Element {
       inFlight.current = false;
       if (fresh()) {
         setBusy(false);
-        setConfirming(null);
+        setAccepted(false);
+        if (!reprompt) setConfirming(null);
       }
     }
-  }, [client, confirming, location.pathname, location.search, navigate]);
+  }, [accepted, client, confirming, noticeVersion, location.pathname, location.search, navigate]);
 
   if (state.kind === "loading") return <LoadingSpinner label="Loading global search settings" />;
   if (state.kind === "error") {
@@ -237,7 +270,10 @@ export function GlobalSearchSettings(): JSX.Element {
           className="wx-gss-action"
           disabled={busy || blocked !== null}
           aria-describedby={blocked ? reasonId : undefined}
-          onClick={() => setConfirming(!view.enabled)}
+          onClick={() => {
+            setAccepted(false);
+            setConfirming(!view.enabled);
+          }}
         >
           {view.enabled ? "Switch off global search" : "Switch on global search"}
         </button>
@@ -268,14 +304,42 @@ export function GlobalSearchSettings(): JSX.Element {
           ))}
         </ul>
       </Panel>
+      {view.noticeAcknowledgement ? (
+        <p className="wx-gss-hint">
+          Discoverability notice version {view.noticeAcknowledgement.version} was last acknowledged
+          on {new Date(view.noticeAcknowledgement.at).toLocaleString()} by user{" "}
+          {view.noticeAcknowledgement.byUserId}.
+        </p>
+      ) : null}
       <ConfirmDialog
         open={confirming !== null}
         title={turningOn ? "Switch on global search?" : "Switch off global search?"}
         description={
-          turningOn
-            ? "This builds a blind-token index of message content for your organization so search can find words without storing readable text. The index takes time to build, and search stays closed until it is ready. You will be asked to confirm your identity."
-            : "Search stops immediately and the search index for your organization is removed. Switching back on needs the removal to finish and the index to be rebuilt."
+          turningOn ? (
+            <>
+              <p>
+                This builds a blind-token index of message content for your organization so search
+                can find words without storing readable text. The index takes time to build, and
+                search stays closed until it is ready. You will be asked to confirm your identity.
+              </p>
+              <p className="wx-gss-notice" data-testid="search-notice">
+                {view.notice.text}
+              </p>
+              <label className="wx-gss-accept">
+                <input
+                  type="checkbox"
+                  checked={accepted}
+                  disabled={busy}
+                  onChange={(e) => setAccepted(e.target.checked)}
+                />
+                I have read and accept this notice
+              </label>
+            </>
+          ) : (
+            "Search stops immediately and the search index for your organization is removed. Switching back on needs the removal to finish and the index to be rebuilt."
+          )
         }
+        confirmDisabled={turningOn && !accepted}
         confirmLabel={turningOn ? "Switch on" : "Switch off"}
         tone={turningOn ? "default" : "danger"}
         pending={busy}
