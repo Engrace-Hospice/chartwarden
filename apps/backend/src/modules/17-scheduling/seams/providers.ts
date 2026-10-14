@@ -35,7 +35,9 @@ export function createVisitReader(store: SchedulingSeamStore): VisitReader {
       if (Number.isNaN(Date.parse(asOfIso))) {
         throw new Error("nextScheduledVisitForPatient: asOfIso is not a valid instant");
       }
-      const v = await store.nextScheduledVisitForPatient(orgId, patientId, asOfIso);
+      // Normalise so the in-memory string compare and the SQL instant compare agree.
+      const asOf = new Date(asOfIso).toISOString();
+      const v = await store.nextScheduledVisitForPatient(orgId, patientId, asOf);
       if (!v) return null;
       return {
         visitId: v.id,
@@ -44,7 +46,7 @@ export function createVisitReader(store: SchedulingSeamStore): VisitReader {
         scheduledStartedAt: v.scheduledStartedAt,
         scheduledEndedAt: v.scheduledEndedAt,
         status: v.status,
-        asOf: asOfIso,
+        asOf,
       };
     },
   };

@@ -264,14 +264,19 @@ export function createDrizzleSchedulingSeamStore(db: DbClient): SchedulingSeamSt
             .from(V)
             .where(
               and(
+                // Explicit second wall behind RLS (PHI-bearing seam); also matches visit_org_patient_idx.
+                eq(V.organizationId, organizationId),
                 eq(V.patientId, patientId),
                 inArray(V.status, ["published", "en_route"]),
                 gte(V.scheduledStartedAt, new Date(asOfIso)),
                 // service_date is the partition prune for the same instant (one day of slack for org-tz).
-                gte(V.serviceDate, dateOf(new Date(Date.parse(asOfIso) - 86_400_000).toISOString())),
+                gte(
+                  V.serviceDate,
+                  dateOf(new Date(Date.parse(asOfIso) - 86_400_000).toISOString()),
+                ),
               ),
             )
-            .orderBy(asc(V.scheduledStartedAt))
+            .orderBy(asc(V.scheduledStartedAt), asc(V.id))
             .limit(1);
           return row ? toVisitDto(row as VisitDtoRow) : null;
         },
