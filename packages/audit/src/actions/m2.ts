@@ -30,6 +30,10 @@ export const M2_ACTION_CATALOG: ModuleActionCatalog = [
     "m2.platform_staff.bound",
     "A platform operator was bound into a tenant org with the zero-permission alert-audience role.",
   ),
+  compliance(
+    "m2.platform_staff.unbound",
+    "A platform operator's alert-audience binding in a tenant org was ended because they no longer hold platform_ops.",
+  ),
   compliance("m2.user.password_reset", "An administrator reset a global password credential."),
   compliance(
     "m2.user.password_change_completed",

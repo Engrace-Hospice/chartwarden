@@ -19,10 +19,14 @@ import { PLATFORM_OPS_ROLE_KEYS } from "./templates";
 /** Key prefix reserved to platform-owned roles. */
 export const RESERVED_PLATFORM_ROLE_PREFIX = "platform_";
 
+/** The role platform operators hold in their home org; the SOURCE for the tenant alert-audience bindings. M34's
+ *  alert-rules.ts mirrors this literal (it imports no runtime code) and a test pins the two together. */
+export const PLATFORM_OPS_ROLE_KEY = "platform_ops";
+
 /**
- * The ZERO-permission platform-owned role bound to platform operators inside a tenant org purely so M36 `role_set`
- * alerts reach them (migration 1097; apps/backend bootstrap/bind-platform-staff.ts). It has no `role_permission`
- * rows and is deliberately NOT in PLATFORM_OPS_ROLE_KEYS / PLATFORM_GRANTABLE_ROLE_KEYS: no predicate admits it
+ * The platform-owned role bound to platform operators inside a tenant org purely so M36 `role_set`
+ * alerts reach them (migration 1097; apps/backend bootstrap/bind-platform-staff.ts). Its one `role_permission`
+ * row is the self-only `alert.inbox.self`, and it is deliberately NOT in PLATFORM_OPS_ROLE_KEYS / PLATFORM_GRANTABLE_ROLE_KEYS: no predicate admits it
  * and the operator CLI cannot grant it.
  */
 export const PLATFORM_ALERT_AUDIENCE_ROLE_KEY = "platform_alert_audience";
