@@ -57,6 +57,17 @@ export interface DocumentReaderStore {
     readonly organizationId: OrgId;
   }): Promise<DocumentDigest | null>;
 
+  /** M36 WP 3.2 — id/patient/status/created_at of one document (NO title). Org-explicit; null when absent. */
+  linkSummaryForDocument(args: {
+    readonly documentId: DocumentId;
+    readonly organizationId: OrgId;
+  }): Promise<{
+    readonly documentId: DocumentId;
+    readonly patientId: PatientId | null;
+    readonly status: DocumentDigest["status"];
+    readonly createdAt: IsoInstant;
+  } | null>;
+
   /** §4.3 DocumentReader.activeVersionLink — the patient/admission link of a document whose ACTIVE version
    * is `documentVersionId` (the version must belong to the document); null otherwise. */
   activeVersionLink(args: {
@@ -185,6 +196,19 @@ export function createInMemoryDocumentReaderStore(seed: DocumentReaderSeed = {})
             (d) => d.documentId === documentId && d.organizationId === organizationId,
           ) ?? null
         );
+      },
+      async linkSummaryForDocument({ documentId, organizationId }) {
+        const d = documents.find(
+          (x) => x.documentId === documentId && x.organizationId === organizationId,
+        );
+        return d
+          ? {
+              documentId: d.documentId,
+              patientId: d.patientId,
+              status: d.status,
+              createdAt: d.createdAt,
+            }
+          : null;
       },
       async activeVersionLink({ documentId, documentVersionId, organizationId }) {
         const d = documents.find(

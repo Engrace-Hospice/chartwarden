@@ -65,6 +65,19 @@ export function createDocumentReader(store: DocumentReaderStore): DocumentReader
     async documentMetadata({ documentId, organizationId }) {
       return store.documentMetadata({ documentId, organizationId });
     },
+    async linkSummary(organizationId, id) {
+      // Fail closed: no tenant or no id means no answer, never a guessed one.
+      if (!organizationId?.trim()) throw new Error("linkSummary: organizationId required");
+      if (!id?.trim()) throw new Error("linkSummary: id required");
+      const row = await store.linkSummaryForDocument({ documentId: id, organizationId });
+      if (!row) return null;
+      return {
+        id: row.documentId,
+        patientId: row.patientId,
+        status: row.status,
+        occurredAt: row.createdAt,
+      };
+    },
     async activeVersionLink({ documentId, documentVersionId, organizationId }) {
       return store.activeVersionLink({ documentId, documentVersionId, organizationId });
     },

@@ -384,6 +384,9 @@ export const documentReaderDenyStub: DocumentReader = {
   documentMetadata() {
     throw new NotImplementedError("DocumentReader");
   },
+  linkSummary() {
+    throw new NotImplementedError("DocumentReader");
+  },
   activeVersionLink() {
     throw new NotImplementedError("DocumentReader");
   },
