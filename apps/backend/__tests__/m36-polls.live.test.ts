@@ -86,9 +86,16 @@ describe.skipIf(!DB_URL)("WP 2.10 - message polls - LIVE Postgres", () => {
   const seedChannel = async (orgId: string, kind: string, title: string) =>
     (
       await admin.query(
-        `INSERT INTO channel (organization_id, channel_kind, subject_id, title, retention_class)
-         VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-        [orgId, kind, randomUUID(), title, kind === "bereavement" ? "bereavement" : "care_related"],
+        `INSERT INTO channel (organization_id, channel_kind, subject_id, title, retention_class, archives_at)
+         VALUES ($1,$2,$3,$4,$5, CASE WHEN $6::boolean THEN now() + interval '1 year' END) RETURNING id`,
+        [
+          orgId,
+          kind,
+          randomUUID(),
+          title,
+          kind === "bereavement" ? "bereavement" : "care_related",
+          kind === "bereavement",
+        ],
       )
     ).rows[0].id as string;
   const addMember = (orgId: string, channelId: string, userId: string) =>
@@ -316,7 +323,7 @@ describe.skipIf(!DB_URL)("WP 2.10 - message polls - LIVE Postgres", () => {
       messageId: made.messageId,
       optionId: made.poll.options[0]!.optionId,
     });
-    await admin.query("UPDATE message SET status='deleted' WHERE id=$1", [made.messageId]);
+    await admin.query("UPDATE message SET status='deleted', deleted_at=now() WHERE id=$1", [made.messageId]);
     for (const userId of [alice, bob, dave]) {
       await expect(
         polls.getPoll(orgA, { userId, channelId: chan, messageId: made.messageId }),

@@ -224,6 +224,12 @@ const REGISTRAR_FILES = [
   "messaging-typebox.ts", // schemas only
   "reaction-pin-routes.ts", // mounted by registerMessagingRoutes
   "reaction-pin-typebox.ts", // schemas only
+  "global-search-routes.ts", // WP 2.7b global search (inert until enabled)
+  "global-search-typebox.ts", // schemas only
+  "poll-routes.ts", // WP 2.10 polls
+  "poll-typebox.ts", // schemas only
+  "presence-routes.ts", // WP 2.12 presence/typing
+  "presence-typebox.ts", // schemas only
   "global-search-settings-routes.ts", // WP 2.7b C4 tenant global search switch
   "global-search-settings-typebox.ts", // schemas only
   "template-routes.ts",

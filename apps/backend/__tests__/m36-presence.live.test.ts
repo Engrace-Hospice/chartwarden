@@ -285,12 +285,15 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       expect(r.rows[0]).toEqual({ rolsuper: false, rolbypassrls: false });
     });
 
-    it("has no presence table or column in Postgres: the feature cannot persist by construction", async () => {
+    it("adds no presence persistence: the only presence relations are M36's original, unused `presence` table (migration 0016) and its indexes, and it stays empty", async () => {
       expect(
-        await q(
-          `SELECT relname FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relname ILIKE '%presence%'`,
-        ),
-      ).toEqual([]);
+        (
+          await q(
+            `SELECT relname FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relname ILIKE '%presence%' ORDER BY relname`,
+          )
+        ).map((r: { relname: string }) => r.relname),
+      ).toEqual(["presence", "presence_pkey", "presence_status_idx"]);
+      expect(await q(`SELECT 1 FROM presence LIMIT 1`)).toEqual([]);
     });
 
     describe("flag off (the default)", () => {
