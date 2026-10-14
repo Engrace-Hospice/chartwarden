@@ -2,7 +2,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { GlobalSearchSettings } from "./global-search-settings";
 
 const READY = {
@@ -71,7 +71,88 @@ async function confirm(label: string) {
   fireEvent.click(within(dialog).getByRole("button", { name: label }));
 }
 
+afterEach(() => vi.useRealTimers());
+
 describe("Global search settings", () => {
+  it("keeps the PUT result when a poll reply that started before it lands afterwards", async () => {
+    vi.useFakeTimers();
+    const building = { ...ON, rebuild: { status: "building", effectiveReady: false } };
+    const READY_ON = { ...ON, rebuild: { status: "ready", effectiveReady: true } };
+    let releasePoll: (v: unknown) => void = () => undefined;
+    const api = mount(ok(building), ok(READY));
+    const get = api.GET as unknown as ReturnType<typeof vi.fn>;
+    await vi.advanceTimersByTimeAsync(0);
+    get.mockImplementationOnce(
+      () =>
+        new Promise((r) => {
+          releasePoll = r;
+        }),
+    );
+    await vi.advanceTimersByTimeAsync(15_000); // the poll is now in flight
+    fireEvent.click(screen.getByRole("button", { name: "Switch off global search" }));
+    (api.PUT as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(ok(READY));
+    get.mockResolvedValue(ok(READY));
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Switch off" }),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    releasePoll(ok(READY_ON)); // stale: read before the write
+    await vi.advanceTimersByTimeAsync(0);
+    expect(screen.getByRole("button", { name: "Switch on global search" })).toBeTruthy();
+  });
+
+  it("Refresh status re-reads without the full-page spinner", async () => {
+    const building = { ...ON, rebuild: { status: "building", effectiveReady: false } };
+    const api = mount(ok(building));
+    const get = api.GET as unknown as ReturnType<typeof vi.fn>;
+    await screen.findByText(/still being built/i);
+    get.mockResolvedValue(ok({ ...ON, rebuild: { status: "ready", effectiveReady: true } }));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh status" }));
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(await screen.findByText(/index is ready/i)).toBeTruthy();
+    expect(get).toHaveBeenCalledTimes(2);
+  });
+
+  it("closes the dialog on Escape and on Cancel, sending nothing", async () => {
+    const api = mount(ok(READY));
+    fireEvent.click(await screen.findByRole("button", { name: "Switch on global search" }));
+    fireEvent.keyDown(await screen.findByRole("alertdialog"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Switch on global search" }));
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Cancel" }),
+    );
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(putCalls(api)).toHaveLength(0);
+  });
+
+  it("does not gate Switch off on the notice checkbox", async () => {
+    mount(ok(ON), ok(READY));
+    fireEvent.click(await screen.findByRole("button", { name: "Switch off global search" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).queryByRole("checkbox")).toBeNull();
+    expect(
+      (within(dialog).getByRole("button", { name: "Switch off" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it("shows a stale-notice refusal inside the dialog and clears it on cancel", async () => {
+    const api = mount(ok(READY));
+    (api.PUT as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      failure(409, {
+        error: { code: "GLOBAL_SEARCH_NOTICE_NOT_ACKNOWLEDGED", message: "Acknowledge again." },
+      }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Switch on global search" }));
+    await confirm("Switch on");
+    const dialog = await screen.findByRole("alertdialog");
+    await waitFor(() =>
+      expect(within(dialog).getByRole("alert").textContent).toBe("Acknowledge again."),
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("lists every prerequisite with met or not met in words", async () => {
     mount(ok(UNMET));
     const list = await screen.findByRole("list", { name: "Go-live prerequisites" });
@@ -180,7 +261,8 @@ describe("Global search settings", () => {
       .getByText(/patient-family, external-auditor or platform-staff/)
       .closest("li");
     expect(row?.textContent).toContain("Not met");
-    expect(screen.getByText(/version v1 was last acknowledged/).textContent).toContain("user-7");
+    const line = screen.getByText(/version v1 was last acknowledged/).textContent;
+    expect(line).not.toContain("user-7");
   });
 
   it("shows the excluded-members refusal text from the server", async () => {

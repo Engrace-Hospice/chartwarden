@@ -163,28 +163,27 @@ export function GlobalSearchSettings(): JSX.Element {
     };
   }, [client, tick]);
 
-  // While the index builds the admin is waiting on it: re-read quietly (no spinner) until it reports ready.
+  // Quiet re-read (no spinner). Dropped if a reload, a write or an unmount happened since it started, or a write is in flight.
+  const readQuietly = useCallback(() => {
+    const mine = epoch.current;
+    client
+      .GET(SETTINGS_PATH)
+      .then(({ data }) => {
+        if (data && mine === epoch.current && !inFlight.current) {
+          setState({ kind: "ready", view: data as unknown as SettingsView });
+        }
+      })
+      .catch(() => undefined);
+  }, [client]);
+
+  // While the index builds the admin is waiting on it: re-read quietly until it reports ready.
   const waitingOnIndex =
     state.kind === "ready" && state.view.enabled && !state.view.rebuild?.effectiveReady;
   useEffect(() => {
     if (!waitingOnIndex) return;
-    let current = true;
-    const timer = setInterval(() => {
-      const mine = epoch.current;
-      client
-        .GET(SETTINGS_PATH)
-        .then(({ data }) => {
-          if (current && data && mine === epoch.current && !inFlight.current) {
-            setState({ kind: "ready", view: data as unknown as SettingsView });
-          }
-        })
-        .catch(() => undefined);
-    }, POLL_MS);
-    return () => {
-      current = false;
-      clearInterval(timer);
-    };
-  }, [client, waitingOnIndex]);
+    const timer = setInterval(readQuietly, POLL_MS);
+    return () => clearInterval(timer);
+  }, [readQuietly, waitingOnIndex]);
 
   const noticeVersion = state.kind === "ready" ? state.view.notice.version : undefined;
   const submit = useCallback(async () => {
@@ -192,6 +191,7 @@ export function GlobalSearchSettings(): JSX.Element {
     if (confirming && (!accepted || !noticeVersion)) return; // the server enforces it too; this is the convenience gate
     let reprompt = false;
     inFlight.current = true;
+    epoch.current += 1; // any read already in flight predates this write and must not overwrite its result
     const mine = epoch.current;
     setBusy(true);
     setRefusal(null);
@@ -231,6 +231,7 @@ export function GlobalSearchSettings(): JSX.Element {
         setAccepted(false);
         if (!reprompt) setConfirming(null);
       }
+      epoch.current += 1; // a poll that started during the write carries pre-write data
     }
   }, [accepted, client, confirming, noticeVersion, location.pathname, location.search, navigate]);
 
@@ -256,7 +257,7 @@ export function GlobalSearchSettings(): JSX.Element {
           Lets staff search messages across every conversation they can already read.
         </p>
       </PageHeader>
-      {refusal ? <InlineAlert>{refusal}</InlineAlert> : null}
+      {refusal && confirming === null ? <InlineAlert>{refusal}</InlineAlert> : null}
       <Panel title="Status">
         <div className="wx-gss-status">
           <StatusPill
@@ -278,7 +279,7 @@ export function GlobalSearchSettings(): JSX.Element {
           {view.enabled ? "Switch off global search" : "Switch on global search"}
         </button>
         {view.enabled && !view.rebuild?.effectiveReady ? (
-          <button type="button" className="wx-gss-action" onClick={() => setTick((n) => n + 1)}>
+          <button type="button" className="wx-gss-action" onClick={readQuietly}>
             Refresh status
           </button>
         ) : null}
@@ -307,44 +308,49 @@ export function GlobalSearchSettings(): JSX.Element {
       {view.noticeAcknowledgement ? (
         <p className="wx-gss-hint">
           Discoverability notice version {view.noticeAcknowledgement.version} was last acknowledged
-          on {new Date(view.noticeAcknowledgement.at).toLocaleString()} by user{" "}
-          {view.noticeAcknowledgement.byUserId}.
+          on {new Date(view.noticeAcknowledgement.at).toLocaleString()}.
         </p>
       ) : null}
       <ConfirmDialog
         open={confirming !== null}
         title={turningOn ? "Switch on global search?" : "Switch off global search?"}
         description={
-          turningOn ? (
-            <>
-              <p>
-                This builds a blind-token index of message content for your organization so search
-                can find words without storing readable text. The index takes time to build, and
-                search stays closed until it is ready. You will be asked to confirm your identity.
-              </p>
-              <p className="wx-gss-notice" data-testid="search-notice">
-                {view.notice.text}
-              </p>
-              <label className="wx-gss-accept">
-                <input
-                  type="checkbox"
-                  checked={accepted}
-                  disabled={busy}
-                  onChange={(e) => setAccepted(e.target.checked)}
-                />
-                I have read and accept this notice
-              </label>
-            </>
-          ) : (
-            "Search stops immediately and the search index for your organization is removed. Switching back on needs the removal to finish and the index to be rebuilt."
-          )
+          <>
+            {refusal ? <InlineAlert>{refusal}</InlineAlert> : null}
+            {turningOn ? (
+              <>
+                <p>
+                  This builds a blind-token index of message content for your organization so search
+                  can find words without storing readable text. The index takes time to build, and
+                  search stays closed until it is ready. You will be asked to confirm your identity.
+                </p>
+                <p className="wx-gss-notice" data-testid="search-notice">
+                  {view.notice.text}
+                </p>
+                <label className="wx-gss-accept">
+                  <input
+                    type="checkbox"
+                    checked={accepted}
+                    disabled={busy}
+                    onChange={(e) => setAccepted(e.target.checked)}
+                  />
+                  I have read and accept this notice
+                </label>
+              </>
+            ) : (
+              "Search stops immediately and the search index for your organization is removed. Switching back on needs the removal to finish and the index to be rebuilt."
+            )}
+          </>
         }
         confirmDisabled={turningOn && !accepted}
         confirmLabel={turningOn ? "Switch on" : "Switch off"}
         tone={turningOn ? "default" : "danger"}
         pending={busy}
         onConfirm={() => void submit()}
-        onCancel={() => setConfirming(null)}
+        onCancel={() => {
+          setConfirming(null);
+          setRefusal(null);
+        }}
       />
     </div>
   );
