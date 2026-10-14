@@ -14,8 +14,8 @@ import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import type { HintOutboxPort } from "../message-hint-events";
 import type { Tx } from "../messaging-write-core";
 import type { HandoffPolicyStore } from "./handoff-policy-store-db";
-import { finishHandoff } from "./handoff-settle";
-import type { HandoffStore } from "./handoff-store-db";
+import { type SettleDeps, finishHandoff } from "./handoff-settle";
+import type { HandoffRow, HandoffStore } from "./handoff-store-db";
 
 export const HANDOFF_EXPIRY_BATCH_SIZE = 100;
 
@@ -33,6 +33,27 @@ export interface ExpirySummary {
   readonly failed: number;
 }
 
+/**
+ * Expires the OFFERED handoff `h` (locked by the caller, already known to be past its deadline): pending items become
+ * `expired`, the handoff closes, supervisors are told. Shared by the sweep and by an offer that finds a dead open pair.
+ */
+export async function expireHandoffInTx(deps: SettleDeps, tx: Tx, h: HandoffRow): Promise<void> {
+  await deps.store.resolveItems(tx, {
+    orgId: h.organizationId,
+    handoffId: h.id,
+    itemIds: null,
+    action: "expire",
+    now: deps.now(),
+  });
+  await finishHandoff(deps, tx, h, {
+    state: "expired",
+    reason: "deadline",
+    eventType: "closed",
+    actor: { kind: "system" },
+    unacceptedCause: "expired",
+  });
+}
+
 async function expireOne(
   deps: ExpiryDeps,
   clock: () => Date,
@@ -45,20 +66,7 @@ async function expireOne(
     const h = await deps.store.getForUpdate(tx, orgId, handoffId);
     // Re-check under the lock: an accept, a cancel or a policy change may have settled it since it was selected.
     if (!h || h.state !== "offered" || !isPastDeadline(h, minutes, clock())) return false;
-    await deps.store.resolveItems(tx, {
-      orgId,
-      handoffId,
-      itemIds: null,
-      action: "expire",
-      now: clock(),
-    });
-    await finishHandoff({ store: deps.store, outbox: deps.outbox, now: clock }, tx, h, {
-      state: "expired",
-      reason: "deadline",
-      eventType: "closed",
-      actor: { kind: "system" },
-      unacceptedCause: "expired",
-    });
+    await expireHandoffInTx({ store: deps.store, outbox: deps.outbox, now: clock }, tx, h);
     return true;
   });
 }

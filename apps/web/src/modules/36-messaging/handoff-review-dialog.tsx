@@ -13,7 +13,8 @@ import {
   ITEM_STATE_LABELS,
   RESTRICTED_PATIENT_LABEL,
   SUMMARY_TEXT,
-  handoffErrorText,
+  formatWhen,
+  handoffActionErrorText,
   isStaleRefusal,
 } from "./handoff-wording";
 import { type HandoffResult, useHandoffActions } from "./use-handoffs";
@@ -29,7 +30,7 @@ export function itemSummaryText(item: HandoffItemDto): string {
   if (summary.state === "restricted") return SUMMARY_TEXT.restricted;
   const parts = [
     summary.status ? humanize(summary.status) : null,
-    summary.occurred_at ? new Date(summary.occurred_at).toLocaleString() : null,
+    summary.occurred_at ? formatWhen(summary.occurred_at) || null : null,
     summary.still_open === false ? SUMMARY_TEXT.closedOut : null,
   ].filter((part): part is string => part !== null);
   return parts.join(", ");
@@ -47,13 +48,14 @@ interface PatientGroup {
 function groupByPatient(items: readonly HandoffItemDto[]): readonly PatientGroup[] {
   const groups = new Map<string, HandoffItemDto[]>();
   for (const item of items) {
-    // A restricted item carries no patient id: those share one group with no label.
-    const key = item.patient_id ?? "restricted";
+    // A restricted item shares one unlabelled group: whatever identity fields it carries are ignored.
+    const key =
+      item.summary.state === "restricted" ? "restricted" : (item.patient_id ?? "restricted");
     groups.set(key, [...(groups.get(key) ?? []), item]);
   }
   return [...groups.entries()].map(([key, rows]) => {
     const first = rows[0];
-    const name = first?.patient_display_name;
+    const name = first?.summary.state === "restricted" ? null : first?.patient_display_name;
     return {
       key,
       title: name
@@ -129,13 +131,34 @@ export function HandoffReviewDialog({
   const inFlight = useRef(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const refocus = useRef(false);
+  // The handoff this dialog currently shows; null once unmounted. A response for any other id is dropped.
+  const activeId = useRef<string | null>(null);
+
+  useEffect(() => {
+    activeId.current = handoffId;
+    inFlight.current = false;
+    setHandoff(null);
+    setLoadFailed(false);
+    setSelected(new Set());
+    setBusy(false);
+    setError(null);
+    return () => {
+      activeId.current = null;
+    };
+  }, [handoffId]);
 
   const load = useCallback(async (): Promise<void> => {
     const result = await actions.get(handoffId);
+    if (activeId.current !== handoffId) return;
     if (result.ok) {
       setHandoff(result.data.handoff);
       setLoadFailed(false);
-    } else setLoadFailed(true);
+    } else {
+      // Never leave the previous allowed_actions usable once the server can no longer confirm them.
+      setHandoff(null);
+      setSelected(new Set());
+      setLoadFailed(true);
+    }
   }, [actions, handoffId]);
 
   useEffect(() => {
@@ -161,6 +184,10 @@ export function HandoffReviewDialog({
     setError(null);
     setMessage("");
     const result = await work();
+    if (activeId.current !== handoffId) {
+      if (result.ok || isStaleRefusal(result.status)) onChanged();
+      return;
+    }
     inFlight.current = false;
     setBusy(false);
     if (result.ok) {
@@ -172,7 +199,7 @@ export function HandoffReviewDialog({
       else await load();
       return;
     }
-    setError(handoffErrorText(result.status, result.code));
+    setError(handoffActionErrorText(result.status, result.code));
     // A task that cannot move keeps the dialog and the selection as they are; a stale answer reloads both views.
     if (isStaleRefusal(result.status)) {
       refocus.current = true;
@@ -203,8 +230,8 @@ export function HandoffReviewDialog({
         </h2>
         {!handoff && !loadFailed ? <LoadingSpinner /> : null}
         {loadFailed && !handoff ? (
-          <p className="wx-task-error" role="alert">
-            {handoffErrorText(404, undefined)}
+          <p className="wx-task-error" role={error ? undefined : "alert"}>
+            {handoffActionErrorText(404, undefined)}
           </p>
         ) : null}
         {handoff ? (

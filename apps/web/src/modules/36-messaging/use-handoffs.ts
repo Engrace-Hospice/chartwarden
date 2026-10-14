@@ -2,7 +2,8 @@
 // server's answer replaces it, and a refusal leaves it untouched. Action enablement comes from `allowed_actions` only.
 import type { HandoffDto } from "@wardenx/types";
 import { useApiClient } from "@wardenx/ui";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useOptionalApiClient } from "./use-handoffs-enabled";
 
 export type HandoffScope = "incoming" | "outgoing";
 export type HandoffStateFilter = "active" | "closed";
@@ -20,15 +21,22 @@ export type HandoffsSource = ReturnType<typeof useHandoffs>;
 
 /** `skip` leaves the list unread (the caller is borrowing another source, or the tenant has handoffs off). */
 export function useHandoffs(scope: HandoffScope, state: HandoffStateFilter, skip = false) {
-  const client = useApiClient();
+  const client = useOptionalApiClient();
   const [view, setView] = useState<HandoffsView>({ status: "loading" });
   const [tick, setTick] = useState(0);
+  // A re-read of the SAME scope/state keeps the rows on screen (no spinner), so a row's button keeps focus; only
+  // switching scope/state shows the loading state.
+  const readKey = useRef("");
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `tick` is the manual re-read trigger
   useEffect(() => {
-    if (skip) return;
+    if (skip || !client) return;
     let current = true;
-    setView({ status: "loading" });
+    const key = `${scope}:${state}`;
+    if (readKey.current !== key) {
+      readKey.current = key;
+      setView({ status: "loading" });
+    }
     client
       .GET("/api/v1/messaging/handoffs", { params: { query: { scope, state } } })
       .then(({ data }) => {

@@ -12,12 +12,14 @@ import {
   CHOOSE_ITEMS_TEXT,
   CHOOSE_PATIENTS_TEXT,
   CHOOSE_RECIPIENT_TEXT,
+  HANDOFF_ALREADY_OPEN_TEXT,
   HANDOFF_NOTICE,
   ITEM_KIND_LABELS,
   NO_CASELOAD_TEXT,
   PATIENT_CAP_TEXT,
   UNAVAILABLE_SOURCE_TEXT,
   expirySentence,
+  formatWhen,
   handoffErrorText,
 } from "./handoff-wording";
 import {
@@ -32,6 +34,8 @@ import "./handoffs.css";
 const MAX_PATIENTS = 50;
 const itemKey = (patientId: string, kind: HandoffItemKind, refId: string): string =>
   `${patientId}:${kind}:${refId}`;
+const sameIds = (a: ReadonlySet<string>, b: ReadonlySet<string>): boolean =>
+  a.size === b.size && [...a].every((id) => b.has(id));
 const toggled = <T,>(set: ReadonlySet<T>, value: T): ReadonlySet<T> => {
   const next = new Set(set);
   if (!next.delete(value)) next.add(value);
@@ -65,9 +69,11 @@ export function HandoffComposeDialog({
   const [patientsError, setPatientsError] = useState<string | null>(null);
   const [itemsError, setItemsError] = useState<string | null>(null);
   const [recipientError, setRecipientError] = useState<string | null>(null);
+  const [alreadyOpen, setAlreadyOpen] = useState(false);
   const inFlight = useRef(false);
   const searchRef = useRef<HTMLInputElement>(null);
-  const headingRef = useRef<HTMLHeadingElement>(null);
+  // The selection as of now, for dropping a prefill answer that was asked for a different one.
+  const currentIds = useRef<ReadonlySet<string>>(patientIds);
 
   useEffect(() => {
     let current = true;
@@ -94,10 +100,12 @@ export function HandoffComposeDialog({
   };
 
   function changePatients(next: ReadonlySet<string>): void {
+    currentIds.current = next;
     setPatientIds(next);
     setPrefill(null);
     setRemoved(new Set());
     setPatientsError(null);
+    setAlreadyOpen(false);
   }
 
   function togglePatient(id: string): void {
@@ -111,9 +119,11 @@ export function HandoffComposeDialog({
     inFlight.current = true;
     setBusy(true);
     setStatus("");
-    const result = await api.prefill([...patientIds]);
+    const asked = patientIds;
+    const result = await api.prefill([...asked]);
     inFlight.current = false;
     setBusy(false);
+    if (!sameIds(asked, currentIds.current)) return;
     if (result.ok) {
       setPrefill(result.data.patients);
       setStatus("Open work loaded.");
@@ -142,10 +152,15 @@ export function HandoffComposeDialog({
     }
     inFlight.current = true;
     setBusy(true);
+    setAlreadyOpen(false);
     const result = await api.offer(recipient.id, chosen);
     inFlight.current = false;
     setBusy(false);
-    if (result.ok) return onOffered(result.data.handoff, result.data.created);
+    if (result.ok) {
+      // A replay: the server kept the sender's existing open offer and ignored this selection. Say so, do not report success.
+      if (!result.data.created) return setAlreadyOpen(true);
+      return onOffered(result.data.handoff, true);
+    }
     const text = handoffErrorText(result.status, result.code);
     if (result.code === "HANDOFF_RECIPIENT_INVALID") setRecipientError(text);
     else setItemsError(text);
@@ -161,9 +176,7 @@ export function HandoffComposeDialog({
           void offer();
         }}
       >
-        <h2 ref={headingRef} tabIndex={-1}>
-          Start handoff
-        </h2>
+        <h2>Start handoff</h2>
         <p className="wx-task-notice">{HANDOFF_NOTICE}</p>
         <output className="sr-only" aria-live="polite">
           {status}
@@ -187,6 +200,7 @@ export function HandoffComposeDialog({
               <button
                 type="button"
                 className="wx-task-link"
+                disabled={busy}
                 onClick={() =>
                   changePatients(
                     patientIds.size > 0
@@ -205,7 +219,8 @@ export function HandoffComposeDialog({
                         type="checkbox"
                         checked={patientIds.has(patient.patient_id)}
                         disabled={
-                          !patientIds.has(patient.patient_id) && patientIds.size >= MAX_PATIENTS
+                          busy ||
+                          (!patientIds.has(patient.patient_id) && patientIds.size >= MAX_PATIENTS)
                         }
                         onChange={() => togglePatient(patient.patient_id)}
                       />
@@ -253,6 +268,7 @@ export function HandoffComposeDialog({
                   <ul className="wx-handoff-checks">
                     {patient.items.map((item) => {
                       const key = itemKey(patient.patient_id, item.kind, item.ref_id);
+                      const when = item.occurred_at ? formatWhen(item.occurred_at) : "";
                       return (
                         <li key={key}>
                           <label className="wx-handoff-check">
@@ -264,9 +280,7 @@ export function HandoffComposeDialog({
                             <span>
                               {ITEM_KIND_LABELS[item.kind]}
                               {item.status ? `: ${item.status.replace(/_/g, " ")}` : ""}
-                              {item.occurred_at
-                                ? `, ${new Date(item.occurred_at).toLocaleString()}`
-                                : ""}
+                              {when ? `, ${when}` : ""}
                             </span>
                           </label>
                         </li>
@@ -301,6 +315,10 @@ export function HandoffComposeDialog({
               <p className="wx-handoff-muted">{expirySentence(policy.expiry_minutes)}</p>
             ) : null}
           </fieldset>
+        ) : null}
+
+        {alreadyOpen ? (
+          <output className="wx-task-notice">{HANDOFF_ALREADY_OPEN_TEXT}</output>
         ) : null}
 
         <div className="wx-task-actions">

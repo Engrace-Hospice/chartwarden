@@ -47,6 +47,7 @@ import {
 } from "./handoff-dto";
 import { type EligibilityPorts, gateAdmits, recipientEligible } from "./handoff-eligibility";
 import { publishHandoffEvent } from "./handoff-events";
+import { expireHandoffInTx } from "./handoff-expiry";
 import type { HandoffPolicyStore } from "./handoff-policy-store-db";
 import { finishHandoff } from "./handoff-settle";
 import { type HandoffSourcePorts, type PrefillResult, collectOpenWork } from "./handoff-sources";
@@ -244,13 +245,22 @@ export function createHandoffService(deps: HandoffServiceDeps): HandoffService {
     if (a.toUserId === actor.userId) throw recipientInvalid();
     // A repeat offer to the same person returns the sender's OWN open handoff (the pair contains the caller's id) and
     // ignores the new body; it is checked first so a replay never trips over its own pending items.
-    const existing = await run(actor, (tx) =>
-      store.findOpenForPair(tx, actor.orgId, actor.userId, a.toUserId),
-    );
+    const minutes = await minutesFor(actor);
+    const existing = await run(actor, async (tx) => {
+      const open = await store.findOpenForPair(tx, actor.orgId, actor.userId, a.toUserId);
+      if (!open) return null;
+      // An open offer past its effective deadline is dead, the sweep just has not reached it: settle it here (same code
+      // as the sweep, same transaction) and let the new offer proceed instead of handing back a handoff nobody can accept.
+      const locked = await store.getForUpdate(tx, actor.orgId, open.id);
+      if (!locked || locked.state !== "offered") return null;
+      if (!isPastDeadline(locked, minutes, clock())) return locked;
+      await expireHandoffInTx({ store, outbox: deps.outbox, now: clock }, tx, locked);
+      return null;
+    });
     if (existing) return { handoff: await presentOne(actor, existing.id), created: false };
     await verifyOfferItems(actor, a.toUserId, a.items);
     const offeredAt = clock();
-    const expiresAt = new Date(offeredAt.getTime() + (await minutesFor(actor)) * MS_PER_MINUTE);
+    const expiresAt = new Date(offeredAt.getTime() + minutes * MS_PER_MINUTE);
     const result = await run(actor, async (tx) => {
       const r = await store.insertOffered(tx, {
         orgId: actor.orgId,
@@ -299,13 +309,15 @@ export function createHandoffService(deps: HandoffServiceDeps): HandoffService {
     actor: HandoffActorRef,
     h: HandoffRow,
     item: HandoffItemRow,
+    viewableChannels: ReadonlySet<string>,
   ): Promise<void> {
     const task = await deps.taskStore.getForUpdate(tx, actor.orgId, item.refId);
     const active = task && (task.status === "open" || task.status === "accepted");
     if (!task || !active || task.assigneeId !== h.fromUserId || task.patientId !== item.patientId)
       throw notTransferable();
-    if (!(await deps.messaging.canViewChannel(actor.orgId, actor.userId, task.channelId)))
-      throw notTransferable();
+    // Membership was resolved BEFORE the locks (canViewChannel uses its own connection); a task that moved to a channel
+    // we did not check fails closed.
+    if (!viewableChannels.has(task.channelId)) throw notTransferable();
     try {
       await deps.taskStore.transition(tx, {
         orgId: actor.orgId,
@@ -326,6 +338,31 @@ export function createHandoffService(deps: HandoffServiceDeps): HandoffService {
     }
   }
 
+  /**
+   * The channels of the chosen pending task items that the acceptor may view, resolved outside the accept transaction so
+   * no pooled connection is awaited while handoff and task rows are locked. A short read tx only learns the channel ids.
+   */
+  async function viewableTaskChannels(
+    actor: HandoffActorRef,
+    chosen: readonly HandoffItemRow[],
+  ): Promise<ReadonlySet<string>> {
+    const taskIds = chosen.filter((i) => i.itemKind === "task" && i.state === "pending");
+    if (taskIds.length === 0) return new Set();
+    const channelIds = await run(actor, async (tx) => {
+      const found = new Set<string>();
+      for (const item of taskIds) {
+        const task = await deps.taskStore.getForUpdate(tx, actor.orgId, item.refId);
+        if (task) found.add(task.channelId);
+      }
+      return found;
+    });
+    const viewable = new Set<string>();
+    for (const channelId of channelIds)
+      if (await deps.messaging.canViewChannel(actor.orgId, actor.userId, channelId))
+        viewable.add(channelId);
+    return viewable;
+  }
+
   /** The recipient-only preconditions shared by accept and decline. */
   function requireOpenForRecipient(h: HandoffRow, actor: HandoffActorRef, minutes: number): void {
     if (handoffRole(h, actor.userId) !== "recipient") throw new ForbiddenError("not permitted");
@@ -339,13 +376,18 @@ export function createHandoffService(deps: HandoffServiceDeps): HandoffService {
       throw typed("HANDOFF_TOO_MANY_ITEMS", "too many items", 422);
     const current = await store.participantGet(actor.orgId, actor.userId, handoffId);
     if (!current) throw notFound();
-    const chosenPatients = chooseItems(current.items, itemIds).map((i) => i.patientId);
+    const chosenNow = chooseItems(current.items, itemIds);
+    const chosenPatients = chosenNow.map((i) => i.patientId);
     if (current.handoff.toUserId === actor.userId && current.handoff.state === "offered") {
       // Re-checked at accept: the recipient may have lost a permission or a Part 2 release since the offer.
       if (!(await recipientEligible(deps, actor.orgId, actor.userId, chosenPatients)))
         throw recipientInvalid();
     }
     const minutes = await minutesFor(actor);
+    const viewableChannels =
+      current.handoff.toUserId === actor.userId && current.handoff.state === "offered"
+        ? await viewableTaskChannels(actor, chosenNow)
+        : new Set<string>();
     await run(actor, async (tx) => {
       const h = await lockForParticipant(tx, actor, handoffId);
       const all = await store.itemsOf(tx, actor.orgId, handoffId);
@@ -358,7 +400,7 @@ export function createHandoffService(deps: HandoffServiceDeps): HandoffService {
         throw stateConflict();
       const toAccept = chosen.filter((i) => i.state === "pending");
       for (const item of toAccept.filter((i) => i.itemKind === "task"))
-        await transferTask(tx, actor, h, item);
+        await transferTask(tx, actor, h, item, viewableChannels);
       const moved = await store.resolveItems(tx, {
         orgId: actor.orgId,
         handoffId,

@@ -43,6 +43,11 @@ export interface RouteReadAuditEmit {
    */
   readonly resourceIdParam?: string;
   /**
+   * Dot path into the RESPONSE payload holding the resource's id, for a route that has no id param because it CREATES the
+   * resource (`POST /handoffs` answers the new handoff). Used only when `resourceIdParam` yields nothing.
+   */
+  readonly resourceIdPayloadPath?: string;
+  /**
    * For a LIST read only: record `resourceIdParam`'s value (when it is a uuid) as the event's resource id. Opt-in, because
    * most list routes' param is a PARENT id under a CHILD `resourceKind`, which would mislabel the row; set it only when the
    * param names the container the `resourceKind` itself lives in (a channel's messages under `message`).

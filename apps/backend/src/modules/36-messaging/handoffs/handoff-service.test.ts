@@ -73,6 +73,24 @@ describe("offer", () => {
     expect(published(kit, "m36.handoff.offered")).toHaveLength(1);
   });
 
+  it("settles an open offer past its deadline (sweep not yet run) and creates a fresh one", async () => {
+    const kit = buildKit();
+    const first = await offerStandard(kit);
+    kit.advanceMinutes(241);
+    const again = await offerStandard(kit);
+    expect(again.created).toBe(true);
+    expect(again.handoff.id).not.toBe(first.handoff.id);
+    expect(kit.store.handoffs.get(first.handoff.id)).toMatchObject({
+      state: "expired",
+      closedReason: "deadline",
+    });
+    expect([...kit.store.items.values()].filter((i) => i.handoffId === first.handoff.id)).toSatisfy(
+      (rows: { state: string }[]) => rows.length === 3 && rows.every((r) => r.state === "expired"),
+    );
+    expect(published(kit, "m36.handoff.unaccepted")).toHaveLength(1);
+    expect(published(kit, "m36.handoff.offered")).toHaveLength(2);
+  });
+
   it.each([
     ["recipient is the sender", () => buildKit(), ALICE],
     ["recipient is inactive", () => buildKit({ inactive: [BOB] }), BOB],
@@ -363,6 +381,21 @@ describe("tenant policy", () => {
     ).toBe("409:HANDOFF_STATE_CONFLICT");
     const view = await kit.service.policy(actor(ALICE));
     expect(view).toEqual({ expiry_minutes: 60, platform_max_minutes: 240, customised: true });
+  });
+
+  it("reports the ENFORCED deadline as expires_at after the policy tightens, not the stored column", async () => {
+    const kit = buildKit();
+    const { handoff } = await offerStandard(kit);
+    expect(handoff.expires_at).toBe(new Date(NOW.getTime() + 240 * 60_000).toISOString());
+    await kit.service.setPolicy(actor(ALICE), 60);
+    const seen = await kit.service.get(actor(BOB), handoff.id);
+    expect(seen.expires_at).toBe(new Date(NOW.getTime() + 60 * 60_000).toISOString());
+    const [listed] = await kit.service.list(actor(BOB), {
+      scope: "incoming",
+      state: "active",
+      limit: 10,
+    });
+    expect(listed?.expires_at).toBe(seen.expires_at);
   });
 
   it("offers get the policy minutes as their deadline, and clearing restores the platform value", async () => {

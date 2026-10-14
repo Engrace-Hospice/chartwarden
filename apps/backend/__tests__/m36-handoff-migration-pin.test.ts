@@ -111,6 +111,15 @@ describe("migration 1101 structure", () => {
     expect(flat(sql)).toContain("NEW.accountable_user_id IS DISTINCT FROM OLD.accountable_user_id");
   });
 
+  it("makes a new item pending and owned by the offering sender (BEFORE INSERT guard)", () => {
+    expect(sql).toContain("trg_clinical_handoff_item_insert_guard");
+    expect(sql).toMatch(/BEFORE INSERT ON clinical_handoff_item/);
+    expect(sql).toContain("clinical_handoff_item_insert_state:");
+    expect(sql).toContain("clinical_handoff_item_insert_accountability:");
+    expect(flat(sql)).toContain("NEW.state IS DISTINCT FROM 'pending'");
+    expect(flat(sql)).toContain("NEW.accountable_user_id IS DISTINCT FROM v_from");
+  });
+
   it("forces RLS everywhere and gives wardenx_app no DELETE on the three handoff tables", () => {
     for (const t of [
       "clinical_handoff",

@@ -2,7 +2,7 @@
 // opening one shows its items. Whether a row can be acted on comes from the server (the review drawer's allowed_actions).
 import type { HandoffDto } from "@wardenx/types";
 import { Button, EmptyState, LoadingSpinner, StatusPill } from "@wardenx/ui";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { HandoffComposeDialog } from "./handoff-compose-dialog";
 import { HandoffReviewDialog } from "./handoff-review-dialog";
@@ -130,6 +130,19 @@ export function HandoffsList({ meId, shared }: HandoffsListProps): JSX.Element {
   const [composing, setComposing] = useState(false);
   const [message, setMessage] = useState("");
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const dialogWasOpen = useRef(false);
+
+  // A dialog restores focus to the control that opened it; if the reload removed that row, land on the heading.
+  useEffect(() => {
+    if (openId || composing) {
+      dialogWasOpen.current = true;
+      return;
+    }
+    if (!dialogWasOpen.current) return;
+    dialogWasOpen.current = false;
+    if (!document.activeElement || document.activeElement === document.body)
+      headingRef.current?.focus();
+  }, [openId, composing]);
 
   function offered(_handoff: HandoffDto, created: boolean): void {
     setComposing(false);

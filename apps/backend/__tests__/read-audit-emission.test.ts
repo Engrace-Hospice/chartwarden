@@ -314,6 +314,30 @@ describe("read-audit emission for a multi-patient read (patientIdsPayload)", () 
   });
 });
 
+describe("read-audit emission for a PHI-bearing POST (resourceIdPayloadPath)", () => {
+  it("accounts a created resource against its payload id, one event per distinct patient", async () => {
+    const app = makeApp();
+    app.post(
+      "/api/v1/patients/handoff",
+      {
+        config: {
+          auditRead: {
+            resourceKind: "clinical_handoff",
+            resourceIdPayloadPath: "handoff.id",
+            patientIdsPayload: { path: "handoff.items", key: "patient_id" },
+          },
+        },
+      },
+      async () => ({
+        handoff: { id: "h9", items: [{ patient_id: "p1" }, { patient_id: "p2" }] },
+      }),
+    );
+    await app.inject({ method: "POST", url: "/api/v1/patients/handoff", payload: {} });
+    expect(captured.map((r) => r.context?.patientId).sort()).toEqual(["p1", "p2"]);
+    expect(captured.every((r) => r.resourceId === "h9")).toBe(true);
+  });
+});
+
 /** GAP-013 — Fastify skips preSerialization for Buffer/string payloads; onSend must still audit them. */
 describe("read-audit emission for binary replies (GAP-013)", () => {
   it("writes exactly one <kind>.viewed row for a Buffer reply and no payload bytes", async () => {

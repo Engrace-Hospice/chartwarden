@@ -162,4 +162,50 @@ describe("HandoffComposeDialog", () => {
     await userEvent.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalled();
   });
+
+  it("tells the sender when an open handoff to this colleague already exists, without reporting success", async () => {
+    const { onOffered } = mount({
+      post: { data: { handoff: HANDOFF_FIXTURE, created: false }, response: { status: 200 } },
+    });
+    await loadWork();
+    const picker = screen.getByRole("list", { name: "Colleagues" });
+    await userEvent.click(await within(picker).findByRole("button", { name: "Rae Covering" }));
+    await userEvent.click(screen.getByRole("button", { name: /Offer handoff/ }));
+    expect(
+      await screen.findByText(
+        /You already have an open handoff to this colleague; your new selection was not added/,
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Cancel it first to send a different one\./)).toBeTruthy();
+    expect(onOffered).not.toHaveBeenCalled();
+  });
+
+  it("locks the patient choices while open work is loading", async () => {
+    let release: (value: unknown) => void = () => undefined;
+    const GET = vi.fn(async (path: string) =>
+      path === "/api/v1/messaging/handoffs/caseload"
+        ? { data: { patients: [patient(1), patient(2)] } }
+        : { error: {}, response: { status: 404 } },
+    );
+    const POST = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    render(
+      <ApiClientProvider client={{ GET, POST } as unknown as ApiClient}>
+        <HandoffComposeDialog meId="u1" onClose={vi.fn()} onOffered={vi.fn()} />
+      </ApiClientProvider>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Select all" }));
+    await userEvent.click(screen.getByRole("button", { name: "Load open work (2)" }));
+    await waitFor(() => expect(POST).toHaveBeenCalled());
+    for (const box of screen.getAllByRole("checkbox"))
+      expect((box as HTMLInputElement).disabled).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "Clear selection" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    release({ data: { patients: [] } });
+  });
 });

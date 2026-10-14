@@ -164,4 +164,91 @@ describe("HandoffReviewDialog", () => {
     await userEvent.keyboard("{Enter}");
     await waitFor(() => expect(post).toHaveBeenCalled());
   });
+
+  it("disables every action when the reload after a stale refusal fails", async () => {
+    const post = vi.fn().mockResolvedValue(refusal(409, "HANDOFF_STATE_CONFLICT"));
+    const { GET } = mount(HANDOFF_FIXTURE, post);
+    GET.mockResolvedValueOnce({ error: {}, response: { status: 500 } });
+    await userEvent.click((await screen.findAllByRole("checkbox"))[0]!);
+    await userEvent.click(screen.getByRole("button", { name: "Accept selected (1)" }));
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /Accept selected/ })).toBeNull(),
+    );
+    expect(screen.queryByRole("button", { name: /Decline/ })).toBeNull();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.getByText("This handoff is no longer available.")).toBeTruthy();
+  });
+
+  it.each([403, 404])("treats a %s on accept as stale with the generic text", async (status) => {
+    const post = vi.fn().mockResolvedValue(refusal(status, "X"));
+    const { GET, onChanged } = mount(HANDOFF_FIXTURE, post);
+    await userEvent.click((await screen.findAllByRole("checkbox"))[0]!);
+    await userEvent.click(screen.getByRole("button", { name: "Accept selected (1)" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "This handoff is no longer available.",
+    );
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(2));
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  it("drops a response that resolves after the dialog unmounts", async () => {
+    let release: (value: unknown) => void = () => undefined;
+    const GET = vi.fn().mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const view = render(
+      <ApiClientProvider client={{ GET, POST: vi.fn() } as unknown as ApiClient}>
+        <HandoffReviewDialog handoffId="h1" onClose={vi.fn()} onChanged={vi.fn()} />
+      </ApiClientProvider>,
+    );
+    view.unmount();
+    release({ data: { handoff: HANDOFF_FIXTURE } });
+    await Promise.resolve();
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
+  it("ignores identity fields on a restricted item and groups it with the others", async () => {
+    const restricted = {
+      ...ITEM_FIXTURE,
+      summary: { state: "restricted" },
+    };
+    mount({
+      ...HANDOFF_FIXTURE,
+      items: [
+        {
+          ...restricted,
+          id: "a",
+          patient_id: "pa",
+          patient_display_name: "Leaky A",
+          mrn_suffix: "9999",
+        },
+        {
+          ...restricted,
+          id: "b",
+          patient_id: "pb",
+          patient_display_name: "Leaky B",
+          mrn_suffix: "8888",
+        },
+      ],
+    });
+    expect(await screen.findAllByRole("heading", { name: "Restricted patient" })).toHaveLength(1);
+    expect(document.body.textContent).not.toMatch(/Leaky|9999|8888/);
+    expect(screen.getAllByText(/Next visit: Details are not shown to you/)).toHaveLength(2);
+  });
+
+  it("shows no date text for an invalid timestamp", async () => {
+    mount({
+      ...HANDOFF_FIXTURE,
+      items: [
+        { ...ITEM_FIXTURE, summary: { state: "ok", status: "scheduled", occurred_at: "nope" } },
+      ],
+    });
+    expect(await screen.findByText(/Next visit: scheduled\./)).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/Invalid Date/);
+  });
 });

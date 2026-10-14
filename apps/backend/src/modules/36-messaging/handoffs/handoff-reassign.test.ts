@@ -8,6 +8,7 @@ import {
   CAROL,
   ORG,
   P1,
+  P2,
   REFILL,
   actor,
   buildKit,
@@ -19,6 +20,7 @@ import {
 const deps = (kit: ReturnType<typeof buildKit>, extra = {}) => ({
   db: fakeDb,
   store: kit.store,
+  taskStore: kit.taskStore,
   outbox: {
     publish: async (
       _t: unknown,
@@ -28,6 +30,29 @@ const deps = (kit: ReturnType<typeof buildKit>, extra = {}) => ({
   now: kit.clock,
   ...extra,
 });
+const CH = "00000000-0000-4000-8000-0000000000c1";
+const MSG = "00000000-0000-4000-8000-0000000000d1";
+
+/** An offer to Bob of Alice's real task (plus any extra items). */
+async function taskOffer(kit: ReturnType<typeof buildKit>, extra: ReturnType<typeof item>[]) {
+  const created = await kit.taskStore.createOrGetActive(null as never, {
+    orgId: ORG,
+    messageId: MSG,
+    channelId: CH,
+    patientId: P1,
+    createdBy: CAROL,
+    assigneeId: ALICE,
+    dueAt: null,
+    clinicalConcern: true,
+  });
+  kit.store.tasks.push({ id: created.task.id, patientId: P1, status: "open", dueAt: null });
+  kit.store.taskStatusById.set(created.task.id, "open");
+  await kit.service.offer(actor(ALICE), {
+    toUserId: BOB,
+    items: [item("task", P1, created.task.id), ...extra],
+  });
+  return { taskId: created.task.id };
+}
 const unaccepted = (kit: ReturnType<typeof buildKit>) =>
   kit.published.filter((e) => e.eventName === "m36.handoff.unaccepted");
 
@@ -50,6 +75,67 @@ describe("reassignHandoffsForLeaver", () => {
       cause: "recipient_left",
       unacceptedItemCount: 3,
     });
+  });
+
+  it("a recipient who accepted some items then left closes ACCEPTED (accepted_at set), reason recipient_left", async () => {
+    const kit = buildKit();
+    const { handoff } = await offerStandard(kit);
+    await kit.service.accept(actor(BOB), handoff.id, [handoff.items?.[0]?.id as string]);
+    await reassignHandoffsForLeaver(deps(kit), ORG, BOB);
+    const row = kit.store.handoffs.get(handoff.id);
+    expect(row).toMatchObject({ state: "accepted", closedReason: "recipient_left" });
+    expect(row?.acceptedAt).toBeInstanceOf(Date);
+  });
+
+  it("declines a pending task item whose task already left the sender, and keeps the offer open for the rest", async () => {
+    const kit = buildKit({ viewableChannels: [CH] });
+    const { taskId } = await taskOffer(kit, [item("patient", P2)]);
+    // The task sweep moved the task off the leaving sender before the handoff sweep ran.
+    await kit.taskStore.transition(
+      null as never,
+      {
+        orgId: ORG,
+        taskId,
+        actor: { kind: "system" },
+        action: "reassign",
+        toAssigneeId: CAROL,
+        reassignReason: "offboarding",
+      } as never,
+    );
+    expect(await reassignHandoffsForLeaver(deps(kit), ORG, ALICE)).toMatchObject({
+      senderFlagged: 1,
+    });
+    const rows = [...kit.store.items.values()];
+    expect(rows.find((i) => i.itemKind === "task")?.state).toBe("declined");
+    expect(rows.find((i) => i.itemKind === "patient")?.state).toBe("pending");
+    expect([...kit.store.handoffs.values()][0]?.state).toBe("offered");
+  });
+
+  it("closes the offer when every item was a dead task, announcing sender_left once", async () => {
+    const kit = buildKit({ viewableChannels: [CH] });
+    const { taskId } = await taskOffer(kit, []);
+    await kit.taskStore.transition(
+      null as never,
+      {
+        orgId: ORG,
+        taskId,
+        actor: { kind: "system" },
+        action: "reassign",
+        toAssigneeId: CAROL,
+        reassignReason: "offboarding",
+      } as never,
+    );
+    await reassignHandoffsForLeaver(deps(kit), ORG, ALICE);
+    expect([...kit.store.handoffs.values()][0]).toMatchObject({ state: "declined" });
+    expect(unaccepted(kit)).toHaveLength(1);
+    expect(unaccepted(kit)[0]?.payload).toMatchObject({ cause: "sender_left" });
+  });
+
+  it("leaves a task item alone while the task is still the sender's", async () => {
+    const kit = buildKit({ viewableChannels: [CH] });
+    await taskOffer(kit, []);
+    await reassignHandoffsForLeaver(deps(kit), ORG, ALICE);
+    expect([...kit.store.items.values()][0]?.state).toBe("pending");
   });
 
   it("leaves items the leaving recipient already accepted alone", async () => {

@@ -249,7 +249,12 @@ export function applyReadAuditCoverage(
           } else {
             // A single chart open: account it against the resource (defaults to the patient, §164.528).
             const resourceId =
-              (cfg.resourceIdParam ? params[cfg.resourceIdParam] : undefined) ?? patientId ?? "";
+              (cfg.resourceIdParam ? params[cfg.resourceIdParam] : undefined) ??
+              (cfg.resourceIdPayloadPath && !binary
+                ? atPath(payload, cfg.resourceIdPayloadPath)
+                : undefined) ??
+              patientId ??
+              "";
             // A read that disclosed several patients is accounted against EACH of them (one event per patient).
             const disclosed = binary ? [] : disclosedPatientIds(cfg, payload);
             const attributed = disclosed.length > 0 ? disclosed : [patientId];

@@ -83,7 +83,11 @@ export function buildHandoffBinding(input: HandoffBindingInput): HandoffBinding 
     expireDue: (orgId) =>
       expireDueHandoffsForOrg({ db, store, policyStore, outbox, ...clock, ...warn }, orgId),
     reassignForLeaver: (orgId, leaverUserId) =>
-      reassignHandoffsForLeaver({ db, store, outbox, ...clock, ...warn }, orgId, leaverUserId),
+      reassignHandoffsForLeaver(
+        { db, store, taskStore: createDbTaskStore(db), outbox, ...clock, ...warn },
+        orgId,
+        leaverUserId,
+      ),
     isActiveUser: input.isActiveUser,
     stillOffered: async (orgId, handoffId) => (await store.stateOf(orgId, handoffId)) === "offered",
     markNeedsAttention: (orgId, handoffId) =>

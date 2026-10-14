@@ -27,7 +27,7 @@ function readHandoffsEnabled(client: ApiClient): Promise<boolean> {
 }
 
 /** No client mounted reads as OFF. */
-function useOptionalApiClient(): ApiClient | null {
+export function useOptionalApiClient(): ApiClient | null {
   try {
     return useApiClient();
   } catch {

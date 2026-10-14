@@ -74,4 +74,61 @@ describe("HandoffsList", () => {
       within(screen.getByRole("dialog")).getByText(/Handoffs do not page anyone/),
     ).toBeTruthy();
   });
+
+  it("keeps the rows during a reload and lands on the heading when the opened row disappears", async () => {
+    let listed = ready([ROW]);
+    const GET = vi.fn(async (path: string) =>
+      path === "/api/v1/messaging/handoffs"
+        ? listed
+        : { data: { handoff: HANDOFF_FIXTURE }, response: { status: 200 } },
+    );
+    const POST = vi.fn().mockResolvedValue({
+      data: { handoff: { ...HANDOFF_FIXTURE, allowed_actions: [] } },
+      response: { status: 200 },
+    });
+    render(
+      <ApiClientProvider client={{ GET, POST } as unknown as ApiClient}>
+        <HandoffsList meId="u1" />
+      </ApiClientProvider>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Review" }));
+    await userEvent.click((await screen.findAllByRole("checkbox"))[0]!);
+    listed = ready([]);
+    await userEvent.click(screen.getByRole("button", { name: "Accept selected (1)" }));
+    await screen.findByText("No handoffs waiting for you.");
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Handoffs" })),
+    );
+  });
+
+  it("does not blank the list while re-reading the same view", async () => {
+    let release: (value: unknown) => void = () => undefined;
+    let calls = 0;
+    const GET = vi.fn(async (path: string) => {
+      if (path !== "/api/v1/messaging/handoffs")
+        return { data: { handoff: HANDOFF_FIXTURE }, response: { status: 200 } };
+      calls += 1;
+      return calls === 1
+        ? ready([ROW])
+        : new Promise((resolve) => {
+            release = resolve;
+          });
+    });
+    const POST = vi.fn().mockResolvedValue({
+      data: { handoff: { ...HANDOFF_FIXTURE, allowed_actions: [] } },
+      response: { status: 200 },
+    });
+    render(
+      <ApiClientProvider client={{ GET, POST } as unknown as ApiClient}>
+        <HandoffsList meId="u1" />
+      </ApiClientProvider>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Review" }));
+    await userEvent.click((await screen.findAllByRole("checkbox"))[0]!);
+    await userEvent.click(screen.getByRole("button", { name: "Accept selected (1)" }));
+    await waitFor(() => expect(calls).toBe(2));
+    expect(screen.getAllByRole("listitem").length).toBeGreaterThan(0);
+    release(ready([ROW]));
+  });
 });

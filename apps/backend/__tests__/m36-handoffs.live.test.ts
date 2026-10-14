@@ -332,6 +332,18 @@ describe.skipIf(!DB_URL)("M36 WP 3.5 clinical handoffs - LIVE Postgres", () => {
       expect(await outboxCount("m36.handoff.unaccepted", id)).toBe(1);
     });
 
+    it("a repeat offer to the same person settles an open offer past its deadline instead of returning the dead one", async () => {
+      const p = nextPatient();
+      const { from, to, id } = await offered([p]);
+      await makeDue(id);
+      const again = await offer(from, to, [anchor(p)]);
+      expect(again.statusCode).toBe(201);
+      expect(again.json().handoff.id).not.toBe(id);
+      expect(await handoffRow(id)).toMatchObject({ state: "expired", closed_reason: "deadline" });
+      expect((await itemsOf(id)).map((i) => i.state)).toEqual(["expired"]);
+      expect(await outboxCount("m36.handoff.unaccepted", id)).toBe(1);
+    });
+
     it("keeps an already-accepted item with the recipient when the rest expires", async () => {
       const { to, id } = await offered([nextPatient(), nextPatient()]);
       await accept(to, id, [await firstItemId(id)]);
@@ -468,6 +480,22 @@ describe.skipIf(!DB_URL)("M36 WP 3.5 clinical handoffs - LIVE Postgres", () => {
       expect((await itemsOf(id))[0]).toMatchObject({ state: "pending", accountable_user_id: from });
     });
 
+    it("refuses, even via raw SQL, inserting an item that is not pending or not owned by the sender", async () => {
+      const { from, to, id } = await offered([nextPatient()]);
+      const insert = (state: string, owner: string) =>
+        kit.admin.query(
+          `INSERT INTO clinical_handoff_item (organization_id, handoff_id, patient_id, item_kind, ref_id, state, accountable_user_id)
+             SELECT organization_id, handoff_id, patient_id, 'visit', gen_random_uuid(), $2, $3
+               FROM clinical_handoff_item WHERE handoff_id=$1 LIMIT 1`,
+          [id, state, owner],
+        );
+      await expect(insert("accepted", from)).rejects.toThrow(/clinical_handoff_item_insert_state/);
+      await expect(insert("pending", to)).rejects.toThrow(
+        /clinical_handoff_item_insert_accountability/,
+      );
+      await expect(insert("pending", from)).resolves.toBeDefined();
+    });
+
     it("has a plain (organization_id, handoff_id) index on the items for the cascade lookup", async () => {
       const rows = await kit.one<{ indexdef: string }>(
         `SELECT indexdef FROM pg_indexes WHERE tablename='clinical_handoff_item'
@@ -583,6 +611,35 @@ describe.skipIf(!DB_URL)("M36 WP 3.5 clinical handoffs - LIVE Postgres", () => {
       expect(await reads()).toHaveLength(0);
       expect((await call(app, to, "GET", `${BASE}/${id}`)).statusCode).toBe(200);
       expect((await reads()).map((r) => r.patient).sort()).toEqual([p1, p2].sort());
+    });
+
+    it("lands read events for the PHI-bearing POSTs too: offer, prefill, accept and cancel, one per patient", async () => {
+      const [p1, p2] = [nextPatient(), nextPatient()];
+      const { from, to, id } = await offered([p1, p2]);
+      const reads = (user: string, kind = "clinical_handoff") =>
+        kit.one<{ patient: string | null }>(
+          `SELECT context->>'patientId' AS patient FROM audit_event
+            WHERE organization_id=$1 AND event_type=$4 AND resource_id=$2 AND actor_user_id=$3`,
+          [ORG_A, id, user, `${kind}.viewed`],
+        );
+      // The offer itself disclosed both patients' labels to the sender.
+      expect((await reads(from)).map((r) => r.patient).sort()).toEqual([p1, p2].sort());
+      // Accepting one item answers the handoff (both patients) to the recipient.
+      expect((await accept(to, id, [await firstItemId(id)])).statusCode).toBe(200);
+      expect((await reads(to)).map((r) => r.patient).sort()).toEqual([p1, p2].sort());
+      // Prefill is a read of open work for the named patients, accounted against each of them.
+      const pf = await call(app, from, "POST", `${BASE}/prefill`, { patient_ids: [p1, p2] });
+      expect(pf.statusCode).toBe(200);
+      const prefillReads = await kit.one<{ patient: string | null }>(
+        `SELECT context->>'patientId' AS patient FROM audit_event
+          WHERE organization_id=$1 AND event_type='clinical_handoff_prefill.viewed' AND actor_user_id=$2`,
+        [ORG_A, from],
+      );
+      expect(prefillReads.map((r) => r.patient).sort()).toEqual([p1, p2].sort());
+      // Cancel (a remaining pending item's sender) answers the handoff too.
+      const cancelled = await call(app, from, "POST", `${BASE}/${id}/cancel`);
+      expect(cancelled.statusCode).toBe(200);
+      expect(await reads(from)).toHaveLength(4); // offer (2 patients) + cancel (2 patients)
     });
 
     it("records a list read with a count and no patient", async () => {

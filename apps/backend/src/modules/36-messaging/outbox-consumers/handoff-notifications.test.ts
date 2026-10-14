@@ -144,6 +144,17 @@ describe("M36 handoff notifications consumer", () => {
     expect(types).toEqual(["m36.handoff.supervisor_review"]);
   });
 
+  it("does not tell supervisors the patients stay with a sender who has left", async () => {
+    const { emit, consumer } = setup({ active: false });
+    await consumer.handle(unaccepted("evt-1", "sender_left"));
+    const messages = emit.mock.calls.map(
+      (c) => (c[1] as unknown as { payload: { message: string } }).payload.message,
+    );
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).not.toMatch(/stay with the sender/);
+    expect(messages[0]).toMatch(/has left/);
+  });
+
   it("uses distinct correlation ids for two unaccepted events of the same handoff", async () => {
     const { emit, consumer } = setup();
     await consumer.handle(unaccepted("evt-1", "sender_left"));

@@ -92,14 +92,32 @@ const FIELD_ERRORS: Readonly<Record<string, string>> = {
   HANDOFF_POLICY_INVALID: "Choose a whole number of minutes within the allowed range.",
 };
 
-/** A refusal that means the screen is out of date (gone or changed): reload. */
+export const HANDOFF_GONE_TEXT = "This handoff is no longer available.";
+export const HANDOFF_ALREADY_OPEN_TEXT =
+  "You already have an open handoff to this colleague; your new selection was not added. Cancel it first to send a different one.";
+
+/** A refusal that means the screen is out of date (gone, changed, or no longer readable by this viewer): reload. */
 export const isStaleRefusal = (status: number | undefined): boolean =>
-  status === 404 || status === 409;
+  status === 403 || status === 404 || status === 409;
+
+/** A date for display; empty when the server sent something that is not a date. */
+export function formatWhen(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleString();
+}
 
 /** A server refusal as text: the typed code wins, then the status, then a generic line. Never echoes server text. */
 export function handoffErrorText(status: number | undefined, code: string | undefined): string {
   if (code && FIELD_ERRORS[code]) return FIELD_ERRORS[code];
   if (status === 403) return "You are not allowed to do that to this handoff.";
-  if (status === 404) return "This handoff is no longer available.";
+  if (status === 404) return HANDOFF_GONE_TEXT;
   return "That did not work. Nothing was changed. Try again.";
+}
+
+/** Like handoffErrorText for an action on ONE existing handoff: 403 and 404 read the same (never say which). */
+export function handoffActionErrorText(
+  status: number | undefined,
+  code: string | undefined,
+): string {
+  return status === 403 || status === 404 ? HANDOFF_GONE_TEXT : handoffErrorText(status, code);
 }

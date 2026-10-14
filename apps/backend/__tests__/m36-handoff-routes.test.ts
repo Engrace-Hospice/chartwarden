@@ -258,6 +258,18 @@ describe("static paths are not shadowed by :handoffId", () => {
     expect((await send(app, "reader", "GET", `${BASE}/policy`)).statusCode).toBe(403);
     await app.close();
   });
+
+  it("the detail read and accept/decline/cancel re-check patient.read (403 without it, service never reached)", async () => {
+    const app = makeServer();
+    expect((await send(app, "nopatient", "GET", `${BASE}/${H}`)).statusCode).toBe(403);
+    for (const action of ["accept", "decline", "cancel"])
+      expect(
+        (await send(app, "nopatient", "POST", `${BASE}/${H}/${action}`, { item_ids: [ITEM] }))
+          .statusCode,
+      ).toBe(403);
+    expect(calls).toEqual([]);
+    await app.close();
+  });
 });
 
 describe("POST /handoffs", () => {
@@ -452,9 +464,13 @@ describe("unbound default and static guarantees", () => {
     expect(routesSrc()).not.toMatch(/request\.headers|headers\[/);
   });
 
-  it("every read route declares auditRead; the single read names resourceIdParam and attributes every patient", () => {
+  it("every read route declares auditRead; the single read names resourceIdParam and attributes every patient; the PHI-bearing POSTs audit too", () => {
     const src = routesSrc();
-    expect(src.match(/auditRead:/g)).toHaveLength(4);
+    // list, caseload, policy waiver, detail GET, prefill POST, and the shared offer/accept/decline/cancel POST config.
+    expect(src.match(/auditRead:/g)).toHaveLength(6);
+    expect(src.match(/config: postAudit/g)).toHaveLength(4);
+    expect(src).toContain('resourceIdPayloadPath: "handoff.id"');
+    expect(src).toContain('resourceKind: "clinical_handoff_prefill"');
     expect(src).toContain('resourceIdParam: "handoffId"');
     expect(src).toContain('patientIdsPayload: { path: "handoff.items", key: "patient_id" }');
   });

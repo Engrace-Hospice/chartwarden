@@ -33,6 +33,8 @@ export const HANDOFF_NOTIFICATION_TEXT = {
   partlyAccepted: "Part of your handoff was accepted",
   unaccepted: "A handoff you offered was not accepted. The patients stay with you.",
   supervisorReview: "A handoff was not accepted and its patients stay with the sender",
+  supervisorReviewSenderGone:
+    "A handoff offer from a colleague who has left needs a new owner for its patients",
   noSupervisor: "No supervisor could be reached about your unaccepted handoff",
 } as const;
 
@@ -131,7 +133,10 @@ export function buildM36HandoffNotificationsConsumer(
       HANDOFF_SUPERVISOR_ALERT,
       "fromUserId",
       fromUserId,
-      HANDOFF_NOTIFICATION_TEXT.supervisorReview,
+      // A sender who has left cannot keep the patients: say so instead of promising they stay.
+      senderActive
+        ? HANDOFF_NOTIFICATION_TEXT.supervisorReview
+        : HANDOFF_NOTIFICATION_TEXT.supervisorReviewSenderGone,
       "warn",
     );
     if (supervisors.resolvedRecipientCount > 0) return;

@@ -5,8 +5,8 @@
 //   POST   /api/v1/messaging/handoffs/prefill                      open work for chosen patients (read)  (messaging.send + patient.read)
 //   POST   /api/v1/messaging/handoffs                              offer a handoff                       (messaging.send + patient.read)
 //   GET    /api/v1/messaging/handoffs/policy                       the effective expiry policy           (messaging.send)
-//   GET    /api/v1/messaging/handoffs/:handoffId                   one handoff with its items            (messaging.read)
-//   POST   /api/v1/messaging/handoffs/:handoffId/{accept,decline,cancel}                                 (messaging.send)
+//   GET    /api/v1/messaging/handoffs/:handoffId                   one handoff with its items            (messaging.read + patient.read)
+//   POST   /api/v1/messaging/handoffs/:handoffId/{accept,decline,cancel}                                 (messaging.send + patient.read)
 //   PUT|DELETE /api/v1/messaging/template-admin/handoff-policy     tighten-only tenant expiry            (messaging.template.manage)
 //
 // The tenant flag `messaging.handoffs` gates every route: off => the uniform 404 on every single-resource, write, caseload,
@@ -95,8 +95,18 @@ export function registerHandoffRoutes(
   const requireFlag = async (actor: HandoffActorRef): Promise<void> => {
     if (!(await flagOn(actor.orgId))) throw notFound();
   };
-  const readOne = [handoffIdParam, guards.read];
-  const writeOne = [handoffIdParam, guards.send];
+  // Every route that answers patient labels re-checks `patient.read` (a viewer who lost it must not read the handoff).
+  const readOne = [handoffIdParam, guards.read, PATIENT_READ];
+  const writeOne = [handoffIdParam, guards.send, PATIENT_READ];
+  // POST replies carry patient labels too and the read-audit plugin emits on any route that declares this config (it only
+  // GOVERNS GET/HEAD): one event per distinct patient disclosed, against the handoff the reply is about.
+  const postAudit = {
+    auditRead: {
+      resourceKind: "clinical_handoff",
+      resourceIdPayloadPath: "handoff.id",
+      patientIdsPayload: { path: "handoff.items", key: "patient_id" },
+    },
+  } as const;
 
   app.get(
     "/api/v1/messaging/handoffs",
@@ -133,7 +143,16 @@ export function registerHandoffRoutes(
 
   app.post(
     "/api/v1/messaging/handoffs/prefill",
-    { preHandler: [guards.send, PATIENT_READ] },
+    {
+      preHandler: [guards.send, PATIENT_READ],
+      config: {
+        auditRead: {
+          resourceKind: "clinical_handoff_prefill",
+          patientIdPayloadPath: "patients.0.patient_id",
+          patientIdsPayload: { path: "patients", key: "patient_id" },
+        },
+      },
+    },
     async (request) => {
       const actor = actorOf(request);
       await requireFlag(actor);
@@ -144,7 +163,7 @@ export function registerHandoffRoutes(
 
   app.post(
     "/api/v1/messaging/handoffs",
-    { preHandler: [guards.send, PATIENT_READ] },
+    { preHandler: [guards.send, PATIENT_READ], config: postAudit },
     async (request, reply) => {
       const actor = actorOf(request);
       await requireFlag(actor);
@@ -192,7 +211,7 @@ export function registerHandoffRoutes(
 
   app.post(
     "/api/v1/messaging/handoffs/:handoffId/accept",
-    { preHandler: writeOne },
+    { preHandler: writeOne, config: postAudit },
     async (request) => {
       const actor = actorOf(request);
       await requireFlag(actor);
@@ -204,7 +223,7 @@ export function registerHandoffRoutes(
 
   app.post(
     "/api/v1/messaging/handoffs/:handoffId/decline",
-    { preHandler: writeOne },
+    { preHandler: writeOne, config: postAudit },
     async (request) => {
       const actor = actorOf(request);
       await requireFlag(actor);
@@ -216,7 +235,7 @@ export function registerHandoffRoutes(
 
   app.post(
     "/api/v1/messaging/handoffs/:handoffId/cancel",
-    { preHandler: writeOne },
+    { preHandler: writeOne, config: postAudit },
     async (request) => {
       const actor = actorOf(request);
       await requireFlag(actor);

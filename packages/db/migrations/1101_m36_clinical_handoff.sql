@@ -171,6 +171,27 @@ CREATE TRIGGER "trg_clinical_handoff_item_guard"
   BEFORE UPDATE ON clinical_handoff_item
   FOR EACH ROW EXECUTE FUNCTION clinical_handoff_item_guard();--> statement-breakpoint
 
+-- An item is BORN pending and owned by the offering sender: no INSERT may plant an already-resolved item or hand
+-- accountability to anyone else. The parent is read in the same organisation (the item's FK already pins the pair).
+CREATE OR REPLACE FUNCTION clinical_handoff_item_insert_guard() RETURNS trigger
+LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
+DECLARE v_from uuid;
+BEGIN
+  SELECT h.from_user_id INTO v_from
+    FROM clinical_handoff h WHERE h.organization_id = NEW.organization_id AND h.id = NEW.handoff_id;
+  IF NEW.state IS DISTINCT FROM 'pending' THEN
+    RAISE EXCEPTION 'clinical_handoff_item_insert_state: an item is created pending' USING ERRCODE = 'check_violation';
+  END IF;
+  IF v_from IS NULL OR NEW.accountable_user_id IS DISTINCT FROM v_from THEN
+    RAISE EXCEPTION 'clinical_handoff_item_insert_accountability: a new item belongs to the offering sender'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$;--> statement-breakpoint
+CREATE TRIGGER "trg_clinical_handoff_item_insert_guard"
+  BEFORE INSERT ON clinical_handoff_item
+  FOR EACH ROW EXECUTE FUNCTION clinical_handoff_item_insert_guard();--> statement-breakpoint
+
 ALTER TABLE "clinical_handoff" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "clinical_handoff" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY "clinical_handoff_org_isolation" ON "clinical_handoff"

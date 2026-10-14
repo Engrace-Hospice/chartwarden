@@ -3,7 +3,7 @@
 // suffix) through the injected M5 port, each item's status through its owning seam, and the Part 2 gate is re-applied to
 // the VIEWER on every read. An item whose patient the viewer may not see (or whose gate cannot answer) renders as
 // `restricted` with no label and no ids.
-import { allowedHandoffActions, handoffRole } from "@wardenx/messaging";
+import { allowedHandoffActions, effectiveDeadline, handoffRole } from "@wardenx/messaging";
 import type {
   HandoffAction,
   HandoffCloseReason,
@@ -155,7 +155,8 @@ export function toHandoffDto(
     to_display_name: ctx.nameOf(row.toUserId),
     state: row.state as HandoffState,
     offered_at: row.offeredAt.toISOString(),
-    expires_at: row.expiresAt.toISOString(),
+    // The deadline actually enforced (the stored one, never later than offered_at + the CURRENT policy), not the stored column.
+    expires_at: effectiveDeadline(row, ctx.effectiveMinutes).toISOString(),
     accepted_at: row.acceptedAt ? row.acceptedAt.toISOString() : null,
     closed_at: row.closedAt ? row.closedAt.toISOString() : null,
     closed_reason: row.closedReason as HandoffCloseReason | null,
