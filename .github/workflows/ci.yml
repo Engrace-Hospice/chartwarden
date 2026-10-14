@@ -773,6 +773,8 @@ jobs:
           - { name: "M36 Tranche B review fixes", scripts: "test:m36:review:live" }
           # WP 2.3 - mentions: non-member lookup is names-only and tenant-bound, a non-member reference is refused, notification text is PHI-free.
           - { name: "M36 Mentions", scripts: "test:m36:mentions:live" }
+          # WP 3.2 - clinical links: ids-only table (FORCE RLS, no UPDATE), write-time validation, edit reconcile, resolve = identical unavailable, read-audit, flag.
+          - { name: "M36 Clinical links", scripts: "test:m36:clinical-link:live" }
           # WP 2.7a - in-conversation search: tenant/channel/tombstone/edit isolation, filters, audit without query text, p95 on a seeded history.
           - { name: "M36 In-conversation search", scripts: "test:m36:search:live" }
           # WP 2.7b chunk C1 (ADR-0058, Accepted) - global search index storage: RLS, no UPDATE grant, the same-transaction removal hook, audit without tags.

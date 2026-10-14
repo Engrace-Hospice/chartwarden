@@ -511,6 +511,7 @@
     "test:m36:templates:live": "vitest run apps/backend/__tests__/m36-message-templates.live.test.ts",
     "test:m36:review:live": "vitest run apps/backend/__tests__/m36-tranche-b-review.live.test.ts",
     "test:m36:mentions:live": "vitest run apps/backend/__tests__/m36-mentions.live.test.ts",
+    "test:m36:clinical-link:live": "vitest run apps/backend/__tests__/m36-clinical-link.live.test.ts",
     "test:m36:search:live": "vitest run apps/backend/__tests__/m36-message-search.live.test.ts",
     "test:m36:search-index:live": "vitest run apps/backend/__tests__/m36-message-search-index.live.test.ts",
     "test:m36:global-search-writer:live": "vitest run apps/backend/__tests__/m36-global-search-writer.live.test.ts",
