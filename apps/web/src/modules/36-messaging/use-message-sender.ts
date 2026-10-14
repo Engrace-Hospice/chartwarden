@@ -3,7 +3,7 @@ import { useApiClient } from "@wardenx/ui";
 import { useCallback, useRef, useState } from "react";
 import type { FormEvent, MutableRefObject } from "react";
 import { apiErrorCode, toSentAttachments } from "./attachment-utils";
-import { draftToRichBody } from "./draft-to-rich-body";
+import { type ClinicalLinkRef, draftToRichBody } from "./draft-to-rich-body";
 import { type SendBody, buildSendBody, referenceInput } from "./message-send-body";
 import type { Message, MessageAttachment, MessageReferenceInput } from "./messaging-types";
 import {
@@ -44,6 +44,8 @@ interface UseMessageSenderInput {
   archived: boolean;
   draft: string;
   draftReferences: readonly MessageReferenceInput[];
+  /** WP 3.2: clinical links chosen for this draft (ids only). */
+  draftLinks?: readonly ClinicalLinkRef[];
   uploads: AttachmentUploads;
   /** The thread's generation: bumped on channel switch and unmount, so a late reply is dropped. */
   generationRef: MutableRefObject<number>;
@@ -73,6 +75,7 @@ export function useMessageSender({
   archived,
   draft,
   draftReferences,
+  draftLinks = [],
   uploads,
   generationRef,
   onSent,
@@ -107,13 +110,20 @@ export function useMessageSender({
     const references = draftReferences
       .filter((reference) => reference.end <= submitted.length)
       .map(referenceInput);
-    const richBody = draftToRichBody(submitted, draftReferences);
+    const richBody = draftToRichBody(submitted, draftReferences, draftLinks);
     // WP 1.2: one stable id pair per composed message, reused on retry (see sendAttemptFor).
     const attachmentIds = uploads.sendableIds;
     const sentAttachments = toSentAttachments(uploads.chips);
     const attempt = sendAttemptFor(
       sendAttemptRef.current,
-      JSON.stringify([channelId, parentMessageId ?? null, submitted, references, attachmentIds]),
+      JSON.stringify([
+        channelId,
+        parentMessageId ?? null,
+        submitted,
+        references,
+        attachmentIds,
+        draftLinks.map((l) => [l.kind, l.entityId]),
+      ]),
     );
     sendAttemptRef.current = attempt;
     const requestBody = buildSendBody({
