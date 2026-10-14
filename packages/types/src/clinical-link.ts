@@ -1,7 +1,10 @@
 // M36 WP 3.2 - clinical links. A message links to ONE record owned by another module; M36 stores only
 // (kind, source id) and reads the rest through the owning module's `linkSummary` seam at open time.
-import type { IsoInstant } from "./care-plan";
 import type { PatientId } from "./admission";
+
+// Local alias (same shape as care-plan's `IsoInstant`): importing it from ./care-plan would make a cycle now that
+// CarePlanReader returns ClinicalLinkSummary (arch:boundaries no-circular).
+type IsoInstant = string;
 
 export const CLINICAL_LINK_KINDS = [
   "medication",

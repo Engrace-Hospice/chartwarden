@@ -229,6 +229,7 @@ describe("boot wiring (registerEncounterSeams)", () => {
       terminologyCodeUsageForOrg: async () => {
         throw new Error("not exercised by this suite");
       },
+      linkSummary: async () => null,
     };
     registerSeam("CarePlanReader", carePlan);
     expect(getCarePlanReader()).toBe(carePlan);

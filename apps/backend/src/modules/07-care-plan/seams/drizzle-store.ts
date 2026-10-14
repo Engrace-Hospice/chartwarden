@@ -251,6 +251,34 @@ export function createDrizzleCarePlanReaderStore(db: DbClient): CarePlanReaderSt
      * so the caller's totals count code-usages, not distinct rows. Aggregate-ish by construction: the
      * projection is the row id + the code, never the description or the patient (D6 minimum necessary).
      */
+    linkSummary(organizationId, id) {
+      return withOrgContext(
+        db,
+        { organizationId, userId: CARE_PLAN_READER_SYSTEM_USER_ID },
+        async (tx) => {
+          const [row] = await tx
+            .select({
+              id: CP.id,
+              patientId: CP.patientId,
+              status: CP.status,
+              updatedAt: CP.updatedAt,
+            })
+            .from(CP)
+            // Explicit second wall behind RLS (PHI-bearing seam).
+            .where(and(eq(CP.organizationId, organizationId), eq(CP.id, id)))
+            .limit(1);
+          return row
+            ? {
+                id: row.id,
+                patientId: row.patientId,
+                status: row.status,
+                occurredAt: iso(row.updatedAt),
+              }
+            : null;
+        },
+      );
+    },
+
     terminologyCodeUsageForOrg(organizationId, codes) {
       const wantedFor = (system: string): string[] => [
         ...new Set(codes.filter((c) => c.systemId === system).map((c) => c.code)),

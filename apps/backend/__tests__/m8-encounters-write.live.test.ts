@@ -253,6 +253,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       isReviewOverdue: async () => carePlanOverdue,
       fifteenDayCycleCountsForOrg: async () => ({ numerator: 0, denominator: 0 }),
       terminologyCodeUsageForOrg: async () => [],
+      linkSummary: async () => null,
     } as never);
     // §2.6 check 3 (#125) — the gate consults M9's LatestAssessmentProvider for recert_visit's PPS/ESAS
     // roster. Faked for the same reason CarePlanReader is: M9's real store also reads under the

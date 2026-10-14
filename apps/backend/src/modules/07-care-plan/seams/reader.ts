@@ -82,6 +82,12 @@ export function createCarePlanReader(
       if (codes.length === 0) return [];
       return store.terminologyCodeUsageForOrg(organizationId, codes);
     },
+    async linkSummary(organizationId: string, id: string) {
+      // Fail closed: no tenant or no id means no answer, never a guessed one.
+      if (!organizationId?.trim()) throw new Error("linkSummary: organizationId required");
+      if (!id?.trim()) throw new Error("linkSummary: id required");
+      return store.linkSummary(organizationId, id);
+    },
     async isReviewOverdue(patientId: PatientId) {
       const clock = await store.activeCarePlanClock(patientId);
       if (clock === null) return null;
