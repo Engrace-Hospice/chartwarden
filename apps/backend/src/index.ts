@@ -66,6 +66,7 @@ import {
 import { DegradedError, type Npi, WardenXError } from "@wardenx/types";
 import type {
   AdmissionStatusReader,
+  ChartPromotionSourceReader,
   OrgId,
   PatientAddressReader,
   PatientId,
@@ -1422,6 +1423,7 @@ import {
   buildM36BreakGlassAlertConsumer,
   buildM36ClinicalAlertConsumer,
   buildPresenceDeps,
+  buildPromotionDeps,
   buildSbarDeps,
   buildTaskDeps,
   createAttachmentService,
@@ -1479,6 +1481,8 @@ import { buildM36ConsentRevokedConsumer } from "./modules/36-messaging/outbox-co
 import { buildM36MessageHintConsumer } from "./modules/36-messaging/outbox-consumers/message-hints";
 import { buildM36MessageMentionConsumer } from "./modules/36-messaging/outbox-consumers/message-mentions";
 import { buildM36OncallAlertConsumer } from "./modules/36-messaging/outbox-consumers/oncall-alerts";
+import { buildM36PromotionNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/promotion-notifications";
+import { buildM36PromotionOutcomesConsumer } from "./modules/36-messaging/outbox-consumers/promotion-outcomes";
 import { buildM36QualityAlertConsumer } from "./modules/36-messaging/outbox-consumers/quality-alerts";
 import { buildM36ScheduleBlockedConsumer } from "./modules/36-messaging/outbox-consumers/schedule-blocked";
 import { buildM36TaskNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/task-notifications";
@@ -1626,6 +1630,10 @@ export function wireModuleSeams(
      * reads/writes through. Absent on slice/test boots (no `queueConnection`) or when Redis is
      * unconfigured; `CaseloadStore` then stays Phase-1 (`patient_assignment` alone). */
     caseloadShiftCacheRedis?: Redis | null;
+    /** WP 3.7 - the ONE message-body cipher the messaging provider and the chart-promotion snapshot reader share. */
+    messageBodyCipher?: ReturnType<typeof createMessageBodyCipher>;
+    /** WP 3.7 - the chart-promotion reader M8 and M14 show their reviewer (M36's binding). Absent => fail-closed deny-stub. */
+    promotionSource?: ChartPromotionSourceReader;
   } = {},
 ): void {
   // AUTH-T05b: pass the DB-backed SessionContextStore in production (composition root supplies it when
@@ -1676,10 +1684,13 @@ export function wireModuleSeams(
               }),
             ),
           }),
-          provider: createDbMessagingProvider(
-            deps.db,
-            deps.outboxPublisher ? { outbox: bindCallerModule(deps.outboxPublisher, "m36") } : {},
-          ),
+          provider: createDbMessagingProvider(deps.db, {
+            ...(deps.outboxPublisher
+              ? { outbox: bindCallerModule(deps.outboxPublisher, "m36") }
+              : {}),
+            ...(deps.messageBodyCipher ? { cipher: deps.messageBodyCipher } : {}),
+          }),
+          ...(deps.promotionSource ? { promotionSource: deps.promotionSource } : {}),
         }
       : {},
   );
@@ -4184,6 +4195,27 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           resolveActorPermissions({ organizationId, userId }),
       })
     : undefined;
+  // WP 3.7 - chart promotion. ONE binding for the routes (flag + service), the ChartPromotionSourceReader seam M8 and M14
+  // read, and the two outbox consumers' ports; off unless the tenant flag `messaging.promotions` is on (the outcome
+  // consumer records an owner's decision regardless of the flag). The snapshot reader opens message bodies with the SAME
+  // cipher instance the messaging provider uses (`m36MessageBodyCipher`, passed to wireModuleSeams below): no second crypto.
+  let m36PromotionWarn: (message: string, context: Record<string, string>) => void = (
+    message,
+    context,
+  ) => console.warn(message, context);
+  const m36MessageBodyCipher = createMessageBodyCipher();
+  const m36Promotions = dbHandle
+    ? buildPromotionDeps({
+        warn: (message, context) => m36PromotionWarn(message, context),
+        db: dbHandle.db,
+        flags: featureFlagReader,
+        outbox: m36OutboxPublisher,
+        messaging: createDbMessagingRouteService(dbHandle.db),
+        bodyOpener: m36MessageBodyCipher,
+        permissionsFor: async (organizationId, userId) =>
+          resolveActorPermissions({ organizationId, userId }),
+      })
+    : undefined;
   // F-173 (#248, m1 group) — the Drizzle-backed `SystemStatusReader` (`bootstrap/system-status-store.ts`).
   // F-156 found the composition root never overrode the in-memory boot default, so `POST
   // /admin/system/status` had never once persisted to the real `system_status` table in any environment.
@@ -4690,6 +4722,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             ...(m36Tasks ? { tasks: m36Tasks } : {}),
             // WP 3.5 - clinical handoffs; off unless the tenant flag `messaging.handoffs` is on.
             ...(m36Handoffs ? { handoffs: m36Handoffs } : {}),
+            // WP 3.7 - chart promotion; off unless the tenant flag `messaging.promotions` is on.
+            ...(m36Promotions ? { promotions: m36Promotions } : {}),
           }); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05) + WP 1.5 attachments
           // GAP-101 — the §4.9 inbound vendor webhooks (Twilio sms/voice status, Postmark event): signature-authenticated
           // (replay window + HMAC / IP allowlist + bearer), reconciling `notification_delivery`. FAIL-CLOSED: a vendor
@@ -5722,6 +5756,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         outboxPublisher: txOutboxPublisher,
         // F-165 (#248, m24 group) — see the client's own construction comment above.
         caseloadShiftCacheRedis: m5CaseloadShiftCacheRedisClient,
+        messageBodyCipher: m36MessageBodyCipher,
+        ...(m36Promotions ? { promotionSource: m36Promotions.sourceReader } : {}),
       }),
     registerModuleErasers: () =>
       wireModuleErasers({
@@ -5733,6 +5769,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   m31Warn = (message, context) => app.log.warn(context, message);
   m36TaskWarn = (message, context) => app.log.warn(context, message);
   m36HandoffWarn = (message, context) => app.log.warn(context, message);
+  m36PromotionWarn = (message, context) => app.log.warn(context, message);
   if (m23SubmissionQueues) {
     app.addHook("onClose", async () => {
       await Promise.all(m23SubmissionQueues.queues.map((queue) => queue.close()));
@@ -9761,6 +9798,28 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                   stillOffered: m36Handoffs.stillOffered,
                   markNeedsAttention: m36Handoffs.markNeedsAttention,
                   isActiveUser: m36Handoffs.isActiveUser,
+                }),
+              ]
+            : []),
+          // WP 3.7 - records the decision M8 / M14 report for a chart-promotion proposal (always, regardless of the flag) and
+          // tells the requester; and tells the reviewers a proposal is waiting (the requester when nobody can be reached).
+          ...(m36Promotions
+            ? [
+                buildM36PromotionOutcomesConsumer({
+                  alerts: getSeam("AlertEmitter") as AlertEmitter,
+                  applyOutcome: (orgId, outcome) =>
+                    m36Promotions.service.applyOutcome(orgId, outcome),
+                  warn: (message, context) => m36PromotionWarn(message, context),
+                }),
+                buildM36PromotionNotificationsConsumer({
+                  alerts: getSeam("AlertEmitter") as AlertEmitter,
+                  requestFacts: m36Promotions.requestFacts,
+                  careTeamMembers: async (organizationId, patientId) =>
+                    getSeam("CareTeamProvider").careTeamMembers({ organizationId, patientId }),
+                  canSignAddendum: async (organizationId, userId) =>
+                    (await resolveActorPermissions({ organizationId, userId })).has(
+                      "encounter.addendum_sign",
+                    ),
                 }),
               ]
             : []),

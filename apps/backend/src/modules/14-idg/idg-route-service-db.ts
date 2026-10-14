@@ -78,6 +78,14 @@ import {
   sql,
 } from "drizzle-orm";
 import type { IdgAbacResolver, MeetingScopeFacts, ReviewFloorBreachFact } from "./abac-predicates";
+import {
+  CHART_PROMOTION_DECIDED_EVENT,
+  PROMOTED_AGENDA_TITLE,
+  decidedPayload,
+  listForPatients,
+  mapPromotionInsertError,
+  requireReview,
+} from "./chart-promotion";
 import { recomputeCarryForwardCountsForMeeting } from "./jobs/carry-forward-count";
 import {
   type MinutesSiteNames,
@@ -691,6 +699,19 @@ export function createDbIdgBackend(
     kind: r.kind,
     patientId: r.patientId,
     version: r.version,
+    ...(r.promotionRequestId !== null &&
+    r.sourceMessageId !== null &&
+    r.sourceAuthorUserId !== null &&
+    r.sourceSentAt !== null
+      ? {
+          promotion: {
+            request_id: r.promotionRequestId,
+            source_author_user_id: r.sourceAuthorUserId,
+            source_sent_at: r.sourceSentAt.toISOString(),
+            source_message_id: r.sourceMessageId,
+          },
+        }
+      : {}),
   });
 
   return {
@@ -1678,6 +1699,92 @@ export function createDbIdgBackend(
           version: 0,
         };
       });
+    },
+    async listChartPromotions(orgId, meetingId, q) {
+      await withOrg(orgId, async (tx) => {
+        if (!(await meetingExists(tx, meetingId))) throw new NotFoundError("idg_meeting");
+      });
+      return listForPatients(orgId, q.patientIds, q.reviewerUserId);
+    },
+    async addAgendaItemFromPromotion(
+      orgId,
+      membershipId,
+      meetingId,
+      args,
+    ): Promise<AgendaItemView> {
+      // The seam reads in its own tenant context, so resolve it BEFORE opening the write transaction.
+      const review = await requireReview(orgId, args.requestId, args.reviewerUserId, args.inScope);
+      try {
+        return await withOrg(orgId, async (tx) => {
+          const meeting = await lockMeeting(tx, meetingId);
+          assertMeetingWriteAllowed(meeting.status, "agenda");
+          const existing = await tx
+            .select({ id: AGD.id })
+            .from(AGD)
+            .where(eq(AGD.idgMeetingId, meetingId));
+          const [row] = await tx
+            .insert(AGD)
+            .values({
+              organizationId: orgId,
+              idgMeetingId: meetingId,
+              patientId: review.patientId,
+              // A fixed generic title: nothing from the message is ever copied into the agenda.
+              title: PROMOTED_AGENDA_TITLE,
+              kind: "other",
+              sortOrder: existing.length,
+              addedByMembershipId: membershipId,
+              promotionRequestId: review.requestId,
+              sourceMessageId: review.sourceMessageId,
+              sourceAuthorUserId: review.sourceAuthorUserId,
+              sourceSentAt: new Date(review.sourceSentAt),
+              sourceBodySha256: review.sourceBodySha256,
+            })
+            .returning();
+          // Same transaction as the insert: the proposal is accepted if and only if the agenda item exists.
+          await emit(
+            tx,
+            orgId,
+            CHART_PROMOTION_DECIDED_EVENT,
+            "idg_agenda_item",
+            row!.id,
+            decidedPayload({
+              organizationId: orgId,
+              promotionRequestId: review.requestId,
+              outcome: "accepted",
+              resultRef: row!.id,
+              decidedByUserId: args.reviewerUserId,
+              reasonCode: null,
+              at: new Date(),
+            }),
+          );
+          return toAgendaItemView(row!);
+        });
+      } catch (err) {
+        return mapPromotionInsertError(err);
+      }
+    },
+    async rejectChartPromotion(orgId, meetingId, requestId, args) {
+      await requireReview(orgId, requestId, args.reviewerUserId, args.inScope);
+      await withOrg(orgId, async (tx) => {
+        if (!(await meetingExists(tx, meetingId))) throw new NotFoundError("idg_meeting");
+        await emit(
+          tx,
+          orgId,
+          CHART_PROMOTION_DECIDED_EVENT,
+          "idg_meeting",
+          meetingId,
+          decidedPayload({
+            organizationId: orgId,
+            promotionRequestId: requestId,
+            outcome: "rejected",
+            resultRef: null,
+            decidedByUserId: args.reviewerUserId,
+            reasonCode: args.reasonCode,
+            at: new Date(),
+          }),
+        );
+      });
+      return { promotionRequestId: requestId, outcome: "rejected" };
     },
     async updateAgendaItem(orgId, _userId, id, expectedVersion): Promise<AgendaItemView> {
       return withOrg(orgId, async (tx) => {

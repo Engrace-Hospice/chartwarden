@@ -8514,6 +8514,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/encounters/{encounterId}/chart-promotions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Secure-message proposals waiting on a reviewer for this encounter's patient (WP 3.7; encounter.addendum_author + caseload scope). `enabled:false` with an empty list while the tenant flag `messaging.promotions` is off or the messaging seam is unavailable. Each entry carries the quoted snapshot (shown beside the editor, never inserted for the reviewer), the author, the sent time and `source_state` (`edited_since` when the sender edited the message after it was proposed). A proposal the caller may not read (Part 2, erased or unprovable text) is simply absent. Read-audited */
+        get: operations["getApiV1EncountersByEncounterIdChartpromotions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/encounters/{encounterId}/chart-promotions/{requestId}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline a proposal (WP 3.7; encounter.addendum_author + caseload scope). Writes nothing in M8 except the `m8.chart_promotion.decided` outbox event (rejected + reason code). 422 PROMOTION_NOT_AVAILABLE when the proposal is not open, not for this encounter's patient, or not visible to the caller */
+        post: operations["postApiV1EncountersByEncounterIdChartpromotionsByRequestIdReject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/encounters/{encounterId}/cosignature": {
         parameters: {
             query?: never;
@@ -10362,6 +10396,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/idg/meetings/{id}/agenda/from-promotion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add an `other` agenda item from a proposal (WP 3.7; idg.coordinate + meeting scope; Idempotency-Key required). The item is a pointer plus attribution (author, sent time, message id); no message text is copied and no decision or plan-of-care change is made. Publishes `m14.chart_promotion.decided` (accepted) in the same transaction. 422 PROMOTION_NOT_AVAILABLE when the proposal is not open, outside the caller's scope or not visible; 409 when the proposal already has an item */
+        post: operations["postApiV1IdgMeetingsByIdAgendaFrompromotion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/idg/meetings/{id}/attendance": {
         parameters: {
             query?: never;
@@ -10408,6 +10459,40 @@ export interface paths {
         put?: never;
         /** Cancel a meeting (per-patient review-floor ABAC) */
         post: operations["postApiV1IdgMeetingsByIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/idg/meetings/{id}/chart-promotions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Secure-message proposals waiting on the coordinator (WP 3.7; idg.read + meeting scope), for the patients in the caller's IDG scope. Metadata only: the IDG screen never receives the message text. `enabled:false` while the tenant flag is off. Read-audited (list) */
+        get: operations["getApiV1IdgMeetingsByIdChartpromotions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/idg/meetings/{id}/chart-promotions/{requestId}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline a proposal (WP 3.7; idg.coordinate + meeting scope). Writes nothing in M14 except the `m14.chart_promotion.decided` outbox event (rejected + reason code). 422 PROMOTION_NOT_AVAILABLE as for add */
+        post: operations["postApiV1IdgMeetingsByIdChartpromotionsByRequestIdReject"];
         delete?: never;
         options?: never;
         head?: never;
@@ -13423,6 +13508,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/chart-promotions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The proposals on one message (WP 3.7; messaging.read + patient.read; 404 while the flag is off). Only what the caller may already read: the requester, or a channel viewer who passes the Part 2 gate for the patient. Metadata only: no text, no hash. Read-audited (list) */
+        get: operations["getApiV1MessagingChannelsByIdMessagesByMessageIdChartpromotions"];
+        put?: never;
+        /** Propose that a secure message belong in the chart (WP 3.7; messaging.send + messaging.promote + patient.read; 404 while the flag `messaging.promotions` is off). The target is exactly (m8, encounter_addendum) or (m14, idg_agenda_item); any other module or kind is 422 and there is no path to an order. The patient is derived from the channel (422 PROMOTION_SOURCE_NOT_PATIENT_LINKED for a message outside a patient's channel); a hidden channel, a deleted message, a missing permission and a Part 2 denial are ONE 404. `suggested_target_ref` (m14 only) is an IDG meeting of the organisation (422 PROMOTION_SUGGESTED_REF_INVALID). The proposal stores a pointer, the author and sent time and a hash of the body, never the text. Nothing is written to the chart until a reviewer accepts in the owning module. 201 created; 200 created:false replays the existing proposed or accepted request; an edited message supersedes the old proposal. Read-audited against the patient */
+        post: operations["postApiV1MessagingChannelsByIdMessagesByMessageIdChartpromotions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/channels/{id}/messages/{messageId}/pin": {
         parameters: {
             query?: never;
@@ -13641,6 +13744,57 @@ export interface paths {
         put?: never;
         /** Unarchive a discipline/location channel (org_admin only; 204, idempotent; 409 CHANNEL_LIFECYCLE_MANAGED for care_team/bereavement/on_call/announcement; 403 for a DM) */
         post: operations["postApiV1MessagingChannelsByIdUnarchive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/chart-promotions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's own chart-promotion proposals (WP 3.7; messaging.read): status active|closed|all (default active), limit up to 100 (default 50). 200 {enabled:false,promotions:[]} while the tenant flag `messaging.promotions` is off. Read-audited (list) */
+        get: operations["getApiV1MessagingChartpromotions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/chart-promotions/{promotionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One chart-promotion proposal (WP 3.7; messaging.read + patient.read; 404 while the flag is off). Visible to the requester or to a channel viewer who passes the Part 2 gate; a missing, foreign, hidden and flag-off proposal is ONE 404. `allowed_actions` is computed server-side; `result_ref` and `decided_by` appear only after the owning module reports its decision. Read-audited against the proposal and the patient */
+        get: operations["getApiV1MessagingChartpromotionsByPromotionId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/chart-promotions/{promotionId}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Take back a proposal that is still waiting (WP 3.7; messaging.send + messaging.promote + patient.read; requester only; 404 while the flag is off). Repeating returns it unchanged. 409 PROMOTION_STATE_CONFLICT once a reviewer has decided it, 403 for anyone but the requester, 404 uniform. A reviewer who already signed in the owning module still wins: the proposal then reads accepted */
+        post: operations["postApiV1MessagingChartpromotionsByPromotionIdWithdraw"];
         delete?: never;
         options?: never;
         head?: never;
@@ -48534,6 +48688,8 @@ export interface operations {
             content: {
                 "application/json": {
                     reason: string;
+                    /** Format: uuid */
+                    promotionRequestId?: string;
                 };
             };
         };
@@ -48833,6 +48989,82 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1EncountersByEncounterIdChartpromotions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        promotions: {
+                            /** Format: uuid */
+                            request_id: string;
+                            /** Format: uuid */
+                            requested_by: string;
+                            /** Format: date-time */
+                            requested_at: string;
+                            /** Format: uuid */
+                            source_author_user_id: string;
+                            /** Format: date-time */
+                            source_sent_at: string;
+                            snapshot_text: string | null;
+                            source_state: "current" | "edited_since";
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1EncountersByEncounterIdChartpromotionsByRequestIdReject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                encounterId: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reasonCode: "not_clinically_relevant" | "already_documented" | "duplicate" | "wrong_patient" | "other";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        promotionRequestId: string;
+                        /** @constant */
+                        outcome: "rejected";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -53266,6 +53498,16 @@ export interface operations {
                             mrnSuffix: string | null;
                         } | null;
                         version: number;
+                        promotion?: {
+                            /** Format: uuid */
+                            request_id: string;
+                            /** Format: uuid */
+                            source_author_user_id: string;
+                            /** Format: date-time */
+                            source_sent_at: string;
+                            /** Format: uuid */
+                            source_message_id: string;
+                        };
                     };
                 };
             };
@@ -53894,6 +54136,16 @@ export interface operations {
                             mrnSuffix: string | null;
                         } | null;
                         version: number;
+                        promotion?: {
+                            /** Format: uuid */
+                            request_id: string;
+                            /** Format: uuid */
+                            source_author_user_id: string;
+                            /** Format: date-time */
+                            source_sent_at: string;
+                            /** Format: uuid */
+                            source_message_id: string;
+                        };
                     }[];
                 };
             };
@@ -53939,6 +54191,72 @@ export interface operations {
                             mrnSuffix: string | null;
                         } | null;
                         version: number;
+                        promotion?: {
+                            /** Format: uuid */
+                            request_id: string;
+                            /** Format: uuid */
+                            source_author_user_id: string;
+                            /** Format: date-time */
+                            source_sent_at: string;
+                            /** Format: uuid */
+                            source_message_id: string;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IdgMeetingsByIdAgendaFrompromotion: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    promotionRequestId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        meetingId: string;
+                        kind: "patient_review" | "carry_forward" | "administrative_note" | "family_meeting_setup" | "other";
+                        patientId: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
+                        version: number;
+                        promotion?: {
+                            /** Format: uuid */
+                            request_id: string;
+                            /** Format: uuid */
+                            source_author_user_id: string;
+                            /** Format: date-time */
+                            source_sent_at: string;
+                            /** Format: uuid */
+                            source_message_id: string;
+                        };
                     };
                 };
             };
@@ -54091,6 +54409,90 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1IdgMeetingsByIdChartpromotions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        promotions: {
+                            /** Format: uuid */
+                            request_id: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            patient?: {
+                                displayName: string;
+                                mrnSuffix: string | null;
+                            } | null;
+                            /** Format: uuid */
+                            requested_by: string;
+                            /** Format: date-time */
+                            requested_at: string;
+                            /** Format: uuid */
+                            source_author_user_id: string;
+                            /** Format: date-time */
+                            source_sent_at: string;
+                            /** Format: uuid */
+                            source_message_id: string;
+                            /** Format: uuid */
+                            source_channel_id: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IdgMeetingsByIdChartpromotionsByRequestIdReject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reasonCode: "not_clinically_relevant" | "already_documented" | "duplicate" | "wrong_patient" | "other";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        promotionRequestId: string;
+                        /** @constant */
+                        outcome: "rejected";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -62998,6 +63400,125 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingChannelsByIdMessagesByMessageIdChartpromotions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        promotions: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            message_id: string;
+                            /** Format: uuid */
+                            channel_id: string;
+                            /** Format: uuid */
+                            patient_id: string;
+                            target_module: "m8" | "m14";
+                            target_kind: "encounter_addendum" | "idg_agenda_item";
+                            suggested_target_ref: string | null;
+                            status: "proposed" | "accepted" | "rejected" | "superseded" | "withdrawn";
+                            /** Format: uuid */
+                            requested_by: string;
+                            requested_by_display_name: string | null;
+                            /** Format: date-time */
+                            requested_at: string;
+                            /** Format: uuid */
+                            source_author_user_id: string;
+                            source_author_display_name: string | null;
+                            /** Format: date-time */
+                            source_sent_at: string;
+                            result_ref: string | null;
+                            decided_by: string | null;
+                            decided_at: string | null;
+                            reason_code: ("not_clinically_relevant" | "already_documented" | "duplicate" | "wrong_patient" | "other" | "requester" | "superseded") | null;
+                            allowed_actions: "withdraw"[];
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingChannelsByIdMessagesByMessageIdChartpromotions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    target_module: "m8" | "m14";
+                    target_kind: "encounter_addendum" | "idg_agenda_item";
+                    suggested_target_ref?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        promotion: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            message_id: string;
+                            /** Format: uuid */
+                            channel_id: string;
+                            /** Format: uuid */
+                            patient_id: string;
+                            target_module: "m8" | "m14";
+                            target_kind: "encounter_addendum" | "idg_agenda_item";
+                            suggested_target_ref: string | null;
+                            status: "proposed" | "accepted" | "rejected" | "superseded" | "withdrawn";
+                            /** Format: uuid */
+                            requested_by: string;
+                            requested_by_display_name: string | null;
+                            /** Format: date-time */
+                            requested_at: string;
+                            /** Format: uuid */
+                            source_author_user_id: string;
+                            source_author_display_name: string | null;
+                            /** Format: date-time */
+                            source_sent_at: string;
+                            result_ref: string | null;
+                            decided_by: string | null;
+                            decided_at: string | null;
+                            reason_code: ("not_clinically_relevant" | "already_documented" | "duplicate" | "wrong_patient" | "other" | "requester" | "superseded") | null;
+                            allowed_actions: "withdraw"[];
+                        };
+                        created: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     putApiV1MessagingChannelsByIdMessagesByMessageIdPin: {
         parameters: {
             query?: never;
@@ -63830,6 +64351,170 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingChartpromotions: {
+        parameters: {
+            query?: {
+                status?: "active" | "closed" | "all";
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        promotions: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            message_id: string;
+                            /** Format: uuid */
+                            channel_id: string;
+                            /** Format: uuid */
+                            patient_id: string;
+                            target_module: "m8" | "m14";
+                            target_kind: "encounter_addendum" | "idg_agenda_item";
+                            suggested_target_ref: string | null;
+                            status: "proposed" | "accepted" | "rejected" | "superseded" | "withdrawn";
+                            /** Format: uuid */
+                            requested_by: string;
+                            requested_by_display_name: string | null;
+                            /** Format: date-time */
+                            requested_at: string;
+                            /** Format: uuid */
+                            source_author_user_id: string;
+                            source_author_display_name: string | null;
+                            /** Format: date-time */
+                            source_sent_at: string;
+                            result_ref: string | null;
+                            decided_by: string | null;
+                            decided_at: string | null;
+                            reason_code: ("not_clinically_relevant" | "already_documented" | "duplicate" | "wrong_patient" | "other" | "requester" | "superseded") | null;
+                            allowed_actions: "withdraw"[];
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingChartpromotionsByPromotionId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                promotionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        promotion: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            message_id: string;
+                            /** Format: uuid */
+                            channel_id: string;
+                            /** Format: uuid */
+                            patient_id: string;
+                            target_module: "m8" | "m14";
+                            target_kind: "encounter_addendum" | "idg_agenda_item";
+                            suggested_target_ref: string | null;
+                            status: "proposed" | "accepted" | "rejected" | "superseded" | "withdrawn";
+                            /** Format: uuid */
+                            requested_by: string;
+                            requested_by_display_name: string | null;
+                            /** Format: date-time */
+                            requested_at: string;
+                            /** Format: uuid */
+                            source_author_user_id: string;
+                            source_author_display_name: string | null;
+                            /** Format: date-time */
+                            source_sent_at: string;
+                            result_ref: string | null;
+                            decided_by: string | null;
+                            decided_at: string | null;
+                            reason_code: ("not_clinically_relevant" | "already_documented" | "duplicate" | "wrong_patient" | "other" | "requester" | "superseded") | null;
+                            allowed_actions: "withdraw"[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingChartpromotionsByPromotionIdWithdraw: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                promotionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        promotion: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            message_id: string;
+                            /** Format: uuid */
+                            channel_id: string;
+                            /** Format: uuid */
+                            patient_id: string;
+                            target_module: "m8" | "m14";
+                            target_kind: "encounter_addendum" | "idg_agenda_item";
+                            suggested_target_ref: string | null;
+                            status: "proposed" | "accepted" | "rejected" | "superseded" | "withdrawn";
+                            /** Format: uuid */
+                            requested_by: string;
+                            requested_by_display_name: string | null;
+                            /** Format: date-time */
+                            requested_at: string;
+                            /** Format: uuid */
+                            source_author_user_id: string;
+                            source_author_display_name: string | null;
+                            /** Format: date-time */
+                            source_sent_at: string;
+                            result_ref: string | null;
+                            decided_by: string | null;
+                            decided_at: string | null;
+                            reason_code: ("not_clinically_relevant" | "already_documented" | "duplicate" | "wrong_patient" | "other" | "requester" | "superseded") | null;
+                            allowed_actions: "withdraw"[];
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

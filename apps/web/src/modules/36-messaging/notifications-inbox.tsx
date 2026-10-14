@@ -29,13 +29,15 @@ import {
 } from "../../shell/alert-inbox";
 import { useSession } from "../../shell/session";
 import { HandoffsList } from "./handoffs-list";
+import { PromotionsList } from "./promotions-list";
 import { TasksList } from "./tasks-list";
 import { useHandoffs } from "./use-handoffs";
 import { useHandoffsEnabled } from "./use-handoffs-enabled";
+import { usePromotionsEnabled } from "./use-promotions-enabled";
 import { useTasks } from "./use-tasks";
 import "./notifications-inbox.css";
 
-type Tab = "notifications" | "tasks" | "handoffs" | "mentions";
+type Tab = "notifications" | "tasks" | "handoffs" | "promotions" | "mentions";
 
 const NOTIFICATION_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 
@@ -81,7 +83,9 @@ export function NotificationsInbox(): JSX.Element {
       ? "tasks"
       : searchParams.get("tab") === "handoffs"
         ? "handoffs"
-        : "notifications",
+        : searchParams.get("tab") === "promotions"
+          ? "promotions"
+          : "notifications",
   );
   // The Handoffs tab exists only while the tenant has handoffs on (the list route's `enabled`; a failed read is off), so
   // a ?tab=handoffs link shows Notifications until that is known. Its incoming-active read feeds the badge and is lent
@@ -92,7 +96,13 @@ export function NotificationsInbox(): JSX.Element {
     myHandoffs.view.status === "ready" && myHandoffs.view.enabled
       ? myHandoffs.view.handoffs.length
       : 0;
-  const tab: Tab = requestedTab === "handoffs" && !handoffsEnabled ? "notifications" : requestedTab;
+  // Likewise the Chart proposals tab (WP 3.7): only while the tenant has proposals on.
+  const promotionsEnabled = usePromotionsEnabled();
+  const tab: Tab =
+    (requestedTab === "handoffs" && !handoffsEnabled) ||
+    (requestedTab === "promotions" && !promotionsEnabled)
+      ? "notifications"
+      : requestedTab;
   // The one read of "my active tasks": it feeds the tab badge and is lent to the Tasks tab, so opening the tab (or
   // switching tabs) does not read again and an action in the list updates the badge.
   const myTasks = useTasks("assigned", "active", session?.userId ?? "");
@@ -202,6 +212,13 @@ export function NotificationsInbox(): JSX.Element {
                   onClick={() => selectTab("handoffs")}
                 />
               ) : null}
+              {promotionsEnabled ? (
+                <TabButton
+                  label="Chart proposals"
+                  active={tab === "promotions"}
+                  onClick={() => selectTab("promotions")}
+                />
+              ) : null}
               <TabButton
                 label="Mentions"
                 active={tab === "mentions"}
@@ -209,7 +226,7 @@ export function NotificationsInbox(): JSX.Element {
               />
             </div>
 
-            {tab !== "tasks" && tab !== "handoffs" ? (
+            {tab !== "tasks" && tab !== "handoffs" && tab !== "promotions" ? (
               <div className="wx-notif-controls">
                 <label className="wx-search-field">
                   <Glyph name="search" size={16} />
@@ -291,6 +308,8 @@ export function NotificationsInbox(): JSX.Element {
           <TasksList meId={session?.userId ?? ""} shared={myTasks} />
         ) : tab === "handoffs" ? (
           <HandoffsList meId={session?.userId ?? ""} shared={myHandoffs} />
+        ) : tab === "promotions" ? (
+          <PromotionsList />
         ) : alerts === null && !loadFailed ? (
           <div className="wx-notif-state wx-notif-state-loading">
             <LoadingSpinner />

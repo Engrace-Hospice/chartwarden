@@ -68,6 +68,7 @@ import {
 import { createDbMessagingRouteService } from "../src/modules/36-messaging/messaging-route-service-db";
 import { createMessageBodyCipher } from "../src/modules/36-messaging/messaging-write-core";
 import { buildM36MessageHintConsumer } from "../src/modules/36-messaging/outbox-consumers/message-hints";
+import { buildPromotionDeps } from "../src/modules/36-messaging/promotions/deps";
 import { registerAdminAlertDeliveriesRoutes } from "../src/modules/36-messaging/routes/admin-alert-deliveries-routes";
 import { registerAttachmentRoutes } from "../src/modules/36-messaging/routes/attachment-routes";
 import { registerDraftRoutes } from "../src/modules/36-messaging/routes/draft-routes";
@@ -182,6 +183,14 @@ const ROUTES: Record<string, Verdict> = {
   "POST /api/v1/messaging/handoffs/:handoffId/cancel": { kind: "idor" },
   "PUT /api/v1/messaging/template-admin/handoff-policy": { kind: "scoped" },
   "DELETE /api/v1/messaging/template-admin/handoff-policy": { kind: "scoped" },
+  // WP 3.7 chart promotion: a promotion id (or the channel + message it proposes) from another org or a non-reader is the
+  // identical refusal a random id gets (asserted below); the list is the caller's own rows only. The table's FORCE RLS,
+  // grants and immutability are also attacked in m36-promotions.live.
+  "POST /api/v1/messaging/channels/:id/messages/:messageId/chart-promotions": { kind: "idor" },
+  "GET /api/v1/messaging/channels/:id/messages/:messageId/chart-promotions": { kind: "idor" },
+  "GET /api/v1/messaging/chart-promotions": { kind: "scoped" },
+  "GET /api/v1/messaging/chart-promotions/:promotionId": { kind: "idor" },
+  "POST /api/v1/messaging/chart-promotions/:promotionId/withdraw": { kind: "idor" },
   // Admin screens PR 1a: org_admin member list + archive; attacked in m36-channel-admin.live.test.ts.
   "GET /api/v1/messaging/channels/:id/members": { kind: "idor" },
   "POST /api/v1/messaging/channels/:id/archive": { kind: "idor" },
@@ -279,6 +288,8 @@ const REGISTRAR_FILES = [
   "task-typebox.ts", // schemas only
   "handoff-routes.ts", // WP 3.5 clinical handoffs, mounted by registerMessagingRoutes
   "handoff-typebox.ts", // schemas only
+  "promotion-routes.ts", // WP 3.7 chart promotion, mounted by registerMessagingRoutes
+  "promotion-typebox.ts", // schemas only
   "patient-context-routes.ts", // WP 3.1 context panel, mounted by registerMessagingRoutes
   "patient-context-typebox.ts", // schemas only
   "template-routes.ts",
@@ -360,6 +371,8 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
   let orgA: string;
   let orgB: string;
   let u1: Who;
+  let promoterA: Who; // WP 3.7: an org-A proposer who is NOT a member of the channel
+  let promoterB: Who; // WP 3.7: an org-B proposer
   let u2: Who;
   let outsider: Who;
   let adminA: Who;
@@ -477,6 +490,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     "clinical_handoff_item",
     "clinical_handoff_event",
     "tenant_handoff_policy",
+    "chart_promotion_request",
     "message_reaction",
     "message_pin",
     "delivery_endpoint",
@@ -555,6 +569,8 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     bUser = await seedUser("b1", orgB, ["clinical_rn"], "WP17-ORG-B-PERSON");
     b2 = await seedUser("b2", orgB, ["clinical_rn"], "WP17-ORG-B-PERSON");
     adminB = await seedUser("adminB", orgB, ["org_admin"], "WP17-ORG-B-PERSON");
+    promoterA = await seedUser("promoterA", orgA, ["clinical_rn"], A_NAME_TOKEN);
+    promoterB = await seedUser("promoterB", orgB, ["clinical_rn"], "WP17-ORG-B-PERSON");
     patientA = (
       await admin.query(
         `INSERT INTO patient (organization_id,mrn,legal_first_name,legal_last_name,dob,sex_assigned_at_birth,status)
@@ -600,7 +616,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       "alert.rules.manage",
     ];
     const grants = createInMemoryEffectivePermissionStore(
-      [u1, u2, outsider, adminA, bUser, b2, adminB].map((w) => ({
+      [u1, u2, outsider, adminA, bUser, b2, adminB, promoterA, promoterB].map((w) => ({
         orgId: w.org,
         userId: w.userId,
         grants: [
@@ -613,6 +629,11 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
               ...self,
               // WP 3.5: only the two org-A members who hand work off hold the patient-read gate the handoff routes add.
               ...(w === u1 || w === u2 ? ["patient.read"] : []),
+              // WP 3.7: proposers hold messaging.promote and patient.read; the two attackers promoterA / promoterB hold
+              // BOTH, so only channel visibility / tenancy (not a missing permission) can stop them.
+              ...(w === u1 || w === u2 || w === promoterA || w === promoterB
+                ? ["messaging.promote", "patient.read"]
+                : []),
               ...(w.roles.includes("org_admin") ? adminKeys : ["alert.rules.read"]),
             ],
           },
@@ -669,6 +690,16 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
           new Map(ids.map((id) => [id, { displayName: "Pat P.", mrnSuffix: "0001" }] as const)),
         part2Gate: { allowedUserIds: async ({ userIds }) => new Set(userIds) },
         permissionsFor: async () => new Set(["messaging.read", "messaging.send", "patient.read"]),
+      }),
+      promotions: buildPromotionDeps({
+        db: handle.db,
+        flags: { forOrg: async () => ({ "messaging.promotions": true }) },
+        outbox: outbox as never,
+        messaging: service,
+        bodyOpener: createMessageBodyCipher({ kek: KEK }),
+        part2Gate: { allowedUserIds: async ({ userIds }) => new Set(userIds) },
+        permissionsFor: async () =>
+          new Set(["messaging.read", "messaging.send", "messaging.promote", "patient.read"]),
       }),
     });
     const blobs = new Map<string, Uint8Array>();
@@ -1918,6 +1949,55 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         item_state: "pending",
         accountable_user_id: u1.userId,
       });
+    });
+    it("WP 3.7: org B and an in-org non-member get a random id's answer for A's promotion and A's message, and list none of it", async () => {
+      const P = "/api/v1/messaging/chart-promotions";
+      const proposeRoute =
+        "POST /api/v1/messaging/channels/:id/messages/:messageId/chart-promotions";
+      const channel = careTeamA;
+      for (const w of [u1, u2]) {
+        await admin.query(
+          `INSERT INTO channel_member (organization_id, channel_id, user_id, role, source)
+           VALUES ($1,$2,$3,'member','manual') ON CONFLICT DO NOTHING`,
+          [orgA, channel, w.userId],
+        );
+      }
+      const messageId = (
+        await service.sendMessage(orgA, {
+          channelId: channel,
+          authorUserId: u1.userId,
+          body: `${SECRET_BODY} promoted`,
+        })
+      ).messageId;
+      const target = { target_module: "m8", target_kind: "encounter_addendum" };
+      const made = await call(proposeRoute, u1, { id: channel, messageId }, target);
+      expect(made.statusCode, made.body).toBe(201);
+      const promotionId = made.json().promotion.id as string;
+      expect((await call(`GET ${P}/:promotionId`, u2, { promotionId })).statusCode).toBe(200);
+      for (const attacker of [promoterB, promoterA, bUser, adminB, outsider]) {
+        await expectNoOracle(proposeRoute, attacker, { id: channel, messageId }, target);
+        await expectNoOracle(
+          "GET /api/v1/messaging/channels/:id/messages/:messageId/chart-promotions",
+          attacker,
+          { id: channel, messageId },
+        );
+        await expectNoOracle(`GET ${P}/:promotionId`, attacker, { promotionId });
+        await expectNoOracle(`POST ${P}/:promotionId/withdraw`, attacker, { promotionId });
+        const list = await call(`GET ${P}`, attacker, {}, undefined, {}, "?status=all");
+        expect(list.statusCode).toBe(200);
+        expect(list.json().promotions).toEqual([]);
+        expectNoLeak(list.body, attacker, `${attacker.name} list promotions`);
+      }
+      // the attacks changed nothing: still one proposed request by the original requester, no text stored.
+      const rows = (
+        await admin.query(
+          "SELECT status, requested_by_user_id, row_to_json(c)::text AS dump FROM chart_promotion_request c WHERE message_id=$1",
+          [messageId],
+        )
+      ).rows;
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ status: "proposed", requested_by_user_id: u1.userId });
+      expect(rows[0].dump).not.toContain(SECRET_BODY);
     });
     it("WP 3.5: the handoff policy and the policy-read route touch only the caller's own org", async () => {
       const policy = "/api/v1/messaging/handoffs/policy";

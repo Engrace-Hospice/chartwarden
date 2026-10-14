@@ -47,6 +47,7 @@ import {
   toSelectionsBody,
   unmetRequiredSections,
 } from "./encounters-api";
+import { ProposedFromMessage } from "./proposed-from-message";
 import { authFailureRedirect } from "./write-workflow";
 
 type Failure = Extract<AddendumResult<unknown>, { ok: false }>;
@@ -118,6 +119,7 @@ export function AddendaPanel({ encounterId, addenda, onChanged }: PanelProps): J
 
   return (
     <div style={shell}>
+      <ProposedFromMessage encounterId={encounterId} onChanged={onChanged} />
       {addenda.length === 0 ? (
         <EmptyState title="No addenda" description="Corrections to this signed note appear here." />
       ) : (

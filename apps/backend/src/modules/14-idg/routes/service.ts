@@ -32,8 +32,23 @@ import type {
   IdgMeetingStatus,
   QuorumSnapshot,
 } from "@wardenx/types";
-import { ForbiddenError, NotFoundError, ValidationError, WardenXError } from "@wardenx/types";
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+  WardenXError,
+} from "@wardenx/types";
 import type { IdgAbacResolver, MeetingScopeFacts, ReviewFloorBreachFact } from "../abac-predicates";
+import {
+  CHART_PROMOTION_DECIDED_EVENT,
+  type ChartPromotionListView,
+  type PatientInScope,
+  type RejectReasonCode,
+  decidedPayload,
+  listForPatients,
+  requireReview,
+} from "../chart-promotion";
 import { assertMeetingWriteAllowed } from "./meeting-write-policy";
 import { type PacketContentView, mapPacketContent } from "./packet-content";
 
@@ -76,6 +91,18 @@ export interface AgendaItemView {
   readonly patientId: string | null;
   /** GAP-127 — the row version a PATCH/DELETE echoes back as `If-Match`. */
   readonly version: number;
+  /**
+   * WP 3.7: present when the item was added from a secure-message proposal. A pointer plus attribution only; no message
+   * text is stored or returned. Absent on every plain item.
+   */
+  readonly promotion?: AgendaItemPromotionView;
+}
+/** WP 3.7 - where an agenda item came from (snake_case, mirroring the M36 DTO). */
+export interface AgendaItemPromotionView {
+  readonly request_id: string;
+  readonly source_author_user_id: string;
+  readonly source_sent_at: string;
+  readonly source_message_id: string;
 }
 /**
  * F-234 — a downstream module's acknowledgement that it APPLIED an emitted decision (`idg_decision_application_ack`).
@@ -772,6 +799,26 @@ export interface IdgRouteService {
   ): Promise<{ id: string; removed: true }>;
   /** The meeting's ordered agenda (F-062 — add/update/remove existed; nothing listed them). */
   listAgenda(orgId: string, meetingId: string): Promise<AgendaItemView[]>;
+  /** WP 3.7: proposals waiting on the coordinator, for the patients the caller may see (`enabled:false` when off). */
+  listChartPromotions(
+    orgId: string,
+    meetingId: string,
+    q: { reviewerUserId: string; patientIds: readonly string[] },
+  ): Promise<ChartPromotionListView>;
+  /** WP 3.7: add an `other` agenda item from a proposal (attribution only, no text) and publish `accepted`. */
+  addAgendaItemFromPromotion(
+    orgId: string,
+    membershipId: string,
+    meetingId: string,
+    args: { requestId: string; reviewerUserId: string; inScope: PatientInScope },
+  ): Promise<AgendaItemView>;
+  /** WP 3.7: decline a proposal. Writes nothing in M14 except the `m14.chart_promotion.decided` outbox event. */
+  rejectChartPromotion(
+    orgId: string,
+    meetingId: string,
+    requestId: string,
+    args: { reviewerUserId: string; reasonCode: RejectReasonCode; inScope: PatientInScope },
+  ): Promise<{ promotionRequestId: string; outcome: "rejected" }>;
   // decisions
   recordDecision(
     orgId: string,
@@ -947,6 +994,7 @@ interface AgendaRow {
   kind: IdgAgendaItemKind;
   patientId: string | null;
   version: number;
+  promotion?: AgendaItemPromotionView;
 }
 interface DecisionRow {
   id: string;
@@ -1517,6 +1565,62 @@ export function createInMemoryIdgBackend(
       };
       agenda.set(id, row);
       return { ...row };
+    },
+    async listChartPromotions(orgId, meetingId, q) {
+      meetingOf(orgId, meetingId);
+      return listForPatients(orgId, q.patientIds, q.reviewerUserId);
+    },
+    async addAgendaItemFromPromotion(orgId, _membershipId, meetingId, args) {
+      const meeting = meetingOf(orgId, meetingId);
+      assertMeetingWriteAllowed(meeting.status, "agenda");
+      const review = await requireReview(orgId, args.requestId, args.reviewerUserId, args.inScope);
+      const taken = [...agenda.values()].some((a) => a.promotion?.request_id === review.requestId);
+      if (taken) throw new ConflictError("that proposal already has an agenda item");
+      const id = nextId("idg-agd");
+      const row: AgendaRow = {
+        id,
+        meetingId,
+        kind: "other",
+        patientId: review.patientId,
+        version: 0,
+        promotion: {
+          request_id: review.requestId,
+          source_author_user_id: review.sourceAuthorUserId,
+          source_sent_at: review.sourceSentAt,
+          source_message_id: review.sourceMessageId,
+        },
+      };
+      agenda.set(id, row);
+      emit(
+        CHART_PROMOTION_DECIDED_EVENT,
+        decidedPayload({
+          organizationId: orgId,
+          promotionRequestId: review.requestId,
+          outcome: "accepted",
+          resultRef: id,
+          decidedByUserId: args.reviewerUserId,
+          reasonCode: null,
+          at: new Date(),
+        }),
+      );
+      return { ...row };
+    },
+    async rejectChartPromotion(orgId, meetingId, requestId, args) {
+      meetingOf(orgId, meetingId);
+      await requireReview(orgId, requestId, args.reviewerUserId, args.inScope);
+      emit(
+        CHART_PROMOTION_DECIDED_EVENT,
+        decidedPayload({
+          organizationId: orgId,
+          promotionRequestId: requestId,
+          outcome: "rejected",
+          resultRef: null,
+          decidedByUserId: args.reviewerUserId,
+          reasonCode: args.reasonCode,
+          at: new Date(),
+        }),
+      );
+      return { promotionRequestId: requestId, outcome: "rejected" };
     },
     async updateAgendaItem(orgId, _userId, id, expectedVersion) {
       const row = agenda.get(id);

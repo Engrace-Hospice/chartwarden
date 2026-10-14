@@ -40,6 +40,7 @@ import {
   STEP_UP_POLICY,
   type ScaleType,
   type StepUpFactor,
+  UnauthorizedError,
   ValidationError,
 } from "@wardenx/types";
 import {
@@ -62,6 +63,13 @@ import {
   planMileageCapture,
   planVitalsCapture,
 } from "./authoring/index";
+import {
+  CHART_PROMOTION_DECIDED_EVENT,
+  decidedPayload,
+  listForPatient,
+  mapPromotionInsertError,
+  requireReview,
+} from "./chart-promotion";
 import { transitionCosignature } from "./cosignature/index";
 import type { CosignatureState } from "./cosignature/index";
 import { deriveEvvAtSign } from "./evv-at-sign";
@@ -865,6 +873,73 @@ export function createDbEncounterRouteService(
       .limit(1);
     if (!row) throw new NotFoundError("addendum");
     return row;
+  }
+
+  /** The encounter's patient (RLS-scoped; the non-leaking 404 when absent or cross-tenant). */
+  async function patientOfEncounter(organizationId: string, encounterId: string): Promise<string> {
+    return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      const [row] = await (tx as unknown as DbClient)
+        .select({ patientId: ENC.patientId })
+        .from(ENC)
+        .where(eq(ENC.id, encounterId))
+        .limit(1);
+      if (!row) throw new NotFoundError("encounter");
+      return row.patientId;
+    });
+  }
+
+  /** Create the addendum draft; when authored from a proposal, copy its attribution (the DB guard re-proves it on INSERT). */
+  async function createAddendumTx(
+    organizationId: string,
+    encounterId: string,
+    args: Parameters<EncounterRouteService["createAddendum"]>[2],
+  ): Promise<{ id: string; status: "draft" }> {
+    // The seam reads in its own tenant context, so resolve it BEFORE opening the write transaction.
+    const review = args.promotion
+      ? await requireReview(
+          organizationId,
+          args.promotion.requestId,
+          args.promotion.reviewerUserId,
+          await patientOfEncounter(organizationId, encounterId),
+        )
+      : null;
+    return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      const t = tx as unknown as DbClient;
+      const r = await loadEnc(t, encounterId);
+      checkParentNotVoided({ parentStatus: r.status });
+      if (r.status !== "signed" && r.status !== "cosigned") {
+        throw new EncounterStateError(
+          "ILLEGAL_TRANSITION",
+          "addenda can only be authored on signed or cosigned encounters",
+        );
+      }
+      const a = firstOrThrow(
+        await t
+          .insert(ADDENDUM)
+          .values({
+            organizationId,
+            encounterId,
+            // GAP-028 - the CALLER authors the addendum, not the parent encounter's author.
+            authoredByMembershipId: args.authorMembershipId,
+            providerEntityId: r.providerEntityId,
+            locationId: r.locationId,
+            reason: args.reason,
+            status: "draft",
+            ...(review
+              ? {
+                  promotionRequestId: review.requestId,
+                  sourceMessageId: review.sourceMessageId,
+                  sourceAuthorUserId: review.sourceAuthorUserId,
+                  sourceSentAt: new Date(review.sourceSentAt),
+                  sourceBodySha256: review.sourceBodySha256,
+                }
+              : {}),
+          })
+          .returning({ id: ADDENDUM.id }),
+        "addendum insert returned no row",
+      );
+      return { id: a.id, status: "draft" as const };
+    });
   }
 
   async function resolveSiting(
@@ -2314,34 +2389,41 @@ export function createDbEncounterRouteService(
 
     // ── Addendum aggregate (§2.3 — draft → finalize → sign) ────────────────────────────────────────────
     async createAddendum(organizationId, encounterId, args) {
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const t = tx as unknown as DbClient;
-        const r = await loadEnc(t, encounterId);
-        checkParentNotVoided({ parentStatus: r.status });
-        if (r.status !== "signed" && r.status !== "cosigned") {
-          throw new EncounterStateError(
-            "ILLEGAL_TRANSITION",
-            "addenda can only be authored on signed or cosigned encounters",
-          );
-        }
-        const a = firstOrThrow(
-          await t
-            .insert(ADDENDUM)
-            .values({
-              organizationId,
-              encounterId,
-              // GAP-028 — the CALLER authors the addendum, not the parent encounter's author.
-              authoredByMembershipId: args.authorMembershipId,
-              providerEntityId: r.providerEntityId,
-              locationId: r.locationId,
-              reason: args.reason,
-              status: "draft",
-            })
-            .returning({ id: ADDENDUM.id }),
-          "addendum insert returned no row",
+      try {
+        return await createAddendumTx(organizationId, encounterId, args);
+      } catch (err) {
+        // A second live draft for the same proposal (409) or a proposal that moved under us (422); anything else rethrows.
+        if (args.promotion) mapPromotionInsertError(err);
+        throw err;
+      }
+    },
+    async listChartPromotions(organizationId, encounterId, reviewerUserId) {
+      const patientId = await patientOfEncounter(organizationId, encounterId);
+      return listForPatient(organizationId, patientId, reviewerUserId);
+    },
+    async rejectChartPromotion(organizationId, encounterId, requestId, args) {
+      const patientId = await patientOfEncounter(organizationId, encounterId);
+      // The seam reads in its own tenant context, so resolve it BEFORE opening the write transaction.
+      await requireReview(organizationId, requestId, args.reviewerUserId, patientId);
+      await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        await emit(
+          tx,
+          organizationId,
+          CHART_PROMOTION_DECIDED_EVENT,
+          "encounter",
+          encounterId,
+          decidedPayload({
+            organizationId,
+            promotionRequestId: requestId,
+            outcome: "rejected",
+            resultRef: null,
+            decidedByUserId: args.reviewerUserId,
+            reasonCode: args.reasonCode,
+            at: clock(),
+          }),
         );
-        return { id: a.id, status: "draft" };
       });
+      return { promotionRequestId: requestId, outcome: "rejected" };
     },
     async updateAddendumSelections(organizationId, encounterId, addendumId, input) {
       const { stored, prose } = splitFreeText(input.sections);
@@ -2464,6 +2546,10 @@ export function createDbEncounterRouteService(
             "encounter must be sited (provider entity + location) before an addendum can be signed",
           );
         }
+        if (a.status === "voided") {
+          throw new EncounterStateError("ILLEGAL_TRANSITION", "a voided addendum cannot be signed");
+        }
+        if (a.promotionRequestId && !actor.userId) throw new UnauthorizedError();
         const trans = transitionAddendum(a.status as "draft" | "finalized" | "signed", {
           type: "sign",
           gatePassed: await gateAddendum(t, addendumId, "sign"),
@@ -2504,6 +2590,26 @@ export function createDbEncounterRouteService(
             addenda: [{ addendumId, reason: a.reason, text: "" }],
           },
         });
+        // WP 3.7: the reviewer signed an addendum authored from a proposal. Same transaction as the signature, so the
+        // proposal is accepted if and only if the signed record exists (a voided or unsigned addendum never gets here).
+        if (a.promotionRequestId && actor.userId) {
+          await emit(
+            t,
+            organizationId,
+            CHART_PROMOTION_DECIDED_EVENT,
+            "encounter_addendum",
+            addendumId,
+            decidedPayload({
+              organizationId,
+              promotionRequestId: a.promotionRequestId,
+              outcome: "accepted",
+              resultRef: addendumId,
+              decidedByUserId: actor.userId,
+              reasonCode: null,
+              at: now,
+            }),
+          );
+        }
         return { status: "signed", signedAt: now.toISOString() };
       });
     },

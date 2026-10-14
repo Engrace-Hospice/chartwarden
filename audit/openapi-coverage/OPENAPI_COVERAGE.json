@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1590,
-    "enriched": 1590,
+    "routes": 1600,
+    "enriched": 1600,
     "deficit": 0,
-    "mutating": 902,
+    "mutating": 907,
     "mutatingNoBody": 1,
-    "gets": 644,
+    "gets": 649,
     "getsNoResponse": 8
   },
   "modules": [
@@ -71,12 +71,12 @@
     },
     {
       "module": "08-encounters",
-      "routes": 37,
-      "enriched": 37,
+      "routes": 39,
+      "enriched": 39,
       "deficit": 0,
-      "mutating": 22,
+      "mutating": 23,
       "mutatingNoBody": 0,
-      "gets": 14,
+      "gets": 15,
       "getsNoResponse": 0
     },
     {
@@ -131,12 +131,12 @@
     },
     {
       "module": "14-idg",
-      "routes": 36,
-      "enriched": 36,
+      "routes": 39,
+      "enriched": 39,
       "deficit": 0,
-      "mutating": 20,
+      "mutating": 22,
       "mutatingNoBody": 0,
-      "gets": 13,
+      "gets": 14,
       "getsNoResponse": 0
     },
     {
@@ -351,12 +351,12 @@
     },
     {
       "module": "36-messaging",
-      "routes": 94,
-      "enriched": 94,
+      "routes": 99,
+      "enriched": 99,
       "deficit": 0,
-      "mutating": 47,
+      "mutating": 49,
       "mutatingNoBody": 0,
-      "gets": 35,
+      "gets": 38,
       "getsNoResponse": 0
     },
     {

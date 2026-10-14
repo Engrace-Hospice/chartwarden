@@ -399,4 +399,21 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
+  {
+    eventName: "m8.chart_promotion.decided",
+    moduleOwner: "m8",
+    description:
+      "A reviewer decided a secure-message proposal for the chart: the addendum they authored from it was signed (accepted, resultRef = the addendum id), or they declined it (rejected). PHI-free: ids, an outcome enum, a reason code and an instant; no patient id, no message text, no hash. Published in the same transaction as the record (WP 3.7, ADR-0063); M36 records the outcome on the proposal.",
+    payloadSchema: Type.Object({
+      organizationId: Type.String({ minLength: 1 }),
+      promotionRequestId: Type.String({ minLength: 1 }),
+      outcome: Type.Union([Type.Literal("accepted"), Type.Literal("rejected")]),
+      resultRef: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+      decidedByUserId: Type.String({ minLength: 1 }),
+      reasonCode: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+      at: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
 ];

@@ -171,6 +171,7 @@ import {
 } from "./routes/messaging-routes";
 import { registerPollRoutes as _registerPollRoutes } from "./routes/poll-routes";
 import type { PresenceRouteDeps } from "./routes/presence-routes";
+import type { PromotionRouteDeps as _PromotionRouteDeps } from "./routes/promotion-routes";
 import { registerScheduledSendRoutes as _registerScheduledSendRoutes } from "./routes/scheduled-send-routes";
 import type { TaskRouteDeps as _TaskRouteDeps } from "./routes/task-routes";
 import { registerTemplateRoutes as _registerTemplateRoutes } from "./routes/template-routes";
@@ -208,6 +209,8 @@ export function mountMessagingRoutes(
     tasks?: _TaskRouteDeps;
     /** WP 3.5: clinical handoffs (tenant flag + service). Omitted => flag off. */
     handoffs?: _HandoffRouteDeps;
+    /** WP 3.7: chart promotion (tenant flag + service). Omitted => flag off. */
+    promotions?: _PromotionRouteDeps;
   } = {},
 ): void {
   // GAP-063 — the §4.2 OTP sender; with none bound, sms/email endpoint registration answers 503.
@@ -227,7 +230,8 @@ export function mountMessagingRoutes(
     ...(opts.sbar ? { sbar: opts.sbar } : {}),
     ...(opts.tasks ? { tasks: opts.tasks } : {}),
     ...(opts.handoffs ? { handoffs: opts.handoffs } : {}),
-  }); // WP 2.9, 2.12, 3.2, 3.3, 3.4, 3.5
+    ...(opts.promotions ? { promotions: opts.promotions } : {}),
+  }); // WP 2.9, 2.12, 3.2, 3.3, 3.4, 3.5, 3.7
   // WP 2.5 — private encrypted drafts (own row per user + channel + thread root).
   _registerDraftRoutes(app, { service: _createDbDraftService({ db }) });
   // WP 2.10 — polls (non-clinical, single choice, named votes); a poll is written through the message write core.
@@ -284,6 +288,7 @@ export { buildClinicalLinkDeps } from "./clinical-link/binding";
 export { buildSbarDeps } from "./sbar/binding";
 export { buildTaskDeps } from "./tasks/deps";
 export { buildHandoffDeps } from "./handoffs/deps";
+export { buildPromotionDeps } from "./promotions/deps";
 export {
   type M36HandoffExpiryWorkerDeps,
   handoffExpiryTick,

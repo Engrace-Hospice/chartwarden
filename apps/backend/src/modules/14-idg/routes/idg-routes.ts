@@ -54,6 +54,7 @@ import {
 } from "./idg-enrichment";
 import {
   ActionItemListQuerySchema,
+  AddAgendaItemFromPromotionRequest,
   AddAgendaItemRequest,
   AdjournMeetingRequest,
   AttendanceEligibilityQuerySchema,
@@ -63,10 +64,12 @@ import {
   DisciplineNoteListQuerySchema,
   IdParamsSchema,
   MeetingPacketParamsSchema,
+  MeetingPromotionParamsSchema,
   PatientIdParamsSchema,
   RecordAttendanceRequest,
   RecordDecisionRequest,
   RecurringPolicyRequest,
+  RejectChartPromotionRequest,
   RescheduleMeetingRequest,
   ScheduleMeetingRequest,
   ScheduleQuerySchema,
@@ -258,6 +261,25 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   const membershipDisplay = deps.enrichment?.membershipDisplay;
   const sudDisclosure = deps.sudDisclosure ?? seamPacketDisclosurePort;
   const caseload = deps.caseload ?? seamIdgCaseloadResolver;
+
+  /** WP 3.7: the M2 USER id the messaging seam knows the caller by (the route `userId` is the membership id). */
+  const reviewerUserIdOf = (request: FastifyRequest): string => {
+    const { userId } = patientScopeFactsOf(request);
+    if (userId === null) throw new UnauthorizedError();
+    return userId;
+  };
+  /** WP 3.7: is the proposal's patient inside the caller's IDG scope? Resolved once per request. */
+  const promotionScopeOf = async (
+    request: FastifyRequest,
+    organizationId: string,
+  ): Promise<{ scoped: readonly string[] | null; inScope: (patientId: string) => boolean }> => {
+    const scoped = await resolveIdgPatientIdsInScope(
+      patientScopeFactsOf(request),
+      organizationId,
+      caseload,
+    );
+    return { scoped, inScope: (patientId) => scoped === null || scoped.includes(patientId) };
+  };
 
   const locationAllowed = (request: FastifyRequest, locationId: string): boolean => {
     const ctx = request.context;
@@ -784,6 +806,95 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
         ),
         request.log,
       );
+    },
+  );
+
+  // 17c — WP 3.7: secure-message proposals waiting on the coordinator, for the patients the caller may see. Metadata only
+  // (the IDG screen never receives message text). An org-wide role has no patient list to enumerate, so it sees proposals
+  // for the meeting's agenda/packet patients and its own caseload.
+  app.get(
+    "/api/v1/idg/meetings/:id/chart-promotions",
+    {
+      preHandler: [READ, SCOPE("idg.read")],
+      config: { auditRead: { resourceKind: "idg_meeting", resourceIdParam: "id", list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      const reviewerUserId = reviewerUserIdOf(request);
+      const { scoped } = await promotionScopeOf(request, organizationId);
+      let patientIds: readonly string[];
+      if (scoped !== null) {
+        patientIds = scoped;
+      } else {
+        const [agenda, packets] = await Promise.all([
+          service.listAgenda(organizationId, id),
+          service.listPackets(organizationId, id),
+        ]);
+        let own: readonly string[] = [];
+        try {
+          own = await caseload({ organizationId, userId: reviewerUserId });
+        } catch {
+          // fail closed: an unresolvable caseload adds nobody
+        }
+        patientIds = [
+          ...new Set([
+            ...agenda.map((a) => a.patientId).filter((p): p is string => p !== null),
+            ...packets.map((p) => p.patientId),
+            ...own,
+          ]),
+        ];
+      }
+      const res = await service.listChartPromotions(organizationId, id, {
+        reviewerUserId,
+        patientIds,
+      });
+      return {
+        enabled: res.enabled,
+        promotions: await withPatientDisplay(
+          patientDisplay,
+          organizationId,
+          res.promotions,
+          request.log,
+        ),
+      };
+    },
+  );
+
+  // 17d — WP 3.7: add an `other` agenda item from a proposal (a pointer plus attribution; no text is copied). Publishes
+  // m14.chart_promotion.decided{accepted} in the same transaction. Never records a decision or touches the plan of care.
+  app.post(
+    "/api/v1/idg/meetings/:id/agenda/from-promotion",
+    { preHandler: [COORDINATE, SCOPE("idg.coordinate"), IDEMPOTENCY_KEY] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      const b = parse(AddAgendaItemFromPromotionRequest, request.body);
+      const { inScope } = await promotionScopeOf(request, organizationId);
+      const res = await service.addAgendaItemFromPromotion(organizationId, userId, id, {
+        requestId: b.promotionRequestId,
+        reviewerUserId: reviewerUserIdOf(request),
+        inScope,
+      });
+      const [item] = await withPatientDisplay(patientDisplay, organizationId, [res], request.log);
+      return reply.code(201).send(item);
+    },
+  );
+
+  // 17e — WP 3.7: decline a proposal. Writes nothing in M14; publishes m14.chart_promotion.decided{rejected}.
+  app.post(
+    "/api/v1/idg/meetings/:id/chart-promotions/:requestId/reject",
+    { preHandler: [COORDINATE, SCOPE("idg.coordinate")] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id, requestId } = parse(MeetingPromotionParamsSchema, request.params);
+      const b = parse(RejectChartPromotionRequest, request.body);
+      const { inScope } = await promotionScopeOf(request, organizationId);
+      return service.rejectChartPromotion(organizationId, id, requestId, {
+        reviewerUserId: reviewerUserIdOf(request),
+        reasonCode: b.reasonCode,
+        inScope,
+      });
     },
   );
 

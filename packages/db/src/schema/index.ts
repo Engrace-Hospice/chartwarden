@@ -126,6 +126,7 @@ export * from "./messaging/clinical-links";
 export * from "./messaging/sbar-policy";
 export * from "./messaging/communication-tasks";
 export * from "./messaging/clinical-handoffs";
+export * from "./messaging/chart-promotion-requests";
 export * from "./messaging/message-revisions";
 export * from "./messaging/message-drafts";
 export * from "./messaging/scheduled-messages";

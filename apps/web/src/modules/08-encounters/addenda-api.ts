@@ -115,3 +115,59 @@ export async function signAddendum(
   if (error || !data) return failure(response?.status, error);
   return { ok: true, value: data };
 }
+
+// ── WP 3.7: proposals from secure messages (ADR-0063) ──────────────────────────────────────────────────
+// A proposal is a pointer. The reviewer writes their OWN addendum reason; nothing from the message is prefilled or sent.
+// Signing the addendum (the existing sign flow, with step-up) is the accept; declining is the only other outcome.
+
+export type PromotionListView = Ok<operations["getApiV1EncountersByEncounterIdChartpromotions"]>;
+export type PromotionProposalView = PromotionListView["promotions"][number];
+export const PROMOTION_REJECT_REASONS = [
+  "not_clinically_relevant",
+  "already_documented",
+  "duplicate",
+  "wrong_patient",
+  "other",
+] as const;
+export type PromotionRejectReason = (typeof PROMOTION_REJECT_REASONS)[number];
+
+export async function loadEncounterPromotions(
+  client: ApiClient,
+  encounterId: string,
+): Promise<AddendumResult<PromotionListView>> {
+  const { data, error, response } = await client.GET(
+    "/api/v1/encounters/{encounterId}/chart-promotions",
+    { params: { path: { encounterId } } },
+  );
+  if (error || !data) return failure(response?.status, error);
+  return { ok: true, value: data };
+}
+
+/** Open a draft addendum linked to the proposal. `reason` is the reviewer's own words. */
+export async function createAddendumFromPromotion(
+  client: ApiClient,
+  encounterId: string,
+  reason: string,
+  promotionRequestId: string,
+): Promise<AddendumResult<{ id: string; status: "draft" }>> {
+  const { data, error, response } = await client.POST("/api/v1/encounters/{encounterId}/addenda", {
+    params: { path: { encounterId } },
+    body: { reason, promotionRequestId },
+  });
+  if (error || !data) return failure(response?.status, error);
+  return { ok: true, value: data as { id: string; status: "draft" } };
+}
+
+export async function rejectEncounterPromotion(
+  client: ApiClient,
+  encounterId: string,
+  requestId: string,
+  reasonCode: PromotionRejectReason,
+): Promise<AddendumResult<{ promotionRequestId: string; outcome: "rejected" }>> {
+  const { data, error, response } = await client.POST(
+    "/api/v1/encounters/{encounterId}/chart-promotions/{requestId}/reject",
+    { params: { path: { encounterId, requestId } }, body: { reasonCode } },
+  );
+  if (error || !data) return failure(response?.status, error);
+  return { ok: true, value: data as { promotionRequestId: string; outcome: "rejected" } };
+}

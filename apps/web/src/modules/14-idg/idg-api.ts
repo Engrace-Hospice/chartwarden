@@ -152,15 +152,16 @@ function failure(status: number | undefined, body: unknown): WriteResult<never> 
         ? "Adjourning is a commit point and needs a fresh re-authentication (§2.2 D13). Re-authenticate, then adjourn again."
         : code === 412
           ? (detail ?? "These data changed after you opened them. Refresh before trying again.")
-        : code === 403
-          ? (detail ?? "Your role is not permitted to take this action on this meeting.")
-          : code === 409
-            ? (detail ?? "This meeting changed before your action was applied. Reload the surface.")
-            : code === 404
-              ? "That meeting is no longer available to you."
-              : code === 422
-                ? (detail ?? "The server rejected the details supplied.")
-                : (detail ?? "The action could not be completed.");
+          : code === 403
+            ? (detail ?? "Your role is not permitted to take this action on this meeting.")
+            : code === 409
+              ? (detail ??
+                "This meeting changed before your action was applied. Reload the surface.")
+              : code === 404
+                ? "That meeting is no longer available to you."
+                : code === 422
+                  ? (detail ?? "The server rejected the details supplied.")
+                  : (detail ?? "The action could not be completed.");
   return { ok: false, status: code, code: errCode, message };
 }
 
@@ -595,4 +596,64 @@ export async function updateDisciplineNote(
   });
   if (error || !data) return noteFailure(response?.status, error);
   return ok(data as DisciplineNoteView);
+}
+
+// ── WP 3.7: proposals from secure messages (ADR-0063) ──────────────────────────────────────────────────
+// Metadata only: who proposed it and when, for which patient. No message text is ever returned or shown. Every
+// owner-route refusal is a 422 PROMOTION_NOT_AVAILABLE with no reason, so callers show one neutral message.
+
+export type MeetingPromotionList = Ok<operations["getApiV1IdgMeetingsByIdChartpromotions"]>;
+export type MeetingPromotionView = MeetingPromotionList["promotions"][number];
+export const PROMOTION_REJECT_REASONS = [
+  "not_clinically_relevant",
+  "already_documented",
+  "duplicate",
+  "wrong_patient",
+  "other",
+] as const;
+export type PromotionRejectReason = (typeof PROMOTION_REJECT_REASONS)[number];
+
+export async function loadMeetingPromotions(
+  client: ApiClient,
+  id: string,
+): Promise<WriteResult<MeetingPromotionList>> {
+  const { data, error, response } = await client.GET("/api/v1/idg/meetings/{id}/chart-promotions", {
+    params: { path: { id } },
+  });
+  if (error || !data) return failure(response?.status, error);
+  return ok(data);
+}
+
+/** Add an `other` agenda item from a proposal. Idempotency-Key is required by the route. */
+export async function addAgendaItemFromPromotion(
+  client: ApiClient,
+  id: string,
+  promotionRequestId: string,
+): Promise<WriteResult<AgendaItemView>> {
+  const { data, error, response } = await client.POST(
+    "/api/v1/idg/meetings/{id}/agenda/from-promotion",
+    {
+      params: { path: { id }, header: { "Idempotency-Key": globalThis.crypto.randomUUID() } },
+      body: { promotionRequestId },
+    },
+  );
+  if (error || !data) return failure(response?.status, error);
+  return ok(data as AgendaItemView);
+}
+
+export async function rejectMeetingPromotion(
+  client: ApiClient,
+  id: string,
+  requestId: string,
+  reasonCode: PromotionRejectReason,
+): Promise<WriteResult<{ promotionRequestId: string; outcome: "rejected" }>> {
+  const { data, error, response } = await client.POST(
+    "/api/v1/idg/meetings/{id}/chart-promotions/{requestId}/reject",
+    {
+      params: { path: { id, requestId } },
+      body: { reasonCode },
+    },
+  );
+  if (error || !data) return failure(response?.status, error);
+  return ok(data as { promotionRequestId: string; outcome: "rejected" });
 }

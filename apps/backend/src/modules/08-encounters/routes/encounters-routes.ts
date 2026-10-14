@@ -25,6 +25,7 @@ import {
   CaptureVitalsSchema,
   CarePlanLinkParamsSchema,
   CarePlanLinkSchema,
+  ChartPromotionParamsSchema,
   CreateAddendumSchema,
   CreateEncounterSchema,
   EncounterListQuerySchema,
@@ -35,6 +36,7 @@ import {
   LateEntryOverrideSchema,
   ModificationDecisionSchema,
   ModificationParamsSchema,
+  RejectChartPromotionSchema,
   SignEncounterSchema,
   SignedSinceQuerySchema,
   SupervisorReleaseSchema,
@@ -43,7 +45,7 @@ import {
   VoidEncounterSchema,
   parse,
 } from "./encounters-typebox";
-import type { EncounterRouteService } from "./service";
+import type { EncounterRouteService, SigningActor } from "./service";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -106,13 +108,22 @@ function actorOf(request: FastifyRequest): {
  *  seam to capture method/timestamp for real (never trusts a client-supplied claim — see the removed
  *  `stepUpAuthAt` request-body field, git history). Both attributes are stamped by M2's authenticate
  *  hook (`apps/backend/src/bootstrap/plugins/authenticate.ts`) onto every authenticated request. */
-function signingActorOf(request: FastifyRequest): { membershipId: string; sessionId: string } {
+function signingActorOf(request: FastifyRequest): SigningActor {
   const ctx = request.context;
   const membershipId = ctx?.attributes.membershipId;
   const sessionId = ctx?.attributes.sessionId;
   if (typeof membershipId !== "string" || typeof sessionId !== "string")
     throw new UnauthorizedError();
-  return { membershipId, sessionId };
+  // The M2 USER id rides along for a promoted addendum's `decidedByUserId` (a different id space from the membership id).
+  const userId = typeof ctx?.userId === "string" && ctx.userId.length > 0 ? ctx.userId : undefined;
+  return { membershipId, sessionId, ...(userId !== undefined ? { userId } : {}) };
+}
+
+/** The M2 USER id of the caller (the id space the M36 proposals and the messaging seam use; not the membership id). */
+function reviewerUserIdOf(request: FastifyRequest): string {
+  const userId = request.context?.userId;
+  if (typeof userId !== "string" || userId.length === 0) throw new UnauthorizedError();
+  return userId;
 }
 
 const encounterIdOf = (request: FastifyRequest): string =>
@@ -759,8 +770,55 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
       const res = await service.createAddendum(organizationId, encounterIdOf(request), {
         reason: body.reason,
         authorMembershipId: userId,
+        ...(body.promotionRequestId !== undefined
+          ? {
+              promotion: {
+                requestId: body.promotionRequestId,
+                reviewerUserId: reviewerUserIdOf(request),
+              },
+            }
+          : {}),
       });
       return reply.code(201).send(res);
+    },
+  );
+
+  // 22b - WP 3.7: the secure-message proposals waiting on a reviewer for this encounter's patient. Metadata plus the quoted
+  // snapshot (shown, never inserted for the reviewer). Uniform empty answer when the feature is off or the seam is down.
+  app.get(
+    "/api/v1/encounters/:encounterId/chart-promotions",
+    {
+      preHandler: [ADDENDUM_AUTHOR, SCOPE_FOR("encounter.addendum_author")],
+      config: {
+        auditRead: {
+          resourceKind: "encounter",
+          resourceIdParam: "encounterId",
+          list: true,
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.listChartPromotions(
+        organizationId,
+        encounterIdOf(request),
+        reviewerUserIdOf(request),
+      );
+    },
+  );
+
+  // 22c - WP 3.7: decline a proposal. Writes nothing in M8; publishes m8.chart_promotion.decided{rejected}.
+  app.post(
+    "/api/v1/encounters/:encounterId/chart-promotions/:requestId/reject",
+    { preHandler: [ADDENDUM_AUTHOR, SCOPE_FOR("encounter.addendum_author")] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { encounterId, requestId } = parse(ChartPromotionParamsSchema, request.params);
+      const body = parse(RejectChartPromotionSchema, request.body);
+      return service.rejectChartPromotion(organizationId, encounterId, requestId, {
+        reviewerUserId: reviewerUserIdOf(request),
+        reasonCode: body.reasonCode,
+      });
     },
   );
 

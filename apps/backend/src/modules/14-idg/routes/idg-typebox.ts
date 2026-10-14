@@ -9,7 +9,7 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { DISCIPLINE_NOTE_ADDENDUM_REASON_MAX } from "@wardenx/idg";
-import { ValidationError } from "@wardenx/types";
+import { CHART_PROMOTION_REJECT_REASONS, ValidationError } from "@wardenx/types";
 import { IDG_DECISION_PAYLOAD_SCHEMA } from "../decision-payload-schema";
 import type {
   ActionItemView as ServiceActionItemView,
@@ -106,6 +106,11 @@ const ACTION_ITEM_LINKED_KIND = Type.Union([
 
 // ── params + query ──────────────────────────────────────────────────────────────────────────────────────
 export const IdParamsSchema = Type.Object({ id: Type.String({ format: "uuid" }) });
+/** WP 3.7 - params of the reviewer routes on a meeting's chart promotions. */
+export const MeetingPromotionParamsSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  requestId: Type.String({ format: "uuid" }),
+});
 export const PatientIdParamsSchema = Type.Object({ patientId: Type.String({ format: "uuid" }) });
 export const MeetingPacketParamsSchema = Type.Object({
   meetingId: Type.String({ format: "uuid" }),
@@ -195,6 +200,16 @@ export const UpdateDisciplineNoteRequest = Type.Object(
 export const DisciplineNoteListQuerySchema = Type.Object({
   patientId: Type.Optional(Type.String({ format: "uuid" })),
 });
+/** WP 3.7: add an agenda item from a proposal. No text travels: the item is a pointer plus attribution. */
+export const AddAgendaItemFromPromotionRequest = Type.Object(
+  { promotionRequestId: Type.String({ format: "uuid" }) },
+  { additionalProperties: false },
+);
+/** WP 3.7: decline a proposal (the system-set reasons `requester` / `superseded` are not selectable here). */
+export const RejectChartPromotionRequest = Type.Object(
+  { reasonCode: Type.Union(CHART_PROMOTION_REJECT_REASONS.map((r) => Type.Literal(r))) },
+  { additionalProperties: false },
+);
 export const UpdateAgendaItemRequest = Type.Object({
   noteText: Type.Optional(Type.String({ maxLength: 4000 })),
 });
@@ -606,6 +621,39 @@ export const AgendaItemViewSchema = Type.Object({
   patient: PatientDisplayField,
   /** The row version a PATCH/DELETE echoes back as `If-Match`. */
   version: Type.Integer({ minimum: 0 }),
+  /** WP 3.7: present only for an item added from a secure-message proposal. Attribution only; no message text. */
+  promotion: Type.Optional(
+    Type.Object({
+      request_id: Type.String({ format: "uuid" }),
+      source_author_user_id: Type.String({ format: "uuid" }),
+      source_sent_at: Type.String({ format: "date-time" }),
+      source_message_id: Type.String({ format: "uuid" }),
+    }),
+  ),
+});
+
+/** WP 3.7 - GET /idg/meetings/:id/chart-promotions: metadata only (the IDG screen never receives the message text). */
+export const ChartPromotionListResponseSchema = Type.Object({
+  enabled: Type.Boolean(),
+  promotions: Type.Array(
+    Type.Object({
+      request_id: Type.String({ format: "uuid" }),
+      patientId: Type.String({ format: "uuid" }),
+      patient: PatientDisplayField,
+      requested_by: Type.String({ format: "uuid" }),
+      requested_at: Type.String({ format: "date-time" }),
+      source_author_user_id: Type.String({ format: "uuid" }),
+      source_sent_at: Type.String({ format: "date-time" }),
+      source_message_id: Type.String({ format: "uuid" }),
+      source_channel_id: Type.String({ format: "uuid" }),
+    }),
+  ),
+});
+
+/** WP 3.7 - POST /idg/meetings/:id/chart-promotions/:requestId/reject. */
+export const RejectChartPromotionResponseSchema = Type.Object({
+  promotionRequestId: Type.String({ format: "uuid" }),
+  outcome: Type.Literal("rejected"),
 });
 
 /**

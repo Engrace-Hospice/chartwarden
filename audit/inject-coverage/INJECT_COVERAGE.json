@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1579,
-    "coveredRoutes": 1579,
-    "directRoutesReferenced": 1496
+    "routes": 1589,
+    "coveredRoutes": 1589,
+    "directRoutesReferenced": 1506
   },
   "modules": [
     {
@@ -113,6 +113,7 @@
         "apps/backend/__tests__/discharge-worklist-routes.test.ts",
         "apps/backend/__tests__/election-addendum-upload-routes.test.ts",
         "apps/backend/__tests__/m2-link-redemption.live.test.ts",
+        "apps/backend/__tests__/m36-promotion-targets.live.test.ts",
         "apps/backend/__tests__/m6-physician-authority.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/readmission-routes.test.ts"
@@ -154,14 +155,17 @@
     },
     {
       "module": "08-encounters",
-      "routes": 37,
+      "routes": 39,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/encounter-authoring.test.ts",
         "apps/backend/__tests__/encounter-routes.test.ts",
+        "apps/backend/__tests__/m36-promotion-targets.live.test.ts",
+        "apps/backend/__tests__/m36-promotions.live.test.ts",
+        "apps/backend/__tests__/m8-chart-promotion.test.ts",
         "apps/backend/__tests__/m8-encounter-addenda-read.live.test.ts"
       ],
-      "directRoutesReferenced": 33
+      "directRoutesReferenced": 35
     },
     {
       "module": "09-assessments",
@@ -225,7 +229,7 @@
     },
     {
       "module": "14-idg",
-      "routes": 36,
+      "routes": 39,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/idg-discipline-notes.test.ts",
@@ -235,9 +239,12 @@
         "apps/backend/__tests__/idg-routes.test.ts",
         "apps/backend/__tests__/idg-schedule-meeting.test.ts",
         "apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts",
+        "apps/backend/__tests__/m14-chart-promotion.test.ts",
+        "apps/backend/__tests__/m36-promotion-targets.live.test.ts",
+        "apps/backend/__tests__/m36-promotions.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 36
+      "directRoutesReferenced": 39
     },
     {
       "module": "15-discipline-care-plans",
@@ -486,7 +493,7 @@
     },
     {
       "module": "36-messaging",
-      "routes": 94,
+      "routes": 99,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
@@ -515,6 +522,9 @@
         "apps/backend/__tests__/m36-poll-announce-guard.test.ts",
         "apps/backend/__tests__/m36-presence.live.test.ts",
         "apps/backend/__tests__/m36-presence.test.ts",
+        "apps/backend/__tests__/m36-promotion-routes.test.ts",
+        "apps/backend/__tests__/m36-promotion-targets.live.test.ts",
+        "apps/backend/__tests__/m36-promotions.live.test.ts",
         "apps/backend/__tests__/m36-rich-body.test.ts",
         "apps/backend/__tests__/m36-sbar-routes.test.ts",
         "apps/backend/__tests__/m36-sbar.live.test.ts",
@@ -529,7 +539,7 @@
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 94
+      "directRoutesReferenced": 99
     },
     {
       "module": "37-ipu",

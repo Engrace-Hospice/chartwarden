@@ -26,7 +26,7 @@ import type {
   EncounterType,
   LocalDate,
 } from "@wardenx/types";
-import { ForbiddenError, NotFoundError } from "@wardenx/types";
+import { ConflictError, ForbiddenError, NotFoundError, UnauthorizedError } from "@wardenx/types";
 import {
   type F2fAttestationWrite,
   type MileageInput,
@@ -37,6 +37,15 @@ import {
   planMileageCapture,
   planVitalsCapture,
 } from "../authoring/index";
+import {
+  type AddendumPromotionInput,
+  CHART_PROMOTION_DECIDED_EVENT,
+  type ChartPromotionListView,
+  type RejectReasonCode,
+  decidedPayload,
+  listForPatient,
+  requireReview,
+} from "../chart-promotion";
 import { type CosignatureState, transitionCosignature } from "../cosignature/index";
 import {
   type GateSectionSelection,
@@ -74,6 +83,11 @@ export function assertNotAuthor(authorMembershipId: string, actorMembershipId: s
 export interface SigningActor {
   readonly membershipId: string;
   readonly sessionId: string;
+  /**
+   * The M2 USER id of the signer (a different id space from the membership id). Only the chart-promotion path needs it
+   * (it becomes `decidedByUserId` on `m8.chart_promotion.decided`); a promoted addendum refuses to sign without it.
+   */
+  readonly userId?: string;
 }
 
 /** The §4.6 owner facts the `m8.cosigner_role_match` predicate resolves for one encounter (RLS-backstopped). */
@@ -662,8 +676,26 @@ export interface EncounterRouteService {
     organizationId: string,
     encounterId: string,
     /** `authorMembershipId` is the CALLER — the addendum's author, never the parent encounter's. */
-    args: { reason: string; authorMembershipId: string },
+    args: {
+      reason: string;
+      authorMembershipId: string;
+      /** WP 3.7: author this addendum from a proposed secure message (the reviewer still writes their own text). */
+      promotion?: AddendumPromotionInput;
+    },
   ): Promise<{ id: string; status: "draft" }>;
+  /** WP 3.7: the proposals waiting on a reviewer for this encounter's patient (`enabled:false` when the hub flag is off). */
+  listChartPromotions(
+    organizationId: string,
+    encounterId: string,
+    reviewerUserId: string,
+  ): Promise<ChartPromotionListView>;
+  /** WP 3.7: decline a proposal. Writes nothing in M8 except the `m8.chart_promotion.decided` outbox event. */
+  rejectChartPromotion(
+    organizationId: string,
+    encounterId: string,
+    requestId: string,
+    args: { reviewerUserId: string; reasonCode: RejectReasonCode },
+  ): Promise<{ promotionRequestId: string; outcome: "rejected" }>;
   updateAddendumSelections(
     organizationId: string,
     encounterId: string,
@@ -748,6 +780,8 @@ interface EncounterRecord {
       selections: readonly SelectionSectionInput[];
       /** The membership that authored this addendum (the caller who created it). */
       authoredByUserId: string;
+      /** WP 3.7: the proposal this addendum was authored from (null for a plain addendum). */
+      promotionRequestId?: string;
       /** The narrative pinned at this addendum's finalize (#122). */
       pinnedNarrative?: string;
     }
@@ -882,7 +916,11 @@ const toView = (r: EncounterRecord): EncounterView => ({
 /** Read-only inspection surface over the slice's state (the §7 workflow tests assert against it). */
 export interface EncounterBackendInspect {
   /** The `m8.*` outbox events published so far (collected from the §2.8 transition/authoring effects). */
-  events(): ReadonlyArray<{ event: string; encounterId: string }>;
+  events(): ReadonlyArray<{
+    event: string;
+    encounterId: string;
+    payload?: Record<string, unknown>;
+  }>;
   /** The M6 attestation writes the F2F dual-write requested (the cross-module side of D1, §7.4). */
   f2fAttestations(): ReadonlyArray<F2fAttestationWrite>;
   /** The resolved mileage row on an encounter, if any (D10). */
@@ -931,7 +969,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
   const now = () => "2026-06-21T12:00:00.000Z";
 
   /** Published `m8.*` outbox events (collected from the §2.8 transition/authoring effects, for tests). */
-  const events: { event: string; encounterId: string }[] = [];
+  const events: { event: string; encounterId: string; payload?: Record<string, unknown> }[] = [];
   /** The M6 attestation writes the F2F dual-write requested (the cross-module side of D1, for tests). */
   const f2fAttestations: F2fAttestationWrite[] = [];
   const recordOutbox = (
@@ -1404,8 +1442,21 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
           "addenda can only be authored on signed or cosigned encounters",
         );
       }
+      if (args.promotion) {
+        await requireReview(
+          organizationId,
+          args.promotion.requestId,
+          args.promotion.reviewerUserId,
+          r.patientId,
+        );
+        const taken = [...r.addenda.values()].some(
+          (x) => x.promotionRequestId === args.promotion?.requestId,
+        );
+        if (taken) throw new ConflictError("that proposal already has an addendum");
+      }
       const id = subId();
       r.addenda.set(id, {
+        ...(args.promotion ? { promotionRequestId: args.promotion.requestId } : {}),
         id,
         status: "draft",
         version: 0,
@@ -1467,7 +1518,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       );
       return { status: "finalized" };
     },
-    async signAddendum(organizationId, encounterId, addendumId, _actor, args) {
+    async signAddendum(organizationId, encounterId, addendumId, actor, args) {
       const r = load(organizationId, encounterId);
       const a = r.addenda.get(addendumId);
       if (!a) throw new NotFoundError("addendum");
@@ -1480,7 +1531,45 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       });
       a.status = t.to;
       a.signedAt = now();
+      if (a.promotionRequestId) {
+        if (!actor.userId) throw new UnauthorizedError();
+        events.push({
+          event: CHART_PROMOTION_DECIDED_EVENT,
+          encounterId,
+          payload: decidedPayload({
+            organizationId,
+            promotionRequestId: a.promotionRequestId,
+            outcome: "accepted",
+            resultRef: addendumId,
+            decidedByUserId: actor.userId,
+            reasonCode: null,
+            at: new Date(a.signedAt),
+          }),
+        });
+      }
       return { status: "signed", signedAt: a.signedAt };
+    },
+    async listChartPromotions(organizationId, encounterId, reviewerUserId) {
+      const r = load(organizationId, encounterId);
+      return listForPatient(organizationId, r.patientId, reviewerUserId);
+    },
+    async rejectChartPromotion(organizationId, encounterId, requestId, args) {
+      const r = load(organizationId, encounterId);
+      await requireReview(organizationId, requestId, args.reviewerUserId, r.patientId);
+      events.push({
+        event: CHART_PROMOTION_DECIDED_EVENT,
+        encounterId,
+        payload: decidedPayload({
+          organizationId,
+          promotionRequestId: requestId,
+          outcome: "rejected",
+          resultRef: null,
+          decidedByUserId: args.reviewerUserId,
+          reasonCode: args.reasonCode,
+          at: new Date(now()),
+        }),
+      });
+      return { promotionRequestId: requestId, outcome: "rejected" };
     },
 
     async listEncounters(organizationId, filters = {}) {

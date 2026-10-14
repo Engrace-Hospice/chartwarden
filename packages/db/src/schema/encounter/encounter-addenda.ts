@@ -3,7 +3,16 @@
 // denormalized from the parent encounter). `reason` is clinician free-text → denylisted in the M4
 // write-audit trigger (M8-T03). RLS + trigger land in migration 0031 (M8-T03).
 import { sql } from "drizzle-orm";
-import { bigint, check, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  check,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { encounterStatus } from "../../enums";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
@@ -38,6 +47,14 @@ export const encounterAddenda = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     version: bigint("version", { mode: "number" }).notNull().default(0),
+
+    // WP 3.7 (migration 1102): attribution when the addendum was authored from a secure message proposed for the chart.
+    // All-or-none, immutable, and an insert guard proves it equals the proposal it claims. No message text is stored here.
+    promotionRequestId: uuid("promotion_request_id"),
+    sourceMessageId: uuid("source_message_id"),
+    sourceAuthorUserId: uuid("source_author_user_id"),
+    sourceSentAt: timestamp("source_sent_at", { withTimezone: true }),
+    sourceBodySha256: text("source_body_sha256"),
   },
   (t) => ({
     encounterIdx: index("encounter_addendum_encounter_idx").on(t.encounterId, t.createdAt),
@@ -53,6 +70,17 @@ export const encounterAddenda = pgTable(
       "encounter_addendum_signed_has_time",
       sql`(status <> 'signed') OR (signed_at IS NOT NULL)`,
     ),
+    promotionShape: check(
+      "encounter_addendum_promotion_shape",
+      sql`(${t.promotionRequestId} IS NULL) = (${t.sourceMessageId} IS NULL) AND (${t.promotionRequestId} IS NULL) = (${t.sourceAuthorUserId} IS NULL) AND (${t.promotionRequestId} IS NULL) = (${t.sourceSentAt} IS NULL) AND (${t.promotionRequestId} IS NULL) = (${t.sourceBodySha256} IS NULL)`,
+    ),
+    promotionShaShape: check(
+      "encounter_addendum_promotion_sha_shape",
+      sql`${t.sourceBodySha256} IS NULL OR ${t.sourceBodySha256} ~ '^[0-9a-f]{64}$'`,
+    ),
+    promotionOnce: uniqueIndex("encounter_addendum_promotion_uq")
+      .on(t.organizationId, t.promotionRequestId)
+      .where(sql`${t.promotionRequestId} IS NOT NULL AND ${t.status} <> 'voided'`),
   }),
 );
 

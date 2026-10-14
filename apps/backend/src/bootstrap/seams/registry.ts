@@ -13,6 +13,7 @@
 // check-fitness-gaps.ts (seam-registry sub-check) scans it: the `REQUIRED_SEAMS = [...]`
 // literal and registerSeam/getSeam are the tokens it keys on.
 
+import type { ChartPromotionSourceReader } from "@wardenx/types";
 import type { RequiredSeam, SeamContracts, SeamName } from "../interfaces";
 import {
   admissionCensusReaderDenyStub,
@@ -183,6 +184,7 @@ import {
   volunteerComplianceProviderDenyStub,
   volunteerGateExpiryReaderDenyStub,
 } from "./providers";
+import { NotImplementedError } from "./providers";
 
 export class SeamError extends Error {
   constructor(message: string) {
@@ -192,6 +194,19 @@ export class SeamError extends Error {
 }
 
 const registry = new Map<SeamName, unknown>();
+
+/** M36 WP 3.7: every call throws, so an unwired reader shows a reviewer nothing (no pending list, no quoted text). */
+const chartPromotionSourceReaderDenyStub: ChartPromotionSourceReader = {
+  async enabled() {
+    throw new NotImplementedError("ChartPromotionSourceReader");
+  },
+  async pendingForPatients() {
+    throw new NotImplementedError("ChartPromotionSourceReader");
+  },
+  async forReview() {
+    throw new NotImplementedError("ChartPromotionSourceReader");
+  },
+};
 
 /**
  * Every seam the platform requires before it may serve traffic, each with its owning
@@ -432,6 +447,15 @@ export const REQUIRED_SEAMS = [
     ownerModule: 36,
     phi: true,
     denyStub: messagingProviderDenyStub,
+  },
+  // M36 WP 3.7 (ADR-0063) — the READ-only view of messages proposed for the chart that M8 (addendum author) and M14 (IDG
+  // coordinator) show their reviewer. It returns the quoted text of a message, so it IS a PHI read surface. M36 registers
+  // the real reader in registerMessagingSeams; until then every call throws (fail closed: no text, no pending list).
+  {
+    key: "ChartPromotionSourceReader",
+    ownerModule: 36,
+    phi: true,
+    denyStub: chartPromotionSourceReaderDenyStub,
   },
   // M40 (MDM) — the master-data read surface (physician/facility/payer; merge-aware, §4.5) every
   // clinical/billing/interop module consumes. Canonical reference data + this-tenant overlay, not a

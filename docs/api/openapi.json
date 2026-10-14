@@ -105840,6 +105840,10 @@
                     "minLength": 20,
                     "maxLength": 4000,
                     "type": "string"
+                  },
+                  "promotionRequestId": {
+                    "format": "uuid",
+                    "type": "string"
                   }
                 }
               }
@@ -106565,6 +106569,210 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/chart-promotions": {
+      "get": {
+        "operationId": "getApiV1EncountersByEncounterIdChartpromotions",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "Secure-message proposals waiting on a reviewer for this encounter's patient (WP 3.7; encounter.addendum_author + caseload scope). `enabled:false` with an empty list while the tenant flag `messaging.promotions` is off or the messaging seam is unavailable. Each entry carries the quoted snapshot (shown beside the editor, never inserted for the reviewer), the author, the sent time and `source_state` (`edited_since` when the sender edited the message after it was proposed). A proposal the caller may not read (Part 2, erased or unprovable text) is simply absent. Read-audited",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "promotions"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "promotions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "request_id",
+                          "requested_by",
+                          "requested_at",
+                          "source_author_user_id",
+                          "source_sent_at",
+                          "snapshot_text",
+                          "source_state"
+                        ],
+                        "properties": {
+                          "request_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "requested_by": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "requested_at": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "source_author_user_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "source_sent_at": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "snapshot_text": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "source_state": {
+                            "anyOf": [
+                              {
+                                "const": "current",
+                                "type": "string"
+                              },
+                              {
+                                "const": "edited_since",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/encounters/{encounterId}/chart-promotions/{requestId}/reject": {
+      "post": {
+        "operationId": "postApiV1EncountersByEncounterIdChartpromotionsByRequestIdReject",
+        "tags": [
+          "08-encounters"
+        ],
+        "summary": "Decline a proposal (WP 3.7; encounter.addendum_author + caseload scope). Writes nothing in M8 except the `m8.chart_promotion.decided` outbox event (rejected + reason code). 422 PROMOTION_NOT_AVAILABLE when the proposal is not open, not for this encounter's patient, or not visible to the caller",
+        "parameters": [
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "promotionRequestId",
+                    "outcome"
+                  ],
+                  "properties": {
+                    "promotionRequestId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "outcome": {
+                      "const": "rejected",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "reasonCode"
+                ],
+                "properties": {
+                  "reasonCode": {
+                    "anyOf": [
+                      {
+                        "const": "not_clinically_relevant",
+                        "type": "string"
+                      },
+                      {
+                        "const": "already_documented",
+                        "type": "string"
+                      },
+                      {
+                        "const": "duplicate",
+                        "type": "string"
+                      },
+                      {
+                        "const": "wrong_patient",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -123358,6 +123566,33 @@
                     "version": {
                       "minimum": 0,
                       "type": "integer"
+                    },
+                    "promotion": {
+                      "type": "object",
+                      "required": [
+                        "request_id",
+                        "source_author_user_id",
+                        "source_sent_at",
+                        "source_message_id"
+                      ],
+                      "properties": {
+                        "request_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "source_author_user_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "source_sent_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "source_message_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        }
+                      }
                     }
                   }
                 }
@@ -125986,6 +126221,33 @@
                       "version": {
                         "minimum": 0,
                         "type": "integer"
+                      },
+                      "promotion": {
+                        "type": "object",
+                        "required": [
+                          "request_id",
+                          "source_author_user_id",
+                          "source_sent_at",
+                          "source_message_id"
+                        ],
+                        "properties": {
+                          "request_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "source_author_user_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "source_sent_at": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "source_message_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          }
+                        }
                       }
                     }
                   }
@@ -126107,6 +126369,33 @@
                     "version": {
                       "minimum": 0,
                       "type": "integer"
+                    },
+                    "promotion": {
+                      "type": "object",
+                      "required": [
+                        "request_id",
+                        "source_author_user_id",
+                        "source_sent_at",
+                        "source_message_id"
+                      ],
+                      "properties": {
+                        "request_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "source_author_user_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "source_sent_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "source_message_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        }
+                      }
                     }
                   }
                 }
@@ -126160,6 +126449,184 @@
                   },
                   "noteText": {
                     "maxLength": 4000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings/{id}/agenda/from-promotion": {
+      "post": {
+        "operationId": "postApiV1IdgMeetingsByIdAgendaFrompromotion",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "Add an `other` agenda item from a proposal (WP 3.7; idg.coordinate + meeting scope; Idempotency-Key required). The item is a pointer plus attribution (author, sent time, message id); no message text is copied and no decision or plan-of-care change is made. Publishes `m14.chart_promotion.decided` (accepted) in the same transaction. 422 PROMOTION_NOT_AVAILABLE when the proposal is not open, outside the caller's scope or not visible; 409 when the proposal already has an item",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "meetingId",
+                    "kind",
+                    "patientId",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "meetingId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "anyOf": [
+                        {
+                          "const": "patient_review",
+                          "type": "string"
+                        },
+                        {
+                          "const": "carry_forward",
+                          "type": "string"
+                        },
+                        {
+                          "const": "administrative_note",
+                          "type": "string"
+                        },
+                        {
+                          "const": "family_meeting_setup",
+                          "type": "string"
+                        },
+                        {
+                          "const": "other",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "displayName",
+                            "mrnSuffix"
+                          ],
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "mrnSuffix": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "promotion": {
+                      "type": "object",
+                      "required": [
+                        "request_id",
+                        "source_author_user_id",
+                        "source_sent_at",
+                        "source_message_id"
+                      ],
+                      "properties": {
+                        "request_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "source_author_user_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "source_sent_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "source_message_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "promotionRequestId"
+                ],
+                "properties": {
+                  "promotionRequestId": {
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -126568,6 +127035,230 @@
                     "minLength": 1,
                     "maxLength": 2000,
                     "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings/{id}/chart-promotions": {
+      "get": {
+        "operationId": "getApiV1IdgMeetingsByIdChartpromotions",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "Secure-message proposals waiting on the coordinator (WP 3.7; idg.read + meeting scope), for the patients in the caller's IDG scope. Metadata only: the IDG screen never receives the message text. `enabled:false` while the tenant flag is off. Read-audited (list)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "promotions"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "promotions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "request_id",
+                          "patientId",
+                          "requested_by",
+                          "requested_at",
+                          "source_author_user_id",
+                          "source_sent_at",
+                          "source_message_id",
+                          "source_channel_id"
+                        ],
+                        "properties": {
+                          "request_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "patient": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "displayName",
+                                  "mrnSuffix"
+                                ],
+                                "properties": {
+                                  "displayName": {
+                                    "type": "string"
+                                  },
+                                  "mrnSuffix": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "requested_by": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "requested_at": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "source_author_user_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "source_sent_at": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "source_message_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "source_channel_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings/{id}/chart-promotions/{requestId}/reject": {
+      "post": {
+        "operationId": "postApiV1IdgMeetingsByIdChartpromotionsByRequestIdReject",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "Decline a proposal (WP 3.7; idg.coordinate + meeting scope). Writes nothing in M14 except the `m14.chart_promotion.decided` outbox event (rejected + reason code). 422 PROMOTION_NOT_AVAILABLE as for add",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "promotionRequestId",
+                    "outcome"
+                  ],
+                  "properties": {
+                    "promotionRequestId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "outcome": {
+                      "const": "rejected",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "reasonCode"
+                ],
+                "properties": {
+                  "reasonCode": {
+                    "anyOf": [
+                      {
+                        "const": "not_clinically_relevant",
+                        "type": "string"
+                      },
+                      {
+                        "const": "already_documented",
+                        "type": "string"
+                      },
+                      {
+                        "const": "duplicate",
+                        "type": "string"
+                      },
+                      {
+                        "const": "wrong_patient",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
                   }
                 }
               }
@@ -158924,6 +159615,588 @@
         }
       }
     },
+    "/api/v1/messaging/channels/{id}/messages/{messageId}/chart-promotions": {
+      "get": {
+        "operationId": "getApiV1MessagingChannelsByIdMessagesByMessageIdChartpromotions",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The proposals on one message (WP 3.7; messaging.read + patient.read; 404 while the flag is off). Only what the caller may already read: the requester, or a channel viewer who passes the Part 2 gate for the patient. Metadata only: no text, no hash. Read-audited (list)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "promotions"
+                  ],
+                  "properties": {
+                    "promotions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "message_id",
+                          "channel_id",
+                          "patient_id",
+                          "target_module",
+                          "target_kind",
+                          "suggested_target_ref",
+                          "status",
+                          "requested_by",
+                          "requested_by_display_name",
+                          "requested_at",
+                          "source_author_user_id",
+                          "source_author_display_name",
+                          "source_sent_at",
+                          "result_ref",
+                          "decided_by",
+                          "decided_at",
+                          "reason_code",
+                          "allowed_actions"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "message_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "channel_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "patient_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "target_module": {
+                            "anyOf": [
+                              {
+                                "const": "m8",
+                                "type": "string"
+                              },
+                              {
+                                "const": "m14",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "target_kind": {
+                            "anyOf": [
+                              {
+                                "const": "encounter_addendum",
+                                "type": "string"
+                              },
+                              {
+                                "const": "idg_agenda_item",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "suggested_target_ref": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "proposed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "accepted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rejected",
+                                "type": "string"
+                              },
+                              {
+                                "const": "superseded",
+                                "type": "string"
+                              },
+                              {
+                                "const": "withdrawn",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "requested_by": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "requested_by_display_name": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "requested_at": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "source_author_user_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "source_author_display_name": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "source_sent_at": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "result_ref": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "decided_by": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "decided_at": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reason_code": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "not_clinically_relevant",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "already_documented",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "duplicate",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "wrong_patient",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "other",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "requester",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "superseded",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "allowed_actions": {
+                            "type": "array",
+                            "items": {
+                              "const": "withdraw",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1MessagingChannelsByIdMessagesByMessageIdChartpromotions",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Propose that a secure message belong in the chart (WP 3.7; messaging.send + messaging.promote + patient.read; 404 while the flag `messaging.promotions` is off). The target is exactly (m8, encounter_addendum) or (m14, idg_agenda_item); any other module or kind is 422 and there is no path to an order. The patient is derived from the channel (422 PROMOTION_SOURCE_NOT_PATIENT_LINKED for a message outside a patient's channel); a hidden channel, a deleted message, a missing permission and a Part 2 denial are ONE 404. `suggested_target_ref` (m14 only) is an IDG meeting of the organisation (422 PROMOTION_SUGGESTED_REF_INVALID). The proposal stores a pointer, the author and sent time and a hash of the body, never the text. Nothing is written to the chart until a reviewer accepts in the owning module. 201 created; 200 created:false replays the existing proposed or accepted request; an edited message supersedes the old proposal. Read-audited against the patient",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "promotion",
+                    "created"
+                  ],
+                  "properties": {
+                    "promotion": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "message_id",
+                        "channel_id",
+                        "patient_id",
+                        "target_module",
+                        "target_kind",
+                        "suggested_target_ref",
+                        "status",
+                        "requested_by",
+                        "requested_by_display_name",
+                        "requested_at",
+                        "source_author_user_id",
+                        "source_author_display_name",
+                        "source_sent_at",
+                        "result_ref",
+                        "decided_by",
+                        "decided_at",
+                        "reason_code",
+                        "allowed_actions"
+                      ],
+                      "properties": {
+                        "id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "message_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "channel_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "patient_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "target_module": {
+                          "anyOf": [
+                            {
+                              "const": "m8",
+                              "type": "string"
+                            },
+                            {
+                              "const": "m14",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "target_kind": {
+                          "anyOf": [
+                            {
+                              "const": "encounter_addendum",
+                              "type": "string"
+                            },
+                            {
+                              "const": "idg_agenda_item",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "suggested_target_ref": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "proposed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "accepted",
+                              "type": "string"
+                            },
+                            {
+                              "const": "rejected",
+                              "type": "string"
+                            },
+                            {
+                              "const": "superseded",
+                              "type": "string"
+                            },
+                            {
+                              "const": "withdrawn",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "requested_by": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "requested_by_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "requested_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "source_author_user_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "source_author_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "source_sent_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "result_ref": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "decided_by": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "decided_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "reason_code": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "not_clinically_relevant",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "already_documented",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "duplicate",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "wrong_patient",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "other",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "requester",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "superseded",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "allowed_actions": {
+                          "type": "array",
+                          "items": {
+                            "const": "withdraw",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "created": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "target_module",
+                  "target_kind"
+                ],
+                "properties": {
+                  "target_module": {
+                    "anyOf": [
+                      {
+                        "const": "m8",
+                        "type": "string"
+                      },
+                      {
+                        "const": "m14",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "target_kind": {
+                    "anyOf": [
+                      {
+                        "const": "encounter_addendum",
+                        "type": "string"
+                      },
+                      {
+                        "const": "idg_agenda_item",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "suggested_target_ref": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/messaging/channels/{id}/messages/{messageId}/pin": {
       "delete": {
         "operationId": "deleteApiV1MessagingChannelsByIdMessagesByMessageIdPin",
@@ -162202,6 +163475,810 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/chart-promotions": {
+      "get": {
+        "operationId": "getApiV1MessagingChartpromotions",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The caller's own chart-promotion proposals (WP 3.7; messaging.read): status active|closed|all (default active), limit up to 100 (default 50). 200 {enabled:false,promotions:[]} while the tenant flag `messaging.promotions` is off. Read-audited (list)",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "active",
+                  "type": "string"
+                },
+                {
+                  "const": "closed",
+                  "type": "string"
+                },
+                {
+                  "const": "all",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "promotions"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "promotions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "message_id",
+                          "channel_id",
+                          "patient_id",
+                          "target_module",
+                          "target_kind",
+                          "suggested_target_ref",
+                          "status",
+                          "requested_by",
+                          "requested_by_display_name",
+                          "requested_at",
+                          "source_author_user_id",
+                          "source_author_display_name",
+                          "source_sent_at",
+                          "result_ref",
+                          "decided_by",
+                          "decided_at",
+                          "reason_code",
+                          "allowed_actions"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "message_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "channel_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "patient_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "target_module": {
+                            "anyOf": [
+                              {
+                                "const": "m8",
+                                "type": "string"
+                              },
+                              {
+                                "const": "m14",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "target_kind": {
+                            "anyOf": [
+                              {
+                                "const": "encounter_addendum",
+                                "type": "string"
+                              },
+                              {
+                                "const": "idg_agenda_item",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "suggested_target_ref": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "proposed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "accepted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rejected",
+                                "type": "string"
+                              },
+                              {
+                                "const": "superseded",
+                                "type": "string"
+                              },
+                              {
+                                "const": "withdrawn",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "requested_by": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "requested_by_display_name": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "requested_at": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "source_author_user_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "source_author_display_name": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "source_sent_at": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "result_ref": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "decided_by": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "decided_at": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reason_code": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "not_clinically_relevant",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "already_documented",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "duplicate",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "wrong_patient",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "other",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "requester",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "superseded",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "allowed_actions": {
+                            "type": "array",
+                            "items": {
+                              "const": "withdraw",
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/chart-promotions/{promotionId}": {
+      "get": {
+        "operationId": "getApiV1MessagingChartpromotionsByPromotionId",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "One chart-promotion proposal (WP 3.7; messaging.read + patient.read; 404 while the flag is off). Visible to the requester or to a channel viewer who passes the Part 2 gate; a missing, foreign, hidden and flag-off proposal is ONE 404. `allowed_actions` is computed server-side; `result_ref` and `decided_by` appear only after the owning module reports its decision. Read-audited against the proposal and the patient",
+        "parameters": [
+          {
+            "name": "promotionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "promotion"
+                  ],
+                  "properties": {
+                    "promotion": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "message_id",
+                        "channel_id",
+                        "patient_id",
+                        "target_module",
+                        "target_kind",
+                        "suggested_target_ref",
+                        "status",
+                        "requested_by",
+                        "requested_by_display_name",
+                        "requested_at",
+                        "source_author_user_id",
+                        "source_author_display_name",
+                        "source_sent_at",
+                        "result_ref",
+                        "decided_by",
+                        "decided_at",
+                        "reason_code",
+                        "allowed_actions"
+                      ],
+                      "properties": {
+                        "id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "message_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "channel_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "patient_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "target_module": {
+                          "anyOf": [
+                            {
+                              "const": "m8",
+                              "type": "string"
+                            },
+                            {
+                              "const": "m14",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "target_kind": {
+                          "anyOf": [
+                            {
+                              "const": "encounter_addendum",
+                              "type": "string"
+                            },
+                            {
+                              "const": "idg_agenda_item",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "suggested_target_ref": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "proposed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "accepted",
+                              "type": "string"
+                            },
+                            {
+                              "const": "rejected",
+                              "type": "string"
+                            },
+                            {
+                              "const": "superseded",
+                              "type": "string"
+                            },
+                            {
+                              "const": "withdrawn",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "requested_by": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "requested_by_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "requested_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "source_author_user_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "source_author_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "source_sent_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "result_ref": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "decided_by": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "decided_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "reason_code": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "not_clinically_relevant",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "already_documented",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "duplicate",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "wrong_patient",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "other",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "requester",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "superseded",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "allowed_actions": {
+                          "type": "array",
+                          "items": {
+                            "const": "withdraw",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/chart-promotions/{promotionId}/withdraw": {
+      "post": {
+        "operationId": "postApiV1MessagingChartpromotionsByPromotionIdWithdraw",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Take back a proposal that is still waiting (WP 3.7; messaging.send + messaging.promote + patient.read; requester only; 404 while the flag is off). Repeating returns it unchanged. 409 PROMOTION_STATE_CONFLICT once a reviewer has decided it, 403 for anyone but the requester, 404 uniform. A reviewer who already signed in the owning module still wins: the proposal then reads accepted",
+        "parameters": [
+          {
+            "name": "promotionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "promotion"
+                  ],
+                  "properties": {
+                    "promotion": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "message_id",
+                        "channel_id",
+                        "patient_id",
+                        "target_module",
+                        "target_kind",
+                        "suggested_target_ref",
+                        "status",
+                        "requested_by",
+                        "requested_by_display_name",
+                        "requested_at",
+                        "source_author_user_id",
+                        "source_author_display_name",
+                        "source_sent_at",
+                        "result_ref",
+                        "decided_by",
+                        "decided_at",
+                        "reason_code",
+                        "allowed_actions"
+                      ],
+                      "properties": {
+                        "id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "message_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "channel_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "patient_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "target_module": {
+                          "anyOf": [
+                            {
+                              "const": "m8",
+                              "type": "string"
+                            },
+                            {
+                              "const": "m14",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "target_kind": {
+                          "anyOf": [
+                            {
+                              "const": "encounter_addendum",
+                              "type": "string"
+                            },
+                            {
+                              "const": "idg_agenda_item",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "suggested_target_ref": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "proposed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "accepted",
+                              "type": "string"
+                            },
+                            {
+                              "const": "rejected",
+                              "type": "string"
+                            },
+                            {
+                              "const": "superseded",
+                              "type": "string"
+                            },
+                            {
+                              "const": "withdrawn",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "requested_by": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "requested_by_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "requested_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "source_author_user_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "source_author_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "source_sent_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "result_ref": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "decided_by": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "decided_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "reason_code": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "not_clinically_relevant",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "already_documented",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "duplicate",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "wrong_patient",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "other",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "requester",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "superseded",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "allowed_actions": {
+                          "type": "array",
+                          "items": {
+                            "const": "withdraw",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"

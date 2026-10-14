@@ -638,6 +638,7 @@ function ConversationThreadView({
           authorById={authorById}
           canReply={!channel.archivedAt && tools.canReply}
           canAnnotate={!channel.archivedAt}
+          patientLinked={channel.kind === "care_team" && Boolean(channel.subjectId)}
           onShowReceipts={tools.onShowReceipts}
           onScroll={handleTimelineScroll}
           onRetry={() => void loadLatest()}

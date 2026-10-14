@@ -1334,6 +1334,15 @@ import {
   PollResultResponseSchema as M36PollResultResponseSchema,
   VotePollBodySchema as M36VotePollBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/poll-typebox";
+// M36 WP 3.7 chart promotion.
+import {
+  ListPromotionsQuerySchema as M36ListPromotionsQuerySchema,
+  MessagePromotionsResponseSchema as M36MessagePromotionsResponseSchema,
+  PromotionListResponseSchema as M36PromotionListResponseSchema,
+  PromotionResponseSchema as M36PromotionResponseSchema,
+  RequestPromotionBodySchema as M36RequestPromotionBodySchema,
+  RequestPromotionResponseSchema as M36RequestPromotionResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/promotion-typebox";
 import {
   PinListResponseSchema as M36PinListResponseSchema,
   PinResponseSchema as M36PinResponseSchema,
@@ -1569,6 +1578,12 @@ import {
   VoidEncounterSchema as M8VoidEncounterSchema,
   VoidResponseSchema as M8VoidResponseSchema,
 } from "../../apps/backend/src/modules/08-encounters/routes/encounters-typebox";
+// WP 3.7 chart promotion, owner side (M8 + M14) - S3.
+import {
+  ChartPromotionListResponseSchema as M8ChartPromotionListResponseSchema,
+  RejectChartPromotionResponseSchema as M8RejectChartPromotionResponseSchema,
+  RejectChartPromotionSchema as M8RejectChartPromotionSchema,
+} from "../../apps/backend/src/modules/08-encounters/routes/encounters-typebox";
 import {
   AcknowledgeChangeSchema as M9AcknowledgeChangeSchema,
   AssessmentDetailResponseSchema as M9AssessmentDetailResponseSchema,
@@ -1789,6 +1804,12 @@ import {
   UpdateAttendanceRequest as M14UpdateAttendanceRequest,
   UpdateDecisionRequest as M14UpdateDecisionRequest,
   UpdateDisciplineNoteRequest as M14UpdateDisciplineNoteRequest,
+} from "../../apps/backend/src/modules/14-idg/routes/idg-typebox";
+import {
+  AddAgendaItemFromPromotionRequest as M14AddAgendaItemFromPromotionRequest,
+  ChartPromotionListResponseSchema as M14ChartPromotionListResponseSchema,
+  RejectChartPromotionRequest as M14RejectChartPromotionRequest,
+  RejectChartPromotionResponseSchema as M14RejectChartPromotionResponseSchema,
 } from "../../apps/backend/src/modules/14-idg/routes/idg-typebox";
 import {
   ApproveTimeOffRequest as M17ApproveTimeOffRequest,
@@ -9390,6 +9411,34 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Remove this organization's handoff expiry override, restoring the platform default of 240 minutes (WP 3.5; messaging.template.manage). Returns the effective policy (200)",
     response: M36HandoffPolicyViewSchema,
   },
+  "POST /api/v1/messaging/channels/:id/messages/:messageId/chart-promotions": {
+    summary:
+      "Propose that a secure message belong in the chart (WP 3.7; messaging.send + messaging.promote + patient.read; 404 while the flag `messaging.promotions` is off). The target is exactly (m8, encounter_addendum) or (m14, idg_agenda_item); any other module or kind is 422 and there is no path to an order. The patient is derived from the channel (422 PROMOTION_SOURCE_NOT_PATIENT_LINKED for a message outside a patient's channel); a hidden channel, a deleted message, a missing permission and a Part 2 denial are ONE 404. `suggested_target_ref` (m14 only) is an IDG meeting of the organisation (422 PROMOTION_SUGGESTED_REF_INVALID). The proposal stores a pointer, the author and sent time and a hash of the body, never the text. Nothing is written to the chart until a reviewer accepts in the owning module. 201 created; 200 created:false replays the existing proposed or accepted request; an edited message supersedes the old proposal. Read-audited against the patient",
+    body: M36RequestPromotionBodySchema,
+    response: M36RequestPromotionResponseSchema,
+    status: 201,
+  },
+  "GET /api/v1/messaging/channels/:id/messages/:messageId/chart-promotions": {
+    summary:
+      "The proposals on one message (WP 3.7; messaging.read + patient.read; 404 while the flag is off). Only what the caller may already read: the requester, or a channel viewer who passes the Part 2 gate for the patient. Metadata only: no text, no hash. Read-audited (list)",
+    response: M36MessagePromotionsResponseSchema,
+  },
+  "GET /api/v1/messaging/chart-promotions": {
+    summary:
+      "The caller's own chart-promotion proposals (WP 3.7; messaging.read): status active|closed|all (default active), limit up to 100 (default 50). 200 {enabled:false,promotions:[]} while the tenant flag `messaging.promotions` is off. Read-audited (list)",
+    query: M36ListPromotionsQuerySchema,
+    response: M36PromotionListResponseSchema,
+  },
+  "GET /api/v1/messaging/chart-promotions/:promotionId": {
+    summary:
+      "One chart-promotion proposal (WP 3.7; messaging.read + patient.read; 404 while the flag is off). Visible to the requester or to a channel viewer who passes the Part 2 gate; a missing, foreign, hidden and flag-off proposal is ONE 404. `allowed_actions` is computed server-side; `result_ref` and `decided_by` appear only after the owning module reports its decision. Read-audited against the proposal and the patient",
+    response: M36PromotionResponseSchema,
+  },
+  "POST /api/v1/messaging/chart-promotions/:promotionId/withdraw": {
+    summary:
+      "Take back a proposal that is still waiting (WP 3.7; messaging.send + messaging.promote + patient.read; requester only; 404 while the flag is off). Repeating returns it unchanged. 409 PROMOTION_STATE_CONFLICT once a reviewer has decided it, 403 for anyone but the requester, 404 uniform. A reviewer who already signed in the owning module still wins: the proposal then reads accepted",
+    response: M36PromotionResponseSchema,
+  },
   "POST /api/v1/messaging/dm": {
     summary: "Open or find a 1:1 DM channel (idempotent; 200/201)",
     body: M36OpenDmBodySchema,
@@ -12763,5 +12812,40 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/mdm/psap-jurisdictions/:id/reactivate": {
     summary: "Reactivate a retired PSAP jurisdiction",
     response: _M40PsapJurisdictionView,
+  },
+});
+
+// ── WP 3.7 chart promotion, owner side (S3: M8 encounter addendum + M14 IDG agenda) ───────────────────────────────────
+// The reviewer acts under the OWNING module's own permissions and auth; M36 only records the outcome from the owner event.
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/encounters/:encounterId/chart-promotions": {
+    summary:
+      "Secure-message proposals waiting on a reviewer for this encounter's patient (WP 3.7; encounter.addendum_author + caseload scope). `enabled:false` with an empty list while the tenant flag `messaging.promotions` is off or the messaging seam is unavailable. Each entry carries the quoted snapshot (shown beside the editor, never inserted for the reviewer), the author, the sent time and `source_state` (`edited_since` when the sender edited the message after it was proposed). A proposal the caller may not read (Part 2, erased or unprovable text) is simply absent. Read-audited",
+    response: M8ChartPromotionListResponseSchema,
+  },
+  "POST /api/v1/encounters/:encounterId/chart-promotions/:requestId/reject": {
+    summary:
+      "Decline a proposal (WP 3.7; encounter.addendum_author + caseload scope). Writes nothing in M8 except the `m8.chart_promotion.decided` outbox event (rejected + reason code). 422 PROMOTION_NOT_AVAILABLE when the proposal is not open, not for this encounter's patient, or not visible to the caller",
+    body: M8RejectChartPromotionSchema,
+    response: M8RejectChartPromotionResponseSchema,
+  },
+  "GET /api/v1/idg/meetings/:id/chart-promotions": {
+    summary:
+      "Secure-message proposals waiting on the coordinator (WP 3.7; idg.read + meeting scope), for the patients in the caller's IDG scope. Metadata only: the IDG screen never receives the message text. `enabled:false` while the tenant flag is off. Read-audited (list)",
+    response: M14ChartPromotionListResponseSchema,
+  },
+  "POST /api/v1/idg/meetings/:id/agenda/from-promotion": {
+    summary:
+      "Add an `other` agenda item from a proposal (WP 3.7; idg.coordinate + meeting scope; Idempotency-Key required). The item is a pointer plus attribution (author, sent time, message id); no message text is copied and no decision or plan-of-care change is made. Publishes `m14.chart_promotion.decided` (accepted) in the same transaction. 422 PROMOTION_NOT_AVAILABLE when the proposal is not open, outside the caller's scope or not visible; 409 when the proposal already has an item",
+    body: M14AddAgendaItemFromPromotionRequest,
+    response: M14AgendaItemViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "POST /api/v1/idg/meetings/:id/chart-promotions/:requestId/reject": {
+    summary:
+      "Decline a proposal (WP 3.7; idg.coordinate + meeting scope). Writes nothing in M14 except the `m14.chart_promotion.decided` outbox event (rejected + reason code). 422 PROMOTION_NOT_AVAILABLE as for add",
+    body: M14RejectChartPromotionRequest,
+    response: M14RejectChartPromotionResponseSchema,
   },
 });
