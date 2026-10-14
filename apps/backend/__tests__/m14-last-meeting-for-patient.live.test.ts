@@ -4,9 +4,10 @@
  *
  * "Last meeting" = status 'adjourned' AND real actual_start AND a FROZEN packet row for the patient. Each
  * decoy below fails exactly ONE of those conditions, so dropping any single filter surfaces a decoy that is
- * later than the expected row (negative control by construction). The org filter is a second wall behind RLS:
- * both orgs hold the SAME patient id and org B's meeting is the latest overall, so a leak in either wall
- * returns org B's meeting for org A.
+ * later than the expected row (negative control by construction). Cross-tenant: both orgs hold the SAME
+ * patient id and org B's meeting is the latest overall, so an RLS leak returns org B's meeting for org A. This
+ * proves RLS; the query's explicit organization_id predicate is a second wall that RLS masks here, so it is
+ * not proven separately by this suite.
  *
  *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m14-last-meeting-for-patient.live.test.ts
  */
@@ -86,7 +87,11 @@ describe.skipIf(!DB_URL)("M14 lastMeetingForPatient — LIVE Postgres as wardenx
   /** One meeting plus (optionally) one packet for `patient`; `frozen` stamps frozen_at. Returns the meeting id. */
   async function meeting(
     org: string,
-    o: { status: string; actualStart: string | null; packet?: { patient: string; frozen: boolean } },
+    o: {
+      status: string;
+      actualStart: string | null;
+      packet?: { patient: string; frozen: boolean };
+    },
   ): Promise<string> {
     const s = orgs[org];
     const id = (
@@ -123,11 +128,31 @@ describe.skipIf(!DB_URL)("M14 lastMeetingForPatient — LIVE Postgres as wardenx
     orgs[ORG_B] = await seedOrg(ORG_B, 2);
     const frozen = { patient: PATIENT, frozen: true };
     // Org A. Expected winner: `older` (2026-03) is beaten by `latest` (2026-05); every decoy is LATER.
-    ids.older = await meeting(ORG_A, { status: "adjourned", actualStart: "2026-03-01T10:00:00Z", packet: frozen });
-    ids.latest = await meeting(ORG_A, { status: "adjourned", actualStart: "2026-05-01T10:00:00Z", packet: frozen });
-    ids.live = await meeting(ORG_A, { status: "live", actualStart: "2026-09-01T10:00:00Z", packet: frozen });
-    ids.scheduled = await meeting(ORG_A, { status: "scheduled", actualStart: "2026-09-02T10:00:00Z", packet: frozen });
-    ids.cancelled = await meeting(ORG_A, { status: "cancelled", actualStart: "2026-09-03T10:00:00Z", packet: frozen });
+    ids.older = await meeting(ORG_A, {
+      status: "adjourned",
+      actualStart: "2026-03-01T10:00:00Z",
+      packet: frozen,
+    });
+    ids.latest = await meeting(ORG_A, {
+      status: "adjourned",
+      actualStart: "2026-05-01T10:00:00Z",
+      packet: frozen,
+    });
+    ids.live = await meeting(ORG_A, {
+      status: "live",
+      actualStart: "2026-09-01T10:00:00Z",
+      packet: frozen,
+    });
+    ids.scheduled = await meeting(ORG_A, {
+      status: "scheduled",
+      actualStart: "2026-09-02T10:00:00Z",
+      packet: frozen,
+    });
+    ids.cancelled = await meeting(ORG_A, {
+      status: "cancelled",
+      actualStart: "2026-09-03T10:00:00Z",
+      packet: frozen,
+    });
     ids.noStart = await meeting(ORG_A, { status: "adjourned", actualStart: null, packet: frozen });
     ids.unfrozen = await meeting(ORG_A, {
       status: "adjourned",
@@ -140,9 +165,16 @@ describe.skipIf(!DB_URL)("M14 lastMeetingForPatient — LIVE Postgres as wardenx
       packet: { patient: OTHER_PATIENT, frozen: true },
     });
     // Adjourned + started but no packet at all for anyone.
-    ids.noPacket = await meeting(ORG_A, { status: "adjourned", actualStart: "2026-09-07T10:00:00Z" });
+    ids.noPacket = await meeting(ORG_A, {
+      status: "adjourned",
+      actualStart: "2026-09-07T10:00:00Z",
+    });
     // Org B: same patient id, the latest meeting overall (2026-12) — must never reach org A.
-    ids.orgB = await meeting(ORG_B, { status: "adjourned", actualStart: "2026-12-01T10:00:00Z", packet: frozen });
+    ids.orgB = await meeting(ORG_B, {
+      status: "adjourned",
+      actualStart: "2026-12-01T10:00:00Z",
+      packet: frozen,
+    });
     // Org B patient with data only in B.
     ids.orgBOnly = await meeting(ORG_B, {
       status: "adjourned",
@@ -180,28 +212,34 @@ describe.skipIf(!DB_URL)("M14 lastMeetingForPatient — LIVE Postgres as wardenx
   });
 
   it("returns null when the patient was never reviewed (and for a patient whose only data is in another tenant)", async () => {
-    expect(await store.lastMeetingForPatient(ORG_A, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")).toBeNull();
+    expect(
+      await store.lastMeetingForPatient(ORG_A, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+    ).toBeNull();
     expect(await store.lastMeetingForPatient(ORG_A, NEVER_REVIEWED)).toBeNull();
   });
 
   it("cross-tenant: org B gets its own meeting for the shared patient id, never org A's, and vice versa", async () => {
     expect((await store.lastMeetingForPatient(ORG_B, PATIENT))?.meetingId).toBe(ids.orgB);
     expect((await store.lastMeetingForPatient(ORG_A, PATIENT))?.meetingId).toBe(ids.latest);
-    expect((await store.lastMeetingForPatient(ORG_B, NEVER_REVIEWED))?.meetingId).toBe(ids.orgBOnly);
+    expect((await store.lastMeetingForPatient(ORG_B, NEVER_REVIEWED))?.meetingId).toBe(
+      ids.orgBOnly,
+    );
     expect(await store.lastMeetingForPatient(ORG_B, OTHER_PATIENT)).toBeNull();
   });
 
   it("returns null when every candidate fails a filter (only decoys exist)", async () => {
-    await admin.query("UPDATE idg_patient_packet SET frozen_at = NULL WHERE idg_meeting_id = ANY($1)", [
-      [ids.older, ids.latest],
-    ]);
+    await admin.query(
+      "UPDATE idg_patient_packet SET frozen_at = NULL WHERE idg_meeting_id = ANY($1)",
+      [[ids.older, ids.latest]],
+    );
     try {
       // Remaining adjourned+started meetings for PATIENT are unfrozen / unstarted / non-adjourned.
       expect(await store.lastMeetingForPatient(ORG_A, PATIENT)).toBeNull();
     } finally {
-      await admin.query("UPDATE idg_patient_packet SET frozen_at = now() WHERE idg_meeting_id = ANY($1)", [
-        [ids.older, ids.latest],
-      ]);
+      await admin.query(
+        "UPDATE idg_patient_packet SET frozen_at = now() WHERE idg_meeting_id = ANY($1)",
+        [[ids.older, ids.latest]],
+      );
     }
   });
 
@@ -213,6 +251,11 @@ describe.skipIf(!DB_URL)("M14 lastMeetingForPatient — LIVE Postgres as wardenx
     const asOf = got?.asOf as string;
     expect(new Date(asOf).toISOString()).toBe(asOf);
     expect(Date.parse(asOf)).toBeGreaterThanOrEqual(before);
-    expect(await provider.getLastMeetingForPatient(ORG_A, "cccccccc-cccc-cccc-cccc-cccccccccccc" as never)).toBeNull();
+    expect(
+      await provider.getLastMeetingForPatient(
+        ORG_A,
+        "cccccccc-cccc-cccc-cccc-cccccccccccc" as never,
+      ),
+    ).toBeNull();
   });
 });

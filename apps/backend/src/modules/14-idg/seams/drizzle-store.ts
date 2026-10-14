@@ -271,7 +271,7 @@ export function createDrizzleIdgSeamStore(db: DbClient): IdgSeamStore {
                   and ${PKT.frozenAt} is not null)`,
               ),
             )
-            .orderBy(desc(M.actualStart))
+            .orderBy(desc(M.actualStart), desc(M.id))
             .limit(1);
           if (!row || row.actualStart === null) return null;
           return { meetingId: row.id, heldAt: iso(row.actualStart), status: row.status };
