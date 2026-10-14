@@ -8,6 +8,8 @@
 // Every node is rebuilt field by field from an allowlist, so an unknown key or node type is a rejection, never
 // a pass-through. Links accept `https:` and `mailto:` only. See docs/messaging-hub/03-phases-0-to-3.md WP 2.1.
 
+import { CLINICAL_LINK_KINDS, type ClinicalLinkKind } from "./clinical-link";
+
 /** Bumped only by a breaking change to the node set; readers refuse versions they do not know. */
 export const RICH_BODY_SCHEMA_VERSION = 1;
 
@@ -23,9 +25,14 @@ export const RICH_BODY_LIMITS = {
   maxMarksPerText: 4,
   /** Links in one document. */
   maxLinks: 50,
+  /** WP 3.2: clinicalLink nodes in one document. */
+  maxClinicalLinks: 10,
   /** UTF-8 size of the canonical JSON (what is hashed and encrypted); bounds every expansion after cleaning. */
   maxCanonicalBytes: 65_536,
 } as const;
+
+/** What a clinicalLink node contributes to the plain-text projection: fixed text, never a title or any record text. */
+export const CLINICAL_LINK_PLAIN_TEXT = "[linked record]";
 
 export const RICH_LINK_SCHEMES = ["https:", "mailto:"] as const;
 
@@ -47,10 +54,20 @@ export interface RichMention {
   /** Display label at write time; the server rejects a label that is not the directory name, readers prefer the server's. */
   readonly label: string;
 }
+/**
+ * WP 3.2: a reference to a clinical record owned by another module. Ids only: no label is stored or accepted, the
+ * server supplies status/label at read time through the owning module's seam. Additive to schema v1: the node is only
+ * ever written while the `messaging.clinical_links` tenant flag is on (the write path refuses it otherwise).
+ */
+export interface RichClinicalLink {
+  readonly type: "clinicalLink";
+  readonly kind: ClinicalLinkKind;
+  readonly entityId: string;
+}
 export interface RichHardBreak {
   readonly type: "hardBreak";
 }
-export type RichInline = RichText | RichMention | RichHardBreak;
+export type RichInline = RichText | RichMention | RichClinicalLink | RichHardBreak;
 
 export interface RichParagraph {
   readonly type: "paragraph";
@@ -225,6 +242,7 @@ interface Budget {
   nodes: number;
   chars: number;
   links: number;
+  clinicalLinks: number;
 }
 
 function enter(budget: Budget, depth: number, what: string): void {
@@ -308,6 +326,25 @@ function cleanInline(node: unknown, depth: number, budget: Budget): RichInline {
         label,
       };
     }
+    case "clinicalLink": {
+      exactKeys(node, ["type", "kind", "entityId"], "clinicalLink");
+      if (
+        typeof node.kind !== "string" ||
+        !(CLINICAL_LINK_KINDS as readonly string[]).includes(node.kind)
+      )
+        reject("clinicalLink: unknown kind");
+      if (typeof node.entityId !== "string" || !UUID.test(node.entityId))
+        reject("clinicalLink: bad entityId");
+      budget.clinicalLinks += 1;
+      if (budget.clinicalLinks > RICH_BODY_LIMITS.maxClinicalLinks)
+        reject(`more than ${RICH_BODY_LIMITS.maxClinicalLinks} clinical links`);
+      spend(budget, CLINICAL_LINK_PLAIN_TEXT);
+      return {
+        type: "clinicalLink",
+        kind: node.kind as ClinicalLinkKind,
+        entityId: (node.entityId as string).toLowerCase(),
+      };
+    }
     default:
       return reject(`inline: unknown node type "${String(node.type).slice(0, 40)}"`);
   }
@@ -387,7 +424,7 @@ export function sanitizeRichBody(input: unknown): RichBodyResult {
     const doc = input.doc;
     if (!isRecord(doc) || doc.type !== "doc") return reject("body: doc missing");
     exactKeys(doc, ["type", "content"], "doc");
-    const budget: Budget = { nodes: 1, chars: 0, links: 0 };
+    const budget: Budget = { nodes: 1, chars: 0, links: 0, clinicalLinks: 0 };
     const content = cleanChildren(doc.content, "doc", (block) => cleanBlock(block, budget));
     const value: RichBody = {
       schemaVersion: RICH_BODY_SCHEMA_VERSION,
@@ -442,6 +479,7 @@ function project(body: RichBody): Projection {
   const inline = (node: RichInline): void => {
     if (node.type === "text") raw += node.text;
     else if (node.type === "hardBreak") raw += "\n";
+    else if (node.type === "clinicalLink") raw += CLINICAL_LINK_PLAIN_TEXT;
     else {
       const token = `@${node.label}`;
       found.push({
@@ -499,4 +537,31 @@ export function storedBodyToPlainText(bodyKind: string, plaintext: string): stri
   if (bodyKind !== "rich") return plaintext;
   const parsed = parseStoredRichBody(plaintext);
   return parsed.ok ? richBodyToPlainText(parsed.value) : "";
+}
+
+/** The distinct clinicalLink nodes of a body in document order (a repeated record is one link). */
+export function richBodyClinicalLinks(
+  body: RichBody,
+): Array<{ readonly kind: ClinicalLinkKind; readonly entityId: string }> {
+  const seen = new Set<string>();
+  const out: Array<{ kind: ClinicalLinkKind; entityId: string }> = [];
+  const inline = (node: RichInline): void => {
+    if (node.type !== "clinicalLink") return;
+    const key = `${node.kind}:${node.entityId}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ kind: node.kind, entityId: node.entityId });
+  };
+  const list = (node: RichList): void => {
+    for (const item of node.content)
+      for (const child of item.content) {
+        if (child.type === "paragraph") child.content.forEach(inline);
+        else list(child);
+      }
+  };
+  for (const block of body.doc.content) {
+    if (block.type === "paragraph") block.content.forEach(inline);
+    else if (block.type === "bulletList" || block.type === "orderedList") list(block);
+  }
+  return out;
 }

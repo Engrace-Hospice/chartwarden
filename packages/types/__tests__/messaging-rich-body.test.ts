@@ -7,6 +7,7 @@ import {
   linkTargetLabel,
   normalizeMentionLabel,
   parseStoredRichBody,
+  richBodyClinicalLinks,
   richBodyMentions,
   richBodyToPlainText,
   safeLinkHref,
@@ -519,5 +520,46 @@ describe("storedBodyToPlainText / parseStoredRichBody", () => {
       storedBodyToPlainText("rich", JSON.stringify(doc({ type: "html", html: "<script>" }))),
     ).toBe("");
     expect(parseStoredRichBody("{").ok).toBe(false);
+  });
+});
+
+describe("clinicalLink node (WP 3.2)", () => {
+  const link = (extra: Record<string, unknown> = {}) => ({
+    type: "clinicalLink",
+    kind: "order",
+    entityId: ID.toUpperCase(),
+    ...extra,
+  });
+
+  it("keeps only kind and a lower-cased entityId and projects fixed text, never a label", () => {
+    const value = ok(doc(para(text("see "), link())));
+    expect(richBodyClinicalLinks(value)).toEqual([{ kind: "order", entityId: ID }]);
+    expect(richBodyToPlainText(value)).toBe("see [linked record]");
+  });
+
+  it("refuses an unknown kind, a bad id, a label and any extra key", () => {
+    for (const bad of [
+      link({ kind: "patient" }),
+      link({ entityId: "nope" }),
+      link({ label: "Morphine 5mg" }),
+      link({ href: "https://x.example" }),
+    ]) {
+      expect(sanitizeRichBody(doc(para(bad))).ok).toBe(false);
+    }
+  });
+
+  it("caps the links in one document and dedupes repeated records", () => {
+    const many = Array.from({ length: RICH_BODY_LIMITS.maxClinicalLinks + 1 }, () => link());
+    expect(sanitizeRichBody(doc(para(...many))).ok).toBe(false);
+    const value = ok(doc(para(link(), link(), link({ kind: "visit" }))));
+    expect(richBodyClinicalLinks(value)).toHaveLength(2);
+  });
+
+  it("finds links inside lists and is a fixed point of sanitise", () => {
+    const value = ok(
+      doc({ type: "bulletList", content: [{ type: "listItem", content: [para(link())] }] }),
+    );
+    expect(richBodyClinicalLinks(value)).toHaveLength(1);
+    expect(ok(value)).toEqual(value);
   });
 });
