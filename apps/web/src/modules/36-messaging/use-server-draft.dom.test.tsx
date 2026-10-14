@@ -11,6 +11,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import type { SbarSections } from "@wardenx/types";
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -66,6 +67,7 @@ interface HookProps {
   refs?: MessageReferenceInput[];
   parent?: string | null;
   suspended?: boolean;
+  sbar?: SbarSections | null;
 }
 
 /** The session the wrapper provides; a test swaps it to model an in-page identity change. */
@@ -91,6 +93,7 @@ function setup(api: ReturnType<typeof makeApi>, initialText = "") {
         text: props.text,
         references: props.refs ?? NO_REFS,
         suspended: props.suspended,
+        sbar: props.sbar ?? null,
         hydrate,
       }),
     { wrapper, initialProps: { text: initialText } },
@@ -137,6 +140,68 @@ describe("mergeDraftBodies", () => {
   });
 });
 
+const SBAR: SbarSections = {
+  urgencyHint: "urgent",
+  sections: { situation: "s", background: "", assessment: "", recommendation: "" },
+};
+const BLANK_SBAR: SbarSections = {
+  urgencyHint: "routine",
+  sections: { situation: " ", background: "", assessment: "", recommendation: "" },
+};
+
+describe("useServerDraft with an sbar", () => {
+  it("restores text and sbar together", async () => {
+    const { hydrate } = setup(makeApi(serverDraft({ sbar: SBAR })));
+    await flush();
+    expect(hydrate).toHaveBeenCalledWith("from the server", [], SBAR);
+  });
+
+  it("restores an sbar-only draft and does not echo it back as a save", async () => {
+    const api = makeApi(serverDraft({ body: "", sbar: SBAR }));
+    const { hydrate } = setup(api);
+    await flush();
+    expect(hydrate).toHaveBeenCalledWith("", [], SBAR);
+    await tick(DRAFT_SAVE_DEBOUNCE_MS * 2);
+    expect(api.PUT).not.toHaveBeenCalled();
+  });
+
+  it("saves text and sbar in one request, and an sbar alone keeps the draft", async () => {
+    const api = makeApi();
+    const { view } = setup(api);
+    await flush();
+    view.rerender({ text: "hi", sbar: SBAR });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS);
+    expect(api.PUT).toHaveBeenCalledTimes(1);
+    expect(api.PUT.mock.calls[0]?.[1].body).toMatchObject({ body: "hi", sbar: SBAR });
+    view.rerender({ text: "", sbar: SBAR });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS);
+    expect(api.PUT).toHaveBeenCalledTimes(2);
+    expect(api.PUT.mock.calls[1]?.[1].body).toMatchObject({ body: "", sbar: SBAR });
+    expect(api.DELETE).not.toHaveBeenCalled();
+  });
+
+  it("drops only the sbar when it is cleared and text remains; discards when both are blank", async () => {
+    const api = makeApi(serverDraft({ body: "keep", sbar: SBAR }));
+    const { view } = setup(api, "keep");
+    await flush();
+    view.rerender({ text: "keep", sbar: SBAR });
+    view.rerender({ text: "keep", sbar: null });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS);
+    expect(api.PUT.mock.calls.at(-1)?.[1].body.sbar).toBeUndefined();
+    view.rerender({ text: "", sbar: BLANK_SBAR });
+    await flush();
+    expect(api.DELETE).toHaveBeenCalledTimes(1);
+  });
+
+  it("mergeDraftBodies keeps mine's sbar, else theirs'", () => {
+    const mine = { body: "a", references: [], sbar: SBAR };
+    const theirs = { body: "b", references: [] };
+    expect(mergeDraftBodies(mine, theirs).sbar).toEqual(SBAR);
+    expect(mergeDraftBodies(theirs, { ...theirs, sbar: SBAR }).sbar).toEqual(SBAR);
+    expect(mergeDraftBodies(theirs, theirs)).not.toHaveProperty("sbar");
+  });
+});
+
 describe("useServerDraft", () => {
   it("restores the server draft into an empty composer", async () => {
     const api = makeApi(serverDraft());
@@ -146,7 +211,7 @@ describe("useServerDraft", () => {
       DRAFT_PATH,
       expect.objectContaining({ params: expect.anything() }),
     );
-    expect(hydrate).toHaveBeenCalledWith("from the server", []);
+    expect(hydrate).toHaveBeenCalledWith("from the server", [], null);
   });
 
   it("does not overwrite text the user already has", async () => {

@@ -10,7 +10,7 @@ import type { FormEvent, JSX } from "react";
 import { apiErrorCode } from "./attachment-utils";
 import { apiErrorMessage } from "./messaging-utils";
 import { SBAR_DEFAULT_HINTS } from "./sbar-utils";
-import { type SbarPolicyView, sbarPolicyClient, useSbarPolicy } from "./use-sbar-policy";
+import { type SbarPolicyView, useSbarPolicy } from "./use-sbar-policy";
 import "./sbar.css";
 
 const MAX_MIN_CHARS = 500;
@@ -51,7 +51,7 @@ function PolicyForm({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function run(work: () => ReturnType<ReturnType<typeof sbarPolicyClient>["PUT"]>) {
+  async function run(work: () => Promise<{ error?: unknown; response?: { status: number } }>) {
     setPending(true);
     setError(null);
     setSaved(false);
@@ -93,7 +93,7 @@ function PolicyForm({
       if (draft.hints[key].trim()) hints[key] = draft.hints[key].trim();
     }
     const ok = await run(() =>
-      sbarPolicyClient(client).PUT("/api/v1/messaging/template-admin/sbar-policy", {
+      client.PUT("/api/v1/messaging/template-admin/sbar-policy", {
         body: { minChars, requirePatientChannel: draft.requirePatientChannel, hints },
       }),
     );
@@ -101,9 +101,7 @@ function PolicyForm({
   }
 
   async function reset(): Promise<void> {
-    const ok = await run(() =>
-      sbarPolicyClient(client).DELETE("/api/v1/messaging/template-admin/sbar-policy"),
-    );
+    const ok = await run(() => client.DELETE("/api/v1/messaging/template-admin/sbar-policy"));
     if (ok)
       setDraft(
         draftOf({

@@ -265,10 +265,12 @@ function ConversationThreadView({
     channelId: channel.channelId,
     text: draft,
     references: draftReferences,
+    sbar: sbar.draft,
     suspended: sending,
-    hydrate: (text, references) => {
+    hydrate: (text, references, restoredSbar) => {
       setDraft(text);
       setDraftReferences(references);
+      sbar.restore(restoredSbar);
     },
   });
 

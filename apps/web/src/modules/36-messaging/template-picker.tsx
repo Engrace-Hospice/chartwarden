@@ -17,6 +17,8 @@ export interface TemplatePickerProps {
   readonly onClosed: () => void;
   /** WP 3.3: when set, an "SBAR" item tops the list; choosing it calls this (the composer opens the SBAR form). */
   readonly onChooseSbar?: () => void;
+  /** Called each time the menu opens (the composer re-reads a transiently failed SBAR policy). */
+  readonly onOpened?: () => void;
   /** The toggle button, so the SBAR form can hand focus back to it. */
   readonly toggleRef?: RefObject<HTMLButtonElement>;
 }
@@ -43,6 +45,7 @@ export function TemplatePicker({
   onInsert,
   onClosed,
   onChooseSbar,
+  onOpened,
   toggleRef,
 }: TemplatePickerProps): JSX.Element {
   const [open, setOpen] = useState(false);
@@ -92,6 +95,7 @@ export function TemplatePicker({
     setQuery("");
     setActiveIndex(0);
     setOpen(true);
+    onOpened?.();
   }
 
   function closePicker(): void {

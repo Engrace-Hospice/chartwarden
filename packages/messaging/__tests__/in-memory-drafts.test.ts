@@ -1,9 +1,15 @@
+import { SBAR_MAX_SECTION_CHARS } from "@wardenx/types";
 /**
  * WP 2.5 on the in-memory draft service (the dev/slice twin of the DB service): one private draft per
  * user + channel (+ thread root), revision-checked saves, last-writer per device, merge prompt across devices.
  */
 import { describe, expect, it } from "vitest";
-import { createInMemoryDraftService, decideDraftSave } from "../src/drafts";
+import {
+  assertDraftWithinLimits,
+  createInMemoryDraftService,
+  decideDraftSave,
+  isEmptyDraft,
+} from "../src/drafts";
 
 const ORG = "org_1";
 const CH = "ch_1";
@@ -153,5 +159,78 @@ describe("in-memory draft service", () => {
     ).rejects.toMatchObject({
       code: "VALIDATION_FAILED",
     });
+  });
+});
+
+describe("draft sbar (plain section text sealed with the body)", () => {
+  const sections = { situation: "s", background: "", assessment: "", recommendation: "" };
+  const sbar = { urgencyHint: "urgent", sections } as const;
+  const blank = {
+    urgencyHint: "important",
+    sections: { situation: " ", background: "\n", assessment: "", recommendation: "" },
+  } as const;
+
+  it("treats an all-blank sbar as empty and an sbar-only draft as non-empty", () => {
+    expect(isEmptyDraft({ body: "", sbar: blank })).toBe(true);
+    expect(isEmptyDraft({ body: "  ", sbar: null })).toBe(true);
+    expect(isEmptyDraft({ body: "", sbar })).toBe(false);
+    expect(isEmptyDraft({ body: "hi", sbar: blank })).toBe(false);
+  });
+
+  it("bounds each section and validates the hint", () => {
+    const long = "x".repeat(SBAR_MAX_SECTION_CHARS);
+    expect(() =>
+      assertDraftWithinLimits({
+        body: "",
+        sbar: { urgencyHint: "routine", sections: { ...sections, situation: long } },
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertDraftWithinLimits({
+        body: "",
+        sbar: { urgencyHint: "routine", sections: { ...sections, assessment: `${long}x` } },
+      }),
+    ).toThrow(/too long/);
+    expect(() =>
+      assertDraftWithinLimits({
+        body: "",
+        sbar: { urgencyHint: "panic" as never, sections },
+      }),
+    ).toThrow(/invalid sbar/);
+  });
+
+  it("round-trips an sbar-only draft and keeps it next to the text", async () => {
+    const s = createInMemoryDraftService();
+    const only = await s.saveDraft(ORG, { userId: "u1", ...base, body: "", sbar });
+    expect(only?.sbar).toEqual(sbar);
+    const both = await s.saveDraft(ORG, {
+      userId: "u1",
+      ...base,
+      baseRevision: 1,
+      body: "text",
+      sbar,
+    });
+    expect(both).toMatchObject({ body: "text", sbar, revision: 2 });
+    const textOnly = await s.saveDraft(ORG, {
+      userId: "u1",
+      ...base,
+      baseRevision: 2,
+      body: "text",
+    });
+    expect(textOnly?.sbar).toBeUndefined();
+  });
+
+  it("discards when text and sbar are both blank", async () => {
+    const s = createInMemoryDraftService();
+    await s.saveDraft(ORG, { userId: "u1", ...base, body: "", sbar });
+    const gone = await s.saveDraft(ORG, {
+      userId: "u1",
+      ...base,
+      baseRevision: 1,
+      body: "",
+      sbar: blank,
+    });
+    expect(gone).toBeNull();
+    expect(await s.getDraft(ORG, { userId: "u1", channelId: CH })).toBeNull();
   });
 });

@@ -8,6 +8,7 @@ import {
   SBAR_SECTION_KEYS,
   type SbarIssue,
   type SbarSectionKey,
+  type SbarSections,
   type SbarUrgencyHint,
   richBodySbar,
 } from "@wardenx/types";
@@ -131,3 +132,17 @@ export const SBAR_SEND_ERRORS: Readonly<Record<string, string>> = {
   SBAR_NOT_ALLOWED_IN_CHANNEL: "SBAR messages can't be sent in this conversation.",
   SBAR_NOT_AVAILABLE: "SBAR messages aren't available right now.",
 };
+
+/** True when every section is blank: the urgency alone is not content, so it never keeps a draft alive. */
+export const isBlankSbar = (sbar: SbarSections | null | undefined): boolean =>
+  !sbar || SBAR_SECTION_KEYS.every((key) => sbar.sections[key].trim() === "");
+
+/** The form as the server draft holds it (WP 2.5), or null when it has nothing worth keeping. */
+export function sbarDraftOf(values: SbarFormValues): SbarSections | null {
+  const sbar: SbarSections = { urgencyHint: values.urgency, sections: values.sections };
+  return isBlankSbar(sbar) ? null : sbar;
+}
+
+/** A restored server draft back into form values (no draft: an empty form for this channel kind). */
+export const sbarValuesOf = (kind: ChannelKind, sbar: SbarSections | null): SbarFormValues =>
+  sbar ? { urgency: sbar.urgencyHint, sections: sbar.sections } : emptySbarValues(kind);

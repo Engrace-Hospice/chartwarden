@@ -15,9 +15,10 @@ import {
   decideDraftSave,
   draftConflictError,
   isEmptyDraft,
+  sbarToStore,
 } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { NotFoundError, type SbarSections, WardenXError } from "@wardenx/types";
 import { type SQL, and, eq, isNull, sql } from "drizzle-orm";
 import { type MessageBodyCipher, createMessageBodyCipher } from "../messaging-write-core";
 
@@ -28,6 +29,8 @@ const UNIQUE_VIOLATION = "23505";
 interface SealedDraft {
   readonly body: string;
   readonly references: readonly MessageReferenceInput[];
+  /** Optional: a draft sealed before SBAR persistence (or by an older build) has no such field and still decodes. */
+  readonly sbar?: SbarSections;
 }
 
 export interface DraftServiceDeps {
@@ -68,6 +71,7 @@ export function createDbDraftService(deps: DraftServiceDeps): MessageDraftServic
       parentMessageId: row.parentMessageId,
       body: sealed.body,
       references: sealed.references,
+      ...(sealed.sbar ? { sbar: sealed.sbar } : {}),
       revision: row.revision,
       deviceId: row.deviceId,
       updatedAt: row.updatedAt.toISOString(),
@@ -114,6 +118,8 @@ export function createDbDraftService(deps: DraftServiceDeps): MessageDraftServic
           JSON.stringify({
             body: input.body,
             references: input.references ?? [],
+            // Omitted (not null) when empty so the document stays byte-compatible with older readers.
+            ...(sbarToStore(input.sbar) ? { sbar: sbarToStore(input.sbar) } : {}),
           } satisfies SealedDraft),
         )
       ).cipher;

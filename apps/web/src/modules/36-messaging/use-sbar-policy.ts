@@ -1,7 +1,7 @@
 // M36 WP 3.3 - the organization's effective SBAR policy (platform floor already applied by the server), and the flag.
 import { SBAR_SECTION_KEYS, type SbarSectionKey } from "@wardenx/types";
-import { type ApiClient, useApiClient, useFeatureFlag } from "@wardenx/ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useApiClient, useFeatureFlag } from "@wardenx/ui";
+import { useCallback, useEffect, useState } from "react";
 import { SBAR_FLAG_KEY } from "./sbar-utils";
 
 export interface SbarPolicyView {
@@ -11,32 +11,6 @@ export interface SbarPolicyView {
   readonly hints: Readonly<Partial<Record<SbarSectionKey, string>>>;
   readonly customized: boolean;
 }
-export interface SbarPolicyInput {
-  readonly minChars?: Readonly<Partial<Record<SbarSectionKey, number>>>;
-  readonly requirePatientChannel?: boolean;
-  readonly hints?: Readonly<Partial<Record<SbarSectionKey, string>>>;
-}
-interface PolicyResult {
-  readonly data?: unknown;
-  readonly error?: unknown;
-  readonly response?: { readonly status: number };
-}
-/**
- * The three SBAR policy routes are not in the generated schema yet (regenerated with the backend slice), so the typed
- * client cannot name them. This narrow shape is the only place that knows; delete it and call `client` directly once
- * `client:check` has the paths.
- */
-export interface SbarPolicyClient {
-  GET(path: "/api/v1/messaging/sbar/policy"): Promise<PolicyResult>;
-  PUT(
-    path: "/api/v1/messaging/template-admin/sbar-policy",
-    init: { body: SbarPolicyInput },
-  ): Promise<PolicyResult>;
-  DELETE(path: "/api/v1/messaging/template-admin/sbar-policy"): Promise<PolicyResult>;
-}
-export const sbarPolicyClient = (client: ApiClient): SbarPolicyClient =>
-  client as unknown as SbarPolicyClient;
-
 /** Flag read that defaults to OFF with no provider mounted (fail closed). */
 export function useSbarFlag(): boolean {
   try {
@@ -51,7 +25,7 @@ export function parseSbarPolicy(data: unknown): SbarPolicyView | null {
   const minChars = candidate?.minChars;
   if (!minChars || typeof minChars !== "object") return null;
   for (const key of SBAR_SECTION_KEYS) if (typeof minChars[key] !== "number") return null;
-  // Fail closed on a present-but-unusable cap: this is the only runtime check behind the SbarPolicyClient cast.
+  // Fail closed on a present-but-unusable cap: the generated type is a promise, not a guarantee.
   const rawMax = candidate?.maxChars as unknown;
   if (rawMax !== undefined && !(typeof rawMax === "number" && Number.isFinite(rawMax))) return null;
   // Hints reach React children: keep only known sections with string values.
@@ -73,33 +47,51 @@ export function parseSbarPolicy(data: unknown): SbarPolicyView | null {
 export type SbarPolicyState =
   | { readonly status: "idle" | "loading" | "unavailable" }
   | { readonly status: "forbidden" }
+  /** A network error or 5xx: retried with backoff, and again when the template menu opens. */
+  | { readonly status: "transient" }
   | { readonly status: "ready"; readonly policy: SbarPolicyView };
 
-/** Loads the policy while `active`. 404 (flag off), 403, an error or an unreadable answer all mean "do not offer SBAR". */
+/** Backoff before each retry of a transient failure; its length is the retry cap. */
+export const POLICY_RETRY_DELAYS_MS = [1000, 3000, 8000] as const;
+
+/**
+ * Loads the policy while `active`. 404 (flag off), 403 and an unreadable answer mean "do not offer SBAR" and are never
+ * retried; a network error or 5xx is "transient" (also not offered meanwhile) and retried up to the cap.
+ */
 export function useSbarPolicy(active: boolean): SbarPolicyState & { reload: () => void } {
   const client = useApiClient();
   const [state, setState] = useState<SbarPolicyState>({ status: "idle" });
   const [tick, setTick] = useState(0);
-  const sequence = useRef(0);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `tick` is the manual re-read trigger
   useEffect(() => {
     if (!active) return;
-    const mine = ++sequence.current;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const fail = (retry: number): void => {
+      setState({ status: "transient" });
+      const delay = POLICY_RETRY_DELAYS_MS[retry];
+      if (delay !== undefined) timer = setTimeout(() => attempt(retry + 1), delay);
+    };
+    const attempt = (retry: number): void => {
+      client
+        .GET("/api/v1/messaging/sbar/policy")
+        .then(({ data, response }) => {
+          if (cancelled) return;
+          if (response && response.status >= 500) return fail(retry);
+          const policy = parseSbarPolicy(data);
+          if (policy) setState({ status: "ready", policy });
+          else setState({ status: response?.status === 403 ? "forbidden" : "unavailable" });
+        })
+        .catch(() => {
+          if (!cancelled) fail(retry);
+        });
+    };
     setState((current) => (current.status === "ready" ? current : { status: "loading" }));
-    sbarPolicyClient(client)
-      .GET("/api/v1/messaging/sbar/policy")
-      .then(({ data, response }) => {
-        if (mine !== sequence.current) return;
-        const policy = parseSbarPolicy(data);
-        if (policy) setState({ status: "ready", policy });
-        else setState({ status: response?.status === 403 ? "forbidden" : "unavailable" });
-      })
-      .catch(() => {
-        if (mine === sequence.current) setState({ status: "unavailable" });
-      });
+    attempt(0);
     return () => {
-      sequence.current += 1;
+      cancelled = true;
+      clearTimeout(timer);
     };
   }, [active, client, tick]);
 

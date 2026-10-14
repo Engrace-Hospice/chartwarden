@@ -79,11 +79,11 @@ export function DraftConflictPrompt({
       <div id={bodyId} className="wx-draft-conflict-body">
         <p>
           <span>Here: </span>
-          {preview(conflict.mine.body)}
+          {preview(conflict.mine.body || (conflict.mine.sbar ? "SBAR form" : ""))}
         </p>
         <p>
           <span>Other device: </span>
-          {preview(conflict.server.body)}
+          {preview(conflict.server.body || (conflict.server.sbar ? "SBAR form" : ""))}
         </p>
       </div>
       <div className="wx-draft-conflict-actions">

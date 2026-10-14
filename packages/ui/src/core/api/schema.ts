@@ -62303,6 +62303,15 @@ export interface operations {
                                 start: number;
                                 end: number;
                             }[];
+                            sbar?: {
+                                urgencyHint: "routine" | "important" | "urgent";
+                                sections: {
+                                    situation: string;
+                                    background: string;
+                                    assessment: string;
+                                    recommendation: string;
+                                };
+                            };
                             revision: number;
                             deviceId: string;
                             updatedAt: string;
@@ -62334,6 +62343,15 @@ export interface operations {
                         start: number;
                         end: number;
                     }[];
+                    sbar?: {
+                        urgencyHint: "routine" | "important" | "urgent";
+                        sections: {
+                            situation: string;
+                            background: string;
+                            assessment: string;
+                            recommendation: string;
+                        };
+                    };
                     deviceId: string;
                     baseRevision: number;
                 };
@@ -62357,6 +62375,15 @@ export interface operations {
                                 start: number;
                                 end: number;
                             }[];
+                            sbar?: {
+                                urgencyHint: "routine" | "important" | "urgent";
+                                sections: {
+                                    situation: string;
+                                    background: string;
+                                    assessment: string;
+                                    recommendation: string;
+                                };
+                            };
                             revision: number;
                             deviceId: string;
                             updatedAt: string;

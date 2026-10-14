@@ -139,3 +139,12 @@
   gap: 0.25rem;
   font-size: 0.875rem;
 }
+
+/* A restored or cancelled SBAR draft is waiting: text plus a glyph, never colour alone. */
+.wx-sbar-draft-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--color-on-surface);
+}

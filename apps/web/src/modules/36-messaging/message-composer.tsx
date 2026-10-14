@@ -267,6 +267,9 @@ export function ThreadComposer({
           onInsert={onInsertSavedReply}
           onClosed={() => textareaRef.current?.focus()}
           toggleRef={pickerToggleRef}
+          onOpened={() => {
+            if (policyState.status === "transient") policyState.reload();
+          }}
           {...(sbarOffered
             ? {
                 onChooseSbar: () => {
@@ -276,6 +279,24 @@ export function ThreadComposer({
               }
             : {})}
         />
+        {sbarOffered && sbarPolicy && !sbar.open && sbar.draft !== null ? (
+          <output className="wx-sbar-draft-note" aria-label="SBAR draft saved">
+            <Glyph name="file-text" size={14} />
+            <span>SBAR draft saved</span>
+            <Button
+              type="button"
+              tone="secondary"
+              disabled={sending}
+              aria-label="Open SBAR draft"
+              onClick={() => {
+                clearSendError();
+                sbar.show();
+              }}
+            >
+              Open
+            </Button>
+          </output>
+        ) : null}
         <PollCreateButton
           channelId={channel.channelId}
           kind={channel.kind}

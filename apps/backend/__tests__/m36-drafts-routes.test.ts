@@ -204,4 +204,57 @@ describe("draft routes", () => {
     expect(JSON.stringify(captured)).not.toContain("hello");
     await app.close();
   });
+
+  describe("sbar field", () => {
+    const sbar = {
+      urgencyHint: "urgent",
+      sections: { situation: "s", background: "b", assessment: "", recommendation: "" },
+    };
+
+    it("keeps an sbar-only draft (not deleted) and returns it on read", async () => {
+      const app = makeServer();
+      const saved = await put(app, "rn_1", { ...save, body: "", sbar });
+      expect(saved.statusCode).toBe(200);
+      expect(saved.json().draft.sbar).toEqual(sbar);
+      const read = await app.inject({ method: "GET", url: url(), headers: as("rn_1") });
+      expect(read.json().draft).toMatchObject({ body: "", sbar });
+    });
+
+    it("treats an all-blank sbar with a blank body as a discard", async () => {
+      const app = makeServer();
+      await put(app, "rn_1", { ...save, sbar });
+      const blank = {
+        urgencyHint: "routine",
+        sections: { situation: " ", background: "", assessment: "", recommendation: "" },
+      };
+      const gone = await put(app, "rn_1", {
+        ...save,
+        body: "",
+        sbar: blank,
+        baseRevision: 1,
+      });
+      expect(gone.json().draft).toBeNull();
+    });
+
+    it("422s an over-long section, an unknown hint and extra keys", async () => {
+      const app = makeServer();
+      const tooLong = { ...sbar, sections: { ...sbar.sections, situation: "x".repeat(2001) } };
+      expect((await put(app, "rn_1", { ...save, sbar: tooLong })).statusCode).toBe(422);
+      expect(
+        (await put(app, "rn_1", { ...save, sbar: { ...sbar, urgencyHint: "panic" } })).statusCode,
+      ).toBe(422);
+      expect((await put(app, "rn_1", { ...save, sbar: { ...sbar, extra: 1 } })).statusCode).toBe(
+        422,
+      );
+      const missing = { urgencyHint: "routine", sections: { situation: "s" } };
+      expect((await put(app, "rn_1", { ...save, sbar: missing })).statusCode).toBe(422);
+    });
+
+    it("still conflicts across devices when only the sbar differs", async () => {
+      const app = makeServer();
+      await put(app, "rn_1", { ...save, sbar });
+      const stale = await put(app, "rn_1", { ...save, deviceId: "dev_b", sbar });
+      expect(stale.statusCode).toBe(409);
+    });
+  });
 });

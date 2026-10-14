@@ -157468,6 +157468,60 @@
                                 }
                               }
                             },
+                            "sbar": {
+                              "additionalProperties": false,
+                              "type": "object",
+                              "required": [
+                                "urgencyHint",
+                                "sections"
+                              ],
+                              "properties": {
+                                "urgencyHint": {
+                                  "anyOf": [
+                                    {
+                                      "const": "routine",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "important",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "urgent",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "sections": {
+                                  "additionalProperties": false,
+                                  "type": "object",
+                                  "required": [
+                                    "situation",
+                                    "background",
+                                    "assessment",
+                                    "recommendation"
+                                  ],
+                                  "properties": {
+                                    "situation": {
+                                      "maxLength": 2000,
+                                      "type": "string"
+                                    },
+                                    "background": {
+                                      "maxLength": 2000,
+                                      "type": "string"
+                                    },
+                                    "assessment": {
+                                      "maxLength": 2000,
+                                      "type": "string"
+                                    },
+                                    "recommendation": {
+                                      "maxLength": 2000,
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              }
+                            },
                             "revision": {
                               "minimum": 1,
                               "type": "integer"
@@ -157590,6 +157644,60 @@
                                 }
                               }
                             },
+                            "sbar": {
+                              "additionalProperties": false,
+                              "type": "object",
+                              "required": [
+                                "urgencyHint",
+                                "sections"
+                              ],
+                              "properties": {
+                                "urgencyHint": {
+                                  "anyOf": [
+                                    {
+                                      "const": "routine",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "important",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "urgent",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "sections": {
+                                  "additionalProperties": false,
+                                  "type": "object",
+                                  "required": [
+                                    "situation",
+                                    "background",
+                                    "assessment",
+                                    "recommendation"
+                                  ],
+                                  "properties": {
+                                    "situation": {
+                                      "maxLength": 2000,
+                                      "type": "string"
+                                    },
+                                    "background": {
+                                      "maxLength": 2000,
+                                      "type": "string"
+                                    },
+                                    "assessment": {
+                                      "maxLength": 2000,
+                                      "type": "string"
+                                    },
+                                    "recommendation": {
+                                      "maxLength": 2000,
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              }
+                            },
                             "revision": {
                               "minimum": 1,
                               "type": "integer"
@@ -157677,6 +157785,60 @@
                           "minimum": 1,
                           "maximum": 8001,
                           "type": "integer"
+                        }
+                      }
+                    }
+                  },
+                  "sbar": {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "required": [
+                      "urgencyHint",
+                      "sections"
+                    ],
+                    "properties": {
+                      "urgencyHint": {
+                        "anyOf": [
+                          {
+                            "const": "routine",
+                            "type": "string"
+                          },
+                          {
+                            "const": "important",
+                            "type": "string"
+                          },
+                          {
+                            "const": "urgent",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "sections": {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "situation",
+                          "background",
+                          "assessment",
+                          "recommendation"
+                        ],
+                        "properties": {
+                          "situation": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          },
+                          "background": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          },
+                          "assessment": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          },
+                          "recommendation": {
+                            "maxLength": 2000,
+                            "type": "string"
+                          }
                         }
                       }
                     }

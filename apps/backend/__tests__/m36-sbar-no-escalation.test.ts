@@ -18,6 +18,10 @@ const SCANNED = [
 const ALLOWED = new Set([
   "packages/types/src/messaging-rich-body.ts",
   "packages/types/src/messaging-sbar.ts",
+  // Draft persistence: the sealed draft stores the label and validates it is one of the three enum values. It is data
+  // in a private scratch document; nothing there routes, alerts or notifies on it.
+  "packages/messaging/src/drafts/index.ts",
+  "apps/backend/src/modules/36-messaging/routes/draft-typebox.ts",
 ]);
 const MENTION = /urgencyHint|urgency_hint/;
 

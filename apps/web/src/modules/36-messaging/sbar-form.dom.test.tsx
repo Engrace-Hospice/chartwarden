@@ -592,3 +592,22 @@ describe("a policy the client cannot trust", () => {
     expect(screen.queryByRole("option", { name: /SBAR/ })).toBeNull();
   });
 });
+
+describe("a transient policy failure", () => {
+  it("offers SBAR when the menu is opened after the policy read failed", async () => {
+    const { GET } = mount();
+    const original = GET.getMockImplementation() as (path: string) => Promise<unknown>;
+    let failing = true;
+    GET.mockImplementation(((path: string) =>
+      path === "/api/v1/messaging/sbar/policy" && failing
+        ? Promise.resolve({ data: undefined, error: {}, response: { status: 503 } })
+        : original(path)) as never);
+    await userEvent.click(await toggle());
+    await screen.findByText(/No saved replies yet/);
+    expect(screen.queryByRole("option", { name: /SBAR/ })).toBeNull();
+    failing = false;
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(await toggle());
+    await screen.findByRole("option", { name: /SBAR/ });
+  });
+});
