@@ -15,6 +15,11 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { GlobalSearchService } from "../global-search/query-service";
 import type { RoleGate } from "../global-search/role-gate";
 import type { ServeGates } from "../global-search/serve-gate";
+import {
+  type ResponseFloorConfig,
+  responseFloorFromEnv,
+  withResponseFloor,
+} from "../global-search/timing-floor";
 import { GlobalSearchQuerySchema } from "./global-search-typebox";
 import { parse } from "./messaging-typebox";
 
@@ -33,6 +38,8 @@ export interface GlobalSearchRouteDeps {
   readonly gates: ServeGates;
   readonly roleGate: RoleGate;
   readonly rateLimit?: GlobalSearchRateLimit;
+  /** Default: the production floor (ADR-0058 review F1). Tests shrink it through the env or pass zeros. */
+  readonly responseFloor?: ResponseFloorConfig;
 }
 
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
@@ -46,6 +53,7 @@ export function registerGlobalSearchRoutes(
   deps: GlobalSearchRouteDeps,
 ): void {
   const { service, gates, roleGate } = deps;
+  const floor = deps.responseFloor ?? responseFloorFromEnv();
   const noStore: PreHandler = async (_request, reply) => {
     reply.header("Cache-Control", "no-store");
   };
@@ -87,26 +95,28 @@ export function registerGlobalSearchRoutes(
         auditRead: { resourceKind: "message", list: true, filterOmit: ["q", "cursor"] },
       },
     },
-    async (request) => {
-      const { organizationId, userId } = actorOf(request);
-      const ctx = request.context;
-      const query = parse(GlobalSearchQuerySchema, request.query);
-      return service.search({
-        organizationId,
-        userId,
-        query: query.q,
-        cursor: query.cursor,
-        limit: query.limit,
-        serve: gates.contextOf(request),
-        audit: {
+    // F1: every outcome after the gates (hits, empty, refine, error) takes at least the floor.
+    (request) =>
+      withResponseFloor(async () => {
+        const { organizationId, userId } = actorOf(request);
+        const ctx = request.context;
+        const query = parse(GlobalSearchQuerySchema, request.query);
+        return service.search({
           organizationId,
           userId,
-          correlationId: ctx.correlationId,
-          requestId: request.id,
-          sourceIp: ctx.ip,
-          userAgent: ctx.userAgent,
-        },
-      });
-    },
+          query: query.q,
+          cursor: query.cursor,
+          limit: query.limit,
+          serve: gates.contextOf(request),
+          audit: {
+            organizationId,
+            userId,
+            correlationId: ctx.correlationId,
+            requestId: request.id,
+            sourceIp: ctx.ip,
+            userAgent: ctx.userAgent,
+          },
+        });
+      }, floor),
   );
 }

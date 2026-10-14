@@ -15,7 +15,7 @@
 // `member-category-gate.test.ts` fails when a new write path skips it.
 import { schema } from "@wardenx/db";
 import { WardenXError } from "@wardenx/types";
-import { and, eq, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import { GLOBAL_SEARCH_ROLE_POLICY } from "./global-search/role-gate";
 import type { Tx } from "./messaging-write-core";
 
@@ -75,4 +75,45 @@ export async function assertMemberCategoryAllowed(
     "this identity's role category cannot be a channel member",
     422,
   );
+}
+
+/**
+ * ADR-0058 F6 go-live check: does any live `channel_member` row belong to an identity holding an excluded role category?
+ * The meaning of runbook Stage 6b exactly: a membership not revoked, an unremoved channel member, an unexpired grant, and a
+ * disabled role still counts (deny wins). The category set is the one the write gate uses (anything the search role gate
+ * does not allow or switch off is excluded).
+ */
+export async function excludedChannelMembersExist(tx: Tx, orgId: string): Promise<boolean> {
+  const rows = await tx
+    .select({ channelId: schema.channelMembers.channelId })
+    .from(schema.channelMembers)
+    .innerJoin(
+      schema.memberships,
+      and(
+        eq(schema.memberships.userId, schema.channelMembers.userId),
+        eq(schema.memberships.organizationId, schema.channelMembers.organizationId),
+      ),
+    )
+    .innerJoin(
+      schema.membershipRoles,
+      and(
+        eq(schema.membershipRoles.membershipId, schema.memberships.id),
+        eq(schema.membershipRoles.organizationId, schema.memberships.organizationId),
+      ),
+    )
+    .innerJoin(schema.roles, eq(schema.roles.id, schema.membershipRoles.roleId))
+    .where(
+      and(
+        eq(schema.channelMembers.organizationId, orgId),
+        ne(schema.memberships.status, "revoked"),
+        isNull(schema.channelMembers.removedAt),
+        notInArray(schema.roles.category, ALLOWED_CATEGORIES as never),
+        or(
+          isNull(schema.membershipRoles.expiresAt),
+          sql`${schema.membershipRoles.expiresAt} > now()`,
+        ),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
 }

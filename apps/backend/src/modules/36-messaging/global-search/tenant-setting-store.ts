@@ -19,6 +19,10 @@ export interface TenantSearchSetting {
   readonly changedAt: Date | null;
   readonly purgeRequestedAt: Date | null;
   readonly purgeCompletedAt: Date | null;
+  /** F5: the notice acknowledged at the last ON flip; all three null until the first ON. */
+  readonly noticeAckVersion: string | null;
+  readonly noticeAckByUserId: string | null;
+  readonly noticeAckAt: Date | null;
 }
 
 const ABSENT: TenantSearchSetting = {
@@ -26,6 +30,9 @@ const ABSENT: TenantSearchSetting = {
   changedAt: null,
   purgeRequestedAt: null,
   purgeCompletedAt: null,
+  noticeAckVersion: null,
+  noticeAckByUserId: null,
+  noticeAckAt: null,
 };
 
 export async function readTenantSearchSettingInTx(
@@ -39,6 +46,9 @@ export async function readTenantSearchSettingInTx(
       changedAt: SETTING.changedAt,
       purgeRequestedAt: SETTING.purgeRequestedAt,
       purgeCompletedAt: SETTING.purgeCompletedAt,
+      noticeAckVersion: SETTING.noticeAckVersion,
+      noticeAckByUserId: SETTING.noticeAckByUserId,
+      noticeAckAt: SETTING.noticeAckAt,
     })
     .from(SETTING)
     .where(eq(SETTING.organizationId, organizationId))

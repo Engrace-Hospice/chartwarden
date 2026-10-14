@@ -5,6 +5,8 @@
 //    check. OFF is always accepted and requests the purge (C2's sweep deletes the rows).
 //  * The flip takes the setting row FOR UPDATE: the index writer holds it FOR SHARE for an insert and the purge holds it FOR
 //    UPDATE, so an OFF->ON cannot interleave with either. No row yet means nothing to lock and nothing writing.
+//  * ON also needs the current discoverability notice acknowledged (F5, notice.ts): 409 GLOBAL_SEARCH_NOTICE_NOT_ACKNOWLEDGED
+//    (NOTICE_ACK_REQUIRED / NOTICE_ACK_STALE), checked before anything is read; the actor, time and version are stored.
 //  * EVERY enabled flip sets `changed_at = now()` (C2's reconcile treats a `ready` index as trustworthy only while
 //    `reconciled_at >= changed_at`) and `changed_by_user_id`. A repeat of the current value is not a flip: it writes nothing,
 //    except that OFF always (re)requests the purge. Audit is the write-audit trigger on the table (who/when/old/new).
@@ -19,6 +21,7 @@ import {
   failedChecks,
   toChecklist,
 } from "./prerequisites";
+import { CURRENT_NOTICE, type GlobalSearchNotice } from "./notice";
 import { type TenantSearchSetting, readTenantSearchSettingInTx } from "./tenant-setting-store";
 
 const HTTP_CONFLICT = 409;
@@ -41,6 +44,14 @@ export interface GlobalSearchSettingsView {
   readonly purgeCompletedAt: string | null;
   readonly checklist: GlobalSearchChecklist;
   readonly rebuild: RebuildProgress | null;
+  /** F5: the notice the enable PUT must acknowledge (`acknowledgedNoticeVersion` = `notice.version`). */
+  readonly notice: GlobalSearchNotice;
+  /** F5: who acknowledged which notice version when the tenant was last switched ON; null before the first ON. */
+  readonly noticeAcknowledgement: {
+    readonly version: string;
+    readonly byUserId: string;
+    readonly at: string;
+  } | null;
 }
 
 export interface GlobalSearchSettingsService {
@@ -48,6 +59,7 @@ export interface GlobalSearchSettingsService {
   set(
     actor: { readonly organizationId: string; readonly userId: string },
     enabled: boolean,
+    acknowledgedNoticeVersion?: string,
   ): Promise<GlobalSearchSettingsView>;
 }
 
@@ -58,6 +70,8 @@ const CHECK_MESSAGES: Record<ChecklistFailureCode, string> = {
   ESCROW_NOT_ATTESTED: "The key escrow and restore drill are not on record.",
   LEAKAGE_NOT_ATTESTED: "The measured leakage experiment and its sign-off are not on record.",
   RATE_LIMIT_INACTIVE: "The per-route search rate limit is not active.",
+  EXCLUDED_MEMBERS_PRESENT:
+    "Some channels still have members holding a patient-family, external-auditor or platform-staff role; remove them first.",
   PURGE_IN_PROGRESS:
     "The purge started by the last switch-off has not finished; wait for it to complete.",
 };
@@ -72,6 +86,33 @@ export class PrerequisitesUnmetError extends WardenXError {
     );
     this.name = "PrerequisitesUnmetError";
   }
+}
+
+/** F5: switching ON without acknowledging the CURRENT notice version. 409 so the UI re-reads the GET and shows the new text. */
+export class NoticeNotAcknowledgedError extends WardenXError {
+  constructor(code: "NOTICE_ACK_REQUIRED" | "NOTICE_ACK_STALE") {
+    super(
+      "GLOBAL_SEARCH_NOTICE_NOT_ACKNOWLEDGED",
+      "Global search cannot be switched on until the current discoverability notice is acknowledged.",
+      HTTP_CONFLICT,
+      [
+        {
+          field: "acknowledgedNoticeVersion",
+          code,
+          message:
+            code === "NOTICE_ACK_REQUIRED"
+              ? "Send acknowledgedNoticeVersion with the notice version returned by GET."
+              : `The notice changed; acknowledge version ${CURRENT_NOTICE.version}.`,
+        },
+      ],
+    );
+    this.name = "NoticeNotAcknowledgedError";
+  }
+}
+
+function assertNoticeAcknowledged(version: string | undefined): void {
+  if (version === undefined || version === "") throw new NoticeNotAcknowledgedError("NOTICE_ACK_REQUIRED");
+  if (version !== CURRENT_NOTICE.version) throw new NoticeNotAcknowledgedError("NOTICE_ACK_STALE");
 }
 
 const iso = (d: Date | string | null): string | null => (d ? new Date(d).toISOString() : null);
@@ -123,6 +164,15 @@ function toView(
     purgeCompletedAt: iso(setting.purgeCompletedAt),
     checklist,
     rebuild,
+    notice: CURRENT_NOTICE,
+    noticeAcknowledgement:
+      setting.noticeAckVersion && setting.noticeAckByUserId && setting.noticeAckAt
+        ? {
+            version: setting.noticeAckVersion,
+            byUserId: setting.noticeAckByUserId,
+            at: new Date(setting.noticeAckAt).toISOString(),
+          }
+        : null,
   };
 }
 
@@ -138,22 +188,25 @@ export function createGlobalSearchSettingsService(deps: {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const setting = await readTenantSearchSettingInTx(tx, organizationId);
         const legacy = await prerequisites.legacyBodiesRemain(tx, organizationId);
+        const excluded = await prerequisites.excludedMembersRemain(tx, organizationId);
         const rebuild = await readRebuildProgress(
           tx,
           organizationId,
           setting,
           attestations.platformUpdatedAt,
         );
-        return toView(setting, toChecklist(attestations, legacy), rebuild);
+        return toView(setting, toChecklist(attestations, legacy, excluded), rebuild);
       });
     },
 
-    async set({ organizationId, userId }, enabled) {
+    async set({ organizationId, userId }, enabled, acknowledgedNoticeVersion) {
+      if (enabled) assertNoticeAcknowledged(acknowledgedNoticeVersion);
       const attestations = await prerequisites.readAttestations(organizationId);
       return withOrgContext(db, { organizationId, userId }, async (tx) => {
         const current = await readTenantSearchSettingInTx(tx, organizationId, { lock: "update" });
         const legacy = await prerequisites.legacyBodiesRemain(tx, organizationId);
-        const checklist = toChecklist(attestations, legacy);
+        const excluded = await prerequisites.excludedMembersRemain(tx, organizationId);
+        const checklist = toChecklist(attestations, legacy, excluded);
         if (enabled && !current.enabled) {
           // The purge only runs while OFF and the serve gate refuses while it is pending, so ON now would stay stuck closed.
           const purgePending =
@@ -174,11 +227,15 @@ export function createGlobalSearchSettingsService(deps: {
           return toView(current, checklist, rebuild);
         }
         // OFF (re)requests the purge and re-opens `purge_completed_at` so the sweep runs; ON leaves the purge columns alone.
+        // ON records the acknowledgement (F5); OFF leaves the last one in place.
+        const ackVersion = enabled ? acknowledgedNoticeVersion : null;
         await tx.execute(sql`
           INSERT INTO tenant_messaging_search_setting
-            (organization_id, enabled, changed_by_user_id, changed_at, purge_requested_at, purge_completed_at)
+            (organization_id, enabled, changed_by_user_id, changed_at, purge_requested_at, purge_completed_at,
+             notice_ack_version, notice_ack_by_user_id, notice_ack_at)
           VALUES (${organizationId}, ${enabled}, ${userId}, now(),
-                  ${enabled ? null : sql`now()`}::timestamptz, NULL)
+                  ${enabled ? null : sql`now()`}::timestamptz, NULL,
+                  ${ackVersion}, ${ackVersion ? userId : null}::uuid, ${ackVersion ? sql`now()` : null}::timestamptz)
           ON CONFLICT (organization_id) DO UPDATE SET
             enabled = EXCLUDED.enabled,
             changed_by_user_id = EXCLUDED.changed_by_user_id,
@@ -187,7 +244,14 @@ export function createGlobalSearchSettingsService(deps: {
             purge_requested_at = CASE WHEN EXCLUDED.enabled
                                       THEN tenant_messaging_search_setting.purge_requested_at ELSE now() END,
             purge_completed_at = CASE WHEN EXCLUDED.enabled
-                                      THEN tenant_messaging_search_setting.purge_completed_at ELSE NULL END`);
+                                      THEN tenant_messaging_search_setting.purge_completed_at ELSE NULL END,
+            notice_ack_version = COALESCE(EXCLUDED.notice_ack_version, tenant_messaging_search_setting.notice_ack_version),
+            notice_ack_by_user_id = CASE WHEN EXCLUDED.notice_ack_version IS NULL
+                                         THEN tenant_messaging_search_setting.notice_ack_by_user_id
+                                         ELSE EXCLUDED.notice_ack_by_user_id END,
+            notice_ack_at = CASE WHEN EXCLUDED.notice_ack_version IS NULL
+                                 THEN tenant_messaging_search_setting.notice_ack_at
+                                 ELSE EXCLUDED.notice_ack_at END`);
         const next = await readTenantSearchSettingInTx(tx, organizationId);
         const rebuild = await readRebuildProgress(
           tx,

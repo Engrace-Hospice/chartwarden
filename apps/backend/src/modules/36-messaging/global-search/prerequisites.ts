@@ -7,6 +7,7 @@
 //   (b2) leakage attested       - the measured leakage experiment passed and was signed (platform flag
 //                                 `messaging.global_search_leakage_attested`); gates the tenant ON only
 //   (c) P2 deployed             - the per-route rate limit is active (`rateLimitActive`, injected by the composition root)
+//   (b3) no excluded members   - no live channel member holds a patient_family / external_auditor / platform_staff role (F6)
 //   (d) rebuild complete        - NOT checked here: a tenant must be ON for the rebuild to run at all, so it is enforced by the
 //                                 query path (closed until the index is `ready`) and reported by GET as `rebuild`
 //
@@ -15,6 +16,7 @@
 import type { DbClient } from "@wardenx/db";
 import { sql } from "drizzle-orm";
 import { readPlatformGlobalFlag } from "../../../bootstrap/feature-flag-store";
+import { excludedChannelMembersExist } from "../member-category-gate";
 import type { Tx } from "../messaging-write-core";
 import { createPlatformSearchFlag } from "./platform-flag";
 
@@ -31,6 +33,8 @@ export type ChecklistFailureCode =
   | "ESCROW_NOT_ATTESTED"
   | "LEAKAGE_NOT_ATTESTED"
   | "RATE_LIMIT_INACTIVE"
+  /** F6: a live channel member holds an excluded role category (patient_family / external_auditor / platform_staff). */
+  | "EXCLUDED_MEMBERS_PRESENT"
   /** Not a checklist item: an earlier OFF purge has not finished, so ON would leave search stuck closed. */
   | "PURGE_IN_PROGRESS";
 
@@ -40,6 +44,8 @@ export interface GlobalSearchChecklist {
   readonly escrowAttested: boolean;
   readonly leakageAttested: boolean;
   readonly rateLimitActive: boolean;
+  /** F6: zero live channel members hold an excluded role category (the runbook Stage 6b query, computed). */
+  readonly excludedMembersCleared: boolean;
 }
 
 export interface GlobalSearchAttestations {
@@ -56,11 +62,14 @@ export interface GlobalSearchPrerequisites {
   readAttestations(organizationId: string): Promise<GlobalSearchAttestations>;
   /** True while any `message` or `message_revision` body, or poll option label, of the org is still on the legacy envelope. */
   legacyBodiesRemain(tx: Tx, organizationId: string): Promise<boolean>;
+  /** F6: true while any live channel member holds a role of an excluded category (same categories as the write gate). */
+  excludedMembersRemain(tx: Tx, organizationId: string): Promise<boolean>;
 }
 
 export function toChecklist(
   attestations: GlobalSearchAttestations,
   legacyBodiesRemain: boolean,
+  excludedMembersRemain: boolean,
 ): GlobalSearchChecklist {
   return {
     platformEnabled: attestations.platformEnabled,
@@ -68,6 +77,7 @@ export function toChecklist(
     escrowAttested: attestations.escrowAttested,
     leakageAttested: attestations.leakageAttested,
     rateLimitActive: attestations.rateLimitActive,
+    excludedMembersCleared: !excludedMembersRemain,
   };
 }
 
@@ -79,6 +89,7 @@ export function failedChecks(checklist: GlobalSearchChecklist): ChecklistFailure
   if (!checklist.escrowAttested) failed.push("ESCROW_NOT_ATTESTED");
   if (!checklist.leakageAttested) failed.push("LEAKAGE_NOT_ATTESTED");
   if (!checklist.rateLimitActive) failed.push("RATE_LIMIT_INACTIVE");
+  if (!checklist.excludedMembersCleared) failed.push("EXCLUDED_MEMBERS_PRESENT");
   return failed;
 }
 
@@ -110,6 +121,7 @@ export function createGlobalSearchPrerequisites(
         platformUpdatedAt: platformFlag.updatedAt,
       };
     },
+    excludedMembersRemain: (tx, organizationId) => excludedChannelMembersExist(tx, organizationId),
     // ponytail: a full scan per org when everything is migrated (nothing indexes the version byte); this is an admin-only
     // screen and flip, so add a partial index only if a tenant's history makes it measurable.
     async legacyBodiesRemain(tx, organizationId) {

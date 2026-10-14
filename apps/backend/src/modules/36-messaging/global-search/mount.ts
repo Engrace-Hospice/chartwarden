@@ -25,11 +25,14 @@ import { type ChannelAuthority, createGlobalSearchService } from "./query-servic
 import { createRoleGate } from "./role-gate";
 import { createUnavailableSearchKeyProvider } from "./search-key-provider";
 import { createServeGates } from "./serve-gate";
+import type { ResponseFloorConfig } from "./timing-floor";
 import { createTenantSearchSettingStore } from "./tenant-setting-store";
 
 export interface GlobalSearchMountOptions {
   readonly keys?: SearchKeyProvider;
   readonly rateLimit?: GlobalSearchRateLimit;
+  /** Tests only: override the response-time floor (default: production values, env-overridable outside production). */
+  readonly responseFloor?: ResponseFloorConfig;
   readonly cipher?: MessageBodyCipher;
   readonly part2Gate?: Part2ChannelGate;
   /** Tests only: the body-opening port (a spy proves what was, and was not, opened). */
@@ -68,5 +71,6 @@ export function mountGlobalSearchRoutes(
     }),
     roleGate: createRoleGate(db),
     ...(opts.rateLimit ? { rateLimit: opts.rateLimit } : {}),
+    ...(opts.responseFloor ? { responseFloor: opts.responseFloor } : {}),
   });
 }

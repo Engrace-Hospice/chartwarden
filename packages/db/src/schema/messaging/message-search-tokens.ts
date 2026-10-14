@@ -110,8 +110,16 @@ export const tenantMessagingSearchSettings = pgTable(
     changedAt: timestamp("changed_at", { withTimezone: true }).notNull().defaultNow(),
     purgeRequestedAt: timestamp("purge_requested_at", { withTimezone: true }),
     purgeCompletedAt: timestamp("purge_completed_at", { withTimezone: true }),
+    /** ADR-0058 review F5: the discoverability notice version the admin acknowledged when last switching ON, who, and when. */
+    noticeAckVersion: text("notice_ack_version"),
+    noticeAckByUserId: uuid("notice_ack_by_user_id").references(() => users.id),
+    noticeAckAt: timestamp("notice_ack_at", { withTimezone: true }),
   },
   (t) => ({
+    noticeAckAllOrNone: check(
+      "tenant_messaging_search_setting_notice_ack_all_or_none",
+      sql`(${t.noticeAckVersion} IS NULL) = (${t.noticeAckByUserId} IS NULL) AND (${t.noticeAckVersion} IS NULL) = (${t.noticeAckAt} IS NULL)`,
+    ),
     purgeOrder: check(
       "tenant_messaging_search_setting_purge_order",
       sql`${t.purgeCompletedAt} IS NULL OR ${t.purgeRequestedAt} IS NOT NULL`,

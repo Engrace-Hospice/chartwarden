@@ -2,7 +2,7 @@
 //
 //   GET /api/v1/messaging/global-search/settings   the switch, the go-live checklist and the rebuild progress
 //                                                  (messaging.global_search.manage)
-//   PUT /api/v1/messaging/global-search/settings   { enabled }  (messaging.global_search.manage + a fresh step-up for
+//   PUT /api/v1/messaging/global-search/settings   { enabled, acknowledgedNoticeVersion? }  (required when enabled; F5)  (messaging.global_search.manage + a fresh step-up for
 //                                                  `messaging.global_search.configure`); ON needs the checklist (409
 //                                                  GLOBAL_SEARCH_PREREQUISITES_UNMET with one detail per failing check)
 //
@@ -56,8 +56,11 @@ export function registerGlobalSearchSettingsRoutes(
     "/api/v1/messaging/global-search/settings",
     { preHandler: [MANAGE, STEP_UP] },
     async (request) => {
-      const { enabled } = parse(PutGlobalSearchSettingsBodySchema, request.body);
-      return service.set(actorOf(request), enabled);
+      const { enabled, acknowledgedNoticeVersion } = parse(
+        PutGlobalSearchSettingsBodySchema,
+        request.body,
+      );
+      return service.set(actorOf(request), enabled, acknowledgedNoticeVersion);
     },
   );
 }

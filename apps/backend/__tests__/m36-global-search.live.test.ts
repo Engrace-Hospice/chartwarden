@@ -87,6 +87,10 @@ import { registerGlobalSearchRoutes } from "../src/modules/36-messaging/routes/g
 import { registerMessagingRoutes } from "../src/modules/36-messaging/routes/messaging-routes";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
+// F1: the production response floor would add seconds to every route call; tests shrink it (the floor itself is covered in the query unit test).
+process.env.WARDENX_GLOBAL_SEARCH_FLOOR_MS = "0";
+process.env.WARDENX_GLOBAL_SEARCH_JITTER_MS = "0";
+
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];

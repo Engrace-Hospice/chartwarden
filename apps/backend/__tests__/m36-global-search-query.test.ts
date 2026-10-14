@@ -36,6 +36,10 @@ import {
 } from "../src/modules/36-messaging/global-search/role-gate";
 import { registerGlobalSearchRoutes } from "../src/modules/36-messaging/routes/global-search-routes";
 
+// F1: the production response floor would add seconds to every route call; tests shrink it (the floor itself is covered in the query unit test).
+process.env.WARDENX_GLOBAL_SEARCH_FLOOR_MS = "0";
+process.env.WARDENX_GLOBAL_SEARCH_JITTER_MS = "0";
+
 const ROOT = join(__dirname, "../../..");
 const EXCLUDED: readonly RoleCategory[] = ["patient_family", "external_auditor", "platform_staff"];
 const MESSAGING_READ = "messaging.read";
@@ -230,6 +234,7 @@ describe("GET /api/v1/messaging/search gate order", () => {
     rateLimit?: (() => Promise<void>) | undefined;
     role?: boolean;
     withLimiter?: boolean;
+    responseFloor?: { floorMs: number; jitterMs: number };
   }) {
     registerEffectivePermissionResolver(
       createInMemoryEffectivePermissionStore([
@@ -269,6 +274,7 @@ describe("GET /api/v1/messaging/search gate order", () => {
         },
       },
       ...(opts.withLimiter === false ? {} : { rateLimit: opts.rateLimit ?? at("rateLimit") }),
+      ...(opts.responseFloor ? { responseFloor: opts.responseFloor } : {}),
     });
     await app.ready();
   }
@@ -287,6 +293,14 @@ describe("GET /api/v1/messaging/search gate order", () => {
     resetAbacRegistry();
     resetAuthorizationContract();
     resetRbacEngine();
+  });
+
+  it("holds an empty answer to the response floor on the route (F1)", async () => {
+    await build({ responseFloor: { floorMs: 150, jitterMs: 0 } });
+    const started = performance.now();
+    const res = await get();
+    expect(res.statusCode).toBe(200);
+    expect(performance.now() - started).toBeGreaterThanOrEqual(140);
   });
 
   it("runs permission, limiter, platform, tenant, serve, role, then the service, and sets Cache-Control: no-store", async () => {

@@ -906,3 +906,31 @@ gives up, so response time varies with the amount of hidden candidate volume bel
 signal than the `scanCapped` bit, **not removed** by the field derivation, and only bounded by the 30/min/user and 300/min/org
 limits, the 3 s decrypt timeout and the 5 s statement timeout, with the limiter failing closed. It is recorded as a residual risk; no
 constant-time padding of the scan is implemented.
+
+## Amendment 2026-10-13: timing floor, tenant notice acknowledgement and the computed member check (built; Accepted by decision, review requirement NOT satisfied)
+
+Three blockers from the security review are built on `feat/m36-phase2-closeout`. The Status is unchanged: **Accepted** by the user's decision,
+with the "Design review requirement" **not satisfied** (human adoption, the measured leakage experiment, the HIPAA risk-analysis entry and the
+product owner's residual-risk acceptance are still pending). No tenant may be enabled in production until it is.
+
+- **F1 - rare-term existence timing oracle: response-time floor.** The candidate scan counts hidden candidates before the authority filter, so
+  "no message contains X" returned faster than "a channel I cannot read contains X". `GET /api/v1/messaging/search` now holds EVERY outcome after
+  the gates (hits, empty, refine, errors) to a minimum of `SEARCH_RESPONSE_FLOOR_MS` (1500) plus a per-request random jitter below
+  `SEARCH_RESPONSE_JITTER_MS` (500) (`global-search/timing-floor.ts`). The floor never shortens a slower request. Both are named constants; the
+  env vars `WARDENX_GLOBAL_SEARCH_FLOOR_MS` / `WARDENX_GLOBAL_SEARCH_JITTER_MS` override them for tests only and are ignored when
+  `NODE_ENV=production`. **Residual:** a request that needs more than one round, or whose authority calls exceed the floor, still takes longer, so
+  hidden volume beyond the one-round bound remains timing-visible (it is the same population as the `scanCapped` threshold oracle above, and is
+  bounded by the 30/min/user rate limit). The floor value was sized against the documented one-round cost, NOT yet against a measurement on a
+  production-shaped corpus: the leakage experiment must re-validate it.
+- **F5 - tenant notice and acknowledgement (review condition 12).** `PUT /api/v1/messaging/global-search/settings` with `enabled: true` now
+  requires `acknowledgedNoticeVersion` equal to the server constant `NOTICE_VERSION` (`global-search/notice.ts`, the only place the notice text
+  lives). Missing or stale is `409 GLOBAL_SEARCH_NOTICE_NOT_ACKNOWLEDGED` (detail codes `NOTICE_ACK_REQUIRED` / `NOTICE_ACK_STALE`), checked before
+  the checklist. The acknowledging user, time and version are stored on `tenant_messaging_search_setting` (migration 1095: `notice_ack_version`,
+  `notice_ack_by_user_id`, `notice_ack_at`, all-or-none CHECK) and audited by the table's existing write-audit trigger. OFF needs no acknowledgement and
+  leaves the last one on record. `GET` returns `notice {version, text}` and `noticeAcknowledgement`. Changing the text requires bumping the version.
+  This builds the screen-side half of condition 12; the written notice to the tenant, BAA/DPA/subprocessor review and data-map entries remain human work.
+- **F6 - excluded-category members are a checklist item.** Runbook Stage 6b's SQL is now computed: the sixth checklist item `excludedMembersCleared`
+  (failure code `EXCLUDED_MEMBERS_PRESENT`, 409 with the other failing checks) is false while any live `channel_member` (not removed, membership not
+  revoked, grant unexpired, disabled role still counting) belongs to an identity holding a role outside the search role gate's allow/off categories.
+  It uses the same category set as `member-category-gate.ts` (derived from `GLOBAL_SEARCH_ROLE_POLICY`). The second known gap (a member with no
+  membership in the org) is still invisible to it and remains a tracked follow-up.

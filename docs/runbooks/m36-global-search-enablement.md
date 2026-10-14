@@ -106,7 +106,10 @@ Then:
    (`POST /api/v1/platform/feature-flags/:flagKey/kill-switch` is the audited emergency form). It overrides every tenant ON and stops the query
    path and the indexer on the next request.
 
-## Stage 6b: pre-enablement check for excluded identities already in channels (KNOWN GAP)
+## Stage 6b: pre-enablement check for excluded identities already in channels (now a checklist item)
+
+Since the F6 follow-up this check is computed: `GET /api/v1/messaging/global-search/settings` reports `checklist.excludedMembersCleared`, and the enable PUT is refused
+with `EXCLUDED_MEMBERS_PRESENT` while it is false. The manual SQL below is kept to list WHICH rows to remove (the checklist only says whether any exist).
 
 The member-category gate (`member-category-gate.ts`, review finding F6) refuses NEW `channel_member` writes for an identity holding a
 `patient_family`, `external_auditor` or `platform_staff` role. It does not sweep rows written before the gate shipped, nor rows whose
@@ -139,8 +142,12 @@ Tracked as a follow-up in the review record (F6 residual).
 
 ## Stage 7: switch one tenant on, then verify the index build
 
-1. An org admin with a fresh step-up: `PUT /api/v1/messaging/global-search/settings {"enabled":true}`. A 409 lists the failing checks; fix those,
-   do not work around them.
+1. An org admin with a fresh step-up: first `GET /api/v1/messaging/global-search/settings`, show `notice.text` to the admin (the written tenant notice of
+   whole-history discoverability must already have been sent, review condition 12), then `PUT ... {"enabled":true,"acknowledgedNoticeVersion":"<notice.version>"}`.
+   A 409 `GLOBAL_SEARCH_NOTICE_NOT_ACKNOWLEDGED` means the acknowledgement is missing or the notice changed (re-read the GET). A 409
+   `GLOBAL_SEARCH_PREREQUISITES_UNMET` lists the failing checks; fix those, do not work around them. Who acknowledged which version and when is stored
+   on the setting row (`notice_ack_*`) and is in the audit trail.
+   Every search response is held to a fixed minimum duration (about 1.5 to 2 s, ADR-0058 amendment, F1): a search that returns instantly is a bug.
 2. Turning ON starts the rebuild: the `messaging.search_maintenance` worker reconciles each enabled tenant on its tick. There is no manual build
    command, and none is needed. It is resumable and safe to leave running.
 3. Watch `GET /api/v1/messaging/global-search/settings`: `rebuild` progresses to complete and the index to `ready`. Until then queries are
