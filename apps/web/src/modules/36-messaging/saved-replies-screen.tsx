@@ -5,6 +5,7 @@
 import { ErrorState, InlineAlert, LoadingSpinner, PageHeader, useApiClient } from "@wardenx/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { HandoffPolicySection } from "./handoff-policy-section";
 import { PlatformReplyPanel } from "./platform-reply-panel";
 import {
   type PlatformReplyAdmin,
@@ -215,6 +216,7 @@ export function SavedReplies(): JSX.Element {
           />
           <PlatformReplyPanel items={admin.platform} writes={overlayWrites} />
           <SbarPolicySection />
+          <HandoffPolicySection />
         </>
       ) : null}
     </div>

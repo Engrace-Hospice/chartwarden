@@ -84,7 +84,7 @@ All tables: `organization_id NOT NULL`, RLS + FORCE (`app.org_id`), PHI write-au
 |---|---|
 | `clinical_link` | `(message_id, link_kind, source_module, source_id)`; kinds: `medication`, `order`, `care_plan`, `assessment`, `visit`, `document`, `idg_meeting`. Read-through; opening re-checks source-module permission |
 | `communication_task` (+ `_event`) | `message_id`, `patient_id`, `assignee_id`, `due_at`, `status` (`open/accepted/done/cancelled`), `closed_reason` |
-| `clinical_handoff` + `clinical_handoff_item` | `from_user_id`, `to_user_id`, `shift_ref` (M17), `state` (`draft/offered/accepted/declined/expired`), `accepted_at`; items link patients + open work |
+| `clinical_handoff` + `clinical_handoff_item` | `from_user_id`, `to_user_id`, `shift_ref` (M17), `state` (`draft/offered/accepted/declined/expired`), `accepted_at`; items link patients + open work Amended by [ADR-0062](../adr/ADR-0062-messaging-clinical-handoffs.md): no `shift_ref`, no stored `draft`, adds `cancelled`, accountability and acceptance are per item |
 | `chart_promotion_request` | `message_id`, `target_module`, `target_kind`, `status` (`proposed/accepted/rejected/superseded`), `result_ref` (id in the owning module), `requested_by`, `decided_by` |
 
 ### Phase 4

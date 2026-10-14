@@ -66,6 +66,61 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     enabled: true,
   },
   {
+    eventType: "m36.handoff.offered",
+    category: "clinical_routine",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    // WP 3.5: the receiver is told a handoff is waiting, in-app only, with generic text (no patient, no item).
+    resolverArgs: { roleKeys: [], userIdPaths: ["toUserId"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.handoff.accepted",
+    category: "clinical_routine",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    // WP 3.5: the sender is told items were accepted, in-app only.
+    resolverArgs: { roleKeys: [], userIdPaths: ["fromUserId"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.handoff.unaccepted",
+    category: "clinical_routine",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    // WP 3.5: the sender is told items were not accepted and stay with them, in-app only.
+    resolverArgs: { roleKeys: [], userIdPaths: ["fromUserId"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.handoff.no_supervisor",
+    category: "clinical_routine",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    // WP 3.5: the sender is told no supervisor could be reached about an unaccepted handoff (loud fallback).
+    resolverArgs: { roleKeys: [], userIdPaths: ["fromUserId"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.handoff.supervisor_review",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    // WP 3.5: supervisors are told a handoff went unaccepted. Org-wide by role; tenants re-aim it through the alert-rule admin.
+    resolverArgs: { roleKeys: ["clinical_supervisor", "don"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
     eventType: "m36.message.schedule_blocked",
     category: "clinical_routine",
     severityFloor: "info",

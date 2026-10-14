@@ -35,8 +35,11 @@ export type TaskEventType = (typeof TASK_EVENT_TYPES)[number];
 export const TASK_ACTOR_KINDS = ["user", "system"] as const;
 export type TaskActorKind = (typeof TASK_ACTOR_KINDS)[number];
 
-/** Why an assignee changed: a person did it, or offboarding did. Stored as the `reassigned` event's reason code. */
-export const TASK_REASSIGN_SOURCES = ["manual", "offboarding"] as const;
+/**
+ * Why an assignee changed: a person did it, offboarding did, or the task moved with an accepted handoff item (WP 3.5).
+ * Stored as the `reassigned` event's reason code.
+ */
+export const TASK_REASSIGN_SOURCES = ["manual", "offboarding", "handoff"] as const;
 export type TaskReassignSource = (typeof TASK_REASSIGN_SOURCES)[number];
 
 /** The window a due instant may fall in, relative to now (a short grace for clock skew, then a year). */

@@ -30,6 +30,14 @@ export interface RouteReadAuditEmit {
    */
   readonly patientIdPayloadPath?: string | readonly string[];
   /**
+   * For a SINGLE-resource read that discloses SEVERAL patients (a handoff lists up to 50): dot path to an ARRAY in the
+   * RESPONSE payload plus the key holding each element's patient id. The emitter writes ONE `<kind>.viewed` event per
+   * distinct patient (all against the same resource id), so the §164.528 accounting join sees every patient disclosed,
+   * not just the first. Elements without a string at the key (a restricted row) are skipped. Combine with
+   * `resourceIdParam`; the first patient found is also the primary attribution when no other path names one.
+   */
+  readonly patientIdsPayload?: { readonly path: string; readonly key: string };
+  /**
    * Route param holding the specific resource's id (a single chart open). Defaults to
    * `patientIdParam` when omitted — a patient-scoped read is accounted against the patient.
    */

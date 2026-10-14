@@ -43,6 +43,7 @@ import {
   registerClinicalLinkRoutes,
   validateRichBodyLinks,
 } from "./clinical-link-routes";
+import { DISABLED_HANDOFFS, type HandoffRouteDeps, registerHandoffRoutes } from "./handoff-routes";
 import {
   AddMemberBodySchema,
   AlertParamsSchema,
@@ -105,6 +106,8 @@ export interface MessagingRouteDeps {
   sbar?: SbarRouteDeps;
   /** WP 3.4: communication tasks (flag + service). Omitted => flag off: every task route 404s and the list answers disabled. */
   tasks?: TaskRouteDeps;
+  /** WP 3.5: clinical handoffs (flag + service). Omitted => flag off: every handoff route 404s and the list answers disabled. */
+  handoffs?: HandoffRouteDeps;
 }
 
 /**
@@ -368,6 +371,9 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     send: SEND,
     sendToChannel: SEND_TO_CHANNEL,
   });
+
+  // --- WP 3.5: clinical handoffs (a set of open-work pointers offered to a colleague who accepts per item; flag-gated) ---
+  registerHandoffRoutes(app, deps.handoffs ?? DISABLED_HANDOFFS, { read: READ, send: SEND });
 
   // Structured autocomplete is scoped to a channel whose effective visibility has already been
   // revalidated. Patient results are intentionally limited by the service to the linked care-team

@@ -262,6 +262,58 @@ describe("read-audit emission — patient attribution (GAP-079)", () => {
   });
 });
 
+describe("read-audit emission for a multi-patient read (patientIdsPayload)", () => {
+  it("emits one <kind>.viewed event per distinct patient, skipping rows without a patient id", async () => {
+    const app = makeApp();
+    app.get(
+      "/api/v1/patients/handoff/:handoffId",
+      {
+        config: {
+          auditRead: {
+            resourceKind: "clinical_handoff",
+            resourceIdParam: "handoffId",
+            patientIdsPayload: { path: "handoff.items", key: "patient_id" },
+          },
+        },
+      },
+      async () => ({
+        handoff: {
+          items: [
+            { patient_id: "p1" },
+            { patient_id: "p2" },
+            { patient_id: "p1" },
+            { patient_id: null },
+          ],
+        },
+      }),
+    );
+    await app.inject({ method: "GET", url: "/api/v1/patients/handoff/h1" });
+    expect(captured.map((r) => r.context?.patientId).sort()).toEqual(["p1", "p2"]);
+    expect(captured.every((r) => r.resourceId === "h1")).toBe(true);
+    expect(captured.every((r) => r.eventType === "clinical_handoff.viewed")).toBe(true);
+  });
+
+  it("still emits one unattributed event when the array is empty", async () => {
+    const app = makeApp();
+    app.get(
+      "/api/v1/patients/handoff/:handoffId",
+      {
+        config: {
+          auditRead: {
+            resourceKind: "clinical_handoff",
+            resourceIdParam: "handoffId",
+            patientIdsPayload: { path: "handoff.items", key: "patient_id" },
+          },
+        },
+      },
+      async () => ({ handoff: { items: [] } }),
+    );
+    await app.inject({ method: "GET", url: "/api/v1/patients/handoff/h1" });
+    expect(captured).toHaveLength(1);
+    expect(captured[0].context?.patientId).toBeUndefined();
+  });
+});
+
 /** GAP-013 — Fastify skips preSerialization for Buffer/string payloads; onSend must still audit them. */
 describe("read-audit emission for binary replies (GAP-013)", () => {
   it("writes exactly one <kind>.viewed row for a Buffer reply and no payload bytes", async () => {

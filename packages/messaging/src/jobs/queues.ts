@@ -31,7 +31,7 @@ export interface QueueParameters {
   readonly idempotency: string;
 }
 
-/** The thirteen §4.4 queue names (WP 1.5 added `attachment_scan`). */
+/** The §4.4 queue names (WP 1.5 added `attachment_scan`, WP 2.6 `scheduled_send`, WP 3.5 `handoff_expiry`). */
 export const MESSAGING_QUEUES = {
   fanOut: "messaging.fan_out",
   sendInApp: "messaging.send_in_app",
@@ -47,6 +47,7 @@ export const MESSAGING_QUEUES = {
   hashVerify: "messaging.hash_verify",
   attachmentScan: "messaging.attachment_scan",
   scheduledSend: "messaging.scheduled_send",
+  handoffExpiry: "messaging.handoff_expiry",
 } as const;
 
 /** A queue name from the catalog. */
@@ -201,6 +202,19 @@ export const MESSAGING_QUEUE_PARAMETERS: { readonly [K in MessagingQueueName]: Q
     idempotency:
       "scheduledMessageId (= message.client_message_id); row locked FOR UPDATE SKIP LOCKED and deleted in the send transaction",
   },
+  // WP 3.5: a per-minute sweep that closes the handoff offers whose deadline passed. Each handoff is locked FOR UPDATE and
+  // re-checked in its own transaction, so a retried or overlapping tick (or an accept racing the tick) can never close one
+  // twice. Concurrency 1: one sweeper; a missed tick is made up by the next. Runs for flag-off tenants too (safety).
+  "messaging.handoff_expiry": {
+    name: "messaging.handoff_expiry",
+    priority: 6,
+    attempts: 2,
+    backoff: { type: "fixed", baseMs: 60000 },
+    concurrency: 1,
+    dlq: "messaging.handoff_expiry.dlq",
+    idempotency:
+      "handoffId; row locked FOR UPDATE and re-checked (state='offered' and past the policy-capped deadline) in the close transaction",
+  },
 };
 
 /** The repeat cadences for the scheduled jobs (UTC cron). Event-triggered queues have no entry. */
@@ -221,4 +235,6 @@ export const MESSAGING_JOB_SCHEDULES = {
   attachmentScan: "* * * * *",
   /** scheduled_send: every minute (sends the scheduled messages that came due). */
   scheduledSend: "* * * * *",
+  /** handoff_expiry: every minute (closes the handoff offers that passed their deadline). */
+  handoffExpiry: "* * * * *",
 } as const;

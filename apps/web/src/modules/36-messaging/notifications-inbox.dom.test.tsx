@@ -328,3 +328,83 @@ describe("Notifications inbox Tasks tab", () => {
     expect(await screen.findByText(/not turned on/)).toBeTruthy();
   });
 });
+
+// WP 3.5: the Handoffs tab exists only while the list route says the tenant has handoffs on (a failed read is off), and
+// `?tab=handoffs` (the alert deep link) opens it.
+describe("Notifications inbox Handoffs tab", () => {
+  const ROW = {
+    id: "h1",
+    from_user_id: "u2",
+    from_display_name: "Sam Lead",
+    to_user_id: "user-1",
+    to_display_name: "Test User",
+    state: "offered",
+    offered_at: "2026-10-14T08:00:00.000Z",
+    expires_at: "2099-10-14T12:00:00.000Z",
+    accepted_at: null,
+    closed_at: null,
+    closed_reason: null,
+    needs_attention: false,
+    patient_count: 1,
+    item_counts: { pending: 1, accepted: 0, declined: 0, expired: 0, cancelled: 0 },
+    allowed_actions: ["accept", "decline"],
+  };
+
+  function mountHandoffs(handoffsAnswer: unknown, url = "/notifications") {
+    const GET = vi.fn(async (path: string) => {
+      if (path === "/api/v1/messaging/handoffs") {
+        if (handoffsAnswer instanceof Error) throw handoffsAnswer;
+        return handoffsAnswer;
+      }
+      return { data: { alerts: [] } };
+    });
+    render(
+      <MemoryRouter initialEntries={[url]}>
+        <ApiClientProvider client={{ GET, POST: vi.fn() } as unknown as ApiClient}>
+          <SessionProvider session={session}>
+            <AlertInboxProvider>
+              <NotificationsInbox />
+            </AlertInboxProvider>
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    return GET;
+  }
+
+  it("shows the tab with the incoming count and lists the handoffs", async () => {
+    mountHandoffs({ data: { enabled: true, handoffs: [ROW] } });
+    fireEvent.click(await screen.findByRole("tab", { name: "Handoffs (1)" }));
+    expect(await screen.findByRole("button", { name: "Review" })).toBeTruthy();
+  });
+
+  it("opens on the Handoffs tab from ?tab=handoffs", async () => {
+    mountHandoffs({ data: { enabled: true, handoffs: [ROW] } }, "/notifications?tab=handoffs");
+    expect(await screen.findByRole("heading", { name: "Handoffs" })).toBeTruthy();
+  });
+
+  it("has no Handoffs tab while the tenant flag is off, even for a deep link", async () => {
+    const GET = mountHandoffs(
+      { data: { enabled: false, handoffs: [] } },
+      "/notifications?tab=handoffs",
+    );
+    await screen.findByRole("tab", { name: "Mentions" });
+    await waitFor(() =>
+      expect(GET).toHaveBeenCalledWith("/api/v1/messaging/handoffs", expect.anything()),
+    );
+    expect(screen.queryByRole("tab", { name: /Handoffs/ })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Handoffs" })).toBeNull();
+  });
+
+  it.each([
+    ["an error answer", { error: {}, response: { status: 500 } }],
+    ["a rejected read", new Error("down")],
+  ])("has no Handoffs tab after %s", async (_name, answer) => {
+    const GET = mountHandoffs(answer);
+    await screen.findByRole("tab", { name: "Mentions" });
+    await waitFor(() =>
+      expect(GET).toHaveBeenCalledWith("/api/v1/messaging/handoffs", expect.anything()),
+    );
+    expect(screen.queryByRole("tab", { name: /Handoffs/ })).toBeNull();
+  });
+});
