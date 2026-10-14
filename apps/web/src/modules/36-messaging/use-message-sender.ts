@@ -16,6 +16,8 @@ import type { SendAttempt } from "./messaging-utils";
 import type { AttachmentUploads } from "./use-attachment-upload";
 
 const SEND_FAILED_MESSAGE = "Message could not be sent. Your draft has been preserved.";
+/** The server answers every refused link (missing, forbidden, erased, flag off) with the same generic code. */
+const CLINICAL_LINK_REFUSED_MESSAGE = "That record can't be linked.";
 const ATTACHMENT_NOT_BINDABLE_MESSAGE =
   "One or more files can no longer be attached. Remove them and attach again. Your draft has been preserved.";
 
@@ -209,9 +211,14 @@ export function useMessageSender({
     // same key would replay the failure. Keep the key only when no response arrived (lost reply).
     if (response && response.status >= 400) sendAttemptRef.current = rotateIdempotencyKey(attempt);
     if (error || !data) {
-      const notBindable = apiErrorCode(error) === "ATTACHMENT_NOT_BINDABLE";
+      const code = apiErrorCode(error);
+      const notBindable = code === "ATTACHMENT_NOT_BINDABLE";
       setSendError(
-        notBindable ? ATTACHMENT_NOT_BINDABLE_MESSAGE : apiErrorMessage(error, SEND_FAILED_MESSAGE),
+        notBindable
+          ? ATTACHMENT_NOT_BINDABLE_MESSAGE
+          : code === "CLINICAL_LINK_NOT_AVAILABLE"
+            ? CLINICAL_LINK_REFUSED_MESSAGE
+            : apiErrorMessage(error, SEND_FAILED_MESSAGE),
       );
       // Flag which chips went bad (blocked, gone) so the user knows what to remove; the others stay.
       if (notBindable) void uploads.recheck();

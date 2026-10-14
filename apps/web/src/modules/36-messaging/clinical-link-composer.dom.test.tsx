@@ -32,12 +32,18 @@ const channel = (kind: string, subjectId: string | null) => ({
   lastMessage: null,
 });
 
-function mount(kind: string, subjectId: string | null, flag: boolean) {
+function mount(kind: string, subjectId: string | null, flag: boolean, refuseLinks = false) {
   const POST = vi.fn(() =>
-    Promise.resolve({
-      data: { messageId: "m-1", channelId: "ch-1", createdAt: "2026-10-10T10:00:00.000Z" },
-      error: undefined,
-    }),
+    refuseLinks
+      ? Promise.resolve({
+          data: undefined,
+          error: { error: { code: "CLINICAL_LINK_NOT_AVAILABLE", message: "link not available" } },
+          response: { status: 422 },
+        })
+      : Promise.resolve({
+          data: { messageId: "m-1", channelId: "ch-1", createdAt: "2026-10-10T10:00:00.000Z" },
+          error: undefined,
+        }),
   );
   const GET = vi.fn((path: string) => {
     if (path === "/api/v1/messaging/channels")
@@ -103,6 +109,21 @@ describe("link picker in the composer", () => {
       "/api/v1/medication-orders",
       expect.objectContaining({ params: { query: { patientId: PATIENT } } }),
     );
+  });
+
+  it("tells the sender a refused record can't be linked, without saying why", async () => {
+    const { POST } = mount("care_team", PATIENT, true, true);
+    const box = await composer();
+    typeAt(box, "see ");
+    typeAt(box, "see #");
+    await screen.findByRole("combobox", { name: "Choose a record type" });
+    await userEvent.keyboard("{ArrowDown}{Enter}");
+    await screen.findByRole("option", { name: /Morphine 5 mg/ });
+    await userEvent.keyboard("{Enter}");
+    typeAt(box, "see this");
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(POST).toHaveBeenCalled());
+    expect(await screen.findByText("That record can't be linked.")).toBeTruthy();
   });
 
   it("leaves # as ordinary text when the tenant flag is off, and shows no button", async () => {
