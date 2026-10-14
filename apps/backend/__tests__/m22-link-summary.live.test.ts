@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createDrizzleDocumentReaderStore } from "../src/modules/22-documents/seams/drizzle-readers-store";
 /**
  * M22 — `DocumentReader.linkSummary` (the M36 WP 3.2 clinical-link read seam) proven against real Postgres as
  * the NOBYPASSRLS `wardenx_app` role: found, unknown id, cross-tenant, exactly four keys (no title), a
@@ -12,7 +13,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
  * (no pgvector locally: WARDENX_TEST_NO_PGVECTOR=1)
  */
 import { createDocumentReader } from "../src/modules/22-documents/seams/readers";
-import { createDrizzleDocumentReaderStore } from "../src/modules/22-documents/seams/drizzle-readers-store";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -76,8 +76,9 @@ describe.skipIf(!DB_URL)("M22 DocumentReader.linkSummary — LIVE Postgres as wa
       "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
       [ORG_A, ORG_B],
     );
-    const user = (await admin.query(`INSERT INTO "user" (email) VALUES ('ls22@x.test') RETURNING id`))
-      .rows[0].id as string;
+    const user = (
+      await admin.query(`INSERT INTO "user" (email) VALUES ('ls22@x.test') RETURNING id`)
+    ).rows[0].id as string;
     membership = (
       await admin.query(
         `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
@@ -101,7 +102,11 @@ describe.skipIf(!DB_URL)("M22 DocumentReader.linkSummary — LIVE Postgres as wa
       "SELECT current_user, r.rolsuper, r.rolbypassrls FROM pg_roles r WHERE r.rolname = current_user",
     );
     await probe.end();
-    expect(rows[0]).toMatchObject({ current_user: "wardenx_app", rolsuper: false, rolbypassrls: false });
+    expect(rows[0]).toMatchObject({
+      current_user: "wardenx_app",
+      rolsuper: false,
+      rolbypassrls: false,
+    });
   });
 
   it("finds a document: id, patient, status and created_at, with exactly four keys and no title", async () => {

@@ -171,31 +171,27 @@ export function createDrizzleDocumentReaderStore(db: DbClient): DocumentReaderSt
 
     async linkSummaryForDocument(args) {
       // Org-explicit (own tenant context; the M36 caller may not be a request). Columns: no title.
-      return withOrgContext(
-        db,
-        { organizationId: args.organizationId, userId: "" },
-        async (tx) => {
-          const [row] = await (tx as unknown as DbClient)
-            .select({
-              documentId: DOC.id,
-              patientId: DOC.patientId,
-              status: DOC.status,
-              createdAt: DOC.createdAt,
-            })
-            .from(DOC)
-            // Explicit second wall behind RLS.
-            .where(and(eq(DOC.organizationId, args.organizationId), eq(DOC.id, args.documentId)))
-            .limit(1);
-          return row
-            ? {
-                documentId: row.documentId,
-                patientId: row.patientId,
-                status: row.status as DocumentDigest["status"],
-                createdAt: row.createdAt.toISOString(),
-              }
-            : null;
-        },
-      );
+      return withOrgContext(db, { organizationId: args.organizationId, userId: "" }, async (tx) => {
+        const [row] = await (tx as unknown as DbClient)
+          .select({
+            documentId: DOC.id,
+            patientId: DOC.patientId,
+            status: DOC.status,
+            createdAt: DOC.createdAt,
+          })
+          .from(DOC)
+          // Explicit second wall behind RLS.
+          .where(and(eq(DOC.organizationId, args.organizationId), eq(DOC.id, args.documentId)))
+          .limit(1);
+        return row
+          ? {
+              documentId: row.documentId,
+              patientId: row.patientId,
+              status: row.status as DocumentDigest["status"],
+              createdAt: row.createdAt.toISOString(),
+            }
+          : null;
+      });
     },
 
     async activeVersionLink(args) {
