@@ -787,6 +787,8 @@ jobs:
           - { name: "M36 Clinical links", scripts: "test:m36:clinical-link:live" }
           # WP 3.3 - SBAR: tighten-only tenant policy (FORCE RLS, floor on read, audit scrub), write-time checks, flag.
           - { name: "M36 SBAR", scripts: "test:m36:sbar:live" }
+          # WP 3.4 - communication tasks: ids-only tables (FORCE RLS, column-level UPDATE, no DELETE), DB unique index as idempotency arbiter, clinical close-reason CHECK, audit, offboarding reassignment, read-audit, flag.
+          - { name: "M36 communication tasks", scripts: "test:m36:tasks:live" }
           # WP 2.7a - in-conversation search: tenant/channel/tombstone/edit isolation, filters, audit without query text, p95 on a seeded history.
           - { name: "M36 In-conversation search", scripts: "test:m36:search:live" }
           # WP 2.7b chunk C1 (ADR-0058, Accepted) - global search index storage: RLS, no UPDATE grant, the same-transaction removal hook, audit without tags.

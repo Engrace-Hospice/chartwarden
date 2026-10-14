@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1561,
-    "coveredRoutes": 1561,
-    "directRoutesReferenced": 1478
+    "routes": 1568,
+    "coveredRoutes": 1568,
+    "directRoutesReferenced": 1485
   },
   "modules": [
     {
@@ -486,7 +486,7 @@
     },
     {
       "module": "36-messaging",
-      "routes": 76,
+      "routes": 83,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
@@ -516,6 +516,8 @@
         "apps/backend/__tests__/m36-sbar-routes.test.ts",
         "apps/backend/__tests__/m36-sbar.live.test.ts",
         "apps/backend/__tests__/m36-scheduled-send-routes.test.ts",
+        "apps/backend/__tests__/m36-task-routes.test.ts",
+        "apps/backend/__tests__/m36-tasks.live.test.ts",
         "apps/backend/__tests__/m36-tenant-idor.live.test.ts",
         "apps/backend/__tests__/m36-tranche-b-review.live.test.ts",
         "apps/backend/__tests__/m36-transactional-email.live.test.ts",
@@ -524,7 +526,7 @@
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 76
+      "directRoutesReferenced": 83
     },
     {
       "module": "37-ipu",

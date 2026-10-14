@@ -4,6 +4,7 @@ import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { MessageAnnotations } from "./message-annotations";
 import { MessageAttachments } from "./message-attachments";
+import { MessageTaskButton } from "./message-task-button";
 import type { Message } from "./messaging-types";
 import { absoluteTime, dayLabel, initialsOf } from "./messaging-utils";
 import { PollCard } from "./poll-card";
@@ -234,6 +235,16 @@ function MessageRowImpl({
             </div>
             {!deleted ? (
               <MessageAnnotations message={message} canAnnotate={canAnnotate} canPin={canPin} />
+            ) : null}
+            {/* Converting needs messaging.send, but the row only knows `canAnnotate` (writable channel) and `canReply`
+                (false in announcement channels, where sending needs messaging.announce), so neither matches exactly.
+                Gate on the wider one; a person without messaging.send gets the server's 403 text from the dialog. */}
+            {!deleted && canAnnotate ? (
+              <MessageTaskButton
+                channelId={message.channelId}
+                messageId={message.messageId}
+                meId={meId}
+              />
             ) : null}
             {onShowReceipts && !deleted ? (
               <button

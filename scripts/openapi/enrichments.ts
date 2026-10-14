@@ -1341,6 +1341,17 @@ import {
   SearchMessagesQuerySchema as M36SearchMessagesQuerySchema,
   SearchMessagesResponseSchema as M36SearchMessagesResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/search-typebox";
+// M36 WP 3.4 communication tasks.
+import {
+  CloseTaskBodySchema as M36CloseTaskBodySchema,
+  ConvertTaskBodySchema as M36ConvertTaskBodySchema,
+  ConvertTaskResponseSchema as M36ConvertTaskResponseSchema,
+  ListTasksQuerySchema as M36ListTasksQuerySchema,
+  ReassignTaskBodySchema as M36ReassignTaskBodySchema,
+  TaskDetailResponseSchema as M36TaskDetailResponseSchema,
+  TaskListResponseSchema as M36TaskListResponseSchema,
+  TaskResponseSchema as M36TaskResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/task-typebox";
 // M36 WP 2.8 message templates & saved replies.
 import {
   CreateTemplateBodySchema as M36CreateTemplateBodySchema,
@@ -9260,6 +9271,47 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "DELETE /api/v1/messaging/template-admin/sbar-policy": {
     summary:
       "Remove this organization's SBAR policy, restoring the platform defaults (204; messaging.template.manage)",
+  },
+  "POST /api/v1/messaging/channels/:id/messages/:messageId/tasks": {
+    summary:
+      "Convert a message into a task for an assignee (WP 3.4; messaging.send + channel visibility; 404 while the tenant flag `messaging.tasks` is off). 201 created, or 200 with created:false when the assignee already holds an ACTIVE task on the message (replay changes nothing). The patient is derived from the channel, never the body. 422 TASK_ASSIGNEE_INVALID (the assignee cannot read the channel), TASK_DUE_INVALID; 404 is one answer for a hidden channel, missing or deleted message. Tasks do not page anyone and are not the emergency path",
+    body: M36ConvertTaskBodySchema,
+    response: M36ConvertTaskResponseSchema,
+    status: 201,
+  },
+  "GET /api/v1/messaging/tasks": {
+    summary:
+      "The caller's own tasks (WP 3.4; messaging.read): scope assigned|created, state active|closed|all, limit up to 100 (default 50), overdue first. Rows whose channel the caller can no longer view are omitted. 200 {enabled:false,tasks:[]} while the tenant flag `messaging.tasks` is off. Read-audited (list)",
+    query: M36ListTasksQuerySchema,
+    response: M36TaskListResponseSchema,
+  },
+  "GET /api/v1/messaging/tasks/:taskId": {
+    summary:
+      "One task and its append-only events (WP 3.4; messaging.read). Only the creator or assignee sees it, and only while they can still view the channel; a missing, foreign, hidden or flag-off task is ONE 404. `allowed_actions` is computed server-side. Read-audited against the task and its patient",
+    response: M36TaskDetailResponseSchema,
+  },
+  "POST /api/v1/messaging/tasks/:taskId/accept": {
+    summary:
+      "Accept a task (WP 3.4; messaging.send; assignee only). Repeating on an accepted task returns it unchanged. 403 when the caller may not take this action, 409 TASK_STATE_CONFLICT from a closed task, 404 uniform",
+    response: M36TaskResponseSchema,
+  },
+  "POST /api/v1/messaging/tasks/:taskId/complete": {
+    summary:
+      "Complete a task (WP 3.4; messaging.send; assignee only). A clinical task (patient channel, or flagged at creation) needs a closing reason CODE (422 TASK_CLOSE_REASON_REQUIRED; unknown code 422 TASK_CLOSE_REASON_INVALID); no free text. 403 when the caller may not complete, 409 TASK_STATE_CONFLICT, 404 uniform",
+    body: M36CloseTaskBodySchema,
+    response: M36TaskResponseSchema,
+  },
+  "POST /api/v1/messaging/tasks/:taskId/cancel": {
+    summary:
+      "Cancel a task (WP 3.4; messaging.send; creator or assignee). Same closing-reason rule as complete. 403 when the caller may not cancel, 409 TASK_STATE_CONFLICT, 404 uniform",
+    body: M36CloseTaskBodySchema,
+    response: M36TaskResponseSchema,
+  },
+  "POST /api/v1/messaging/tasks/:taskId/reassign": {
+    summary:
+      "Hand a task to another user (WP 3.4; messaging.send; creator or assignee). The new assignee must be able to read the channel (422 TASK_ASSIGNEE_INVALID) and must not already hold an active task on the message (409 TASK_ASSIGNEE_ALREADY_HAS_ACTIVE). The task returns to open and any needs-owner flag clears. 403 when the caller may not reassign, 409 TASK_STATE_CONFLICT, 404 uniform",
+    body: M36ReassignTaskBodySchema,
+    response: M36TaskResponseSchema,
   },
   "POST /api/v1/messaging/dm": {
     summary: "Open or find a 1:1 DM channel (idempotent; 200/201)",

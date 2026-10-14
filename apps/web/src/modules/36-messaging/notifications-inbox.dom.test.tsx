@@ -241,3 +241,90 @@ describe("Notifications inbox accessibility", () => {
     expect(css).toMatch(/\.wx-notif-mark-read\s*\{[^}]*min-width:\s*2\.75rem/);
   });
 });
+
+// WP 3.4: the Tasks tab is the real "My tasks" list; with tasks off it says so, and `?tab=tasks` (the alert and tile
+// deep link) opens it.
+describe("Notifications inbox Tasks tab", () => {
+  const TASK_ROW = {
+    id: "t1",
+    message_id: "m1",
+    channel_id: "c1",
+    patient_id: null,
+    created_by: "u2",
+    assignee_id: "user-1",
+    assignee_display_name: "Test User",
+    created_by_display_name: "Sam Lead",
+    due_at: null,
+    status: "open",
+    clinical_concern: false,
+    closed_reason: null,
+    needs_owner: false,
+    overdue: false,
+    created_at: "2026-10-14T08:00:00.000Z",
+    updated_at: "2026-10-14T08:00:00.000Z",
+    allowed_actions: ["accept"],
+  };
+
+  function mountTasks(enabled: boolean, url = "/notifications", post: unknown = vi.fn()) {
+    const GET = vi.fn(async (path: string) =>
+      path === "/api/v1/messaging/tasks"
+        ? { data: { enabled, tasks: enabled ? [TASK_ROW] : [] } }
+        : { data: { alerts: [] } },
+    );
+    const client = { GET, POST: post } as unknown as ApiClient;
+    render(
+      <MemoryRouter initialEntries={[url]}>
+        <ApiClientProvider client={client}>
+          <SessionProvider session={session}>
+            <AlertInboxProvider>
+              <NotificationsInbox />
+            </AlertInboxProvider>
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    return GET;
+  }
+  const taskReads = (GET: ReturnType<typeof vi.fn>) =>
+    GET.mock.calls.filter(([path]) => path === "/api/v1/messaging/tasks").length;
+
+  it("opens the Tasks tab with one read, and tab switches do not re-read", async () => {
+    const GET = mountTasks(true);
+    fireEvent.click(await screen.findByRole("tab", { name: "Tasks (1)" }));
+    await screen.findByRole("button", { name: "Accept" });
+    fireEvent.click(screen.getByRole("tab", { name: "Mentions" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Tasks (1)" }));
+    await screen.findByRole("button", { name: "Accept" });
+    expect(taskReads(GET)).toBe(1);
+  });
+
+  it("drops the count on the tab after a task leaves the active list", async () => {
+    const post = vi.fn().mockResolvedValue({
+      data: { task: { ...TASK_ROW, status: "done", allowed_actions: [] } },
+      response: { status: 200 },
+    });
+    mountTasks(true, "/notifications?tab=tasks", post);
+    fireEvent.click(await screen.findByRole("button", { name: "Accept" }));
+    await waitFor(() => expect(post).toHaveBeenCalled());
+    await screen.findByRole("tab", { name: "Tasks (0)" });
+  });
+
+  it("lists the caller's tasks, with the count on the tab", async () => {
+    mountTasks(true);
+    expect(await screen.findByRole("tab", { name: "Tasks (1)" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "Tasks (1)" }));
+    expect(await screen.findByRole("button", { name: "Accept" })).toBeTruthy();
+    expect(screen.queryByText(/arrives with the Tasks module/)).toBeNull();
+  });
+
+  it("opens on the Tasks tab from ?tab=tasks", async () => {
+    mountTasks(true, "/notifications?tab=tasks");
+    expect(await screen.findByRole("heading", { name: "My tasks" })).toBeTruthy();
+  });
+
+  it("says plainly that tasks are off for the organization", async () => {
+    mountTasks(false);
+    fireEvent.click(await screen.findByRole("tab", { name: "Tasks" }));
+    expect(await screen.findByText(/not turned on/)).toBeTruthy();
+  });
+});

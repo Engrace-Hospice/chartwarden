@@ -29,11 +29,12 @@
 // row carries the user id, not the membership); `providerEntityId` / `sourceAggregateId` are read from
 // `alert.payload` when the emitting module put them there, else null.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@wardenx/types";
+import { type ModuleEventContribution, TASK_STATUSES } from "@wardenx/types";
 
 const id = Type.String({ minLength: 1 });
 const nullableId = Type.Union([id, Type.Null()]);
 const isoInstant = Type.String({ minLength: 1 });
+const taskStatus = Type.Union(TASK_STATUSES.map((status) => Type.Literal(status)));
 const recipientKind = Type.Union([
   Type.Literal("on_call"),
   Type.Literal("role_set"),
@@ -123,6 +124,83 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
       actorUserId: id,
     }),
     declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.task.created",
+    moduleOwner: "m36",
+    description:
+      "A communication task was created from a message (WP 3.4). PHI-free: ids and one instant - no patient id, no message text. Published in the same transaction as the insert; an idempotent replay publishes nothing. M36 turns it into one generic in-app alert for the assignee after re-checking channel access.",
+    payloadSchema: Type.Object(
+      {
+        organizationId: id,
+        taskId: id,
+        messageId: id,
+        channelId: id,
+        assigneeUserId: id,
+        createdByUserId: id,
+        at: isoInstant,
+      },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.task.reassigned",
+    moduleOwner: "m36",
+    description:
+      "A communication task changed assignee (WP 3.4), by a person or by offboarding. PHI-free: ids, the source enum and one instant. M36 tells the new assignee with one generic in-app alert after re-checking channel access.",
+    payloadSchema: Type.Object(
+      {
+        organizationId: id,
+        taskId: id,
+        channelId: id,
+        fromUserId: id,
+        toUserId: id,
+        source: Type.Union([Type.Literal("manual"), Type.Literal("offboarding")]),
+        at: isoInstant,
+      },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.task.needs_owner",
+    moduleOwner: "m36",
+    description:
+      "A communication task lost its assignee to offboarding and no eligible successor existed (WP 3.4), so it is flagged for its creator to reassign. PHI-free: ids and one instant. M36 tells the creator with one generic in-app alert.",
+    payloadSchema: Type.Object(
+      {
+        organizationId: id,
+        taskId: id,
+        channelId: id,
+        creatorUserId: id,
+        at: isoInstant,
+      },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.task.status_changed",
+    moduleOwner: "m36",
+    description:
+      "A communication task moved between open, accepted, done and cancelled (WP 3.4). PHI-free: ids, the two status enums and one instant - never the closing reason. Record-only: the durable trail; no consumer.",
+    payloadSchema: Type.Object(
+      {
+        organizationId: id,
+        taskId: id,
+        channelId: id,
+        from: taskStatus,
+        to: taskStatus,
+        at: isoInstant,
+      },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {

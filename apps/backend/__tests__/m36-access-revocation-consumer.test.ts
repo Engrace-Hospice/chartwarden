@@ -142,4 +142,23 @@ describe("m36.access-revocation", () => {
       [ORG, "u2"],
     ]);
   });
+
+  it("drops the sockets even when the owned-items reassignment throws, and still rethrows so the dispatcher retries", async () => {
+    const cases = [
+      ["m2.membership.revoked", { userId: "u1" }, "disconnectUser", [ORG, "u1"]],
+      ["m2.user.deactivated", { userId: "u2" }, "disconnectUser", [ORG, "u2"]],
+      ["m2.user.deactivated", { userId: "u3", scope: "platform" }, "disconnectAccount", ["u3"]],
+    ] as const;
+    for (const [type, payload, which, args] of cases) {
+      const t = setup();
+      const c = buildM36AccessRevocationConsumer({
+        endChannelMemberships: t.endChannelMemberships,
+        disconnectUser: t.disconnectUser,
+        disconnectAccount: t.disconnectAccount,
+        reassignOwnedItems: vi.fn().mockRejectedValue(new Error("reassign down")),
+      });
+      await expect(c.handle(event(type, payload))).rejects.toThrow(/reassign down/);
+      expect(t[which]).toHaveBeenCalledWith(...args);
+    }
+  });
 });

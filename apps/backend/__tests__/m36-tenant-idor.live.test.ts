@@ -82,6 +82,7 @@ import { registerTemplateRoutes } from "../src/modules/36-messaging/routes/templ
 import { registerMessagingWebhookRoutes } from "../src/modules/36-messaging/routes/webhook-routes";
 import { createDbSbarPolicyStore } from "../src/modules/36-messaging/sbar/sbar-policy-store-db";
 import { createDbScheduledSendService } from "../src/modules/36-messaging/scheduled/scheduled-send-service-db";
+import { buildTaskDeps } from "../src/modules/36-messaging/tasks/deps";
 import { createDbConsentEvaluator } from "../src/modules/39-consent/index";
 import { appRoleConnectionString } from "./_live-app-role";
 
@@ -156,6 +157,16 @@ const ROUTES: Record<string, Verdict> = {
   "GET /api/v1/messaging/sbar/policy": { kind: "scoped" },
   "PUT /api/v1/messaging/template-admin/sbar-policy": { kind: "scoped" },
   "DELETE /api/v1/messaging/template-admin/sbar-policy": { kind: "scoped" },
+  // WP 3.4 communication tasks: a task id (or the channel + message it converts) from another org or a non-participant
+  // is the identical 404 a random id gets (asserted below); the list is the caller's own rows only. The tables' FORCE RLS,
+  // grants and the participant rule are also attacked in m36-tasks.live.
+  "POST /api/v1/messaging/channels/:id/messages/:messageId/tasks": { kind: "idor" },
+  "GET /api/v1/messaging/tasks": { kind: "scoped" },
+  "GET /api/v1/messaging/tasks/:taskId": { kind: "idor" },
+  "POST /api/v1/messaging/tasks/:taskId/accept": { kind: "idor" },
+  "POST /api/v1/messaging/tasks/:taskId/complete": { kind: "idor" },
+  "POST /api/v1/messaging/tasks/:taskId/cancel": { kind: "idor" },
+  "POST /api/v1/messaging/tasks/:taskId/reassign": { kind: "idor" },
   // Admin screens PR 1a: org_admin member list + archive; attacked in m36-channel-admin.live.test.ts.
   "GET /api/v1/messaging/channels/:id/members": { kind: "idor" },
   "POST /api/v1/messaging/channels/:id/archive": { kind: "idor" },
@@ -249,6 +260,8 @@ const REGISTRAR_FILES = [
   "clinical-link-typebox.ts", // schemas only
   "sbar-routes.ts", // WP 3.3 SBAR policy, mounted by registerMessagingRoutes
   "sbar-typebox.ts", // schemas only
+  "task-routes.ts", // WP 3.4 communication tasks, mounted by registerMessagingRoutes
+  "task-typebox.ts", // schemas only
   "patient-context-routes.ts", // WP 3.1 context panel, mounted by registerMessagingRoutes
   "patient-context-typebox.ts", // schemas only
   "template-routes.ts",
@@ -441,6 +454,8 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     "message_entity_reference",
     "clinical_link",
     "tenant_sbar_policy",
+    "communication_task",
+    "communication_task_event",
     "message_reaction",
     "message_pin",
     "delivery_endpoint",
@@ -614,6 +629,12 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         store: createDbClinicalLinkStore(handle.db),
       },
       sbar: { isEnabled: async () => true, store: createDbSbarPolicyStore(handle.db) },
+      tasks: buildTaskDeps({
+        db: handle.db,
+        flags: { forOrg: async () => ({ "messaging.tasks": true }) },
+        messaging: service,
+        careTeamMembers: async () => [],
+      }),
     });
     const blobs = new Map<string, Uint8Array>();
     const fakeStorage: AttachmentStoragePort = {
@@ -1733,6 +1754,68 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       expect((await put(bUser, 5)).statusCode).toBe(403);
       expect((await get(u2)).json().minChars.situation).toBe(77);
       expect((await call(`DELETE ${admin_}`, adminA, {})).statusCode).toBe(204);
+    });
+    it("WP 3.4: org B and an in-org non-member get a random id's answer for A's task and A's message, and list none of it", async () => {
+      const convertRoute = "POST /api/v1/messaging/channels/:id/messages/:messageId/tasks";
+      const made = await call(
+        convertRoute,
+        u1,
+        { id: dmA, messageId: msgDmA },
+        {
+          assignee_user_id: u2.userId,
+        },
+      );
+      expect(made.statusCode).toBe(201);
+      const taskId = made.json().task.id as string;
+      expect((await call("GET /api/v1/messaging/tasks/:taskId", u2, { taskId })).statusCode).toBe(
+        200,
+      );
+      for (const attacker of [bUser, adminB, outsider]) {
+        await expectNoOracle(
+          convertRoute,
+          attacker,
+          { id: dmA, messageId: msgDmA },
+          { assignee_user_id: attacker.userId },
+        );
+        await expectNoOracle("GET /api/v1/messaging/tasks/:taskId", attacker, { taskId });
+        await expectNoOracle("POST /api/v1/messaging/tasks/:taskId/accept", attacker, { taskId });
+        await expectNoOracle(
+          "POST /api/v1/messaging/tasks/:taskId/complete",
+          attacker,
+          { taskId },
+          { reason: "action_taken" },
+        );
+        await expectNoOracle(
+          "POST /api/v1/messaging/tasks/:taskId/cancel",
+          attacker,
+          { taskId },
+          { reason: "duplicate" },
+        );
+        await expectNoOracle(
+          "POST /api/v1/messaging/tasks/:taskId/reassign",
+          attacker,
+          { taskId },
+          { assignee_user_id: attacker.userId },
+        );
+        const list = await call(
+          "GET /api/v1/messaging/tasks",
+          attacker,
+          {},
+          undefined,
+          {},
+          "?state=all&scope=created",
+        );
+        expect(list.statusCode).toBe(200);
+        expect(list.json().tasks).toEqual([]);
+        expectNoLeak(list.body, attacker, `${attacker.name} list tasks`);
+      }
+      // the attacks changed nothing: the task is still the assignee's, open.
+      const row = (
+        await admin.query("SELECT status, assignee_id FROM communication_task WHERE id=$1", [
+          taskId,
+        ])
+      ).rows[0];
+      expect(row).toEqual({ status: "open", assignee_id: u2.userId });
     });
     it("the WP 3.1 context panel gives org B and an in-org outsider the same empty projection for A's patient as for a random id", async () => {
       const route = "GET /api/v1/messaging/patients/:patientId/context";

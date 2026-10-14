@@ -9,6 +9,7 @@ import {
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const PATIENT = "22222222-2222-4222-8222-222222222222";
+const USER = "33333333-3333-4333-8333-333333333333";
 const NOW = new Date("2026-10-14T12:00:00.000Z");
 const ALL: ReadonlySet<PatientContextTile> = new Set(PATIENT_CONTEXT_TILES);
 
@@ -21,6 +22,7 @@ function ports(over: Partial<PatientContextPorts> = {}): PatientContextPorts {
     careTeamMembers: async () => ["u1", "u2"],
     activeAllergies: async () => [allergy],
     activeMedications: async () => [{}, {}, {}] as MedicationOrderDto[],
+    openTaskCount: async () => 4,
     now: () => NOW,
     ...over,
   };
@@ -29,7 +31,7 @@ function ports(over: Partial<PatientContextPorts> = {}): PatientContextPorts {
 describe("buildPatientContext", () => {
   it("projects every permitted tile with as_of and an owning-module link", async () => {
     const ctx = await buildPatientContext(
-      { organizationId: ORG, patientId: PATIENT, allowed: ALL },
+      { organizationId: ORG, patientId: PATIENT, userId: USER, allowed: ALL },
       ports(),
     );
 
@@ -48,12 +50,51 @@ describe("buildPatientContext", () => {
       data: { active_count: 3 },
       link: `/patients/${PATIENT}/medications`,
     });
+    expect(ctx?.tiles.open_tasks).toMatchObject({
+      state: "ok",
+      data: { count: 4 },
+      link: "/notifications?tab=tasks",
+    });
+  });
+
+  it("counts open tasks for the calling user, not the team", async () => {
+    const seen: unknown[][] = [];
+    await buildPatientContext(
+      { organizationId: ORG, patientId: PATIENT, userId: USER, allowed: new Set(["open_tasks"]) },
+      ports({
+        openTaskCount: async (...args) => {
+          seen.push(args);
+          return 0;
+        },
+      }),
+    );
+
+    expect(seen).toEqual([[ORG, PATIENT, USER]]);
+  });
+
+  it("degrades only the open-tasks tile when the task count throws", async () => {
+    const ctx = await buildPatientContext(
+      { organizationId: ORG, patientId: PATIENT, userId: USER, allowed: ALL },
+      ports({
+        openTaskCount: async () => {
+          throw new Error("db down");
+        },
+      }),
+    );
+
+    expect(ctx?.tiles.open_tasks).toMatchObject({ state: "unavailable" });
+    expect(ctx?.tiles.status).toMatchObject({ state: "ok" });
   });
 
   it("omits a tile the caller may not see and never calls its source", async () => {
     let medsCalled = false;
     const ctx = await buildPatientContext(
-      { organizationId: ORG, patientId: PATIENT, allowed: new Set(["status", "care_team"]) },
+      {
+        organizationId: ORG,
+        patientId: PATIENT,
+        userId: USER,
+        allowed: new Set(["status", "care_team"]),
+      },
       ports({
         activeMedications: async () => {
           medsCalled = true;
@@ -70,7 +111,7 @@ describe("buildPatientContext", () => {
   it("marks one tile unavailable when its seam throws and keeps the others", async () => {
     const unavailable: string[] = [];
     const ctx = await buildPatientContext(
-      { organizationId: ORG, patientId: PATIENT, allowed: ALL },
+      { organizationId: ORG, patientId: PATIENT, userId: USER, allowed: ALL },
       ports({
         activeMedications: async () => {
           throw new Error("deny-stub");
@@ -86,7 +127,7 @@ describe("buildPatientContext", () => {
 
   it("treats an unreadable allergy list (null) as unavailable, never as no allergies", async () => {
     const ctx = await buildPatientContext(
-      { organizationId: ORG, patientId: PATIENT, allowed: new Set(["allergies"]) },
+      { organizationId: ORG, patientId: PATIENT, userId: USER, allowed: new Set(["allergies"]) },
       ports({ activeAllergies: async () => null }),
     );
 
@@ -95,7 +136,7 @@ describe("buildPatientContext", () => {
 
   it("returns null when the patient does not exist in the org", async () => {
     const ctx = await buildPatientContext(
-      { organizationId: ORG, patientId: PATIENT, allowed: ALL },
+      { organizationId: ORG, patientId: PATIENT, userId: USER, allowed: ALL },
       ports({ findPatient: async () => null }),
     );
 
@@ -105,7 +146,7 @@ describe("buildPatientContext", () => {
   it("returns no tiles without reading the patient when nothing is permitted", async () => {
     let read = false;
     const ctx = await buildPatientContext(
-      { organizationId: ORG, patientId: PATIENT, allowed: new Set() },
+      { organizationId: ORG, patientId: PATIENT, userId: USER, allowed: new Set() },
       ports({
         findPatient: async () => {
           read = true;
@@ -120,7 +161,7 @@ describe("buildPatientContext", () => {
 
   it("keeps the other tiles when the patient lookup itself throws", async () => {
     const ctx = await buildPatientContext(
-      { organizationId: ORG, patientId: PATIENT, allowed: ALL },
+      { organizationId: ORG, patientId: PATIENT, userId: USER, allowed: ALL },
       ports({
         findPatient: async () => {
           throw new Error("deny-stub");

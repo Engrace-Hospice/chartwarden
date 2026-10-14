@@ -16,16 +16,20 @@ import {
 // Matched to the P0 Pencil frame (wardenx-P0-foundation.pen `mK4co`): a Fraunces title, a pill
 // tab-strip (Notifications / Tasks / Mentions) with an inline stats summary, and a §6.2 No-Line card
 // listing rows (severity glyph + summary + source chip + status pill + relative time). The REAL data
-// is the caller's alert inbox (GET /api/v1/alerts/inbox) → the Notifications tab. Tasks & Mentions are
-// honest placeholders until the Tasks/worklist module lands — present, never fabricated.
+// is the caller's alert inbox (GET /api/v1/alerts/inbox) → the Notifications tab. The Tasks tab is the
+// caller's communication-task list (WP 3.4; says so plainly while the tenant has tasks off) and Mentions is
+// the structured-mention subset of the alert inbox.
 import { useMemo, useState } from "react";
 import type { JSX } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   type AlertInboxItem,
   isInternalAlertDeepLink,
   useAlertInbox,
 } from "../../shell/alert-inbox";
+import { useSession } from "../../shell/session";
+import { TasksList } from "./tasks-list";
+import { useTasks } from "./use-tasks";
 import "./notifications-inbox.css";
 
 type Tab = "notifications" | "tasks" | "mentions";
@@ -67,7 +71,17 @@ function relTime(iso: string): string {
 export function NotificationsInbox(): JSX.Element {
   const navigate = useNavigate();
   const { alerts, loadFailed, markRead, activateAlert } = useAlertInbox();
-  const [tab, setTab] = useState<Tab>("notifications");
+  const session = useSession();
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<Tab>(
+    searchParams.get("tab") === "tasks" ? "tasks" : "notifications",
+  );
+  // The one read of "my active tasks": it feeds the tab badge and is lent to the Tasks tab, so opening the tab (or
+  // switching tabs) does not read again and an action in the list updates the badge.
+  const myTasks = useTasks("assigned", "active", session?.userId ?? "");
+  const tasksView = myTasks.view;
+  const tasksEnabled = tasksView.status === "ready" && tasksView.enabled;
+  const taskCount = tasksView.status === "ready" ? tasksView.tasks.length : 0;
   const [searchQuery, setSearchQuery] = useState("");
   const [severityFilter, setSeverityFilter] = useState<
     "all" | "critical" | "high" | "warn" | "info"
@@ -160,7 +174,7 @@ export function NotificationsInbox(): JSX.Element {
                 onClick={() => selectTab("notifications")}
               />
               <TabButton
-                label="Tasks"
+                label={tasksEnabled ? `Tasks (${taskCount})` : "Tasks"}
                 active={tab === "tasks"}
                 onClick={() => selectTab("tasks")}
               />
@@ -250,12 +264,7 @@ export function NotificationsInbox(): JSX.Element {
       }
       table={
         tab === "tasks" ? (
-          <div className="wx-notif-state">
-            <EmptyState
-              title="Tasks"
-              description="Your task worklist arrives with the Tasks module."
-            />
-          </div>
+          <TasksList meId={session?.userId ?? ""} shared={myTasks} />
         ) : alerts === null && !loadFailed ? (
           <div className="wx-notif-state wx-notif-state-loading">
             <LoadingSpinner />

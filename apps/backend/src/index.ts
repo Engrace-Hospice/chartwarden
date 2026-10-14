@@ -1422,6 +1422,7 @@ import {
   buildM36ClinicalAlertConsumer,
   buildPresenceDeps,
   buildSbarDeps,
+  buildTaskDeps,
   createAttachmentService,
   createDbMessagingProvider,
   createDbMessagingRouteService,
@@ -1459,7 +1460,6 @@ import { createMessageBodyCipher } from "./modules/36-messaging/messaging-write-
 import {
   buildM36AccessRevocationConsumer,
   buildM36AccessRevocationPlatformConsumer,
-  reassignOwnedItemsNoop,
 } from "./modules/36-messaging/outbox-consumers/access-revocation";
 import { buildM36AdmissionComplianceAlertConsumer } from "./modules/36-messaging/outbox-consumers/admission-compliance-alerts";
 import { buildM36AmendmentSlaAlertConsumer } from "./modules/36-messaging/outbox-consumers/amendment-sla-alerts";
@@ -1476,6 +1476,7 @@ import { buildM36MessageMentionConsumer } from "./modules/36-messaging/outbox-co
 import { buildM36OncallAlertConsumer } from "./modules/36-messaging/outbox-consumers/oncall-alerts";
 import { buildM36QualityAlertConsumer } from "./modules/36-messaging/outbox-consumers/quality-alerts";
 import { buildM36ScheduleBlockedConsumer } from "./modules/36-messaging/outbox-consumers/schedule-blocked";
+import { buildM36TaskNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/task-notifications";
 import { bindTransactionalEmail } from "./modules/36-messaging/transactional-email-binding";
 // M37 (Inpatient Unit / IPU Management) boot surface — the §4.7 ABAC predicates, the §4.4 outbox catalog,
 // and the §4.1 core route mount over the Drizzle route service. The write path emits `m37.*` through the
@@ -4140,6 +4141,22 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   // three surfaces that consume it, so the tenant read route and the module gates cannot disagree about
   // what a tenant's flags are. Undefined on a no-db boot, where the empty default remains correct.
   const featureFlagReader = dbHandle ? createDrizzleFeatureFlagReader(dbHandle.db) : undefined;
+  // WP 3.4 - communication tasks. ONE binding for the routes (flag + service) and the offboarding reassignment, so they
+  // share a store; off unless the tenant flag `messaging.tasks` is on (revocation reassigns regardless of the flag).
+  // Late-bound: the logger exists only once `app` is built (assigned beside `m31Warn`).
+  let m36TaskWarn: (message: string, context: Record<string, string>) => void = (
+    message,
+    context,
+  ) => console.warn(message, context);
+  const m36Tasks = dbHandle
+    ? buildTaskDeps({
+        warn: (message, context) => m36TaskWarn(message, context),
+        db: dbHandle.db,
+        flags: featureFlagReader,
+        outbox: m36OutboxPublisher,
+        messaging: createDbMessagingRouteService(dbHandle.db),
+      })
+    : undefined;
   // F-173 (#248, m1 group) — the Drizzle-backed `SystemStatusReader` (`bootstrap/system-status-store.ts`).
   // F-156 found the composition root never overrode the in-memory boot default, so `POST
   // /admin/system/status` had never once persisted to the real `system_status` table in any environment.
@@ -4642,6 +4659,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             clinicalLinks: buildClinicalLinkDeps({ db: dbHandle.db, flags: featureFlagReader }),
             // WP 3.3 - SBAR structured messages; off unless the tenant flag `messaging.sbar` is on.
             sbar: buildSbarDeps({ db: dbHandle.db, flags: featureFlagReader }),
+            // WP 3.4 - communication tasks; off unless the tenant flag `messaging.tasks` is on.
+            ...(m36Tasks ? { tasks: m36Tasks } : {}),
           }); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05) + WP 1.5 attachments
           // GAP-101 — the §4.9 inbound vendor webhooks (Twilio sms/voice status, Postmark event): signature-authenticated
           // (replay window + HMAC / IP allowlist + bearer), reconciling `notification_delivery`. FAIL-CLOSED: a vendor
@@ -5683,6 +5702,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       }),
   });
   m31Warn = (message, context) => app.log.warn(context, message);
+  m36TaskWarn = (message, context) => app.log.warn(context, message);
   if (m23SubmissionQueues) {
     app.addHook("onClose", async () => {
       await Promise.all(m23SubmissionQueues.queues.map((queue) => queue.close()));
@@ -9657,6 +9677,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             messaging: createDbMessagingRouteService(dbHandle.db),
             actorDisplayName: createMentionActorNameResolver(dbHandle.db),
           }),
+          // WP 3.4 - one generic in-app alert per assignment / reassignment / lost owner (access re-checked at delivery).
+          buildM36TaskNotificationsConsumer({
+            alerts: getSeam("AlertEmitter") as AlertEmitter,
+            messaging: createDbMessagingRouteService(dbHandle.db),
+          }),
           // WP 2.6 — tells the sender a scheduled message was blocked at dispatch (generic in-app text, no PHI).
           buildM36ScheduleBlockedConsumer({ alerts: getSeam("AlertEmitter") as AlertEmitter }),
           // GAP-039/040 — M13's missed-dose / PRN-reassessment-overdue / reconciliation / kit-return alerts
@@ -9692,7 +9717,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           buildM36AccessRevocationConsumer({
             endChannelMemberships: (orgId, userId) =>
               endChannelMembershipsForUser(dbHandle.db, orgId, userId),
-            reassignOwnedItems: reassignOwnedItemsNoop, // WP 1.4 seam; real work lands with P3/P4 owners
+            // WP 3.4: a leaver's active communication tasks move to a successor or are flagged `needs_owner` (never
+            // ownerless). Escalations and handoffs remain P4. Runs whether or not the tasks flag is on.
+            reassignOwnedItems: async (orgId, userId) => {
+              await m36Tasks?.reassignForLeaver(orgId, userId);
+            },
             ...(realtimeEmitter
               ? {
                   disconnectUser: (orgId, userId) =>

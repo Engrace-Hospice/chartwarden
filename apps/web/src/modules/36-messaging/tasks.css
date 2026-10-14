@@ -1,0 +1,172 @@
+/* M36 WP 3.4 - communication tasks: the convert/close/reassign dialogs and the "My tasks" list. Tokens from the shared kit only. */
+.wx-task-form {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.25rem;
+}
+
+.wx-task-form h2,
+.wx-tasks h2 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.wx-task-notice {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-low);
+  color: var(--color-on-surface);
+  font-size: 0.8125rem;
+}
+
+.wx-task-field {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.wx-task-field label {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.wx-task-field input[type="search"],
+.wx-task-field input[type="date"],
+.wx-task-field select {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+  color: var(--color-on-surface);
+  font: inherit;
+}
+
+.wx-task-field [aria-invalid="true"] {
+  border-color: var(--color-error);
+}
+
+.wx-task-field input:focus-visible,
+.wx-task-field select:focus-visible,
+.wx-task-person:focus-visible,
+.wx-task-toggle button:focus-visible,
+.wx-task-link:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.wx-task-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wx-task-person,
+.wx-task-toggle button {
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+  color: var(--color-on-surface);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.wx-task-person[aria-pressed="true"],
+.wx-task-toggle button[aria-pressed="true"] {
+  border-color: var(--color-primary);
+  background: var(--color-surface-low);
+  font-weight: 600;
+}
+
+.wx-task-hint {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.75rem;
+}
+
+.wx-task-error {
+  margin: 0;
+  color: var(--color-error);
+  font-size: 0.8125rem;
+}
+
+.wx-task-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.wx-task-actions,
+.wx-task-row-actions,
+.wx-task-toolbar,
+.wx-task-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.wx-task-actions {
+  justify-content: flex-end;
+}
+
+.wx-task-link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-primary);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.wx-tasks {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.wx-task-rows {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wx-task-row {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+}
+
+.wx-task-people-line {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}
+
+.wx-task-tag {
+  padding: 0.15rem 0.55rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+}
+
+.wx-task-toggle {
+  display: flex;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
