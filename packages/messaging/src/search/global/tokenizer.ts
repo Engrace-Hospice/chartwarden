@@ -3,10 +3,9 @@
 // ID-like filter, no diacritic folding and no length bounds, and the global index must never hold a digit or an identifier.
 import { isIdLikeChunk } from "./id-like";
 import {
-  MAX_PREFIX_TAG_LENGTH,
   MAX_TOKEN_LENGTH,
-  MIN_QUERY_PREFIX_LENGTH,
   MIN_TOKEN_LENGTH,
+  PREFIX_TAG_LENGTHS,
 } from "./params";
 import { STOP_WORDS } from "./stop-words";
 
@@ -50,15 +49,15 @@ export function prefixInput(prefix: string): string {
 
 /**
  * Every tag input a message holding these tokens produces, distinct and in a stable order: per token the whole-word tag,
- * then prefix tags for lengths 3..min(len, 12). `n` of the padding rule is the length of this list.
+ * then prefix tags at the sparse lengths {3, 5, 8, 12} that are <= len. `n` of the padding rule is the length of this list.
  */
 export function indexTagStrings(tokens: readonly string[]): string[] {
   const seen = new Set<string>();
   for (const token of tokens) {
     seen.add(wholeWordInput(token));
     const chars = [...token];
-    const longest = Math.min(chars.length, MAX_PREFIX_TAG_LENGTH);
-    for (let length = MIN_QUERY_PREFIX_LENGTH; length <= longest; length += 1) {
+    for (const length of PREFIX_TAG_LENGTHS) {
+      if (length > chars.length) break;
       seen.add(prefixInput(chars.slice(0, length).join("")));
     }
   }

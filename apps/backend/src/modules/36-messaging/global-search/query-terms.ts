@@ -1,13 +1,13 @@
 // WP 2.7b C3 (ADR-0058 decision 8.2) - turning the query text into search terms and, per key version, into tags.
 //   * the query is tokenised by the SAME code as the index (no indexable token -> 422 INVALID_SEARCH_QUERY);
 //   * at most MAX_QUERY_TERMS distinct terms;
-//   * every term but the last is a WHOLE-WORD tag; the last is a PREFIX tag of its first min(len, 12) characters;
+//   * every term but the last is a WHOLE-WORD tag; the last is a PREFIX tag of its first L characters, L = the largest of {3,5,8,12} <= len;
 //   * a body matches only if each non-last term is a whole token of it and the last is a prefix of some token (this is what
 //     drops truncation collisions and dummies after decryption).
 // Nothing here is logged or stored; the terms live for one request.
 import {
-  MAX_PREFIX_TAG_LENGTH,
   type SearchKeyProvider,
+  prefixTagLengthFor,
   tagForPrefix,
   tagForWord,
   tokenizeForSearch,
@@ -36,7 +36,7 @@ export function parseQueryTerms(q: string): string[] {
 export function tagsForTerms(key: Buffer, terms: readonly string[], tagBits: number): number[] {
   return terms.map((term, i) =>
     i === terms.length - 1
-      ? tagForPrefix(key, [...term].slice(0, MAX_PREFIX_TAG_LENGTH).join(""), tagBits)
+      ? tagForPrefix(key, [...term].slice(0, prefixTagLengthFor([...term].length)).join(""), tagBits)
       : tagForWord(key, term, tagBits),
   );
 }

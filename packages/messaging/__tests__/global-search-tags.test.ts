@@ -155,8 +155,8 @@ describe("padding (ADR-0058 decision 4)", () => {
     const k = await stubProvider.tagKey(ORG_A, "legacy");
     expect(buildMessageTags(k, "morphine", 19)).toHaveLength(16);
     expect(buildMessageTags(k, "5 mg", 19)).toHaveLength(16);
-    // alpha 4 + bravo 4 + charlie 6 + delta 4 + echo 3 = 21 real tags -> 32
-    expect(buildMessageTags(k, "alpha bravo charlie delta echo", 19)).toHaveLength(32);
+    // alpha 3 + bravo 3 + charlie 3 + delta 3 + echo 2 + foxtrot 3 + golf 2 = 19 real tags -> 32
+    expect(buildMessageTags(k, "alpha bravo charlie delta echo foxtrot golf", 19)).toHaveLength(32);
   });
 });
 
@@ -227,14 +227,17 @@ describe("cursor codec (created_at, id, page)", () => {
 });
 
 describe("T arithmetic (ADR-0058 table, recomputed from its stated assumptions)", () => {
-  const D = 4e5;
-  const ROWS = 1.6e8;
+  // Sparse prefix set {3,5,8,12} (2026-10-13): D = 1e5 whole-word + ~1e5 prefix tags = 2e5; n ~ 14.5 real tags per message
+  // pads to N = 16, so 5e6 x 16 = 8e7 rows (7.25e7 real, 7.5e6 dummy).
+  const D = 2e5;
+  const ROWS = 8e7;
   // [T, tags per bucket, share sharing, rows per bucket] as printed in the ADR (rounded)
   const TABLE: ReadonlyArray<readonly [number, number, number, number]> = [
-    [20, 0.38, 0.32, 153],
-    [19, 0.76, 0.53, 305],
-    [18, 1.53, 0.78, 610],
-    [16, 6.1, 0.998, 2441],
+    [20, 0.19, 0.17, 76],
+    [19, 0.38, 0.32, 153],
+    [18, 0.76, 0.53, 305],
+    [17, 1.53, 0.78, 610],
+    [16, 3.05, 0.95, 1221],
   ];
   it.each(TABLE)("T=%i", (t, perBucket, share, rows) => {
     const a = tagArithmetic(t, D, ROWS);
@@ -245,30 +248,31 @@ describe("T arithmetic (ADR-0058 table, recomputed from its stated assumptions)"
 
   it("T=24 and T=32 rows of the table", () => {
     const t24 = tagArithmetic(24, D, ROWS);
-    expect(t24.tagsPerBucket).toBeCloseTo(0.024, 3);
-    expect(t24.shareSharingBucket).toBeCloseTo(0.023, 2); // ADR prints 2.3% (exact 2.36%)
-    expect(t24.rowsPerBucket).toBeCloseTo(9.5, 1);
+    expect(t24.tagsPerBucket).toBeCloseTo(0.012, 3);
+    expect(t24.shareSharingBucket).toBeCloseTo(0.012, 3); // ADR prints 1.2% (exact 1.19%)
+    expect(t24.rowsPerBucket).toBeCloseTo(4.8, 1);
     const t32 = tagArithmetic(32, D, ROWS);
-    expect(t32.tagsPerBucket).toBeCloseTo(9.3e-5, 6);
-    expect(t32.shareSharingBucket).toBeCloseTo(0.00009, 5);
-    expect(t32.rowsPerBucket).toBeCloseTo(0.04, 2);
+    expect(t32.tagsPerBucket).toBeCloseTo(4.7e-5, 6);
+    expect(t32.shareSharingBucket).toBeCloseTo(0.00005, 5);
+    expect(t32.rowsPerBucket).toBeCloseTo(0.019, 3);
   });
 
-  it("the chosen T=19 numbers: 305 rows per bucket, 229 real + 76 dummy, 355 candidates for m=50", () => {
+  it("the chosen T=19 numbers: 153 rows per bucket, 138 real + 14 dummy, 203 candidates for m=50", () => {
     const a = tagArithmetic(DEFAULT_TAG_BITS, D, ROWS);
-    expect(a.rowsPerBucket).toBeCloseTo(305, 0);
-    expect(tagArithmetic(19, D, 1.2e8).rowsPerBucket).toBeCloseTo(229, 0);
-    expect(tagArithmetic(19, D, 4e7).rowsPerBucket).toBeCloseTo(76, 0);
+    expect(a.rowsPerBucket).toBeCloseTo(153, 0);
+    expect(tagArithmetic(19, D, 7.25e7).rowsPerBucket).toBeCloseTo(138, 0);
+    expect(tagArithmetic(19, D, 7.5e6).rowsPerBucket).toBeCloseTo(14, 0);
     expect(50 + a.rowsPerBucket).toBeLessThan(CANDIDATE_CAP);
-    expect(falseCandidateRate(50, a.rowsPerBucket)).toBeCloseTo(0.86, 2);
-    expect(falseCandidateRate(500, a.rowsPerBucket)).toBeCloseTo(0.38, 2);
-    // T = 18 already exceeds the cap for the typical rare word
-    expect(50 + tagArithmetic(18, D, ROWS).rowsPerBucket).toBeGreaterThan(CANDIDATE_CAP);
+    expect(falseCandidateRate(50, a.rowsPerBucket)).toBeCloseTo(0.75, 2);
+    expect(falseCandidateRate(500, a.rowsPerBucket)).toBeCloseTo(0.23, 2);
+    // With the sparse set T = 18 (355 candidates for m=50) still fits the cap; T = 17 (660) is the first to exceed it.
+    expect(50 + tagArithmetic(18, D, ROWS).rowsPerBucket).toBeLessThan(CANDIDATE_CAP);
+    expect(50 + tagArithmetic(17, D, ROWS).rowsPerBucket).toBeGreaterThan(CANDIDATE_CAP);
   });
 
   it("multi-word false candidates and the tail bound", () => {
-    const perMessage = 305 / 5e6;
-    expect(5e6 * perMessage ** 2).toBeCloseTo(0.019, 3);
+    const perMessage = 153 / 5e6;
+    expect(5e6 * perMessage ** 2).toBeCloseTo(0.0047, 3);
     expect(headBucketProbability(19, 5000)).toBeCloseTo(0.0095, 4);
     expect(headBucketProbability(19, 3e4)).toBeCloseTo(0.056, 3);
     expect(headBucketProbability(18, 5000)).toBeCloseTo(0.019, 3);
@@ -277,8 +281,9 @@ describe("T arithmetic (ADR-0058 table, recomputed from its stated assumptions)"
     expect(headBucketProbability(16, 3e4)).toBeCloseTo(0.367, 3);
   });
 
-  it("the per-tenant sizing rule gives 19 for D=4e5, 16 for a tenant ten times smaller, 19 when unknown", () => {
+  it("the per-tenant sizing rule gives 19 for D=4e5, 18 for D=2e5, 16 for a tenant ten times smaller, 19 when unknown", () => {
     expect(tagBitsForDistinctTags(4e5)).toBe(19);
+    expect(tagBitsForDistinctTags(2e5)).toBe(18); // the sparse-prefix reference tenant; DEFAULT_TAG_BITS stays 19 (see ADR)
     expect(tagBitsForDistinctTags(4e4)).toBe(16);
     expect(tagBitsForDistinctTags(null)).toBe(19);
     expect(tagBitsForDistinctTags(10)).toBe(12);

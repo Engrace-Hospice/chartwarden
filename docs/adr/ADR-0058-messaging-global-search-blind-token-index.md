@@ -1,16 +1,19 @@
 # ADR-0058 — Global message search is a per-tenant HMAC blind-token index (whole-word and prefix only), re-checked against current access at query time
 
 - **Status:** **Accepted** (2026-10-13, by the user's decision in conversation: "turn ADR-0058 to accepted").
-- **Review record:** the design review by the **security architect and the privacy officer** that this ADR named as a hard precondition has
-  **NOT been recorded**. Acceptance was granted by the user (product owner) without it, and the status line does not claim otherwise.
-  The review remains the condition for the production attestations below; link its record here when it exists. D10 (decided 2026-10-11 by
-  the product owner, who chose option B (D3) knowing it leaks token frequency) is unchanged.
+- **Review record:** [ADR-0058-design-review-2026-10-13.md](../reviews/ADR-0058-design-review-2026-10-13.md) records a security-architect review and a
+  privacy-officer review, **both performed by AI agents as desk reviews, not by humans, and unsigned**. Disposition of both: **approved with
+  conditions, design only; nothing approved for production enablement.** They changed one parameter (prefix tag lengths to 3, 5, 8, 12) and
+  found stale amendment text and several gaps (record F1 to F12). The **measured leakage experiment has not been run**, the HIPAA risk-analysis
+  entry is a draft with no owner, and human adoption and the product owner's residual-risk acceptance are pending, so the design review
+  requirement below is **not satisfied**. Acceptance was granted by the user (product owner) before any review. D10 (decided 2026-10-11 by the
+  product owner, who chose option B (D3) knowing it leaks token frequency) is unchanged.
 - **What acceptance does not do:** it does not set `messaging.global_search_escrow_attested` or the rate-limit attestation (`globalSearchRateLimitActive`),
   which are statements of fact about the escrow drill and the limiter and are set only when true (the escrow drill is in
   `docs/runbooks/m36-body-key-ring.md`). The tenant switch still refuses ON until its go-live checklist passes. WP 2.7b was additionally
   **blocked on the two prerequisite work packages** in "Prerequisites" (WP 2.13 key-ring migration of message bodies; WP 2.14 per-route
   rate limit). In-conversation search (WP 2.7a, option A) does not depend on this ADR.
-- **Date:** 2026-10-11 (revised 2026-10-13 after design review feedback, and again 2026-10-13 to record the open-question decisions; Status unchanged)
+- **Date:** 2026-10-11 (revised 2026-10-13 after design review feedback, and again 2026-10-13 to record the open-question decisions; Status: Accepted since 2026-10-13, see line 3)
 - **Phase:** Messaging Hub Phase 2 (WP 2.7b). Needed before Phase 2 work on global search starts.
 - **Extends:** [ADR-0038](ADR-0038-app-layer-envelope-encryption.md) (app-layer envelope encryption) and
   [ADR-0045](ADR-0045-platform-kek-custody.md) (KEK custody) for key derivation; plan `02` §6.
@@ -24,7 +27,9 @@
 > (user, delegated to the lead engineer's judgement)** were left to professional judgement by the user ("use best practice"); they are
 > decisions, not open questions, but they are **inputs to the design review**: the security architect and privacy officer may still
 > amend them, and every numeric parameter among them must be re-validated by the leakage review with a measurement. None of them
-> changes Status: this ADR stays **Proposed** until the review in "Design review requirement" has passed.
+> changes Status: the Status is **Accepted** (by the user's decision, line 3), but the review in "Design review requirement" has **not
+> yet been satisfied** (AI desk reviews only; human adoption, the measured leakage experiment, the HIPAA risk-analysis entry and the
+> product owner's residual-risk acceptance are pending), and **no tenant may be enabled in production until it is**.
 
 ### Decisions taken 2026-10-13 (summary; the text below is authoritative)
 
@@ -95,7 +100,7 @@ Scope of P1 (WP 2.13, its own WP; sized as a data migration, not a code tweak):
 6. Live tests: pre- and post-migration envelopes both open; mixed-version rows during backfill; after ring destruction every body and
    revision fails to open; rotation re-encrypts under the new version; revision rows migrate.
 
-**Status of P1 (WP 2.13, implemented on branch `feat/m36-wp213-body-key-ring`; this ADR stays Proposed):** items 1, 2, 3 and 6 are built and proved live (envelope `VERSION` byte 2 recording the ring version; reads open both schemes; new writes seal on the ring behind `M36_BODY_SEAL_SCHEME=ring`, default `legacy`; the resumable, tenant-scoped, hash-checked backfill with the revision re-seal through the audited definer function `m36_reseal_message_revision`, migration 1089; both-scheme and mixed-version live tests, revisions migrate, `body_sha256` unchanged, `hash_verify` clean). Item 4 is satisfied by M34's existing four-phase shred (module erasers, then `m34_destroy_tenant_key_ring`): after it every ring-sealed body fails to open (live test); legacy-sealed rows and their backups are not shredded until backfilled and aged out. Item 5 is **partly** done: a new DEK version seals new bodies and old ring bodies stay readable by their recorded version (live test); re-sealing existing ring rows to a newer version is NOT built, and the ops runbook section 8.3.3 and `02` section 6 are not yet edited (the operator side is `docs/runbooks/m36-body-key-ring.md`). Escrow: the restore drill is an operational precondition and is not automated; the backfill refuses to run in a production environment unless `M36_BODY_BACKFILL_ESCROW_DRILL_CONFIRMED=true`. The legacy derivation and `MESSAGING_ENCRYPTION_KEY` are untouched; retirement is a later, separately gated step.
+**Status of P1 (WP 2.13, implemented on branch `feat/m36-wp213-body-key-ring`; this ADR is Accepted by the user's decision, with the design review requirement not satisfied):** items 1, 2, 3 and 6 are built and proved live (envelope `VERSION` byte 2 recording the ring version; reads open both schemes; new writes seal on the ring behind `M36_BODY_SEAL_SCHEME=ring`, default `legacy`; the resumable, tenant-scoped, hash-checked backfill with the revision re-seal through the audited definer function `m36_reseal_message_revision`, migration 1089; both-scheme and mixed-version live tests, revisions migrate, `body_sha256` unchanged, `hash_verify` clean). Item 4 is satisfied by M34's existing four-phase shred (module erasers, then `m34_destroy_tenant_key_ring`): after it every ring-sealed body fails to open (live test); legacy-sealed rows and their backups are not shredded until backfilled and aged out. Item 5 is **partly** done: a new DEK version seals new bodies and old ring bodies stay readable by their recorded version (live test); re-sealing existing ring rows to a newer version is NOT built, and the ops runbook section 8.3.3 and `02` section 6 are not yet edited (the operator side is `docs/runbooks/m36-body-key-ring.md`). Escrow: the restore drill is an operational precondition and is not automated; the backfill refuses to run in a production environment unless `M36_BODY_BACKFILL_ESCROW_DRILL_CONFIRMED=true`. The legacy derivation and `MESSAGING_ENCRYPTION_KEY` are untouched; retirement is a later, separately gated step.
 
 Doing P1 before launch is far cheaper than after (there is no production search to re-key). P1 is also the only way the claims in
 "Keys" and the eraser verification below are true.
@@ -226,7 +231,9 @@ for the global search route, because search is an oracle and a decrypt-cost ampl
    **English only at launch**, behind a **pluggable tokeniser** interface so other languages and diacritic policies can be added later
    without changing the index shape (D10, decided 2026-10-11 by the product owner). Each distinct token yields:
    - a **whole-word tag** `HMAC(K, "w\0" || token)`;
-   - **prefix tags** `HMAC(K, "p\0" || len || "\0" || prefix)` for prefix lengths 3 to min(len, 12). No prefix shorter than 3, no
+   - **prefix tags** `HMAC(K, "p\0" || len || "\0" || prefix)` at the **sparse lengths 3, 5, 8 and 12 only** (a word shorter than a listed length contributes only the lengths
+     up to its own length; no prefix tag beyond 12 characters; decided in the 2026-10-13 AI desk review, pending human sign-off,
+     see [ADR-0058-design-review-2026-10-13.md](../reviews/ADR-0058-design-review-2026-10-13.md)). No prefix shorter than 3, no
      infix/suffix grams, no trigram of short strings, no character positions or word order stored. The **minimum query prefix
      length is 3**, equal to the minimum prefix tag length.
 
@@ -234,14 +241,14 @@ for the global search route, because search is an oracle and a decrypt-cost ampl
 
    | Input | Tokens | Tags | `n` |
    |---|---|---|---|
-   | `morphine` | `morphine` | whole(`morphine`); prefix lengths 3..8: `mor`, `morp`, `morph`, `morphi`, `morphin`, `morphine` | 7 |
+   | `morphine` | `morphine` | whole(`morphine`); prefix lengths 3, 5, 8: `mor`, `morph`, `morphine` | 4 |
    | `5 mg` | none (`5` has no letters; `mg` is under 3 characters) | none | 0 |
    | `5mg` | none (one transition, so `5` is a separator; `mg` is under 3 characters) | none | 0 |
-   | `MS Contin 15` | `contin` (`ms` under 3 characters; `15` has no letters) | whole(`contin`) + prefix lengths 3..6: `con`, `cont`, `conti`, `contin` | 5 |
+   | `MS Contin 15` | `contin` (`ms` under 3 characters; `15` has no letters) | whole(`contin`) + prefix lengths 3, 5: `con`, `conti` | 3 |
    | `MRN 12345678` | `mrn` (`12345678` is ID-like: 6 or more digits, dropped) | whole(`mrn`); prefix `mrn` | 2 |
-   | `Café` and `cafe` | `cafe` | same tags for both spellings: whole(`cafe`) + prefixes `caf`, `cafe` | 3 |
+   | `Café` and `cafe` | `cafe` | same tags for both spellings: whole(`cafe`) + prefix `caf` (length 4 is not a prefix length) | 2 |
    | `hba1c` | none (two transitions: ID-like) | none | 0 |
-   | `not eating` | `not`, `eating` (neither is a stop word) | whole(`not`), prefix `not`; whole(`eating`) + prefixes `eat`, `eati`, `eatin`, `eating` | 2 + 5 = 7 |
+   | `not eating` | `not`, `eating` (neither is a stop word) | whole(`not`), prefix `not`; whole(`eating`) + prefixes `eat`, `eatin` | 2 + 3 = 5 |
 
    Consequences made explicit: a clinician cannot search for a dose ("5 mg" yields nothing searchable), and, because the minimum token
    length is now 3, the very high-frequency `mg`, `ms` and `ml` tokens are not in the index at all, which removes the most-leaked and
@@ -253,7 +260,7 @@ for the global search route, because search is an oracle and a decrypt-cost ampl
    experiment in "Design review requirement". Collisions are intentional: they become false positives that step 8.5 removes after
    decryption. **Padding:** for a message with `n` real tags (whole + prefix), the stored set is padded to
    `N = max(16, 2^ceil(log2 n))` rows (`N = 16` when `n = 0`), i.e. `dummies = N - n`. Decided: the floor of 16 is the smallest
-   power of two that covers the typical short clinical message (a single long word is already 7 to 11 tags), so most short messages
+   power of two that covers the typical short clinical message (a single long word is now 4 tags at most plus its whole-word tag; the floor still covers typical short messages), so most short messages
    are indistinguishable by row count. Each dummy is a uniformly random `T`-bit value from a CSPRNG, **not**
    derived from the message id, the key or the content, and is **re-randomised on every per-message replace and every rebuild**, so a
    rebuild does not reproduce (and an observer cannot link) a prior dummy set. Rows carry only
@@ -284,8 +291,9 @@ for the global search route, because search is an oracle and a decrypt-cost ampl
    marker WP 5.x lands; this ADR does not choose it.
 8. **Query path** (all steps server-side, in one request):
    1. Authenticate; derive tenant from the session; per-route rate limit (P2).
-   2. Tokenise the query the same way; build tags (whole-word for complete words, prefix tags for a trailing partial word of >= 3
-      characters); reject queries with no indexable token with a message explaining the limit.
+   2. Tokenise the query the same way; build tags (whole-word for complete words, a prefix tag for a trailing partial word of >= 3
+      characters, at the largest prefix-tag length in {3, 5, 8, 12} that does not exceed the typed length: 4 characters query the
+      3-tag, 9 to 11 the 8-tag, 12 or more the 12-tag; step 5 below makes the result exact); reject queries with no indexable token with a message explaining the limit.
    3. **Coarse SQL prefilter** (see "Access control"): candidate `message_id`s by tag, `key_version` in the live versions, joined to
       `message` with `status <> 'deleted'`, restricted to channels where the user has an active `channel_member` row
       (`removed_at IS NULL`) **or** the channel is an `announcement` (org-wide, no membership row), ordered by recency, capped.
@@ -349,7 +357,7 @@ experiment in "Design review requirement").
 | Minimum indexed token length | 3 | Equals the minimum prefix length; removes `mg`, `ms`, `ml`, `iv` and `no`, the most-leaked and least-useful terms. |
 | Maximum token length | 40, longer tokens dropped (not truncated) | No identifier-like string is fingerprinted by a truncated stem. |
 | Minimum query prefix length | 3 | Matches the shortest prefix tag. |
-| Prefix tag lengths | every length 3 to min(len, 12) (initial); reviewers may move to 3, 5, 8, 12 | Every length keeps prefix queries exact at any typed length; see the prefix-hierarchy row in the leakage table. |
+| Prefix tag lengths | **sparse set {3, 5, 8, 12}** (a word shorter than a length contributes only lengths <= its own; none beyond 12). **Decided in the 2026-10-13 AI desk review (pending human sign-off; [ADR-0058-design-review-2026-10-13.md](../reviews/ADR-0058-design-review-2026-10-13.md))**, replacing the earlier initial "every length 3 to min(len, 12)". | A dense chain gives each word a cluster of 2 to 11 tags in the same messages (cluster size reveals length, shared prefixes reveal where words diverge); the sparse set cuts the chain to at most 5 tags per word. Cost: a typed prefix of 4, 6, 7 or 9 to 11 characters uses the next-shorter tag, so its candidate set is wider and the post-decrypt check (step 8.5) does the exact filtering. See the prefix-hierarchy row in the leakage table. |
 | Head-bucket refusal | `HEAD_BUCKET_ROWS = 5,000`, `MAX_PAGES_PER_QUERY = 5` | Bounds the heavy-tail case; see the tail bound above. |
 | Stop words | the 101-word English list in decision 3; negations and clinical words stay indexed | Cuts the highest-frequency function words; `not` is kept because "not eating" is a clinical query. |
 | ID-like | decision 3 (digits, UUID/email/URL/phone/MRN shapes, 20+ hex/base32/base64, two or more letter-digit transitions) | Over-inclusive on purpose: a miss is cheaper than a leaked identifier. |
@@ -365,39 +373,57 @@ Collisions also create false candidates for the query path. Both effects scale w
 values in the tenant.
 
 **Assumed reference tenant (the arithmetic is only as good as these, and the reviewers should re-run it on real tenant statistics):**
-5 x 10^6 messages; 10^5 distinct indexed tokens, giving about `D = 4 x 10^5` distinct tag values (10^5 whole-word tags plus an
-assumed 3 x 10^5 distinct prefix tags, because prefixes are shared between words); an average of `n = 24` real tags per message,
-padded to `N = 32` (8 dummies). Total rows `5 x 10^6 x 32 = 1.6 x 10^8` (1.2 x 10^8 real, 4 x 10^7 dummy).
+5 x 10^6 messages; 10^5 distinct indexed tokens. **Recomputed 2026-10-13 for the sparse prefix set {3, 5, 8, 12}** (the earlier dense
+chain gave `D = 4 x 10^5` and `n = 24`, padded to 32). Prefix tags are now kept at four lengths only. The earlier assumption was 3 x 10^5
+distinct prefix tags over lengths 3 to 12; spreading that over the lengths with a plausible profile (few distinct 3-letter prefixes,
+most at 5 to 8, fewer at 12) leaves about 10^5 distinct prefix tags at the four kept lengths, so `D = 10^5` whole-word + `10^5` prefix =
+**`D = 2 x 10^5`**. Real tags per message: the dense `n = 24` corresponds to about 4.4 indexed tokens at about 5.5 tags each; at the
+sparse set a token averages about 3.3 tags (whole + lengths 3 and 5, and 8 or 12 for longer words), so **`n` is about 14.5 and pads
+to `N = 16`** (the floor), 5 x 10^6 x 16 = **8 x 10^7 rows** (7.25 x 10^7 real, 7.5 x 10^6 dummy). Like the earlier table this applies
+the padding rule to the mean `n`; the mean of `N` over a skewed message-length distribution is higher (a message of 17 or more real tags
+pads to 32), so 8 x 10^7 is a lower bound on rows; **all of these are assumptions to be replaced by measurement** (the 10^5 prefix
+tags, the 4.4 tokens per message and the token-length profile are not measured).
 
-| `T` | Buckets `B = 2^T` | Tags per bucket `D/B` | Share of tags that share a bucket `1 - e^(-D/B)` | Rows per bucket `1.6e8 / B` |
+| `T` | Buckets `B = 2^T` | Tags per bucket `D/B` | Share of tags that share a bucket `1 - e^(-D/B)` | Rows per bucket `8e7 / B` |
 |---|---|---|---|---|
-| 32 (earlier draft) | 4.29 x 10^9 | 9.3 x 10^-5 | 0.009% | 0.04 |
-| 24 | 1.68 x 10^7 | 0.024 | 2.3% | 9.5 |
-| 20 | 1.05 x 10^6 | 0.38 | 32% | 153 |
-| **19 (chosen)** | **5.24 x 10^5** | **0.76** | **53%** | **305 (229 real + 76 dummy)** |
-| 18 | 2.62 x 10^5 | 1.53 | 78% | 610 |
-| 16 | 6.55 x 10^4 | 6.1 | 99.8% | 2441 |
+| 32 (earlier draft) | 4.29 x 10^9 | 4.7 x 10^-5 | 0.005% | 0.02 |
+| 24 | 1.68 x 10^7 | 0.012 | 1.2% | 4.8 |
+| 20 | 1.05 x 10^6 | 0.19 | 17% | 76 |
+| **19 (chosen)** | **5.24 x 10^5** | **0.38** | **32%** | **153 (138 real + 14 dummy)** |
+| 18 | 2.62 x 10^5 | 0.76 | 53% | 305 |
+| 17 | 1.31 x 10^5 | 1.53 | 78% | 610 |
+| 16 | 6.55 x 10^4 | 3.05 | 95% | 1221 |
 
-- **`T = 32` masks nothing.** At 9.3 x 10^-5 tags per bucket every tag is alone in its bucket, so the stored value is a bijection of
+(Before the sparse set the same table read `D = 4 x 10^5`, `1.6 x 10^8` rows: T = 19 gave 0.76 tags per bucket, 53% sharing and 305 rows
+per bucket. The sparse set halves `D`, so at the same `T` fewer tags share a bucket, that is **less masking**, and halves the rows per
+bucket. T = 18 now reproduces the old T = 19 masking figures (0.76, 53%, 305 rows). `T = 19` is kept as the default, the more
+conservative choice for masking; the per-tenant sizing rule `T = clamp(round(log2(D_org / 0.75)), 12, 20)` now yields 18 for this
+reference tenant and is unchanged. Whether to default to 18 is a reviewer decision.)
+
+- **`T = 32` masks nothing.** At 4.7 x 10^-5 tags per bucket every tag is alone in its bucket, so the stored value is a bijection of
   the tag and the frequency histogram is exact. The earlier draft's "many distinct words per tag value" was wrong at this size.
 - **False-candidate rate for a single-word query** with `m` true matches is about `bucket rows / (m + bucket rows)`. At `T = 19`,
-  a rare word (`m = 50`) yields about 50 + 305 = 355 candidates, of which about 86% are false and are dropped after decryption
-  (step 8.5); a common word (`m = 500`) yields about 805 candidates, 38% false, cut to 500 by recency and continued through the cursor.
-  At `T = 18` the same rare word yields about 660 candidates (92% false), above the 500 cap for the typical word; at `T = 32` it
-  yields about 50.04 (0.07% false) and no masking.
-- **Multi-word queries are close to exact.** A random message holds a given bucket with probability `305 / 5 x 10^6 = 6.1 x 10^-5`;
-  for two words the expected false candidates are `5 x 10^6 x (6.1 x 10^-5)^2 = 0.019` per query.
-- **Against the cap, mean case only.** For the **mean** bucket (305 rows), `T = 19` is the smallest `T` for which a typical
-  single-word candidate set (355 for `m = 50`) stays under `CANDIDATE_CAP = 500`; `T = 18` already exceeds it. This holds **only for
+  a rare word (`m = 50`) yields about 50 + 153 = 203 candidates, of which about 75% are false and are dropped after decryption
+  (step 8.5); a common word (`m = 500`) yields about 653 candidates, 23% false, cut to 500 by recency and continued through the cursor.
+  At `T = 18` the same rare word yields about 355 candidates (86% false), still under the cap; `T = 17` yields about 660 (92% false),
+  above it; at `T = 32` it yields about 50.02 (0.04% false) and no masking. **Typed-prefix queries are wider than these single-tag
+  figures:** a typed prefix of 4, 6, 7 or 9 to 11 characters queries the next-shorter prefix tag (3, 5, 5, 8), whose message set is a
+  superset of the typed prefix's matches, so it carries extra true-tag candidates that the post-decrypt check removes (a 4-letter
+  typed prefix is answered by the 3-letter tag, the widest set of the chain). That widening is the price of the sparse set and is not
+  in the table; the experiment must measure it.
+- **Multi-word queries are close to exact.** A random message holds a given bucket with probability `153 / 5 x 10^6 = 3.1 x 10^-5`;
+  for two words the expected false candidates are `5 x 10^6 x (3.1 x 10^-5)^2 = 0.0047` per query.
+- **Against the cap, mean case only.** For the **mean** bucket (153 rows), a typical single-word candidate set (203 for `m = 50`) stays under
+  `CANDIDATE_CAP = 500` at `T = 19`, and still at `T = 18` (355); `T = 17` is the first `T` that exceeds it (660). This holds **only for
   the mean**: row frequencies are heavy-tailed, so the mean says nothing about a bucket that holds a head tag (next bullet). The
-  mean case fits the 200-body decrypt budget only through the cursor (a page examines up to 200 of about 355 candidates and
+  mean case fits the 200-body decrypt budget only through the cursor (a page examines up to 200 of about 203 to 355 candidates and
   returns `nextCursor` / `scanCapped`), which is the designed behaviour, not a failure.
 - **Tail bound: P(candidates > cap).** A rare word that shares a bucket with a head tag inherits that tag's whole message set: a
   tag in 10^6 messages makes about 10^6 candidates, nearly all false, far beyond the 500 cap and the 200-body budget. The
   probability that a given bucket holds at least one tag with at least `h` rows is `1 - e^(-H/B)` with `H` the number of such tags
   (assumed counts, a Zipf-shaped tenant; **to be measured, not trusted**): for about `H = 5,000` head tags of 10^5 or more rows,
   `1 - e^(-5000/524288)` = **0.95%** of buckets, so about 1% of rare-word single-term queries; for about `H = 3 x 10^4` tags of 500
-  or more rows (anything that alone can fill the cap), `1 - e^(-3e4/524288)` = **5.6%**. At `T = 18` these are 1.9% and 10.8%; at
+  or more rows (anything that alone can fill the cap), `1 - e^(-3e4/524288)` = **5.6%** (`H` is an assumed count and is independent of the sparse recomputation; fewer prefix lengths may lower it, so treat these as upper figures until measured). At `T = 18` these are 1.9% and 10.8%; at
   `T = 16` they are 7.4% and 36.7%, which is the real price of more masking. So single-term queries on a rare word will hit the
   cap for roughly 1% to 6% of words at `T = 19`, and **those queries are unusable as designed unless the product handles them**.
 - **What the product does for such a query (decided, deterministic, never an unbounded decrypt).** The query path never decrypts
@@ -411,14 +437,14 @@ padded to `N = 32` (8 dummies). Total rows `5 x 10^6 x 32 = 1.6 x 10^8` (1.2 x 1
   the rebuild and nightly) records the buckets whose row count exceeds `HEAD_BUCKET_ROWS = 5,000` (10 x the cap; initial,
   tunable) per `(organization_id, key_version)`, as bucket numbers only (no plaintext and no token list). A **single-term query**
   whose tag falls in a head bucket is refused up front with the same refine-your-query response and costs no decrypts; a query of
-  two or more terms proceeds, because the AND-intersection is close to exact (0.019 false candidates above), provided at least one
+  two or more terms proceeds, because the AND-intersection is close to exact (0.0047 false candidates above), provided at least one
   term is not in a head bucket. Alternatives considered: (a) a per-tenant frequency stop-word list that removes head tags from the
   index entirely (it also removes the strongest frequency signal, but makes common clinical words unsearchable even in combination,
   so it is recorded as a **reviewer option**, not the initial decision); (b) raising `T` (rejected: worse masking trade, above).
 - **Acceptance item (leakage experiment and go-live):** **measure `P(candidates > CANDIDATE_CAP)` on a production-shaped corpus**
   for single-term and two-term queries, at the chosen `T`, and compare it with the 1% to 6% estimate above; the go-live checklist
   fails if the measured single-term rate, after the head-bucket refusal, leaves a typical clinical vocabulary query unusable.
-- **Dummies** add about 76 +/- 9 rows to every bucket (Poisson), so even a tag alone in its bucket is not read exactly.
+- **Dummies** add about 14 +/- 4 rows to every bucket at the default `T = 19` (Poisson: 7.5 x 10^6 dummy rows / 2^19 = 5.24 x 10^5 buckets = 14.3 per bucket, standard deviation sqrt(14.3) = 3.8; the other 138 of the 153 rows per bucket are real), so even a tag alone in its bucket is not read exactly.
 - **What `T` cannot do.** A word in 10^6 messages sits in a bucket with about 10^6 rows at any `T`; the head of the frequency
   distribution stays identifiable by rank, and padding does not change that. Truncation protects the long tail (rare words, which
   include names), not the head. This is the known limit of option B (see the leakage table).
@@ -467,7 +493,9 @@ padded to `N = 32` (8 dummies). Total rows `5 x 10^6 x 32 = 1.6 x 10^8` (1.2 x 1
    be tenant-tightenable. Built: step-up operation keys are free-form lower-case dotted strings (`OPERATION_KEY_PATTERN`), so nothing needs registering.
    Every change is **audit-logged with who, when, old value and new value** (the write-audit trigger on the table; as built, no separate domain event, the trigger is the only audit).
 3. **Turning ON requires the go-live checklist**, enforced where code can enforce it and attested where it cannot: (a) the
-   **leakage review record is linked in this ADR** and the Status has changed, attested by ops turning the platform flag below on;
+   **leakage review record is linked in this ADR** and the leakage review requirement is satisfied, attested by ops setting the separate platform flag
+   `messaging.global_search_leakage_attested` (org-NULL row only, fail closed; checklist item `LEAKAGE_NOT_ATTESTED`, the fifth checklist
+   item; it is a statement of fact set only after the measured experiment passed and the humans signed, and it gates the tenant ON only);
    (b) **P1 is done** for the tenant (no `message` or `message_revision` row on the legacy envelope; checked by the route, which
    refuses with 409 otherwise) **and the key escrow and restore drill are on record**; (c) **P2 is deployed** (the rate limit is
    active); (d) the **index rebuild is complete** for the tenant (checkpoint complete; the query path stays closed until then, as in
@@ -492,8 +520,9 @@ padded to `N = 32` (8 dummies). Total rows `5 x 10^6 x 32 = 1.6 x 10^8` (1.2 x 1
    value), **not** through the merged `forOrg` map, so a tenant-scoped `feature_flag` row for the same key, written by a seed, a
    migration or plain SQL, can never turn search on when the platform row is off or absent. The test inserts such a tenant row and
    asserts search stays refused. Defence in depth: a follow-up makes M34's `FeatureFlagAdmin` upsert refuse an org-scoped write for
-   it, also with a test. The platform flag also carries the production-enablement gate: ops does
-   not turn it on until the leakage test has passed.
+   it, also with a test. This flag is the kill switch plus the feature-on switch and nothing else; the leakage attestation is the
+   separate `messaging.global_search_leakage_attested` flag of decision 3(a). By convention ops sets the leakage attestation first
+   and only then turns this flag on.
 6. **The patient-name flag stays dropped for v1** (see decision 3).
 
 ## Access control
@@ -606,13 +635,15 @@ messages (support access goes through the audited break-glass path elsewhere).
   or `packages/db/src`; the value exists only in the `role_category` enum (`packages/db/migrations/0008_authorization_m3_tables.sql`
   line 4). How family identities receive roles **could not be determined from this repo**, so no grant is found, but absence of a
   grant is not proven; the live test and the ratchet are required for that reason.
-- **The member picker excludes the three categories; nothing else was found to.** `mention-non-member-service-db.ts` line 64
-  filters only the "Add <name>?" **picker**. The add-member path itself, `addMember` (`messaging-route-service-db.ts` ~lines
-  1825-1857), checks `assertMayManageMembers` and `assertActiveMessagingUser` (lines 343-352), and `isActiveMessagingUser` tests only
-  active org membership and active user status (~lines 322-341); **no role-category check was found in that path**. So it is not
-  established that these identities can never be added to a channel. The real controls are the **route allow-list, the live test and
-  the static ratchet** above. A verification item (below) covers the add-member path, and closing it (refusing the three categories
-  in `addMember`) is a recommended follow-up, not a prerequisite for this ADR.
+- **The member picker and every membership write now refuse the three categories (design review F6).** `mention-non-member-service-db.ts`
+  line 64 filters the "Add <name>?" **picker**, and `member-category-gate.ts` makes every `channel_member` write path (`addMember`,
+  `ensureDmMember` for both DM participants, the care-team roster sync, and the creator rows of provider-opened, announcement and
+  department channels) refuse an identity holding an active or disabled (not expired) role of `patient_family`, `external_auditor` or
+  `platform_staff`: `addMember`/`openDm` answer 422 `MEMBER_CATEGORY_NOT_ALLOWED`, the roster sync skips such an identity. The deny set is
+  `GLOBAL_SEARCH_ROLE_POLICY`'s, one source of truth. No channel kind legitimately holds these categories as a member (families message
+  through portal accounts, which are not `channel_member` rows), so the refusal is unconditional. A static ratchet fails when a new
+  membership-write path skips the gate. Rows already present before the gate shipped are not removed by it; the route allow-list,
+  live test and ratchet above remain the controls for those.
 
 ### Channel state by user state
 
@@ -633,7 +664,7 @@ Every row maps to a live test in the new suite `test:m36:global-search:live` (re
 | 10 | `care_team`, **access ended** (patient discharged / user off the care team) | `memberSource = 'auto'` member no longer on the roster | Zero | `CareTeamProvider.careTeamMembers` | `auto-member-off-roster-zero` |
 | 11 | `care_team`, access ended | `memberSource = 'manual'` member | Results while the manual membership and Part 2 hold | `candidate.memberSource !== 'auto'` returns true | `manual-member-survives-roster-change` |
 | 12 | `announcement` | Any active user, no membership row | Results | org-wide rule | `announcement-org-wide` |
-| 13 | Any | Identity with role category `patient_family`, `external_auditor` or `platform_staff` | Zero (decided; see "Who may call the route") | the route refuses these categories before any search runs; the member **picker** excludes them (`mention-non-member-service-db.ts` line 64) but no category check was found in the add-member path, so the route allow-list is the control | `non-staff-identities-zero` |
+| 13 | Any | Identity with role category `patient_family`, `external_auditor` or `platform_staff` | Zero (decided; see "Who may call the route") | the route refuses these categories before any search runs; the member **picker** excludes them (`mention-non-member-service-db.ts` line 64) and the add-member path now refuses them (`MEMBER_CATEGORY_NOT_ALLOWED`); the route allow-list remains the control for rows that pre-date the gate | `non-staff-identities-zero` |
 | 14 | Any | Member, message sent **before** they joined | Results (**User decision**: findable iff readable through the history path) | no `joined_at` filter on any read path; decided, see "Pre-join history" | `pre-join-history-matches-history-read` |
 | 15 | Any | Other tenant | Zero, tags differ | per-tenant key, RLS | `cross-tenant-collision` |
 | 16 | Message `deleted` | Anyone | Never | prefilter and step 8.5 | `deleted-never-returned` |
@@ -681,7 +712,7 @@ and the resulting requirements:
 | Application compromise (code execution with KEK) | everything: bodies and keys | none new - already game over for bodies | Index adds no capability beyond bodies |
 | Authorised insider using the UI to probe | whether a word occurs in channels they may already read | results restricted to current access; per-user and per-org rate limit (P2); read audit | Probing within permitted scope reveals only permitted content |
 | Patient names typed in messages | with no patient-name flag in v1, a name is indexed like any other word | none specific; ordinary tag protections | Names are the highest-value token for frequency and auxiliary-vocabulary attacks (the adversary can build a name list from outside data). **Proposed default, for security/privacy reviewers to confirm:** the reviewers decide between "index names" (current) and "exclude known patient-name tokens" from the index (at the cost of not finding messages by patient name) |
-| Prefix-hierarchy attack (database snapshot) | prefix tags form **nested message sets**: set(`mor`) is a superset of set(`morp`), and so on down to set(`morphine`). For head words the chain survives truncation and dummy noise, so the observer learns the word's **length** (prefix tags stop at 12) and **where words diverge** (where a nested chain splits), which sharply narrows a dictionary match | every prefix length is a separate tag under one key; truncation to `T` bits and dummies blur only the tail, not the head | **Initial decision:** keep every prefix length 3 to min(len, 12) (the arithmetic and golden cases are verified for it) and record the chain as a **residual leakage and a reviewer input**. Options for the reviewers: (a) fewer prefix lengths, `3, 5, 8, 12`, which halves the chain resolution but makes a typed prefix of 4, 6, 7, 9 to 11 characters unanswerable by tag, so those queries need post-decrypt filtering and generate more false candidates; (b) no prefix tags for head words (identified by the head-bucket statistics), which removes the chain for exactly the words where it is strongest but makes a head word findable only whole |
+| Prefix-hierarchy attack (database snapshot) | prefix tags form **nested message sets**: set(`mor`) is a superset of set(`morph`), which is a superset of set(`morphine`). With the dense chain every word has a cluster of 2 to 11 tags in the same messages (cluster size gives the exact length under 12; shared prefixes show where words diverge), for every word, not only head words. With the sparse set the chain is at most 5 tags (whole word plus lengths 3, 5, 8, 12): length is learned only to within a band (under 5, 5 to 7, 8 to 11, 12 or more) and fewer shared-prefix divergence points are visible | prefix tags at four lengths only, under one key; truncation to `T` bits and dummies blur only the tail, not the head | **Decided in the 2026-10-13 AI desk review (pending human sign-off; see [the review record](../reviews/ADR-0058-design-review-2026-10-13.md)): sparse prefix lengths {3, 5, 8, 12}**, replacing the earlier initial "keep every length 3 to min(len, 12)". Cost: a typed prefix of 4, 6, 7 or 9 to 11 characters is queried at the next-shorter tag (3, 5, 5, 8) and relies on the post-decrypt check, so it generates more false candidates. The chain is reduced, not removed: it remains a **residual leakage and a reviewer input**, and the leakage experiment must be run for both configurations. Still open as a further option: (b) no prefix tags for head words (identified by the head-bucket statistics), which removes the chain where it is strongest but makes a head word findable only whole |
 | Cross-tenant | nothing | distinct keys per tenant; RLS; cross-tenant collision test | Compromised KEK defeats all tenants |
 
 The honest summary: option B trades a reduced blast radius for a database-only compromise (no plaintext copy exists, unlike C) against
@@ -700,7 +731,7 @@ user's pre-join-history decision, the escrow arrangement in P1, the flag and kil
 measured experiment on synthetic hospice notes estimating how many top-N words an auxiliary-vocabulary frequency attack recovers
 at the chosen `T` and the chosen tokenizer parameters (minimum token length, stop words, ID-like rule, caps), which also serves as the **production-enablement leakage test** (D10) and must pass before any tenant is enabled; (3) a record of the HIPAA risk-analysis entry for the new PHI-derived store **and covering the user's pre-join-history decision
 (see "Pre-join history": consequences) and the prefix-hierarchy residual leakage**; (4) product-owner acceptance of the
-residual risk. The review record is linked from this ADR before Status changes.
+residual risk. The review record is linked from this ADR (see Status); Status was changed to Accepted by the user before items (1) to (4) were satisfied, so they remain outstanding and gate production enablement.
 
 ## Alternatives considered
 
@@ -787,9 +818,9 @@ residual risk. The review record is linked from this ADR before Status changes.
     platform row off or absent; the query path and the indexer both still refuse (they read the org-NULL row directly, not
     `forOrg`). OFF-then-ON: queries stay refused until outbox replay and reconciliation report zero drift; a message deleted or
     redacted while OFF is absent from the index after turning ON.
-  - **Add-member path:** a test attempts `addMember` for an identity holding each of the three excluded categories and records the
-    actual behaviour (today expected: allowed, as no category check was found); the route allow-list test (row 13) must pass
-    regardless. If a follow-up adds the refusal, the test flips to asserting it.
+  - **Add-member path:** a live test attempts `addMember` for an identity holding each of the three excluded categories and asserts the
+    422 `MEMBER_CATEGORY_NOT_ALLOWED` refusal (and that an allowed workforce identity is accepted); the route allow-list test (row 13)
+    must pass regardless.
   - **Escrow independence:** the custodian record shows three distinct natural persons and a dual-control vault procedure; a
     re-drill is on record after each custodian change and yearly; the same drill exists for `M34_TENANT_KEK`.
   - **Tail bound:** `P(candidates > CANDIDATE_CAP)` is measured on a production-shaped corpus for single-term and two-term queries;
@@ -820,9 +851,9 @@ What is genuinely still open, all for the reviewers (the items the user answered
   from the index (Proposed default: not excluded in v1; see the leakage table).
 - **Role-category allow-list:** whether `external_collaborator`, `volunteer` and `temporary_special` are added to it (they are off it
   by default), how `patient_family` identities receive roles (not determinable from this repo; the live test and the ratchet cover
-  it), and whether `addMember` should refuse the three excluded categories.
+  it), (`addMember` now refuses the three excluded categories).
 - **Heavy-tail handling and prefix hierarchy:** whether the initial head-bucket refusal is enough or a per-tenant frequency
-  stop-word list is wanted; whether prefix lengths move to `3, 5, 8, 12` or head words lose their prefix tags.
+  stop-word list is wanted; prefix lengths are decided as `3, 5, 8, 12` (2026-10-13 AI desk review, pending human sign-off); whether head words additionally lose their prefix tags remains open.
 - **Privacy-officer input:** the consequences of the pre-join-history decision ("Pre-join history") are covered by the risk-analysis
   record; the decision itself is not open.
 - **Follow-up work items, not open decisions:** the M34 `FeatureFlagAdmin` guard against a tenant-scoped row for the platform kill
@@ -845,8 +876,33 @@ live test and a static ratchet ("Who may call the route").
 
 ## Amendment 2026-10-13: the scan-truncation signal is a coarse threshold oracle (accepted)
 
-`scanCapped` / `refine` is set when a scan limit (500 raw candidates, 100 channels, 5 rounds) ends the scan with no visible row left. The raw candidate count
-is taken before the authority filter, so the bit tells a caller (including one with no access) that MORE than the cap matches exist org-wide; 0 and 499 are
-indistinguishable. It is a term-frequency threshold, never a count, channel, row or cursor, and it is rate-limited (30/min/user, 300/min/org). It
-is the same class of leak as the head-bucket refusal that D3 option B already accepts, and it is preferred over a response that looks complete when it is not.
-The alternative (set it only when the page is non-empty) is available to the privacy officer's review. Found by the fresh review of a9a1ef5e5.
+Corrected 2026-10-13 against the code (`apps/backend/src/modules/36-messaging/global-search/query-service.ts`, header comment and the
+`REFINE` / `scanCapped` derivation) per review findings F3 and F4 of [the design review record](../reviews/ADR-0058-design-review-2026-10-13.md).
+The earlier text of this amendment described a single-round "more than 500 raw candidates" bit; that is not what the code does.
+
+**What the code does.** The service scans up to `MAX_PAGES_PER_QUERY = 5` rounds of up to `CANDIDATE_CAP = 500` raw candidates and up to
+100 channels, continuing **internally** past the caps (it never emits an internal position). Every response field (`results`,
+`nextCursor`, `scanned`, `scanCapped`, `refine`) is derived from **visible** rows only: the cursor names the last visible row examined,
+never a hidden candidate. `scanCapped` / `refine` is set when a limit (the 5 rounds, or the 100 channels) ends the scan with candidates
+still remaining and nothing further visible. So the bit means **"more than about 5 x 500 hidden candidates, or hidden candidates spread
+over more than 100 channels"**, not "more than 500 raw candidates". Because the candidates are counted before the authority filter, a
+caller with no access to any matching channel can still cause it, so it remains a term-frequency **threshold** (coarser than the
+earlier text implied: the threshold is about 2,500 candidates or 100 channels, and 0 and the threshold minus one are indistinguishable),
+never a count, channel, row or cursor. It is rate-limited (30/min/user, 300/min/org) and fails closed. It is the same class of leak as
+the head-bucket refusal that D3 option B already accepts, and it is preferred over a response that looks complete when it is not. The
+alternative (set it only when the page is non-empty) is available to the privacy officer's review. Found by the fresh review of a9a1ef5e5.
+
+**Second membership-independent threshold oracle: the head-bucket REFINE.** `isHeadBucketQuery` returns `REFINE` **before any authority
+work** (query-service.ts, immediately after the active-user check): a single-term query whose tag falls in a recorded head bucket
+(`HEAD_BUCKET_ROWS = 5,000` or more rows in that bucket) is refused with `scanCapped: true, refine: true`. It depends only on the term's
+bucket frequency in the whole tenant, not on the caller's access, so any messaging user can learn that a typed word (or a word sharing
+its bucket) crosses the head-bucket frequency threshold. It is a frequency-threshold oracle of the same class as `scanCapped`, with a
+different threshold (a bucket of 5,000 rows) and without even the scan's work. The earlier text of this amendment did not list it. It is
+accepted on the same grounds (D3 option B accepts that term frequency leaks), rate-limited and fail-closed, and it is an input to the
+leakage experiment and to the HIPAA risk-analysis entry.
+
+**Residual finer oracle: timing.** A scan can run up to five hidden rounds (each a candidate query plus authority evaluation) before it
+gives up, so response time varies with the amount of hidden candidate volume below the thresholds above. This is a finer-grained
+signal than the `scanCapped` bit, **not removed** by the field derivation, and only bounded by the 30/min/user and 300/min/org
+limits, the 3 s decrypt timeout and the 5 s statement timeout, with the limiter failing closed. It is recorded as a residual risk; no
+constant-time padding of the scan is implemented.

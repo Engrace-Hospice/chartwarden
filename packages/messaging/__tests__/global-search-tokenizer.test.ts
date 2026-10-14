@@ -17,15 +17,15 @@ describe("global search tokenizer (ADR-0058 decision 3)", () => {
 
   // [input, tokens, n = whole + prefix tags before padding]
   const GOLDEN: ReadonlyArray<readonly [string, readonly string[], number]> = [
-    ["morphine", ["morphine"], 7],
+    ["morphine", ["morphine"], 4],
     ["5 mg", [], 0],
     ["5mg", [], 0],
-    ["MS Contin 15", ["contin"], 5],
+    ["MS Contin 15", ["contin"], 3],
     ["MRN 12345678", ["mrn"], 2],
-    ["Café", ["cafe"], 3],
-    ["cafe", ["cafe"], 3],
+    ["Café", ["cafe"], 2],
+    ["cafe", ["cafe"], 2],
     ["hba1c", [], 0],
-    ["not eating", ["not", "eating"], 7],
+    ["not eating", ["not", "eating"], 5],
   ];
   it.each(GOLDEN)("golden: %j", (input, tokens, n) => {
     expect(tokenizeForSearch(input)).toEqual(tokens);
@@ -78,18 +78,26 @@ describe("global search tokenizer (ADR-0058 decision 3)", () => {
     expect(tokenizeForSearch(text)).toEqual(tokenizeForSearch(text));
   });
 
-  it("has distinct, stable tag strings: whole-word then prefix 3..min(len,12)", () => {
+  it("has distinct, stable tag strings: whole-word then sparse prefixes {3,5,8,12}", () => {
     const tags = indexTagStrings(["morphine"]);
     expect(tags[0]).toBe("w\0morphine");
     expect(tags).toContain("p\u00003\u0000mor");
+    expect(tags).toContain("p\u00005\u0000morph");
+    expect(tags).not.toContain("p\u00004\u0000morp");
     expect(tags).toContain("p\u00008\u0000morphine");
     // shared prefixes across tokens are one tag, not two
-    expect(indexTagStrings(["morphine", "morning"])).toHaveLength(7 + 1 + 4);
+    expect(indexTagStrings(["morphine", "morning"])).toHaveLength(4 + 2);
   });
 
-  it("caps prefix tags at 12 characters", () => {
+  it("a word shorter than a listed length contributes only lengths <= its length", () => {
+    expect(indexTagStrings(["abcd"])).toHaveLength(2); // whole + 3
+    expect(indexTagStrings(["abcdef"])).toHaveLength(3); // whole + 3, 5
+    expect(indexTagStrings(["abcdefgh"])).toHaveLength(4); // whole + 3, 5, 8
+  });
+
+  it("uses only the sparse prefix lengths 3, 5, 8, 12", () => {
     const tags = indexTagStrings(["esophagogastroduodenoscopy"]);
-    expect(tags).toHaveLength(1 + 10); // lengths 3..12
+    expect(tags).toHaveLength(1 + 4); // lengths 3, 5, 8, 12
     expect(tags.some((t) => t.startsWith("p\u000013\u0000"))).toBe(false);
   });
 });
