@@ -73,6 +73,13 @@ export function createIdgDecisionProvider(store: IdgSeamStore): IdgDecisionProvi
   };
 }
 
+/** Fail closed on a blank org/id rather than querying with an empty predicate. */
+function assertNonBlank(orgId: string, id: string): void {
+  if (!orgId.trim() || !id.trim()) {
+    throw new Error("IdgScheduleProvider: organizationId and id are required");
+  }
+}
+
 /**
  * §4.8 IdgScheduleProvider over the store — the meeting-schedule + 15-day-cadence read path M28 (FHIR
  * `CareTeam`/`Encounter`) + M30 (cadence-adherence measure) + M33 consume. Pure projection + the cadence-floor
@@ -89,6 +96,18 @@ export function createIdgScheduleProvider(store: IdgSeamStore): IdgScheduleProvi
     async getLastMeetingForPatient(orgId, patientId) {
       const last = await store.lastMeetingForPatient(orgId, patientId);
       return last === null ? null : { ...last, asOf: new Date().toISOString() };
+    },
+    async linkSummary(orgId, id) {
+      assertNonBlank(orgId, id);
+      const m = await store.meetingForLink(orgId, id);
+      // patientId is ALWAYS null: a meeting has no patient (patients link via packets); M36 special-cases it.
+      return m === null
+        ? null
+        : { id: m.id, patientId: null, status: m.status, occurredAt: m.scheduledStart };
+    },
+    async meetingLocation(orgId, meetingId) {
+      assertNonBlank(orgId, meetingId);
+      return (await store.meetingForLink(orgId, meetingId))?.locationId ?? null;
     },
     async getCadenceAdherence(_orgId, admissionId) {
       const rollup = await store.cadenceForAdmission(admissionId);

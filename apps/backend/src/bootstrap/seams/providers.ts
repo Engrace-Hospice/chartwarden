@@ -1238,6 +1238,12 @@ export const idgScheduleProviderDenyStub: IdgScheduleProvider = {
   getLastMeetingForPatient() {
     throw new NotImplementedError("IdgScheduleProvider");
   },
+  linkSummary() {
+    throw new NotImplementedError("IdgScheduleProvider");
+  },
+  meetingLocation() {
+    throw new NotImplementedError("IdgScheduleProvider");
+  },
 };
 
 /** M17 — the visit read seam (encounter context / EVV geofence target / IDG since-meeting) M8/M18/M14 consume.
