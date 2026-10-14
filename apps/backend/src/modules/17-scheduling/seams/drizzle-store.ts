@@ -254,6 +254,30 @@ export function createDrizzleSchedulingSeamStore(db: DbClient): SchedulingSeamSt
       });
     },
 
+    async nextScheduledVisitForPatient(organizationId, patientId, asOfIso) {
+      return withOrgContext(
+        db,
+        { organizationId, userId: "" },
+        async (tx): Promise<VisitDto | null> => {
+          const [row] = await (tx as unknown as DbClient)
+            .select(VISIT_DTO_COLS)
+            .from(V)
+            .where(
+              and(
+                eq(V.patientId, patientId),
+                inArray(V.status, ["published", "en_route"]),
+                gte(V.scheduledStartedAt, new Date(asOfIso)),
+                // service_date is the partition prune for the same instant (one day of slack for org-tz).
+                gte(V.serviceDate, dateOf(new Date(Date.parse(asOfIso) - 86_400_000).toISOString())),
+              ),
+            )
+            .orderBy(asc(V.scheduledStartedAt))
+            .limit(1);
+          return row ? toVisitDto(row as VisitDtoRow) : null;
+        },
+      );
+    },
+
     async completedVisitsForPatientSince(patientId, sinceIso) {
       return withOrgContextFromRequest(db, async (tx): Promise<VisitDto[]> => {
         const rows = await tx

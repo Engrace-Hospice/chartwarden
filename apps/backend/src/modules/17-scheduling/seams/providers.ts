@@ -29,6 +29,24 @@ export function createVisitReader(store: SchedulingSeamStore): VisitReader {
     async completedVisitsForPatientSince(_orgId, patientId, sinceIso) {
       return [...(await store.completedVisitsForPatientSince(patientId, sinceIso))];
     },
+    async nextScheduledVisitForPatient(orgId, patientId, asOfIso) {
+      // Fail closed: no tenant or no usable clock means no answer, never a guessed one.
+      if (!orgId) throw new Error("nextScheduledVisitForPatient: orgId required");
+      if (Number.isNaN(Date.parse(asOfIso))) {
+        throw new Error("nextScheduledVisitForPatient: asOfIso is not a valid instant");
+      }
+      const v = await store.nextScheduledVisitForPatient(orgId, patientId, asOfIso);
+      if (!v) return null;
+      return {
+        visitId: v.id,
+        visitPurpose: v.visitPurpose,
+        discipline: v.assignedDisciplineAtAssignment,
+        scheduledStartedAt: v.scheduledStartedAt,
+        scheduledEndedAt: v.scheduledEndedAt,
+        status: v.status,
+        asOf: asOfIso,
+      };
+    },
   };
 }
 
