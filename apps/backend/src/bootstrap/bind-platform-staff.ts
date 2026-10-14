@@ -7,10 +7,12 @@
 // to nobody.
 //
 // SCOPE OF THE GRANT. The binding is to the PLATFORM-OWNED role row (`organization_id IS NULL`, migration 0318/
-// 0320), which carries no tenant permission keys: the membership confers the ABAC key and alert audience, not
-// access to tenant data. Operators come from M34's existing SECURITY DEFINER reader (`m34_platform_role_holders`,
+// 0320). That role carries only the platform-wide `user.deactivate` / `user.password.reset` keys (no PHI, patient
+// or messaging keys), plus the ABAC key and the alert audience. KNOWN GAP: revoking `platform_ops` in the home org
+// does not remove these tenant bindings (see the PR description); nothing reconciles them against the holders. Operators come from M34's existing SECURITY DEFINER reader (`m34_platform_role_holders`,
 // user ids only), so no new privilege is opened. Writes run on the tenant pool under the new org's RLS scope.
-// Idempotent: the partial unique index on (user, org) and the (membership, role) unique key make a re-run a no-op.
+// Idempotent, and it respects a deliberate removal: a user with ANY existing membership in the org that is not
+// active (revoked, pending, suspended) is skipped, so a retried provision never resurrects a revoked operator.
 import type { DbClient } from "@wardenx/db";
 import { schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -19,19 +21,38 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 export const PLATFORM_OPS_ROLE_KEY = "platform_ops";
 
 export interface PlatformStaffBinding {
-  /** Operators that now hold the role in the org (already-bound ones included). */
+  /** Operators now holding the role in the org (already-bound ones included). */
   readonly operators: number;
+  /** Operators skipped because they already have a non-active membership in the org. */
+  readonly skipped: number;
 }
 
+const NONE: PlatformStaffBinding = { operators: 0, skipped: 0 };
+
+/**
+ * Alert routing is best-effort, so a failure here must not block tenant provisioning (the org-available hook
+ * makes the confirm `unavailable` and M34 retries forever); it degrades to "no operators bound" and warns.
+ */
 export async function bindPlatformStaffToOrg(
   db: DbClient,
   organizationId: string,
 ): Promise<PlatformStaffBinding> {
+  try {
+    return await bindOperators(db, organizationId);
+  } catch (err) {
+    process.emitWarning(
+      `platform-staff binding failed for org ${organizationId}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return NONE;
+  }
+}
+
+async function bindOperators(db: DbClient, organizationId: string): Promise<PlatformStaffBinding> {
   const holders = await db.execute<{ user_id: string }>(
     sql`SELECT user_id FROM m34_platform_role_holders(ARRAY[${PLATFORM_OPS_ROLE_KEY}]::text[])`,
   );
   const userIds = holders.rows.map((r) => r.user_id);
-  if (userIds.length === 0) return { operators: 0 };
+  if (userIds.length === 0) return NONE;
 
   return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
     const [role] = await tx
@@ -45,31 +66,33 @@ export async function bindPlatformStaffToOrg(
         ),
       )
       .limit(1);
-    if (!role) return { operators: 0 };
+    if (!role) return NONE;
 
     let bound = 0;
+    let skipped = 0;
     for (const userId of userIds) {
-      const inserted = await tx
-        .insert(schema.memberships)
-        .values({ userId, organizationId, status: "active", acceptedAt: new Date() })
-        .onConflictDoNothing()
-        .returning({ id: schema.memberships.id });
+      const existing = await tx
+        .select({ id: schema.memberships.id, status: schema.memberships.status })
+        .from(schema.memberships)
+        .where(
+          and(
+            eq(schema.memberships.userId, userId),
+            eq(schema.memberships.organizationId, organizationId),
+          ),
+        );
+      // Any non-active row (revoked by a tenant admin, pending, suspended) means leave this user alone.
+      if (existing.some((m) => m.status !== "active")) {
+        skipped += 1;
+        continue;
+      }
       const membershipId =
-        inserted[0]?.id ??
+        existing[0]?.id ??
         (
           await tx
-            .select({ id: schema.memberships.id })
-            .from(schema.memberships)
-            .where(
-              and(
-                eq(schema.memberships.userId, userId),
-                eq(schema.memberships.organizationId, organizationId),
-                eq(schema.memberships.status, "active"),
-              ),
-            )
-            .limit(1)
+            .insert(schema.memberships)
+            .values({ userId, organizationId, status: "active", acceptedAt: new Date() })
+            .returning({ id: schema.memberships.id })
         )[0]?.id;
-      // A pending/suspended pre-existing membership is left alone: this never reactivates anyone.
       if (!membershipId) continue;
       await tx
         .insert(schema.membershipRoles)
@@ -77,6 +100,6 @@ export async function bindPlatformStaffToOrg(
         .onConflictDoNothing();
       bound += 1;
     }
-    return { operators: bound };
+    return { operators: bound, skipped };
   });
 }
