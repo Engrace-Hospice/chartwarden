@@ -109,6 +109,8 @@ Errors: the uniform `404` for flag off (single-task routes), missing, not a part
   - If a participant is removed from the channel by something other than offboarding, the task stays active but is hidden from them.
   - A person who loses access to the channel no longer sees their task. If both the creator and the assignee lost access or left, the task stays flagged `needs_owner` with no organisation-level view until the Phase 4 ownership model (ADR-0057).
   - The tile counts only the caller's own tasks.
+  - The web reads the tasks flag from the list route once per page session (the shell does not load feature flags). Turning the flag on mid-session shows the message trigger after the next page load; the inbox tab reads the route on its own mount.
+  - The inbox badge and shared view are refreshed by actions taken in that view, not by actions in another scope or by a new assignment made while the inbox stays open.
   - The list is capped at 100 with no cursor.
   - Display names are resolved per request.
   - The reason labels are provisional; clinical-lead sign-off is not recorded.

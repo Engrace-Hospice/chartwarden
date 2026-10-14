@@ -119,6 +119,14 @@ describe("migration 1100 structure", () => {
     );
   });
 
+  it("indexes the message cascade and makes closed rows final", () => {
+    expect(sql).toMatch(
+      /"communication_task_message_idx"\s+ON "communication_task" \("organization_id", "message_id"\)/,
+    );
+    expect(sql).toContain("trg_communication_task_closed_final");
+    expect(sql).toContain("communication_task_closed");
+  });
+
   it("stores no free text: no title, body or note column on either table", () => {
     expect(sql).not.toMatch(/"(title|body|note|notes|text|description|excerpt)"/);
   });

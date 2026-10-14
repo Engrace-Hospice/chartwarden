@@ -76,11 +76,15 @@ async function reassignThenDisconnect(
   userId: string,
   disconnect: () => Promise<void> | undefined,
 ): Promise<void> {
+  let reassignFailure: unknown;
   try {
     await deps.reassignOwnedItems?.(orgId, userId);
-  } finally {
-    await disconnect();
+  } catch (err) {
+    reassignFailure = err;
   }
+  // If the disconnect throws too, its error wins (the sockets staying up is the worse failure) and the retry redoes both.
+  await disconnect();
+  if (reassignFailure !== undefined) throw reassignFailure;
 }
 
 async function handleEvent(

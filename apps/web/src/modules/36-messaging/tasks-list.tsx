@@ -167,6 +167,12 @@ export function TasksList({ meId, shared }: TasksListProps): JSX.Element {
       headingRef.current?.focus();
   }, [dialog, view]);
 
+  // A stale refusal reloads the list and may remove the row that had focus: land on the heading, not <body>.
+  function onStaleRefusal(): void {
+    refocus.current = true;
+    reload();
+  }
+
   function finished(task: TaskDto, text: string): void {
     replace(task);
     setMessage(text);
@@ -188,7 +194,7 @@ export function TasksList({ meId, shared }: TasksListProps): JSX.Element {
     setBusy(false);
     if (result.ok) return finished(result.task, "Task accepted.");
     setFailure(taskErrorText(result.status, result.code));
-    if (isStaleRefusal(result.status)) reload();
+    if (isStaleRefusal(result.status)) onStaleRefusal();
   }
 
   return (
@@ -236,7 +242,7 @@ export function TasksList({ meId, shared }: TasksListProps): JSX.Element {
           task={dialog.task}
           action={dialog.action}
           onClose={() => setDialog(null)}
-          onStale={reload}
+          onStale={onStaleRefusal}
           onDone={(task) =>
             finished(task, dialog.action === "complete" ? "Task completed." : "Task cancelled.")
           }
@@ -247,7 +253,7 @@ export function TasksList({ meId, shared }: TasksListProps): JSX.Element {
           task={dialog.task}
           meId={meId}
           onClose={() => setDialog(null)}
-          onStale={reload}
+          onStale={onStaleRefusal}
           onDone={(task) => finished(task, "Task reassigned.")}
         />
       ) : null}
