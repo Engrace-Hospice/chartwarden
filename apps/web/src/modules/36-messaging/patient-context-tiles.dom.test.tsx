@@ -56,4 +56,10 @@ describe("PatientContextTiles", () => {
 
     expect((await screen.findByRole("alert")).textContent).toMatch(/could not be loaded/);
   });
+
+  it("says so when the server returned no tile at all, instead of a blank panel", async () => {
+    mount({ data: { tiles: {} } });
+
+    expect(await screen.findByText("No additional context available.")).toBeTruthy();
+  });
 });

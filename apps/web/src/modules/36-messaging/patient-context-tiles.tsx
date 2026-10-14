@@ -45,7 +45,7 @@ function TileCard<T>({
       ) : (
         <p role="status">Temporarily unavailable. Open the chart for the current value.</p>
       )}
-      <Link to={tile.link}>Open in chart</Link>
+      {tile.link.startsWith("/") ? <Link to={tile.link}>Open in chart</Link> : null}
     </section>
   );
 }
@@ -75,10 +75,11 @@ export function PatientContextTiles({ patientId }: { patientId: string }): JSX.E
   if (state.kind === "loading") return <p role="status">Loading patient context…</p>;
   if (state.kind === "error") return <p role="alert">Patient context could not be loaded.</p>;
   const { tiles } = state.ctx;
+  if (Object.keys(tiles).length === 0) return <p>No additional context available.</p>;
   return (
     <div className="wx-messaging-context-tiles">
       <TileCard title="Status" tile={tiles.status}>
-        {(d) => <p>{d.status ? d.status.replace("_", " ") : "Not recorded"}</p>}
+        {(d) => <p>{d.status ? d.status.replaceAll("_", " ") : "Not recorded"}</p>}
       </TileCard>
       <TileCard title="Care team" tile={tiles.care_team}>
         {(d) => <p>{d.member_count} on the care team</p>}
@@ -89,8 +90,9 @@ export function PatientContextTiles({ patientId }: { patientId: string }): JSX.E
             <p>No allergies recorded</p>
           ) : (
             <ul>
-              {d.entries.map((a) => (
-                <li key={`${a.allergen}-${a.severity}`}>
+              {d.entries.map((a, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: entries carry no id and are never reordered client-side
+                <li key={`${i}-${a.allergen}`}>
                   {a.allergen}
                   {a.severity && a.severity !== "unknown" ? ` (${a.severity})` : ""}
                 </li>
