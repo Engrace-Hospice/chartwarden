@@ -4,6 +4,7 @@ import {
   type FloorClock,
   SEARCH_RESPONSE_FLOOR_MS,
   SEARCH_RESPONSE_JITTER_MS,
+  responseFloorFromEnv,
   withResponseFloor,
 } from "../src/modules/36-messaging/global-search/timing-floor";
 
@@ -74,5 +75,35 @@ describe("search response floor (F1)", () => {
     expect(low.elapsed()).toBe(1000);
     expect(high.elapsed()).toBeGreaterThan(1000);
     expect(high.elapsed()).toBeLessThan(1200);
+  });
+
+  describe("env overrides (security L3)", () => {
+    const overrides = {
+      WARDENX_GLOBAL_SEARCH_FLOOR_MS: "0",
+      WARDENX_GLOBAL_SEARCH_JITTER_MS: "0",
+    };
+    const production = {
+      floorMs: SEARCH_RESPONSE_FLOOR_MS,
+      jitterMs: SEARCH_RESPONSE_JITTER_MS,
+    };
+
+    it("honours the overrides only when NODE_ENV is test", () => {
+      expect(responseFloorFromEnv({ NODE_ENV: "test", ...overrides })).toEqual({
+        floorMs: 0,
+        jitterMs: 0,
+      });
+    });
+
+    it("ignores them under development or an unset NODE_ENV", () => {
+      expect(responseFloorFromEnv({ NODE_ENV: "development", ...overrides })).toEqual(production);
+      expect(responseFloorFromEnv({ ...overrides })).toEqual(production);
+    });
+
+    it("fails boot when they are set under a production or staging NODE_ENV", () => {
+      for (const NODE_ENV of ["production", "staging", "Production"]) {
+        expect(() => responseFloorFromEnv({ NODE_ENV, ...overrides })).toThrow(/must not be set/);
+      }
+      expect(responseFloorFromEnv({ NODE_ENV: "production" })).toEqual(production);
+    });
   });
 });

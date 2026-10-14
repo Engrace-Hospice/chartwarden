@@ -531,10 +531,12 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C4 global search settings - LIVE Postgres"
       await allAttested();
       const res = await put(appLimited, true);
       expect(res.statusCode).toBe(200);
-      const row = (await admin.query(
-        `SELECT notice_ack_version, notice_ack_by_user_id, notice_ack_at FROM tenant_messaging_search_setting WHERE organization_id=$1`,
-        [ORG_A],
-      )).rows[0];
+      const row = (
+        await admin.query(
+          `SELECT notice_ack_version, notice_ack_by_user_id, notice_ack_at FROM tenant_messaging_search_setting WHERE organization_id=$1`,
+          [ORG_A],
+        )
+      ).rows[0];
       expect(row.notice_ack_version).toBe(NOTICE_VERSION);
       expect(row.notice_ack_by_user_id).toBe(adminA);
       expect(row.notice_ack_at).toBeInstanceOf(Date);
@@ -547,6 +549,28 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C4 global search settings - LIVE Postgres"
         [ORG_A],
       );
       expect(audit.rows[0].after.notice_ack_version).toBe(NOTICE_VERSION);
+    });
+
+    it("a repeated ON re-acknowledges a newer notice version without counting as a flip (L4)", async () => {
+      await allAttested();
+      await put(appLimited, true);
+      const changedAt = ((await setting(ORG_A))?.changed_at as Date).getTime();
+      await admin.query(
+        `UPDATE tenant_messaging_search_setting SET notice_ack_version='2026-01-01.0', notice_ack_at = now() - interval '1 day' WHERE organization_id=$1`,
+        [ORG_A],
+      );
+      const res = await put(appLimited, true); // already ON, current version
+      expect(res.statusCode).toBe(200);
+      const row = (
+        await admin.query(
+          `SELECT notice_ack_version, notice_ack_by_user_id, changed_at FROM tenant_messaging_search_setting WHERE organization_id=$1`,
+          [ORG_A],
+        )
+      ).rows[0];
+      expect(row.notice_ack_version).toBe(NOTICE_VERSION);
+      expect(row.notice_ack_by_user_id).toBe(adminA);
+      expect((row.changed_at as Date).getTime()).toBe(changedAt);
+      expect(res.json().noticeAcknowledgement).toMatchObject({ version: NOTICE_VERSION });
     });
 
     it("OFF needs no acknowledgement and keeps the last one on record", async () => {
@@ -574,17 +598,21 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C4 global search settings - LIVE Postgres"
     ) {
       const userId = await seedUser(`excl-${category}-${Math.random()}`, ORG_A);
       const orgForRole = category === "platform_staff" ? null : ORG_A;
-      const role = (await admin.query(
-        `INSERT INTO role (organization_id, key, name, category, enabled)
+      const role = (
+        await admin.query(
+          `INSERT INTO role (organization_id, key, name, category, enabled)
          VALUES ($1,$2,$2,$3::role_category,$4) RETURNING id`,
-        [orgForRole, `f6-${category}-${Math.random()}`, category, !opts.disabled],
-      )).rows[0].id as string;
-      const mem = (await admin.query(`SELECT id FROM membership WHERE user_id=$1`, [userId])).rows[0].id as string;
+          [orgForRole, `f6-${category}-${Math.random()}`, category, !opts.disabled],
+        )
+      ).rows[0].id as string;
+      const mem = (await admin.query(`SELECT id FROM membership WHERE user_id=$1`, [userId]))
+        .rows[0].id as string;
       await admin.query(
         `INSERT INTO membership_role (organization_id, membership_id, role_id, expires_at) VALUES ($1,$2,$3,$4)`,
         [ORG_A, mem, role, opts.expired ? new Date(Date.now() - 60_000) : null],
       );
-      if (opts.revoked) await admin.query(`UPDATE membership SET status='revoked' WHERE id=$1`, [mem]);
+      if (opts.revoked)
+        await admin.query(`UPDATE membership SET status='revoked' WHERE id=$1`, [mem]);
       await admin.query(
         `INSERT INTO channel_member (organization_id, channel_id, user_id, role, source, removed_at)
          VALUES ($1,$2,$3,'member','manual',$4)`,
@@ -593,18 +621,24 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C4 global search settings - LIVE Postgres"
     }
     const cleared = async () => (await get(appLimited)).json().checklist.excludedMembersCleared;
     afterEach(async () => {
-      await admin.query(`DELETE FROM channel_member WHERE organization_id=$1 AND user_id NOT IN ($2)`, [ORG_A, adminA]);
+      await admin.query(
+        `DELETE FROM channel_member WHERE organization_id=$1 AND user_id NOT IN ($2)`,
+        [ORG_A, adminA],
+      );
     });
 
-    it.each(EXCLUDED_CATEGORIES)("a live %s member fails the check and refuses ON", async (category) => {
-      await allAttested();
-      await addExcludedMember(category);
-      expect(await cleared()).toBe(false);
-      const res = await put(appLimited, true);
-      expect(res.statusCode).toBe(409);
-      expect(codes(res)).toEqual(["EXCLUDED_MEMBERS_PRESENT"]);
-      expect(await setting(ORG_A)).toBeUndefined();
-    });
+    it.each(EXCLUDED_CATEGORIES)(
+      "a live %s member fails the check and refuses ON",
+      async (category) => {
+        await allAttested();
+        await addExcludedMember(category);
+        expect(await cleared()).toBe(false);
+        const res = await put(appLimited, true);
+        expect(res.statusCode).toBe(409);
+        expect(codes(res)).toEqual(["EXCLUDED_MEMBERS_PRESENT"]);
+        expect(await setting(ORG_A)).toBeUndefined();
+      },
+    );
 
     it("a disabled excluded role still counts (deny wins)", async () => {
       await addExcludedMember("patient_family", { disabled: true });
@@ -616,6 +650,33 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C4 global search settings - LIVE Postgres"
       await addExcludedMember("patient_family", { expired: true });
       await addExcludedMember("patient_family", { revoked: true });
       expect(await cleared()).toBe(true);
+    });
+
+    it("a member holding BOTH an allowed and an excluded role still fails the check (L5)", async () => {
+      await allAttested();
+      const userId = await seedUser(`both-${Math.random()}`, ORG_A);
+      const mem = (await admin.query(`SELECT id FROM membership WHERE user_id=$1`, [userId]))
+        .rows[0].id as string;
+      for (const category of ["clinical_staff", "patient_family"]) {
+        const role = (
+          await admin.query(
+            `INSERT INTO role (organization_id, key, name, category, enabled)
+             VALUES ($1,$2,$2,$3::role_category,true) RETURNING id`,
+            [ORG_A, `l5-${category}-${Math.random()}`, category],
+          )
+        ).rows[0].id as string;
+        await admin.query(
+          `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)`,
+          [ORG_A, mem, role],
+        );
+      }
+      await admin.query(
+        `INSERT INTO channel_member (organization_id, channel_id, user_id, role, source)
+         VALUES ($1,$2,$3,'member','manual')`,
+        [ORG_A, channelA, userId],
+      );
+      expect(await cleared()).toBe(false);
+      expect(codes(await put(appLimited, true))).toEqual(["EXCLUDED_MEMBERS_PRESENT"]);
     });
 
     it("passes when none is present and ON succeeds", async () => {
@@ -740,7 +801,11 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C4 global search settings - LIVE Postgres"
         method: "PUT",
         url: URL_PATH,
         headers: as(adminA, sessions.adminA),
-        payload: { enabled: true, acknowledgedNoticeVersion: NOTICE_VERSION, organizationId: ORG_B } as never,
+        payload: {
+          enabled: true,
+          acknowledgedNoticeVersion: NOTICE_VERSION,
+          organizationId: ORG_B,
+        } as never,
       });
       expect(res.statusCode).toBeGreaterThanOrEqual(400);
       expect(await setting(ORG_B)).toBeUndefined();

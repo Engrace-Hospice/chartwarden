@@ -28,11 +28,15 @@ import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
 import {
+  type IndexOutcome,
   type IndexWriterDeps,
   createIndexWriter,
 } from "../src/modules/36-messaging/global-search/index-writer";
 import { buildM36MessageSearchIndexerConsumer } from "../src/modules/36-messaging/global-search/indexer-consumer";
 import {
+  EXCLUSION_REINDEX_DELAY_MS,
+  NAME_ENUMERATION_BUDGET_MS,
+  NAME_SYNC_MIN_INTERVAL_MS,
   type PatientNameSource,
   createNameExclusions,
   createNoNameExclusions,
@@ -661,6 +665,14 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C2 global search index writer - LIVE Postg
       const real = new Set(await realTagsOf(ORG_A, text, channelA));
       const overlap = (await realTagsOf(ORG_A, text, second)).filter((t) => real.has(t));
       expect(overlap.length).toBeLessThanOrEqual(2); // chance collisions at T=12 only; a shared key would overlap on all 13
+      // L1: the plaintext label equals the message's real channel on every indexed row (it is deliberately not an FK)
+      const mismatched = (
+        await admin.query(
+          `SELECT count(*)::int AS n FROM message_search_token t JOIN message m ON m.id = t.message_id
+            WHERE t.organization_id = m.organization_id AND t.channel_id <> m.channel_id`,
+        )
+      ).rows[0].n;
+      expect(mismatched).toBe(0);
     });
 
     it("a patient / contact name is never tagged (whole word or prefix); the state holds keyed digests, not names", async () => {
@@ -711,6 +723,179 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C2 global search index writer - LIVE Postg
       expect(await rowCount(id)).toBe(0);
     });
 
+    // The reindex delay and the sync throttle are measured on the DATABASE clock: tests age the column instead of a fake clock.
+    const backdate = (column: "exclusion_pending_since" | "exclusion_synced_at", ms: number) =>
+      admin.query(
+        `UPDATE message_search_index_state SET ${column} = now() - make_interval(secs => $2::double precision) WHERE organization_id=$1`,
+        [ORG_A, ms / 1000],
+      );
+    const pendingCount = async () =>
+      Number(
+        (
+          await admin.query(
+            `SELECT cardinality(exclusion_pending) AS n FROM message_search_index_state WHERE organization_id=$1`,
+            [ORG_A],
+          )
+        ).rows[0].n,
+      );
+    const reindexDepsFor = (
+      exclusions: ReturnType<typeof createNameExclusions>,
+      indexMessage: (org: string, id: string) => Promise<IndexOutcome>,
+    ) => ({ db: handle.db, keys, exclusions, indexMessage });
+
+    it("a digest added late restarts the delay for ALL pending digests (no early reindex or clear)", async () => {
+      await enableSearch(ORG_A);
+      const fragments: string[] = [];
+      const exclusions = createNameExclusions({
+        db: handle.db,
+        keys,
+        names: nameSource(fragments),
+      });
+      const writer = createIndexWriter(writerDeps({ exclusions }));
+      const a = await sendMessage(ORG_A, "Quirke asked about morphine");
+      const b = await sendMessage(ORG_A, "Zamora asked about lorazepam");
+      await writer.indexMessage(ORG_A, a);
+      await writer.indexMessage(ORG_A, b);
+      const deps = reindexDepsFor(exclusions, (org, id) => writer.indexMessage(org, id));
+
+      fragments.push("Quirke");
+      await exclusions.sync(ORG_A, VERSION);
+      await backdate("exclusion_pending_since", EXCLUSION_REINDEX_DELAY_MS - 1000); // 1 s short of due
+      fragments.push("Zamora"); // a second name arrives just before the first would have been reindexed
+      await exclusions.sync(ORG_A, VERSION);
+
+      expect(await reindexPendingExclusions(deps, ORG_A, VERSION, TAG_BITS)).toBe(0);
+      expect(await pendingCount()).toBe(2); // nothing cleared early
+      expect(holdsAll(await storedTags(b), await realTagsOf(ORG_A, "zamora"))).toBe(true);
+
+      await backdate("exclusion_pending_since", EXCLUSION_REINDEX_DELAY_MS + 1000);
+      expect(await reindexPendingExclusions(deps, ORG_A, VERSION, TAG_BITS)).toBe(2);
+      expect(await pendingCount()).toBe(0);
+      expect(holdsAll(await storedTags(b), await realTagsOf(ORG_A, "zamora"))).toBe(false);
+    });
+
+    it("a rewrite that is skipped (skipped_stale) leaves the digest pending for the next pass", async () => {
+      await enableSearch(ORG_A);
+      const fragments: string[] = [];
+      const exclusions = createNameExclusions({
+        db: handle.db,
+        keys,
+        names: nameSource(fragments),
+      });
+      const writer = createIndexWriter(writerDeps({ exclusions }));
+      const id = await sendMessage(ORG_A, "Quirke asked about morphine");
+      await writer.indexMessage(ORG_A, id);
+      fragments.push("Quirke");
+      await exclusions.sync(ORG_A, VERSION);
+      await backdate("exclusion_pending_since", EXCLUSION_REINDEX_DELAY_MS + 1000);
+
+      const stale = reindexDepsFor(exclusions, async () => "skipped_stale");
+      await reindexPendingExclusions(stale, ORG_A, VERSION, TAG_BITS);
+      expect(await pendingCount()).toBe(1);
+
+      const real = reindexDepsFor(exclusions, (org, m) => writer.indexMessage(org, m));
+      expect(await reindexPendingExclusions(real, ORG_A, VERSION, TAG_BITS)).toBe(1);
+      expect(await pendingCount()).toBe(0);
+    });
+
+    it("the tick re-reads the names at most once per NAME_SYNC_MIN_INTERVAL_MS (database clock)", async () => {
+      await enableSearch(ORG_A);
+      let pages = 0;
+      const exclusions = createNameExclusions({
+        db: handle.db,
+        keys,
+        names: {
+          fragmentsPage: async () => {
+            pages += 1;
+            return { fragments: ["Astrid"], nextAfterId: null };
+          },
+        },
+      });
+      await exclusions.syncIfDue(ORG_A, VERSION);
+      await exclusions.syncIfDue(ORG_A, VERSION);
+      expect(pages).toBe(1);
+      await backdate("exclusion_synced_at", NAME_SYNC_MIN_INTERVAL_MS + 1000);
+      await exclusions.syncIfDue(ORG_A, VERSION);
+      expect(pages).toBe(2);
+    });
+
+    /** A source whose every page eats the whole enumeration budget; page 2 (never reached) holds `unreached`. */
+    const slowSource = (
+      first: string[],
+      unreached: string[],
+      tick: () => void,
+    ): PatientNameSource => ({
+      fragmentsPage: async (_org, after) => {
+        tick();
+        return after === null
+          ? { fragments: [...first], nextAfterId: "more" }
+          : { fragments: [...unreached], nextAfterId: null };
+      },
+    });
+
+    it("a name enumeration over its time budget applies what it read and is not marked synced (fails closed)", async () => {
+      await enableSearch(ORG_A);
+      let clock = 0;
+      const exclusions = createNameExclusions({
+        db: handle.db,
+        keys,
+        names: slowSource(["Astrid"], ["Unreached"], () => {
+          clock += NAME_ENUMERATION_BUDGET_MS;
+        }),
+        now: () => clock,
+      });
+      expect(await exclusions.sync(ORG_A, VERSION)).toMatchObject({ added: 1, complete: false });
+      const state = (
+        await admin.query(
+          `SELECT exclusion_synced_at, cardinality(excluded_name_digests) AS n FROM message_search_index_state WHERE organization_id=$1`,
+          [ORG_A],
+        )
+      ).rows[0];
+      expect(state).toEqual({ exclusion_synced_at: null, n: 1 });
+      await expect(exclusions.currentReadOnly(ORG_A, VERSION)).rejects.toThrow(/not been synced/);
+    });
+
+    it("pending digests the cut-off enumeration could not see are NOT treated as orphans", async () => {
+      await enableSearch(ORG_A);
+      const fragments = ["Astrid", "Quirke"];
+      const full = createNameExclusions({ db: handle.db, keys, names: nameSource(fragments) });
+      await full.sync(ORG_A, VERSION);
+      await backdate("exclusion_pending_since", EXCLUSION_REINDEX_DELAY_MS + 1000);
+      let clock = 0;
+      const cut = createNameExclusions({
+        db: handle.db,
+        keys,
+        names: slowSource(["Astrid"], ["Quirke"], () => {
+          clock += NAME_ENUMERATION_BUDGET_MS;
+        }),
+        now: () => clock,
+      });
+      await reindexPendingExclusions(
+        reindexDepsFor(cut, async () => "indexed"),
+        ORG_A,
+        VERSION,
+        TAG_BITS,
+      );
+      expect(await pendingCount()).toBe(1); // astrid was read and done; quirke was never read, so it stays pending
+    });
+
+    it("the query path only reads: a never-synced tenant fails closed and no state row is created", async () => {
+      await enableSearch(ORG_A);
+      const exclusions = createNameExclusions({
+        db: handle.db,
+        keys,
+        names: nameSource(["Astrid"]),
+      });
+      await expect(exclusions.currentReadOnly(ORG_A, VERSION)).rejects.toThrow(/not been synced/);
+      const rows = await admin.query(
+        `SELECT 1 FROM message_search_index_state WHERE organization_id=$1`,
+        [ORG_A],
+      );
+      expect(rows.rowCount).toBe(0);
+      await exclusions.syncIfDue(ORG_A, VERSION); // what the first maintenance tick does
+      await expect(exclusions.currentReadOnly(ORG_A, VERSION)).resolves.toBeDefined();
+    });
+
     it("a NEW name is added grow-only, and only the messages that carry it are rewritten (after the cache delay)", async () => {
       await enableSearch(ORG_A);
       let clock = Date.now();
@@ -742,7 +927,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C2 global search index writer - LIVE Postg
       };
       // too early: a replica that has not refreshed its cache could still index the name behind the pass
       expect(await reindexPendingExclusions(reindexDeps, ORG_A, VERSION, TAG_BITS)).toBe(0);
-      clock += 3 * 60_000;
+      await backdate("exclusion_pending_since", 3 * 60_000);
       expect(await reindexPendingExclusions(reindexDeps, ORG_A, VERSION, TAG_BITS)).toBe(1);
       expect(holdsAll(await storedTags(carrier), quirke)).toBe(false);
       expect(await storedTags(bystander)).toEqual(bystanderBefore); // untouched: not rewritten

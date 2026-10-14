@@ -977,8 +977,7 @@ product owner's residual-risk acceptance are still pending). No tenant may be en
   "no message contains X" returned faster than "a channel I cannot read contains X". `GET /api/v1/messaging/search` now holds EVERY outcome after
   the gates (hits, empty, refine, errors) to a minimum of `SEARCH_RESPONSE_FLOOR_MS` (1500) plus a per-request random jitter below
   `SEARCH_RESPONSE_JITTER_MS` (500) (`global-search/timing-floor.ts`). The floor never shortens a slower request. Both are named constants; the
-  env vars `WARDENX_GLOBAL_SEARCH_FLOOR_MS` / `WARDENX_GLOBAL_SEARCH_JITTER_MS` override them for tests only and are ignored when
-  `NODE_ENV=production`. **Residual:** a request that needs more than one round, or whose authority calls exceed the floor, still takes longer, so
+  env vars `WARDENX_GLOBAL_SEARCH_FLOOR_MS` / `WARDENX_GLOBAL_SEARCH_JITTER_MS` override them for tests only: they are read only when `NODE_ENV=test`, ignored otherwise, and boot fails if either is set under a production or staging `NODE_ENV`. **Residual:** a request that needs more than one round, or whose authority calls exceed the floor, still takes longer, so
   hidden volume beyond the one-round bound remains timing-visible (it is the same population as the `scanCapped` threshold oracle above, and is
   bounded by the 30/min/user rate limit). The floor value was sized against the documented one-round cost, NOT yet against a measurement on a
   production-shaped corpus: the leakage experiment must re-validate it.
@@ -1022,15 +1021,14 @@ list below); the in-process set is a `Set` of digests with `has(token)` recomput
 M36**; both columns are scrubbed from the state table's audit images; the digests die with the tenant's rows and are unusable without the key
 ring. Names exist in memory only for the duration of one `sync` page loop.
 
-**When it changes (new or renamed patient).** The maintenance tick (every 5 minutes, per enabled tenant) calls `sync`: it re-reads the names,
+**When it changes (new or renamed patient).** The maintenance tick (every 5 minutes, per enabled tenant) calls `syncIfDue`, which runs `sync` at most once per 10 minutes per tenant (`NAME_SYNC_MIN_INTERVAL_MS`, database clock) and caps one enumeration at 20 s (`NAME_ENUMERATION_BUDGET_MS`): it re-reads the names,
 and every digest not yet in `excluded_name_digests` is **added to it** (grow-only) and to `exclusion_pending`. From then on every writer
 excludes the token (writers cache the digest set for 60 seconds). The messages that were already indexed with the new name are found by a
-**targeted reindex, not a rebuild**: once a pending digest is older than twice the cache TTL (so no replica can still index it behind the
-pass), `reindexPendingExclusions` computes the name's whole-word tag in every channel that has rows, looks up the messages holding those
+**targeted reindex, not a rebuild**: once the LAST digest added is older than twice the cache TTL, measured in SQL on the database clock (`exclusion_pending_since` restarts whenever a digest is added, so a name added at 119 s cannot be cleared at 120 s while a replica holds a 60 s stale cache), `reindexPendingExclusions` computes the name's whole-word tag in every channel that has rows, looks up the messages holding those
 `(channel, tag)` pairs (bounded: 5,000 pairs per statement, 30 seconds per tick per tenant, resumable), rewrites only those messages through
 the normal writer, and clears the digest from `exclusion_pending`. A crash leaves the digest pending and the next tick repeats it. A renamed or
-deleted patient leaves the old name excluded (safe direction; shrinking the set means a full rebuild, an operator action). The first read for a
-tenant that has never been synced runs `sync` inline; **if there is no name source configured the writer and the query path fail closed**
+deleted patient leaves the old name excluded (safe direction; shrinking the set means a full rebuild, an operator action). The first WRITER read for a
+tenant that has never been synced runs `sync` inline; the QUERY path only reads (`currentReadOnly`) and answers 503 until the first maintenance tick has synced; **if there is no name source configured the writer and the query path fail closed**
 (`NameExclusionNotConfiguredError`, 503 on a query), so a boot that forgot to wire M5 cannot index names.
 
 **Query side (no oracle).** The query is deliberately NOT name-aware. A name typed into the search box is an ordinary term: tokenised,
@@ -1095,3 +1093,18 @@ channel-linked name recovery is **0.0%** (global key; baseline 0.9% to 1.3%) aga
 under per-channel keys the cross-channel lift attack does not exist and the best simple in-channel attack (raw message frequency) identifies the
 surname bucket as top-1 for 3.3% / 2.6% of patients with names indexed (baseline 0.9% / 1.2%; top-3 8.1% / 7.0%) and 0.0% with names excluded.
 **Not measured:** every vocabulary attack against per-channel keys, anything on a production-shaped corpus, C4.
+
+### 5. Pre-PR review fixes (2026-10-13)
+
+- **Name-leak window:** the reindex delay restarts whenever a digest is added and is evaluated in SQL (database clock), not `Date.now()`. A reindex
+  rewrite that returns `skipped_stale`/`skipped_off` leaves its batch's digests pending. If the name enumeration hits its budget, digests it did not
+  reach are never treated as orphans.
+- **Tick cost:** the full patient-name read is throttled to once per 10 min per tenant and budgeted at 20 s per enumeration. No resume cursor yet
+  (an over-budget tenant re-reads its prefix every pass; page by a persisted keyset if one ever is).
+- **Query path:** reads only; an unsynced tenant is 503. **Route:** at most 2 searches in flight per user, a third is refused `429
+  GLOBAL_SEARCH_TOO_MANY_REQUESTS` before the timing floor starts. **Settings:** a repeated ON records a newly acknowledged notice version.
+- **Live assertions added:** `message_search_token.channel_id = message.channel_id` for indexed rows (kept as a plain column: `message` has no unique key on
+  `(organization_id, id, channel_id)` for a composite FK); `wardenx_platform` has no SELECT on the state or token tables; a member holding both an
+  allowed and an excluded role fails the member-category checklist.
+- **Residuals, deliberately not built:** the multi-round timing residual (security M2) needs a measured P99 on a production-shaped corpus before the
+  floor is retuned; the per-process digest cache race (a replica can serve a 60 s stale set) is bounded by the doubled reindex delay.

@@ -151,6 +151,9 @@ Tracked as a follow-up in the review record (F6 residual).
 1. **Deploy order.** Migrate (1096), then deploy. 1096 truncates `message_search_token` and sets every `message_search_index_state` row to `stale` with no
    checkpoint. Search is inert until enabled, so a clean rebuild is the intended path; an environment where it was already ON loses search until the next
    `messaging.search_maintenance` tick(s) finish the sweep (watch `rebuild` on `GET .../settings`).
+   **Migrating before the rollout is safe only while the platform flag is absent and the indexer is stopped.** 1096 adds `message_search_token.channel_id NOT
+   NULL`; pods still on the old image insert token rows without it and would fail (the indexer's writes error and retry). Do not set the platform flag, and keep
+   the indexer/maintenance worker off, until every pod runs the new image.
 2. **The name source must be wired.** `apps/backend/src/index.ts` injects M5's `patientNameFragmentsPageForOrg` into the writer, the maintenance worker and the
    query route. Without it the first index write of a tenant and every query fail closed (503 `GLOBAL_SEARCH_UNAVAILABLE`, error name
    `NameExclusionNotConfiguredError` in the logs). A tenant's first tick reads all patient, alias, caregiver and emergency-contact names and stores **keyed

@@ -21,6 +21,7 @@ import type { NameExclusions } from "./name-exclusion";
 import type { PlatformSearchFlag } from "./platform-flag";
 import {
   type BodyReader,
+  type IndexOutcome,
   type IsRedactedOrPending,
   isEligibleForIndex,
   neverRedacted,
@@ -32,7 +33,7 @@ const TOKENS = schema.messageSearchTokens;
 /** 5 bound parameters per row; keep a statement far below the 65535-parameter protocol limit. */
 const INSERT_CHUNK_ROWS = 2000;
 
-export type IndexOutcome = "indexed" | "removed" | "skipped_off" | "skipped_stale";
+export type { IndexOutcome };
 
 export interface IndexWriterDeps {
   readonly db: DbClient;

@@ -369,6 +369,21 @@ describe("GET /api/v1/messaging/search gate order", () => {
     expect(performance.now() - started).toBeGreaterThanOrEqual(140);
   });
 
+  it("caps in-flight searches per user: the third concurrent one is refused 429 at once, before the floor, and the slot frees up (M1)", async () => {
+    await build({ responseFloor: { floorMs: 400, jitterMs: 0 } });
+    const started = performance.now();
+    const first = get();
+    const second = get();
+    await new Promise((resolve) => setTimeout(resolve, 50)); // both are now parked inside the floor
+    const third = await get();
+    expect(third.statusCode).toBe(429);
+    expect(third.json()).toMatchObject({ error: { code: "GLOBAL_SEARCH_TOO_MANY_REQUESTS" } });
+    expect(performance.now() - started).toBeLessThan(300); // refused fast, not after the 400 ms floor
+    expect((await first).statusCode).toBe(200);
+    expect((await second).statusCode).toBe(200);
+    expect((await get()).statusCode).toBe(200); // released
+  });
+
   it("runs permission, limiter, platform, tenant, serve, role, then the service, and sets Cache-Control: no-store", async () => {
     await build({});
     const res = await get();

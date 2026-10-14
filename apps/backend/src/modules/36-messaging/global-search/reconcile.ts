@@ -277,8 +277,10 @@ async function reconcileIndex(
   if (!platform.enabled) return OFF;
 
   const keyVersion = await deps.keys.activeVersion(organizationId);
-  // Names first: the sweep below and every writer exclude them from the moment their digests are recorded.
-  await deps.exclusions.sync(organizationId, keyVersion);
+  // Names first: the sweep below and every writer exclude them from the moment their digests are recorded. Throttled per tenant
+  // (a full patient-name read is the tick's most expensive step); the first pass after enabling always runs it, so the query
+  // path never has to.
+  await deps.exclusions.syncIfDue(organizationId, keyVersion);
   let state = await inTenantTx(deps.db, organizationId, (tx) =>
     ensureIndexState(tx, organizationId, keyVersion),
   );

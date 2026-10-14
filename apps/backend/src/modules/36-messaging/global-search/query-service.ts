@@ -454,7 +454,7 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
     if (!active) throw unavailable();
     let excluded: ExcludedTokens;
     try {
-      excluded = await deps.exclusions.current(input.organizationId, active.keyVersion);
+      excluded = await deps.exclusions.currentReadOnly(input.organizationId, active.keyVersion);
     } catch (error) {
       deps.warn?.("global search name exclusion is unavailable", {
         organizationId: input.organizationId,

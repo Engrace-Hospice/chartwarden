@@ -232,6 +232,31 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C1 search index storage - LIVE Postgres", 
       ).rejects.toThrow(/permission denied/);
     });
 
+    it("the wardenx_platform carrier has no privilege, table or column level, on the index state or token tables (L2)", async () => {
+      // The carrier is created by scripts/db/provision-runtime-roles.ts, not by a migration: make the check non-vacuous here.
+      await admin.query(`DO $$ BEGIN
+        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'wardenx_platform') THEN CREATE ROLE wardenx_platform NOLOGIN; END IF;
+      END $$`);
+      const rows = (
+        await admin.query(
+          `SELECT t AS table_name,
+                  has_table_privilege('wardenx_platform', t, 'SELECT') AS table_select,
+                  has_any_column_privilege('wardenx_platform', t, 'SELECT') AS column_select
+             FROM unnest(ARRAY['message_search_index_state','message_search_token']) t`,
+        )
+      ).rows;
+      expect(rows).toEqual([
+        { table_name: "message_search_index_state", table_select: false, column_select: false },
+        { table_name: "message_search_token", table_select: false, column_select: false },
+      ]);
+      // and the provisioning script never grants them
+      const provision = readFileSync(
+        join(__dirname, "../../../scripts/db/provision-runtime-roles.ts"),
+        "utf8",
+      );
+      expect(provision).not.toMatch(/message_search_(token|index_state)/);
+    });
+
     it("wardenx_app cannot DELETE the setting row (switch OFF, never remove)", async () => {
       const priv = (
         await admin.query(

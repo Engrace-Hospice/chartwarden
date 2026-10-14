@@ -12,7 +12,7 @@
 export const SEARCH_RESPONSE_FLOOR_MS = 1500;
 export const SEARCH_RESPONSE_JITTER_MS = 500;
 
-/** Tests only (ignored when NODE_ENV is production): shrink the floor so route suites stay fast. */
+/** Tests only (honoured only when NODE_ENV is "test"; boot fails if set under production/staging): shrink the floor so route suites stay fast. */
 export const FLOOR_ENV = "WARDENX_GLOBAL_SEARCH_FLOOR_MS";
 export const JITTER_ENV = "WARDENX_GLOBAL_SEARCH_JITTER_MS";
 
@@ -33,16 +33,33 @@ const realClock: FloorClock = {
   random: Math.random,
 };
 
-function envMs(name: string, fallback: number): number {
-  if (process.env.NODE_ENV === "production") return fallback;
-  const parsed = Number(process.env[name]);
+type Env = Readonly<Record<string, string | undefined>>;
+
+/** NODE_ENV values under which a floor override is a deployment mistake: boot refuses rather than silently weakening the floor. */
+const DEPLOYED_ENV = /^(prod|stag)/i;
+
+function envMs(env: Env, name: string, fallback: number): number {
+  const parsed = Number(env[name]);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
-export function responseFloorFromEnv(): ResponseFloorConfig {
+/**
+ * The overrides are honoured ONLY when NODE_ENV === "test" (vitest sets it). Set under a production/staging-like NODE_ENV they
+ * throw (boot fails); under anything else they are ignored.
+ */
+export function responseFloorFromEnv(env: Env = process.env): ResponseFloorConfig {
+  const overridden = [FLOOR_ENV, JITTER_ENV].filter((name) => env[name] !== undefined);
+  if (overridden.length > 0 && DEPLOYED_ENV.test(env.NODE_ENV ?? "")) {
+    throw new Error(
+      `${overridden.join(", ")} must not be set when NODE_ENV is ${env.NODE_ENV}: the search response floor is a security control`,
+    );
+  }
+  if (env.NODE_ENV !== "test") {
+    return { floorMs: SEARCH_RESPONSE_FLOOR_MS, jitterMs: SEARCH_RESPONSE_JITTER_MS };
+  }
   return {
-    floorMs: envMs(FLOOR_ENV, SEARCH_RESPONSE_FLOOR_MS),
-    jitterMs: envMs(JITTER_ENV, SEARCH_RESPONSE_JITTER_MS),
+    floorMs: envMs(env, FLOOR_ENV, SEARCH_RESPONSE_FLOOR_MS),
+    jitterMs: envMs(env, JITTER_ENV, SEARCH_RESPONSE_JITTER_MS),
   };
 }
 

@@ -9,7 +9,7 @@
 //    (NOTICE_ACK_REQUIRED / NOTICE_ACK_STALE), checked before anything is read; the actor, time and version are stored.
 //  * EVERY enabled flip sets `changed_at = now()` (C2's reconcile treats a `ready` index as trustworthy only while
 //    `reconciled_at >= changed_at`) and `changed_by_user_id`. A repeat of the current value is not a flip: it writes nothing,
-//    except that OFF always (re)requests the purge. Audit is the write-audit trigger on the table (who/when/old/new).
+//    except that OFF always (re)requests the purge and ON records a newly acknowledged notice version. Audit is the write-audit trigger on the table (who/when/old/new).
 import type { DbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
@@ -111,7 +111,8 @@ export class NoticeNotAcknowledgedError extends WardenXError {
 }
 
 function assertNoticeAcknowledged(version: string | undefined): void {
-  if (version === undefined || version === "") throw new NoticeNotAcknowledgedError("NOTICE_ACK_REQUIRED");
+  if (version === undefined || version === "")
+    throw new NoticeNotAcknowledgedError("NOTICE_ACK_REQUIRED");
   if (version !== CURRENT_NOTICE.version) throw new NoticeNotAcknowledgedError("NOTICE_ACK_STALE");
 }
 
@@ -218,13 +219,21 @@ export function createGlobalSearchSettingsService(deps: {
           if (failed.length > 0) throw new PrerequisitesUnmetError(failed);
         }
         if (enabled === current.enabled && enabled) {
+          // Not a flip (nothing else changes), but a newer notice version acknowledged here must still be recorded (L4).
+          if (current.noticeAckVersion !== acknowledgedNoticeVersion) {
+            await tx.execute(sql`
+              UPDATE tenant_messaging_search_setting
+                 SET notice_ack_version = ${acknowledgedNoticeVersion}, notice_ack_by_user_id = ${userId}::uuid, notice_ack_at = now()
+               WHERE organization_id = ${organizationId}`);
+          }
+          const same = await readTenantSearchSettingInTx(tx, organizationId);
           const rebuild = await readRebuildProgress(
             tx,
             organizationId,
-            current,
+            same,
             attestations.platformUpdatedAt,
           );
-          return toView(current, checklist, rebuild);
+          return toView(same, checklist, rebuild);
         }
         // OFF (re)requests the purge and re-opens `purge_completed_at` so the sweep runs; ON leaves the purge columns alone.
         // ON records the acknowledgement (F5); OFF leaves the last one in place.

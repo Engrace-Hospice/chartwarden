@@ -32,6 +32,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq, sql } from "drizzle-orm";
 import type { Tx } from "../messaging-write-core";
 import { ensureIndexState } from "./index-state";
+import type { IndexOutcome } from "./ports";
 
 const STATE = schema.messageSearchIndexStates;
 
@@ -51,11 +52,31 @@ export class NameExclusionNotConfiguredError extends Error {
   }
 }
 
+export class NameExclusionNotSyncedError extends Error {
+  constructor() {
+    super("global search name exclusion has not been synced for this tenant; failing closed");
+    this.name = "NameExclusionNotSyncedError";
+  }
+}
+
 export interface NameExclusions {
-  /** The membership test for (org, version). Reads the names once (inline `sync`) when the tenant has never been synced. */
+  /** The WRITER's membership test for (org, version). Reads the names once (inline `sync`) when the tenant has never been synced. */
   current(organizationId: string, keyVersion: string): Promise<ExcludedTokens>;
-  /** Re-read the names and add the new digests (grow-only). Counts only. */
-  sync(organizationId: string, keyVersion: string): Promise<{ added: number; total: number }>;
+  /**
+   * The QUERY path's membership test: reads only (no state row creation, no name enumeration). A tenant that was never synced
+   * throws `NameExclusionNotSyncedError` so the route fails closed (503); the first maintenance tick after enablement syncs.
+   */
+  currentReadOnly(organizationId: string, keyVersion: string): Promise<ExcludedTokens>;
+  /**
+   * Re-read the names and add the new digests (grow-only). Counts only. `complete` is false when the enumeration budget ran out:
+   * the digests found are still applied (grow-only is safe) but the tenant is not marked synced.
+   */
+  sync(
+    organizationId: string,
+    keyVersion: string,
+  ): Promise<{ added: number; total: number; complete: boolean }>;
+  /** `sync` unless the tenant was fully synced less than NAME_SYNC_MIN_INTERVAL_MS ago (database clock). The maintenance tick uses this. */
+  syncIfDue(organizationId: string, keyVersion: string): Promise<void>;
   /** Forget the cached set (after a sync, a purge or a rebuild). */
   invalidate(organizationId: string, keyVersion: string): void;
   /** The pending tokens (plaintext, memory only) for the targeted reindex: the source tokens whose digest is pending. */
@@ -65,7 +86,10 @@ export interface NameExclusions {
   ): Promise<{
     tokens: readonly string[];
     pendingDigests: readonly string[];
-    dueSince: Date | null;
+    /** The delay since the LAST digest was added has passed (database clock). When false, `tokens` is empty and no names are read. */
+    due: boolean;
+    /** False when the enumeration budget ran out: a digest missing from `tokens` is then NOT an orphan. */
+    complete: boolean;
   }>;
   /** Remove digests from the pending list (they were reindexed or no longer map to a token). */
   clearPending(
@@ -79,6 +103,10 @@ export interface NameExclusions {
 export const EXCLUSION_CACHE_TTL_MS = 60_000;
 export const EXCLUSION_REINDEX_DELAY_MS = 2 * EXCLUSION_CACHE_TTL_MS;
 const NAME_PAGE_SIZE = 500;
+/** A full name enumeration is capped per call so one big tenant cannot hold the (sequential) maintenance tick. */
+export const NAME_ENUMERATION_BUDGET_MS = 20_000;
+/** The maintenance tick re-reads a tenant's names at most this often (new names reach the writers within this window, then reindex). */
+export const NAME_SYNC_MIN_INTERVAL_MS = 10 * 60_000;
 
 export interface NameExclusionDeps {
   readonly db: DbClient;
@@ -92,9 +120,11 @@ export function createNoNameExclusions(): NameExclusions {
   const none: ExcludedTokens = { has: () => false };
   return {
     current: async () => none,
-    sync: async () => ({ added: 0, total: 0 }),
+    currentReadOnly: async () => none,
+    sync: async () => ({ added: 0, total: 0, complete: true }),
+    syncIfDue: async () => undefined,
     invalidate: () => undefined,
-    pendingTokens: async () => ({ tokens: [], pendingDigests: [], dueSince: null }),
+    pendingTokens: async () => ({ tokens: [], pendingDigests: [], due: false, complete: true }),
     clearPending: async () => undefined,
   };
 }
@@ -102,19 +132,23 @@ export function createNoNameExclusions(): NameExclusions {
 const textArray = (values: readonly string[]) =>
   sql`ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(values)}::jsonb))`;
 
+// ponytail: no resume cursor, so an over-budget tenant re-reads its prefix every pass; page by a persisted keyset if one ever is.
 async function readNameTokens(
   source: PatientNameSource,
   organizationId: string,
-): Promise<Set<string>> {
+  now: () => number,
+): Promise<{ tokens: Set<string>; complete: boolean }> {
   const tokens = new Set<string>();
+  const deadline = now() + NAME_ENUMERATION_BUDGET_MS;
   let after: string | null = null;
   do {
+    if (now() >= deadline) return { tokens, complete: false };
     const page = await source.fragmentsPage(organizationId, after, NAME_PAGE_SIZE);
     for (const fragment of page.fragments)
       for (const token of tokenizeForSearch(fragment)) tokens.add(token);
     after = page.nextAfterId;
   } while (after !== null);
-  return tokens;
+  return { tokens, complete: true };
 }
 
 interface CachedSet {
@@ -136,14 +170,49 @@ export function createNameExclusions(deps: NameExclusionDeps): NameExclusions {
   const stateWhere = (org: string, version: string) =>
     and(eq(STATE.organizationId, org), eq(STATE.keyVersion, version));
 
+  /** Cached digest set. `mayWrite` is the writer path (creates the state row and syncs a never-synced tenant); the query path only reads. */
+  const loadSet = (organizationId: string, keyVersion: string, mayWrite: boolean) => {
+    const id = cacheKey(organizationId, keyVersion);
+    const hit = cache.get(id);
+    if (hit && hit.expiresAt > now()) return Promise.resolve(hit.exclusion);
+    const readRow = (tx: Tx) =>
+      tx
+        .select({ digests: STATE.excludedNameDigests, syncedAt: STATE.exclusionSyncedAt })
+        .from(STATE)
+        .where(stateWhere(organizationId, keyVersion))
+        .then((found) => found[0]);
+    const load = async (): Promise<ExcludedTokens> => {
+      let row = await inTenantTx(organizationId, async (tx) => {
+        if (mayWrite) await ensureIndexState(tx, organizationId, keyVersion);
+        return readRow(tx);
+      });
+      if (!row?.syncedAt) {
+        // Never synced: the names must be read BEFORE anything is indexed or matched (fail closed when there is no source).
+        if (!mayWrite) throw new NameExclusionNotSyncedError();
+        await self.sync(organizationId, keyVersion);
+        row = await inTenantTx(organizationId, readRow);
+        if (!row?.syncedAt) throw new NameExclusionNotSyncedError(); // over the enumeration budget: still not complete
+      }
+      const key = await deps.keys.tagKey(organizationId, keyVersion);
+      const exclusion = digestExclusion(key, new Set(row.digests ?? []));
+      cache.set(id, { expiresAt: now() + EXCLUSION_CACHE_TTL_MS, exclusion });
+      return exclusion;
+    };
+    // One load per (org, version) at a time in this process: a burst of outbox events shares the first read.
+    const running = inFlight.get(id) as Promise<ExcludedTokens> | undefined;
+    if (running) return running;
+    const started = load().finally(() => inFlight.delete(id));
+    inFlight.set(id, started);
+    return started;
+  };
+
   const self: NameExclusions = {
     invalidate: (org, version) => void cache.delete(cacheKey(org, version)),
 
     async sync(organizationId, keyVersion) {
       const key = await deps.keys.tagKey(organizationId, keyVersion);
-      const digests = [...(await readNameTokens(source(), organizationId))].map((token) =>
-        nameTokenDigest(key, token),
-      );
+      const read = await readNameTokens(source(), organizationId, now);
+      const digests = [...read.tokens].map((token) => nameTokenDigest(key, token));
       const result = await inTenantTx(organizationId, async (tx) => {
         await ensureIndexState(tx, organizationId, keyVersion);
         const rows = await tx
@@ -157,69 +226,51 @@ export function createNameExclusions(deps: NameExclusionDeps): NameExclusions {
           UPDATE message_search_index_state
              SET excluded_name_digests = ARRAY(SELECT DISTINCT unnest(excluded_name_digests || ${textArray(added)})),
                  exclusion_pending = ARRAY(SELECT DISTINCT unnest(exclusion_pending || ${textArray(added)})),
-                 exclusion_pending_since = CASE WHEN ${added.length} > 0 THEN COALESCE(exclusion_pending_since, now())
-                                                ELSE exclusion_pending_since END,
-                 exclusion_synced_at = now(), updated_at = now()
+                 exclusion_pending_since = CASE WHEN ${added.length} > 0 THEN now() ELSE exclusion_pending_since END,
+                 exclusion_synced_at = CASE WHEN ${read.complete}::boolean THEN now() ELSE exclusion_synced_at END,
+                 updated_at = now()
            WHERE organization_id = ${organizationId} AND key_version = ${keyVersion}`);
-        return { added: added.length, total: applied.size + added.length };
+        return { added: added.length, total: applied.size + added.length, complete: read.complete };
       });
       cache.delete(cacheKey(organizationId, keyVersion));
       return result;
     },
 
-    async current(organizationId, keyVersion) {
-      const id = cacheKey(organizationId, keyVersion);
-      const hit = cache.get(id);
-      if (hit && hit.expiresAt > now()) return hit.exclusion;
-      const load = async (): Promise<ExcludedTokens> => {
-        let row = await inTenantTx(organizationId, async (tx) => {
-          await ensureIndexState(tx, organizationId, keyVersion);
-          const found = await tx
-            .select({ digests: STATE.excludedNameDigests, syncedAt: STATE.exclusionSyncedAt })
-            .from(STATE)
-            .where(stateWhere(organizationId, keyVersion));
-          return found[0];
-        });
-        if (!row?.syncedAt) {
-          // Never synced: the names must be read BEFORE anything is indexed or matched (fail closed when there is no source).
-          await self.sync(organizationId, keyVersion);
-          row = await inTenantTx(organizationId, async (tx) => {
-            const found = await tx
-              .select({ digests: STATE.excludedNameDigests, syncedAt: STATE.exclusionSyncedAt })
-              .from(STATE)
-              .where(stateWhere(organizationId, keyVersion));
-            return found[0];
-          });
-        }
-        const key = await deps.keys.tagKey(organizationId, keyVersion);
-        const exclusion = digestExclusion(key, new Set(row?.digests ?? []));
-        cache.set(id, { expiresAt: now() + EXCLUSION_CACHE_TTL_MS, exclusion });
-        return exclusion;
-      };
-      // One load per (org, version) at a time in this process: a burst of outbox events shares the first read.
-      const running = inFlight.get(id) as Promise<ExcludedTokens> | undefined;
-      if (running) return running;
-      const started = load().finally(() => inFlight.delete(id));
-      inFlight.set(id, started);
-      return started;
+    async syncIfDue(organizationId, keyVersion) {
+      const fresh = await inTenantTx(organizationId, async (tx) => {
+        const result = await tx.execute<{ fresh: boolean }>(sql`
+          SELECT (exclusion_synced_at IS NOT NULL
+                  AND now() - exclusion_synced_at < make_interval(secs => ${NAME_SYNC_MIN_INTERVAL_MS / 1000}::double precision)) AS fresh
+            FROM message_search_index_state
+           WHERE organization_id = ${organizationId} AND key_version = ${keyVersion}`);
+        return result.rows[0]?.fresh === true;
+      });
+      if (!fresh) await self.sync(organizationId, keyVersion);
     },
+
+    current: (organizationId, keyVersion) => loadSet(organizationId, keyVersion, true),
+    currentReadOnly: (organizationId, keyVersion) => loadSet(organizationId, keyVersion, false),
 
     async pendingTokens(organizationId, keyVersion) {
       const state = await inTenantTx(organizationId, async (tx) => {
-        const found = await tx
-          .select({ pending: STATE.exclusionPending, since: STATE.exclusionPendingSince })
-          .from(STATE)
-          .where(stateWhere(organizationId, keyVersion));
-        return found[0];
+        const result = await tx.execute<{ pending: string[] | null; due: boolean }>(sql`
+          SELECT exclusion_pending AS pending,
+                 (exclusion_pending_since IS NOT NULL
+                  AND now() - exclusion_pending_since
+                      >= make_interval(secs => ${EXCLUSION_REINDEX_DELAY_MS / 1000}::double precision)) AS due
+            FROM message_search_index_state
+           WHERE organization_id = ${organizationId} AND key_version = ${keyVersion}`);
+        return result.rows[0];
       });
       const pendingDigests = state?.pending ?? [];
-      if (pendingDigests.length === 0) return { tokens: [], pendingDigests, dueSince: null };
+      if (pendingDigests.length === 0 || state?.due !== true) {
+        return { tokens: [], pendingDigests, due: false, complete: true };
+      }
       const key = await deps.keys.tagKey(organizationId, keyVersion);
       const wanted = new Set(pendingDigests);
-      const tokens = [...(await readNameTokens(source(), organizationId))].filter((token) =>
-        wanted.has(nameTokenDigest(key, token)),
-      );
-      return { tokens, pendingDigests, dueSince: state?.since ?? null };
+      const read = await readNameTokens(source(), organizationId, now);
+      const tokens = [...read.tokens].filter((token) => wanted.has(nameTokenDigest(key, token)));
+      return { tokens, pendingDigests, due: true, complete: read.complete };
     },
 
     async clearPending(organizationId, keyVersion, digests) {
@@ -251,7 +302,7 @@ export interface PendingReindexDeps {
   readonly db: DbClient;
   readonly keys: SearchKeyProvider;
   readonly exclusions: NameExclusions;
-  readonly indexMessage: (organizationId: string, messageId: string) => Promise<unknown>;
+  readonly indexMessage: (organizationId: string, messageId: string) => Promise<IndexOutcome>;
   readonly now?: () => number;
   /** Counts only. */
   readonly onProgress?: (info: {
@@ -304,9 +355,7 @@ export async function reindexPendingExclusions(
 ): Promise<number> {
   const now = deps.now ?? Date.now;
   const pending = await deps.exclusions.pendingTokens(organizationId, keyVersion);
-  if (pending.pendingDigests.length === 0) return 0;
-  if (!pending.dueSince || now() - pending.dueSince.getTime() < EXCLUSION_REINDEX_DELAY_MS)
-    return 0;
+  if (pending.pendingDigests.length === 0 || !pending.due) return 0;
 
   deps.exclusions.invalidate(organizationId, keyVersion);
   const searchKey = await deps.keys.tagKey(organizationId, keyVersion);
@@ -338,15 +387,21 @@ export async function reindexPendingExclusions(
     const messageIds = await withOrgContext(deps.db, { organizationId, userId: "" }, (tx) =>
       messagesWithTags(tx, organizationId, keyVersion, pairs),
     );
+    let clean = true;
     for (const messageId of messageIds) {
-      await deps.indexMessage(organizationId, messageId);
+      const outcome = await deps.indexMessage(organizationId, messageId);
+      if (outcome === "skipped_stale" || outcome === "skipped_off") clean = false;
       reindexed += 1;
     }
-    for (const token of batch) done.add(key(token));
+    // A message that was not rewritten may still carry the name: leave the whole batch pending for the next pass.
+    if (clean) for (const token of batch) done.add(key(token));
   }
   // Digests whose token no longer appears in the source (a deleted patient) have nothing to reindex: clear them too.
   const known = new Set(pending.tokens.map(key));
-  const orphans = pending.pendingDigests.filter((digest) => !known.has(digest));
+  // Only when the enumeration finished: after a budget cut a missing digest may simply not have been read yet.
+  const orphans = pending.complete
+    ? pending.pendingDigests.filter((digest) => !known.has(digest))
+    : [];
   await deps.exclusions.clearPending(organizationId, keyVersion, [...done, ...orphans]);
   deps.onProgress?.({
     organizationId,
