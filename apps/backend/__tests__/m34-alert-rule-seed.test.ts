@@ -13,6 +13,10 @@
 // dormant rule into a FAILING emit. Only rules naming an M36 built-in are seeded. If someone later binds
 // those resolvers, the `seedable` set widens on its own; if someone adds a rule with a typo'd resolver,
 // the last test here catches it before it reaches a boot.
+import {
+  PLATFORM_OPS_ROLE_KEY as AUTH_OPS_KEY,
+  PLATFORM_ALERT_AUDIENCE_ROLE_KEY,
+} from "@wardenx/auth";
 import { describe, expect, it } from "vitest";
 import {
   M34_ALERT_RESOLVER_NAMES,
@@ -20,11 +24,21 @@ import {
   M34_ALERT_RULE_KEYS,
   M36_BUILT_IN_RESOLVERS,
   PLATFORM_OPS_ROLE_KEY,
+  TENANT_ALERT_AUDIENCE_ROLE_KEY,
   seedableM34AlertRules,
 } from "../src/modules/34-saas-tenant-platform/alert-rules";
 import { M34_ACTIVATION_STUCK_EVENT } from "../src/modules/34-saas-tenant-platform/jobs/platform-sweeps-worker";
 
 describe("M34 §4.8 alert-rule seed (GAP-098)", () => {
+  it("routes tenant-org rules at the audience role, never platform_ops", () => {
+    expect(TENANT_ALERT_AUDIENCE_ROLE_KEY).toBe(PLATFORM_ALERT_AUDIENCE_ROLE_KEY);
+    expect(PLATFORM_OPS_ROLE_KEY).toBe(AUTH_OPS_KEY);
+    for (const key of ["tenant_export.oversized_hold", "tenant.onboarding_activation_stuck"]) {
+      const rule = M34_ALERT_RULES.find((r) => r.ruleKey === key);
+      expect(rule?.resolverArgs).toEqual({ roleKeys: ["platform_alert_audience"] });
+    }
+  });
+
   it("ships the oversized-hold rule keyed on the event the hold port emits", () => {
     const rule = M34_ALERT_RULES.find((r) => r.ruleKey === "tenant_export.oversized_hold");
     expect(rule).toBeDefined();
@@ -41,7 +55,7 @@ describe("M34 §4.8 alert-rule seed (GAP-098)", () => {
     const rule = M34_ALERT_RULES.find((r) => r.ruleKey === "tenant_export.oversized_hold");
     expect(M36_BUILT_IN_RESOLVERS).toContain(rule?.recipientResolver);
     expect(rule?.recipientResolver).toBe("role_set");
-    expect(rule?.resolverArgs).toEqual({ roleKeys: [PLATFORM_OPS_ROLE_KEY] });
+    expect(rule?.resolverArgs).toEqual({ roleKeys: [TENANT_ALERT_AUDIENCE_ROLE_KEY] });
   });
 
   it("seeds the stuck-activation rule on the event the onboarding sweep emits, routed at platform-ops", () => {
@@ -51,7 +65,7 @@ describe("M34 §4.8 alert-rule seed (GAP-098)", () => {
     // Emitted under the tenant's own org: locked so a tenant override cannot redirect or disable it (0334).
     expect(rule?.systemLocked).toBe(true);
     expect(M36_BUILT_IN_RESOLVERS).toContain(rule?.recipientResolver);
-    expect(rule?.resolverArgs).toEqual({ roleKeys: [PLATFORM_OPS_ROLE_KEY] });
+    expect(rule?.resolverArgs).toEqual({ roleKeys: [TENANT_ALERT_AUDIENCE_ROLE_KEY] });
   });
 
   it("seeds a critical rule for the kill-switch emergency event, routed at real people today", () => {
