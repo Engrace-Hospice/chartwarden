@@ -13733,6 +13733,143 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/handoffs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's own clinical handoffs (WP 3.5; messaging.read): scope incoming|outgoing, state active|closed|all, limit up to 100 (default incoming/active/50). Rows carry counts and allowed_actions but no items and no patient. 200 {enabled:false,handoffs:[]} while the tenant flag `messaging.handoffs` is off. Read-audited (list) */
+        get: operations["getApiV1MessagingHandoffs"];
+        put?: never;
+        /** Offer a handoff to one colleague (WP 3.5; messaging.send + patient.read; 404 while the flag is off). Items are (kind, ref_id, patient_id) pointers; the server re-verifies every one against the caller's caseload and the owning module (422 HANDOFF_ITEM_INVALID, HANDOFF_ITEMS_REQUIRED, HANDOFF_TOO_MANY_ITEMS) and refuses an ineligible receiver with one uniform 422 HANDOFF_RECIPIENT_INVALID. 201 created; 200 created:false returns the caller's own open offer to the same person unchanged (the new body is ignored; cancel and re-offer to change it). 409 HANDOFF_ITEM_CONFLICT when an item is already part of another open handoff (no data about it). Until the receiver accepts an item the sender stays accountable for it. No paging */
+        post: operations["postApiV1MessagingHandoffs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/handoffs/{handoffId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One handoff with its items (WP 3.5; messaging.read). Only the sender or the receiver sees it; a missing, foreign and flag-off handoff is ONE 404. Each item shows the patient label and a live status re-read from the owning module (`summary.state` ok|gone|unavailable|restricted; a patient the viewer may not see under Part 2 is `restricted` with no label or ids). `allowed_actions` is computed server-side. Read-audited against the handoff and against EVERY patient it discloses (one read event per patient) */
+        get: operations["getApiV1MessagingHandoffsByHandoffId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/handoffs/{handoffId}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept chosen items (WP 3.5; messaging.send; receiver only; 1 to 250 item ids). Accountability for exactly those items moves to the caller; the handoff stays offered while any item is pending. A task item also reassigns that task to the caller in the same transaction (422 HANDOFF_ITEM_NOT_TRANSFERABLE refuses the whole call). Repeating an accept returns the handoff unchanged. 409 HANDOFF_STATE_CONFLICT after the deadline or from a closed handoff, 403 for the sender, 404 uniform */
+        post: operations["postApiV1MessagingHandoffsByHandoffIdAccept"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/handoffs/{handoffId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw an offered handoff (WP 3.5; messaging.send; sender only). Pending items become cancelled and stay with the sender; accepted items keep their new owner. Repeating returns the handoff unchanged. 403 for the receiver, 409 HANDOFF_STATE_CONFLICT from another closed state, 404 uniform */
+        post: operations["postApiV1MessagingHandoffsByHandoffIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/handoffs/{handoffId}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline chosen items, or every pending item when `item_ids` is omitted (WP 3.5; messaging.send; receiver only). Declined items stay with the sender; when nothing is pending the handoff closes and the sender and supervisors are alerted. 409 HANDOFF_STATE_CONFLICT, 403 for the sender, 404 uniform */
+        post: operations["postApiV1MessagingHandoffsByHandoffIdDecline"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/handoffs/caseload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's own caseload patients that can be handed off (WP 3.5; messaging.read + patient.read; 404 while the tenant flag is off): patient id, 'First L.' display name and MRN last four, at most 200. Read-audited (list) */
+        get: operations["getApiV1MessagingHandoffsCaseload"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/handoffs/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The effective handoff expiry (WP 3.5; messaging.send; 404 while the flag is off): minutes, the platform maximum (240; a tenant may only shorten it, minimum 15) and whether the tenant customised it. PROVISIONAL numbers */
+        get: operations["getApiV1MessagingHandoffsPolicy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/handoffs/prefill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Open work for the chosen caseload patients (WP 3.5; messaging.send + patient.read; 404 while the flag is off). A pure READ: nothing is written or published. 1 to 50 patients, every one on the caller's caseload (else 422 HANDOFF_ITEM_INVALID). Per patient the offerable items (the patient itself, the next visit within 48 hours, pending refill requests, open symptom follow-ups, the caller's active tasks) and `unavailable_sources`: item kinds whose owning module could not be read, which are NOT included. Callbacks are not offered in this version */
+        post: operations["postApiV1MessagingHandoffsPrefill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/messages/{id}": {
         parameters: {
             query?: never;
@@ -13985,6 +14122,24 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/template-admin/handoff-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set this organization's handoff expiry in minutes (WP 3.5; messaging.template.manage). Tighten-only: 15 to 240, anything else is 422 HANDOFF_POLICY_INVALID. The shorter value also applies to offers already open. Returns the effective policy */
+        put: operations["putApiV1MessagingTemplateadminHandoffpolicy"];
+        post?: never;
+        /** Remove this organization's handoff expiry override, restoring the platform default of 240 minutes (WP 3.5; messaging.template.manage). Returns the effective policy (200) */
+        delete: operations["deleteApiV1MessagingTemplateadminHandoffpolicy"];
         options?: never;
         head?: never;
         patch?: never;
@@ -63922,6 +64077,565 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingHandoffs: {
+        parameters: {
+            query?: {
+                scope?: "incoming" | "outgoing";
+                state?: "active" | "closed" | "all";
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        handoffs: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            from_user_id: string;
+                            from_display_name: string | null;
+                            /** Format: uuid */
+                            to_user_id: string;
+                            to_display_name: string | null;
+                            state: "offered" | "accepted" | "declined" | "expired" | "cancelled";
+                            /** Format: date-time */
+                            offered_at: string;
+                            /** Format: date-time */
+                            expires_at: string;
+                            accepted_at: string | null;
+                            closed_at: string | null;
+                            closed_reason: ("all_resolved" | "deadline" | "sender_cancelled" | "recipient_left") | null;
+                            needs_attention: boolean;
+                            patient_count: number;
+                            item_counts: {
+                                pending: number;
+                                accepted: number;
+                                declined: number;
+                                expired: number;
+                                cancelled: number;
+                            };
+                            allowed_actions: ("accept" | "decline" | "cancel")[];
+                            items?: {
+                                /** Format: uuid */
+                                id: string;
+                                patient_id: string | null;
+                                patient_display_name: string | null;
+                                mrn_suffix: string | null;
+                                kind: "patient" | "visit" | "refill_request" | "symptom_followup" | "task";
+                                ref_id: string | null;
+                                state: "pending" | "accepted" | "declined" | "expired" | "cancelled";
+                                /** Format: uuid */
+                                accountable_user_id: string;
+                                accountable_display_name: string | null;
+                                resolved_at: string | null;
+                                summary: {
+                                    state: "ok" | "gone" | "unavailable" | "restricted";
+                                    status?: string;
+                                    occurred_at?: string;
+                                    still_open?: boolean;
+                                };
+                            }[];
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingHandoffs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    to_user_id: string;
+                    items: {
+                        kind: "patient" | "visit" | "refill_request" | "symptom_followup" | "task";
+                        ref_id: string;
+                        patient_id: string;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        handoff: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            from_user_id: string;
+                            from_display_name: string | null;
+                            /** Format: uuid */
+                            to_user_id: string;
+                            to_display_name: string | null;
+                            state: "offered" | "accepted" | "declined" | "expired" | "cancelled";
+                            /** Format: date-time */
+                            offered_at: string;
+                            /** Format: date-time */
+                            expires_at: string;
+                            accepted_at: string | null;
+                            closed_at: string | null;
+                            closed_reason: ("all_resolved" | "deadline" | "sender_cancelled" | "recipient_left") | null;
+                            needs_attention: boolean;
+                            patient_count: number;
+                            item_counts: {
+                                pending: number;
+                                accepted: number;
+                                declined: number;
+                                expired: number;
+                                cancelled: number;
+                            };
+                            allowed_actions: ("accept" | "decline" | "cancel")[];
+                            items?: {
+                                /** Format: uuid */
+                                id: string;
+                                patient_id: string | null;
+                                patient_display_name: string | null;
+                                mrn_suffix: string | null;
+                                kind: "patient" | "visit" | "refill_request" | "symptom_followup" | "task";
+                                ref_id: string | null;
+                                state: "pending" | "accepted" | "declined" | "expired" | "cancelled";
+                                /** Format: uuid */
+                                accountable_user_id: string;
+                                accountable_display_name: string | null;
+                                resolved_at: string | null;
+                                summary: {
+                                    state: "ok" | "gone" | "unavailable" | "restricted";
+                                    status?: string;
+                                    occurred_at?: string;
+                                    still_open?: boolean;
+                                };
+                            }[];
+                        };
+                        created: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingHandoffsByHandoffId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                handoffId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        handoff: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            from_user_id: string;
+                            from_display_name: string | null;
+                            /** Format: uuid */
+                            to_user_id: string;
+                            to_display_name: string | null;
+                            state: "offered" | "accepted" | "declined" | "expired" | "cancelled";
+                            /** Format: date-time */
+                            offered_at: string;
+                            /** Format: date-time */
+                            expires_at: string;
+                            accepted_at: string | null;
+                            closed_at: string | null;
+                            closed_reason: ("all_resolved" | "deadline" | "sender_cancelled" | "recipient_left") | null;
+                            needs_attention: boolean;
+                            patient_count: number;
+                            item_counts: {
+                                pending: number;
+                                accepted: number;
+                                declined: number;
+                                expired: number;
+                                cancelled: number;
+                            };
+                            allowed_actions: ("accept" | "decline" | "cancel")[];
+                            items?: {
+                                /** Format: uuid */
+                                id: string;
+                                patient_id: string | null;
+                                patient_display_name: string | null;
+                                mrn_suffix: string | null;
+                                kind: "patient" | "visit" | "refill_request" | "symptom_followup" | "task";
+                                ref_id: string | null;
+                                state: "pending" | "accepted" | "declined" | "expired" | "cancelled";
+                                /** Format: uuid */
+                                accountable_user_id: string;
+                                accountable_display_name: string | null;
+                                resolved_at: string | null;
+                                summary: {
+                                    state: "ok" | "gone" | "unavailable" | "restricted";
+                                    status?: string;
+                                    occurred_at?: string;
+                                    still_open?: boolean;
+                                };
+                            }[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingHandoffsByHandoffIdAccept: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                handoffId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    item_ids: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        handoff: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            from_user_id: string;
+                            from_display_name: string | null;
+                            /** Format: uuid */
+                            to_user_id: string;
+                            to_display_name: string | null;
+                            state: "offered" | "accepted" | "declined" | "expired" | "cancelled";
+                            /** Format: date-time */
+                            offered_at: string;
+                            /** Format: date-time */
+                            expires_at: string;
+                            accepted_at: string | null;
+                            closed_at: string | null;
+                            closed_reason: ("all_resolved" | "deadline" | "sender_cancelled" | "recipient_left") | null;
+                            needs_attention: boolean;
+                            patient_count: number;
+                            item_counts: {
+                                pending: number;
+                                accepted: number;
+                                declined: number;
+                                expired: number;
+                                cancelled: number;
+                            };
+                            allowed_actions: ("accept" | "decline" | "cancel")[];
+                            items?: {
+                                /** Format: uuid */
+                                id: string;
+                                patient_id: string | null;
+                                patient_display_name: string | null;
+                                mrn_suffix: string | null;
+                                kind: "patient" | "visit" | "refill_request" | "symptom_followup" | "task";
+                                ref_id: string | null;
+                                state: "pending" | "accepted" | "declined" | "expired" | "cancelled";
+                                /** Format: uuid */
+                                accountable_user_id: string;
+                                accountable_display_name: string | null;
+                                resolved_at: string | null;
+                                summary: {
+                                    state: "ok" | "gone" | "unavailable" | "restricted";
+                                    status?: string;
+                                    occurred_at?: string;
+                                    still_open?: boolean;
+                                };
+                            }[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingHandoffsByHandoffIdCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                handoffId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        handoff: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            from_user_id: string;
+                            from_display_name: string | null;
+                            /** Format: uuid */
+                            to_user_id: string;
+                            to_display_name: string | null;
+                            state: "offered" | "accepted" | "declined" | "expired" | "cancelled";
+                            /** Format: date-time */
+                            offered_at: string;
+                            /** Format: date-time */
+                            expires_at: string;
+                            accepted_at: string | null;
+                            closed_at: string | null;
+                            closed_reason: ("all_resolved" | "deadline" | "sender_cancelled" | "recipient_left") | null;
+                            needs_attention: boolean;
+                            patient_count: number;
+                            item_counts: {
+                                pending: number;
+                                accepted: number;
+                                declined: number;
+                                expired: number;
+                                cancelled: number;
+                            };
+                            allowed_actions: ("accept" | "decline" | "cancel")[];
+                            items?: {
+                                /** Format: uuid */
+                                id: string;
+                                patient_id: string | null;
+                                patient_display_name: string | null;
+                                mrn_suffix: string | null;
+                                kind: "patient" | "visit" | "refill_request" | "symptom_followup" | "task";
+                                ref_id: string | null;
+                                state: "pending" | "accepted" | "declined" | "expired" | "cancelled";
+                                /** Format: uuid */
+                                accountable_user_id: string;
+                                accountable_display_name: string | null;
+                                resolved_at: string | null;
+                                summary: {
+                                    state: "ok" | "gone" | "unavailable" | "restricted";
+                                    status?: string;
+                                    occurred_at?: string;
+                                    still_open?: boolean;
+                                };
+                            }[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingHandoffsByHandoffIdDecline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                handoffId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    item_ids?: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        handoff: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            from_user_id: string;
+                            from_display_name: string | null;
+                            /** Format: uuid */
+                            to_user_id: string;
+                            to_display_name: string | null;
+                            state: "offered" | "accepted" | "declined" | "expired" | "cancelled";
+                            /** Format: date-time */
+                            offered_at: string;
+                            /** Format: date-time */
+                            expires_at: string;
+                            accepted_at: string | null;
+                            closed_at: string | null;
+                            closed_reason: ("all_resolved" | "deadline" | "sender_cancelled" | "recipient_left") | null;
+                            needs_attention: boolean;
+                            patient_count: number;
+                            item_counts: {
+                                pending: number;
+                                accepted: number;
+                                declined: number;
+                                expired: number;
+                                cancelled: number;
+                            };
+                            allowed_actions: ("accept" | "decline" | "cancel")[];
+                            items?: {
+                                /** Format: uuid */
+                                id: string;
+                                patient_id: string | null;
+                                patient_display_name: string | null;
+                                mrn_suffix: string | null;
+                                kind: "patient" | "visit" | "refill_request" | "symptom_followup" | "task";
+                                ref_id: string | null;
+                                state: "pending" | "accepted" | "declined" | "expired" | "cancelled";
+                                /** Format: uuid */
+                                accountable_user_id: string;
+                                accountable_display_name: string | null;
+                                resolved_at: string | null;
+                                summary: {
+                                    state: "ok" | "gone" | "unavailable" | "restricted";
+                                    status?: string;
+                                    occurred_at?: string;
+                                    still_open?: boolean;
+                                };
+                            }[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingHandoffsCaseload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        patients: {
+                            /** Format: uuid */
+                            patient_id: string;
+                            display_name: string;
+                            mrn_suffix: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingHandoffsPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        expiry_minutes: number;
+                        platform_max_minutes: number;
+                        customised: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingHandoffsPrefill: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    patient_ids: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        patients: {
+                            /** Format: uuid */
+                            patient_id: string;
+                            items: {
+                                kind: "patient" | "visit" | "refill_request" | "symptom_followup" | "task";
+                                /** Format: uuid */
+                                ref_id: string;
+                                status?: string;
+                                occurred_at?: string;
+                            }[];
+                            unavailable_sources: ("patient" | "visit" | "refill_request" | "symptom_followup" | "task")[];
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     deleteApiV1MessagingMessagesById: {
         parameters: {
             query?: never;
@@ -64775,6 +65489,64 @@ export interface operations {
                             body: string;
                             customized: boolean;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1MessagingTemplateadminHandoffpolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    expiry_minutes: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        expiry_minutes: number;
+                        platform_max_minutes: number;
+                        customised: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1MessagingTemplateadminHandoffpolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        expiry_minutes: number;
+                        platform_max_minutes: number;
+                        customised: boolean;
                     };
                 };
             };

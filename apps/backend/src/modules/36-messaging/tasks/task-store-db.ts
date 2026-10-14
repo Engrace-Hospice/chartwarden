@@ -13,6 +13,7 @@ import {
   TASK_CLOSED_STATUSES,
   type TaskAction,
   type TaskEventType,
+  type TaskReassignSource,
   type TaskStatus,
 } from "@wardenx/types";
 import { and, asc, desc, eq, inArray, notInArray, or, sql } from "drizzle-orm";
@@ -73,6 +74,12 @@ export interface TransitionArgs {
   readonly action: TaskAction;
   readonly reason?: string | null;
   readonly toAssigneeId?: string;
+  /**
+   * Reassign only: the recorded reason. "handoff" (WP 3.5) means a handoff acceptance - already authorised by the
+   * handoff service - moves the task, so the participant rule is waived and the acting user (the acceptor) is logged.
+   * Omitted = "manual" for a user, "offboarding" for the system.
+   */
+  readonly reassignReason?: TaskReassignSource;
 }
 
 export interface TaskListQuery {
@@ -170,8 +177,9 @@ async function selectForUpdate(tx: Tx, orgId: string, taskId: string): Promise<T
 }
 
 /** The actor's role on a row. The system actor (offboarding) may do what any participant may. */
-function roleOf(task: TaskRow, actor: TaskActor): TaskActorRole {
-  return actor.kind === "system" ? "both" : taskActorRole(task, actor.userId);
+function roleOf(task: TaskRow, actor: TaskActor, a: TransitionArgs): TaskActorRole {
+  if (actor.kind === "system" || a.reassignReason === "handoff") return "both";
+  return taskActorRole(task, actor.userId);
 }
 
 async function applyTransition(
@@ -214,11 +222,18 @@ async function applyTransition(
       ? {
           fromAssigneeId: cur.assigneeId,
           toAssigneeId: a.toAssigneeId ?? null,
-          reasonCode: a.actor.kind === "system" ? "offboarding" : "manual",
+          reasonCode: reassignReasonOf(a),
         }
       : { reasonCode: closing ? (a.reason ?? null) : null }),
   });
   return updated;
+}
+
+export function reassignReasonOf(a: {
+  readonly actor: TaskActor;
+  readonly reassignReason?: TaskReassignSource | undefined;
+}): TaskReassignSource {
+  return a.reassignReason ?? (a.actor.kind === "system" ? "offboarding" : "manual");
 }
 
 async function activeAssignees(tx: Tx, orgId: string, messageId: string): Promise<string[]> {
@@ -342,7 +357,7 @@ export function createDbTaskStore(db: DbClient): TaskStore {
       const decision = decideTransition(
         { status: cur.status as TaskStatus },
         a.action,
-        roleOf(cur, a.actor),
+        roleOf(cur, a.actor, a),
       );
       if (decision.kind === "forbidden") throw new TaskNotFound();
       if (decision.kind === "noop") return { task: cur, changed: false };

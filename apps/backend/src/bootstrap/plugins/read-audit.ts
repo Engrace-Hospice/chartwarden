@@ -114,6 +114,24 @@ function resolvePatientId(
   return undefined;
 }
 
+/** Every distinct patient id a multi-patient read disclosed: the array at `path`, each element's `key` (see `patientIdsPayload`). */
+function disclosedPatientIds(cfg: RouteReadAuditEmit, payload: unknown): string[] {
+  const spec = cfg.patientIdsPayload;
+  if (!spec) return [];
+  let cur: unknown = payload;
+  for (const segment of spec.path.split(".")) {
+    if (cur === null || typeof cur !== "object") return [];
+    cur = (cur as Record<string, unknown>)[segment];
+  }
+  if (!Array.isArray(cur)) return [];
+  const ids = cur
+    .map((row) =>
+      row && typeof row === "object" ? (row as Record<string, unknown>)[spec.key] : undefined,
+    )
+    .filter((v): v is string => typeof v === "string" && v.length > 0);
+  return [...new Set(ids)];
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const OMITTED_FILTER_VALUE = "[omitted]";
 
@@ -184,7 +202,7 @@ export function applyReadAuditCoverage(
       if (reply.statusCode < 200 || reply.statusCode >= 300) return; // only successful reads
       const ctx = request.context;
       if (!ctx?.organizationId) return; // unauthenticated/no-org — the route denied anyway
-      if (binary && (cfg.list || cfg.patientIdPayloadPath)) {
+      if (binary && (cfg.list || cfg.patientIdPayloadPath || cfg.patientIdsPayload)) {
         // A non-JSON body has no rows/fields to read: such a config on this route is a coding error.
         request.log.error(
           { url: request.routeOptions?.url },
@@ -231,13 +249,23 @@ export function applyReadAuditCoverage(
           } else {
             // A single chart open: account it against the resource (defaults to the patient, §164.528).
             const resourceId =
-              (cfg.resourceIdParam ? params[cfg.resourceIdParam] : undefined) ?? patientId ?? "";
-            await auditPhiRead(tx, auditCtx, {
-              resourceKind: cfg.resourceKind,
-              resourceId,
-              patientId,
-              fields: cfg.fields,
-            });
+              (cfg.resourceIdParam ? params[cfg.resourceIdParam] : undefined) ??
+              (cfg.resourceIdPayloadPath && !binary
+                ? atPath(payload, cfg.resourceIdPayloadPath)
+                : undefined) ??
+              patientId ??
+              "";
+            // A read that disclosed several patients is accounted against EACH of them (one event per patient).
+            const disclosed = binary ? [] : disclosedPatientIds(cfg, payload);
+            const attributed = disclosed.length > 0 ? disclosed : [patientId];
+            for (const attributedPatientId of attributed) {
+              await auditPhiRead(tx, auditCtx, {
+                resourceKind: cfg.resourceKind,
+                resourceId,
+                patientId: attributedPatientId,
+                fields: cfg.fields,
+              });
+            }
           }
         },
       );

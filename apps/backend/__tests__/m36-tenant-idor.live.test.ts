@@ -60,6 +60,7 @@ import { createAttachmentService } from "../src/modules/36-messaging/attachments
 import { createDbClinicalLinkStore } from "../src/modules/36-messaging/clinical-link/clinical-link-store-db";
 import { createDbDraftService } from "../src/modules/36-messaging/drafts/draft-service-db";
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
+import { buildHandoffDeps } from "../src/modules/36-messaging/handoffs/deps";
 import {
   channelHintAudience,
   createDbMessagingProvider,
@@ -167,6 +168,20 @@ const ROUTES: Record<string, Verdict> = {
   "POST /api/v1/messaging/tasks/:taskId/complete": { kind: "idor" },
   "POST /api/v1/messaging/tasks/:taskId/cancel": { kind: "idor" },
   "POST /api/v1/messaging/tasks/:taskId/reassign": { kind: "idor" },
+  // WP 3.5 clinical handoffs: a handoff id from another org or from a non-participant is the identical 404 a random id
+  // gets (asserted below); the list, caseload, prefill and policy routes are the caller's own org/user only. The tables'
+  // FORCE RLS, grants and the participant rule are also attacked in m36-handoffs.live.
+  "GET /api/v1/messaging/handoffs": { kind: "scoped" },
+  "GET /api/v1/messaging/handoffs/caseload": { kind: "scoped" },
+  "POST /api/v1/messaging/handoffs/prefill": { kind: "scoped" },
+  "POST /api/v1/messaging/handoffs": { kind: "scoped" },
+  "GET /api/v1/messaging/handoffs/policy": { kind: "scoped" },
+  "GET /api/v1/messaging/handoffs/:handoffId": { kind: "idor" },
+  "POST /api/v1/messaging/handoffs/:handoffId/accept": { kind: "idor" },
+  "POST /api/v1/messaging/handoffs/:handoffId/decline": { kind: "idor" },
+  "POST /api/v1/messaging/handoffs/:handoffId/cancel": { kind: "idor" },
+  "PUT /api/v1/messaging/template-admin/handoff-policy": { kind: "scoped" },
+  "DELETE /api/v1/messaging/template-admin/handoff-policy": { kind: "scoped" },
   // Admin screens PR 1a: org_admin member list + archive; attacked in m36-channel-admin.live.test.ts.
   "GET /api/v1/messaging/channels/:id/members": { kind: "idor" },
   "POST /api/v1/messaging/channels/:id/archive": { kind: "idor" },
@@ -262,6 +277,8 @@ const REGISTRAR_FILES = [
   "sbar-typebox.ts", // schemas only
   "task-routes.ts", // WP 3.4 communication tasks, mounted by registerMessagingRoutes
   "task-typebox.ts", // schemas only
+  "handoff-routes.ts", // WP 3.5 clinical handoffs, mounted by registerMessagingRoutes
+  "handoff-typebox.ts", // schemas only
   "patient-context-routes.ts", // WP 3.1 context panel, mounted by registerMessagingRoutes
   "patient-context-typebox.ts", // schemas only
   "template-routes.ts",
@@ -456,6 +473,10 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     "tenant_sbar_policy",
     "communication_task",
     "communication_task_event",
+    "clinical_handoff",
+    "clinical_handoff_item",
+    "clinical_handoff_event",
+    "tenant_handoff_policy",
     "message_reaction",
     "message_pin",
     "delivery_endpoint",
@@ -590,6 +611,8 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
             permissionKeys: [
               ...base,
               ...self,
+              // WP 3.5: only the two org-A members who hand work off hold the patient-read gate the handoff routes add.
+              ...(w === u1 || w === u2 ? ["patient.read"] : []),
               ...(w.roles.includes("org_admin") ? adminKeys : ["alert.rules.read"]),
             ],
           },
@@ -634,6 +657,18 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         flags: { forOrg: async () => ({ "messaging.tasks": true }) },
         messaging: service,
         careTeamMembers: async () => [],
+      }),
+      handoffs: buildHandoffDeps({
+        db: handle.db,
+        flags: { forOrg: async () => ({ "messaging.handoffs": true }) },
+        outbox: outbox as never,
+        messaging: service,
+        // Only the org-A member u1 has a caseload; everyone else (attackers included) has none.
+        caseloadPatientIds: async (_org, userId) => (userId === u1.userId ? [patientA] : []),
+        patientLabels: async (_org, ids) =>
+          new Map(ids.map((id) => [id, { displayName: "Pat P.", mrnSuffix: "0001" }] as const)),
+        part2Gate: { allowedUserIds: async ({ userIds }) => new Set(userIds) },
+        permissionsFor: async () => new Set(["messaging.read", "messaging.send", "patient.read"]),
       }),
     });
     const blobs = new Map<string, Uint8Array>();
@@ -1816,6 +1851,101 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         ])
       ).rows[0];
       expect(row).toEqual({ status: "open", assignee_id: u2.userId });
+    });
+    it("WP 3.5: org B and an in-org non-participant get a random id's answer for A's handoff, and list none of it", async () => {
+      const H = "/api/v1/messaging/handoffs";
+      const made = await call(
+        `POST ${H}`,
+        u1,
+        {},
+        {
+          to_user_id: u2.userId,
+          items: [{ kind: "patient", ref_id: patientA, patient_id: patientA }],
+        },
+      );
+      expect(made.statusCode).toBe(201);
+      const handoffId = made.json().handoff.id as string;
+      const itemId = (
+        await admin.query("SELECT id FROM clinical_handoff_item WHERE handoff_id=$1", [handoffId])
+      ).rows[0].id as string;
+      expect((await call(`GET ${H}/:handoffId`, u2, { handoffId })).statusCode).toBe(200);
+      expect((await call(`GET ${H}/:handoffId`, u1, { handoffId })).statusCode).toBe(200);
+      for (const attacker of [bUser, adminB, outsider]) {
+        await expectNoOracle(`GET ${H}/:handoffId`, attacker, { handoffId });
+        await expectNoOracle(
+          `POST ${H}/:handoffId/accept`,
+          attacker,
+          { handoffId },
+          { item_ids: [itemId] },
+        );
+        await expectNoOracle(`POST ${H}/:handoffId/decline`, attacker, { handoffId }, {});
+        await expectNoOracle(`POST ${H}/:handoffId/cancel`, attacker, { handoffId });
+        for (const scope of ["incoming", "outgoing"]) {
+          const list = await call(
+            `GET ${H}`,
+            attacker,
+            {},
+            undefined,
+            {},
+            `?scope=${scope}&state=all`,
+          );
+          expect(list.statusCode).toBe(200);
+          expect(list.json().handoffs).toEqual([]);
+          expectNoLeak(list.body, attacker, `${attacker.name} list handoffs`);
+        }
+        // the caseload and prefill answers are the caller's own: an attacker with no caseload gets nothing of A's patient.
+        for (const route of [`GET ${H}/caseload`, `POST ${H}/prefill`]) {
+          const res = await call(
+            route,
+            attacker,
+            {},
+            route.startsWith("POST") ? { patient_ids: [patientA] } : undefined,
+          );
+          expect(res.statusCode).toBeGreaterThanOrEqual(200);
+          expect(res.body).not.toContain(patientA);
+        }
+      }
+      // the attacks changed nothing: still offered, items still the sender's.
+      const row = (
+        await admin.query(
+          `SELECT h.state, i.state AS item_state, i.accountable_user_id
+             FROM clinical_handoff h JOIN clinical_handoff_item i ON i.handoff_id = h.id WHERE h.id=$1`,
+          [handoffId],
+        )
+      ).rows[0];
+      expect(row).toEqual({
+        state: "offered",
+        item_state: "pending",
+        accountable_user_id: u1.userId,
+      });
+    });
+    it("WP 3.5: the handoff policy and the policy-read route touch only the caller's own org", async () => {
+      const policy = "/api/v1/messaging/handoffs/policy";
+      const admin_ = "/api/v1/messaging/template-admin/handoff-policy";
+      const get = (who: Who) => call(`GET ${policy}`, who, {});
+      const put = (who: Who, minutes: number) =>
+        call(`PUT ${admin_}`, who, {}, { expiry_minutes: minutes });
+      expect((await put(adminA, 60)).statusCode).toBe(200);
+      expect((await get(u2)).json().expiry_minutes).toBe(60);
+      expect((await get(bUser)).json().expiry_minutes).toBe(240);
+      expect((await put(adminB, 30)).statusCode).toBe(200);
+      expect((await get(u2)).json().expiry_minutes).toBe(60);
+      expect((await get(bUser)).json().expiry_minutes).toBe(30);
+      expect((await put(u2, 20)).statusCode).toBe(403);
+      expect((await put(bUser, 20)).statusCode).toBe(403);
+      expect((await call(`DELETE ${admin_}`, adminB, {})).statusCode).toBe(200);
+      expect((await get(u2)).json().expiry_minutes).toBe(60);
+      expect((await call(`DELETE ${admin_}`, adminA, {})).statusCode).toBe(200);
+      expect((await get(u2)).json().expiry_minutes).toBe(240);
+      // prefill is a pure read of the caller's own caseload
+      const prefill = await call(
+        "POST /api/v1/messaging/handoffs/prefill",
+        u1,
+        {},
+        { patient_ids: [patientA] },
+      );
+      expect(prefill.statusCode).toBe(200);
+      expect((await call("GET /api/v1/messaging/handoffs/caseload", u1, {})).statusCode).toBe(200);
     });
     it("the WP 3.1 context panel gives org B and an in-org outsider the same empty projection for A's patient as for a random id", async () => {
       const route = "GET /api/v1/messaging/patients/:patientId/context";

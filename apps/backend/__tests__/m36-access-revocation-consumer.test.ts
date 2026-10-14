@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildM36AccessRevocationConsumer,
   buildM36AccessRevocationPlatformConsumer,
+  combineReassignments,
 } from "../src/modules/36-messaging/outbox-consumers/access-revocation";
 
 const ORG = "org_1";
@@ -160,5 +161,38 @@ describe("m36.access-revocation", () => {
       await expect(c.handle(event(type, payload))).rejects.toThrow(/reassign down/);
       expect(t[which]).toHaveBeenCalledWith(...args);
     }
+  });
+
+  it("attempts task AND handoff reassignment, rethrows the first failure, and the sockets are already dropped", async () => {
+    const t = setup();
+    const tasks = vi.fn().mockRejectedValue(new Error("tasks down"));
+    const handoffs = vi.fn().mockResolvedValue(undefined);
+    const c = buildM36AccessRevocationConsumer({
+      endChannelMemberships: t.endChannelMemberships,
+      disconnectUser: t.disconnectUser,
+      reassignOwnedItems: combineReassignments([tasks, handoffs]),
+    });
+    await expect(c.handle(event("m2.membership.revoked", { userId: "u1" }))).rejects.toThrow(
+      /tasks down/,
+    );
+    expect(tasks).toHaveBeenCalledWith(ORG, "u1");
+    expect(handoffs).toHaveBeenCalledWith(ORG, "u1");
+    expect(t.disconnectUser).toHaveBeenCalledWith(ORG, "u1");
+  });
+
+  it("a handoff failure still disconnects, still lets the tasks run first, and is rethrown", async () => {
+    const t = setup();
+    const tasks = vi.fn().mockResolvedValue(undefined);
+    const handoffs = vi.fn().mockRejectedValue(new Error("handoffs down"));
+    const c = buildM36AccessRevocationConsumer({
+      endChannelMemberships: t.endChannelMemberships,
+      disconnectUser: t.disconnectUser,
+      reassignOwnedItems: combineReassignments([tasks, handoffs, undefined]),
+    });
+    await expect(c.handle(event("m2.user.deactivated", { userId: "u2" }))).rejects.toThrow(
+      /handoffs down/,
+    );
+    expect(tasks).toHaveBeenCalledTimes(1);
+    expect(t.disconnectUser).toHaveBeenCalledWith(ORG, "u2");
   });
 });

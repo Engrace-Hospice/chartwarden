@@ -789,6 +789,10 @@ jobs:
           - { name: "M36 SBAR", scripts: "test:m36:sbar:live" }
           # WP 3.4 - communication tasks: ids-only tables (FORCE RLS, column-level UPDATE, no DELETE), DB unique index as idempotency arbiter, clinical close-reason CHECK, audit, offboarding reassignment, read-audit, flag.
           - { name: "M36 communication tasks", scripts: "test:m36:tasks:live" }
+          # WP 3.5 - clinical handoffs: ids-only tables (FORCE RLS, column-level UPDATE, no DELETE), pair and one-pending unique indexes as arbiters, per-item accountability trigger, closed rows final, task transfer, audit scrub, one read event per patient, policy.
+          - { name: "M36 clinical handoffs", scripts: "test:m36:handoffs:live" }
+          # WP 3.5 - handoff lifecycle: the expiry tick with the real dispatcher + AlertEmitter (supervisor role rule, needs_attention fallback), flag-off tenants, lowered policy, offboarding both directions, sockets dropped when resolution fails.
+          - { name: "M36 handoff lifecycle", scripts: "test:m36:handoff-lifecycle:live" }
           # WP 2.7a - in-conversation search: tenant/channel/tombstone/edit isolation, filters, audit without query text, p95 on a seeded history.
           - { name: "M36 In-conversation search", scripts: "test:m36:search:live" }
           # WP 2.7b chunk C1 (ADR-0058, Accepted) - global search index storage: RLS, no UPDATE grant, the same-transaction removal hook, audit without tags.

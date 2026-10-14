@@ -472,3 +472,6 @@ export * from "./sbar/sbar-write";
 
 // M36 WP 3.4 communication tasks - pure rules
 export * from "./tasks";
+
+// M36 WP 3.5 clinical handoffs - pure rules and tenant policy
+export * from "./handoffs";

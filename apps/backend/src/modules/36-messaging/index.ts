@@ -164,6 +164,7 @@ import {
 import { registerAttachmentRoutes as _registerAttachmentRoutes } from "./routes/attachment-routes";
 import { registerDraftRoutes as _registerDraftRoutes } from "./routes/draft-routes";
 import { registerGlobalSearchSettingsRoutes as _registerGlobalSearchSettingsRoutes } from "./routes/global-search-settings-routes";
+import type { HandoffRouteDeps as _HandoffRouteDeps } from "./routes/handoff-routes";
 import {
   registerMessagingAbacPredicates as _registerMessagingAbacPredicates,
   registerMessagingRoutes as _registerMessagingRoutes,
@@ -205,6 +206,8 @@ export function mountMessagingRoutes(
     sbar?: ReturnType<typeof _buildSbarDeps>;
     /** WP 3.4: communication tasks (tenant flag + service). Omitted => flag off. */
     tasks?: _TaskRouteDeps;
+    /** WP 3.5: clinical handoffs (tenant flag + service). Omitted => flag off. */
+    handoffs?: _HandoffRouteDeps;
   } = {},
 ): void {
   // GAP-063 — the §4.2 OTP sender; with none bound, sms/email endpoint registration answers 503.
@@ -223,7 +226,8 @@ export function mountMessagingRoutes(
     ...(opts.clinicalLinks ? { clinicalLinks: opts.clinicalLinks } : {}),
     ...(opts.sbar ? { sbar: opts.sbar } : {}),
     ...(opts.tasks ? { tasks: opts.tasks } : {}),
-  }); // WP 2.9, 2.12, 3.2, 3.3, 3.4
+    ...(opts.handoffs ? { handoffs: opts.handoffs } : {}),
+  }); // WP 2.9, 2.12, 3.2, 3.3, 3.4, 3.5
   // WP 2.5 — private encrypted drafts (own row per user + channel + thread root).
   _registerDraftRoutes(app, { service: _createDbDraftService({ db }) });
   // WP 2.10 — polls (non-clinical, single choice, named votes); a poll is written through the message write core.
@@ -279,6 +283,13 @@ export { buildPresenceDeps } from "./presence/binding";
 export { buildClinicalLinkDeps } from "./clinical-link/binding";
 export { buildSbarDeps } from "./sbar/binding";
 export { buildTaskDeps } from "./tasks/deps";
+export { buildHandoffDeps } from "./handoffs/deps";
+export {
+  type M36HandoffExpiryWorkerDeps,
+  handoffExpiryTick,
+  registerM36HandoffExpiryWorker,
+  scheduleM36HandoffExpiryJobs,
+} from "./handoffs/handoff-expiry-worker";
 export { PRESENCE_FLAG_KEY } from "./routes/presence-routes";
 
 // GAP-010 — M36's consumer for M3's `m3.breakglass.invoked` (durable Compliance notification).

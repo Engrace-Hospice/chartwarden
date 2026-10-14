@@ -11,6 +11,7 @@ import {
   type TaskRow,
   TaskStateConflict,
   type TaskStore,
+  reassignReasonOf,
 } from "./task-store-db";
 
 const isActive = (status: string): boolean => status === "open" || status === "accepted";
@@ -124,7 +125,10 @@ export function createMemoryTaskStore(): MemoryTaskStore {
     async transition(_tx, a) {
       const cur = tasks.get(a.taskId);
       if (!cur || cur.organizationId !== a.orgId) throw new TaskNotFound();
-      const role = a.actor.kind === "system" ? "both" : taskActorRole(cur, a.actor.userId);
+      const role =
+        a.actor.kind === "system" || a.reassignReason === "handoff"
+          ? "both"
+          : taskActorRole(cur, a.actor.userId);
       const d = decideTransition(
         { status: cur.status as TaskStatus },
         a.action as TaskAction,
@@ -162,12 +166,7 @@ export function createMemoryTaskStore(): MemoryTaskStore {
       log(a.orgId, cur.id, type, a.actor, {
         fromStatus: cur.status,
         toStatus: d.to,
-        reasonCode:
-          a.action === "reassign"
-            ? a.actor.kind === "system"
-              ? "offboarding"
-              : "manual"
-            : (a.reason ?? null),
+        reasonCode: a.action === "reassign" ? reassignReasonOf(a) : (a.reason ?? null),
         ...(a.action === "reassign"
           ? { fromAssigneeId: cur.assigneeId, toAssigneeId: a.toAssigneeId ?? null }
           : {}),

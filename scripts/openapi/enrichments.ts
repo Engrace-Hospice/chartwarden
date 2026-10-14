@@ -1269,6 +1269,21 @@ import {
   GlobalSearchQuerySchema as M36GlobalSearchQuerySchema,
   GlobalSearchResponseSchema as M36GlobalSearchResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/global-search-typebox";
+// M36 WP 3.5 clinical handoffs.
+import {
+  AcceptHandoffBodySchema as M36AcceptHandoffBodySchema,
+  DeclineHandoffBodySchema as M36DeclineHandoffBodySchema,
+  CaseloadResponseSchema as M36HandoffCaseloadResponseSchema,
+  HandoffListResponseSchema as M36HandoffListResponseSchema,
+  HandoffPolicyViewSchema as M36HandoffPolicyViewSchema,
+  PrefillBodySchema as M36HandoffPrefillBodySchema,
+  PrefillResponseSchema as M36HandoffPrefillResponseSchema,
+  HandoffResponseSchema as M36HandoffResponseSchema,
+  ListHandoffsQuerySchema as M36ListHandoffsQuerySchema,
+  OfferHandoffBodySchema as M36OfferHandoffBodySchema,
+  OfferHandoffResponseSchema as M36OfferHandoffResponseSchema,
+  PutHandoffPolicyBodySchema as M36PutHandoffPolicyBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/handoff-typebox";
 // ── M36 Secure Messaging & Alerts — request + response schema imports (all M36-aliased) ──
 import {
   // request schemas (query / body) — reused as-is
@@ -9312,6 +9327,68 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Hand a task to another user (WP 3.4; messaging.send; creator or assignee). The new assignee must be able to read the channel (422 TASK_ASSIGNEE_INVALID) and must not already hold an active task on the message (409 TASK_ASSIGNEE_ALREADY_HAS_ACTIVE). The task returns to open and any needs-owner flag clears. 403 when the caller may not reassign, 409 TASK_STATE_CONFLICT, 404 uniform",
     body: M36ReassignTaskBodySchema,
     response: M36TaskResponseSchema,
+  },
+  "GET /api/v1/messaging/handoffs": {
+    summary:
+      "The caller's own clinical handoffs (WP 3.5; messaging.read): scope incoming|outgoing, state active|closed|all, limit up to 100 (default incoming/active/50). Rows carry counts and allowed_actions but no items and no patient. 200 {enabled:false,handoffs:[]} while the tenant flag `messaging.handoffs` is off. Read-audited (list)",
+    query: M36ListHandoffsQuerySchema,
+    response: M36HandoffListResponseSchema,
+  },
+  "GET /api/v1/messaging/handoffs/caseload": {
+    summary:
+      "The caller's own caseload patients that can be handed off (WP 3.5; messaging.read + patient.read; 404 while the tenant flag is off): patient id, 'First L.' display name and MRN last four, at most 200. Read-audited (list)",
+    response: M36HandoffCaseloadResponseSchema,
+  },
+  "POST /api/v1/messaging/handoffs/prefill": {
+    summary:
+      "Open work for the chosen caseload patients (WP 3.5; messaging.send + patient.read; 404 while the flag is off). A pure READ: nothing is written or published. 1 to 50 patients, every one on the caller's caseload (else 422 HANDOFF_ITEM_INVALID). Per patient the offerable items (the patient itself, the next visit within 48 hours, pending refill requests, open symptom follow-ups, the caller's active tasks) and `unavailable_sources`: item kinds whose owning module could not be read, which are NOT included. Callbacks are not offered in this version",
+    body: M36HandoffPrefillBodySchema,
+    response: M36HandoffPrefillResponseSchema,
+  },
+  "POST /api/v1/messaging/handoffs": {
+    summary:
+      "Offer a handoff to one colleague (WP 3.5; messaging.send + patient.read; 404 while the flag is off). Items are (kind, ref_id, patient_id) pointers; the server re-verifies every one against the caller's caseload and the owning module (422 HANDOFF_ITEM_INVALID, HANDOFF_ITEMS_REQUIRED, HANDOFF_TOO_MANY_ITEMS) and refuses an ineligible receiver with one uniform 422 HANDOFF_RECIPIENT_INVALID. 201 created; 200 created:false returns the caller's own open offer to the same person unchanged (the new body is ignored; cancel and re-offer to change it). 409 HANDOFF_ITEM_CONFLICT when an item is already part of another open handoff (no data about it). Until the receiver accepts an item the sender stays accountable for it. No paging",
+    body: M36OfferHandoffBodySchema,
+    response: M36OfferHandoffResponseSchema,
+    status: 201,
+  },
+  "GET /api/v1/messaging/handoffs/policy": {
+    summary:
+      "The effective handoff expiry (WP 3.5; messaging.send; 404 while the flag is off): minutes, the platform maximum (240; a tenant may only shorten it, minimum 15) and whether the tenant customised it. PROVISIONAL numbers",
+    response: M36HandoffPolicyViewSchema,
+  },
+  "GET /api/v1/messaging/handoffs/:handoffId": {
+    summary:
+      "One handoff with its items (WP 3.5; messaging.read). Only the sender or the receiver sees it; a missing, foreign and flag-off handoff is ONE 404. Each item shows the patient label and a live status re-read from the owning module (`summary.state` ok|gone|unavailable|restricted; a patient the viewer may not see under Part 2 is `restricted` with no label or ids). `allowed_actions` is computed server-side. Read-audited against the handoff and against EVERY patient it discloses (one read event per patient)",
+    response: M36HandoffResponseSchema,
+  },
+  "POST /api/v1/messaging/handoffs/:handoffId/accept": {
+    summary:
+      "Accept chosen items (WP 3.5; messaging.send; receiver only; 1 to 250 item ids). Accountability for exactly those items moves to the caller; the handoff stays offered while any item is pending. A task item also reassigns that task to the caller in the same transaction (422 HANDOFF_ITEM_NOT_TRANSFERABLE refuses the whole call). Repeating an accept returns the handoff unchanged. 409 HANDOFF_STATE_CONFLICT after the deadline or from a closed handoff, 403 for the sender, 404 uniform",
+    body: M36AcceptHandoffBodySchema,
+    response: M36HandoffResponseSchema,
+  },
+  "POST /api/v1/messaging/handoffs/:handoffId/decline": {
+    summary:
+      "Decline chosen items, or every pending item when `item_ids` is omitted (WP 3.5; messaging.send; receiver only). Declined items stay with the sender; when nothing is pending the handoff closes and the sender and supervisors are alerted. 409 HANDOFF_STATE_CONFLICT, 403 for the sender, 404 uniform",
+    body: M36DeclineHandoffBodySchema,
+    response: M36HandoffResponseSchema,
+  },
+  "POST /api/v1/messaging/handoffs/:handoffId/cancel": {
+    summary:
+      "Withdraw an offered handoff (WP 3.5; messaging.send; sender only). Pending items become cancelled and stay with the sender; accepted items keep their new owner. Repeating returns the handoff unchanged. 403 for the receiver, 409 HANDOFF_STATE_CONFLICT from another closed state, 404 uniform",
+    response: M36HandoffResponseSchema,
+  },
+  "PUT /api/v1/messaging/template-admin/handoff-policy": {
+    summary:
+      "Set this organization's handoff expiry in minutes (WP 3.5; messaging.template.manage). Tighten-only: 15 to 240, anything else is 422 HANDOFF_POLICY_INVALID. The shorter value also applies to offers already open. Returns the effective policy",
+    body: M36PutHandoffPolicyBodySchema,
+    response: M36HandoffPolicyViewSchema,
+  },
+  "DELETE /api/v1/messaging/template-admin/handoff-policy": {
+    summary:
+      "Remove this organization's handoff expiry override, restoring the platform default of 240 minutes (WP 3.5; messaging.template.manage). Returns the effective policy (200)",
+    response: M36HandoffPolicyViewSchema,
   },
   "POST /api/v1/messaging/dm": {
     summary: "Open or find a 1:1 DM channel (idempotent; 200/201)",

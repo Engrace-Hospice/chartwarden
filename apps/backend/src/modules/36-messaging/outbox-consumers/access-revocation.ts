@@ -29,8 +29,29 @@ export const M36_ACCESS_REVOCATION_EVENT_TYPES = [
   "m2.user.deactivated",
 ] as const;
 
-/** WP 1.4 stub, kept for tests that exercise the consumer without owned items. Production binds the WP 3.4 task reassignment; escalations and handoffs are still P4. */
+/** WP 1.4 stub, kept for tests that exercise the consumer without owned items. Production binds the WP 3.4 task reassignment and the WP 3.5 handoff resolution; escalations are still P4. */
 export const reassignOwnedItemsNoop = async (_orgId: string, _userId: string): Promise<void> => {};
+
+/**
+ * Run every owned-work reassignment (tasks, handoffs, ...) for a leaver. ALL are attempted even when one fails, so a
+ * broken handoff sweep never strands the tasks (or the reverse); the first failure is rethrown afterwards so the
+ * dispatcher retries (every step is idempotent). Absent steps (a no-db boot) are skipped.
+ */
+export function combineReassignments(
+  steps: readonly (((orgId: string, userId: string) => Promise<unknown>) | undefined)[],
+): (orgId: string, userId: string) => Promise<void> {
+  return async (orgId, userId) => {
+    const failures: unknown[] = [];
+    for (const step of steps) {
+      try {
+        await step?.(orgId, userId);
+      } catch (err) {
+        failures.push(err);
+      }
+    }
+    if (failures.length > 0) throw failures[0];
+  };
+}
 
 export interface AccessRevocationDeps {
   /** Soft-remove every active `channel_member` row for the user in the org (M36 DB adapter). */
@@ -44,8 +65,8 @@ export interface AccessRevocationDeps {
   readonly disconnectAccount?: (userId: string) => Promise<void>;
   /**
    * WP 1.4 seam: hand the leaver's owned work to their successor. WP 3.4 landed the communication tasks (the boot binds
-   * `reassignTasksForLeaver`: creator, then care team, else flagged `needs_owner`); escalations and on-call duties are
-   * still P4. Wire further reassignment here, not in the handler.
+   * `reassignTasksForLeaver`: creator, then care team, else flagged `needs_owner`); WP 3.5 handoffs landed too (a receiver
+   * who left declines the offer, a sender who left is flagged to supervisors); escalations and on-call duties are still P4. Wire further reassignment here, not in the handler.
    */
   readonly reassignOwnedItems?: (orgId: string, userId: string) => Promise<void>;
 }

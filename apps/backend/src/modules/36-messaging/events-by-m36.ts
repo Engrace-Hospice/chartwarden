@@ -29,11 +29,17 @@
 // row carries the user id, not the membership); `providerEntityId` / `sourceAggregateId` are read from
 // `alert.payload` when the emitting module put them there, else null.
 import { Type } from "@sinclair/typebox";
-import { type ModuleEventContribution, TASK_STATUSES } from "@wardenx/types";
+import {
+  HANDOFF_UNACCEPTED_CAUSES,
+  type ModuleEventContribution,
+  TASK_STATUSES,
+} from "@wardenx/types";
 
 const id = Type.String({ minLength: 1 });
 const nullableId = Type.Union([id, Type.Null()]);
 const isoInstant = Type.String({ minLength: 1 });
+const handoffCause = Type.Union(HANDOFF_UNACCEPTED_CAUSES.map((cause) => Type.Literal(cause)));
+const count = Type.Integer({ minimum: 0 });
 const taskStatus = Type.Union(TASK_STATUSES.map((status) => Type.Literal(status)));
 const recipientKind = Type.Union([
   Type.Literal("on_call"),
@@ -201,6 +207,67 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
       { additionalProperties: false },
     ),
     declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.handoff.offered",
+    moduleOwner: "m36",
+    description:
+      "A clinical handoff was offered to a colleague (WP 3.5, ADR-0062). PHI-free: ids, an item COUNT and two instants - no patient id, no item reference. Published in the same transaction as the insert; an idempotent re-offer publishes nothing. M36 tells the receiver with one generic in-app alert, only if the handoff is still offered to them.",
+    payloadSchema: Type.Object(
+      {
+        organizationId: id,
+        handoffId: id,
+        fromUserId: id,
+        toUserId: id,
+        itemCount: count,
+        expiresAt: isoInstant,
+        at: isoInstant,
+      },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.handoff.accepted",
+    moduleOwner: "m36",
+    description:
+      "A receiver accepted one or more items of a handoff (WP 3.5). PHI-free: ids and counts. Published once per accept call that changed something; a repeat publishes nothing. M36 tells the sender with one generic in-app alert (a 'part of your handoff' wording while items remain pending).",
+    payloadSchema: Type.Object(
+      {
+        organizationId: id,
+        handoffId: id,
+        fromUserId: id,
+        toUserId: id,
+        acceptedItemCount: count,
+        pendingItemCount: count,
+        at: isoInstant,
+      },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.handoff.unaccepted",
+    moduleOwner: "m36",
+    description:
+      "A handoff ended with items nobody accepted (WP 3.5): declined, expired at the deadline, the receiver left, or the sender left. Accountability stays with the sender. PHI-free: ids, the cause enum and counts. M36 alerts the sender and the supervisor audience in-app; when no supervisor can be reached it records a needs_attention event and tells the sender.",
+    payloadSchema: Type.Object(
+      {
+        organizationId: id,
+        handoffId: id,
+        fromUserId: id,
+        toUserId: id,
+        cause: handoffCause,
+        unacceptedItemCount: count,
+        acceptedItemCount: count,
+        at: isoInstant,
+      },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {

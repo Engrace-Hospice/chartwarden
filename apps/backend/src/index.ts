@@ -1416,6 +1416,7 @@ import {
   M36_OUTBOX_EVENTS,
   bindOutOfBandTransports,
   buildClinicalLinkDeps,
+  buildHandoffDeps,
   buildIdgAlertConsumers,
   buildIdgCarryForwardComplianceConsumer,
   buildM36BreakGlassAlertConsumer,
@@ -1439,12 +1440,14 @@ import {
   mountMessagingWebhookRoutes,
   registerM36AttachmentScanWorker,
   registerM36DeliveryWorkers,
+  registerM36HandoffExpiryWorker,
   registerM36IntegrityWorkers,
   registerM36ScheduledSendWorker,
   registerMessagingErasers,
   registerMessagingSeams,
   scheduleM36AttachmentScanJobs,
   scheduleM36DeliveryJobs,
+  scheduleM36HandoffExpiryJobs,
   scheduleM36IntegrityJobs,
   scheduleM36ScheduledSendJobs,
   wireAlertRuleSeed,
@@ -1460,6 +1463,7 @@ import { createMessageBodyCipher } from "./modules/36-messaging/messaging-write-
 import {
   buildM36AccessRevocationConsumer,
   buildM36AccessRevocationPlatformConsumer,
+  combineReassignments,
 } from "./modules/36-messaging/outbox-consumers/access-revocation";
 import { buildM36AdmissionComplianceAlertConsumer } from "./modules/36-messaging/outbox-consumers/admission-compliance-alerts";
 import { buildM36AmendmentSlaAlertConsumer } from "./modules/36-messaging/outbox-consumers/amendment-sla-alerts";
@@ -1468,6 +1472,7 @@ import { buildM36ChannelMembershipSyncConsumer } from "./modules/36-messaging/ou
 import { buildM36EmarAlertConsumer } from "./modules/36-messaging/outbox-consumers/emar-alerts";
 import { buildM36FeedHealthAlertConsumer } from "./modules/36-messaging/outbox-consumers/feed-health-alerts";
 import { buildM36FieldSafetyAlertConsumer } from "./modules/36-messaging/outbox-consumers/field-safety-alerts";
+import { buildM36HandoffNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/handoff-notifications";
 import { buildM36IpuAlertConsumer } from "./modules/36-messaging/outbox-consumers/ipu-alerts";
 import { buildM36IpuIvAlertConsumer } from "./modules/36-messaging/outbox-consumers/ipu-iv-alerts";
 import { buildM36ConsentRevokedConsumer } from "./modules/36-messaging/outbox-consumers/m39-consent-revoked";
@@ -4157,6 +4162,28 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         messaging: createDbMessagingRouteService(dbHandle.db),
       })
     : undefined;
+  // WP 3.5 - clinical handoffs. ONE binding for the routes (flag + service), the expiry tick, the notification consumer's
+  // ports and the offboarding sweep, so they share a store; off unless the tenant flag `messaging.handoffs` is on (the tick
+  // and the sweep run regardless of the flag). The caseload and patient-label ports are M5's (injected, M36 never imports M5).
+  let m36HandoffWarn: (message: string, context: Record<string, string>) => void = (
+    message,
+    context,
+  ) => console.warn(message, context);
+  const m36Handoffs = dbHandle
+    ? buildHandoffDeps({
+        warn: (message, context) => m36HandoffWarn(message, context),
+        db: dbHandle.db,
+        flags: featureFlagReader,
+        outbox: m36OutboxPublisher,
+        messaging: createDbMessagingRouteService(dbHandle.db),
+        caseloadPatientIds: (organizationId, userId) =>
+          getSeam("CaseloadProvider").caseloadPatientIds({ organizationId, userId } as never),
+        patientLabels: (organizationId, patientIds) =>
+          patientDisplayLabelsForOrg(dbHandle.db, organizationId, patientIds),
+        permissionsFor: async (organizationId, userId) =>
+          resolveActorPermissions({ organizationId, userId }),
+      })
+    : undefined;
   // F-173 (#248, m1 group) — the Drizzle-backed `SystemStatusReader` (`bootstrap/system-status-store.ts`).
   // F-156 found the composition root never overrode the in-memory boot default, so `POST
   // /admin/system/status` had never once persisted to the real `system_status` table in any environment.
@@ -4661,6 +4688,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             sbar: buildSbarDeps({ db: dbHandle.db, flags: featureFlagReader }),
             // WP 3.4 - communication tasks; off unless the tenant flag `messaging.tasks` is on.
             ...(m36Tasks ? { tasks: m36Tasks } : {}),
+            // WP 3.5 - clinical handoffs; off unless the tenant flag `messaging.handoffs` is on.
+            ...(m36Handoffs ? { handoffs: m36Handoffs } : {}),
           }); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05) + WP 1.5 attachments
           // GAP-101 — the §4.9 inbound vendor webhooks (Twilio sms/voice status, Postmark event): signature-authenticated
           // (replay window + HMAC / IP allowlist + bearer), reconciling `notification_delivery`. FAIL-CLOSED: a vendor
@@ -5703,6 +5732,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   });
   m31Warn = (message, context) => app.log.warn(context, message);
   m36TaskWarn = (message, context) => app.log.warn(context, message);
+  m36HandoffWarn = (message, context) => app.log.warn(context, message);
   if (m23SubmissionQueues) {
     app.addHook("onClose", async () => {
       await Promise.all(m23SubmissionQueues.queues.map((queue) => queue.close()));
@@ -8563,6 +8593,46 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       );
     }
 
+    // ── M36 WP 3.5 — `messaging.handoff_expiry` (every minute): closes the handoff offers whose (policy-capped) deadline
+    // passed, so accountability stays with the sender and the sender and supervisors are told. A read-time check alone
+    // would never fire when nobody opens the handoff. Active-org fan-out needs the platform pool; each handoff closes in
+    // its own system-context transaction. Runs for flag-off tenants too: accountability must never stall on a flag.
+    if (platformDbHandle && m36Handoffs) {
+      const m36HandoffExpiryOrgs = buildActiveOrgEnumerator({
+        platformDb: platformDbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M36_INTEGRITY_PLATFORM_JOB_ID,
+        reason: "M36 WP 3.5 handoff_expiry active-org fan-out",
+      });
+      const m36HandoffExpiryWorkers = registerM36HandoffExpiryWorker({
+        connection: queueConnection,
+        expireDue: m36Handoffs.expireDue,
+        activeOrgs: m36HandoffExpiryOrgs,
+        // Ids and the error class only: a database error can carry statement parameters.
+        onError: (context, err) =>
+          app.log.error(
+            { ...context, reason: err instanceof Error ? err.name : "unknown" },
+            "M36 handoff expiry error",
+          ),
+      });
+      attachDlqAlertsToAll(m36HandoffExpiryWorkers, "m36");
+      app.addHook("onClose", async () => {
+        await Promise.all(m36HandoffExpiryWorkers.map((w) => w.close()));
+      });
+      try {
+        const m36HandoffExpiryQueues = await scheduleM36HandoffExpiryJobs(queueConnection);
+        app.addHook("onClose", async () => {
+          await Promise.all(m36HandoffExpiryQueues.map((q) => q.close()));
+        });
+      } catch (err) {
+        app.log.error(err, "M36 handoff-expiry schedule registration failed");
+      }
+    } else {
+      app.log.warn(
+        "M36 handoff expiry disabled: DATABASE_PLATFORM_URL (active-org fan-out) is required; open handoffs stay offered",
+      );
+    }
+
     // ── M36 WP 1.9 (audit F8) — nightly `messaging.hash_verify` (message heads + revision chain) and weekly
     // `messaging.retention_scan` (plan only, hold-aware). Active-org fan-out needs the platform pool; each org's
     // run opens its own tenant transaction and records its summary through @wardenx/audit.
@@ -9682,6 +9752,18 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             alerts: getSeam("AlertEmitter") as AlertEmitter,
             messaging: createDbMessagingRouteService(dbHandle.db),
           }),
+          // WP 3.5 - fixed-text in-app alerts for a handoff offer / acceptance / unaccepted outcome (supervisors via the
+          // seeded role rule). Bound only with the handoff binding; the expiry tick and revocation sweep feed it.
+          ...(m36Handoffs
+            ? [
+                buildM36HandoffNotificationsConsumer({
+                  alerts: getSeam("AlertEmitter") as AlertEmitter,
+                  stillOffered: m36Handoffs.stillOffered,
+                  markNeedsAttention: m36Handoffs.markNeedsAttention,
+                  isActiveUser: m36Handoffs.isActiveUser,
+                }),
+              ]
+            : []),
           // WP 2.6 — tells the sender a scheduled message was blocked at dispatch (generic in-app text, no PHI).
           buildM36ScheduleBlockedConsumer({ alerts: getSeam("AlertEmitter") as AlertEmitter }),
           // GAP-039/040 — M13's missed-dose / PRN-reassessment-overdue / reconciliation / kit-return alerts
@@ -9718,10 +9800,14 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             endChannelMemberships: (orgId, userId) =>
               endChannelMembershipsForUser(dbHandle.db, orgId, userId),
             // WP 3.4: a leaver's active communication tasks move to a successor or are flagged `needs_owner` (never
-            // ownerless). Escalations and handoffs remain P4. Runs whether or not the tasks flag is on.
-            reassignOwnedItems: async (orgId, userId) => {
-              await m36Tasks?.reassignForLeaver(orgId, userId);
-            },
+            // ownerless). Escalations remain P4. Runs whether or not the tasks flag is on.
+            // WP 3.5 adds the leaver's open handoffs (receiver left => declined, sender left => flagged + supervisors told).
+            // Both are ATTEMPTED; the first failure is rethrown afterwards so the dispatcher retries (the realtime
+            // disconnect has already run by then: `reassignThenDisconnect`).
+            reassignOwnedItems: combineReassignments([
+              m36Tasks?.reassignForLeaver,
+              m36Handoffs?.reassignForLeaver,
+            ]),
             ...(realtimeEmitter
               ? {
                   disconnectUser: (orgId, userId) =>

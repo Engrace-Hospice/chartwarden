@@ -30,10 +30,23 @@ export interface RouteReadAuditEmit {
    */
   readonly patientIdPayloadPath?: string | readonly string[];
   /**
+   * For a SINGLE-resource read that discloses SEVERAL patients (a handoff lists up to 50): dot path to an ARRAY in the
+   * RESPONSE payload plus the key holding each element's patient id. The emitter writes ONE `<kind>.viewed` event per
+   * distinct patient (all against the same resource id), so the §164.528 accounting join sees every patient disclosed,
+   * not just the first. Elements without a string at the key (a restricted row) are skipped. Combine with
+   * `resourceIdParam`; the first patient found is also the primary attribution when no other path names one.
+   */
+  readonly patientIdsPayload?: { readonly path: string; readonly key: string };
+  /**
    * Route param holding the specific resource's id (a single chart open). Defaults to
    * `patientIdParam` when omitted — a patient-scoped read is accounted against the patient.
    */
   readonly resourceIdParam?: string;
+  /**
+   * Dot path into the RESPONSE payload holding the resource's id, for a route that has no id param because it CREATES the
+   * resource (`POST /handoffs` answers the new handoff). Used only when `resourceIdParam` yields nothing.
+   */
+  readonly resourceIdPayloadPath?: string;
   /**
    * For a LIST read only: record `resourceIdParam`'s value (when it is a uuid) as the event's resource id. Opt-in, because
    * most list routes' param is a PARENT id under a CHILD `resourceKind`, which would mislabel the row; set it only when the

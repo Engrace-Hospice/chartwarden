@@ -163006,6 +163006,2852 @@
         }
       }
     },
+    "/api/v1/messaging/handoffs": {
+      "get": {
+        "operationId": "getApiV1MessagingHandoffs",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The caller's own clinical handoffs (WP 3.5; messaging.read): scope incoming|outgoing, state active|closed|all, limit up to 100 (default incoming/active/50). Rows carry counts and allowed_actions but no items and no patient. 200 {enabled:false,handoffs:[]} while the tenant flag `messaging.handoffs` is off. Read-audited (list)",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "incoming",
+                  "type": "string"
+                },
+                {
+                  "const": "outgoing",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "active",
+                  "type": "string"
+                },
+                {
+                  "const": "closed",
+                  "type": "string"
+                },
+                {
+                  "const": "all",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "handoffs"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "handoffs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "from_user_id",
+                          "from_display_name",
+                          "to_user_id",
+                          "to_display_name",
+                          "state",
+                          "offered_at",
+                          "expires_at",
+                          "accepted_at",
+                          "closed_at",
+                          "closed_reason",
+                          "needs_attention",
+                          "patient_count",
+                          "item_counts",
+                          "allowed_actions"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "from_user_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "from_display_name": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "to_user_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "to_display_name": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "state": {
+                            "anyOf": [
+                              {
+                                "const": "offered",
+                                "type": "string"
+                              },
+                              {
+                                "const": "accepted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "declined",
+                                "type": "string"
+                              },
+                              {
+                                "const": "expired",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancelled",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "offered_at": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "expires_at": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "accepted_at": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "closed_at": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "closed_reason": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "all_resolved",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "deadline",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "sender_cancelled",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "recipient_left",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "needs_attention": {
+                            "type": "boolean"
+                          },
+                          "patient_count": {
+                            "type": "integer"
+                          },
+                          "item_counts": {
+                            "type": "object",
+                            "required": [
+                              "pending",
+                              "accepted",
+                              "declined",
+                              "expired",
+                              "cancelled"
+                            ],
+                            "properties": {
+                              "pending": {
+                                "type": "integer"
+                              },
+                              "accepted": {
+                                "type": "integer"
+                              },
+                              "declined": {
+                                "type": "integer"
+                              },
+                              "expired": {
+                                "type": "integer"
+                              },
+                              "cancelled": {
+                                "type": "integer"
+                              }
+                            }
+                          },
+                          "allowed_actions": {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "const": "accept",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "decline",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "cancel",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          },
+                          "items": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "id",
+                                "patient_id",
+                                "patient_display_name",
+                                "mrn_suffix",
+                                "kind",
+                                "ref_id",
+                                "state",
+                                "accountable_user_id",
+                                "accountable_display_name",
+                                "resolved_at",
+                                "summary"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "patient_id": {
+                                  "anyOf": [
+                                    {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "patient_display_name": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "mrn_suffix": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "kind": {
+                                  "anyOf": [
+                                    {
+                                      "const": "patient",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "visit",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "refill_request",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "symptom_followup",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "task",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "ref_id": {
+                                  "anyOf": [
+                                    {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "state": {
+                                  "anyOf": [
+                                    {
+                                      "const": "pending",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "accepted",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "declined",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "expired",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "cancelled",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "accountable_user_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "accountable_display_name": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "resolved_at": {
+                                  "anyOf": [
+                                    {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "summary": {
+                                  "type": "object",
+                                  "required": [
+                                    "state"
+                                  ],
+                                  "properties": {
+                                    "state": {
+                                      "anyOf": [
+                                        {
+                                          "const": "ok",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "gone",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "unavailable",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "restricted",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "status": {
+                                      "type": "string"
+                                    },
+                                    "occurred_at": {
+                                      "type": "string"
+                                    },
+                                    "still_open": {
+                                      "type": "boolean"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1MessagingHandoffs",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Offer a handoff to one colleague (WP 3.5; messaging.send + patient.read; 404 while the flag is off). Items are (kind, ref_id, patient_id) pointers; the server re-verifies every one against the caller's caseload and the owning module (422 HANDOFF_ITEM_INVALID, HANDOFF_ITEMS_REQUIRED, HANDOFF_TOO_MANY_ITEMS) and refuses an ineligible receiver with one uniform 422 HANDOFF_RECIPIENT_INVALID. 201 created; 200 created:false returns the caller's own open offer to the same person unchanged (the new body is ignored; cancel and re-offer to change it). 409 HANDOFF_ITEM_CONFLICT when an item is already part of another open handoff (no data about it). Until the receiver accepts an item the sender stays accountable for it. No paging",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "handoff",
+                    "created"
+                  ],
+                  "properties": {
+                    "handoff": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "from_user_id",
+                        "from_display_name",
+                        "to_user_id",
+                        "to_display_name",
+                        "state",
+                        "offered_at",
+                        "expires_at",
+                        "accepted_at",
+                        "closed_at",
+                        "closed_reason",
+                        "needs_attention",
+                        "patient_count",
+                        "item_counts",
+                        "allowed_actions"
+                      ],
+                      "properties": {
+                        "id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "from_user_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "from_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "to_user_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "to_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "state": {
+                          "anyOf": [
+                            {
+                              "const": "offered",
+                              "type": "string"
+                            },
+                            {
+                              "const": "accepted",
+                              "type": "string"
+                            },
+                            {
+                              "const": "declined",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "cancelled",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "offered_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "expires_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "accepted_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "closed_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "closed_reason": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "all_resolved",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "deadline",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "sender_cancelled",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "recipient_left",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "needs_attention": {
+                          "type": "boolean"
+                        },
+                        "patient_count": {
+                          "type": "integer"
+                        },
+                        "item_counts": {
+                          "type": "object",
+                          "required": [
+                            "pending",
+                            "accepted",
+                            "declined",
+                            "expired",
+                            "cancelled"
+                          ],
+                          "properties": {
+                            "pending": {
+                              "type": "integer"
+                            },
+                            "accepted": {
+                              "type": "integer"
+                            },
+                            "declined": {
+                              "type": "integer"
+                            },
+                            "expired": {
+                              "type": "integer"
+                            },
+                            "cancelled": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "allowed_actions": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "const": "accept",
+                                "type": "string"
+                              },
+                              {
+                                "const": "decline",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancel",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "patient_id",
+                              "patient_display_name",
+                              "mrn_suffix",
+                              "kind",
+                              "ref_id",
+                              "state",
+                              "accountable_user_id",
+                              "accountable_display_name",
+                              "resolved_at",
+                              "summary"
+                            ],
+                            "properties": {
+                              "id": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "patient_id": {
+                                "anyOf": [
+                                  {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "patient_display_name": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "mrn_suffix": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "kind": {
+                                "anyOf": [
+                                  {
+                                    "const": "patient",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "visit",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "refill_request",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "symptom_followup",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "task",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "ref_id": {
+                                "anyOf": [
+                                  {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "state": {
+                                "anyOf": [
+                                  {
+                                    "const": "pending",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "accepted",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "declined",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "expired",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "cancelled",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "accountable_user_id": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "accountable_display_name": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "resolved_at": {
+                                "anyOf": [
+                                  {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "summary": {
+                                "type": "object",
+                                "required": [
+                                  "state"
+                                ],
+                                "properties": {
+                                  "state": {
+                                    "anyOf": [
+                                      {
+                                        "const": "ok",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "gone",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "unavailable",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "restricted",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "status": {
+                                    "type": "string"
+                                  },
+                                  "occurred_at": {
+                                    "type": "string"
+                                  },
+                                  "still_open": {
+                                    "type": "boolean"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "created": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "to_user_id",
+                  "items"
+                ],
+                "properties": {
+                  "to_user_id": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  },
+                  "items": {
+                    "maxItems": 1000,
+                    "type": "array",
+                    "items": {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "ref_id",
+                        "patient_id"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "anyOf": [
+                            {
+                              "const": "patient",
+                              "type": "string"
+                            },
+                            {
+                              "const": "visit",
+                              "type": "string"
+                            },
+                            {
+                              "const": "refill_request",
+                              "type": "string"
+                            },
+                            {
+                              "const": "symptom_followup",
+                              "type": "string"
+                            },
+                            {
+                              "const": "task",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "ref_id": {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "patient_id": {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/handoffs/{handoffId}": {
+      "get": {
+        "operationId": "getApiV1MessagingHandoffsByHandoffId",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "One handoff with its items (WP 3.5; messaging.read). Only the sender or the receiver sees it; a missing, foreign and flag-off handoff is ONE 404. Each item shows the patient label and a live status re-read from the owning module (`summary.state` ok|gone|unavailable|restricted; a patient the viewer may not see under Part 2 is `restricted` with no label or ids). `allowed_actions` is computed server-side. Read-audited against the handoff and against EVERY patient it discloses (one read event per patient)",
+        "parameters": [
+          {
+            "name": "handoffId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "handoff"
+                  ],
+                  "properties": {
+                    "handoff": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "from_user_id",
+                        "from_display_name",
+                        "to_user_id",
+                        "to_display_name",
+                        "state",
+                        "offered_at",
+                        "expires_at",
+                        "accepted_at",
+                        "closed_at",
+                        "closed_reason",
+                        "needs_attention",
+                        "patient_count",
+                        "item_counts",
+                        "allowed_actions"
+                      ],
+                      "properties": {
+                        "id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "from_user_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "from_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "to_user_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "to_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "state": {
+                          "anyOf": [
+                            {
+                              "const": "offered",
+                              "type": "string"
+                            },
+                            {
+                              "const": "accepted",
+                              "type": "string"
+                            },
+                            {
+                              "const": "declined",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "cancelled",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "offered_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "expires_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "accepted_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "closed_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "closed_reason": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "all_resolved",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "deadline",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "sender_cancelled",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "recipient_left",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "needs_attention": {
+                          "type": "boolean"
+                        },
+                        "patient_count": {
+                          "type": "integer"
+                        },
+                        "item_counts": {
+                          "type": "object",
+                          "required": [
+                            "pending",
+                            "accepted",
+                            "declined",
+                            "expired",
+                            "cancelled"
+                          ],
+                          "properties": {
+                            "pending": {
+                              "type": "integer"
+                            },
+                            "accepted": {
+                              "type": "integer"
+                            },
+                            "declined": {
+                              "type": "integer"
+                            },
+                            "expired": {
+                              "type": "integer"
+                            },
+                            "cancelled": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "allowed_actions": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "const": "accept",
+                                "type": "string"
+                              },
+                              {
+                                "const": "decline",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancel",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "patient_id",
+                              "patient_display_name",
+                              "mrn_suffix",
+                              "kind",
+                              "ref_id",
+                              "state",
+                              "accountable_user_id",
+                              "accountable_display_name",
+                              "resolved_at",
+                              "summary"
+                            ],
+                            "properties": {
+                              "id": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "patient_id": {
+                                "anyOf": [
+                                  {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "patient_display_name": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "mrn_suffix": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "kind": {
+                                "anyOf": [
+                                  {
+                                    "const": "patient",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "visit",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "refill_request",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "symptom_followup",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "task",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "ref_id": {
+                                "anyOf": [
+                                  {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "state": {
+                                "anyOf": [
+                                  {
+                                    "const": "pending",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "accepted",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "declined",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "expired",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "cancelled",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "accountable_user_id": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "accountable_display_name": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "resolved_at": {
+                                "anyOf": [
+                                  {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "summary": {
+                                "type": "object",
+                                "required": [
+                                  "state"
+                                ],
+                                "properties": {
+                                  "state": {
+                                    "anyOf": [
+                                      {
+                                        "const": "ok",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "gone",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "unavailable",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "restricted",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "status": {
+                                    "type": "string"
+                                  },
+                                  "occurred_at": {
+                                    "type": "string"
+                                  },
+                                  "still_open": {
+                                    "type": "boolean"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/handoffs/{handoffId}/accept": {
+      "post": {
+        "operationId": "postApiV1MessagingHandoffsByHandoffIdAccept",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Accept chosen items (WP 3.5; messaging.send; receiver only; 1 to 250 item ids). Accountability for exactly those items moves to the caller; the handoff stays offered while any item is pending. A task item also reassigns that task to the caller in the same transaction (422 HANDOFF_ITEM_NOT_TRANSFERABLE refuses the whole call). Repeating an accept returns the handoff unchanged. 409 HANDOFF_STATE_CONFLICT after the deadline or from a closed handoff, 403 for the sender, 404 uniform",
+        "parameters": [
+          {
+            "name": "handoffId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "handoff"
+                  ],
+                  "properties": {
+                    "handoff": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "from_user_id",
+                        "from_display_name",
+                        "to_user_id",
+                        "to_display_name",
+                        "state",
+                        "offered_at",
+                        "expires_at",
+                        "accepted_at",
+                        "closed_at",
+                        "closed_reason",
+                        "needs_attention",
+                        "patient_count",
+                        "item_counts",
+                        "allowed_actions"
+                      ],
+                      "properties": {
+                        "id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "from_user_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "from_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "to_user_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "to_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "state": {
+                          "anyOf": [
+                            {
+                              "const": "offered",
+                              "type": "string"
+                            },
+                            {
+                              "const": "accepted",
+                              "type": "string"
+                            },
+                            {
+                              "const": "declined",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "cancelled",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "offered_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "expires_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "accepted_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "closed_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "closed_reason": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "all_resolved",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "deadline",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "sender_cancelled",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "recipient_left",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "needs_attention": {
+                          "type": "boolean"
+                        },
+                        "patient_count": {
+                          "type": "integer"
+                        },
+                        "item_counts": {
+                          "type": "object",
+                          "required": [
+                            "pending",
+                            "accepted",
+                            "declined",
+                            "expired",
+                            "cancelled"
+                          ],
+                          "properties": {
+                            "pending": {
+                              "type": "integer"
+                            },
+                            "accepted": {
+                              "type": "integer"
+                            },
+                            "declined": {
+                              "type": "integer"
+                            },
+                            "expired": {
+                              "type": "integer"
+                            },
+                            "cancelled": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "allowed_actions": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "const": "accept",
+                                "type": "string"
+                              },
+                              {
+                                "const": "decline",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancel",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "patient_id",
+                              "patient_display_name",
+                              "mrn_suffix",
+                              "kind",
+                              "ref_id",
+                              "state",
+                              "accountable_user_id",
+                              "accountable_display_name",
+                              "resolved_at",
+                              "summary"
+                            ],
+                            "properties": {
+                              "id": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "patient_id": {
+                                "anyOf": [
+                                  {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "patient_display_name": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "mrn_suffix": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "kind": {
+                                "anyOf": [
+                                  {
+                                    "const": "patient",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "visit",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "refill_request",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "symptom_followup",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "task",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "ref_id": {
+                                "anyOf": [
+                                  {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "state": {
+                                "anyOf": [
+                                  {
+                                    "const": "pending",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "accepted",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "declined",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "expired",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "cancelled",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "accountable_user_id": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "accountable_display_name": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "resolved_at": {
+                                "anyOf": [
+                                  {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "summary": {
+                                "type": "object",
+                                "required": [
+                                  "state"
+                                ],
+                                "properties": {
+                                  "state": {
+                                    "anyOf": [
+                                      {
+                                        "const": "ok",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "gone",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "unavailable",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "restricted",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "status": {
+                                    "type": "string"
+                                  },
+                                  "occurred_at": {
+                                    "type": "string"
+                                  },
+                                  "still_open": {
+                                    "type": "boolean"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "item_ids"
+                ],
+                "properties": {
+                  "item_ids": {
+                    "minItems": 1,
+                    "maxItems": 250,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/handoffs/{handoffId}/cancel": {
+      "post": {
+        "operationId": "postApiV1MessagingHandoffsByHandoffIdCancel",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Withdraw an offered handoff (WP 3.5; messaging.send; sender only). Pending items become cancelled and stay with the sender; accepted items keep their new owner. Repeating returns the handoff unchanged. 403 for the receiver, 409 HANDOFF_STATE_CONFLICT from another closed state, 404 uniform",
+        "parameters": [
+          {
+            "name": "handoffId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "handoff"
+                  ],
+                  "properties": {
+                    "handoff": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "from_user_id",
+                        "from_display_name",
+                        "to_user_id",
+                        "to_display_name",
+                        "state",
+                        "offered_at",
+                        "expires_at",
+                        "accepted_at",
+                        "closed_at",
+                        "closed_reason",
+                        "needs_attention",
+                        "patient_count",
+                        "item_counts",
+                        "allowed_actions"
+                      ],
+                      "properties": {
+                        "id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "from_user_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "from_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "to_user_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "to_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "state": {
+                          "anyOf": [
+                            {
+                              "const": "offered",
+                              "type": "string"
+                            },
+                            {
+                              "const": "accepted",
+                              "type": "string"
+                            },
+                            {
+                              "const": "declined",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "cancelled",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "offered_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "expires_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "accepted_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "closed_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "closed_reason": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "all_resolved",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "deadline",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "sender_cancelled",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "recipient_left",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "needs_attention": {
+                          "type": "boolean"
+                        },
+                        "patient_count": {
+                          "type": "integer"
+                        },
+                        "item_counts": {
+                          "type": "object",
+                          "required": [
+                            "pending",
+                            "accepted",
+                            "declined",
+                            "expired",
+                            "cancelled"
+                          ],
+                          "properties": {
+                            "pending": {
+                              "type": "integer"
+                            },
+                            "accepted": {
+                              "type": "integer"
+                            },
+                            "declined": {
+                              "type": "integer"
+                            },
+                            "expired": {
+                              "type": "integer"
+                            },
+                            "cancelled": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "allowed_actions": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "const": "accept",
+                                "type": "string"
+                              },
+                              {
+                                "const": "decline",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancel",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "patient_id",
+                              "patient_display_name",
+                              "mrn_suffix",
+                              "kind",
+                              "ref_id",
+                              "state",
+                              "accountable_user_id",
+                              "accountable_display_name",
+                              "resolved_at",
+                              "summary"
+                            ],
+                            "properties": {
+                              "id": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "patient_id": {
+                                "anyOf": [
+                                  {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "patient_display_name": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "mrn_suffix": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "kind": {
+                                "anyOf": [
+                                  {
+                                    "const": "patient",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "visit",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "refill_request",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "symptom_followup",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "task",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "ref_id": {
+                                "anyOf": [
+                                  {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "state": {
+                                "anyOf": [
+                                  {
+                                    "const": "pending",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "accepted",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "declined",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "expired",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "cancelled",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "accountable_user_id": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "accountable_display_name": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "resolved_at": {
+                                "anyOf": [
+                                  {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "summary": {
+                                "type": "object",
+                                "required": [
+                                  "state"
+                                ],
+                                "properties": {
+                                  "state": {
+                                    "anyOf": [
+                                      {
+                                        "const": "ok",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "gone",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "unavailable",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "restricted",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "status": {
+                                    "type": "string"
+                                  },
+                                  "occurred_at": {
+                                    "type": "string"
+                                  },
+                                  "still_open": {
+                                    "type": "boolean"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/handoffs/{handoffId}/decline": {
+      "post": {
+        "operationId": "postApiV1MessagingHandoffsByHandoffIdDecline",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Decline chosen items, or every pending item when `item_ids` is omitted (WP 3.5; messaging.send; receiver only). Declined items stay with the sender; when nothing is pending the handoff closes and the sender and supervisors are alerted. 409 HANDOFF_STATE_CONFLICT, 403 for the sender, 404 uniform",
+        "parameters": [
+          {
+            "name": "handoffId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "handoff"
+                  ],
+                  "properties": {
+                    "handoff": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "from_user_id",
+                        "from_display_name",
+                        "to_user_id",
+                        "to_display_name",
+                        "state",
+                        "offered_at",
+                        "expires_at",
+                        "accepted_at",
+                        "closed_at",
+                        "closed_reason",
+                        "needs_attention",
+                        "patient_count",
+                        "item_counts",
+                        "allowed_actions"
+                      ],
+                      "properties": {
+                        "id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "from_user_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "from_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "to_user_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "to_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "state": {
+                          "anyOf": [
+                            {
+                              "const": "offered",
+                              "type": "string"
+                            },
+                            {
+                              "const": "accepted",
+                              "type": "string"
+                            },
+                            {
+                              "const": "declined",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            },
+                            {
+                              "const": "cancelled",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "offered_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "expires_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "accepted_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "closed_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "closed_reason": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "all_resolved",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "deadline",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "sender_cancelled",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "recipient_left",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "needs_attention": {
+                          "type": "boolean"
+                        },
+                        "patient_count": {
+                          "type": "integer"
+                        },
+                        "item_counts": {
+                          "type": "object",
+                          "required": [
+                            "pending",
+                            "accepted",
+                            "declined",
+                            "expired",
+                            "cancelled"
+                          ],
+                          "properties": {
+                            "pending": {
+                              "type": "integer"
+                            },
+                            "accepted": {
+                              "type": "integer"
+                            },
+                            "declined": {
+                              "type": "integer"
+                            },
+                            "expired": {
+                              "type": "integer"
+                            },
+                            "cancelled": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "allowed_actions": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "const": "accept",
+                                "type": "string"
+                              },
+                              {
+                                "const": "decline",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancel",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "patient_id",
+                              "patient_display_name",
+                              "mrn_suffix",
+                              "kind",
+                              "ref_id",
+                              "state",
+                              "accountable_user_id",
+                              "accountable_display_name",
+                              "resolved_at",
+                              "summary"
+                            ],
+                            "properties": {
+                              "id": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "patient_id": {
+                                "anyOf": [
+                                  {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "patient_display_name": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "mrn_suffix": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "kind": {
+                                "anyOf": [
+                                  {
+                                    "const": "patient",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "visit",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "refill_request",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "symptom_followup",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "task",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "ref_id": {
+                                "anyOf": [
+                                  {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "state": {
+                                "anyOf": [
+                                  {
+                                    "const": "pending",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "accepted",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "declined",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "expired",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "cancelled",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "accountable_user_id": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "accountable_display_name": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "resolved_at": {
+                                "anyOf": [
+                                  {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "summary": {
+                                "type": "object",
+                                "required": [
+                                  "state"
+                                ],
+                                "properties": {
+                                  "state": {
+                                    "anyOf": [
+                                      {
+                                        "const": "ok",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "gone",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "unavailable",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "restricted",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "status": {
+                                    "type": "string"
+                                  },
+                                  "occurred_at": {
+                                    "type": "string"
+                                  },
+                                  "still_open": {
+                                    "type": "boolean"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {
+                  "item_ids": {
+                    "minItems": 1,
+                    "maxItems": 250,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/handoffs/caseload": {
+      "get": {
+        "operationId": "getApiV1MessagingHandoffsCaseload",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The caller's own caseload patients that can be handed off (WP 3.5; messaging.read + patient.read; 404 while the tenant flag is off): patient id, 'First L.' display name and MRN last four, at most 200. Read-audited (list)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "patients"
+                  ],
+                  "properties": {
+                    "patients": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "patient_id",
+                          "display_name",
+                          "mrn_suffix"
+                        ],
+                        "properties": {
+                          "patient_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "display_name": {
+                            "type": "string"
+                          },
+                          "mrn_suffix": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/handoffs/policy": {
+      "get": {
+        "operationId": "getApiV1MessagingHandoffsPolicy",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The effective handoff expiry (WP 3.5; messaging.send; 404 while the flag is off): minutes, the platform maximum (240; a tenant may only shorten it, minimum 15) and whether the tenant customised it. PROVISIONAL numbers",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "expiry_minutes",
+                    "platform_max_minutes",
+                    "customised"
+                  ],
+                  "properties": {
+                    "expiry_minutes": {
+                      "type": "integer"
+                    },
+                    "platform_max_minutes": {
+                      "type": "integer"
+                    },
+                    "customised": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/handoffs/prefill": {
+      "post": {
+        "operationId": "postApiV1MessagingHandoffsPrefill",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Open work for the chosen caseload patients (WP 3.5; messaging.send + patient.read; 404 while the flag is off). A pure READ: nothing is written or published. 1 to 50 patients, every one on the caller's caseload (else 422 HANDOFF_ITEM_INVALID). Per patient the offerable items (the patient itself, the next visit within 48 hours, pending refill requests, open symptom follow-ups, the caller's active tasks) and `unavailable_sources`: item kinds whose owning module could not be read, which are NOT included. Callbacks are not offered in this version",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "patients"
+                  ],
+                  "properties": {
+                    "patients": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "patient_id",
+                          "items",
+                          "unavailable_sources"
+                        ],
+                        "properties": {
+                          "patient_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "items": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "kind",
+                                "ref_id"
+                              ],
+                              "properties": {
+                                "kind": {
+                                  "anyOf": [
+                                    {
+                                      "const": "patient",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "visit",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "refill_request",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "symptom_followup",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "task",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "ref_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "status": {
+                                  "type": "string"
+                                },
+                                "occurred_at": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "unavailable_sources": {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "const": "patient",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "visit",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "refill_request",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "symptom_followup",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "task",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "patient_ids"
+                ],
+                "properties": {
+                  "patient_ids": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/messaging/messages/{id}": {
       "delete": {
         "operationId": "deleteApiV1MessagingMessagesById",
@@ -166344,6 +169190,111 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/template-admin/handoff-policy": {
+      "delete": {
+        "operationId": "deleteApiV1MessagingTemplateadminHandoffpolicy",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Remove this organization's handoff expiry override, restoring the platform default of 240 minutes (WP 3.5; messaging.template.manage). Returns the effective policy (200)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "expiry_minutes",
+                    "platform_max_minutes",
+                    "customised"
+                  ],
+                  "properties": {
+                    "expiry_minutes": {
+                      "type": "integer"
+                    },
+                    "platform_max_minutes": {
+                      "type": "integer"
+                    },
+                    "customised": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1MessagingTemplateadminHandoffpolicy",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Set this organization's handoff expiry in minutes (WP 3.5; messaging.template.manage). Tighten-only: 15 to 240, anything else is 422 HANDOFF_POLICY_INVALID. The shorter value also applies to offers already open. Returns the effective policy",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "expiry_minutes",
+                    "platform_max_minutes",
+                    "customised"
+                  ],
+                  "properties": {
+                    "expiry_minutes": {
+                      "type": "integer"
+                    },
+                    "platform_max_minutes": {
+                      "type": "integer"
+                    },
+                    "customised": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "expiry_minutes"
+                ],
+                "properties": {
+                  "expiry_minutes": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
           }
         }
       }

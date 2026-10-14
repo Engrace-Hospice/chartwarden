@@ -765,7 +765,8 @@ describe.skipIf(!DB_URL)("M36 WP 3.4 communication tasks - LIVE Postgres", () =>
       expect(root).toContain("buildTaskDeps({");
       expect(root).toContain("tasks: m36Tasks");
       expect(root).toContain("buildM36TaskNotificationsConsumer({");
-      expect(root).toContain("m36Tasks?.reassignForLeaver(orgId, userId)");
+      expect(root).toContain("m36Tasks?.reassignForLeaver");
+      expect(root).toContain("combineReassignments([");
       expect(root).not.toContain("reassignOwnedItems: reassignOwnedItemsNoop");
       const mount = readFileSync(join(__dirname, "../src/modules/36-messaging/index.ts"), "utf8");
       expect(mount).toContain("tasks: opts.tasks");

@@ -28,11 +28,14 @@ import {
   useAlertInbox,
 } from "../../shell/alert-inbox";
 import { useSession } from "../../shell/session";
+import { HandoffsList } from "./handoffs-list";
 import { TasksList } from "./tasks-list";
+import { useHandoffs } from "./use-handoffs";
+import { useHandoffsEnabled } from "./use-handoffs-enabled";
 import { useTasks } from "./use-tasks";
 import "./notifications-inbox.css";
 
-type Tab = "notifications" | "tasks" | "mentions";
+type Tab = "notifications" | "tasks" | "handoffs" | "mentions";
 
 const NOTIFICATION_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 
@@ -73,9 +76,23 @@ export function NotificationsInbox(): JSX.Element {
   const { alerts, loadFailed, markRead, activateAlert } = useAlertInbox();
   const session = useSession();
   const [searchParams] = useSearchParams();
-  const [tab, setTab] = useState<Tab>(
-    searchParams.get("tab") === "tasks" ? "tasks" : "notifications",
+  const [requestedTab, setTab] = useState<Tab>(
+    searchParams.get("tab") === "tasks"
+      ? "tasks"
+      : searchParams.get("tab") === "handoffs"
+        ? "handoffs"
+        : "notifications",
   );
+  // The Handoffs tab exists only while the tenant has handoffs on (the list route's `enabled`; a failed read is off), so
+  // a ?tab=handoffs link shows Notifications until that is known. Its incoming-active read feeds the badge and is lent
+  // to the tab.
+  const handoffsEnabled = useHandoffsEnabled();
+  const myHandoffs = useHandoffs("incoming", "active", !handoffsEnabled);
+  const handoffCount =
+    myHandoffs.view.status === "ready" && myHandoffs.view.enabled
+      ? myHandoffs.view.handoffs.length
+      : 0;
+  const tab: Tab = requestedTab === "handoffs" && !handoffsEnabled ? "notifications" : requestedTab;
   // The one read of "my active tasks": it feeds the tab badge and is lent to the Tasks tab, so opening the tab (or
   // switching tabs) does not read again and an action in the list updates the badge.
   const myTasks = useTasks("assigned", "active", session?.userId ?? "");
@@ -178,6 +195,13 @@ export function NotificationsInbox(): JSX.Element {
                 active={tab === "tasks"}
                 onClick={() => selectTab("tasks")}
               />
+              {handoffsEnabled ? (
+                <TabButton
+                  label={`Handoffs (${handoffCount})`}
+                  active={tab === "handoffs"}
+                  onClick={() => selectTab("handoffs")}
+                />
+              ) : null}
               <TabButton
                 label="Mentions"
                 active={tab === "mentions"}
@@ -185,7 +209,7 @@ export function NotificationsInbox(): JSX.Element {
               />
             </div>
 
-            {tab !== "tasks" ? (
+            {tab !== "tasks" && tab !== "handoffs" ? (
               <div className="wx-notif-controls">
                 <label className="wx-search-field">
                   <Glyph name="search" size={16} />
@@ -265,6 +289,8 @@ export function NotificationsInbox(): JSX.Element {
       table={
         tab === "tasks" ? (
           <TasksList meId={session?.userId ?? ""} shared={myTasks} />
+        ) : tab === "handoffs" ? (
+          <HandoffsList meId={session?.userId ?? ""} shared={myHandoffs} />
         ) : alerts === null && !loadFailed ? (
           <div className="wx-notif-state wx-notif-state-loading">
             <LoadingSpinner />
