@@ -727,6 +727,9 @@ describe("M19 D15 — the M12 medication and refill surface", () => {
       async getPortalMedicationSummary() {
         return { summary: [] };
       },
+      async linkSummary() {
+        return null;
+      },
       async asFhirMedicationRequest() {
         return null;
       },

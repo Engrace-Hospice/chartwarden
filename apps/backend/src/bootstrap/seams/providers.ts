@@ -1098,6 +1098,9 @@ export const medicationOrderProviderDenyStub: MedicationOrderProvider = {
   asFhirMedicationRequest() {
     throw new NotImplementedError("MedicationOrderProvider");
   },
+  linkSummary() {
+    throw new NotImplementedError("MedicationOrderProvider");
+  },
 };
 
 /** M12 / M21 — COP27 (42 CFR 418.24(c)): the not-covered medication / dme+supply lists the M6 election

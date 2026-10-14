@@ -314,3 +314,33 @@ describe("boot wiring (registerDoseSpotSeams)", () => {
     );
   });
 });
+
+describe("MedicationOrderProvider.linkSummary (M36 WP 3.2)", () => {
+  const provider = () =>
+    createMedicationOrderProvider(createInMemoryDoseSpotSeamStore(seed()).store);
+
+  it("returns ids + status + occurredAt only for a found order", async () => {
+    const got = await provider().linkSummary(ORG, "med-active");
+    expect(got).toEqual({
+      id: "med-active",
+      patientId: PAT,
+      status: "active",
+      occurredAt: "2026-03-01T12:10:00.000Z",
+    });
+    expect(Object.keys(got ?? {}).sort()).toEqual(["id", "occurredAt", "patientId", "status"]);
+  });
+
+  it("returns null for an unknown id", async () => {
+    expect(await provider().linkSummary(ORG, "nope")).toBeNull();
+  });
+
+  it("returns null when the row belongs to another org", async () => {
+    expect(await provider().linkSummary("org-2", "med-active")).toBeNull();
+  });
+
+  it("throws on a blank organizationId or id (fail closed)", async () => {
+    await expect(provider().linkSummary("", "med-active")).rejects.toThrow(/organizationId/);
+    await expect(provider().linkSummary("  ", "med-active")).rejects.toThrow(/organizationId/);
+    await expect(provider().linkSummary(ORG, "")).rejects.toThrow(/id required/);
+  });
+});
