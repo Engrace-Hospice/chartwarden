@@ -148,6 +148,7 @@ export {
 } from "./jobs/bundle-expiry-worker";
 // GAP-163 - the BAA radar, the support-session close sweep and the onboarding advance worker.
 export {
+  describeM34SweepSchedules,
   registerM34BaaExpiryWorker,
   registerM34OnboardingAdvanceWorker,
   registerM34SupportSessionCloseWorker,

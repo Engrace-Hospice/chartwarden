@@ -174,3 +174,14 @@ export {
   BLOCKED_AGE_REFIRE_MS,
   runOnboardingAdvance,
 } from "./onboarding-advance-worker";
+// Consecutive-daily-refusal counter for the onboarding sweep's automatic activation (M34 sweep visibility).
+export {
+  type ActivationRefusalState,
+  ACTIVATION_REFUSAL_ALERT_THRESHOLD,
+  ACTIVATION_REFUSAL_METADATA_KEY,
+  nextActivationRefusal,
+  readActivationRefusal,
+  shouldAlertActivationRefusal,
+  withActivationRefusal,
+  withoutActivationRefusal,
+} from "./activation-refusal-streak";
