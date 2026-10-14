@@ -40,6 +40,7 @@ import {
 import { requireRequestContext, withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
 import {
   type AdmissionId,
+  type ClinicalLinkSummary,
   type IsoInstant,
   NotFoundError,
   type OrderDiscontinuationDto,
@@ -215,6 +216,35 @@ export function createDrizzleOrderSeamStore(db: DbClient): OrderSeamStore {
         const [r] = await selectDto(tx).where(eq(OR.id, orderId)).limit(1);
         return r ? toDto(r) : null;
       });
+    },
+
+    async linkSummary(organizationId, id) {
+      return withOrgContext(
+        db,
+        { organizationId, userId: ORDER_READER_SYSTEM_USER_ID },
+        async (tx): Promise<ClinicalLinkSummary | null> => {
+          const [r] = await (tx as unknown as DbClient)
+            .select({
+              id: OR.id,
+              patientId: OR.patientId,
+              status: OR.status,
+              signedAt: OR.signedAt,
+              createdAt: OR.createdAt,
+            })
+            .from(OR)
+            // Explicit second wall behind RLS (PHI-bearing seam).
+            .where(and(eq(OR.organizationId, organizationId), eq(OR.id, id)))
+            .limit(1);
+          return r
+            ? {
+                id: r.id,
+                patientId: r.patientId as PatientId,
+                status: r.status,
+                occurredAt: iso(r.signedAt ?? r.createdAt),
+              }
+            : null;
+        },
+      );
     },
 
     async ordersForPatient(patientId) {
