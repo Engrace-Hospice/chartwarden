@@ -13346,7 +13346,7 @@ export interface paths {
         /** Full active member list of a channel (messaging.manage_members + channel_member_admin; 403 for a DM) */
         get: operations["getApiV1MessagingChannelsByIdMembers"];
         put?: never;
-        /** Add a manual member (admin override on auto channels; 204) */
+        /** Add a manual member (admin override on auto channels; 204). 422 MEMBER_CATEGORY_NOT_ALLOWED when the identity holds a patient_family, external_auditor or platform_staff role */
         post: operations["postApiV1MessagingChannelsByIdMembers"];
         delete?: never;
         options?: never;
@@ -63487,6 +63487,7 @@ export interface operations {
                             platformEnabled: boolean;
                             legacyBodiesMigrated: boolean;
                             escrowAttested: boolean;
+                            leakageAttested: boolean;
                             rateLimitActive: boolean;
                         };
                         rebuild: {
@@ -63534,6 +63535,7 @@ export interface operations {
                             platformEnabled: boolean;
                             legacyBodiesMigrated: boolean;
                             escrowAttested: boolean;
+                            leakageAttested: boolean;
                             rateLimitActive: boolean;
                         };
                         rebuild: {

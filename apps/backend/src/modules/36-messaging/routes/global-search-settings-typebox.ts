@@ -18,6 +18,7 @@ export const GlobalSearchSettingsViewSchema = Type.Object({
     platformEnabled: Type.Boolean(),
     legacyBodiesMigrated: Type.Boolean(),
     escrowAttested: Type.Boolean(),
+    leakageAttested: Type.Boolean(),
     rateLimitActive: Type.Boolean(),
   }),
   rebuild: Type.Union([

@@ -19,6 +19,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError } from "@wardenx/types";
 import { and, asc, eq, isNull, ne, or } from "drizzle-orm";
 import { createDrizzleSiteAdminRepository } from "../../bootstrap/site-admin-repository";
+import { assertMemberCategoryAllowed } from "./member-category-gate";
 
 const CH = schema.channels;
 const CM = schema.channelMembers;
@@ -173,6 +174,7 @@ export function createDbAnnouncementService(db: DbClient): AnnouncementService {
             .onConflictDoNothing()
             .returning({ id: CH.id })) as Array<{ id: string }>;
           if (inserted[0]) {
+            await assertMemberCategoryAllowed(tx, orgId, input.creatorUserId);
             await tx.insert(CM).values({
               organizationId: orgId,
               channelId: inserted[0].id,
