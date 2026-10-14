@@ -10,6 +10,7 @@ import {
   index,
   integer,
   pgTable,
+  smallint,
   timestamp,
   unique,
   uuid,
@@ -71,6 +72,10 @@ export const messagePollOptions = pgTable(
     pollId: uuid("poll_id").notNull(), // composite FK below
     position: integer("position").notNull(),
     labelCipher: bytea("label_cipher").notNull(),
+    // 1094 (WP 2.13): GENERATED from label_cipher's first byte, same as the message body marker: 0 empty, 1 legacy, 2 ring.
+    labelEnvelopeVersion: smallint("label_envelope_version").generatedAlwaysAs(
+      sql`CASE WHEN octet_length(label_cipher) = 0 THEN 0 ELSE get_byte(label_cipher, 0) END`,
+    ),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -90,6 +95,9 @@ export const messagePollOptions = pgTable(
       t.position,
     ),
     positionBounds: check("message_poll_option_position_check", sql`position BETWEEN 0 AND 9`),
+    legacyLabelIdx: index("message_poll_option_label_legacy_idx")
+      .on(t.organizationId, t.id)
+      .where(sql`label_envelope_version = 1`),
   }),
 );
 

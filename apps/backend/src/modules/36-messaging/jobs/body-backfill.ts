@@ -29,6 +29,7 @@ import type { MessageBodyCipher } from "../messaging-write-core";
 
 const MSG = schema.messages;
 const REV = schema.messageRevisions;
+const OPT = schema.messagePollOptions;
 
 /** The operator-set flag that records "the escrow restore drill passed" (ADR-0058 P1: no backfill without it). */
 export const BODY_BACKFILL_ESCROW_DRILL_ENV = "M36_BODY_BACKFILL_ESCROW_DRILL_CONFIRMED";
@@ -37,8 +38,10 @@ export const BODY_BACKFILL_DEFAULT_PAUSE_MS = 250;
 export const BODY_BACKFILL_DEFAULT_MAX_ROWS = 5_000;
 const LEGACY_ENVELOPE = 1;
 
-export type BackfillTable = "message" | "message_revision";
-const TABLES: readonly BackfillTable[] = ["message", "message_revision"];
+// `message_poll_option` (migration 1094) holds a label sealed like a body; it has no plaintext digest, so its pre-seal check
+// is GCM authenticity (the legacy open must succeed) and its post-seal check is plaintext equality.
+export type BackfillTable = "message" | "message_revision" | "message_poll_option";
+const TABLES: readonly BackfillTable[] = ["message", "message_revision", "message_poll_option"];
 
 export class BodyBackfillRefusedError extends Error {
   constructor(message: string) {
@@ -93,6 +96,7 @@ export interface TableBackfillCounts {
 export interface LegacyBodyCounts {
   readonly message: number;
   readonly message_revision: number;
+  readonly message_poll_option: number;
 }
 
 export interface BodyBackfillReport {
@@ -135,7 +139,17 @@ export async function countLegacyBodiesInTx(
       );
     return Number(row?.n ?? 0);
   };
-  return { message: await count(MSG), message_revision: await count(REV) };
+  const [options] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(OPT)
+    .where(
+      and(eq(OPT.organizationId, organizationId), eq(OPT.labelEnvelopeVersion, LEGACY_ENVELOPE)),
+    );
+  return {
+    message: await count(MSG),
+    message_revision: await count(REV),
+    message_poll_option: Number(options?.n ?? 0),
+  };
 }
 
 /** Legacy-envelope row counts for one tenant (its own system transaction). */
@@ -151,7 +165,8 @@ export async function countLegacyBodiesForOrg(
 interface Candidate {
   readonly id: string;
   readonly bodyCipher: Buffer;
-  readonly bodySha256: string;
+  /** Null for a poll option label (no stored digest). */
+  readonly bodySha256: string | null;
 }
 
 async function nextBatch(
@@ -162,6 +177,21 @@ async function nextBatch(
   limit: number,
 ): Promise<readonly Candidate[]> {
   return withOrgContext(db, systemOrgContext(organizationId), async (tx) => {
+    if (table === "message_poll_option") {
+      const rows = await tx
+        .select({ id: OPT.id, bodyCipher: OPT.labelCipher })
+        .from(OPT)
+        .where(
+          and(
+            eq(OPT.organizationId, organizationId),
+            eq(OPT.labelEnvelopeVersion, LEGACY_ENVELOPE),
+            after ? gt(OPT.id, after) : undefined,
+          ),
+        )
+        .orderBy(asc(OPT.id))
+        .limit(limit);
+      return rows.map((r) => ({ ...r, bodySha256: null }));
+    }
     const t = table === "message" ? MSG : REV;
     return (await tx
       .select({ id: t.id, bodyCipher: t.bodyCipher, bodySha256: t.bodySha256 })
@@ -195,14 +225,18 @@ async function resealRow(
   } catch {
     return "failed"; // undecryptable under the legacy key: hash_verify's territory, never re-sealed
   }
-  if (messageBodySha256(plaintext) !== row.bodySha256) return "hashMismatch";
+  if (row.bodySha256 !== null && messageBodySha256(plaintext) !== row.bodySha256)
+    return "hashMismatch";
   let sealed: Buffer;
   try {
     sealed = (await cipher.sealRing(organizationId, plaintext)).cipher;
     // The ring envelope must read back to the SAME plaintext before it is allowed to replace the legacy one.
-    if (messageBodySha256(await cipher.open(organizationId, sealed)) !== row.bodySha256) {
-      return "failed";
-    }
+    const reopened = await cipher.open(organizationId, sealed);
+    const readsBack =
+      row.bodySha256 === null
+        ? reopened === plaintext
+        : messageBodySha256(reopened) === row.bodySha256;
+    if (!readsBack) return "failed";
   } catch {
     return "failed";
   }
@@ -221,14 +255,17 @@ async function resealRow(
       .returning({ id: MSG.id });
     return swapped.length === 1 ? "migrated" : "skippedConcurrent";
   }
-  // Revisions are append-only for the app role: the re-seal runs on the dedicated backfill credential (migration 1090).
+  // Revisions and poll options are append-only for the app role: the re-seal runs on the dedicated backfill credential
+  // (migrations 1090 / 1094), through one audited SECURITY DEFINER function per table.
   if (!resealDb)
     throw new BodyBackfillRefusedError(
       "a real run needs the revision re-seal credential (resealDb)",
     );
   const res = await withOrgContext(resealDb, systemOrgContext(organizationId), (rtx) =>
     rtx.execute(
-      sql`SELECT m36_reseal_message_revision(${organizationId}::uuid, ${row.id}::uuid, ${row.bodyCipher}::bytea, ${sealed}::bytea) AS ok`,
+      table === "message_poll_option"
+        ? sql`SELECT m36_reseal_poll_option(${organizationId}::uuid, ${row.id}::uuid, ${row.bodyCipher}::bytea, ${sealed}::bytea) AS ok`
+        : sql`SELECT m36_reseal_message_revision(${organizationId}::uuid, ${row.id}::uuid, ${row.bodyCipher}::bytea, ${sealed}::bytea) AS ok`,
     ),
   );
   const ok = (res as unknown as { rows?: Array<{ ok: boolean }> }).rows?.[0]?.ok;
@@ -264,6 +301,7 @@ export async function backfillBodiesForOrg(
   const counts: Record<BackfillTable, TableBackfillCounts> = {
     message: zeroCounts(),
     message_revision: zeroCounts(),
+    message_poll_option: zeroCounts(),
   };
   let examined = 0;
   let stopReason: BodyBackfillReport["stoppedBy"] = "exhausted";
@@ -340,7 +378,10 @@ export async function backfillBodiesForOrg(
   }
 
   const remainingLegacy = await countLegacyBodiesForOrg(deps.db, organizationId);
-  const drained = remainingLegacy.message === 0 && remainingLegacy.message_revision === 0;
+  const drained =
+    remainingLegacy.message === 0 &&
+    remainingLegacy.message_revision === 0 &&
+    remainingLegacy.message_poll_option === 0;
   const complete = !dryRun && drained;
   const stoppedBy = complete ? "exhausted" : stopReason;
   const report: BodyBackfillReport = {

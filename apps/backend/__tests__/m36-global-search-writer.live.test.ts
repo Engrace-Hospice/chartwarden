@@ -314,7 +314,8 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C2 global search index writer - LIVE Postg
       expect(sent.delivered).toBeGreaterThanOrEqual(1);
 
       const first = await storedTags(id);
-      expect(first).toHaveLength(32);
+      // 13 real tags (whole word + the sparse prefix lengths 3/5/8/12 of each token, #436) pad to the next bucket, 16.
+      expect(first).toHaveLength(16);
       expect(holdsAll(first, await realTagsOf(ORG_A, "morphine given for breakthrough pain"))).toBe(
         true,
       );

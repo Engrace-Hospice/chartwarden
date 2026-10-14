@@ -6,7 +6,8 @@
 // Heartbeat-and-poll over plain HTTP: no new transport. Nothing here touches Postgres; state is ids + a short TTL in the
 // PresenceStore (Valkey in production). The channel's own guards (`messaging.read` + the `channel_visibility` predicate on
 // `:id`) run BEFORE the flag is read, so a non-member, a removed member, an unknown id and another organisation all get the
-// 404 a random id gets: presence is no access oracle and the tenant flag is not disclosed to a non-member. The predicate
+// 403 a random id gets (the answer every channel route gives; a denied `channel_visibility` is a 403, never a 404, and the
+// two are indistinguishable): presence is no access oracle and the tenant flag is not disclosed to a non-member. The predicate
 // is the same one every message read uses, so Part 2 / patient-linked (care_team) gating is identical by construction.
 //
 // OFF BY A TENANT FLAG (`messaging.presence_enabled`, default off): a member of the channel gets a typed 403

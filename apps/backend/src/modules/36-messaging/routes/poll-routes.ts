@@ -8,7 +8,13 @@
 //   POST /api/v1/messaging/channels/:id/messages/:messageId/poll/close   close (author, or a channel manager); idempotent
 //
 // Every route is the channel's own: the guards are the ones a message send / read uses, so a non-member, a removed
-// member and another organisation get the 404 a random id gets. Org and user come from the request context, never a
+// member and another organisation get the 403 a random channel id gets (a denied `channel_visibility`), and a poll or
+// message that is not there is a 404 for everyone.
+//
+// ANNOUNCEMENT CHANNELS (decision): only CREATING a poll sits behind the announcement guard (`messaging.announce`), because
+// that is posting into a broadcast channel. VOTING is participation by the people the notice is for (the same as reading
+// or reacting), and refusing it would make an announcement poll unanswerable. CLOSING is not widened either: the service
+// allows only the author or a channel manager, so a voter can never end the poll. Org and user come from the request context, never a
 // param or the body. Polls are refused in a patient-linked channel (422 POLL_NOT_ALLOWED_IN_PATIENT_CHANNEL). The
 // poll detail names voters, so it is read-audited like a message read; responses are never cached.
 import { requireAbac, requirePermission } from "@wardenx/auth";

@@ -54,7 +54,7 @@ export interface GlobalSearchAttestations {
 export interface GlobalSearchPrerequisites {
   /** Facts that need no tenant lock (own connections: call BEFORE opening the flip transaction). */
   readAttestations(organizationId: string): Promise<GlobalSearchAttestations>;
-  /** True while any `message` or `message_revision` body of the org is still on the legacy envelope. */
+  /** True while any `message` or `message_revision` body, or poll option label, of the org is still on the legacy envelope. */
   legacyBodiesRemain(tx: Tx, organizationId: string): Promise<boolean>;
 }
 
@@ -121,6 +121,9 @@ export function createGlobalSearchPrerequisites(
           OR EXISTS (SELECT 1 FROM message_revision
                       WHERE organization_id = ${organizationId}
                         AND length(body_cipher) > 0 AND get_byte(body_cipher, 0) = ${LEGACY_ENVELOPE_VERSION})
+          OR EXISTS (SELECT 1 FROM message_poll_option
+                      WHERE organization_id = ${organizationId}
+                        AND label_envelope_version = ${LEGACY_ENVELOPE_VERSION})
         ) AS legacy`);
       return result.rows[0]?.legacy === true;
     },

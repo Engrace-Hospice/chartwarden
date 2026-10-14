@@ -35,8 +35,8 @@ describe("backfill escrow-drill gate (ADR-0058 P1 precondition)", () => {
 
 describe("legacy body key boot check (fail closed in production)", () => {
   const key = Buffer.alloc(32, 9).toString("base64");
-  const legacy = { message: 3, message_revision: 1 };
-  const none = { message: 0, message_revision: 0 };
+  const legacy = { message: 3, message_revision: 1, message_poll_option: 0 };
+  const none = { message: 0, message_revision: 0, message_poll_option: 0 };
 
   it("production + legacy rows + key missing or malformed fails closed", () => {
     expect(() => assertLegacyBodyKeyAvailable(legacy, { NODE_ENV: "production" })).toThrow(

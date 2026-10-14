@@ -54,14 +54,14 @@ describe("boot check behaviour", () => {
   it("production with legacy rows and no key fails closed; with the key it logs the state", async () => {
     await expect(
       runLegacyBodyBootCheck({
-        count: async () => ({ message: 1, message_revision: 0 }),
+        count: async () => ({ message: 1, message_revision: 0, message_poll_option: 0 }),
         env: { NODE_ENV: "production" },
         log: log(),
       }),
     ).rejects.toBeInstanceOf(LegacyBodyKeyMissingError);
     const l = log();
     const ok = await runLegacyBodyBootCheck({
-      count: async () => ({ message: 1, message_revision: 0 }),
+      count: async () => ({ message: 1, message_revision: 0, message_poll_option: 0 }),
       env: {
         NODE_ENV: "production",
         MESSAGING_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString("base64"),

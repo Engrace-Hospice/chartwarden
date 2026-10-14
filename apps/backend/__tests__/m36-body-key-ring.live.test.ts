@@ -211,6 +211,9 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
     await admin.query(
       'GRANT SELECT ("organization_id", "body_envelope_version") ON "message", "message_revision" TO wardenx_admin',
     );
+    await admin.query(
+      'GRANT SELECT ("organization_id", "label_envelope_version") ON "message_poll_option" TO wardenx_admin',
+    );
     // The platform login's audited bypass entry (migration 0187 grants the writer to wardenx_app only).
     await admin.query(
       "GRANT EXECUTE ON FUNCTION audit_writer_insert_platform_event(text, text, uuid, text, text, text, jsonb, text) TO wardenx_admin",
@@ -461,7 +464,11 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
     // resume: finishes, reports completion by count
     const rest = await backfill(ORG_A, { batchSize: 5 });
     expect(rest.complete).toBe(true);
-    expect(rest.remainingLegacy).toEqual({ message: 0, message_revision: 0 });
+    expect(rest.remainingLegacy).toEqual({
+      message: 0,
+      message_revision: 0,
+      message_poll_option: 0,
+    });
     expect(await legacyCount("message", ORG_A)).toBe(0);
     expect(await legacyCount("message_revision", ORG_A)).toBe(0);
     const all = await rowsOf("message", ORG_A);
@@ -498,7 +505,7 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
     ).rows;
     expect(runRows.at(-1)?.context).toMatchObject({
       complete: true,
-      remainingLegacy: { message: 0, message_revision: 0 },
+      remainingLegacy: { message: 0, message_revision: 0, message_poll_option: 0 },
     });
     expect(
       (
@@ -668,8 +675,10 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
     );
     // nothing legacy left: the key may be absent (the retired state)
     expect(
-      assertLegacyBodyKeyAvailable({ message: 0, message_revision: 0 }, { NODE_ENV: "production" })
-        .state,
+      assertLegacyBodyKeyAvailable(
+        { message: 0, message_revision: 0, message_poll_option: 0 },
+        { NODE_ENV: "production" },
+      ).state,
     ).toBe("ring_only");
   });
 
@@ -760,5 +769,72 @@ describe.skipIf(!DB_URL)("WP 2.13 — message bodies on the M34 ring — LIVE Po
       "legacy row survives the shred",
     );
     await expect(backfill(ORG_B)).rejects.toThrow(/destroyed/i);
+  });
+  it("poll option labels ride the same backfill: legacy label -> ring, exact plaintext, other orgs untouched, app role cannot re-seal", async () => {
+    const dm = await dmOf(legacyService, ORG_A, "a1", "a2");
+    const carrier = await send(legacyService, ORG_A, dm.channelId, "a1", "poll carrier");
+    const poll = (
+      await admin.query(
+        `INSERT INTO message_poll (organization_id, channel_id, message_id, created_by_user_id)
+         VALUES ($1,$2,$3,$4) RETURNING id`,
+        [ORG_A, dm.channelId, carrier.messageId, users.a1],
+      )
+    ).rows[0].id as string;
+    const labels = ["Option one", "Option two", "Zwei \u00fcber \u{1F44D}"];
+    const legacyLabels = await Promise.all(labels.map((l) => legacyCipher.seal(ORG_A, l)));
+    for (const [i, sealed] of legacyLabels.entries()) {
+      await admin.query(
+        `INSERT INTO message_poll_option (organization_id, poll_id, position, label_cipher) VALUES ($1,$2,$3,$4)`,
+        [ORG_A, poll, i, sealed.cipher],
+      );
+    }
+    const versions = async (org: string) =>
+      (
+        await admin.query(
+          `SELECT label_envelope_version AS v, count(*)::int AS n FROM message_poll_option WHERE organization_id=$1 GROUP BY 1`,
+          [org],
+        )
+      ).rows;
+    expect(await versions(ORG_A)).toEqual([{ v: 1, n: 3 }]);
+
+    // the request-path role may not re-seal a label (EXECUTE is the operator carrier's alone)
+    const opt = (
+      await admin.query(
+        `SELECT id, label_cipher FROM message_poll_option WHERE organization_id=$1 AND position=0`,
+        [ORG_A],
+      )
+    ).rows[0] as { id: string; label_cipher: Buffer };
+    await expect(
+      withOrgContext(handle.db, systemOrgContext(ORG_A), (tx) =>
+        (tx as unknown as DbClient).execute(
+          sql`SELECT m36_reseal_poll_option(${ORG_A}::uuid, ${opt.id}::uuid, ${opt.label_cipher}::bytea, ${Buffer.concat([Buffer.from([2]), randomBytes(60)])}::bytea)`,
+        ),
+      ),
+    ).rejects.toMatchObject({
+      cause: { message: expect.stringMatching(/permission denied for function/i) },
+    });
+
+    const dry = await backfill(ORG_A, { dryRun: true });
+    expect(dry.tables.message_poll_option.wouldMigrate).toBe(3);
+    expect(dry.remainingLegacy.message_poll_option).toBe(3);
+    expect(await versions(ORG_A)).toEqual([{ v: 1, n: 3 }]);
+
+    const run = await backfill(ORG_A);
+    expect(run.tables.message_poll_option).toMatchObject({ scanned: 3, migrated: 3, failed: 0 });
+    expect(run.remainingLegacy.message_poll_option).toBe(0);
+    expect(run.complete).toBe(true);
+    expect(await versions(ORG_A)).toEqual([{ v: 2, n: 3 }]);
+    const after = (
+      await admin.query(
+        `SELECT label_cipher FROM message_poll_option WHERE organization_id=$1 ORDER BY position`,
+        [ORG_A],
+      )
+    ).rows as { label_cipher: Buffer }[];
+    expect(await Promise.all(after.map((r) => ringCipher.open(ORG_A, r.label_cipher)))).toEqual(
+      labels,
+    );
+    // re-running is a no-op
+    const again = await backfill(ORG_A);
+    expect(again.tables.message_poll_option.scanned).toBe(0);
   });
 });
