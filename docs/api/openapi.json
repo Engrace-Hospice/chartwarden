@@ -157802,7 +157802,7 @@
         "tags": [
           "36-messaging"
         ],
-        "summary": "Add a manual member (admin override on auto channels; 204)",
+        "summary": "Add a manual member (admin override on auto channels; 204). 422 MEMBER_CATEGORY_NOT_ALLOWED when the identity holds a patient_family, external_auditor or platform_staff role",
         "parameters": [
           {
             "name": "id",
@@ -161789,6 +161789,7 @@
                         "platformEnabled",
                         "legacyBodiesMigrated",
                         "escrowAttested",
+                        "leakageAttested",
                         "rateLimitActive"
                       ],
                       "properties": {
@@ -161799,6 +161800,9 @@
                           "type": "boolean"
                         },
                         "escrowAttested": {
+                          "type": "boolean"
+                        },
+                        "leakageAttested": {
                           "type": "boolean"
                         },
                         "rateLimitActive": {
@@ -161953,6 +161957,7 @@
                         "platformEnabled",
                         "legacyBodiesMigrated",
                         "escrowAttested",
+                        "leakageAttested",
                         "rateLimitActive"
                       ],
                       "properties": {
@@ -161963,6 +161968,9 @@
                           "type": "boolean"
                         },
                         "escrowAttested": {
+                          "type": "boolean"
+                        },
+                        "leakageAttested": {
                           "type": "boolean"
                         },
                         "rateLimitActive": {

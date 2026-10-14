@@ -9257,7 +9257,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Unarchive a discipline/location channel (org_admin only; 204, idempotent; 409 CHANNEL_LIFECYCLE_MANAGED for care_team/bereavement/on_call/announcement; 403 for a DM)",
   },
   "POST /api/v1/messaging/channels/:id/members": {
-    summary: "Add a manual member (admin override on auto channels; 204)",
+    summary:
+      "Add a manual member (admin override on auto channels; 204). 422 MEMBER_CATEGORY_NOT_ALLOWED when the identity holds a patient_family, external_auditor or platform_staff role",
     body: M36AddMemberBodySchema,
   },
   "DELETE /api/v1/messaging/channels/:id/members/:userId": {

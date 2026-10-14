@@ -1817,23 +1817,56 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C3 global search acceptance - LIVE Postgre
       await server.close();
     });
 
-    it("addMember accepts identities of the excluded categories today (recorded); the route refuses them regardless", async () => {
+    it("addMember refuses each excluded category (MEMBER_CATEGORY_NOT_ALLOWED, 422) and accepts a workforce identity (F6)", async () => {
       const owner = await newUser(ORG_A);
       const ch = await newChannel(ORG_A, { members: [[owner, "manual"]] });
       await send(ORG_A, ch.id, owner, "Addmemberexcludedword note");
-      const outcomes: string[] = [];
       for (const category of ["patient_family", "external_auditor", "platform_staff"] as const) {
         const u = await newUser(ORG_A, category);
-        const outcome = await routeService
+        const err = await routeService
           .addMember(ORG_A, { channelId: ch.id, userId: u, actor: { kind: "system" } })
           .then(
-            () => "added",
-            () => "refused",
+            () => null,
+            (e: unknown) => e as { code?: string; statusCode?: number },
           );
-        outcomes.push(`${category}=${outcome}`);
+        expect(err?.code, category).toBe("MEMBER_CATEGORY_NOT_ALLOWED");
+        expect(err?.statusCode, category).toBe(422);
+        const rows = await q(
+          `SELECT 1 FROM channel_member WHERE channel_id=$1 AND user_id=$2 AND removed_at IS NULL`,
+          [ch.id, u],
+        );
+        expect(rows.length, category).toBe(0);
         expect((await search(u, "addmemberexcludedword")).statusCode, category).toBe(403);
       }
-      process.stderr.write(`\n[search-addmember] current behaviour: ${outcomes.join(", ")}\n`);
+      // an excluded role that is DISABLED still counts; a workforce + excluded mix is refused
+      const mixed = await newUser(ORG_A, "clinical_staff");
+      await grantRole(ORG_A, mixed, "external_auditor", { enabled: false });
+      await expect(
+        routeService.addMember(ORG_A, { channelId: ch.id, userId: mixed, actor: { kind: "system" } }),
+      ).rejects.toMatchObject({ code: "MEMBER_CATEGORY_NOT_ALLOWED" });
+      // an allowed workforce identity is accepted
+      const staff = await newUser(ORG_A, "clinical_staff");
+      await routeService.addMember(ORG_A, {
+        channelId: ch.id,
+        userId: staff,
+        actor: { kind: "system" },
+      });
+      const added = await q(
+        `SELECT 1 FROM channel_member WHERE channel_id=$1 AND user_id=$2 AND removed_at IS NULL`,
+        [ch.id, staff],
+      );
+      expect(added.length).toBe(1);
+    });
+
+    it("ensureDmMember (openDm) refuses an excluded-category peer and creates no channel (F6)", async () => {
+      const caller = await newUser(ORG_A);
+      const peer = await newUser(ORG_A, "patient_family");
+      const before = await q(`SELECT 1 FROM channel WHERE organization_id=$1 AND channel_kind='dm'`, [ORG_A]);
+      await expect(routeService.openDm(ORG_A, caller, peer)).rejects.toMatchObject({
+        code: "MEMBER_CATEGORY_NOT_ALLOWED",
+      });
+      const after = await q(`SELECT 1 FROM channel WHERE organization_id=$1 AND channel_kind='dm'`, [ORG_A]);
+      expect(after.length).toBe(before.length);
     });
 
     it("an inactive user is answered before the head-bucket refusal (no term-level signal)", async () => {

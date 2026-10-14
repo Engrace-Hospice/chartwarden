@@ -41,6 +41,7 @@ import {
   insertEncryptedMessage,
   withValidMessageContent,
 } from "./messaging-write-core";
+import { assertMemberCategoryAllowed, excludedMemberUserIds } from "./member-category-gate";
 import { type Part2ChannelGate, createSeamPart2ChannelGate } from "./part2-channel-gate";
 import { decodeStoredBody } from "./rich-body-codec";
 
@@ -151,6 +152,7 @@ export function createDbMessagingProvider(
             })
             .returning({ id: CH.id })) as Array<{ id: string }>;
           const channelId = inserted[0]!.id;
+          await assertMemberCategoryAllowed(tx, orgId, spec.creatorUserId);
           await tx.insert(CM).values({
             organizationId: orgId,
             channelId,
@@ -371,9 +373,11 @@ export function createDbMessagingProvider(
 
           // GAP-104 — an archived (discharged/deceased) channel takes no NEW members; removals still apply
           // (a clinician unassigned after discharge must lose access) and history stays readable.
+          // An excluded-category identity on the roster is skipped, never added (F6).
+          const excluded = await excludedMemberUserIds(tx, orgId, [...roster]);
           const toAdd = channelArchived
             ? []
-            : [...roster].filter((userId) => !activeUserIds.has(userId));
+            : [...roster].filter((userId) => !activeUserIds.has(userId) && !excluded.has(userId));
           const toRemove = activeMembers.filter(
             (m) => m.source === "auto" && !roster.has(m.userId),
           );

@@ -155,6 +155,11 @@ rare tail fail, the fallback is the bounded multi-channel option A in the ADR.
 - **F4:** implemented in the branch of this PR: the ADR amendment now records the head-bucket REFINE as a second membership-independent frequency-threshold oracle, and timing of up to five hidden rounds as a residual finer oracle.
 - **F10:** implemented in the branch of this PR: ADR header and "How to read decisions" text made consistent (Accepted by the user's decision, review requirement not yet satisfied); `ci.yml` comments changed from Proposed to Accepted.
 
+**Resolutions (continued):**
+
+- **F6 - Resolution:** implemented in the branch of this PR. `member-category-gate.ts` refuses (422 `MEMBER_CATEGORY_NOT_ALLOWED`) a `channel_member` write for an identity holding `patient_family`, `external_auditor` or `platform_staff`, in `addMember`, `ensureDmMember` (both DM participants), the care-team roster sync (skipped), and the creator rows of provider, announcement and department channels. A static ratchet (`m36-member-category-gate.test.ts`) fails on an ungated write path; live tests cover each excluded category (refused) and a workforce identity (accepted). Not covered: the in-memory test service, and rows added before the gate shipped.
+- **F12 - Resolution:** implemented in the branch of this PR. New platform flag `messaging.global_search_leakage_attested` is the fifth go-live checklist item (`leakageAttested`, failure code `LEAKAGE_NOT_ATTESTED` after `ESCROW_NOT_ATTESTED`), read from the org-NULL row only, fail closed. `messaging.global_search_platform_enabled` stays the kill switch. The flag is a statement by humans; no code can verify the experiment itself. Runbook Stage 6 split accordingly.
+
 ## Conditions before ANY tenant is enabled in production
 
 1. A named human security architect and privacy officer adopt or amend this record (sign-off block above).

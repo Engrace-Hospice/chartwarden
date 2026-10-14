@@ -1,7 +1,7 @@
 /**
  * M36 WP 2.7b chunk C4 (ADR-0058, Proposed) - the tenant global search switch, LIVE Postgres as the NOBYPASSRLS `wardenx_app`
  * role: the REAL route stack (`mountMessagingRoutes`), the real `requirePermission` / `requireStepUp` chain over a real session
- * seam, the go-live checklist (platform flag, legacy bodies, escrow attestation, rate limit), OFF-always-accepted, `changed_at`
+ * seam, the go-live checklist (platform flag, legacy bodies, escrow and leakage attestations, rate limit), OFF-always-accepted, `changed_at`
  * on every flip, the write-audit rows, the FOR SHARE interlock with the index writer, and tenancy. Nothing here enables search
  * anywhere: flags are set per test on a private database.
  *
@@ -27,7 +27,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { wireModuleSeams } from "../src/index";
 import { GLOBAL_SEARCH_PLATFORM_FLAG_KEY } from "../src/modules/36-messaging/global-search/platform-flag";
-import { GLOBAL_SEARCH_ESCROW_FLAG_KEY } from "../src/modules/36-messaging/global-search/prerequisites";
+import {
+  GLOBAL_SEARCH_ESCROW_FLAG_KEY,
+  GLOBAL_SEARCH_LEAKAGE_FLAG_KEY,
+} from "../src/modules/36-messaging/global-search/prerequisites";
 import { mountMessagingRoutes } from "../src/modules/36-messaging/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -131,6 +134,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C4 global search settings - LIVE Postgres"
   const allAttested = async () => {
     await setPlatformFlag(GLOBAL_SEARCH_PLATFORM_FLAG_KEY, true);
     await setPlatformFlag(GLOBAL_SEARCH_ESCROW_FLAG_KEY, true);
+    await setPlatformFlag(GLOBAL_SEARCH_LEAKAGE_FLAG_KEY, true);
   };
 
   async function seedMessage(cipher: Buffer): Promise<string> {
@@ -337,6 +341,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C4 global search settings - LIVE Postgres"
       expect(res.statusCode).toBe(409);
       expect(codes(res)).toEqual([
         "ESCROW_NOT_ATTESTED",
+        "LEAKAGE_NOT_ATTESTED",
         "PLATFORM_FLAG_OFF",
         "RATE_LIMIT_INACTIVE",
       ]);
@@ -344,6 +349,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C4 global search settings - LIVE Postgres"
 
     it("platform flag off alone refuses", async () => {
       await setPlatformFlag(GLOBAL_SEARCH_ESCROW_FLAG_KEY, true);
+      await setPlatformFlag(GLOBAL_SEARCH_LEAKAGE_FLAG_KEY, true);
       const res = await put(appLimited, true);
       expect(res.statusCode).toBe(409);
       expect(codes(res)).toEqual(["PLATFORM_FLAG_OFF"]);
@@ -351,9 +357,18 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C4 global search settings - LIVE Postgres"
 
     it("escrow not attested alone refuses", async () => {
       await setPlatformFlag(GLOBAL_SEARCH_PLATFORM_FLAG_KEY, true);
+      await setPlatformFlag(GLOBAL_SEARCH_LEAKAGE_FLAG_KEY, true);
       const res = await put(appLimited, true);
       expect(res.statusCode).toBe(409);
       expect(codes(res)).toEqual(["ESCROW_NOT_ATTESTED"]);
+    });
+
+    it("leakage not attested alone refuses (the kill switch being on does not stand in for the experiment)", async () => {
+      await setPlatformFlag(GLOBAL_SEARCH_PLATFORM_FLAG_KEY, true);
+      await setPlatformFlag(GLOBAL_SEARCH_ESCROW_FLAG_KEY, true);
+      const res = await put(appLimited, true);
+      expect(res.statusCode).toBe(409);
+      expect(codes(res)).toEqual(["LEAKAGE_NOT_ATTESTED"]);
     });
 
     it("a legacy-envelope message body alone refuses; a ring body does not", async () => {
@@ -387,6 +402,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C4 global search settings - LIVE Postgres"
           platformEnabled: true,
           legacyBodiesMigrated: true,
           escrowAttested: true,
+          leakageAttested: true,
           rateLimitActive: true,
         },
       });
@@ -399,9 +415,14 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C4 global search settings - LIVE Postgres"
     it("a tenant-scoped feature_flag row for either platform key never satisfies the check", async () => {
       await setPlatformFlag(GLOBAL_SEARCH_PLATFORM_FLAG_KEY, true, ORG_A);
       await setPlatformFlag(GLOBAL_SEARCH_ESCROW_FLAG_KEY, true, ORG_A);
+      await setPlatformFlag(GLOBAL_SEARCH_LEAKAGE_FLAG_KEY, true, ORG_A);
       const res = await put(appLimited, true);
       expect(res.statusCode).toBe(409);
-      expect(codes(res)).toEqual(["ESCROW_NOT_ATTESTED", "PLATFORM_FLAG_OFF"]);
+      expect(codes(res)).toEqual([
+        "ESCROW_NOT_ATTESTED",
+        "LEAKAGE_NOT_ATTESTED",
+        "PLATFORM_FLAG_OFF",
+      ]);
       // an explicit platform false with a tenant true still refuses
       await setPlatformFlag(GLOBAL_SEARCH_PLATFORM_FLAG_KEY, false);
       expect(codes(await put(appLimited, true))).toContain("PLATFORM_FLAG_OFF");
@@ -497,6 +518,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C4 global search settings - LIVE Postgres"
           platformEnabled: false,
           legacyBodiesMigrated: true,
           escrowAttested: false,
+          leakageAttested: false,
           rateLimitActive: true,
         },
       });
@@ -511,6 +533,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C4 global search settings - LIVE Postgres"
         platformEnabled: true,
         legacyBodiesMigrated: false,
         escrowAttested: true,
+        leakageAttested: true,
         rateLimitActive: false,
       });
       expect(body.rebuild).toMatchObject({

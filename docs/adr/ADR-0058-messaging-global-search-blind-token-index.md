@@ -632,13 +632,15 @@ messages (support access goes through the audited break-glass path elsewhere).
   or `packages/db/src`; the value exists only in the `role_category` enum (`packages/db/migrations/0008_authorization_m3_tables.sql`
   line 4). How family identities receive roles **could not be determined from this repo**, so no grant is found, but absence of a
   grant is not proven; the live test and the ratchet are required for that reason.
-- **The member picker excludes the three categories; nothing else was found to.** `mention-non-member-service-db.ts` line 64
-  filters only the "Add <name>?" **picker**. The add-member path itself, `addMember` (`messaging-route-service-db.ts` ~lines
-  1825-1857), checks `assertMayManageMembers` and `assertActiveMessagingUser` (lines 343-352), and `isActiveMessagingUser` tests only
-  active org membership and active user status (~lines 322-341); **no role-category check was found in that path**. So it is not
-  established that these identities can never be added to a channel. The real controls are the **route allow-list, the live test and
-  the static ratchet** above. A verification item (below) covers the add-member path, and closing it (refusing the three categories
-  in `addMember`) is a recommended follow-up, not a prerequisite for this ADR.
+- **The member picker and every membership write now refuse the three categories (design review F6).** `mention-non-member-service-db.ts`
+  line 64 filters the "Add <name>?" **picker**, and `member-category-gate.ts` makes every `channel_member` write path (`addMember`,
+  `ensureDmMember` for both DM participants, the care-team roster sync, and the creator rows of provider-opened, announcement and
+  department channels) refuse an identity holding an active or disabled (not expired) role of `patient_family`, `external_auditor` or
+  `platform_staff`: `addMember`/`openDm` answer 422 `MEMBER_CATEGORY_NOT_ALLOWED`, the roster sync skips such an identity. The deny set is
+  `GLOBAL_SEARCH_ROLE_POLICY`'s, one source of truth. No channel kind legitimately holds these categories as a member (families message
+  through portal accounts, which are not `channel_member` rows), so the refusal is unconditional. A static ratchet fails when a new
+  membership-write path skips the gate. Rows already present before the gate shipped are not removed by it; the route allow-list,
+  live test and ratchet above remain the controls for those.
 
 ### Channel state by user state
 
@@ -659,7 +661,7 @@ Every row maps to a live test in the new suite `test:m36:global-search:live` (re
 | 10 | `care_team`, **access ended** (patient discharged / user off the care team) | `memberSource = 'auto'` member no longer on the roster | Zero | `CareTeamProvider.careTeamMembers` | `auto-member-off-roster-zero` |
 | 11 | `care_team`, access ended | `memberSource = 'manual'` member | Results while the manual membership and Part 2 hold | `candidate.memberSource !== 'auto'` returns true | `manual-member-survives-roster-change` |
 | 12 | `announcement` | Any active user, no membership row | Results | org-wide rule | `announcement-org-wide` |
-| 13 | Any | Identity with role category `patient_family`, `external_auditor` or `platform_staff` | Zero (decided; see "Who may call the route") | the route refuses these categories before any search runs; the member **picker** excludes them (`mention-non-member-service-db.ts` line 64) but no category check was found in the add-member path, so the route allow-list is the control | `non-staff-identities-zero` |
+| 13 | Any | Identity with role category `patient_family`, `external_auditor` or `platform_staff` | Zero (decided; see "Who may call the route") | the route refuses these categories before any search runs; the member **picker** excludes them (`mention-non-member-service-db.ts` line 64) and the add-member path now refuses them (`MEMBER_CATEGORY_NOT_ALLOWED`); the route allow-list remains the control for rows that pre-date the gate | `non-staff-identities-zero` |
 | 14 | Any | Member, message sent **before** they joined | Results (**User decision**: findable iff readable through the history path) | no `joined_at` filter on any read path; decided, see "Pre-join history" | `pre-join-history-matches-history-read` |
 | 15 | Any | Other tenant | Zero, tags differ | per-tenant key, RLS | `cross-tenant-collision` |
 | 16 | Message `deleted` | Anyone | Never | prefilter and step 8.5 | `deleted-never-returned` |
@@ -813,9 +815,9 @@ residual risk. The review record is linked from this ADR before Status changes.
     platform row off or absent; the query path and the indexer both still refuse (they read the org-NULL row directly, not
     `forOrg`). OFF-then-ON: queries stay refused until outbox replay and reconciliation report zero drift; a message deleted or
     redacted while OFF is absent from the index after turning ON.
-  - **Add-member path:** a test attempts `addMember` for an identity holding each of the three excluded categories and records the
-    actual behaviour (today expected: allowed, as no category check was found); the route allow-list test (row 13) must pass
-    regardless. If a follow-up adds the refusal, the test flips to asserting it.
+  - **Add-member path:** a live test attempts `addMember` for an identity holding each of the three excluded categories and asserts the
+    422 `MEMBER_CATEGORY_NOT_ALLOWED` refusal (and that an allowed workforce identity is accepted); the route allow-list test (row 13)
+    must pass regardless.
   - **Escrow independence:** the custodian record shows three distinct natural persons and a dual-control vault procedure; a
     re-drill is on record after each custodian change and yearly; the same drill exists for `M34_TENANT_KEK`.
   - **Tail bound:** `P(candidates > CANDIDATE_CAP)` is measured on a production-shaped corpus for single-term and two-term queries;
@@ -846,7 +848,7 @@ What is genuinely still open, all for the reviewers (the items the user answered
   from the index (Proposed default: not excluded in v1; see the leakage table).
 - **Role-category allow-list:** whether `external_collaborator`, `volunteer` and `temporary_special` are added to it (they are off it
   by default), how `patient_family` identities receive roles (not determinable from this repo; the live test and the ratchet cover
-  it), and whether `addMember` should refuse the three excluded categories.
+  it), (`addMember` now refuses the three excluded categories).
 - **Heavy-tail handling and prefix hierarchy:** whether the initial head-bucket refusal is enough or a per-tenant frequency
   stop-word list is wanted; prefix lengths are decided as `3, 5, 8, 12` (2026-10-13 AI desk review, pending human sign-off); whether head words additionally lose their prefix tags remains open.
 - **Privacy-officer input:** the consequences of the pre-join-history decision ("Pre-join history") are covered by the risk-analysis

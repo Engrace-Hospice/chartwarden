@@ -96,6 +96,7 @@ import {
   markMessagesRead,
   withValidMessageContent,
 } from "./messaging-write-core";
+import { assertMemberCategoryAllowed } from "./member-category-gate";
 import { type Part2ChannelGate, createSeamPart2ChannelGate } from "./part2-channel-gate";
 import { createDbReactionPinService } from "./reaction-pin-service-db";
 import { decodeStoredBody, sameMentionToken, storedBodyFor } from "./rich-body-codec";
@@ -538,6 +539,7 @@ async function ensureDmMember(
     .where(and(eq(CM.organizationId, orgId), eq(CM.channelId, channelId), eq(CM.userId, userId)))
     .orderBy(desc(CM.joinedAt));
   if (rows.some((row) => row.removedAt === null)) return;
+  await assertMemberCategoryAllowed(tx, orgId, userId);
   const reusable = rows[0];
   if (reusable) {
     await tx
@@ -1883,6 +1885,7 @@ export function createDbMessagingRouteService(
           )
           .limit(1)) as Array<{ id: string }>;
         if (active[0]) return; // already an active member — idempotent
+        await assertMemberCategoryAllowed(tx, orgId, input.userId);
         await tx.insert(CM).values({
           organizationId: orgId,
           channelId: input.channelId,

@@ -56,6 +56,7 @@ const CHECK_MESSAGES: Record<ChecklistFailureCode, string> = {
   LEGACY_BODIES_PRESENT:
     "Some message bodies are still on the legacy envelope (key-ring migration incomplete).",
   ESCROW_NOT_ATTESTED: "The key escrow and restore drill are not on record.",
+  LEAKAGE_NOT_ATTESTED: "The measured leakage experiment and its sign-off are not on record.",
   RATE_LIMIT_INACTIVE: "The per-route search rate limit is not active.",
   PURGE_IN_PROGRESS:
     "The purge started by the last switch-off has not finished; wait for it to complete.",

@@ -5,7 +5,7 @@ rollback. The design and the reasons are in [ADR-0058](../adr/ADR-0058-messaging
 [m36-body-key-ring.md](./m36-body-key-ring.md). **Nothing here is done by merging code.** Each stage is an operator action on production.
 
 **Gate zero: the ADR-0058 design review.** Read [the review record](../reviews/ADR-0058-design-review-2026-10-13.md). Its conditions are
-preconditions of Stage 6 below. The review is an AI desk review pending human sign-off; do not treat the platform flag as attested until a
+preconditions of Stage 6 below. The review is an AI desk review pending human sign-off; do not set the leakage-attested flag until a
 named security architect and privacy officer have signed it and the measured leakage experiment has passed.
 
 ## What gates a tenant
@@ -15,11 +15,12 @@ named security architect and privacy officer have signed it and the measured lea
 | `REDIS_URL` (Valkey) so the search limiter is cluster-wide | `buildGlobalSearchRateLimit`: no shared store means no limiter, the route 503s and the checklist reports `RATE_LIMIT_INACTIVE` | deployment env |
 | No legacy-envelope body (`message`, `message_revision`) for the tenant | checklist `LEGACY_BODIES_PRESENT` (409 on the switch) | WP 2.13 backfill |
 | `messaging.global_search_escrow_attested` (platform row, org NULL) | checklist `ESCROW_NOT_ATTESTED` | ops, only after a real drill |
-| `messaging.global_search_platform_enabled` (platform row, org NULL) | checklist `PLATFORM_FLAG_OFF`; **re-read on every query and every index write**, so it is also the kill switch | ops, only after the leakage review |
+| `messaging.global_search_leakage_attested` (platform row, org NULL) | checklist `LEAKAGE_NOT_ATTESTED`; gates the tenant ON only | ops, only after the measured leakage experiment passed and the humans signed |
+| `messaging.global_search_platform_enabled` (platform row, org NULL) | checklist `PLATFORM_FLAG_OFF`; **re-read on every query and every index write**, so it is the kill switch | ops, to turn the feature on (after the leakage attestation) and to kill it |
 | Tenant switch `PUT /api/v1/messaging/global-search/settings {enabled:true}` | needs `messaging.global_search.manage` plus fresh step-up `messaging.global_search.configure`; 409 with the failing checks | org admin |
 | Index `ready` | query path stays closed until reconcile reports zero drift; progress is `rebuild` on `GET .../settings` | automatic (`messaging.search_maintenance` worker) |
 
-A tenant-scoped `feature_flag` row can **never** satisfy the platform or escrow checks; both read the `organization_id IS NULL` row only.
+A tenant-scoped `feature_flag` row can **never** satisfy the platform, escrow or leakage checks; all read the `organization_id IS NULL` row only.
 
 ## Stage 1: Valkey and `REDIS_URL`
 
@@ -82,23 +83,28 @@ Only after Stages 3 and 4 are on record, an authorised platform operator sets th
 and the required platform permission from `docs/api/openapi.json`). It is audited. It is a statement of fact: set it only when the drill record
 exists. To withdraw it, set it false.
 
-## Stage 6: the leakage test and the platform flag
+## Stage 6: the leakage attestation, then the platform flag
 
-`messaging.global_search_platform_enabled` is the ops attestation that the leakage review passed, **and** the kill switch.
+Two separate platform rows. `messaging.global_search_leakage_attested` is the statement that the leakage review passed (checklist item,
+read from the org-NULL row only, fail closed). `messaging.global_search_platform_enabled` is the kill switch and nothing else: it turns the
+feature on and off and is re-read on every query and index write.
 
-Preconditions, all recorded:
+Preconditions for the leakage-attested flag, all recorded:
 
 1. The design review's human sign-off (security architect and privacy officer), and every condition in the
    [review record](../reviews/ADR-0058-design-review-2026-10-13.md) closed.
 2. The measured leakage experiment (ADR "Design review requirement" item 2) run at `T = 19` on synthetic hospice notes, with the result and the
-   pass criterion in the record. If it has not been run, the flag stays off. No code enforces this; it is a control by discipline, so name the
-   person who attested.
+   pass criterion in the record, and the person who attested named.
 3. The HIPAA risk-analysis entry for the new PHI-derived store is filed.
 4. Product-owner acceptance of the residual risk.
 
-Then set the platform row true (same admin as Stage 5). The kill switch is the same row set false
-(`POST /api/v1/platform/feature-flags/:flagKey/kill-switch` is the audited emergency form). It overrides every tenant ON and stops the query path
-and the indexer on the next request.
+Then:
+
+1. Set `messaging.global_search_leakage_attested` true (same admin as Stage 5). Set it only after the experiment passed and the humans signed;
+   it is a statement of fact. To withdraw it, set it false (new tenant ONs are refused; already-ON tenants are not affected).
+2. Set `messaging.global_search_platform_enabled` true to allow the feature to run. The kill switch is the same row set false
+   (`POST /api/v1/platform/feature-flags/:flagKey/kill-switch` is the audited emergency form). It overrides every tenant ON and stops the query
+   path and the indexer on the next request.
 
 ## Stage 7: switch one tenant on, then verify the index build
 
@@ -119,11 +125,12 @@ and the indexer on the next request.
 | Stop all search now | platform flag `messaging.global_search_platform_enabled` false (or the kill-switch route) | queries and indexing refuse on the next request; rows stay |
 | Stop one tenant | admin `PUT .../settings {"enabled":false}` | query path refuses; purge deletes the tenant's token rows; ON is refused while a purge is in progress |
 | Withdraw the escrow claim | escrow flag false | new tenant ONs are refused |
+| Withdraw the leakage claim | leakage-attested flag false | new tenant ONs are refused (does not stop running tenants; use the kill switch for that) |
 | Roll back sealing | `M36_BODY_SEAL_SCHEME=legacy` | new writes legacy again; ring rows remain readable |
 
 ## Do not
 
-- Do not set the escrow or platform flag to make a checklist pass. They are statements of fact.
+- Do not set the escrow, leakage-attested or platform flag to make a checklist pass. They are statements of fact.
 - Do not run the backfill without the Stage 3 record, against the shared dev cluster, or with the drill variable in a committed env file.
 - Do not rotate or remove `MESSAGING_ENCRYPTION_KEY` or `M34_TENANT_KEK` during the backfill window.
 - Do not enable more than one tenant before the first is verified.
