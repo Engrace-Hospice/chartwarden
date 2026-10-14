@@ -63,6 +63,7 @@ import {
   VerifyEndpointBodySchema,
   parse,
 } from "./messaging-typebox";
+import { registerPatientContextRoutes } from "./patient-context-routes";
 import { type PresenceRouteDeps, registerPresenceRoutes } from "./presence-routes";
 import { registerReactionPinRoutes } from "./reaction-pin-routes";
 import { registerMessageSearchRoutes } from "./search-routes";
@@ -320,6 +321,9 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     read: READ,
     viewChannel: VIEW_CHANNEL,
   });
+
+  // --- WP 3.1: patient context panel (own file; per-tile permission re-check, a denied tile is absent) ---------------
+  registerPatientContextRoutes(app, { read: READ });
 
   // Structured autocomplete is scoped to a channel whose effective visibility has already been
   // revalidated. Patient results are intentionally limited by the service to the linked care-team

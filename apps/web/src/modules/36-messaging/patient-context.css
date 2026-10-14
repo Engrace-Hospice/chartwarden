@@ -54,3 +54,27 @@
   font-weight: 600;
   text-decoration: none;
 }
+
+.wx-messaging-context-tiles {
+  display: grid;
+  gap: 12px;
+}
+.wx-messaging-context-tile {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border, #d9dee7);
+  border-radius: 8px;
+}
+.wx-messaging-context-tile h3 {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.wx-messaging-context-tile p,
+.wx-messaging-context-tile ul {
+  margin: 0;
+}
+.wx-messaging-context-tile small {
+  color: var(--color-muted, #5b6472);
+}

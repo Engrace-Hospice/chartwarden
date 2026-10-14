@@ -143,6 +143,9 @@ const ROUTES: Record<string, Verdict> = {
   "GET /api/v1/messaging/attachments/:id/access": { kind: "idor" },
   "GET /api/v1/messaging/dm/staff": { kind: "scoped" },
   "POST /api/v1/messaging/patients/:patientId/care-team-channel": { kind: "idor" },
+  // WP 3.1 patient context panel: per-tile permission re-check; a caller with no tile access gets an empty projection for
+  // a real and a random patient alike (asserted below). Tile DATA isolation rests on each owning seam's RLS.
+  "GET /api/v1/messaging/patients/:patientId/context": { kind: "idor" },
   // Admin screens PR 1a: org_admin member list + archive; attacked in m36-channel-admin.live.test.ts.
   "GET /api/v1/messaging/channels/:id/members": { kind: "idor" },
   "POST /api/v1/messaging/channels/:id/archive": { kind: "idor" },
@@ -232,6 +235,8 @@ const REGISTRAR_FILES = [
   "presence-typebox.ts", // schemas only
   "global-search-settings-routes.ts", // WP 2.7b C4 tenant global search switch
   "global-search-settings-typebox.ts", // schemas only
+  "patient-context-routes.ts", // WP 3.1 context panel, mounted by registerMessagingRoutes
+  "patient-context-typebox.ts", // schemas only
   "template-routes.ts",
   "template-typebox.ts", // schemas only
   "uuid-params.ts", // preHandler helper, no routes
@@ -1624,6 +1629,18 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       const route = "POST /api/v1/messaging/patients/:patientId/care-team-channel";
       await expectNoOracle(route, bUser, { patientId: patientA });
       await expectNoOracle(route, outsider, { patientId: patientA });
+    });
+    it("the WP 3.1 context panel gives org B and an in-org outsider the same empty projection for A's patient as for a random id", async () => {
+      const route = "GET /api/v1/messaging/patients/:patientId/context";
+      for (const attacker of [bUser, outsider]) {
+        attackers.add(attacker.name);
+        const real = await call(route, attacker, { patientId: patientA });
+        const ctl = await call(route, attacker, { patientId: randomUUID() });
+        expect(real.statusCode).toBe(ctl.statusCode);
+        expect(real.json().tiles).toEqual(ctl.json().tiles);
+        expect(real.json().tiles).toEqual({});
+        expectNoLeak(real.body, attacker, `${attacker.name} ${route}`);
+      }
     });
   });
 

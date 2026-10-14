@@ -1310,6 +1310,7 @@ import {
   ThreadResponseSchema as M36ThreadResponseSchema,
   VerifyEndpointBodySchema as M36VerifyEndpointBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/messaging-typebox";
+import { PatientContextResponseSchema as M36PatientContextResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/patient-context-typebox";
 import {
   CreatePollBodySchema as M36CreatePollBodySchema,
   CreatePollResponseSchema as M36CreatePollResponseSchema,
@@ -9066,6 +9067,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Search every channel the caller may read (WP 2.7b, ADR-0058 Proposed, INERT until enabled: whole words, last word is a word beginning; blind-token index, authority re-checked per request; 403 GLOBAL_SEARCH_DISABLED / GLOBAL_SEARCH_ROLE_NOT_PERMITTED, 503 GLOBAL_SEARCH_INDEX_NOT_READY / DEGRADED, 422 bad query; `refine: true` asks the user to add a word; read-audited without the query or cursor; never cached)",
     query: M36GlobalSearchQuerySchema,
     response: M36GlobalSearchResponseSchema,
+  },
+  "GET /api/v1/messaging/patients/:patientId/context": {
+    summary:
+      "Patient context panel (WP 3.1): a read-only projection through the owning modules' seams. Each tile re-checks that module's permission on the request; a tile the caller may not see is ABSENT (never null/403) and its source is not read; a failing seam makes only its own tile `unavailable`; `as_of` is when the panel read the source. Read-audited against the patient.",
+    response: M36PatientContextResponseSchema,
   },
   "GET /api/v1/messaging/channels/:id/search": {
     summary:
