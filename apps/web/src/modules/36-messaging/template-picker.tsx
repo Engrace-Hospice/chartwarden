@@ -4,7 +4,7 @@
 // the text in the draft, the user may edit it, and what is sent is an ordinary message (nothing links it to the reply).
 import { Glyph } from "@wardenx/ui";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import type { FocusEvent, JSX, KeyboardEvent } from "react";
+import type { FocusEvent, JSX, KeyboardEvent, RefObject } from "react";
 import { CATEGORY_LABEL, SCOPE_LABEL, type SavedReply } from "./saved-replies-types";
 import { useSavedReplies } from "./use-saved-replies";
 import "./saved-replies.css";
@@ -15,6 +15,10 @@ export interface TemplatePickerProps {
   readonly onInsert: (body: string) => void;
   /** Focus goes back to the composer after the picker closes. */
   readonly onClosed: () => void;
+  /** WP 3.3: when set, an "SBAR" item tops the list; choosing it calls this (the composer opens the SBAR form). */
+  readonly onChooseSbar?: () => void;
+  /** The toggle button, so the SBAR form can hand focus back to it. */
+  readonly toggleRef?: RefObject<HTMLButtonElement>;
 }
 
 export function matchesQuery(reply: SavedReply, query: string): boolean {
@@ -27,7 +31,20 @@ export function matchesQuery(reply: SavedReply, query: string): boolean {
   );
 }
 
-export function TemplatePicker({ disabled, onInsert, onClosed }: TemplatePickerProps): JSX.Element {
+const SBAR_LABEL = "SBAR";
+const matchesSbar = (query: string): boolean => {
+  const needle = query.trim().toLowerCase();
+  return !needle || "sbar situation background assessment recommendation".includes(needle);
+};
+const SBAR_DESCRIPTION = "Situation, Background, Assessment, Recommendation";
+
+export function TemplatePicker({
+  disabled,
+  onInsert,
+  onClosed,
+  onChooseSbar,
+  toggleRef,
+}: TemplatePickerProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -41,14 +58,20 @@ export function TemplatePicker({ disabled, onInsert, onClosed }: TemplatePickerP
     () => replies.items.filter((reply) => matchesQuery(reply, query)),
     [replies.items, query],
   );
-  const active = visible[Math.min(activeIndex, Math.max(visible.length - 1, 0))];
+  // The SBAR item is entry 0 while it is offered and matches the search; replies follow.
+  const sbarShown = Boolean(onChooseSbar) && matchesSbar(query);
+  const offset = sbarShown ? 1 : 0;
+  const entryCount = visible.length + offset;
+  const entryIndex = Math.min(activeIndex, Math.max(entryCount - 1, 0));
+  const sbarActive = sbarShown && entryIndex === 0;
+  const active = sbarActive ? undefined : visible[entryIndex - offset];
 
   useEffect(() => {
     if (open) searchRef.current?.focus();
   }, [open]);
 
   // Keep the option the arrow keys landed on visible inside the scrolling list.
-  const activeId = active?.id;
+  const activeId = sbarActive ? "sbar" : active?.id;
   // biome-ignore lint/correctness/useExhaustiveDependencies: the active reply's id is the trigger
   useEffect(() => {
     if (!open || !activeId) return;
@@ -76,6 +99,11 @@ export function TemplatePicker({ disabled, onInsert, onClosed }: TemplatePickerP
     onClosed();
   }
 
+  function chooseSbar(): void {
+    setOpen(false);
+    onChooseSbar?.();
+  }
+
   function choose(reply: SavedReply | undefined): void {
     if (!reply) return;
     setOpen(false);
@@ -86,12 +114,13 @@ export function TemplatePicker({ disabled, onInsert, onClosed }: TemplatePickerP
     if (event.nativeEvent.isComposing) return;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      if (visible.length === 0) return;
+      if (entryCount === 0) return;
       const step = event.key === "ArrowDown" ? 1 : -1;
-      setActiveIndex((current) => (current + step + visible.length) % visible.length);
+      setActiveIndex((current) => (current + step + entryCount) % entryCount);
     } else if (event.key === "Enter") {
       event.preventDefault();
-      choose(active);
+      if (sbarActive) chooseSbar();
+      else choose(active);
     }
   }
 
@@ -110,6 +139,7 @@ export function TemplatePicker({ disabled, onInsert, onClosed }: TemplatePickerP
   }
 
   const optionId = (reply: SavedReply): string => `${listId}-${reply.id}`;
+  const activeDescendant = sbarActive ? `${listId}-sbar` : active ? optionId(active) : undefined;
   const statusText =
     replies.status === "error"
       ? "Saved replies could not be loaded."
@@ -121,6 +151,7 @@ export function TemplatePicker({ disabled, onInsert, onClosed }: TemplatePickerP
     <div className="wx-template-picker" ref={rootRef} onBlur={onPickerBlur}>
       <button
         type="button"
+        ref={toggleRef}
         className="wx-template-picker-toggle"
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -148,7 +179,7 @@ export function TemplatePicker({ disabled, onInsert, onClosed }: TemplatePickerP
             aria-expanded="true"
             aria-controls={listId}
             aria-autocomplete="list"
-            aria-activedescendant={active ? optionId(active) : undefined}
+            aria-activedescendant={activeDescendant}
             placeholder="Search saved replies"
             value={query}
             onChange={(event) => {
@@ -173,6 +204,22 @@ export function TemplatePicker({ disabled, onInsert, onClosed }: TemplatePickerP
             role="listbox"
             aria-label="Saved replies"
           >
+            {sbarShown ? (
+              <button
+                id={`${listId}-sbar`}
+                type="button"
+                // biome-ignore lint/a11y/useSemanticElements: a native option cannot render the title and description markup
+                role="option"
+                tabIndex={-1}
+                aria-selected={sbarActive}
+                className={sbarActive ? "wx-template-option is-active" : "wx-template-option"}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={chooseSbar}
+              >
+                <strong>{SBAR_LABEL}</strong>
+                <span>{SBAR_DESCRIPTION}</span>
+              </button>
+            ) : null}
             {visible.map((reply) => (
               <button
                 key={reply.id}

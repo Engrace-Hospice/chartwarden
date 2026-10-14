@@ -72,6 +72,12 @@ import {
 import { registerPatientContextRoutes } from "./patient-context-routes";
 import { type PresenceRouteDeps, registerPresenceRoutes } from "./presence-routes";
 import { registerReactionPinRoutes } from "./reaction-pin-routes";
+import {
+  DISABLED_SBAR,
+  type SbarRouteDeps,
+  assertSbarFlag,
+  registerSbarRoutes,
+} from "./sbar-routes";
 import { registerMessageSearchRoutes } from "./search-routes";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
@@ -94,6 +100,8 @@ export interface MessagingRouteDeps {
   presence?: PresenceRouteDeps;
   /** WP 3.2: clinical links (flag, source seams, link store). Omitted => flag off: links are refused and resolve 404s. */
   clinicalLinks?: Omit<ClinicalLinkRouteDeps, "canViewChannel">;
+  /** WP 3.3: SBAR (flag + policy store). Omitted => flag off: an sbar body is refused and the policy route 404s. */
+  sbar?: SbarRouteDeps;
 }
 
 /**
@@ -340,6 +348,10 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   };
   registerClinicalLinkRoutes(app, { read: READ }, clinicalLinkDeps);
 
+  // --- WP 3.3: SBAR (policy read/admin routes; the flag check on a send/edit body; lengths are checked in the service) --
+  const sbarDeps = deps.sbar ?? DISABLED_SBAR;
+  registerSbarRoutes(app, sbarDeps);
+
   // Structured autocomplete is scoped to a channel whose effective visibility has already been
   // revalidated. Patient results are intentionally limited by the service to the linked care-team
   // patient; this route never acts as a general patient directory.
@@ -431,6 +443,7 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
       const body = parse(SendMessageBodySchema, request.body);
       const rich = resolveRichWrite(body);
       // WP 3.2: every clinicalLink node is authorised BEFORE the message commits (generic 422 on any failure).
+      await assertSbarFlag(request, sbarDeps, rich?.richBody);
       const clinicalLinks = await validateRichBodyLinks(request, clinicalLinkDeps, rich?.richBody);
       const result = await service.sendMessage(organizationId, {
         channelId: id,
@@ -459,6 +472,7 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
       throw new WardenXError("VALIDATION_FAILED", "an edit needs a body or a bodyDoc", 422);
     }
     const rich = resolveRichWrite(body);
+    await assertSbarFlag(request, sbarDeps, rich?.richBody);
     const clinicalLinks = await validateRichBodyLinks(request, clinicalLinkDeps, rich?.richBody);
     return service.editMessage(organizationId, {
       userId,

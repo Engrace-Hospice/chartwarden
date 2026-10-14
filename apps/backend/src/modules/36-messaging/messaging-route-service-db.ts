@@ -102,6 +102,7 @@ import {
 import { type Part2ChannelGate, createSeamPart2ChannelGate } from "./part2-channel-gate";
 import { createDbReactionPinService } from "./reaction-pin-service-db";
 import { decodeStoredBody, sameMentionToken, storedBodyFor } from "./rich-body-codec";
+import { assertSbarWritable } from "./sbar/sbar-write-check";
 
 const CH = schema.channels;
 const CM = schema.channelMembers;
@@ -1379,6 +1380,8 @@ export function createDbMessagingRouteService(
         async (tx) => {
           const ch = await channelOr404(tx, orgId, input.channelId);
           if (ch.isArchived) throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+          // WP 3.3: channel kind, tenant policy and section lengths; a refusal rolls the whole send back.
+          await assertSbarWritable(tx, orgId, input.richBody, ch.kind);
           const { messageId, createdAt, replayed } = await insertEncryptedMessage(tx, cipher, {
             orgId,
             channelId: input.channelId,
@@ -1553,6 +1556,11 @@ export function createDbMessagingRouteService(
             "the edit window has closed; send a new message that quotes this one",
             409,
           );
+        }
+        // WP 3.3: an edit is held to the same SBAR rules as a send (channel kind, tenant policy, lengths).
+        if (input.richBody) {
+          const channel = await channelOr404(tx, orgId, m.channelId);
+          await assertSbarWritable(tx, orgId, input.richBody, channel.kind);
         }
         // ADR-0055 item 2: keep the body being replaced (and its mention snapshot) before overwriting the head.
         const [{ lastNo }] = (await tx

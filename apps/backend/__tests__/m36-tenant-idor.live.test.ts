@@ -80,6 +80,7 @@ import {
 import { registerScheduledSendRoutes } from "../src/modules/36-messaging/routes/scheduled-send-routes";
 import { registerTemplateRoutes } from "../src/modules/36-messaging/routes/template-routes";
 import { registerMessagingWebhookRoutes } from "../src/modules/36-messaging/routes/webhook-routes";
+import { createDbSbarPolicyStore } from "../src/modules/36-messaging/sbar/sbar-policy-store-db";
 import { createDbScheduledSendService } from "../src/modules/36-messaging/scheduled/scheduled-send-service-db";
 import { createDbConsentEvaluator } from "../src/modules/39-consent/index";
 import { appRoleConnectionString } from "./_live-app-role";
@@ -150,6 +151,11 @@ const ROUTES: Record<string, Verdict> = {
   // WP 3.2 clinical links: the id is a link's; org B, an in-org non-member, a hidden source and a random id all get the
   // identical `{state:"unavailable"}` (asserted below), and the source seam is never consulted for them.
   "GET /api/v1/messaging/clinical-links/:linkId/resolve": { kind: "idor" },
+  // WP 3.3 SBAR policy: an org-scoped singleton with no id to guess; org comes from the request context only (two orgs'
+  // views and writes are compared below, and the policy table's FORCE RLS is attacked as wardenx_app in m36-sbar.live).
+  "GET /api/v1/messaging/sbar/policy": { kind: "scoped" },
+  "PUT /api/v1/messaging/template-admin/sbar-policy": { kind: "scoped" },
+  "DELETE /api/v1/messaging/template-admin/sbar-policy": { kind: "scoped" },
   // Admin screens PR 1a: org_admin member list + archive; attacked in m36-channel-admin.live.test.ts.
   "GET /api/v1/messaging/channels/:id/members": { kind: "idor" },
   "POST /api/v1/messaging/channels/:id/archive": { kind: "idor" },
@@ -241,6 +247,8 @@ const REGISTRAR_FILES = [
   "global-search-settings-typebox.ts", // schemas only
   "clinical-link-routes.ts", // WP 3.2 link resolve, mounted by registerMessagingRoutes
   "clinical-link-typebox.ts", // schemas only
+  "sbar-routes.ts", // WP 3.3 SBAR policy, mounted by registerMessagingRoutes
+  "sbar-typebox.ts", // schemas only
   "patient-context-routes.ts", // WP 3.1 context panel, mounted by registerMessagingRoutes
   "patient-context-typebox.ts", // schemas only
   "template-routes.ts",
@@ -432,6 +440,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     "attachment_access_event",
     "message_entity_reference",
     "clinical_link",
+    "tenant_sbar_policy",
     "message_reaction",
     "message_pin",
     "delivery_endpoint",
@@ -549,6 +558,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     const self = ["notifications.preferences.manage", "notifications.endpoint.manage"];
     const adminKeys = [
       "messaging.manage_members",
+      "messaging.template.manage",
       "messaging.announce",
       "alert.rules.read",
       "alert.rules.manage",
@@ -603,6 +613,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         },
         store: createDbClinicalLinkStore(handle.db),
       },
+      sbar: { isEnabled: async () => true, store: createDbSbarPolicyStore(handle.db) },
     });
     const blobs = new Map<string, Uint8Array>();
     const fakeStorage: AttachmentStoragePort = {
@@ -1699,6 +1710,29 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         expect(real.body).not.toContain(LINK_SOURCE);
         expect(real.body).not.toContain(patientA);
       }
+    });
+    it("WP 3.3: SBAR policy reads and writes touch only the caller's own org", async () => {
+      const policy = "/api/v1/messaging/sbar/policy";
+      const admin_ = "/api/v1/messaging/template-admin/sbar-policy";
+      const get = (who: Who) => call(`GET ${policy}`, who, {});
+      const put = (who: Who, minChars: number) =>
+        call(`PUT ${admin_}`, who, {}, { minChars: { situation: minChars } });
+      expect((await put(adminA, 77)).statusCode).toBe(200);
+      const bBefore = await get(bUser);
+      expect(bBefore.json()).toMatchObject({ customized: false });
+      expect(bBefore.json().minChars.situation).toBe(1);
+      expect((await get(u2)).json().minChars.situation).toBe(77);
+      // org B's admin writes and clears its own row; org A's row is untouched.
+      expect((await put(adminB, 9)).statusCode).toBe(200);
+      expect((await get(u2)).json().minChars.situation).toBe(77);
+      expect((await get(bUser)).json().minChars.situation).toBe(9);
+      expect((await call(`DELETE ${admin_}`, adminB, {})).statusCode).toBe(204);
+      expect((await get(u2)).json().minChars.situation).toBe(77);
+      // non-admins of either org cannot write.
+      expect((await put(u2, 5)).statusCode).toBe(403);
+      expect((await put(bUser, 5)).statusCode).toBe(403);
+      expect((await get(u2)).json().minChars.situation).toBe(77);
+      expect((await call(`DELETE ${admin_}`, adminA, {})).statusCode).toBe(204);
     });
     it("the WP 3.1 context panel gives org B and an in-org outsider the same empty projection for A's patient as for a random id", async () => {
       const route = "GET /api/v1/messaging/patients/:patientId/context";

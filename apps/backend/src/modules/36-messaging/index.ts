@@ -172,6 +172,7 @@ import { registerPollRoutes as _registerPollRoutes } from "./routes/poll-routes"
 import type { PresenceRouteDeps } from "./routes/presence-routes";
 import { registerScheduledSendRoutes as _registerScheduledSendRoutes } from "./routes/scheduled-send-routes";
 import { registerTemplateRoutes as _registerTemplateRoutes } from "./routes/template-routes";
+import type { buildSbarDeps as _buildSbarDeps } from "./sbar/binding";
 import { createDbScheduledSendService as _createDbScheduledSendService } from "./scheduled/scheduled-send-service-db";
 import { createDbTemplateService as _createDbTemplateService } from "./templates/template-service-db";
 
@@ -199,6 +200,8 @@ export function mountMessagingRoutes(
     presence?: PresenceRouteDeps;
     /** WP 3.2: clinical links (tenant flag + source seams + link store). Omitted => flag off. */
     clinicalLinks?: ReturnType<typeof _buildClinicalLinkDeps>;
+    /** WP 3.3: SBAR (tenant flag + policy store). Omitted => flag off. */
+    sbar?: ReturnType<typeof _buildSbarDeps>;
   } = {},
 ): void {
   // GAP-063 — the §4.2 OTP sender; with none bound, sms/email endpoint registration answers 503.
@@ -215,7 +218,8 @@ export function mountMessagingRoutes(
     announcements,
     ...(opts.presence ? { presence: opts.presence } : {}),
     ...(opts.clinicalLinks ? { clinicalLinks: opts.clinicalLinks } : {}),
-  }); // WP 2.9, 2.12, 3.2
+    ...(opts.sbar ? { sbar: opts.sbar } : {}),
+  }); // WP 2.9, 2.12, 3.2, 3.3
   // WP 2.5 — private encrypted drafts (own row per user + channel + thread root).
   _registerDraftRoutes(app, { service: _createDbDraftService({ db }) });
   // WP 2.10 — polls (non-clinical, single choice, named votes); a poll is written through the message write core.
@@ -269,6 +273,7 @@ export function mountMessagingRoutes(
 // WP 2.12 - ephemeral presence/typing: the composition-root binding (Valkey or in-memory store, tenant flag, route limit).
 export { buildPresenceDeps } from "./presence/binding";
 export { buildClinicalLinkDeps } from "./clinical-link/binding";
+export { buildSbarDeps } from "./sbar/binding";
 export { PRESENCE_FLAG_KEY } from "./routes/presence-routes";
 
 // GAP-010 — M36's consumer for M3's `m3.breakglass.invoked` (durable Compliance notification).

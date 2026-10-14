@@ -267,6 +267,47 @@ describe("hostile structure never reaches the DOM", () => {
   );
 });
 
+describe("SbarBlock", () => {
+  const section = (value: string) => [para(text(value))];
+  const sbar = (urgencyHint: string) =>
+    docOf({
+      type: "sbar",
+      urgencyHint,
+      situation: section("Pain uncontrolled"),
+      background: section("Day 3 of care"),
+      assessment: section("Breakthrough pain"),
+      recommendation: section("Call me"),
+    });
+
+  it("renders a labelled section with a definition list, S/B/A/R as terms", () => {
+    const { getByRole, container } = view(sanitized(sbar("routine")));
+    const region = getByRole("region", { name: "SBAR" });
+    expect(region.querySelector("dl")).not.toBeNull();
+    expect(Array.from(region.querySelectorAll("dt")).map((n) => n.textContent)).toEqual([
+      "Situation",
+      "Background",
+      "Assessment",
+      "Recommendation",
+    ]);
+    expect(region.querySelectorAll("dd")[2]?.textContent).toBe("Breakthrough pain");
+    expect(container.textContent).not.toContain("Sender marked");
+    expectInert(container);
+  });
+
+  it.each(["important", "urgent"])("states the sender's %s label in words", (hint) => {
+    const { getByText } = view(sanitized(sbar(hint)));
+    expect(getByText(`Sender marked: ${hint}`)).toBeTruthy();
+  });
+
+  it("falls back to the projection when the sbar block is malformed", () => {
+    const { container } = view({
+      schemaVersion: 1,
+      doc: { type: "doc", content: [{ type: "sbar", urgencyHint: "routine" }] },
+    });
+    expect(container.textContent).toBe("fallback");
+  });
+});
+
 describe("the renderer's source", () => {
   it("never uses innerHTML or dangerouslySetInnerHTML", async () => {
     const { readFileSync } = await import("node:fs");

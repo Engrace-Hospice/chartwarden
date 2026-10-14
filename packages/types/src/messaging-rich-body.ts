@@ -85,7 +85,40 @@ export interface RichCodeBlock {
   readonly type: "codeBlock";
   readonly text: string;
 }
-export type RichBlock = RichParagraph | RichList | RichCodeBlock;
+
+/** WP 3.3: the four SBAR sections in order, their fixed projection labels, and the sender's urgency suggestion. */
+export const SBAR_SECTION_KEYS = [
+  "situation",
+  "background",
+  "assessment",
+  "recommendation",
+] as const;
+export type SbarSectionKey = (typeof SBAR_SECTION_KEYS)[number];
+export const SBAR_SECTION_LABELS: Readonly<Record<SbarSectionKey, string>> = {
+  situation: "Situation",
+  background: "Background",
+  assessment: "Assessment",
+  recommendation: "Recommendation",
+};
+export const SBAR_URGENCY_HINTS = ["routine", "important", "urgent"] as const;
+export type SbarUrgencyHint = (typeof SBAR_URGENCY_HINTS)[number];
+
+export type RichSbarSection = readonly (RichParagraph | RichList)[];
+/**
+ * WP 3.3: a structured SBAR message. A closed block that must be the document's ONLY top-level block. The sanitiser
+ * checks structure only (no length rule: every stored body is re-sanitised on read, so a length rule here would
+ * blank old messages when a floor is raised); lengths are checked on write. `urgencyHint` is a sender label and is
+ * never projected.
+ */
+export interface RichSbar {
+  readonly type: "sbar";
+  readonly urgencyHint: SbarUrgencyHint;
+  readonly situation: RichSbarSection;
+  readonly background: RichSbarSection;
+  readonly assessment: RichSbarSection;
+  readonly recommendation: RichSbarSection;
+}
+export type RichBlock = RichParagraph | RichList | RichCodeBlock | RichSbar;
 export interface RichDoc {
   readonly type: "doc";
   readonly content: readonly RichBlock[];
@@ -390,6 +423,34 @@ function cleanList(node: Record<string, unknown>, depth: number, budget: Budget)
   return { type, content: items };
 }
 
+function cleanSbar(node: Record<string, unknown>, budget: Budget): RichSbar {
+  exactKeys(node, ["type", "urgencyHint", ...SBAR_SECTION_KEYS], "sbar");
+  if (!(SBAR_URGENCY_HINTS as readonly unknown[]).includes(node.urgencyHint))
+    reject("sbar: bad urgencyHint");
+  const sections = {} as Record<SbarSectionKey, RichSbarSection>;
+  for (const key of SBAR_SECTION_KEYS) {
+    const cleaned = cleanChildren(node[key], `sbar ${key}`, (child) => {
+      if (!isRecord(child)) return reject(`sbar ${key}: child is not an object`);
+      enter(budget, 3, `sbar ${key} child`);
+      if (child.type === "paragraph") return cleanParagraph(child, 3, budget);
+      if (child.type === "bulletList" || child.type === "orderedList")
+        return cleanList(child, 3, budget);
+      return reject(`sbar ${key}: only paragraph or list children`);
+    });
+    const visible = richBlocksToPlainText(cleaned);
+    if (!VISIBLE_GLYPH.test(visible)) reject(`sbar ${key}: section is empty`);
+    sections[key] = cleaned;
+  }
+  return {
+    type: "sbar",
+    urgencyHint: node.urgencyHint as SbarUrgencyHint,
+    situation: sections.situation,
+    background: sections.background,
+    assessment: sections.assessment,
+    recommendation: sections.recommendation,
+  };
+}
+
 function cleanBlock(node: unknown, budget: Budget): RichBlock {
   if (!isRecord(node)) return reject("block: not an object");
   enter(budget, 2, "block");
@@ -406,6 +467,8 @@ function cleanBlock(node: unknown, budget: Budget): RichBlock {
       spend(budget, text);
       return { type: "codeBlock", text };
     }
+    case "sbar":
+      return cleanSbar(node, budget);
     default:
       return reject(`block: unknown node type "${String(node.type).slice(0, 40)}"`);
   }
@@ -426,6 +489,8 @@ export function sanitizeRichBody(input: unknown): RichBodyResult {
     exactKeys(doc, ["type", "content"], "doc");
     const budget: Budget = { nodes: 1, chars: 0, links: 0, clinicalLinks: 0 };
     const content = cleanChildren(doc.content, "doc", (block) => cleanBlock(block, budget));
+    if (content.length > 1 && content.some((block) => block.type === "sbar"))
+      reject("sbar: must be the only block in the document");
     const value: RichBody = {
       schemaVersion: RICH_BODY_SCHEMA_VERSION,
       doc: { type: "doc", content },
@@ -506,12 +571,21 @@ function project(body: RichBody): Projection {
       }
     });
   };
-  body.doc.content.forEach((block, index) => {
-    if (index > 0) raw += "\n";
-    if (block.type === "paragraph") for (const node of block.content) inline(node);
-    else if (block.type === "codeBlock") raw += block.text;
-    else listBlock(block, 0);
-  });
+  const blocks = (list: readonly RichBlock[]): void => {
+    list.forEach((block, index) => {
+      if (index > 0) raw += "\n";
+      if (block.type === "paragraph") for (const node of block.content) inline(node);
+      else if (block.type === "codeBlock") raw += block.text;
+      else if (block.type === "sbar") {
+        raw += "SBAR";
+        for (const key of SBAR_SECTION_KEYS) {
+          raw += `\n${SBAR_SECTION_LABELS[key]}: `;
+          blocks(block[key]);
+        }
+      } else listBlock(block, 0);
+    });
+  };
+  blocks(body.doc.content);
   const lead = raw.length - raw.trimStart().length;
   return {
     text: raw.trim(),
@@ -526,6 +600,11 @@ function project(body: RichBody): Projection {
  */
 export function richBodyToPlainText(body: RichBody): string {
   return project(body).text;
+}
+
+/** Projection of a run of blocks on its own (an SBAR section); offsets are not needed there. */
+export function richBlocksToPlainText(content: readonly RichBlock[]): string {
+  return project({ schemaVersion: RICH_BODY_SCHEMA_VERSION, doc: { type: "doc", content } }).text;
 }
 
 /** Mention nodes in document order with their offsets in the plain-text projection. */
@@ -559,9 +638,13 @@ export function richBodyClinicalLinks(
         else list(child);
       }
   };
-  for (const block of body.doc.content) {
-    if (block.type === "paragraph") block.content.forEach(inline);
-    else if (block.type === "bulletList" || block.type === "orderedList") list(block);
-  }
+  const blocks = (content: readonly RichBlock[]): void => {
+    for (const block of content) {
+      if (block.type === "paragraph") block.content.forEach(inline);
+      else if (block.type === "bulletList" || block.type === "orderedList") list(block);
+      else if (block.type === "sbar") for (const key of SBAR_SECTION_KEYS) blocks(block[key]);
+    }
+  };
+  blocks(body.doc.content);
   return out;
 }

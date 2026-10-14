@@ -163140,6 +163140,98 @@
         }
       }
     },
+    "/api/v1/messaging/sbar/policy": {
+      "get": {
+        "operationId": "getApiV1MessagingSbarPolicy",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The effective SBAR policy for the composer (WP 3.3): the platform floor tightened by this organization's policy, per-section minimum length, the 2000 character maximum, whether a patient channel is required, and the hint text. messaging.send; 404 while the tenant flag `messaging.sbar` is off. Organization configuration, no patient data",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "minChars",
+                    "maxChars",
+                    "requirePatientChannel",
+                    "hints",
+                    "customized"
+                  ],
+                  "properties": {
+                    "minChars": {
+                      "type": "object",
+                      "required": [
+                        "situation",
+                        "background",
+                        "assessment",
+                        "recommendation"
+                      ],
+                      "properties": {
+                        "situation": {
+                          "type": "integer"
+                        },
+                        "background": {
+                          "type": "integer"
+                        },
+                        "assessment": {
+                          "type": "integer"
+                        },
+                        "recommendation": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "maxChars": {
+                      "type": "integer"
+                    },
+                    "requirePatientChannel": {
+                      "type": "boolean"
+                    },
+                    "hints": {
+                      "type": "object",
+                      "required": [
+                        "situation",
+                        "background",
+                        "assessment",
+                        "recommendation"
+                      ],
+                      "properties": {
+                        "situation": {
+                          "type": "string"
+                        },
+                        "background": {
+                          "type": "string"
+                        },
+                        "assessment": {
+                          "type": "string"
+                        },
+                        "recommendation": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "customized": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/scheduled-messages": {
       "get": {
         "operationId": "getApiV1MessagingScheduledmessages",
@@ -164268,6 +164360,205 @@
                   },
                   "isEnabled": {
                     "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/template-admin/sbar-policy": {
+      "delete": {
+        "operationId": "deleteApiV1MessagingTemplateadminSbarpolicy",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Remove this organization's SBAR policy, restoring the platform defaults (204; messaging.template.manage)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1MessagingTemplateadminSbarpolicy",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Replace this organization's tighten-only SBAR policy (WP 3.3; messaging.template.manage). A minimum below the platform floor is 422 SBAR_POLICY_FLOOR_VIOLATION; a hint that looks like a patient identifier is 422 SBAR_HINT_PHI_DETECTED. Omitted fields return to the platform default. Returns the effective policy",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "minChars",
+                    "maxChars",
+                    "requirePatientChannel",
+                    "hints",
+                    "customized"
+                  ],
+                  "properties": {
+                    "minChars": {
+                      "type": "object",
+                      "required": [
+                        "situation",
+                        "background",
+                        "assessment",
+                        "recommendation"
+                      ],
+                      "properties": {
+                        "situation": {
+                          "type": "integer"
+                        },
+                        "background": {
+                          "type": "integer"
+                        },
+                        "assessment": {
+                          "type": "integer"
+                        },
+                        "recommendation": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "maxChars": {
+                      "type": "integer"
+                    },
+                    "requirePatientChannel": {
+                      "type": "boolean"
+                    },
+                    "hints": {
+                      "type": "object",
+                      "required": [
+                        "situation",
+                        "background",
+                        "assessment",
+                        "recommendation"
+                      ],
+                      "properties": {
+                        "situation": {
+                          "type": "string"
+                        },
+                        "background": {
+                          "type": "string"
+                        },
+                        "assessment": {
+                          "type": "string"
+                        },
+                        "recommendation": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "customized": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {
+                  "minChars": {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "properties": {
+                      "situation": {
+                        "maximum": 500,
+                        "type": "integer"
+                      },
+                      "background": {
+                        "maximum": 500,
+                        "type": "integer"
+                      },
+                      "assessment": {
+                        "maximum": 500,
+                        "type": "integer"
+                      },
+                      "recommendation": {
+                        "maximum": 500,
+                        "type": "integer"
+                      }
+                    }
+                  },
+                  "requirePatientChannel": {
+                    "type": "boolean"
+                  },
+                  "hints": {
+                    "additionalProperties": false,
+                    "type": "object",
+                    "properties": {
+                      "situation": {
+                        "anyOf": [
+                          {
+                            "maxLength": 1000,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "background": {
+                        "anyOf": [
+                          {
+                            "maxLength": 1000,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "assessment": {
+                        "anyOf": [
+                          {
+                            "maxLength": 1000,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "recommendation": {
+                        "anyOf": [
+                          {
+                            "maxLength": 1000,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
                   }
                 }
               }

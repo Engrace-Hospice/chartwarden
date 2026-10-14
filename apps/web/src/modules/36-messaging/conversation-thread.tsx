@@ -27,6 +27,7 @@ import {
 import { PendingMessageList } from "./pending-message-row";
 import { PinnedMessagesBar } from "./pinned-messages-bar";
 import { PresenceMembers, TypingIndicator } from "./presence-panel";
+import { isSbarBody } from "./sbar-utils";
 import { PatientContextAside, ThreadHeader } from "./thread-header";
 import { ThreadPanel } from "./thread-panel";
 import { useAnnouncementTools } from "./use-announcement-tools";
@@ -41,6 +42,7 @@ import type { SentMessage } from "./use-message-sender";
 import { type Outbox, useBindOutboxThread, useOutbox } from "./use-outbox";
 import { usePatientHeader } from "./use-patient-header";
 import { usePresence } from "./use-presence";
+import { useSbarCompose } from "./use-sbar-compose";
 import { useScanningRefresh } from "./use-scanning-refresh";
 import { useServerDraft } from "./use-server-draft";
 import type { LiveHint } from "./use-thread";
@@ -115,6 +117,8 @@ function ConversationThreadView({
   const [newMessageCount, setNewMessageCount] = useState(0);
   const [draft, setDraft] = useState("");
   const [draftReferences, setDraftReferences] = useState<MessageReferenceInput[]>([]);
+  // WP 3.3: the SBAR form's text lives here, not in the dialog, so Cancel keeps it (this thread is keyed by channel).
+  const sbar = useSbarCompose(channel.kind);
   const draftLinks = useDraftClinicalLinks();
   const clearDraftLinks = draftLinks.clear;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -211,7 +215,17 @@ function ConversationThreadView({
     });
     onMessageSent();
   };
+  /** An SBAR message went out (or into the outbox): the form's text is spent, the ordinary draft is untouched. */
+  const finishSbar = (): void => {
+    sbar.finish();
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  };
   const handleSent = (sent: SentMessage): void => {
+    if (isSbarBody(sent.bodyDoc)) {
+      finishSbar();
+      mergeSent(sent);
+      return;
+    }
     setDraft((current) => (current === sent.body ? "" : current));
     setDraftReferences([]);
     draftLinks.clear();
@@ -223,7 +237,7 @@ function ConversationThreadView({
     if (document.activeElement !== textareaRef.current) timelineRef.current?.focus();
   }, []);
   useBindOutboxThread(outbox, channel.channelId, mergeSent);
-  const { send, sending, sendError, clearSendError, resetSender } = useMessageSender({
+  const { send, sending, sendError, sbarIssues, clearSendError, resetSender } = useMessageSender({
     channelId: channel.channelId,
     archived: Boolean(channel.archivedAt),
     draft,
@@ -236,6 +250,10 @@ function ConversationThreadView({
     onQueued: (queued, stillOpen) => {
       outbox.enqueue(channel.channelId, queued);
       if (!stillOpen) return;
+      if (isSbarBody(queued.sent.bodyDoc)) {
+        finishSbar();
+        return;
+      }
       setDraft((current) => (current === queued.sent.body ? "" : current));
       setDraftReferences([]);
       draftLinks.clear();
@@ -697,6 +715,9 @@ function ConversationThreadView({
         setDraft={setDraft}
         draftReferences={draftReferences}
         setDraftReferences={setDraftReferences}
+        sbar={sbar}
+        sbarIssues={sbarIssues}
+        onSendSbar={(body) => void send(undefined, body)}
         draftLinks={draftLinks.links}
         addDraftLink={draftLinks.add}
         removeDraftLink={draftLinks.remove}

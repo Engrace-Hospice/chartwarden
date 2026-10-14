@@ -5,6 +5,9 @@ import {
   type RichList,
   type RichMark,
   type RichParagraph,
+  type RichSbar,
+  SBAR_SECTION_KEYS,
+  SBAR_SECTION_LABELS,
   linkTargetLabel,
   safeLinkHref,
   sanitizeRichBody,
@@ -15,6 +18,7 @@ import { Link } from "react-router-dom";
 import { ClinicalLinkChip, ClinicalLinkIdsContext, clinicalLinkKey } from "./clinical-link-chip";
 import { needsDestinationSuffix } from "./link-destination";
 import type { MessageReference } from "./messaging-types";
+import "./sbar.css";
 
 // M36 WP 2.1 - the safe renderer for a structured message body.
 //
@@ -142,6 +146,36 @@ function List({
   );
 }
 
+function SbarBlock({
+  node,
+  references,
+}: {
+  node: RichSbar;
+  references: readonly MessageReference[];
+}): JSX.Element {
+  return (
+    <section className="wx-sbar-block" aria-label="SBAR">
+      <dl>
+        {SBAR_SECTION_KEYS.map((key) => (
+          <div key={key}>
+            <dt>{SBAR_SECTION_LABELS[key]}</dt>
+            <dd>
+              {node[key].map((child, index) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: the document is immutable; position is its identity
+                <Block key={index} node={child} references={references} />
+              ))}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {/* A sender label, in words: never colour alone, and routine is the unmarked default. */}
+      {node.urgencyHint === "routine" ? null : (
+        <p className="wx-sbar-urgency-label">Sender marked: {node.urgencyHint}</p>
+      )}
+    </section>
+  );
+}
+
 function Block({
   node,
   references,
@@ -157,6 +191,7 @@ function Block({
       </pre>
     );
   }
+  if (node.type === "sbar") return <SbarBlock node={node} references={references} />;
   return <List node={node} references={references} />;
 }
 

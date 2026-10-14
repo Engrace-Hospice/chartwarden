@@ -1421,6 +1421,7 @@ import {
   buildM36BreakGlassAlertConsumer,
   buildM36ClinicalAlertConsumer,
   buildPresenceDeps,
+  buildSbarDeps,
   createAttachmentService,
   createDbMessagingProvider,
   createDbMessagingRouteService,
@@ -4639,6 +4640,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             }),
             // WP 3.2 - message -> clinical record links; read-through, off unless the tenant flag is on.
             clinicalLinks: buildClinicalLinkDeps({ db: dbHandle.db, flags: featureFlagReader }),
+            // WP 3.3 - SBAR structured messages; off unless the tenant flag `messaging.sbar` is on.
+            sbar: buildSbarDeps({ db: dbHandle.db, flags: featureFlagReader }),
           }); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05) + WP 1.5 attachments
           // GAP-101 — the §4.9 inbound vendor webhooks (Twilio sms/voice status, Postmark event): signature-authenticated
           // (replay window + HMAC / IP allowlist + bearer), reconciling `notification_delivery`. FAIL-CLOSED: a vendor

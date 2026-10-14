@@ -62,6 +62,8 @@ import {
   mayManageChannelMembersResolved,
 } from "../member-admin";
 import type { QuietHoursConfig, RoutingMap } from "../resolution";
+import { type StoredSbarPolicy, effectiveSbarPolicy } from "../sbar/sbar-policy";
+import { assertSbarWrite } from "../sbar/sbar-write";
 import {
   SEARCH_MAX_SCAN_PER_REQUEST,
   assertSearchHasCriteria,
@@ -256,6 +258,8 @@ export interface InMemoryMessagingServiceOptions {
   readonly seed?: InMemoryMessagingSeed;
   /** Patient → sited location ids, for care_team member administration (unset ⇒ clinical_lead denied). */
   readonly resolvePatientLocationIds?: PatientLocationResolver;
+  /** WP 3.3: the tenant SBAR policy the twin enforces on send/edit (unset => the platform floor only). */
+  readonly sbarPolicy?: StoredSbarPolicy | null;
 }
 
 const DEFAULT_QUIET_HOURS: QuietHoursConfig = {
@@ -712,6 +716,7 @@ export function createInMemoryMessagingService(
         throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
       }
       const richBody = sanitizedRichBody(input.richBody);
+      assertSbarWrite(richBody, ch.kind, effectiveSbarPolicy(options.sbarPolicy ?? null));
       validateReferences(input.body, input.references ?? [], ch, eligibleStaff);
       // Same rule as the DB service (audit F5): a missing, cross-org or other-channel parent is one answer.
       if (input.parentMessageId) {
@@ -769,6 +774,11 @@ export function createInMemoryMessagingService(
         eligibleStaff,
       );
       const richBody = sanitizedRichBody(input.richBody);
+      assertSbarWrite(
+        richBody,
+        channelOr404(orgId, m.channelId).kind,
+        effectiveSbarPolicy(options.sbarPolicy ?? null),
+      );
       m.body = input.body;
       m.richBody = richBody;
       if (richBody) m.bodyKind = "rich";

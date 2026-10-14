@@ -1324,6 +1324,11 @@ import {
   PinResponseSchema as M36PinResponseSchema,
   SetReactionResponseSchema as M36SetReactionResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/reaction-pin-typebox";
+// M36 WP 3.3 SBAR policy.
+import {
+  PutSbarPolicyBodySchema as M36PutSbarPolicyBodySchema,
+  SbarPolicyResponseSchema as M36SbarPolicyResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/sbar-typebox";
 import {
   CancelScheduledResponseSchema as M36CancelScheduledResponseSchema,
   CreateScheduledBodySchema as M36CreateScheduledBodySchema,
@@ -9240,6 +9245,21 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "DELETE /api/v1/messaging/template-admin/platform/:id/overlay": {
     summary: "Remove this organization's overlay, restoring the platform text (204)",
+  },
+  "GET /api/v1/messaging/sbar/policy": {
+    summary:
+      "The effective SBAR policy for the composer (WP 3.3): the platform floor tightened by this organization's policy, per-section minimum length, the 2000 character maximum, whether a patient channel is required, and the hint text. messaging.send; 404 while the tenant flag `messaging.sbar` is off. Organization configuration, no patient data",
+    response: M36SbarPolicyResponseSchema,
+  },
+  "PUT /api/v1/messaging/template-admin/sbar-policy": {
+    summary:
+      "Replace this organization's tighten-only SBAR policy (WP 3.3; messaging.template.manage). A minimum below the platform floor is 422 SBAR_POLICY_FLOOR_VIOLATION; a hint that looks like a patient identifier is 422 SBAR_HINT_PHI_DETECTED. Omitted fields return to the platform default. Returns the effective policy",
+    body: M36PutSbarPolicyBodySchema,
+    response: M36SbarPolicyResponseSchema,
+  },
+  "DELETE /api/v1/messaging/template-admin/sbar-policy": {
+    summary:
+      "Remove this organization's SBAR policy, restoring the platform defaults (204; messaging.template.manage)",
   },
   "POST /api/v1/messaging/dm": {
     summary: "Open or find a 1:1 DM channel (idempotent; 200/201)",

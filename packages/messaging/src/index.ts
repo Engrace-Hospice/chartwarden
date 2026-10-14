@@ -463,3 +463,7 @@ export * from "./templates";
 
 // ── M36 WP 2.7b chunk C1 (ADR-0058, Proposed): pure global blind-token search foundations (tokenizer, tags, padding, cursor, key port) ─
 export * from "./search/global";
+
+// M36 WP 3.3 SBAR tenant policy
+export * from "./sbar/sbar-policy";
+export * from "./sbar/sbar-write";
