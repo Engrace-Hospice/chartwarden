@@ -77,6 +77,11 @@ import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import Redis, { type RedisOptions } from "ioredis";
 import { parseTrustedProxies } from "./bootstrap";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
+import {
+  bindPlatformStaffToOrg,
+  reconcilePlatformStaff,
+  setPlatformStaffFailureSink,
+} from "./bootstrap/bind-platform-staff";
 import { attachDlqPromotionAlert, buildDlqPromotionSink } from "./bootstrap/dlq-alerts";
 import { buildF2fClinicianRoleReader } from "./bootstrap/f2f-clinician-roles";
 import {
@@ -1627,6 +1632,8 @@ export function wireModuleSeams(
       ? {
           onTenantOrganizationAvailable: async (organizationId: string) => {
             await materializeRoleTemplatesForOrg(deps.db as DbClient, organizationId);
+            // Platform-ops operators join the new org (self-only `platform_alert_audience`) so `role_set` alerts reach them.
+            await bindPlatformStaffToOrg(deps.db as DbClient, organizationId);
           },
         }
       : {}),
@@ -5790,6 +5797,18 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         }
       })
       .catch((err) => app.log.error({ err }, "role-template backfill could not list orgs"));
+    // M34 - platform operators' alert-audience bindings: retry a provision-time bind that failed, pick up operators
+    // added since, and expire the binding of any operator who no longer holds platform_ops. Boot-only, idempotent,
+    // never resurrects a revoked membership (bootstrap/bind-platform-staff.ts). Failures are logged, never block boot.
+    setPlatformStaffFailureSink((fields, message) => app.log.error(fields, message));
+    void roleBackfillOrgs
+      .listActiveOrgs()
+      .then(async (orgs) => {
+        const r = await reconcilePlatformStaff(dbHandle.db, orgs);
+        if (r.bound + r.unbound + r.refreshed > 0)
+          app.log.info(r, "platform-staff alert-audience bindings reconciled");
+      })
+      .catch((err) => app.log.error({ err }, "platform-staff reconcile could not list orgs"));
   }
   mountMetricsRoute(app, metricsRegistry);
   // TASK-040D (OPS-012) — DLQ-promotion alerting, shared by BOTH the BullMQ worker-runner block and the

@@ -34,6 +34,7 @@
         "apps/backend/__tests__/m2-platform-user-deactivate.test.ts",
         "apps/backend/__tests__/m2-tax-id-cipher.live.test.ts",
         "apps/backend/__tests__/m31-portal-signin.live.test.ts",
+        "apps/backend/__tests__/m34-platform-alert-audience-no-authority.test.ts",
         "apps/backend/__tests__/m36-transactional-email.live.test.ts",
         "apps/backend/__tests__/mfa-enrolment-matrix.test.ts",
         "apps/backend/__tests__/session-step-up.test.ts",
@@ -489,6 +490,7 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
+        "apps/backend/__tests__/m34-platform-alert-audience-no-authority.test.ts",
         "apps/backend/__tests__/m36-admin-alert-deliveries.test.ts",
         "apps/backend/__tests__/m36-announcements.live.test.ts",
         "apps/backend/__tests__/m36-announcements.test.ts",
