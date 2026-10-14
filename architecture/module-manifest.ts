@@ -286,6 +286,7 @@ export const MODULES: ModuleDef[] = [
       "delivery_endpoint",
       "message",
       "message_entity_reference",
+      "clinical_link",
       "message_pin",
       "message_poll",
       "message_poll_option",

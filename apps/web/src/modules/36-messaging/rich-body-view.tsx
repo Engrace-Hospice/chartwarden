@@ -74,6 +74,9 @@ function Inline({
   if (node.type === "text") {
     return <span>{applyMarks(node.text, node.marks ?? [], node.text)}</span>;
   }
+  // WP 3.2: the chip UI (resolve per link) is a later web WP; until then a link reads as a neutral placeholder.
+  if (node.type === "clinicalLink")
+    return <span className="wx-message-reference">[linked record]</span>;
   // The server's label (fresh from the directory) wins over the label frozen into the document.
   const reference = references.find(
     (candidate) => candidate.kind === node.kind && candidate.entityId === node.entityId,

@@ -178,6 +178,7 @@ export type {
   MentionCandidate,
   MentionNonMember,
   AlertInboxItem,
+  ValidatedClinicalLinkInput,
 } from "./interfaces/route-service";
 export {
   CLINICAL_LEAD_ROLE,
