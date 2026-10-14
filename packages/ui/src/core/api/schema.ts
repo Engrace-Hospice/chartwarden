@@ -13630,6 +13630,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/clinical-links/{linkId}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Open a message's clinical link (WP 3.2): READ-THROUGH, GET only. Requires messaging.read and that the caller can view the message's channel, then re-runs the linked record's own permission + scope NOW on the live `linkSummary`. Missing, forbidden, other-tenant, erased and failing sources, a hidden channel and a deleted message are ONE answer, `{state:"unavailable"}`; 404 only when the tenant flag `messaging.clinical_links` is off. `as_of` is when M36 read the source. Read-audited (resource = the link). */
+        get: operations["getApiV1MessagingClinicallinksByLinkIdResolve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/department-channels": {
         parameters: {
             query?: never;
@@ -62553,6 +62570,13 @@ export interface operations {
                                     voteCount: number;
                                 }[];
                             };
+                            clinicalLinks?: {
+                                /** Format: uuid */
+                                link_id: string;
+                                kind: "medication" | "order" | "care_plan" | "assessment" | "visit" | "document" | "idg_meeting";
+                                /** Format: uuid */
+                                entity_id: string;
+                            }[];
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
@@ -62944,6 +62968,13 @@ export interface operations {
                                     voteCount: number;
                                 }[];
                             };
+                            clinicalLinks?: {
+                                /** Format: uuid */
+                                link_id: string;
+                                kind: "medication" | "order" | "care_plan" | "assessment" | "visit" | "document" | "idg_meeting";
+                                /** Format: uuid */
+                                entity_id: string;
+                            }[];
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
@@ -63003,6 +63034,13 @@ export interface operations {
                                     voteCount: number;
                                 }[];
                             };
+                            clinicalLinks?: {
+                                /** Format: uuid */
+                                link_id: string;
+                                kind: "medication" | "order" | "care_plan" | "assessment" | "visit" | "document" | "idg_meeting";
+                                /** Format: uuid */
+                                entity_id: string;
+                            }[];
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
@@ -63089,6 +63127,13 @@ export interface operations {
                                     voteCount: number;
                                 }[];
                             };
+                            clinicalLinks?: {
+                                /** Format: uuid */
+                                link_id: string;
+                                kind: "medication" | "order" | "care_plan" | "assessment" | "visit" | "document" | "idg_meeting";
+                                /** Format: uuid */
+                                entity_id: string;
+                            }[];
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
@@ -63336,6 +63381,13 @@ export interface operations {
                                     voteCount: number;
                                 }[];
                             };
+                            clinicalLinks?: {
+                                /** Format: uuid */
+                                link_id: string;
+                                kind: "medication" | "order" | "care_plan" | "assessment" | "visit" | "document" | "idg_meeting";
+                                /** Format: uuid */
+                                entity_id: string;
+                            }[];
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
@@ -63381,6 +63433,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingClinicallinksByLinkIdResolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                linkId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        state: "ok";
+                        kind: "medication" | "order" | "care_plan" | "assessment" | "visit" | "document" | "idg_meeting";
+                        status: string;
+                        occurred_at: string | null;
+                        /** Format: date-time */
+                        as_of: string;
+                        link: string;
+                        patient_id: string | null;
+                    } | {
+                        /** @constant */
+                        state: "unavailable";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -63973,6 +64062,13 @@ export interface operations {
                                     voteCount: number;
                                 }[];
                             };
+                            clinicalLinks?: {
+                                /** Format: uuid */
+                                link_id: string;
+                                kind: "medication" | "order" | "care_plan" | "assessment" | "visit" | "document" | "idg_meeting";
+                                /** Format: uuid */
+                                entity_id: string;
+                            }[];
                             references: {
                                 kind: "staff" | "patient";
                                 entityId: string;
