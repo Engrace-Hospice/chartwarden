@@ -19,6 +19,7 @@
 // package surface stays unambiguous under `export *` — re-exporting would be a TS2308 collision) ───────
 import type { AdmissionId, OrgId, PatientId } from "./admission";
 import type { IsoInstant } from "./care-plan";
+import type { ClinicalLinkSummary } from "./clinical-link";
 
 // ── M22-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ──────────
 export type DocumentId = string;
@@ -473,6 +474,18 @@ export interface DocumentReader {
     readonly documentId: DocumentId;
     readonly organizationId: OrgId;
   }): Promise<DocumentDigest | null>;
+
+  /**
+   * M36 WP 3.2 clinical link: ids and status ONLY (never `title`, which is denylisted and may carry a patient
+   * name, nor aggregate/content). Org-explicit (opens its own tenant context; callable outside a request) and
+   * fails closed on a blank org or id. `null` = no such document in that org.
+   * `status` is the document's own lifecycle status, passed through verbatim so a dead record is never hidden:
+   * `active`, `superseded`, `legal_hold` or `destroyed_tombstone` (a row that survives destruction). A
+   * superseded/tombstoned document is still returned (not null) so the caller can label the link as dead.
+   * `patientId` is the document's patient (null for an org-level document; the caller refuses that);
+   * `occurredAt` is `created_at`.
+   */
+  linkSummary(organizationId: string, id: string): Promise<ClinicalLinkSummary | null>;
 
   /**
    * The patient/admission link of a document whose ACTIVE version is exactly `documentVersionId` — used by

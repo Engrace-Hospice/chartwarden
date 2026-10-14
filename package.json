@@ -253,6 +253,7 @@
     "test:m17:volunteer-triage-consumers:live": "vitest run apps/backend/__tests__/m17-volunteer-triage-consumers.live.test.ts",
     "test:m17:reassignment-reminder:live": "vitest run apps/backend/__tests__/gap-052-m17-reassignment-reminder.live.test.ts",
     "test:m11:link-summary:live": "vitest run apps/backend/__tests__/m11-link-summary.live.test.ts",
+    "test:m22:link-summary:live": "vitest run apps/backend/__tests__/m22-link-summary.live.test.ts",
     "test:m17:next-visit:live": "vitest run apps/backend/__tests__/m17-next-scheduled-visit.live.test.ts",
     "test:m7:link-summary:live": "vitest run apps/backend/__tests__/m7-link-summary.live.test.ts",
     "test:m12:link-summary:live": "vitest run apps/backend/__tests__/m12-link-summary.live.test.ts",
