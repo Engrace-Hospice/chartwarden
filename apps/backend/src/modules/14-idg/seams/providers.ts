@@ -86,6 +86,10 @@ export function createIdgScheduleProvider(store: IdgSeamStore): IdgScheduleProvi
     async getCadenceCountsForOrg(organizationId, window) {
       return store.cadenceCountsForOrg(organizationId, window);
     },
+    async getLastMeetingForPatient(orgId, patientId) {
+      const last = await store.lastMeetingForPatient(orgId, patientId);
+      return last === null ? null : { ...last, asOf: new Date().toISOString() };
+    },
     async getCadenceAdherence(_orgId, admissionId) {
       const rollup = await store.cadenceForAdmission(admissionId);
       // A null-safe shape when the admission has no visible IDG context under the consumer's tenant: zero

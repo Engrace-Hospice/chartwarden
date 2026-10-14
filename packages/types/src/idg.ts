@@ -687,6 +687,20 @@ export interface IdgMeetingDigest {
   readonly attendeeCount: number;
 }
 
+/**
+ * §4.8 — the most recent IDG meeting that actually took place (`adjourned`) and reviewed one patient
+ * (a frozen packet exists for them). Outcome STATUS only: no discussion text, decisions or attendees
+ * cross (consumed by M36's patient context panel, WP 3.1). `asOf` is the read instant, so a consumer
+ * can label a stale tile.
+ */
+export interface IdgPatientLastMeeting {
+  readonly meetingId: IdgMeetingId;
+  /** The meeting's `actual_start` — when it was really convened, not merely scheduled. */
+  readonly heldAt: IsoInstant;
+  readonly status: IdgMeetingStatus;
+  readonly asOf: IsoInstant;
+}
+
 /** §4.8 — the deterministic render payload M22's packet renderer consumes (`IdgPacketProvider`). */
 export interface IdgPacketRenderPayload {
   readonly packetId: IdgPatientPacketId;
@@ -742,6 +756,17 @@ export interface IdgScheduleProvider {
     organizationId: string,
     window: { from: string; to: string },
   ): Promise<{ readonly numerator: number; readonly denominator: number }>;
+
+  /**
+   * Most recent IDG meeting that took place (`adjourned`, real `actual_start`) and reviewed `patientId`
+   * (a FROZEN packet for them). `null` when none, or none visible under `orgId`. Org-explicit: self-scopes
+   * under `orgId`'s tenant context (no request scope needed). Null only means "no rows"; any failure
+   * throws, so a consumer fails closed rather than showing a guessed meeting.
+   */
+  getLastMeetingForPatient(
+    orgId: string,
+    patientId: PatientId,
+  ): Promise<IdgPatientLastMeeting | null>;
 
   /** M30 measure: 15-day-IDG-cadence adherence per admission. */
   getCadenceAdherence(
