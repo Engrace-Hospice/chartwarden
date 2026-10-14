@@ -2239,6 +2239,14 @@
       "app": "web",
       "module": "36-messaging",
       "moduleId": 36,
+      "id": "messaging.global-search-settings",
+      "path": "/messaging/search-settings",
+      "permission": "messaging.global_search.manage"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
       "id": "messaging.notifications",
       "path": "/notifications",
       "permission": "(none)"

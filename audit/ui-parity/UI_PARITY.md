@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 44 module screen-sets registered · 342 screens wired across web/portal/admin.
+**Coverage:** 113 documented screen specs · 44 module screen-sets registered · 343 screens wired across web/portal/admin.
 - **admin**: 39 screen(s)
 - **portal**: 18 screen(s)
-- **web**: 285 screen(s)
+- **web**: 286 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -301,6 +301,7 @@
 | web | 35-subscription | `billing.promos` | `/subscription/promos` | `subscription.read` | ✅ |
 | web | 36-messaging | `messaging.staff` | `/messaging` | `messaging.read` | ✅ |
 | web | 36-messaging | `messaging.saved-replies` | `/messaging/saved-replies` | `messaging.send` | ✅ |
+| web | 36-messaging | `messaging.global-search-settings` | `/messaging/search-settings` | `messaging.global_search.manage` | ✅ |
 | web | 36-messaging | `messaging.notifications` | `/notifications` | `(none)` | ✅ |
 | web | 37-ipu | `ipu.units` | `/ipu` | `m37.unit.read` | ✅ |
 | web | 37-ipu | `ipu.admissions` | `/ipu/admissions` | `m37.ipu_admission.read` | ✅ |
