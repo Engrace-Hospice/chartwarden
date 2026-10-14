@@ -11,7 +11,7 @@
 // carries no acting membership; withOrgContext maps "" to a NULL audit actor).
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import type { PatientIdentity } from "@wardenx/types";
+import type { PatientIdentity, PatientLifecycleStatus } from "@wardenx/types";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { OutboxPublishPort } from "../../../bootstrap/outbox-persister";
 import { type CareTeamStore, PRIMARY_RN_ASSIGNMENT_ROLE } from "./care-team-provider";
@@ -47,6 +47,7 @@ type PatientRow = {
   mergedIntoId: string | null;
   providerEntityId: string | null;
   locationId: string | null;
+  status: PatientLifecycleStatus;
 };
 
 const PATIENT_COLUMNS = {
@@ -60,6 +61,7 @@ const PATIENT_COLUMNS = {
   mergedIntoId: P.mergedIntoId,
   providerEntityId: P.providerEntityId,
   locationId: P.locationId,
+  status: P.status,
 } as const;
 
 type SeamTx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
@@ -116,6 +118,7 @@ async function identitiesFor(tx: SeamTx, rows: readonly PatientRow[]): Promise<P
     providerEntityId: r.providerEntityId,
     // M6 `admission_clinical_site_scope` — the chart's service location (ARCH-011).
     locationId: r.locationId,
+    status: r.status,
   }));
 }
 
