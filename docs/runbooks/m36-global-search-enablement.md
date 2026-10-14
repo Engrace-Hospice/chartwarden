@@ -111,15 +111,19 @@ Then:
 The member-category gate (`member-category-gate.ts`, review finding F6) refuses NEW `channel_member` writes for an identity holding a
 `patient_family`, `external_auditor` or `platform_staff` role. It does not sweep rows written before the gate shipped, nor rows whose
 holder was granted an excluded role afterwards. Such a member still reads channel history through the channel-member path. So, per tenant,
-before Stage 7 (read-only; run as a role that can read the tenant, with `:org_id` set):
+before Stage 7 (read-only). These tables are under RLS: run it in `psql` as a role that bypasses RLS (platform operator), or after setting the
+tenant GUC `app.org_id` to the organization. Platform-template `role` rows have a NULL organization, and that is where `platform_staff`
+roles live, so confirm the role you use can read them (a query that silently skips them gives a false "zero rows"). Set the variable with
+`\set org_id '<organization-uuid>'` and the query uses `:'org_id'`:
 
 ```sql
-SELECT cm.channel_id, cm.user_id, cm.role, cm.source, r.key AS excluded_role, r.category
+SELECT DISTINCT cm.channel_id, cm.user_id, cm.role, cm.source, r.key AS excluded_role, r.category
 FROM channel_member cm
 JOIN membership m       ON m.user_id = cm.user_id AND m.organization_id = cm.organization_id
 JOIN membership_role mr ON mr.membership_id = m.id AND mr.organization_id = m.organization_id
 JOIN role r             ON r.id = mr.role_id
-WHERE cm.organization_id = :org_id
+WHERE cm.organization_id = :'org_id'
+  AND m.status <> 'revoked'
   AND cm.removed_at IS NULL
   AND r.category IN ('patient_family', 'external_auditor', 'platform_staff')
   AND (mr.expires_at IS NULL OR mr.expires_at > now());
