@@ -70,7 +70,9 @@ export function createDocumentReader(store: DocumentReaderStore): DocumentReader
       if (!organizationId?.trim()) throw new Error("linkSummary: organizationId required");
       if (!id?.trim()) throw new Error("linkSummary: id required");
       const row = await store.linkSummaryForDocument({ documentId: id, organizationId });
-      if (!row) return null;
+      // A destroyed or legal-hold document is withheld like a missing one: its lifecycle state is itself sensitive and a
+      // destroyed record must not be linkable. `active` and `superseded` (still a real, readable record) resolve.
+      if (!row || row.status === "destroyed_tombstone" || row.status === "legal_hold") return null;
       return {
         id: row.documentId,
         patientId: row.patientId,

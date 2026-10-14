@@ -338,6 +338,15 @@ describe("MedicationOrderProvider.linkSummary (M36 WP 3.2)", () => {
     expect(await provider().linkSummary("org-2", "med-active")).toBeNull();
   });
 
+  it("withholds a SUD-treatment order exactly like a missing one (42 CFR Part 2)", async () => {
+    const sud = {
+      ...seed(),
+      medicationOrders: [{ ...seed().medicationOrders![0]!, id: "med-sud", isSudTreatment: true }],
+    };
+    const p = createMedicationOrderProvider(createInMemoryDoseSpotSeamStore(sud).store);
+    expect(await p.linkSummary(ORG, "med-sud")).toBeNull();
+  });
+
   it("throws on a blank organizationId or id (fail closed)", async () => {
     await expect(provider().linkSummary("", "med-active")).rejects.toThrow(/organizationId/);
     await expect(provider().linkSummary("  ", "med-active")).rejects.toThrow(/organizationId/);

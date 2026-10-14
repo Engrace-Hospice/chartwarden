@@ -118,6 +118,13 @@ describe.skipIf(!DB_URL)("M12 linkSummary — LIVE Postgres as wardenx_app", () 
     expect(got?.occurredAt).toBe((r.created_at as Date).toISOString());
   });
 
+  it("withholds a SUD-treatment order exactly like a missing one (42 CFR Part 2)", async () => {
+    const id = await seedMedOrder(ORG_A, PATIENT_A, "2026-03-01T12:10:00.000Z");
+    expect((await provider.linkSummary(ORG_A, id))?.id).toBe(id);
+    await admin.query("UPDATE medication_order SET is_sud_treatment = true WHERE id = $1", [id]);
+    expect(await provider.linkSummary(ORG_A, id)).toBeNull();
+  });
+
   it("returns null for an unknown id", async () => {
     expect(await provider.linkSummary(ORG_A, UNKNOWN_ID)).toBeNull();
   });

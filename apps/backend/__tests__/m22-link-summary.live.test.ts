@@ -142,6 +142,13 @@ describe.skipIf(!DB_URL)("M22 DocumentReader.linkSummary — LIVE Postgres as wa
     expect((await reader.linkSummary(ORG_A, id))?.status).toBe("superseded");
   });
 
+  it("withholds a destroyed or legal-hold document exactly like a missing one", async () => {
+    const gone = await seedDoc(ORG_A, PATIENT, "destroyed_tombstone");
+    const hold = await seedDoc(ORG_A, PATIENT, "legal_hold");
+    expect(await reader.linkSummary(ORG_A, gone)).toBeNull();
+    expect(await reader.linkSummary(ORG_A, hold)).toBeNull();
+  });
+
   it("fails closed on a blank org or id", async () => {
     await expect(reader.linkSummary("", MISSING)).rejects.toThrow();
     await expect(reader.linkSummary(ORG_A, "")).rejects.toThrow();

@@ -169,9 +169,20 @@ describe("DocumentReader.linkSummary (M36 WP 3.2)", () => {
         status: "superseded",
       }),
       digest({ documentId: "d-org", createdAt: "2026-06-02T00:00:00.000Z", patientId: null }),
+      digest({
+        documentId: "d-gone",
+        createdAt: "2026-06-03T00:00:00.000Z",
+        status: "destroyed_tombstone",
+      }),
+      digest({ documentId: "d-hold", createdAt: "2026-06-04T00:00:00.000Z", status: "legal_hold" }),
     ],
   };
   const reader = () => createDocumentReader(createInMemoryDocumentReaderStore(SEEDED).store);
+
+  it("withholds a destroyed or legal-hold document exactly like a missing one", async () => {
+    expect(await reader().linkSummary(ORG, "d-gone")).toBeNull();
+    expect(await reader().linkSummary(ORG, "d-hold")).toBeNull();
+  });
 
   it("returns exactly id, patientId, status, occurredAt (no title)", async () => {
     const r = await reader().linkSummary(ORG, "d1");

@@ -118,7 +118,7 @@ const keyOf = (link: { kind: string; sourceId: string }) =>
   `${link.kind}:${link.sourceId.toLowerCase()}`;
 
 /**
- * The write core's defence in depth: the rows it persists must be exactly the body's clinicalLink nodes. A writer that
+ * The route service's defence in depth (asserted before the write core runs): the rows it persists must be exactly the body's clinicalLink nodes. A writer that
  * passes a body with link nodes but no validated list (or the reverse) is refused, so an unvalidated link cannot reach
  * the table through any path that skips the route.
  */

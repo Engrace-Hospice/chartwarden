@@ -479,9 +479,9 @@ export interface DocumentReader {
    * M36 WP 3.2 clinical link: ids and status ONLY (never `title`, which is denylisted and may carry a patient
    * name, nor aggregate/content). Org-explicit (opens its own tenant context; callable outside a request) and
    * fails closed on a blank org or id. `null` = no such document in that org.
-   * `status` is the document's own lifecycle status, passed through verbatim so a dead record is never hidden:
-   * `active`, `superseded`, `legal_hold` or `destroyed_tombstone` (a row that survives destruction). A
-   * superseded/tombstoned document is still returned (not null) so the caller can label the link as dead.
+   * `status` is the document's own lifecycle status: `active` or `superseded` (still a real record, so the caller can
+   * label the link). A `legal_hold` or `destroyed_tombstone` document returns `null`, exactly like a missing one: its
+   * lifecycle state is itself sensitive and a destroyed record must not be linkable.
    * `patientId` is the document's patient (null for an org-level document; the caller refuses that);
    * `occurredAt` is `created_at`.
    */

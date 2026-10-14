@@ -73,6 +73,14 @@ Three facts shape the design:
 - **Known limits (accepted).** A channel member who lacks access to the source sees only `unavailable`, and therefore learns that a
   link exists. The existence of a link in a message is visible to every member who can read that message. Authors should not rely on a
   link to hide that a record was discussed.
+- **Part 2 / lifecycle (as built).** The seam is the place Part 2 is fenced: an assessment with `sud_context` and a medication order with
+  `is_sud_treatment` return `null` (same as missing) because the M39 consent join is not wired in the seam, and a destroyed or
+  legal-hold document returns `null`. Other kinds rely on the owning module's permission plus caseload scope, so a SUD-context
+  order, visit or care plan still resolves to status, time and a deep link (no content) for a user with that scope. Wiring the consent
+  decision into the seams is the upgrade path.
+- **Rollback is a one-way door.** The `clinicalLink` node is added to rich-body schema v1 (no bump), so an older build rejects a stored body
+  that carries it and shows it empty in previews. The tenant flag gates new writes only. Keep the flag off until every instance runs the
+  build that knows the node, and do not roll the build back after links exist.
 - Opening a chip costs one cross-module call plus a permission check; the list view of a message may batch these per kind.
 - Edits and redactions of a message (ADR-0055) do not change its links; redacting a message removes it from view, and its links with it.
 - A source seam outage degrades chips to `unavailable`; it never blocks sending or reading the message.

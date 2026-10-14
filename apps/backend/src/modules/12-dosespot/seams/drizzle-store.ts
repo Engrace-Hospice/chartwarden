@@ -311,6 +311,9 @@ export function createDrizzleDoseSpotSeamStore(db: DbClient): DoseSpotSeamStore 
               // Explicit second wall behind RLS (PHI-bearing seam).
               eq(MO.organizationId, organizationId),
               eq(MO.id, medicationOrderId),
+              // 42 CFR Part 2: a SUD-treatment order is withheld (null, same as missing) because even its existence
+              // and status are SUD information and the consent join is not wired here. Same fence as M9's sud_context.
+              eq(MO.isSudTreatment, false),
             ),
           )
           .limit(1);
