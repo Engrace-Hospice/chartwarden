@@ -29,6 +29,7 @@ import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { bindAttachmentsInTx } from "./attachments/attachment-service-db";
+import { assertMemberCategoryAllowed, excludedMemberUserIds } from "./member-category-gate";
 import { publishMessageHint } from "./message-hint-events";
 import {
   type MessagingOutboxPort,
@@ -41,7 +42,6 @@ import {
   insertEncryptedMessage,
   withValidMessageContent,
 } from "./messaging-write-core";
-import { assertMemberCategoryAllowed, excludedMemberUserIds } from "./member-category-gate";
 import { type Part2ChannelGate, createSeamPart2ChannelGate } from "./part2-channel-gate";
 import { decodeStoredBody } from "./rich-body-codec";
 
