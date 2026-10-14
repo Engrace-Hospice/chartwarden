@@ -153,6 +153,7 @@ import {
 } from "./global-search/mount";
 import { createGlobalSearchPrerequisites as _createGlobalSearchPrerequisites } from "./global-search/prerequisites";
 import { createGlobalSearchSettingsService as _createGlobalSearchSettingsService } from "./global-search/settings-service";
+import type { buildIdgDiscussionDeps as _buildIdgDiscussionDeps } from "./idg/binding";
 import { createDbMessagingRouteService as _createDbMessagingRouteService } from "./messaging-route-service-db";
 import type { MessagingOutboxPort } from "./messaging-route-service-db";
 import { createDbPollService as _createDbPollService } from "./polls/poll-service-db";
@@ -211,6 +212,8 @@ export function mountMessagingRoutes(
     handoffs?: _HandoffRouteDeps;
     /** WP 3.7: chart promotion (tenant flag + service). Omitted => flag off. */
     promotions?: _PromotionRouteDeps;
+    /** WP 3.6: IDG discussions (tenant flags + read-only store). Omitted => flag off. */
+    idgDiscussions?: ReturnType<typeof _buildIdgDiscussionDeps>;
   } = {},
 ): void {
   // GAP-063 — the §4.2 OTP sender; with none bound, sms/email endpoint registration answers 503.
@@ -231,7 +234,8 @@ export function mountMessagingRoutes(
     ...(opts.tasks ? { tasks: opts.tasks } : {}),
     ...(opts.handoffs ? { handoffs: opts.handoffs } : {}),
     ...(opts.promotions ? { promotions: opts.promotions } : {}),
-  }); // WP 2.9, 2.12, 3.2, 3.3, 3.4, 3.5, 3.7
+    ...(opts.idgDiscussions ? { idgDiscussions: opts.idgDiscussions } : {}),
+  }); // WP 2.9, 2.12, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7
   // WP 2.5 — private encrypted drafts (own row per user + channel + thread root).
   _registerDraftRoutes(app, { service: _createDbDraftService({ db }) });
   // WP 2.10 — polls (non-clinical, single choice, named votes); a poll is written through the message write core.
@@ -289,6 +293,7 @@ export { buildSbarDeps } from "./sbar/binding";
 export { buildTaskDeps } from "./tasks/deps";
 export { buildHandoffDeps } from "./handoffs/deps";
 export { buildPromotionDeps } from "./promotions/deps";
+export { buildIdgDiscussionDeps } from "./idg/deps";
 export {
   type M36HandoffExpiryWorkerDeps,
   handoffExpiryTick,

@@ -61,6 +61,7 @@ import { createDbClinicalLinkStore } from "../src/modules/36-messaging/clinical-
 import { createDbDraftService } from "../src/modules/36-messaging/drafts/draft-service-db";
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
 import { buildHandoffDeps } from "../src/modules/36-messaging/handoffs/deps";
+import { buildIdgDiscussionDeps } from "../src/modules/36-messaging/idg/deps";
 import {
   channelHintAudience,
   createDbMessagingProvider,
@@ -122,6 +123,8 @@ const ROUTES: Record<string, Verdict> = {
   "PUT /api/v1/messaging/channels/:id/messages/:messageId/pin": { kind: "idor" },
   "DELETE /api/v1/messaging/channels/:id/messages/:messageId/pin": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/pins": { kind: "idor" },
+  // WP 3.6 IDG discussions: read-only list behind the pin list's exact guards (asserted below and in m36-idg-coordination.live).
+  "GET /api/v1/messaging/channels/:id/idg-discussions": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/search": { kind: "idor" },
   // WP 2.12 presence/typing: the channel's guards run before anything else; ids only (asserted in m36-presence.live).
   "POST /api/v1/messaging/channels/:id/presence": { kind: "idor" },
@@ -290,6 +293,8 @@ const REGISTRAR_FILES = [
   "handoff-typebox.ts", // schemas only
   "promotion-routes.ts", // WP 3.7 chart promotion, mounted by registerMessagingRoutes
   "promotion-typebox.ts", // schemas only
+  "idg-discussion-routes.ts", // WP 3.6 IDG discussions, mounted by registerMessagingRoutes
+  "idg-discussion-typebox.ts", // schemas only
   "patient-context-routes.ts", // WP 3.1 context panel, mounted by registerMessagingRoutes
   "patient-context-typebox.ts", // schemas only
   "template-routes.ts",
@@ -673,6 +678,13 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         store: createDbClinicalLinkStore(handle.db),
       },
       sbar: { isEnabled: async () => true, store: createDbSbarPolicyStore(handle.db) },
+      idgDiscussions: buildIdgDiscussionDeps({
+        db: handle.db,
+        cipher: createMessageBodyCipher({ kek: KEK }),
+        flags: {
+          forOrg: async () => ({ "messaging.idg": true, "messaging.clinical_links": true }),
+        },
+      }),
       tasks: buildTaskDeps({
         db: handle.db,
         flags: { forOrg: async () => ({ "messaging.tasks": true }) },
@@ -1491,6 +1503,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     const PIN = "PUT /api/v1/messaging/channels/:id/messages/:messageId/pin";
     const UNPIN = "DELETE /api/v1/messaging/channels/:id/messages/:messageId/pin";
     const PINS = "GET /api/v1/messaging/channels/:id/pins";
+    const IDG = "GET /api/v1/messaging/channels/:id/idg-discussions";
     let rp: string; // private: u1, u2 active; `outsider` removed
     let rpArchived: string;
     let m1: string;
@@ -1548,6 +1561,8 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
           await expectNoOracle(PIN, attacker, { id: channelId, messageId });
           await expectNoOracle(UNPIN, attacker, { id: channelId, messageId });
           await expectNoOracle(PINS, attacker, { id: channelId });
+          // WP 3.6: the IDG discussion list is refused exactly like the pin list (same guards, same random-id answer).
+          await expectNoOracle(IDG, attacker, { id: channelId });
         }
       }
     });

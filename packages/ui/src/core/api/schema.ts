@@ -13421,6 +13421,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/idg-discussions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The care-team channel's IDG discussions: root messages linked to an IDG meeting, newest first, hydrated like the pin list (WP 3.6; read-only, read-audited; enabled:false when the tenant flags messaging.idg + messaging.clinical_links are not both on; a non-care-team channel answers an empty list; the discussion never changes an IDG meeting or the plan of care) */
+        get: operations["getApiV1MessagingChannelsByIdIdgdiscussions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/channels/{id}/members": {
         parameters: {
             query?: never;
@@ -63086,6 +63103,101 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingChannelsByIdIdgdiscussions: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        discussions: {
+                            messageId: string;
+                            channelId: string;
+                            authorUserId: string | null;
+                            authorDisplayName: string | null;
+                            body: string;
+                            bodyKind: "plain" | "markdown" | "system" | "rich";
+                            bodyDoc?: {
+                                /** @constant */
+                                schemaVersion: 1;
+                                doc: {
+                                    /** @constant */
+                                    type: "doc";
+                                    content: unknown[];
+                                };
+                            };
+                            /** @constant */
+                            bodyUnreadable?: true;
+                            createdAt: string;
+                            editedAt?: string | null;
+                            parentMessageId: string | null;
+                            replyCount?: number;
+                            lastReplyAt?: string | null;
+                            reactions?: {
+                                emoji: "heart" | "thanks" | "smile" | "celebrate" | "sad" | "hug";
+                                count: number;
+                                reactedByMe: boolean;
+                            }[];
+                            pinned?: boolean;
+                            poll?: {
+                                pollId: string;
+                                closed: boolean;
+                                closedAt: string | null;
+                                totalVotes: number;
+                                myOptionId: string | null;
+                                canClose: boolean;
+                                options: {
+                                    optionId: string;
+                                    label: string;
+                                    voteCount: number;
+                                }[];
+                            };
+                            clinicalLinks?: {
+                                /** Format: uuid */
+                                link_id: string;
+                                kind: "medication" | "order" | "care_plan" | "assessment" | "visit" | "document" | "idg_meeting";
+                                /** Format: uuid */
+                                entity_id: string;
+                            }[];
+                            references: {
+                                kind: "staff" | "patient";
+                                entityId: string;
+                                start: number;
+                                end: number;
+                                displayLabel: string;
+                                navigable: boolean;
+                            }[];
+                            attachments?: {
+                                attachmentId: string;
+                                fileName: string;
+                                mimeType: string;
+                                byteSize: number;
+                                availability: "available" | "scanning";
+                            }[];
+                            hiddenAttachmentCount?: number;
+                        }[];
+                        patientId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

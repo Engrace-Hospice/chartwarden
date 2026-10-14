@@ -1284,6 +1284,11 @@ import {
   OfferHandoffResponseSchema as M36OfferHandoffResponseSchema,
   PutHandoffPolicyBodySchema as M36PutHandoffPolicyBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/handoff-typebox";
+// M36 WP 3.6 IDG discussions.
+import {
+  IdgDiscussionListResponseSchema as M36IdgDiscussionListResponseSchema,
+  IdgDiscussionQuerySchema as M36IdgDiscussionQuerySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/idg-discussion-typebox";
 // ── M36 Secure Messaging & Alerts — request + response schema imports (all M36-aliased) ──
 import {
   // request schemas (query / body) — reused as-is
@@ -9079,6 +9084,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/messaging/channels/:id/pins": {
     summary: "The channel's pinned messages, most recently pinned first (read-audited)",
     response: M36PinListResponseSchema,
+  },
+  // WP 3.6 IDG discussions (read-only; same guards and refusals as the pin list; flag off => 200 enabled:false)
+  "GET /api/v1/messaging/channels/:id/idg-discussions": {
+    summary:
+      "The care-team channel's IDG discussions: root messages linked to an IDG meeting, newest first, hydrated like the pin list (WP 3.6; read-only, read-audited; enabled:false when the tenant flags messaging.idg + messaging.clinical_links are not both on; a non-care-team channel answers an empty list; the discussion never changes an IDG meeting or the plan of care)",
+    query: M36IdgDiscussionQuerySchema,
+    response: M36IdgDiscussionListResponseSchema,
   },
   // WP 2.10 polls (non-clinical; single choice; named votes; channel_visibility ABAC, refusals are the 404 a random id gets)
   "POST /api/v1/messaging/channels/:id/polls": {

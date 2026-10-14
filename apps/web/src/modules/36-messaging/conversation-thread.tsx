@@ -660,7 +660,12 @@ function ConversationThreadView({
         />
 
         {contextOpen && patient ? (
-          <PatientContextAside patient={patient} onClose={() => setContextOpen(false)} />
+          <PatientContextAside
+            patient={patient}
+            onClose={() => setContextOpen(false)}
+            idgChannelId={channel.kind === "care_team" ? channel.channelId : undefined}
+            onOpenThread={panel.openThread}
+          />
         ) : null}
         {panel.rootId ? (
           <ThreadPanel

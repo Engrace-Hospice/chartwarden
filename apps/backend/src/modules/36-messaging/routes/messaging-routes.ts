@@ -45,6 +45,11 @@ import {
 } from "./clinical-link-routes";
 import { DISABLED_HANDOFFS, type HandoffRouteDeps, registerHandoffRoutes } from "./handoff-routes";
 import {
+  DISABLED_IDG_DISCUSSIONS,
+  type IdgDiscussionRouteDeps,
+  registerIdgDiscussionRoutes,
+} from "./idg-discussion-routes";
+import {
   AddMemberBodySchema,
   AlertParamsSchema,
   AlertRuleParamsSchema,
@@ -115,6 +120,8 @@ export interface MessagingRouteDeps {
   handoffs?: HandoffRouteDeps;
   /** WP 3.7: chart promotion (flag + service). Omitted => flag off: every promotion route 404s and the list answers disabled. */
   promotions?: PromotionRouteDeps;
+  /** WP 3.6: IDG discussions (flag + read-only store). Omitted => flag off: the list answers disabled. */
+  idgDiscussions?: Omit<IdgDiscussionRouteDeps, "canViewChannel">;
 }
 
 /**
@@ -388,6 +395,15 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     send: SEND,
     sendToChannel: SEND_TO_CHANNEL,
   });
+  // --- WP 3.6: IDG discussions (read-only list of care-team root messages linked to an IDG meeting; flag-gated) ---------
+  registerIdgDiscussionRoutes(
+    app,
+    { read: READ, viewChannel: VIEW_CHANNEL },
+    {
+      ...(deps.idgDiscussions ?? DISABLED_IDG_DISCUSSIONS),
+      canViewChannel: service.canViewChannel,
+    },
+  );
 
   // Structured autocomplete is scoped to a channel whose effective visibility has already been
   // revalidated. Patient results are intentionally limited by the service to the linked care-team

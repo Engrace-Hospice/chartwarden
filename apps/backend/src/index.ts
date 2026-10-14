@@ -1420,6 +1420,7 @@ import {
   buildHandoffDeps,
   buildIdgAlertConsumers,
   buildIdgCarryForwardComplianceConsumer,
+  buildIdgDiscussionDeps,
   buildM36BreakGlassAlertConsumer,
   buildM36ClinicalAlertConsumer,
   buildPresenceDeps,
@@ -4724,6 +4725,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             ...(m36Handoffs ? { handoffs: m36Handoffs } : {}),
             // WP 3.7 - chart promotion; off unless the tenant flag `messaging.promotions` is on.
             ...(m36Promotions ? { promotions: m36Promotions } : {}),
+            // WP 3.6 - IDG discussions (read-only); off unless tenant flags `messaging.idg` AND `messaging.clinical_links` are on.
+            idgDiscussions: buildIdgDiscussionDeps({ db: dbHandle.db, flags: featureFlagReader }),
           }); // M36 — channel/thread/alert-inbox/prefs reads (FB-T04; writes → FB-T05) + WP 1.5 attachments
           // GAP-101 — the §4.9 inbound vendor webhooks (Twilio sms/voice status, Postmark event): signature-authenticated
           // (replay window + HMAC / IP allowlist + bearer), reconciling `notification_delivery`. FAIL-CLOSED: a vendor
