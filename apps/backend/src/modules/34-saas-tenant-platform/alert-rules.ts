@@ -178,8 +178,17 @@ function floorOf(spec: M34SpecSeverity): M34AlertSeverityFloor {
  * `eventType` the engine matches; `compliance_officer_for_tenant` / `platform_security_owner` route
  * to M34's two registered resolvers. UPSERTed as M36 platform-default rows at boot.
  */
-/** The M3 RBAC role key the platform-ops console gates on (`tenant_lifecycle_platform_ops`). */
+/** The M3 RBAC role key the platform-ops console gates on (`tenant_lifecycle_platform_ops`). Literal on purpose (this
+ *  file imports no runtime code); a test pins it to `@wardenx/auth`'s PLATFORM_OPS_ROLE_KEY, the single source. */
 export const PLATFORM_OPS_ROLE_KEY = "platform_ops";
+
+/**
+ * The ZERO-permission role operators are bound with INSIDE a tenant org (bind-platform-staff.ts, migration 1097).
+ * Rules emitted under a TENANT org route at this key, never at `platform_ops`: binding `platform_ops` there would
+ * hand operators `user.password.reset` / `user.deactivate` over the tenant's users.
+ */
+// Literal on purpose (this file imports no runtime code); a test pins it to `@wardenx/auth`.
+export const TENANT_ALERT_AUDIENCE_ROLE_KEY = "platform_alert_audience";
 
 export const M34_ALERT_RULES: readonly M34AlertRuleSeed[] = [
   // 1. tenant.onboarding_step_blocked_5d — m34.tenant.onboarding_step_blocked aged 5d → compliance officer + platform-ops
@@ -444,9 +453,9 @@ export const M34_ALERT_RULES: readonly M34AlertRuleSeed[] = [
   //     and inventing an answer here would be a bigger decision than this gap.
   //
   // `role_set` is an M36 built-in whose recipient source is a real `membership_role → role` join
-  // (GAP-096), and `platform_ops` is an ORG-SCOPED role in this codebase (`role.organization_id`; see
-  // scripts/db/seed-org-admin.ts). So this resolves to the platform-ops staff who hold a membership in
-  // the tenant whose export is held — real people, through machinery that already works.
+  // (GAP-096) INSIDE the emit org. Operators hold `platform_ops` in their home org, not in the tenant, so
+  // bootstrap/bind-platform-staff.ts binds each of them into the tenant with the self-only-permission
+  // `platform_alert_audience` role (migration 1097) and this rule routes at that key.
   {
     ruleKey: "tenant_export.oversized_hold",
     eventType: "m34.tenant_export.oversized_hold",
@@ -454,7 +463,7 @@ export const M34_ALERT_RULES: readonly M34AlertRuleSeed[] = [
     severityFloor: floorOf("error"),
     specSeverity: "error",
     recipientResolver: "role_set",
-    resolverArgs: { roleKeys: [PLATFORM_OPS_ROLE_KEY] },
+    resolverArgs: { roleKeys: [TENANT_ALERT_AUDIENCE_ROLE_KEY] },
     channelsOverride: null,
     systemLocked: false,
     enabled: true,
@@ -464,7 +473,7 @@ export const M34_ALERT_RULES: readonly M34AlertRuleSeed[] = [
   // NOT in the §4.8 table. The onboarding sweep retries `onboarding -> active` daily and a refused guard (tasks not
   // settled, no executed BAA, BAA within 90 days of expiry) only logs; after 3 consecutive identical refusals the
   // sweep emits this so a tenant stuck in `onboarding` surfaces to a person. Routed at the built-in `role_set` over
-  // `platform_ops` for the same reason as `tenant_export.oversized_hold` above.
+  // `platform_alert_audience` for the same reason as `tenant_export.oversized_hold` above.
   // LOCKED (unlike oversized_hold): it is emitted under the tenant's own org, so without the lock a tenant admin's
   // PATCH /api/v1/alert-rules/:id could clone it with another resolver and redirect it away from platform ops.
   // The platform row's system_locked makes migration 0334's trigger and selectEffectiveAlertRules refuse any
@@ -476,7 +485,7 @@ export const M34_ALERT_RULES: readonly M34AlertRuleSeed[] = [
     severityFloor: floorOf("warn"),
     specSeverity: "warn",
     recipientResolver: "role_set",
-    resolverArgs: { roleKeys: [PLATFORM_OPS_ROLE_KEY] },
+    resolverArgs: { roleKeys: [TENANT_ALERT_AUDIENCE_ROLE_KEY] },
     channelsOverride: null,
     systemLocked: true,
     enabled: true,

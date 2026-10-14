@@ -537,6 +537,12 @@ jobs:
               name: "M2 tax-id cipher — real wardenx_app role",
               scripts: "test:m2:tax-id-cipher:live",
             }
+          # A new tenant's org gets every platform-ops operator as an active member bound to the platform-owned
+          # `platform_ops` role, so `role_set[platform_ops]` alerts reach someone. Idempotent; never reactivates.
+          - {
+              name: "M34 platform-staff binding — real wardenx_app role",
+              scripts: "test:m34:platform-staff-binding:live",
+            }
           # GAP-063: M38's platform-ops write door. Migration 0015 granted `terminology_loader`
           # INSERT/UPDATE on the canonical tables but created no row POLICY for it, so the grant was
           # dead — every loader write matched zero rows. This suite runs as NOBYPASSRLS wardenx_app,

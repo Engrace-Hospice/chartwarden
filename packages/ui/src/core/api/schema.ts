@@ -13751,6 +13751,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/patients/{patientId}/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Patient context panel (WP 3.1): a read-only projection through the owning modules' seams. Each tile re-checks that module's permission on the request; a tile the caller may not see is ABSENT (never null/403) and its source is not read; a failing seam makes only its own tile `unavailable`; `as_of` is when the panel read the source. Read-audited against the patient. */
+        get: operations["getApiV1MessagingPatientsByPatientIdContext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/scheduled-messages": {
         parameters: {
             query?: never;
@@ -63695,6 +63712,94 @@ export interface operations {
                         kind: "care_team";
                         patientId: string;
                         archived: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingPatientsByPatientIdContext: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                patientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        patient_id: string;
+                        tiles: {
+                            status?: {
+                                /** @constant */
+                                state: "ok";
+                                /** Format: date-time */
+                                as_of: string;
+                                link: string;
+                                data: {
+                                    status: string | null;
+                                };
+                            } | {
+                                /** @constant */
+                                state: "unavailable";
+                                link: string;
+                            };
+                            care_team?: {
+                                /** @constant */
+                                state: "ok";
+                                /** Format: date-time */
+                                as_of: string;
+                                link: string;
+                                data: {
+                                    member_count: number;
+                                };
+                            } | {
+                                /** @constant */
+                                state: "unavailable";
+                                link: string;
+                            };
+                            allergies?: {
+                                /** @constant */
+                                state: "ok";
+                                /** Format: date-time */
+                                as_of: string;
+                                link: string;
+                                data: {
+                                    entries: {
+                                        allergen: string;
+                                        severity: string | null;
+                                    }[];
+                                };
+                            } | {
+                                /** @constant */
+                                state: "unavailable";
+                                link: string;
+                            };
+                            medications?: {
+                                /** @constant */
+                                state: "ok";
+                                /** Format: date-time */
+                                as_of: string;
+                                link: string;
+                                data: {
+                                    active_count: number;
+                                };
+                            } | {
+                                /** @constant */
+                                state: "unavailable";
+                                link: string;
+                            };
+                        };
                     };
                 };
             };

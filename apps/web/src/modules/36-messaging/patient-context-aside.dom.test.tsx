@@ -1,22 +1,29 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import { useState } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { PatientContextAside } from "./thread-header";
 
 // WP 2.11: the patient-context panel is a slide-over (768-1279 px) or sheet (<768 px), so it must take focus when it
 // opens, close on Escape, and hand focus back to the control that opened it.
 const PATIENT = { id: "p-1", firstName: "Margaret", lastName: "Brandt", mrn: "MRN-1" };
 
+const api = {
+  GET: vi.fn().mockResolvedValue({ data: { patient_id: "p-1", tiles: {} } }),
+} as unknown as ApiClient;
+
 function Harness() {
   const [open, setOpen] = useState(false);
   return (
-    <MemoryRouter>
-      <button type="button" onClick={() => setOpen((o) => !o)}>
-        Patient context
-      </button>
-      {open ? <PatientContextAside patient={PATIENT} onClose={() => setOpen(false)} /> : null}
-    </MemoryRouter>
+    <ApiClientProvider client={api}>
+      <MemoryRouter>
+        <button type="button" onClick={() => setOpen((o) => !o)}>
+          Patient context
+        </button>
+        {open ? <PatientContextAside patient={PATIENT} onClose={() => setOpen(false)} /> : null}
+      </MemoryRouter>
+    </ApiClientProvider>
   );
 }
 

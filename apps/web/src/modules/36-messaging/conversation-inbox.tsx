@@ -64,6 +64,27 @@ export function ConversationInbox({
     items[(current + delta + items.length) % items.length]?.focus();
   }
 
+  /** WAI-ARIA tabs: one Tab stop (the selected tab), arrows/Home/End move and select. */
+  function moveFilter(event: KeyboardEvent<HTMLDivElement>): void {
+    const last = FILTERS.length - 1;
+    const at = FILTERS.findIndex((item) => item.value === filter);
+    const next =
+      event.key === "ArrowRight"
+        ? (at + 1) % FILTERS.length
+        : event.key === "ArrowLeft"
+          ? (at + last) % FILTERS.length
+          : event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? last
+              : -1;
+    const target = FILTERS[next];
+    if (!target) return;
+    event.preventDefault();
+    onFilterChange(target.value);
+    event.currentTarget.querySelectorAll<HTMLButtonElement>("[role=tab]")[next]?.focus();
+  }
+
   return (
     <aside className="wx-messaging-inbox" aria-label="Conversations">
       <header className="wx-messaging-inbox-header">
@@ -111,13 +132,19 @@ export function ConversationInbox({
             aria-label="Search conversations"
           />
         </label>
-        <div className="wx-messaging-filters" role="tablist" aria-label="Conversation filters">
+        <div
+          className="wx-messaging-filters"
+          role="tablist"
+          aria-label="Conversation filters"
+          onKeyDown={moveFilter}
+        >
           {FILTERS.map((item) => (
             <button
               key={item.value}
               type="button"
               role="tab"
               aria-selected={filter === item.value}
+              tabIndex={filter === item.value ? 0 : -1}
               onClick={() => onFilterChange(item.value)}
             >
               {item.label}

@@ -47,6 +47,8 @@ export {
   hasAdmittingClinicianRole,
 } from "./admitting-clinician-grants";
 export {
+  PLATFORM_ALERT_AUDIENCE_ROLE_KEY,
+  PLATFORM_OPS_ROLE_KEY,
   PLATFORM_GRANTABLE_ROLE_KEYS,
   type PlatformGrantableRoleKey,
   RESERVED_PLATFORM_ROLE_CATEGORY,

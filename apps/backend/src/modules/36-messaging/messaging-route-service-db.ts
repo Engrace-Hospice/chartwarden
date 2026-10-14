@@ -82,6 +82,7 @@ import {
   generateVerificationCode,
   hashVerificationCode,
 } from "./endpoint-verification";
+import { assertMemberCategoryAllowed, excludedMemberUserIds } from "./member-category-gate";
 import { createDbMentionNonMemberSearch } from "./mention-non-member-service-db";
 import { decodeCursor, encodeCursor } from "./message-cursor";
 import { publishMessageHint } from "./message-hint-events";
@@ -96,7 +97,6 @@ import {
   markMessagesRead,
   withValidMessageContent,
 } from "./messaging-write-core";
-import { assertMemberCategoryAllowed, excludedMemberUserIds } from "./member-category-gate";
 import { type Part2ChannelGate, createSeamPart2ChannelGate } from "./part2-channel-gate";
 import { createDbReactionPinService } from "./reaction-pin-service-db";
 import { decodeStoredBody, sameMentionToken, storedBodyFor } from "./rich-body-codec";
