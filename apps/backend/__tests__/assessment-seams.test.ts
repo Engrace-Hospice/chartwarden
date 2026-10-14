@@ -208,3 +208,44 @@ describe("boot wiring (registerAssessmentSeams)", () => {
     ).toThrow(/not implemented/);
   });
 });
+
+describe("LatestAssessmentProvider.linkSummary (M36 WP 3.2)", () => {
+  const ORG = "org-1";
+  const link = (over: Record<string, unknown> = {}) => ({
+    id: "asmt-pps",
+    organizationId: ORG,
+    patientId: PAT,
+    status: "active",
+    occurredAt: "2026-03-10T12:00:00.000Z",
+    ...over,
+  });
+  const provider = (links: ReturnType<typeof link>[]) =>
+    createLatestAssessmentProvider(createInMemoryAssessmentReaderStore({ links }).store);
+
+  it("returns id/patient/status/occurredAt only", async () => {
+    const out = await provider([link()]).linkSummary(ORG, "asmt-pps");
+    expect(out).toEqual({
+      id: "asmt-pps",
+      patientId: PAT,
+      status: "active",
+      occurredAt: "2026-03-10T12:00:00.000Z",
+    });
+    expect(Object.keys(out ?? {})).toHaveLength(4);
+  });
+
+  it("returns null for an unknown id and for another org's row", async () => {
+    const p = provider([link()]);
+    expect(await p.linkSummary(ORG, "nope")).toBeNull();
+    expect(await p.linkSummary("org-2", "asmt-pps")).toBeNull();
+  });
+
+  it("withholds a SUD-context row like a missing one", async () => {
+    expect(await provider([link({ sudContext: true })]).linkSummary(ORG, "asmt-pps")).toBeNull();
+  });
+
+  it("throws on a blank organizationId or id", async () => {
+    const p = provider([link()]);
+    await expect(p.linkSummary("", "asmt-pps")).rejects.toThrow(/organizationId/);
+    await expect(p.linkSummary(ORG, "  ")).rejects.toThrow(/id required/);
+  });
+});

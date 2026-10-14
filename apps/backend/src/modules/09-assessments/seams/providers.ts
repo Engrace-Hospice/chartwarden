@@ -37,6 +37,12 @@ export function createLatestAssessmentProvider(
     ): Promise<ReadonlyArray<LatestAssessment>> {
       return store.latestActiveBatch(patientId, scaleTypes);
     },
+    async linkSummary(organizationId: string, id: string) {
+      // Fail closed: no tenant or no id means no answer, never a guessed one.
+      if (!organizationId?.trim()) throw new Error("linkSummary: organizationId required");
+      if (!id?.trim()) throw new Error("linkSummary: id required");
+      return store.linkSummary(organizationId, id);
+    },
   };
 }
 

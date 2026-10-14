@@ -229,6 +229,8 @@ jobs:
           # GAP-027 — GET /encounters/:id `addenda[]` through the real route + Drizzle service + RLS.
           - { name: "M8 addenda read", scripts: "test:m8:addenda-read:live" }
           - { name: "M9 Assessments", scripts: "test:m9:read:live test:m9:write:live" }
+          # M36 WP 3.2 - LatestAssessmentProvider.linkSummary, as the NOBYPASSRLS app role.
+          - { name: "M9 link summary seam", scripts: "test:m9:link-summary:live" }
           - { name: "M10 HOPE", scripts: "test:m10:read:live test:m10:write:live" }
           # The HOPE spec registry / CMS spec import / answer engine suites landed on main after the
           # 2026-09-17 force-push with no runner; the restored live-suite gate caught them.

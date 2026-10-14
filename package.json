@@ -103,6 +103,7 @@
     "test:m7:read:live": "vitest run apps/backend/__tests__/m7-care-plan-read-service.live.test.ts",
     "test:m7:write:live": "vitest run apps/backend/__tests__/m7-care-plan-write.live.test.ts",
     "test:m9:read:live": "vitest run apps/backend/__tests__/m9-assessments-read-service.live.test.ts",
+    "test:m9:link-summary:live": "vitest run apps/backend/__tests__/m9-link-summary.live.test.ts",
     "test:m9:write:live": "vitest run apps/backend/__tests__/m9-assessments-write.live.test.ts",
     "test:m10:read:live": "vitest run apps/backend/__tests__/m10-hope-read-service.live.test.ts",
     "test:m10:spec:live": "vitest run --no-file-parallelism apps/backend/__tests__/hope-spec-registry.live.test.ts packages/db/migrations/__tests__/m10-hope-phase-1a-spec-foundation.live.test.ts packages/db/migrations/__tests__/m10-hope-spec-import.live.test.ts",
