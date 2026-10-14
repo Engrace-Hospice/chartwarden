@@ -8,6 +8,9 @@ const NotificationsInbox = lazy(() =>
 const SavedReplies = lazy(() =>
   import("./saved-replies-screen").then((m) => ({ default: m.SavedReplies })),
 );
+const GlobalSearchSettings = lazy(() =>
+  import("./global-search-settings").then((m) => ({ default: m.GlobalSearchSettings })),
+);
 const StaffMessaging = lazy(() =>
   import("./staff-messaging").then((m) => ({ default: m.StaffMessaging })),
 );
@@ -31,6 +34,14 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "General",
       requiredPermission: "messaging.send",
       screen: SavedReplies,
+    },
+    {
+      id: "messaging.global-search-settings",
+      path: "/messaging/search-settings",
+      title: "Global search settings",
+      navGroup: "Admin",
+      requiredPermission: "messaging.global_search.manage",
+      screen: GlobalSearchSettings,
     },
     {
       id: "messaging.notifications",
