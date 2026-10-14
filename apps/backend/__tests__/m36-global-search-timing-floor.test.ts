@@ -20,7 +20,13 @@ function virtualClock(random = 0.5) {
     },
     random: () => random,
   };
-  return { clock, spend: (ms: number) => void (t += ms), elapsed: () => t };
+  return {
+    clock,
+    spend: (ms: number) => {
+      t += ms;
+    },
+    elapsed: () => t,
+  };
 }
 
 describe("search response floor (F1)", () => {

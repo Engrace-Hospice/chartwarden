@@ -19,7 +19,6 @@ import { and, eq, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import { GLOBAL_SEARCH_ROLE_POLICY } from "./global-search/role-gate";
 import type { Tx } from "./messaging-write-core";
 
-
 export const MEMBER_CATEGORY_NOT_ALLOWED = "MEMBER_CATEGORY_NOT_ALLOWED";
 
 /** Categories the global search role gate does not deny ("allow"/"off"); anything else is excluded.

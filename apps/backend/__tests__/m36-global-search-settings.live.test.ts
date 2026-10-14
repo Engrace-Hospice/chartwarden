@@ -26,12 +26,12 @@ import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { wireModuleSeams } from "../src/index";
+import { NOTICE_VERSION } from "../src/modules/36-messaging/global-search/notice";
 import { GLOBAL_SEARCH_PLATFORM_FLAG_KEY } from "../src/modules/36-messaging/global-search/platform-flag";
 import {
   GLOBAL_SEARCH_ESCROW_FLAG_KEY,
   GLOBAL_SEARCH_LEAKAGE_FLAG_KEY,
 } from "../src/modules/36-messaging/global-search/prerequisites";
-import { NOTICE_VERSION } from "../src/modules/36-messaging/global-search/notice";
 import { mountMessagingRoutes } from "../src/modules/36-messaging/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 

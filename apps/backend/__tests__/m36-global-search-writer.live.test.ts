@@ -898,7 +898,7 @@ describe.skipIf(!DB_URL)("M36 WP 2.7b C2 global search index writer - LIVE Postg
 
     it("a NEW name is added grow-only, and only the messages that carry it are rewritten (after the cache delay)", async () => {
       await enableSearch(ORG_A);
-      let clock = Date.now();
+      const clock = Date.now();
       const fragments = ["Astrid"];
       const exclusions = createNameExclusions({
         db: handle.db,

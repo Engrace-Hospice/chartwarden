@@ -14,6 +14,7 @@ import type { DbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
 import { sql } from "drizzle-orm";
+import { CURRENT_NOTICE, type GlobalSearchNotice } from "./notice";
 import {
   type ChecklistFailureCode,
   type GlobalSearchChecklist,
@@ -21,7 +22,6 @@ import {
   failedChecks,
   toChecklist,
 } from "./prerequisites";
-import { CURRENT_NOTICE, type GlobalSearchNotice } from "./notice";
 import { type TenantSearchSetting, readTenantSearchSettingInTx } from "./tenant-setting-store";
 
 const HTTP_CONFLICT = 409;
