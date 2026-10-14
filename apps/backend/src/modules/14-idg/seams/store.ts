@@ -17,10 +17,12 @@ import type {
   IdgDecisionDto,
   IdgMeetingDigest,
   IdgMeetingId,
+  IdgMeetingStatus,
   IdgPatientPacketId,
   IsoInstant,
   LocationId,
   PacketSnapshot,
+  PatientId,
 } from "@wardenx/types";
 
 /** A built packet the store resolves — the snapshot + per-discipline views + the two-layer cover + freeze
@@ -65,6 +67,14 @@ export interface IdgSeamStore {
   ): Promise<ReadonlyArray<IdgMeetingDigest>>;
   cadenceForAdmission(admissionId: AdmissionId): Promise<IdgCadenceAdherence | null>;
   /**
+   * Most recent ADJOURNED meeting (real `actual_start`) with a FROZEN packet for the patient, in the
+   * explicit org's tenant context; null when none. Id + instant + status only.
+   */
+  lastMeetingForPatient(
+    organizationId: string,
+    patientId: PatientId,
+  ): Promise<{ meetingId: IdgMeetingId; heldAt: IsoInstant; status: IdgMeetingStatus } | null>;
+  /**
    * ORG-LEVEL IDG meeting-cadence tally over a SCHEDULED-START window — M30's `idg_cadence_adherence`
    * input. Denominator = meetings scheduled to start inside the window (the cycles that came due);
    * numerator = those actually convened within their scheduled slot. Aggregate counts only (D6).
@@ -94,6 +104,14 @@ export interface IdgSeamSeed {
   readonly meetings?: readonly IdgMeetingDigest[];
   /** Cadence-adherence rollups keyed by their `admissionId`. */
   readonly cadence?: readonly IdgCadenceAdherence[];
+  /** Per-patient last-meeting rows the by-patient read resolves (slice default: none). */
+  readonly lastMeetings?: ReadonlyArray<{
+    readonly organizationId: string;
+    readonly patientId: PatientId;
+    readonly meetingId: IdgMeetingId;
+    readonly heldAt: IsoInstant;
+    readonly status: IdgMeetingStatus;
+  }>;
 }
 
 /** An in-memory {@link IdgSeamStore} for the slice/tests — no DB, deterministic, RLS-free. */
@@ -128,6 +146,13 @@ export function createInMemoryIdgSeamStore(seed: IdgSeamSeed = {}): { store: Idg
       },
       async cadenceForAdmission(admissionId) {
         return cadence.get(admissionId) ?? null;
+      },
+      async lastMeetingForPatient(organizationId, patientId) {
+        const rows = (seed.lastMeetings ?? [])
+          .filter((r) => r.organizationId === organizationId && r.patientId === patientId)
+          .sort((a, b) => (a.heldAt < b.heldAt ? 1 : -1));
+        const top = rows[0];
+        return top ? { meetingId: top.meetingId, heldAt: top.heldAt, status: top.status } : null;
       },
       /** Slice default: 0/0 — M30's kernel SUPPRESSES rather than scoring perfect cadence. */
       async cadenceCountsForOrg() {

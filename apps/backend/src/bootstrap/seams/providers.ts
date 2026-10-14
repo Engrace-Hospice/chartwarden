@@ -1223,6 +1223,9 @@ export const idgScheduleProviderDenyStub: IdgScheduleProvider = {
   getCadenceCountsForOrg() {
     throw new NotImplementedError("IdgScheduleProvider");
   },
+  getLastMeetingForPatient() {
+    throw new NotImplementedError("IdgScheduleProvider");
+  },
 };
 
 /** M17 — the visit read seam (encounter context / EVV geofence target / IDG since-meeting) M8/M18/M14 consume.
