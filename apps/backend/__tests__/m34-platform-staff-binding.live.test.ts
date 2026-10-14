@@ -30,6 +30,8 @@ const OPS_USER = "33333333-3333-4333-8333-3333f3400103";
 const OPS_USER_2 = "44444444-4444-4444-8444-4444f3400104";
 const PLAIN_USER = "55555555-5555-4555-8555-5555f3400105";
 const PENDING_OPS = "66666666-6666-4666-8666-6666f3400106";
+const EXPIRY = new Date(Date.now() + 30 * 86_400_000).toISOString();
+const DEACTIVATED_OPS = "77777777-7777-4777-8777-7777f3400107";
 
 describe.skipIf(!DB_URL)(
   "M34 platform-staff binding — LIVE Postgres, real wardenx_app role",
@@ -37,6 +39,7 @@ describe.skipIf(!DB_URL)(
     let admin: Client;
     let handle: ReturnType<typeof createDbClient>;
     let platformOpsRoleId: string;
+    let audienceRoleId: string;
 
     beforeAll(async () => {
       admin = new Client({ connectionString: DB_URL });
@@ -67,8 +70,9 @@ describe.skipIf(!DB_URL)(
       await admin.query(
         `INSERT INTO "user" (id,email,name) VALUES
          ($1,'f3401-ops@example.test','Ops One'),($2,'f3401-ops2@example.test','Ops Two'),
-         ($3,'f3401-plain@example.test','Plain'),($4,'f3401-pending@example.test','Pending Ops')`,
-        [OPS_USER, OPS_USER_2, PLAIN_USER, PENDING_OPS],
+         ($3,'f3401-plain@example.test','Plain'),($4,'f3401-pending@example.test','Pending Ops'),
+         ($5,'f3401-deact@example.test','Deactivated Ops')`,
+        [OPS_USER, OPS_USER_2, PLAIN_USER, PENDING_OPS, DEACTIVATED_OPS],
       );
       const role = await admin.query<{ id: string }>(
         `INSERT INTO role (organization_id, key, name, category, scope_level, enabled, description)
@@ -76,8 +80,13 @@ describe.skipIf(!DB_URL)(
        RETURNING id`,
       );
       platformOpsRoleId = role.rows[0]?.id as string;
+      // Created by migration 1097 (platform-owned, zero permissions).
+      const audience = await admin.query<{ id: string }>(
+        `SELECT id FROM role WHERE organization_id IS NULL AND key = 'platform_alert_audience'`,
+      );
+      audienceRoleId = audience.rows[0]?.id as string;
       // Operators hold platform_ops via a membership in the platform home org; the plain user is a tenant member only.
-      for (const userId of [OPS_USER, OPS_USER_2, PENDING_OPS, PLAIN_USER]) {
+      for (const userId of [OPS_USER, OPS_USER_2, PENDING_OPS, PLAIN_USER, DEACTIVATED_OPS]) {
         const m = await admin.query<{ id: string }>(
           `INSERT INTO membership (user_id, organization_id, status, accepted_at)
          VALUES ($1,$2,'active',now()) RETURNING id`,
@@ -85,10 +94,13 @@ describe.skipIf(!DB_URL)(
         );
         if (userId === PLAIN_USER) continue;
         await admin.query(
-          `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)`,
-          [HOME_ORG, m.rows[0]?.id, platformOpsRoleId],
+          `INSERT INTO membership_role (organization_id, membership_id, role_id, expires_at) VALUES ($1,$2,$3,$4)`,
+          [HOME_ORG, m.rows[0]?.id, platformOpsRoleId, userId === OPS_USER_2 ? EXPIRY : null],
         );
       }
+      await admin.query(`UPDATE "user" SET status = 'deactivated' WHERE id = $1`, [
+        DEACTIVATED_OPS,
+      ]);
       // PENDING_OPS already has a NON-active membership in the new org: the binder must not reactivate it.
       await admin.query(
         `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'pending')`,
@@ -110,7 +122,7 @@ describe.skipIf(!DB_URL)(
       expect(result.operators).toBe(2);
       expect(result.skipped).toBe(1);
       const recipients = await createDrizzleRoleSetMembersReader(handle.db)(NEW_ORG, [
-        "platform_ops",
+        "platform_alert_audience",
       ]);
       expect([...recipients].sort()).toEqual([OPS_USER, OPS_USER_2].sort());
       expect(recipients).not.toContain(PLAIN_USER);
@@ -126,8 +138,42 @@ describe.skipIf(!DB_URL)(
       expect(rows).toHaveLength(2);
       for (const row of rows) {
         expect(row.organization_id).toBeNull();
-        expect(row.id).toBe(platformOpsRoleId);
+        expect(row.id).toBe(audienceRoleId);
+        expect(row.id).not.toBe(platformOpsRoleId);
       }
+    });
+
+    it("skips globally deactivated operators and copies the home-org grant expiry", async () => {
+      const deact = await admin.query(
+        `SELECT 1 FROM membership WHERE user_id=$1 AND organization_id=$2`,
+        [DEACTIVATED_OPS, NEW_ORG],
+      );
+      expect(deact.rowCount).toBe(0);
+      const exp = await admin.query<{ user_id: string; expires_at: Date | null }>(
+        `SELECT m.user_id, mr.expires_at FROM membership_role mr JOIN membership m ON m.id = mr.membership_id
+         WHERE mr.organization_id = $1`,
+        [NEW_ORG],
+      );
+      const byUser = new Map(exp.rows.map((r) => [r.user_id, r.expires_at]));
+      expect(byUser.get(OPS_USER)).toBeNull();
+      expect(new Date(byUser.get(OPS_USER_2) as Date).toISOString()).toBe(EXPIRY);
+    });
+
+    it("writes one audit event per binding, and the bound role satisfies no permission key", async () => {
+      const ev = await admin.query(
+        `SELECT count(*)::int AS n FROM audit_event WHERE organization_id=$1 AND event_type='m2.platform_staff.bound'`,
+        [NEW_ORG],
+      );
+      expect(ev.rows[0].n).toBe(2);
+      // Neither the role itself nor any key an operator holds in the tenant may satisfy the password-reset /
+      // deactivate gates (requirePermission reads role_permission through membership_role).
+      const keys = await admin.query<{ permission_key: string }>(
+        `SELECT rp.permission_key FROM membership_role mr
+           JOIN role_permission rp ON rp.role_id = mr.role_id
+          WHERE mr.organization_id = $1`,
+        [NEW_ORG],
+      );
+      expect(keys.rows.map((r) => r.permission_key)).toEqual([]);
     });
 
     it("is idempotent, and never reactivates or resurrects a non-active membership", async () => {
@@ -152,6 +198,22 @@ describe.skipIf(!DB_URL)(
         [NEW_ORG],
       );
       expect(bindings.rows[0].n).toBe(2);
+    });
+
+    it("does not re-add a role a tenant admin removed from a still-active operator", async () => {
+      await admin.query(
+        `DELETE FROM membership_role WHERE organization_id = $1 AND membership_id IN
+         (SELECT id FROM membership WHERE user_id = $2 AND organization_id = $1)`,
+        [NEW_ORG, OPS_USER],
+      );
+      await bindPlatformStaffToOrg(handle.db, NEW_ORG);
+
+      const bindings = await admin.query(
+        `SELECT count(*)::int AS n FROM membership_role mr JOIN membership m ON m.id = mr.membership_id
+         WHERE mr.organization_id = $1 AND m.user_id = $2`,
+        [NEW_ORG, OPS_USER],
+      );
+      expect(bindings.rows[0].n).toBe(0);
     });
   },
 );

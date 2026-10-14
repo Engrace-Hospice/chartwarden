@@ -181,6 +181,14 @@ function floorOf(spec: M34SpecSeverity): M34AlertSeverityFloor {
 /** The M3 RBAC role key the platform-ops console gates on (`tenant_lifecycle_platform_ops`). */
 export const PLATFORM_OPS_ROLE_KEY = "platform_ops";
 
+/**
+ * The ZERO-permission role operators are bound with INSIDE a tenant org (bind-platform-staff.ts, migration 1097).
+ * Rules emitted under a TENANT org route at this key, never at `platform_ops`: binding `platform_ops` there would
+ * hand operators `user.password.reset` / `user.deactivate` over the tenant's users.
+ */
+// Literal on purpose (this file imports no runtime code); a test pins it to `@wardenx/auth`.
+export const TENANT_ALERT_AUDIENCE_ROLE_KEY = "platform_alert_audience";
+
 export const M34_ALERT_RULES: readonly M34AlertRuleSeed[] = [
   // 1. tenant.onboarding_step_blocked_5d — m34.tenant.onboarding_step_blocked aged 5d → compliance officer + platform-ops
   {
@@ -454,7 +462,7 @@ export const M34_ALERT_RULES: readonly M34AlertRuleSeed[] = [
     severityFloor: floorOf("error"),
     specSeverity: "error",
     recipientResolver: "role_set",
-    resolverArgs: { roleKeys: [PLATFORM_OPS_ROLE_KEY] },
+    resolverArgs: { roleKeys: [TENANT_ALERT_AUDIENCE_ROLE_KEY] },
     channelsOverride: null,
     systemLocked: false,
     enabled: true,
@@ -476,7 +484,7 @@ export const M34_ALERT_RULES: readonly M34AlertRuleSeed[] = [
     severityFloor: floorOf("warn"),
     specSeverity: "warn",
     recipientResolver: "role_set",
-    resolverArgs: { roleKeys: [PLATFORM_OPS_ROLE_KEY] },
+    resolverArgs: { roleKeys: [TENANT_ALERT_AUDIENCE_ROLE_KEY] },
     channelsOverride: null,
     systemLocked: true,
     enabled: true,

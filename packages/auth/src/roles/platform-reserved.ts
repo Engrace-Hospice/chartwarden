@@ -19,6 +19,14 @@ import { PLATFORM_OPS_ROLE_KEYS } from "./templates";
 /** Key prefix reserved to platform-owned roles. */
 export const RESERVED_PLATFORM_ROLE_PREFIX = "platform_";
 
+/**
+ * The ZERO-permission platform-owned role bound to platform operators inside a tenant org purely so M36 `role_set`
+ * alerts reach them (migration 1097; apps/backend bootstrap/bind-platform-staff.ts). It has no `role_permission`
+ * rows and is deliberately NOT in PLATFORM_OPS_ROLE_KEYS / PLATFORM_GRANTABLE_ROLE_KEYS: no predicate admits it
+ * and the operator CLI cannot grant it.
+ */
+export const PLATFORM_ALERT_AUDIENCE_ROLE_KEY = "platform_alert_audience";
+
 /** Platform-authority keys outside the `platform_` prefix, reserved by exact match (GAP-096). */
 export const RESERVED_PLATFORM_ROLE_KEYS = ["ai_safety_owner"] as const;
 

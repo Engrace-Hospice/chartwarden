@@ -26,6 +26,10 @@ export const M2_ACTION_CATALOG: ModuleActionCatalog = [
   compliance("m2.membership.revoked", "A membership was revoked."),
   compliance("m2.user.deactivated", "A user was fully offboarded (credentials disabled)."),
   compliance("m2.user.provisioned", "An administrator directly provisioned a staff identity."),
+  compliance(
+    "m2.platform_staff.bound",
+    "A platform operator was bound into a tenant org with the zero-permission alert-audience role.",
+  ),
   compliance("m2.user.password_reset", "An administrator reset a global password credential."),
   compliance(
     "m2.user.password_change_completed",
