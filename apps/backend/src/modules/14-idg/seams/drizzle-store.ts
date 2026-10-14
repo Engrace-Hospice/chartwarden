@@ -279,6 +279,33 @@ export function createDrizzleIdgSeamStore(db: DbClient): IdgSeamStore {
       );
     },
 
+    /** One meeting's link facts; explicit org (`withOrgContext`, RLS) plus `organization_id` second wall. */
+    meetingForLink(organizationId, meetingId) {
+      return withOrgContext(
+        db,
+        { organizationId, userId: IDG_READER_SYSTEM_USER_ID },
+        async (tx) => {
+          const [row] = await tx
+            .select({
+              id: M.id,
+              status: M.status,
+              scheduledStart: M.scheduledStart,
+              locationId: M.locationId,
+            })
+            .from(M)
+            .where(and(eq(M.organizationId, organizationId), eq(M.id, meetingId)))
+            .limit(1);
+          if (!row) return null;
+          return {
+            id: row.id,
+            status: row.status,
+            scheduledStart: iso(row.scheduledStart),
+            locationId: row.locationId,
+          };
+        },
+      );
+    },
+
     /**
      * ORG-LEVEL IDG meeting-cadence tally over a SCHEDULED-START window — M30's
      * `idg_cadence_adherence` input. Denominator = meetings SCHEDULED to start inside `[from, to)` —

@@ -74,6 +74,16 @@ export interface IdgSeamStore {
     organizationId: string,
     patientId: PatientId,
   ): Promise<{ meetingId: IdgMeetingId; heldAt: IsoInstant; status: IdgMeetingStatus } | null>;
+  /** One meeting's link facts (id, status, scheduled start, location) in the explicit org; null when absent. */
+  meetingForLink(
+    organizationId: string,
+    meetingId: string,
+  ): Promise<{
+    id: IdgMeetingId;
+    status: IdgMeetingStatus;
+    scheduledStart: IsoInstant;
+    locationId: string;
+  } | null>;
   /**
    * ORG-LEVEL IDG meeting-cadence tally over a SCHEDULED-START window — M30's `idg_cadence_adherence`
    * input. Denominator = meetings scheduled to start inside the window (the cycles that came due);
@@ -105,6 +115,14 @@ export interface IdgSeamSeed {
   /** Cadence-adherence rollups keyed by their `admissionId`. */
   readonly cadence?: readonly IdgCadenceAdherence[];
   /** Per-patient last-meeting rows the by-patient read resolves (slice default: none). */
+  /** Meetings the by-id link reads resolve. */
+  readonly linkMeetings?: ReadonlyArray<{
+    readonly organizationId: string;
+    readonly id: IdgMeetingId;
+    readonly status: IdgMeetingStatus;
+    readonly scheduledStart: IsoInstant;
+    readonly locationId: string;
+  }>;
   readonly lastMeetings?: ReadonlyArray<{
     readonly organizationId: string;
     readonly patientId: PatientId;
@@ -153,6 +171,19 @@ export function createInMemoryIdgSeamStore(seed: IdgSeamSeed = {}): { store: Idg
           .sort((a, b) => (a.heldAt < b.heldAt ? 1 : -1));
         const top = rows[0];
         return top ? { meetingId: top.meetingId, heldAt: top.heldAt, status: top.status } : null;
+      },
+      async meetingForLink(organizationId, meetingId) {
+        const m = (seed.linkMeetings ?? []).find(
+          (r) => r.organizationId === organizationId && r.id === meetingId,
+        );
+        return m
+          ? {
+              id: m.id,
+              status: m.status,
+              scheduledStart: m.scheduledStart,
+              locationId: m.locationId,
+            }
+          : null;
       },
       /** Slice default: 0/0 — M30's kernel SUPPRESSES rather than scoring perfect cadence. */
       async cadenceCountsForOrg() {

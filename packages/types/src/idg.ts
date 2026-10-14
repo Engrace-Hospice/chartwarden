@@ -19,6 +19,7 @@
 // ── Leaf-safe shared id aliases (single definition site elsewhere; imported for internal use only so the
 // package surface stays unambiguous under `export *` — re-exporting would be a TS2308 collision) ───────
 import type { AdmissionId, PatientId } from "./admission";
+import type { ClinicalLinkSource } from "./clinical-link";
 import type {
   CarePlanId,
   IdgDecisionId,
@@ -740,7 +741,7 @@ export interface IdgDecisionProvider {
 }
 
 /** §4.8 — schedule + cadence reads (consumed by M28 FHIR `CareTeam`/`Encounter`, M30 cadence measure, M33). */
-export interface IdgScheduleProvider {
+export interface IdgScheduleProvider extends ClinicalLinkSource {
   listMeetingsForLocation(
     orgId: string,
     locationId: LocationId,
@@ -767,6 +768,14 @@ export interface IdgScheduleProvider {
     orgId: string,
     patientId: PatientId,
   ): Promise<IdgPatientLastMeeting | null>;
+
+  // `linkSummary(orgId, meetingId)` (inherited from ClinicalLinkSource): id, `patientId` ALWAYS null (a meeting
+  // has no patient; patients link via packets), meeting status, `occurredAt` = scheduled_start; null when no
+  // such meeting in `orgId`. No patient data crosses. M36 authorises with `idg.read` + `idg_meeting_scope`,
+  // whose location fact comes from `meetingLocation`.
+
+  /** The meeting's location id (the `idg_meeting_scope` ABAC fact); `null` when no such meeting in `orgId`. */
+  meetingLocation(orgId: string, meetingId: string): Promise<string | null>;
 
   /** M30 measure: 15-day-IDG-cadence adherence per admission. */
   getCadenceAdherence(
