@@ -11,7 +11,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import type { SbarSections } from "@wardenx/types";
+import { SBAR_SECTION_KEYS, type SbarSections } from "@wardenx/types";
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -78,7 +78,11 @@ const sessionOf = (userId: string): Session => ({
   organizationName: "Org",
 });
 
-function setup(api: ReturnType<typeof makeApi>, initialText = "") {
+function setup(
+  api: ReturnType<typeof makeApi>,
+  initialText = "",
+  initialSbar: SbarSections | null = null,
+) {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <ApiClientProvider client={api as unknown as ApiClient}>
       <SessionProvider session={sessionNow}>{children}</SessionProvider>
@@ -96,7 +100,7 @@ function setup(api: ReturnType<typeof makeApi>, initialText = "") {
         sbar: props.sbar ?? null,
         hydrate,
       }),
-    { wrapper, initialProps: { text: initialText } },
+    { wrapper, initialProps: { text: initialText, sbar: initialSbar } },
   );
   return { view, hydrate };
 }
@@ -821,5 +825,152 @@ describe("5: Escape in the composer while the merge prompt is open", () => {
     expect(escapeKeepsMine(escKey, { conflict: null, resolve })).toBe(false);
     expect(escapeKeepsMine(letter, { conflict: conflictValue, resolve })).toBe(false);
     expect(resolve).not.toHaveBeenCalled();
+  });
+});
+
+describe("useServerDraft SBAR review fixes", () => {
+  it("3a: text typed before the read returns does not stop the server SBAR hydrating, and the next save keeps it", async () => {
+    const api = makeApi(serverDraft({ sbar: SBAR }));
+    const { view, hydrate } = setup(api, "typed early");
+    await flush();
+    expect(hydrate).toHaveBeenCalledWith("typed early", [], SBAR);
+    view.rerender({ text: "typed early", sbar: SBAR });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS * 2);
+    expect(api.DELETE).not.toHaveBeenCalled();
+    expect(api.PUT.mock.calls.at(-1)?.[1].body).toMatchObject({ body: "typed early", sbar: SBAR });
+  });
+
+  it("3a: an SBAR typed before the read returns does not stop the server text hydrating", async () => {
+    const api = makeApi(serverDraft());
+    const { view, hydrate } = setup(api, "", SBAR);
+    await flush();
+    expect(hydrate).toHaveBeenCalledWith("from the server", [], SBAR);
+    view.rerender({ text: "from the server", sbar: SBAR });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS * 2);
+    expect(api.PUT.mock.calls.at(-1)?.[1].body).toMatchObject({
+      body: "from the server",
+      sbar: SBAR,
+    });
+  });
+
+  it("3a: local text and a local SBAR are both left alone", async () => {
+    const api = makeApi(serverDraft({ sbar: { ...SBAR, urgencyHint: "routine" } }));
+    const { hydrate } = setup(api, "mine", SBAR);
+    await flush();
+    expect(hydrate).not.toHaveBeenCalled();
+  });
+
+  it("4: a server SBAR with reordered or missing sections is normalised and causes no PUT", async () => {
+    const odd = { urgencyHint: "urgent", sections: { recommendation: "r", situation: "s" } };
+    const api = makeApi(serverDraft({ sbar: odd }));
+    const { view, hydrate } = setup(api);
+    await flush();
+    const restored = hydrate.mock.calls[0]?.[2] as SbarSections;
+    expect(Object.keys(restored.sections)).toEqual([...SBAR_SECTION_KEYS]);
+    // The form state is rebuilt in canonical order with every section present.
+    view.rerender({ text: "from the server", sbar: JSON.parse(JSON.stringify(restored)) });
+    await tick(DRAFT_SAVE_DEBOUNCE_MS * 2);
+    expect(api.PUT).not.toHaveBeenCalled();
+  });
+
+  it("5: leaving a slot with an SBAR-only change inside the debounce flushes the sbar at once", async () => {
+    const api = makeApi();
+    const { view } = setup(api);
+    await flush();
+    view.rerender({ text: "", sbar: SBAR });
+    view.rerender({ text: "", sbar: SBAR, parent: "root-1" });
+    await flush();
+    expect(api.PUT).toHaveBeenCalledTimes(1);
+    const body = api.PUT.mock.calls[0]?.[1].body;
+    expect(body).toMatchObject({ body: "", sbar: SBAR });
+    expect(body.parentMessageId).toBeUndefined();
+  });
+
+  it("5: unmounting with an SBAR-only change inside the debounce flushes the sbar at once", async () => {
+    const api = makeApi();
+    const { view } = setup(api);
+    await flush();
+    view.rerender({ text: "", sbar: SBAR });
+    view.unmount();
+    await flush();
+    expect(api.PUT).toHaveBeenCalledTimes(1);
+    expect(api.PUT.mock.calls[0]?.[1].body).toMatchObject({ body: "", sbar: SBAR });
+  });
+
+  it("1: sbarSaved is false until the server acknowledged the snapshot, and false after a failure", async () => {
+    const api = makeApi();
+    const { view } = setup(api);
+    await flush();
+    view.rerender({ text: "", sbar: SBAR });
+    expect(view.result.current.sbarSaved).toBe(false);
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
+    expect(view.result.current.sbarSaved).toBe(true);
+    view.rerender({ text: "", sbar: { ...SBAR, urgencyHint: "routine" } });
+    expect(view.result.current.sbarSaved).toBe(false);
+    api.PUT.mockImplementationOnce(async () => ({
+      data: undefined,
+      error: {},
+      response: { status: 500 },
+    }));
+    await tick(DRAFT_SAVE_DEBOUNCE_MS + 1);
+    expect(view.result.current.saveFailed).toBe(true);
+    expect(view.result.current.sbarSaved).toBe(false);
+  });
+});
+
+describe("DraftConflictPrompt with an SBAR", () => {
+  const sbarOf = (urgencyHint: "routine" | "urgent", situation: string): SbarSections => ({
+    urgencyHint,
+    sections: { situation, background: "", assessment: "", recommendation: "" },
+  });
+  const conflict = {
+    server: {
+      body: "",
+      references: [],
+      revision: 4,
+      deviceId: "d2",
+      updatedAt: "2026-10-12T10:00:00.000Z",
+      sbar: sbarOf("urgent", "Chest pain overnight"),
+    },
+    mine: { body: "", references: [], sbar: sbarOf("routine", "Fever since noon") },
+  };
+
+  it("2: an SBAR-only conflict shows a distinguishable one-line summary per side", () => {
+    vi.useRealTimers();
+    render(<DraftConflictPrompt conflict={conflict} onResolve={vi.fn()} />);
+    const text = screen.getByRole("alert").textContent ?? "";
+    expect(text).toContain("Here: SBAR · Routine · Fever since noon");
+    expect(text).toContain("Other device: SBAR · Urgent · Chest pain overnight");
+  });
+
+  it("2: the situation is cut to about sixty characters", () => {
+    vi.useRealTimers();
+    const long = {
+      ...conflict,
+      mine: { ...conflict.mine, sbar: sbarOf("routine", "x".repeat(200)) },
+    };
+    render(<DraftConflictPrompt conflict={long} onResolve={vi.fn()} />);
+    const text = screen.getByRole("alert").textContent ?? "";
+    expect(text).toContain(`${"x".repeat(60)}…`);
+    expect(text).not.toContain("x".repeat(61));
+  });
+
+  it("2: Combine both says which SBAR it keeps", () => {
+    vi.useRealTimers();
+    render(<DraftConflictPrompt conflict={conflict} onResolve={vi.fn()} />);
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Combine both keeps the SBAR form from here when it has content, otherwise the other device's.",
+    );
+  });
+
+  it("2: no SBAR note when neither side has an SBAR", () => {
+    vi.useRealTimers();
+    const plain = {
+      ...conflict,
+      mine: { body: "a", references: [] },
+      server: { ...conflict.server, body: "b", sbar: undefined },
+    };
+    render(<DraftConflictPrompt conflict={plain} onResolve={vi.fn()} />);
+    expect(screen.getByRole("alert").textContent).not.toContain("SBAR");
   });
 });

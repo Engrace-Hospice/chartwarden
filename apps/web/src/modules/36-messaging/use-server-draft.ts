@@ -8,12 +8,12 @@
 //     missed a newer revision is a 409: the hook reads the server copy and raises a merge prompt (`conflict`)
 //     instead of overwriting it. Last writer wins per device, so a tab never conflicts with itself.
 // A failed save never touches the composer; `saveFailed` only drives a small status line and clears on the next success.
-import type { SbarSections } from "@wardenx/types";
+import { SBAR_SECTION_KEYS, type SbarSections } from "@wardenx/types";
 import { useApiClient } from "@wardenx/ui";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { currentSessionIdentity, useSession } from "../../shell/session";
 import type { MessageReferenceInput } from "./messaging-types";
-import { isBlankSbar } from "./sbar-utils";
+import { isBlankSbar, normaliseSbar } from "./sbar-utils";
 
 export const DRAFT_SAVE_DEBOUNCE_MS = 1500;
 const DRAFT_PATH = "/api/v1/messaging/channels/{id}/draft";
@@ -45,6 +45,8 @@ export interface ServerDraftSync {
   readonly saveFailed: boolean;
   /** Autosave stopped retrying (a permanent refusal, or the attempt cap): the text is kept on this device only until the next edit. */
   readonly saveGaveUp: boolean;
+  /** The server confirmed exactly what the composer holds now (text and SBAR), so a "saved" claim is true. */
+  readonly sbarSaved: boolean;
   readonly resolve: (choice: DraftResolution) => void;
 }
 
@@ -130,8 +132,12 @@ interface Snapshot {
   /** Null when blank: a blank form is never part of the slot. */
   readonly sbar: SbarSections | null;
 }
-const sbarKeyOf = (sbar: SbarSections | null | undefined): string =>
-  sbar && !isBlankSbar(sbar) ? JSON.stringify([sbar.urgencyHint, sbar.sections]) : "";
+/** One key for both the server's copy and the form's state: sections in canonical order, missing ones as "". */
+const sbarKeyOf = (sbar: SbarSections | null | undefined): string => {
+  if (!sbar || isBlankSbar(sbar)) return "";
+  const { urgencyHint, sections } = normaliseSbar(sbar);
+  return JSON.stringify([urgencyHint, SBAR_SECTION_KEYS.map((key) => sections[key])]);
+};
 const keyOf = (s: Omit<Snapshot, "sbar"> & { readonly sbar?: SbarSections | null }): string =>
   JSON.stringify([s.body, toWire(s.references), sbarKeyOf(s.sbar)]);
 /** Nothing worth keeping: no text and no SBAR content (the way a send or a clear discards the server copy). */
@@ -189,6 +195,12 @@ export function useServerDraft(args: {
   const revisionRef = useRef(0);
   /** The content the server is known to hold (so a restore or a save is not echoed back). */
   const syncedKeyRef = useRef<string | null>(null);
+  // The same value as state, so "the server holds what the composer holds" can drive a render (the "saved" claim).
+  const [syncedKey, setSyncedKey] = useState<string | null>(null);
+  const markSynced = useCallback((key: string | null): void => {
+    syncedKeyRef.current = key;
+    setSyncedKey(key);
+  }, []);
   const loadedRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queueRef = useRef<Promise<void>>(Promise.resolve());
@@ -251,7 +263,7 @@ export function useServerDraft(args: {
               if ((removed.error || status >= 400) && status !== 404) throw new SaveError(status);
             }
             revisionRef.current = 0;
-            syncedKeyRef.current = key;
+            markSynced(key);
             failuresRef.current = 0;
             setSaveFailed(false);
             setSaveGaveUp(false);
@@ -278,7 +290,7 @@ export function useServerDraft(args: {
             ) {
               // Already identical (or gone): adopt the server's revision and carry on; nothing to merge.
               revisionRef.current = server?.revision ?? 0;
-              syncedKeyRef.current = server ? key : null;
+              markSynced(server ? key : null);
               // Text typed while the request was in flight still needs its own save.
               if (keyOf(latestRef.current) !== key) scheduleRef.current();
               return;
@@ -299,7 +311,7 @@ export function useServerDraft(args: {
           const saved = (result.data as { draft?: WireDraft | null } | undefined)?.draft;
           if (result.error || !saved) throw new SaveError(result.response?.status ?? 0);
           revisionRef.current = saved.revision;
-          syncedKeyRef.current = key;
+          markSynced(key);
           failuresRef.current = 0;
           setSaveFailed(false);
           setSaveGaveUp(false);
@@ -313,7 +325,16 @@ export function useServerDraft(args: {
         enqueue(() => run().finally(resolve));
       });
     },
-    [client, channelId, parentMessageId, enqueue, readServer, armRetry, identityUnchanged],
+    [
+      client,
+      channelId,
+      parentMessageId,
+      enqueue,
+      readServer,
+      armRetry,
+      identityUnchanged,
+      markSynced,
+    ],
   );
   saveRef.current = save;
 
@@ -323,7 +344,7 @@ export function useServerDraft(args: {
     slotIdentityRef.current = currentSessionIdentity();
     const generation = ++generationRef.current;
     revisionRef.current = 0;
-    syncedKeyRef.current = null;
+    markSynced(null);
     loadedRef.current = false;
     conflictRef.current = null;
     failuresRef.current = 0;
@@ -343,19 +364,24 @@ export function useServerDraft(args: {
       loadedRef.current = true;
       if (server) {
         revisionRef.current = server.revision;
-        if (!latestRef.current.body && isBlankSbar(latestRef.current.sbar)) {
-          const restored = withLabels(server.body, server.references);
-          const restoredSbar = server.sbar ?? null;
-          syncedKeyRef.current = keyOf({
-            body: server.body,
-            references: restored,
-            sbar: restoredSbar,
-          });
-          hydrateRef.current(server.body, restored, restoredSbar);
+        // Text and SBAR hydrate independently: whatever the user already typed wins for its own part only, so typing
+        // one before the read returns never makes the next save delete the server's other half.
+        const local = latestRef.current;
+        const hydrateText = !local.body;
+        const serverSbar = server.sbar ? normaliseSbar(server.sbar) : null;
+        const hydrateSbar = isBlankSbar(local.sbar) && !isBlankSbar(serverSbar);
+        const restored = withLabels(server.body, server.references);
+        markSynced(keyOf({ body: server.body, references: restored, sbar: serverSbar }));
+        if (hydrateText || hydrateSbar) {
+          hydrateRef.current(
+            hydrateText ? server.body : local.body,
+            hydrateText ? restored : [...local.references],
+            hydrateSbar ? serverSbar : local.sbar,
+          );
         }
       } else if (!isEmptySnapshot(latestRef.current)) {
         // Text typed before the read finished and nothing on the server: the change effect saves it.
-        syncedKeyRef.current = null;
+        markSynced(null);
       }
     })();
     return () => {
@@ -398,7 +424,7 @@ export function useServerDraft(args: {
         }
       }
     };
-  }, [channelId, parentMessageId, readServer, save, identityUnchanged]);
+  }, [channelId, parentMessageId, readServer, save, identityUnchanged, markSynced]);
 
   /** (Re)arm the quiet-period save for whatever the composer holds now. */
   const schedule = useCallback((): void => {
@@ -437,7 +463,7 @@ export function useServerDraft(args: {
         conflictRef.current = null;
         setConflict(null);
         revisionRef.current = open.server.revision;
-        syncedKeyRef.current = null;
+        markSynced(null);
       } else {
         // The prompt is not modal: keep "mine" the text that is in the composer now.
         const next = { ...open, mine: latestRef.current };
@@ -458,7 +484,7 @@ export function useServerDraft(args: {
       revisionRef.current = current.server.revision;
       const generation = generationRef.current;
       if (choice === "theirs") {
-        syncedKeyRef.current = keyOf(current.server);
+        markSynced(keyOf(current.server));
         hydrateRef.current(
           current.server.body,
           [...current.server.references],
@@ -471,7 +497,7 @@ export function useServerDraft(args: {
       const chosen = choice === "both" ? mergeDraftBodies(mine, current.server) : mine;
       const chosenSbar = chosen.sbar ?? null;
       if (choice === "both") hydrateRef.current(chosen.body, [...chosen.references], chosenSbar);
-      syncedKeyRef.current = null;
+      markSynced(null);
       // While a send is in flight nothing is saved; the change effect schedules it if the send fails.
       if (!suspendedRef.current)
         void save(
@@ -479,8 +505,9 @@ export function useServerDraft(args: {
           generation,
         );
     },
-    [save],
+    [save, markSynced],
   );
 
-  return { conflict, saveFailed, saveGaveUp, resolve };
+  const sbarSaved = sbarKey !== "" && syncedKey === keyOf({ body: text, references, sbar });
+  return { conflict, saveFailed, saveGaveUp, sbarSaved, resolve };
 }

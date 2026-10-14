@@ -121,6 +121,13 @@ export function ThreadComposer({
   const sbarPolicy = policyState.status === "ready" ? policyState.policy : null;
   const sbarOffered =
     sbarPolicy !== null && sbarOfferedInChannel(channel.kind, sbarPolicy.requirePatientChannel);
+  // "saved" is claimed only once the server confirmed exactly what the composer holds now.
+  const sbarNote =
+    serverDraft.saveFailed || serverDraft.saveGaveUp
+      ? "SBAR draft (not saved)"
+      : serverDraft.sbarSaved
+        ? "SBAR draft saved"
+        : "SBAR draft";
   const pickerToggleRef = useRef<HTMLButtonElement>(null);
   const closeSbar = (discard: boolean): void => {
     if (discard) sbar.finish();
@@ -280,9 +287,9 @@ export function ThreadComposer({
             : {})}
         />
         {sbarOffered && sbarPolicy && !sbar.open && sbar.draft !== null ? (
-          <output className="wx-sbar-draft-note" aria-label="SBAR draft saved">
+          <span className="wx-sbar-draft-note">
             <Glyph name="file-text" size={14} />
-            <span>SBAR draft saved</span>
+            <output aria-label={sbarNote}>{sbarNote}</output>
             <Button
               type="button"
               tone="secondary"
@@ -295,7 +302,7 @@ export function ThreadComposer({
             >
               Open
             </Button>
-          </output>
+          </span>
         ) : null}
         <PollCreateButton
           channelId={channel.channelId}

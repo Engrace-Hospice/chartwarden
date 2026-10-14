@@ -257,7 +257,7 @@ describe("SBAR form in the server draft slot", () => {
       mount(server);
       const status = await screen.findByRole("status", STATUS);
       expect(status.textContent).toContain("SBAR draft saved");
-      await userEvent.click(within(status).getByRole("button", { name: "Open SBAR draft" }));
+      await userEvent.click(screen.getByRole("button", { name: "Open SBAR draft" }));
       const dialog = await screen.findByRole("dialog", { name: "SBAR message" });
       expect(field(dialog, "Situation").value).toBe(SBAR.sections.situation);
       // Open form: the indicator steps aside.
@@ -278,6 +278,42 @@ describe("SBAR form in the server draft slot", () => {
       await waitFor(() =>
         expect(screen.queryByRole("dialog", { name: "SBAR message" })).toBeNull(),
       );
+      expect(screen.queryByRole("status", STATUS)).toBeNull();
+    });
+
+    it("keeps the Open button outside the live region", async () => {
+      const server = makeServer({ "ch-1": { body: "", references: [], sbar: SBAR, revision: 1 } });
+      mount(server);
+      const status = await screen.findByRole("status", STATUS);
+      expect(within(status).queryByRole("button")).toBeNull();
+      expect(screen.getByRole("button", { name: "Open SBAR draft" })).toBeTruthy();
+    });
+
+    it("does not claim 'saved' while a change is waiting for its save, then does once acknowledged", async () => {
+      const server = makeServer({ "ch-1": { body: "", references: [], sbar: SBAR, revision: 1 } });
+      mount(server);
+      await screen.findByRole("status", STATUS);
+      const dialog = await openForm();
+      fireEvent.change(field(dialog, "Situation"), { target: { value: "Changed" } });
+      await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      const pending = await screen.findByRole("status", { name: "SBAR draft" });
+      expect(pending.textContent).toBe("SBAR draft");
+      expect(server.PUT).not.toHaveBeenCalled();
+      await waitFor(() => expect(screen.getByRole("status", STATUS)).toBeTruthy(), SAVE_WAIT);
+      expect(server.PUT).toHaveBeenCalledTimes(1);
+    });
+
+    it("says 'not saved' when the save fails", async () => {
+      const server = makeServer();
+      server.PUT.mockImplementation(
+        () => Promise.resolve({ data: undefined, error: {}, response: { status: 500 } }) as never,
+      );
+      mount(server);
+      const dialog = await openForm();
+      fireEvent.change(field(dialog, "Situation"), { target: { value: "Fever" } });
+      await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      const note = await screen.findByRole("status", { name: "SBAR draft (not saved)" }, SAVE_WAIT);
+      expect(note.textContent).toBe("SBAR draft (not saved)");
       expect(screen.queryByRole("status", STATUS)).toBeNull();
     });
 

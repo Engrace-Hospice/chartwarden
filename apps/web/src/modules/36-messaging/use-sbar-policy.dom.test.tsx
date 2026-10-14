@@ -83,4 +83,20 @@ describe("useSbarPolicy retry", () => {
     await advance(0);
     expect(result.current.status).toBe("ready");
   });
+
+  it("clears the retry timer when it goes inactive mid-backoff", async () => {
+    const GET = vi.fn(resolve(status(500)));
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <ApiClientProvider client={{ GET } as unknown as ApiClient}>{children}</ApiClientProvider>
+    );
+    const view = renderHook(({ active }) => useSbarPolicy(active), {
+      wrapper,
+      initialProps: { active: true },
+    });
+    await advance(0);
+    expect(GET).toHaveBeenCalledTimes(1);
+    view.rerender({ active: false });
+    await advance(60_000);
+    expect(GET).toHaveBeenCalledTimes(1);
+  });
 });
