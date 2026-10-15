@@ -98,6 +98,13 @@ export const AppealCreateRequestSchema = Type.Object({
       Type.Literal("federal_court"),
     ]),
   ),
+  /**
+   * The date printed on the notice this tier's clock runs from (YYYY-MM-DD). Inferred when absent: the
+   * remittance advice date for a redetermination, the prior tier's decision-letter date for a later tier.
+   * Required for a later tier that has no decided prior appeal on this denial. Receipt is presumed 5 days
+   * after this date (42 CFR 405.942(a)).
+   */
+  noticeDate: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
 });
 
 /** PATCH /appeals/:id/attach — attach an M22 document id. */
@@ -139,6 +146,12 @@ export const AppealDecideRequestSchema = Type.Object({
     Type.Literal("unfavorable"),
   ]),
   decidedAt: Type.String({ format: "date-time" }),
+  /**
+   * The date printed on the decision letter (YYYY-MM-DD). The next tier's clock runs from it (receipt presumed
+   * 5 days later), so send the printed date rather than relying on `decidedAt`, whose calendar day shifts with
+   * the sender's time zone. Defaults to the UTC date of `decidedAt` when absent.
+   */
+  decisionNoticeDate: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
   macReferenceNumbers: Type.Optional(Type.Record(Type.String(), Type.String())),
   reason: Type.String({ minLength: 40, maxLength: 1000 }),
 });
@@ -203,6 +216,18 @@ export const DenialWorklistItemSchema = Type.Object({
 });
 export const DenialWorklistPageSchema = pageOf(DenialWorklistItemSchema);
 
+/**
+ * How an appeal's filing deadline was reached (all null on rows created before CMS-correct deadlines, whose
+ * stored deadline is unchanged): the notice date, receipt presumed 5 days later, the tier's window, and the
+ * last usable filing day.
+ */
+const DeadlineDerivationFields = {
+  noticeDatedOn: nullableString(),
+  presumedReceiptOn: nullableString(),
+  windowDays: Type.Union([Type.Integer(), Type.Null()]),
+  lastFilingDay: nullableString(),
+};
+
 /** `read-service.ts` → `AppealSummary`. */
 export const AppealSummarySchema = Type.Object({
   id: Type.String({ format: "uuid" }),
@@ -212,6 +237,7 @@ export const AppealSummarySchema = Type.Object({
   state: Type.String(),
   decisionOutcome: nullableString(),
   tierDeadlineAt: Type.String({ format: "date-time" }),
+  ...DeadlineDerivationFields,
   version: Type.Integer(),
 });
 export const AppealSummaryPageSchema = pageOf(AppealSummarySchema);
@@ -291,6 +317,7 @@ export const AppealDetailSchema = Type.Object({
   state: Type.String(),
   decisionOutcome: nullableString(),
   tierDeadlineAt: Type.String({ format: "date-time" }),
+  ...DeadlineDerivationFields,
   version: Type.Integer(),
   appealPacketDocumentId: nullableString(),
   submittedAt: nullableString(),

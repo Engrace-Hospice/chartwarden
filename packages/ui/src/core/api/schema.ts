@@ -33031,6 +33031,10 @@ export interface operations {
                             decisionOutcome: string | null;
                             /** Format: date-time */
                             tierDeadlineAt: string;
+                            noticeDatedOn: string | null;
+                            presumedReceiptOn: string | null;
+                            windowDays: number | null;
+                            lastFilingDay: string | null;
                             version: number;
                         }[];
                         nextCursor: string | null;
@@ -33070,6 +33074,10 @@ export interface operations {
                         decisionOutcome: string | null;
                         /** Format: date-time */
                         tierDeadlineAt: string;
+                        noticeDatedOn: string | null;
+                        presumedReceiptOn: string | null;
+                        windowDays: number | null;
+                        lastFilingDay: string | null;
                         version: number;
                         appealPacketDocumentId: string | null;
                         submittedAt: string | null;
@@ -33194,6 +33202,7 @@ export interface operations {
                     outcome: "favorable" | "partial" | "unfavorable";
                     /** Format: date-time */
                     decidedAt: string;
+                    decisionNoticeDate?: string;
                     macReferenceNumbers?: {
                         [key: string]: string;
                     };
@@ -46050,6 +46059,7 @@ export interface operations {
             content: {
                 "application/json": {
                     tier?: "redetermination" | "reconsideration" | "alj" | "council" | "federal_court";
+                    noticeDate?: string;
                 };
             };
         };

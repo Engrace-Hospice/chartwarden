@@ -57,6 +57,16 @@ function money(n: number): string {
   return n.toFixed(2);
 }
 
+/**
+ * The 835 production date is a calendar day printed on the remittance. Store it as that day at UTC midnight
+ * (the appeal clock reads the UTC date back), ignoring any time or offset the clearinghouse appended; a
+ * value that is not date-led is parsed as an instant.
+ */
+export function productionDay(raw: string): Date {
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(raw);
+  return m ? new Date(`${m[1]}T00:00:00Z`) : new Date(raw);
+}
+
 export function buildDrizzleM25IngestService(
   db: DbClient,
   deps: M25IngestDrizzleDeps,
@@ -482,7 +492,7 @@ export function buildDrizzleM25IngestService(
               checkOrEftTraceNumber: parsed.value.checkOrEftTraceNumber ?? null,
               paymentMethod: parsed.value.paymentMethod,
               totalPaymentAmount: money(parsed.value.totalPaymentAmount),
-              productionDate: new Date(parsed.value.productionDate),
+              productionDate: productionDay(parsed.value.productionDate),
               minioObjectKey: input.minioObjectKey,
               fileSha256: input.fileSha256,
               parseStatus: "queued",

@@ -18,10 +18,12 @@ import {
   daysUntilDeadline,
   deadlineAlertBoundary,
   decisionRequiresOutcome,
+  deriveTierDeadline,
   effectiveCategory,
   isReopen,
   isWithinDeadline,
   nextTier,
+  noticeDayOf,
   outcomeEventKind,
   routeAdjustment,
   shouldSpawnNextTier,
@@ -56,32 +58,33 @@ describe("aging (§1.1)", () => {
 });
 
 describe("appeal-tier deadlines (D6 / M25-F04)", () => {
-  it("redetermination anchors on remittance receipt + 120 days", () => {
-    const remit = new Date("2026-01-01T00:00:00Z");
-    const deadline = computeTierDeadline("redetermination", remit);
-    expect(deadline.toISOString().slice(0, 10)).toBe("2026-05-01");
+  it("redetermination runs 120 days from presumed receipt (notice date + 5 days)", () => {
+    const derived = deriveTierDeadline("redetermination", "2026-01-01");
+    expect(derived.presumedReceiptOn).toBe("2026-01-06");
+    expect(derived.lastFilingDay).toBe("2026-05-06");
     expect(TIER_WINDOW_DAYS.redetermination).toBe(120);
   });
 
-  it("the F04 boundary case: created 100 days after remit → 20 days remaining", () => {
-    const remit = new Date("2026-01-01T00:00:00Z");
-    const deadline = computeTierDeadline("redetermination", remit);
-    const now = new Date("2026-04-11T00:00:00Z"); // 100 days after remit
-    expect(daysUntilDeadline(deadline, now)).toBe(20);
+  it("the F04 boundary case: 100 days after the notice → 27 days of the window remain", () => {
+    const deadline = computeTierDeadline("redetermination", "2026-01-01");
+    const now = new Date("2026-04-11T00:00:00Z"); // 100 days after the notice date
+    expect(daysUntilDeadline(deadline, now)).toBe(27); // last day May 6 is usable to its end
     expect(isWithinDeadline(deadline, now)).toBe(true);
   });
 
-  it("hard-blocks past T-0", () => {
-    const deadline = computeTierDeadline("alj", new Date("2026-01-01T00:00:00Z")); // +60d
-    expect(isWithinDeadline(deadline, new Date("2026-03-05T00:00:00Z"))).toBe(false);
+  it("hard-blocks past T-0 but not on the last filing day", () => {
+    const deadline = computeTierDeadline("alj", "2026-01-01"); // last filing day 2026-03-07
+    expect(isWithinDeadline(deadline, new Date("2026-03-07T12:00:00Z"))).toBe(true);
+    expect(isWithinDeadline(deadline, new Date("2026-03-09T00:00:00Z"))).toBe(false);
   });
 
-  it("later tiers anchor on the prior decision date with their own windows", () => {
-    const decided = new Date("2026-01-01T00:00:00Z");
-    expect(computeTierDeadline("reconsideration", decided).toISOString().slice(0, 10)).toBe(
-      "2026-06-30",
-    );
-    expect(computeTierDeadline("council", decided).toISOString().slice(0, 10)).toBe("2026-03-02");
+  it("later tiers anchor on the prior decision-letter date with their own windows", () => {
+    expect(deriveTierDeadline("reconsideration", "2026-01-01").lastFilingDay).toBe("2026-07-05");
+    expect(deriveTierDeadline("council", "2026-01-01").lastFilingDay).toBe("2026-03-07");
+  });
+
+  it("reads a notice date off a UTC-midnight timestamp", () => {
+    expect(noticeDayOf(new Date("2026-01-01T00:00:00Z"))).toBe("2026-01-01");
   });
 
   it("walks the tier hierarchy and terminates at federal_court", () => {
@@ -96,6 +99,12 @@ describe("appeal-tier deadlines (D6 / M25-F04)", () => {
     expect(deadlineAlertBoundary(deadline, new Date("2026-01-31T00:00:00Z"))).toBe(1);
     expect(deadlineAlertBoundary(deadline, new Date("2025-12-01T00:00:00Z"))).toBeNull(); // >30d out
     expect(deadlineAlertBoundary(deadline, new Date("2026-02-05T00:00:00Z"))).toBeNull(); // past
+  });
+
+  it("does not alert in the hours after an end-of-day deadline has passed", () => {
+    const deadline = new Date("2026-02-01T04:59:59.999Z");
+    expect(deadlineAlertBoundary(deadline, new Date("2026-02-01T10:00:00Z"))).toBeNull();
+    expect(deadlineAlertBoundary(deadline, new Date("2026-02-01T03:00:00Z"))).toBe(1);
   });
 });
 

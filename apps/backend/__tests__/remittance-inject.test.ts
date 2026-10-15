@@ -244,6 +244,10 @@ function createM25Backend(): {
     state: "draft",
     decisionOutcome: null,
     tierDeadlineAt: FUTURE_DEADLINE,
+    noticeDatedOn: null,
+    presumedReceiptOn: null,
+    windowDays: null,
+    lastFilingDay: null,
     version: 1,
     appealPacketDocumentId: null,
     submittedAt: null,
@@ -411,6 +415,10 @@ function createM25Backend(): {
         state: "draft",
         decisionOutcome: null,
         tierDeadlineAt: FUTURE_DEADLINE,
+        noticeDatedOn: input.noticeDate ?? null,
+        presumedReceiptOn: null,
+        windowDays: null,
+        lastFilingDay: null,
         version: 1,
         appealPacketDocumentId: null,
         submittedAt: null,
@@ -610,6 +618,20 @@ describe("M25 route smoke — the M1 boundary", () => {
       url: `/api/v1/remittance/lines/${LINE}/manual-match`,
       headers: { ...SUPER_HEADERS, "idempotency-key": "k-422" },
       payload: {},
+    });
+    expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+});
+
+describe("M25 route smoke — appeal notice dates", () => {
+  it("422s a notice date that is not YYYY-MM-DD before it reaches the service", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/denials/${DENIAL}/appeals`,
+      headers: { ...SUPER_HEADERS, "idempotency-key": "k-nd" },
+      payload: { tier: "reconsideration", noticeDate: "26-1-1" },
     });
     expect(res.statusCode).toBe(422);
     await app.close();

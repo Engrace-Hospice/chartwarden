@@ -90,6 +90,7 @@ interface DenialDraft {
   readonly reason: string;
   readonly assignee: string;
   readonly tier: AppealTier;
+  readonly noticeDate?: string;
 }
 
 export const DENIAL_DRAFT_ACTION = "m25-denial";
@@ -113,6 +114,7 @@ export function DenialDetailPanel({
   const [reason, setReason] = useState(restored?.reason ?? "");
   const [assignee, setAssignee] = useState(restored?.assignee ?? "");
   const [tier, setTier] = useState<AppealTier>(restored?.tier ?? "redetermination");
+  const [noticeDate, setNoticeDate] = useState(restored?.noticeDate ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -137,6 +139,7 @@ export function DenialDetailPanel({
     setAct(next);
     setReason("");
     setAssignee("");
+    setNoticeDate("");
     setError(null);
   }
 
@@ -144,7 +147,8 @@ export function DenialDetailPanel({
   const blocked =
     act === null ||
     (floor > 0 && reason.trim().length < floor) ||
-    (act === "assign" && !isUuid(assignee));
+    (act === "assign" && !isUuid(assignee)) ||
+    (act === "appeal" && tier !== "redetermination" && !noticeDate);
 
   function buildAction(kind: DenialAction["kind"]): DenialAction {
     switch (kind) {
@@ -160,7 +164,7 @@ export function DenialDetailPanel({
       case "reopen":
         return { kind, reason: reason.trim() };
       case "appeal":
-        return { kind, tier };
+        return { kind, tier, ...(noticeDate ? { noticeDate } : {}) };
       default:
         return { kind };
     }
@@ -174,7 +178,7 @@ export function DenialDetailPanel({
     setBusy(false);
     if (!res.ok) {
       if (res.stepUp) {
-        stashStepUpDraft(draftKey, { act, reason, assignee, tier });
+        stashStepUpDraft(draftKey, { act, reason, assignee, tier, noticeDate });
         navigate(
           `/step-up?returnTo=${encodeURIComponent(`${location.pathname}${location.search}`)}`,
         );
@@ -265,6 +269,18 @@ export function DenialDetailPanel({
                   value={tier}
                   onChange={(e) => setTier(e.target.value as AppealTier)}
                   options={TIERS.map((t) => ({ value: t, label: humanize(t) }))}
+                />
+              ) : null}
+              {act === "appeal" ? (
+                <TextField
+                  label={
+                    tier === "redetermination"
+                      ? "Date on the notice (needed when no remittance is linked)"
+                      : "Date on the prior decision notice"
+                  }
+                  type="date"
+                  value={noticeDate}
+                  onChange={(e) => setNoticeDate(e.target.value)}
                 />
               ) : null}
               {floor > 0 ? (

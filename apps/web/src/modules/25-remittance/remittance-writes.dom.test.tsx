@@ -229,12 +229,19 @@ describe("M25 denial work", () => {
     fireEvent.change(screen.getByLabelText("Appeal tier"), {
       target: { value: "reconsideration" },
     });
-    fireEvent.click(screen.getAllByRole("button", { name: "Open appeal" }).pop() as HTMLElement);
+    // A later tier cannot be submitted until the printed notice date is supplied.
+    const submitBtn = () =>
+      screen.getAllByRole("button", { name: "Open appeal" }).pop() as HTMLButtonElement;
+    expect(submitBtn().disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Date on the prior decision notice"), {
+      target: { value: "2026-03-01" },
+    });
+    fireEvent.click(submitBtn());
     await waitFor(() => expect(calls).toHaveLength(1));
     expect(calls[0]).toMatchObject({
       method: "POST",
       path: `/api/v1/denials/${DENIAL}/appeals`,
-      body: { tier: "reconsideration" },
+      body: { tier: "reconsideration", noticeDate: "2026-03-01" },
     });
   });
 
@@ -338,6 +345,9 @@ describe("M25 appeal lifecycle", () => {
     expect((submit as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByLabelText("Outcome"), { target: { value: "partial" } });
     fireEvent.change(screen.getByLabelText("Reason"), { target: { value: LONG } });
+    fireEvent.change(screen.getByLabelText(/Date printed on the decision letter/), {
+      target: { value: "2026-03-01" },
+    });
     fireEvent.change(screen.getByLabelText("MAC reference numbers (optional)"), {
       target: { value: "QIC: 12345" },
     });
@@ -346,9 +356,29 @@ describe("M25 appeal lifecycle", () => {
     expect(calls[0]).toMatchObject({
       method: "POST",
       path: `/api/v1/appeals/${APPEAL}/decide`,
-      body: { outcome: "partial", reason: LONG, macReferenceNumbers: { QIC: "12345" } },
+      body: {
+        outcome: "partial",
+        reason: LONG,
+        decisionNoticeDate: "2026-03-01",
+        macReferenceNumbers: { QIC: "12345" },
+      },
     });
     expect(typeof calls[0]?.body.decidedAt).toBe("string");
+  });
+
+  it("will not record an unfavorable decision without the date printed on the letter", async () => {
+    appealState = "under_review";
+    await openAppeal();
+    fireEvent.click(await screen.findByRole("button", { name: "Record decision" }));
+    fireEvent.change(screen.getByLabelText("Outcome"), { target: { value: "unfavorable" } });
+    fireEvent.change(screen.getByLabelText("Reason"), { target: { value: LONG } });
+    const submit = () =>
+      screen.getAllByRole("button", { name: "Record decision" }).pop() as HTMLButtonElement;
+    expect(submit().disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/Date printed on the decision letter/), {
+      target: { value: "2026-03-01" },
+    });
+    expect(submit().disabled).toBe(false);
   });
 
   it("closes a decided appeal", async () => {
