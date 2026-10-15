@@ -47,12 +47,13 @@ Please give the role-to-qualification map you want enforced (RN only? RN or MD? 
 
 WP 4.1 is built behind the flag `messaging.urgent_clinical` (default off) with **provisional** wording and defaults. Please approve or change:
 
-- **The notice** shown permanently in the "Urgent clinical" dialog: "This is not the emergency path. For critical symptoms follow the agency telephone/emergency procedure; do not rely on this message alone." and "Sending does not page or escalate anyone. Your colleague is told in the app only. If you need an answer now, call them." Does the agency want its own phone number or procedure name beside it?
+- **The notice** shown permanently in the "Urgent clinical" dialog: "This is not the emergency path. For critical symptoms follow the agency telephone/emergency procedure; do not rely on this message alone." and "Sending does not page or escalate anyone. Your colleague is told in the app only. If you need an answer now, call them." **Open item (deferred by the product owner):** an agency-specific phone number or procedure name beside it; it needs a tenant setting that cannot be left blank.
 - **Who may be named as the recipient** (`messaging.urgent.receive`): proposed RN, RN case manager, director of nursing, physicians and prescribers (MD, hospice physician, medical director, attending, NP, PA), clinical supervisor and clinical lead. **Not** LPN, social worker, chaplain, aide, volunteer, org admin or compliance. Is LPN in or out?
 - **Who may raise one** (`messaging.urgent.send`): the clinical roles above plus LPN, social worker, chaplain and the aide roles (the authorization matrix says aides may initiate); **not** org admin (matrix: "conditional") or compliance. Should an org admin who is also clinically authorized be able to?
 - **Recipient must be on the patient's care team** and a member of the conversation. A named person only; a role or the on-call clinician arrives with the routing work (WP 4.3). Acceptable for the first release?
 - **Sent-status text:** "Urgent message sent. Your colleague has been told in the app. This is not a page." and the in-app alert text "You have an urgent clinical message".
-- **Not before 4.2 to 4.4:** the feature records and shows an urgent message but nobody tracks whether the recipient acted. We recommend it is not switched on for any tenant as a safety net until the acknowledgment request, escalation and timers ship. Please confirm.
+- **Rate limits (provisional):** 10 urgent messages per minute per sender, 100 per minute per organisation, 5 per 5 minutes from one sender to one recipient. Too low or too high for a busy shift?
+- **Not before 4.2 to 4.4 (decided: the flag stays off for every tenant until then):** the feature records and shows an urgent message but nobody tracks whether the recipient acted. We recommend it is not switched on for any tenant as a safety net until the acknowledgment request, escalation and timers ship. Please confirm.
 
 ## What happens with the answers
 

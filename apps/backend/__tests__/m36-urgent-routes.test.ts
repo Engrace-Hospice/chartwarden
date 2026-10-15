@@ -19,6 +19,7 @@ import {
 } from "@wardenx/auth";
 import {
   NotFoundError,
+  RateLimitedError,
   type UrgentMessageOptions,
   type UrgentMessageResponse,
   WardenXError,
@@ -105,7 +106,7 @@ function headerAuth(request: FastifyRequest): void {
   request.context.locationIds = [];
 }
 
-function makeServer(deps = { service }) {
+function makeServer(deps: { service: UrgentService; rateLimit?: Handler } = { service }) {
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore(
       Object.entries(KEYS).map(([userId, permissionKeys]) => ({
@@ -288,6 +289,24 @@ describe("POST /channels/:id/urgent-messages", () => {
     expect(flagOff.statusCode).toBe(404);
     expect(strip(hidden.body)).toBe(strip(flagOff.body));
     expect(malformed.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("runs the rate limiter after authorisation and before the service, and a refusal sends nothing", async () => {
+    let limited = 0;
+    const app = makeServer({
+      service,
+      rateLimit: async () => {
+        limited += 1;
+        throw new RateLimitedError();
+      },
+    });
+    expect((await post(app, "nurse", sendUrl(), body())).statusCode).toBe(429);
+    expect(limited).toBe(1);
+    expect(calls).toEqual([]);
+    // an unauthorised caller never reaches (or drains) the limiter
+    expect((await post(app, "plainSender", sendUrl(), body())).statusCode).toBe(403);
+    expect(limited).toBe(1);
     await app.close();
   });
 

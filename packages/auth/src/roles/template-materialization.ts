@@ -16,7 +16,7 @@
 //   - THE TWO FULL-CATALOG ROLES (`administrator`, `org_admin` - the latter supersedes the former) receive every
 //     mirror key EXCEPT the `platform` category (cross-tenant authority is never a tenant admin's default) and the
 //     keys in FULL_CATALOG_EXCLUDED_KEYS (`messaging.review`: the lifecycle review queue is a supervisory decision,
-//     ADR-0065 D6 - a tenant may still grant it to any role it owns).
+//     ADR-0065 D6; `messaging.urgent.send` / `.receive`: ADR-0068 - a tenant may still grant them to any role it owns).
 import { isTenantRoleReserved } from "./platform-reserved";
 import type { RoleTemplate } from "./templates";
 
@@ -27,7 +27,12 @@ export const FULL_CATALOG_ROLE_KEYS: ReadonlySet<string> = new Set(["administrat
 export const PLATFORM_PERMISSION_CATEGORY = "platform";
 
 /** Keys withheld from the full-catalog roles: granted deliberately to a supervisory role, never by default (ADR-0065 D6). */
-export const FULL_CATALOG_EXCLUDED_KEYS: ReadonlySet<string> = new Set(["messaging.review"]);
+export const FULL_CATALOG_EXCLUDED_KEYS: ReadonlySet<string> = new Set([
+  "messaging.review",
+  // WP 4.1 (ADR-0068, migration 1105): raising / receiving an urgent clinical message is a clinical decision; never an admin default.
+  "messaging.urgent.send",
+  "messaging.urgent.receive",
+]);
 
 /** One permission-mirror row the planner needs. */
 export interface MirrorPermission {

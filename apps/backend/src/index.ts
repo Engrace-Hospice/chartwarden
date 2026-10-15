@@ -265,6 +265,7 @@ import {
   licensedSourceDenyStub,
 } from "@wardenx/terminology-loader";
 import { buildGlobalSearchRateLimit } from "./bootstrap/plugins/global-search-rate-limit";
+import { buildUrgentRateLimit } from "./bootstrap/plugins/urgent-rate-limit";
 import {
   type RealtimeHandle,
   createRealtimeEmitter,
@@ -4795,7 +4796,17 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             // WP 3.10 - ask a nurse about a medication; off unless tenant flags `messaging.medication_questions` AND `messaging.tasks` are on.
             ...(m36MedicationQuestions ? { medicationQuestions: m36MedicationQuestions } : {}),
             // WP 4.1 - urgent clinical message; off unless tenant flags `messaging.urgent_clinical` AND `messaging.sbar` are on.
-            ...(m36Urgent ? { urgent: m36Urgent } : {}),
+            ...(m36Urgent
+              ? {
+                  urgent: {
+                    ...m36Urgent,
+                    // Fail-closed per-user / per-org / per-pair limiter; the in-memory store is per replica (weaker, still bounded).
+                    rateLimit: buildUrgentRateLimit(
+                      rateLimitStore ?? createInMemoryRateLimitStore(),
+                    ),
+                  },
+                }
+              : {}),
             // WP 3.7 - chart promotion; off unless the tenant flag `messaging.promotions` is on.
             ...(m36Promotions ? { promotions: m36Promotions } : {}),
             // WP 3.6 - IDG discussions (read-only); off unless tenant flags `messaging.idg` AND `messaging.clinical_links` are on.
@@ -9886,6 +9897,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           buildM36UrgentNotificationsConsumer({
             alerts: getSeam("AlertEmitter") as AlertEmitter,
             messaging: createDbMessagingRouteService(dbHandle.db),
+            canReceive: async (organizationId, userId) =>
+              (await resolveActorPermissions({ organizationId, userId })).has(
+                "messaging.urgent.receive",
+              ),
+            log: (message, context) => app.log.info(context, message),
           }),
           // WP 3.7 - records the decision M8 / M14 report for a chart-promotion proposal (always, regardless of the flag) and
           // tells the requester; and tells the reviewers a proposal is waiting (the requester when nobody can be reached).

@@ -20,6 +20,8 @@ export interface ModalProps {
   width?: string;
   /** Top accent strip color (e.g. an alert-toned header rule). */
   accent?: string;
+  /** Optional id of an element inside the card that describes the dialog; announced with it (WCAG 4.1.2 / 1.3.1). */
+  ariaDescribedBy?: string;
   children: ReactNode;
 }
 
@@ -31,6 +33,7 @@ export function Modal({
   role = "dialog",
   width = "32rem",
   accent,
+  ariaDescribedBy,
   children,
 }: ModalProps): JSX.Element | null {
   const cardRef = useRef<HTMLDivElement>(null);
@@ -130,6 +133,7 @@ export function Modal({
         role={role}
         aria-modal="true"
         aria-label={ariaLabel}
+        {...(ariaDescribedBy ? { "aria-describedby": ariaDescribedBy } : {})}
         tabIndex={-1}
         style={{
           position: "relative",

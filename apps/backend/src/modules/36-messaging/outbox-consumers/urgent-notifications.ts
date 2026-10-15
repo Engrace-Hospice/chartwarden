@@ -25,6 +25,10 @@ function requireId(payload: Record<string, unknown>, key: string): string {
 export function buildM36UrgentNotificationsConsumer(deps: {
   readonly alerts: AlertEmitter;
   readonly messaging: Pick<MessagingRouteService, "canViewChannel">;
+  /** Re-checks the recipient still holds `messaging.urgent.receive` now. A throw reads as "no" (fail quiet, logged). */
+  readonly canReceive?: (orgId: string, userId: string) => Promise<boolean>;
+  /** Ids and a reason code only - never a name, patient or text. */
+  readonly log?: (message: string, context: Record<string, string>) => void;
 }): OutboxConsumerBinding {
   return {
     consumerName: M36_URGENT_NOTIFICATION_CONSUMER,
@@ -35,10 +39,27 @@ export function buildM36UrgentNotificationsConsumer(deps: {
       const messageId = requireId(payload, "messageId");
       const channelId = requireId(payload, "channelId");
       const recipientUserId = requireId(payload, "recipientUserId");
+      const skip = (reason: string): void =>
+        deps.log?.("urgent notification not delivered", {
+          reason,
+          organizationId: event.organizationId,
+          channelId,
+          messageId,
+          recipientUserId,
+        });
       if (
         !(await deps.messaging.canViewChannel(event.organizationId, recipientUserId, channelId))
       ) {
-        return;
+        return skip("recipient_cannot_view_channel");
+      }
+      if (deps.canReceive) {
+        let allowed = false;
+        try {
+          allowed = await deps.canReceive(event.organizationId, recipientUserId);
+        } catch {
+          allowed = false;
+        }
+        if (!allowed) return skip("recipient_not_qualified");
       }
       await deps.alerts.emit(event.organizationId, {
         eventType: event.eventType,

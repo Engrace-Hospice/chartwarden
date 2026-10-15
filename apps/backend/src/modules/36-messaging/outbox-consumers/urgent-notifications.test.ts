@@ -22,14 +22,17 @@ const event = (payload: Record<string, unknown> = {}) =>
     },
   }) as never;
 
-function setup(canView = true) {
+function setup(canView = true, canReceive?: () => Promise<boolean>) {
+  const log = vi.fn();
   const emit = vi.fn().mockResolvedValue({ alertId: "a", resolvedRecipientCount: 1 });
   const canViewChannel = vi.fn().mockResolvedValue(canView);
   const consumer = buildM36UrgentNotificationsConsumer({
     alerts: { emit } as unknown as AlertEmitter,
     messaging: { canViewChannel },
+    ...(canReceive ? { canReceive } : {}),
+    log,
   });
-  return { emit, canViewChannel, consumer };
+  return { emit, canViewChannel, consumer, log };
 }
 
 describe("M36 urgent notifications consumer", () => {
@@ -75,6 +78,34 @@ describe("M36 urgent notifications consumer", () => {
     const { emit, consumer } = setup(false);
     await consumer.handle(event());
     expect(emit).not.toHaveBeenCalled();
+  });
+
+  it("logs ids and a reason (no PHI) when the recipient can no longer view the channel", async () => {
+    const { emit, consumer, log } = setup(false);
+    await consumer.handle(event());
+    expect(emit).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith("urgent notification not delivered", {
+      reason: "recipient_cannot_view_channel",
+      organizationId: ORG,
+      channelId: "ch-1",
+      messageId: "m-1",
+      recipientUserId: "u-2",
+    });
+  });
+
+  it("re-checks messaging.urgent.receive at consume time and fails quiet (logged) when it is gone or the lookup throws", async () => {
+    for (const check of [async () => false, async () => Promise.reject(new Error("seam down"))]) {
+      const { emit, consumer, log } = setup(true, check);
+      await consumer.handle(event());
+      expect(emit).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith(
+        "urgent notification not delivered",
+        expect.objectContaining({ reason: "recipient_not_qualified" }),
+      );
+    }
+    const { emit, consumer } = setup(true, async () => true);
+    await consumer.handle(event());
+    expect(emit).toHaveBeenCalledTimes(1);
   });
 
   it("throws on a payload missing the recipient so the dispatcher retries and dead-letters it", async () => {

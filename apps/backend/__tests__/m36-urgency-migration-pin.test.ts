@@ -44,6 +44,12 @@ describe("migration 1105", () => {
     expect(sql).toMatch(/IS DISTINCT FROM OLD\.urgent_recipient_user_id/);
   });
 
+  it("backs the recipient with a DB check that they are an active member of the message's organization", () => {
+    expect(sql).toContain('CREATE TRIGGER "trg_message_urgent_recipient_in_org"');
+    expect(sql).toContain('BEFORE INSERT ON "message"');
+    expect(flat(sql)).toContain("m.organization_id = NEW.organization_id AND m.status = 'active'");
+  });
+
   it("registers the two permission keys the code names, as clinical RBAC-only keys", () => {
     for (const key of [URGENT_SEND_PERMISSION, URGENT_RECEIVE_PERMISSION]) {
       expect(sql).toContain(`'${key}'`);

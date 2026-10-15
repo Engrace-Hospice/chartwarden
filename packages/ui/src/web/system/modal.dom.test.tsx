@@ -185,3 +185,24 @@ describe("Modal Tab trap, more coverage", () => {
     expect(outerClose).not.toHaveBeenCalled();
   });
 });
+
+describe("Modal aria-describedby", () => {
+  it("sets it on the dialog only when a description id is given", () => {
+    const { unmount } = render(
+      <Modal open ariaLabel="With" ariaDescribedBy="desc">
+        <p id="desc">Read this first</p>
+      </Modal>,
+    );
+    const dialog = screen.getByRole("dialog", { name: "With" });
+    expect(dialog.getAttribute("aria-describedby")).toBe("desc");
+    unmount();
+    render(
+      <Modal open ariaLabel="Without">
+        <p>Plain</p>
+      </Modal>,
+    );
+    expect(screen.getByRole("dialog", { name: "Without" }).hasAttribute("aria-describedby")).toBe(
+      false,
+    );
+  });
+});

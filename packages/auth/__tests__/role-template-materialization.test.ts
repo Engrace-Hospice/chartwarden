@@ -61,6 +61,19 @@ describe("planRoleTemplateMaterialization", () => {
       expect(plan().find((r) => r.key === key)?.permissionKeys).not.toContain("messaging.review");
   });
 
+  it("keeps the urgent clinical keys off org_admin and administrator, and grants them only to the clinical templates 1105 names", () => {
+    for (const key of ["messaging.urgent.send", "messaging.urgent.receive"]) {
+      expect(MIRROR.some((p) => p.key === key)).toBe(true);
+      for (const role of ["org_admin", "administrator"])
+        expect(plan().find((r) => r.key === role)?.permissionKeys).not.toContain(key);
+      const holders = plan()
+        .filter((r) => r.permissionKeys.includes(key))
+        .map((r) => r.key)
+        .sort();
+      expect(holders).toEqual(["director_of_nursing", "medical_director"]);
+    }
+  });
+
   it("grants messaging.review to the director of nursing template only among the defaults", () => {
     expect(plan().find((r) => r.key === "director_of_nursing")?.permissionKeys).toContain(
       "messaging.review",

@@ -14,6 +14,7 @@ import {
 import {
   NotFoundError,
   type RichBody,
+  URGENT_CANDIDATE_CAP,
   URGENT_RECIPIENT_CAP,
   type UrgentMessageOptions,
   type UrgentMessageResponse,
@@ -60,6 +61,17 @@ export interface UrgentServiceDeps {
   /** recipientEligible + `messaging.urgent.receive` for this patient. A throw reads as not qualified. */
   readonly isQualified: (orgId: string, userId: string, patientId: string) => Promise<boolean>;
   readonly displayName: (orgId: string, userId: string) => Promise<string | null>;
+  /**
+   * The recipient of an urgent message this sender already sent under this client_message_id in this channel, or null. Read
+   * BEFORE the eligibility checks so a retry after the recipient lost access still replays the original (200), never a
+   * confusing 422; the send core still compares the body and the recipient and raises the idempotency conflict. A throw = null.
+   */
+  readonly findReplayRecipient?: (
+    orgId: string,
+    authorUserId: string,
+    channelId: string,
+    clientMessageId: string,
+  ) => Promise<string | null>;
   readonly now?: () => Date;
 }
 
@@ -119,13 +131,29 @@ export function createUrgentService(deps: UrgentServiceDeps): UrgentService {
           422,
         );
       }
-      // One uniform answer for: the author, a non-member, off the care team, not qualified (H-02).
-      const careTeam = await orElse(() => deps.careTeamMembers(actor.orgId, patientId), []);
-      const qualified =
-        input.recipientUserId !== actor.userId &&
-        careTeam.includes(input.recipientUserId) &&
-        (await qualifiedFor(actor.orgId, input.channelId, patientId)(input.recipientUserId));
-      if (!qualified) throw urgentRecipientInvalid();
+      // A retry of a send that already committed to the SAME recipient skips the live eligibility check (the original was
+      // eligible when sent); a different recipient on a reused id falls through and is refused or conflicts as usual.
+      const replayRecipient = deps.findReplayRecipient
+        ? await orElse(
+            () =>
+              deps.findReplayRecipient!(
+                actor.orgId,
+                actor.userId,
+                input.channelId,
+                input.clientMessageId,
+              ),
+            null,
+          )
+        : null;
+      if (replayRecipient?.toLowerCase() !== input.recipientUserId.toLowerCase()) {
+        // One uniform answer for: the author, a non-member, off the care team, not qualified (H-02).
+        const careTeam = await orElse(() => deps.careTeamMembers(actor.orgId, patientId), []);
+        const qualified =
+          input.recipientUserId !== actor.userId &&
+          careTeam.includes(input.recipientUserId) &&
+          (await qualifiedFor(actor.orgId, input.channelId, patientId)(input.recipientUserId));
+        if (!qualified) throw urgentRecipientInvalid();
+      }
 
       const rich = resolveRichWrite({ bodyDoc: input.bodyDoc });
       if (!rich) throw new WardenXError("VALIDATION_FAILED", "an SBAR body is required", 422);
@@ -176,9 +204,11 @@ export function createUrgentService(deps: UrgentServiceDeps): UrgentService {
         return { enabled: true, patient_linked: false, patient_id: null, recipients: [] };
       }
       const qualified = qualifiedFor(actor.orgId, channelId, patientId);
+      // Bounded BEFORE the per-person checks so a huge care team cannot make this read an unbounded number of lookups.
       const ids = [...(await orElse(() => deps.careTeamMembers(actor.orgId, patientId), []))]
         .filter((id, i, all) => id !== actor.userId && all.indexOf(id) === i)
-        .sort();
+        .sort()
+        .slice(0, URGENT_CANDIDATE_CAP);
       const recipients: UrgentRecipient[] = [];
       for (const id of ids) {
         if (recipients.length >= URGENT_RECIPIENT_CAP) break;

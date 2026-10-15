@@ -1,35 +1,41 @@
 // M36 WP 4.1 - the "Urgent clinical" dialog: one qualified recipient, the four SBAR sections, and the permanent
-// not-the-emergency-path notice. The sender names the person and the dialog restates who it goes to before sending
-// (hazard H-02). Nothing is parsed from the text: the server stores the SBAR document and marks the message urgent from
-// this entry alone. One {Idempotency-Key, client_message_id} pair is reused only to retry an identical payload; an edit
-// rotates both.
+// not-the-emergency-path notice (announced with the dialog through aria-describedby). The sender names the person and the dialog
+// restates who it goes to in a polite live region before sending (hazard H-02); a recipient whose name cannot be shown is never
+// offered. Nothing is parsed from the text: the server stores the SBAR document and marks the message urgent from this entry
+// alone. The draft and the {Idempotency-Key, client_message_id} pair live in the button (`draft`), so a retry of an identical
+// payload reuses them across close/reopen; closing with text asks first, in the dialog.
 import { SBAR_SECTION_KEYS, SBAR_SECTION_LABELS, validateSbar } from "@wardenx/types";
 import type { SbarIssue, SbarSectionKey } from "@wardenx/types";
 import { Button, Modal, useApiClient } from "@wardenx/ui";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 import {
   SBAR_DEFAULT_HINTS,
   type SbarFormValues,
   buildSbarBody,
-  emptySbarValues,
   sectionLength,
 } from "./sbar-utils";
 import {
   CHOOSE_RECIPIENT_TEXT,
+  DISCARD_LABEL,
+  DISCARD_PROMPT,
+  KEEP_DRAFT_LABEL,
+  KEEP_EDITING_LABEL,
+  NAME_UNAVAILABLE_TEXT,
   NOT_EMERGENCY_NOTICE,
   NO_PAGE_NOTICE,
   NO_RECIPIENT_TEXT,
   RECIPIENT_LEGEND,
   SBAR_LOADING_TEXT,
   SBAR_UNAVAILABLE_TEXT,
-  UNKNOWN_PERSON,
   URGENT_DIALOG_TITLE,
   confirmLine,
+  isIndeterminate,
   sendLabel,
   urgentErrorText,
 } from "./urgent-wording";
 import { useSbarPolicy } from "./use-sbar-policy";
+import type { UrgentDraft } from "./use-urgent-draft";
 import type { EnabledUrgentOptions } from "./use-urgent-options";
 import "./urgent.css";
 
@@ -41,42 +47,83 @@ export interface UrgentSent {
 export interface UrgentMessageDialogProps {
   readonly channelId: string;
   readonly options: EnabledUrgentOptions;
+  readonly draft: UrgentDraft;
   readonly onClose: () => void;
   readonly onSent: (sent: UrgentSent) => void;
+  /** A failure that does not prove the message was not stored: the thread should be re-read. */
+  readonly onIndeterminate: () => void;
 }
 
-const BLANK: SbarFormValues = emptySbarValues("care_team");
+interface Choice {
+  readonly userId: string;
+  readonly label: string;
+}
+
+/** Only people with a usable name are offered; same names get an ordinal so the restated name is unambiguous. */
+export function recipientChoices(options: EnabledUrgentOptions): {
+  readonly choices: readonly Choice[];
+  readonly hidden: number;
+} {
+  const named = options.recipients.filter((r) => (r.display_name ?? "").trim() !== "");
+  const counts = new Map<string, number>();
+  for (const r of named) {
+    const name = (r.display_name as string).trim();
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  const seen = new Map<string, number>();
+  const choices = named.map((r) => {
+    const name = (r.display_name as string).trim();
+    const n = (seen.get(name) ?? 0) + 1;
+    seen.set(name, n);
+    const total = counts.get(name) ?? 1;
+    return { userId: r.user_id, label: total > 1 ? `${name} (${n} of ${total})` : name };
+  });
+  return { choices, hidden: options.recipients.length - named.length };
+}
 
 export function UrgentMessageDialog({
   channelId,
   options,
+  draft,
   onClose,
   onSent,
+  onIndeterminate,
 }: UrgentMessageDialogProps): JSX.Element {
   const client = useApiClient();
   const id = useId();
   const policyState = useSbarPolicy(true);
   const policy = policyState.status === "ready" ? policyState.policy : null;
-  const attempt = useRef({
-    clientMessageId: crypto.randomUUID(),
-    idempotencyKey: crypto.randomUUID(),
-    signature: null as string | null,
-  });
-  const [sections, setSections] = useState(BLANK.sections);
-  const [recipientId, setRecipientId] = useState("");
   const [issues, setIssues] = useState<readonly SbarIssue[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const inFlight = useRef(false);
   const refs = useRef<Partial<Record<SbarSectionKey, HTMLTextAreaElement | null>>>({});
-  const recipient = options.recipients.find((r) => r.user_id === recipientId) ?? null;
-  const values: SbarFormValues = { sections, urgency: "urgent" };
+  const recipientRef = useRef<HTMLFieldSetElement>(null);
+  const keepRef = useRef<HTMLDivElement>(null);
+  const { choices, hidden } = recipientChoices(options);
+  const chosen = choices.find((c) => c.userId === draft.recipientId) ?? null;
+  const values: SbarFormValues = { sections: draft.sections, urgency: "urgent" };
+
+  useEffect(() => {
+    if (confirmingDiscard) keepRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+  }, [confirmingDiscard]);
+
+  function requestClose(): void {
+    if (submitting) return;
+    if (draft.dirty) {
+      setConfirmingDiscard(true);
+      return;
+    }
+    onClose();
+  }
 
   async function submit(): Promise<void> {
     if (inFlight.current || !policy) return;
     setError(null);
-    if (!recipient) {
+    if (!chosen) {
       setError(CHOOSE_RECIPIENT_TEXT);
+      recipientRef.current?.focus();
       return;
     }
     const body = buildSbarBody(values);
@@ -87,16 +134,9 @@ export function UrgentMessageDialog({
       refs.current[first]?.focus();
       return;
     }
-    const signature = JSON.stringify([sections, recipientId]);
-    if (attempt.current.signature !== null && attempt.current.signature !== signature) {
-      attempt.current = {
-        clientMessageId: crypto.randomUUID(),
-        idempotencyKey: crypto.randomUUID(),
-        signature,
-      };
-    }
-    attempt.current = { ...attempt.current, signature };
-    const { idempotencyKey, clientMessageId } = attempt.current;
+    const { idempotencyKey, clientMessageId } = draft.attemptFor(
+      JSON.stringify([draft.sections, chosen.userId]),
+    );
     inFlight.current = true;
     setSubmitting(true);
     try {
@@ -108,18 +148,18 @@ export function UrgentMessageDialog({
         params: { path: { id: channelId }, header: { "Idempotency-Key": idempotencyKey } },
         body: {
           body_doc: body as never,
-          recipient_user_id: recipient.user_id,
+          recipient_user_id: chosen.userId,
           client_message_id: clientMessageId,
         },
       });
       if (data) return onSent({ created: data.created });
-      // A 409 means the server still holds the first key as unfinished: only a new key can succeed (same message id).
-      if (response?.status === 409) {
-        attempt.current = { ...attempt.current, idempotencyKey: crypto.randomUUID() };
-      }
-      setError(urgentErrorText(response?.status, failure?.error.code));
+      const status = response?.status;
+      if (status === 409) draft.rotateKey();
+      setError(urgentErrorText(status, failure?.error.code));
+      if (isIndeterminate(status)) onIndeterminate();
     } catch {
       setError(urgentErrorText(undefined, undefined));
+      onIndeterminate();
     } finally {
       inFlight.current = false;
       setSubmitting(false);
@@ -133,12 +173,14 @@ export function UrgentMessageDialog({
   }
 
   const issueFor = (key: SbarSectionKey) => issues.find((i) => i.field === `sbar.${key}`);
+  const missingRecipient = error === CHOOSE_RECIPIENT_TEXT;
 
   return (
     <Modal
       open
-      onClose={submitting ? undefined : onClose}
+      onClose={submitting ? undefined : requestClose}
       ariaLabel={URGENT_DIALOG_TITLE}
+      ariaDescribedBy={`${id}-notices`}
       width="40rem"
     >
       <form
@@ -151,32 +193,45 @@ export function UrgentMessageDialog({
         onKeyDown={onKeyDown}
       >
         <h2>{URGENT_DIALOG_TITLE}</h2>
-        <p className="wx-urgent-notice">{NOT_EMERGENCY_NOTICE}</p>
-        <p className="wx-urgent-notice">{NO_PAGE_NOTICE}</p>
-        {options.recipients.length === 0 ? (
+        <div id={`${id}-notices`} className="wx-urgent-notices">
+          <p className="wx-urgent-notice">{NOT_EMERGENCY_NOTICE}</p>
+          <p className="wx-urgent-notice">{NO_PAGE_NOTICE}</p>
+        </div>
+        {choices.length === 0 ? (
           <p className="wx-urgent-error" role="alert">
             {NO_RECIPIENT_TEXT}
           </p>
         ) : (
-          <fieldset disabled={submitting}>
-            <legend>{RECIPIENT_LEGEND}</legend>
-            {options.recipients.map((person) => (
-              <label key={person.user_id}>
+          <fieldset
+            ref={recipientRef}
+            tabIndex={-1}
+            disabled={submitting}
+            aria-describedby={missingRecipient ? `${id}-recipient-error` : undefined}
+          >
+            <legend>{RECIPIENT_LEGEND} (required)</legend>
+            {choices.map((person) => (
+              <label key={person.userId}>
                 <input
                   type="radio"
                   name={`${id}-recipient`}
-                  value={person.user_id}
-                  checked={recipientId === person.user_id}
-                  onChange={() => setRecipientId(person.user_id)}
+                  value={person.userId}
+                  checked={draft.recipientId === person.userId}
+                  onChange={() => draft.setRecipientId(person.userId)}
                 />
-                {person.display_name ?? UNKNOWN_PERSON}
+                {person.label}
               </label>
             ))}
+            {missingRecipient ? (
+              <p className="wx-urgent-error" id={`${id}-recipient-error`}>
+                {CHOOSE_RECIPIENT_TEXT}
+              </p>
+            ) : null}
           </fieldset>
         )}
-        {recipient ? (
-          <p className="wx-urgent-notice">{confirmLine(recipient.display_name)}</p>
-        ) : null}
+        {hidden > 0 ? <p className="wx-urgent-hint">{NAME_UNAVAILABLE_TEXT}</p> : null}
+        <p className="wx-urgent-notice" aria-live="polite">
+          {chosen ? confirmLine(chosen.label) : ""}
+        </p>
         {policyState.status === "loading" || policyState.status === "idle" ? (
           <p className="wx-urgent-hint">{SBAR_LOADING_TEXT}</p>
         ) : null}
@@ -201,13 +256,14 @@ export function UrgentMessageDialog({
                       refs.current[key] = node;
                     }}
                     rows={3}
-                    value={sections[key]}
+                    value={draft.sections[key]}
                     disabled={submitting}
                     aria-invalid={issue ? true : undefined}
                     aria-describedby={`${ids}-hint ${ids}-count${issue ? ` ${ids}-error` : ""}`}
                     onChange={(event) => {
+                      const text = event.target.value;
                       setIssues([]);
-                      setSections({ ...sections, [key]: event.target.value });
+                      draft.setSections((current) => ({ ...current, [key]: text }));
                     }}
                   />
                   <p className="wx-urgent-hint" id={`${ids}-hint`}>
@@ -225,21 +281,40 @@ export function UrgentMessageDialog({
               );
             })
           : null}
-        {error ? (
+        {error && !missingRecipient ? (
           <p className="wx-urgent-error" role="alert">
             {error}
           </p>
         ) : null}
+        {confirmingDiscard ? (
+          <div className="wx-urgent-notice" role="alertdialog" aria-label={DISCARD_PROMPT}>
+            <p>{DISCARD_PROMPT}</p>
+            <div className="wx-urgent-actions" ref={keepRef}>
+              <Button type="button" tone="secondary" onClick={() => setConfirmingDiscard(false)}>
+                {KEEP_EDITING_LABEL}
+              </Button>
+              <Button type="button" tone="secondary" onClick={onClose}>
+                {KEEP_DRAFT_LABEL}
+              </Button>
+              <Button
+                type="button"
+                tone="secondary"
+                onClick={() => {
+                  draft.reset();
+                  onClose();
+                }}
+              >
+                {DISCARD_LABEL}
+              </Button>
+            </div>
+          </div>
+        ) : null}
         <div className="wx-urgent-actions">
-          <Button type="button" tone="secondary" disabled={submitting} onClick={onClose}>
+          <Button type="button" tone="secondary" disabled={submitting} onClick={requestClose}>
             Cancel
           </Button>
-          <Button
-            type="submit"
-            loading={submitting}
-            disabled={!policy || options.recipients.length === 0}
-          >
-            {recipient ? sendLabel(recipient.display_name) : "Send urgent message"}
+          <Button type="submit" loading={submitting} disabled={!policy || choices.length === 0}>
+            {chosen ? sendLabel(chosen.label) : "Send urgent message"}
           </Button>
         </div>
       </form>

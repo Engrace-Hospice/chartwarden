@@ -33,6 +33,26 @@ CREATE TRIGGER "trg_message_urgency_immutable"
   BEFORE UPDATE ON "message"
   FOR EACH ROW EXECUTE FUNCTION message_urgency_immutable();--> statement-breakpoint
 
+-- Defence in depth: the named recipient must hold an ACTIVE membership of the message's own organization. The app checks
+-- the full qualification first; this refuses a cross-tenant or departed user even if a caller skips it. SECURITY DEFINER so the
+-- membership read is not narrowed by the caller's row-level security; it reads one fixed table and takes no caller input.
+CREATE OR REPLACE FUNCTION message_urgent_recipient_in_org() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+  IF NEW.urgent_recipient_user_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM membership m
+     WHERE m.user_id = NEW.urgent_recipient_user_id
+       AND m.organization_id = NEW.organization_id
+       AND m.status = 'active'
+  ) THEN
+    RAISE EXCEPTION 'urgent recipient is not an active member of the organization' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END $$;--> statement-breakpoint
+CREATE TRIGGER "trg_message_urgent_recipient_in_org"
+  BEFORE INSERT ON "message"
+  FOR EACH ROW EXECUTE FUNCTION message_urgent_recipient_in_org();--> statement-breakpoint
+
 -- ── permissions (1102's shape): catalog rows + grants to role keys wherever a tenant has created them ──────────────────
 -- messaging.urgent.send: may raise an urgent clinical message (05 matrix "Initiate urgent escalation": clinician, aide and
 --   team lead yes; org admin conditional and compliance no - read the stricter way, so neither gets it by default).

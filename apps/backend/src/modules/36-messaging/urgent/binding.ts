@@ -10,7 +10,12 @@ import type { HintOutboxPort } from "../message-hint-events";
 import { cacheFlagRead } from "../presence/binding";
 import { SBAR_FLAG_KEY } from "../sbar/binding";
 import { seamCareTeamMembers } from "../tasks/binding";
-import { type UrgentChannelFacts, type UrgentService, createUrgentService } from "./urgent-service";
+import {
+  type UrgentChannelFacts,
+  type UrgentService,
+  type UrgentServiceDeps,
+  createUrgentService,
+} from "./urgent-service";
 
 export interface UrgentBindingInput {
   readonly flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined;
@@ -24,6 +29,7 @@ export interface UrgentBindingInput {
   readonly displayName: (orgId: string, userId: string) => Promise<string | null>;
   /** Defaults to the CareTeamProvider seam. */
   readonly careTeamMembers?: (orgId: string, patientId: string) => Promise<readonly string[]>;
+  readonly findReplayRecipient?: UrgentServiceDeps["findReplayRecipient"];
   readonly now?: () => Date;
 }
 
@@ -54,6 +60,7 @@ export function buildUrgentBinding(input: UrgentBindingInput): UrgentBinding {
           [URGENT_RECEIVE_PERMISSION],
         ),
       displayName: input.displayName,
+      ...(input.findReplayRecipient ? { findReplayRecipient: input.findReplayRecipient } : {}),
       ...(input.now ? { now: input.now } : {}),
     }),
   };

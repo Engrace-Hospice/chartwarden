@@ -29,6 +29,8 @@ const URGENT_FILES = [
 describe("urgent writer is singular", () => {
   const ALLOWED = new Set([
     "apps/backend/src/modules/36-messaging/urgent/urgent-service.ts",
+    // Reads the recipient of an existing send (the replay lookup); writes nothing.
+    "apps/backend/src/modules/36-messaging/urgent/deps.ts",
     "apps/backend/src/modules/36-messaging/messaging-route-service-db.ts",
     "apps/backend/src/modules/36-messaging/messaging-write-core.ts",
     "apps/backend/src/modules/36-messaging/messaging-message-hydration.ts",

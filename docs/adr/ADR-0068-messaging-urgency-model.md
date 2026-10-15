@@ -35,6 +35,12 @@ Facts that shape the design:
 12. **UI.** A composer action "Urgent clinical" appears only on a patient care-team channel when the options route says the mode is on. Its dialog shows a permanent, non-dismissible notice that messaging is not the emergency path (follow the agency telephone/emergency procedure) and that sending does not page or escalate anyone; it asks for one recipient from the qualified list, restates "This goes to <name> and is marked urgent. It cannot be edited after sending." and puts the name on the send button (hazard H-02, confirm step), then the four SBAR sections with the tenant's length floors. Urgent messages carry a text-and-icon badge "Urgent clinical" (never colour alone, a labelled note for screen readers), absent on routine messages and tombstones. Wording is in `urgent-wording.ts`, one constants file, provisional. A tenant-specific agency phone line is **not** shown: the fixed sentence points at "the agency telephone/emergency procedure" and no tenant can remove or soften it.
 13. **Audit.** The POST and the options read declare `auditRead` (the message or channel as resource, the patient id), like WP 3.10. The existing message write-audit trigger is unchanged (the new columns hold an enum and a user id, no PHI).
 
+14. **Rate limit (provisional numbers).** The urgent POST runs a fail-closed per-route limiter after authorisation: 10 per minute per sender, 100 per minute per organisation, and 5 per 5 minutes per (sender, recipient) pair (`bootstrap/plugins/urgent-rate-limit.ts`, on the shared `RateLimitStore`; a store outage is a 503, never an unlimited send). A refusal is a 429 with `Retry-After`. Where only the in-memory store exists the caps are per replica. The numbers are provisional pending the clinical lead.
+15. **Retry beats eligibility.** The service looks up an existing send by `(author, channel, client_message_id)` first; a retry to the SAME recipient skips the live eligibility check and the send core replays the original (200), even if the recipient has since left the channel or lost the key. A different recipient on a reused id is checked as usual and ends in the idempotency conflict. The core's structural check now runs after the insert and only for a new message (a refusal rolls the insert back).
+16. **New-tenant role templates.** `messaging.urgent.send` and `.receive` are in `FULL_CATALOG_EXCLUDED_KEYS`, so the full-catalog `org_admin` / `administrator` roles never receive them; the only role templates that grant them are `director_of_nursing` and `medical_director`, matching migration 1105 (a pin test asserts the holders).
+17. **Consume-time checks.** The consumer re-checks that the recipient can still view the channel AND still holds `messaging.urgent.receive`; either failure (or a lookup error) alerts nobody and writes an id-only log line with a reason code.
+18. **Defence in depth in the database.** A BEFORE INSERT trigger on `message` refuses an urgent recipient who is not an active member of the message's own organization (`SECURITY DEFINER`, reads `membership` only). The options read examines at most 100 care-team members.
+
 ## Data model
 
 - Migration `packages/db/migrations/1105_m36_message_urgency.sql`: enum `message_urgency`; `message.urgency`, `message.urgent_recipient_user_id`; CHECK `message_urgency_shape`; partial index `message_urgent_recipient_idx (organization_id, urgent_recipient_user_id, created_at)` (the foreign key's covering index, and what WP 4.9's queue will read); trigger `trg_message_urgency_immutable`; the two catalog rows and role grants.
@@ -60,7 +66,8 @@ Both under `/api/v1/messaging`, registered from `routes/urgent-routes.ts`.
 - **Accept a role as the recipient now.** Needs the M19 roster and tiers; deferred to WP 4.3 (H-02).
 - **Make urgent messages editable inside the window.** The product owner decided otherwise (ADR-0056).
 - **Page the recipient (SMS or push) now.** Needs the 4.6 policy floor, the 4.7 PHI-free templates and the 4.2 acknowledgment to mean anything; a page with no acknowledgment is the false assurance hazard (H-01). Rejected.
-- **Show an agency-specific emergency phone number.** Needs a tenant setting and a place nobody can blank out; not in scope. Open question below.
+- **Show an agency-specific emergency phone number.** Needs a tenant setting and a place nobody can blank out; deferred by the product owner (2026-10-14) and recorded as an open item below and in the clinical-lead brief.
+- **Lock the seeded alert rule (`systemLocked`).** The locked set is a platform-wide pinned list backed by database triggers; adding to it is a separate decision. **Accepted limit:** a tenant admin can disable the in-app rule `m36.message.urgent_sent`, which silences the recipient's alert; the message itself stays visible and marked.
 
 ## Consequences
 
@@ -81,6 +88,9 @@ Both under `/api/v1/messaging`, registered from `routes/urgent-routes.ts`.
 ## Open questions
 
 - Clinical-lead sign-off of every user-facing sentence, the qualified-recipient role map (including lpn), the sender role grants (including whether an org admin may raise one) and the wording of the sent-status text.
-- Whether the agency wants its own phone or procedure line shown beside the fixed notice (needs a tenant setting that cannot be left blank).
-- Role or on-call recipients: WP 4.3.
-- Whether `important` gets a composer control in WP 4.2 when its deadline policy lands.
+- **Open item (deferred by the product owner):** an agency-specific phone or procedure line shown beside the fixed notice (needs a tenant setting that cannot be left blank).
+- Role or on-call recipients: WP 4.3 (named individual only in 4.1, confirmed 2026-10-14). The qualified-role maps stay as proposed.
+- `important` gets its composer control with WP 4.2, when its deadline policy lands (decided 2026-10-14).
+- **Flag policy (decided 2026-10-14): `messaging.urgent_clinical` stays off for every tenant until WP 4.2 to 4.4 ship.** Until then it is for development and sign-off review only.
+- Duplicate recipient names are told apart by an ordinal in the chooser ("Sam Lee (2 of 2)"); a role label needs the care-team seam to return roles, which it deliberately does not. Accepted limit.
+- Timing: whether the send path answers faster for some refusals than others (care team versus qualification) is an accepted limit, because the caller can already see the channel's members.

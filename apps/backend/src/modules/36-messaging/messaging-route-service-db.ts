@@ -1386,18 +1386,6 @@ export function createDbMessagingRouteService(
           if (ch.isArchived) throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
           // WP 3.3: channel kind, tenant policy and section lengths; a refusal rolls the whole send back.
           await assertSbarWritable(tx, orgId, input.richBody, ch.kind);
-          // WP 4.1: the structural rules of an urgent clinical message, re-checked here whatever the caller did.
-          if (input.urgentRecipientUserId) {
-            assertUrgentSend({
-              channelKind: ch.kind,
-              richBody: input.richBody,
-              authorUserId: input.authorUserId,
-              recipientUserId: input.urgentRecipientUserId,
-              recipientIsActiveMember: (await activeMemberIds(tx, orgId, input.channelId)).includes(
-                input.urgentRecipientUserId,
-              ),
-            });
-          }
           const { messageId, createdAt, replayed } = await insertEncryptedMessage(tx, cipher, {
             orgId,
             channelId: input.channelId,
@@ -1412,6 +1400,20 @@ export function createDbMessagingRouteService(
           });
           // WP 1.2: a retry of an already-committed send returns the original and emits nothing again.
           if (replayed) return { messageId, channelId: input.channelId, createdAt };
+          // WP 4.1: the structural rules of an urgent clinical message, re-checked here whatever the caller did. Checked after the
+          // insert and only for a NEW message, so a retry of a committed send replays even if the recipient has since left the
+          // channel; a refusal here rolls the insert back with the transaction.
+          if (input.urgentRecipientUserId) {
+            assertUrgentSend({
+              channelKind: ch.kind,
+              richBody: input.richBody,
+              authorUserId: input.authorUserId,
+              recipientUserId: input.urgentRecipientUserId,
+              recipientIsActiveMember: (await activeMemberIds(tx, orgId, input.channelId)).includes(
+                input.urgentRecipientUserId,
+              ),
+            });
+          }
           // WP 2.5: what was just sent is no longer a draft. The sender's OWN draft for this slot (channel composer, or
           // this thread root's reply composer) goes in the same transaction, so a client that closed its panel mid-send
           // can never save the sent text back. An SBAR send keeps the text draft (drafts/draft-after-send.ts).

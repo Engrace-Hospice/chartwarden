@@ -16,6 +16,8 @@ export type MessageUrgency = (typeof MESSAGE_URGENCIES)[number];
 
 /** Recipients offered in the chooser. */
 export const URGENT_RECIPIENT_CAP = 30;
+/** Care-team members examined for the chooser (bounded so the options read does a bounded number of lookups). */
+export const URGENT_CANDIDATE_CAP = 100;
 
 export const URGENT_ERROR_CODES = [
   "URGENT_NOT_PATIENT_CHANNEL",

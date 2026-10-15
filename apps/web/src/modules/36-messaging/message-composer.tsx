@@ -323,6 +323,7 @@ export function ThreadComposer({
           kind={channel.kind}
           disabled={sending}
           onSent={onPollCreated}
+          statusResetKey={draft}
         />
         <NonMemberMentionPrompt
           person={pendingAdd?.person ?? null}

@@ -16,6 +16,18 @@ export const NO_RECIPIENT_TEXT =
 export const CHOOSE_RECIPIENT_TEXT = "Choose who this goes to first.";
 export const SBAR_LOADING_TEXT = "Loading the message form...";
 export const SBAR_UNAVAILABLE_TEXT = "The SBAR form is not available. Nothing was sent.";
+export const INDETERMINATE_TEXT =
+  "It may not have been sent. Check the conversation before trying again; sending the same message again will not duplicate it.";
+export const RATE_LIMITED_TEXT =
+  "Too many urgent messages just now. Nothing was sent. Wait a minute and try again.";
+export const KEEP_EDITING_LABEL = "Keep editing";
+export const KEEP_DRAFT_LABEL = "Close, keep draft";
+export const DISCARD_LABEL = "Discard draft";
+export const DISCARD_PROMPT =
+  "Close this urgent message? You can keep what you typed, or discard it.";
+export const NAME_UNAVAILABLE_TEXT =
+  "Some colleagues are not listed because their names could not be shown. Use the agency telephone procedure for them.";
+export const UNAVAILABLE_TEXT = "Urgent clinical is temporarily unavailable. Retrying.";
 export const SENT_TEXT =
   "Urgent message sent. Your colleague has been told in the app. This is not a page.";
 export const SENT_REPLAY_TEXT = "That urgent message was already sent. It was not sent again.";
@@ -37,7 +49,13 @@ const ERRORS: Readonly<Record<string, string>> = {
 };
 
 /** A server refusal as text: the typed code wins, then the HTTP status, then a generic line. */
+/** A failure that does not prove the message was NOT stored: no response, a 5xx, or a 409 (still processing). */
+export const isIndeterminate = (status: number | undefined): boolean =>
+  status === undefined || status >= 500 || status === 409;
+
 export function urgentErrorText(status: number | undefined, code: string | undefined): string {
+  if (isIndeterminate(status)) return INDETERMINATE_TEXT;
+  if (status === 429) return RATE_LIMITED_TEXT;
   if (code && Object.hasOwn(ERRORS, code)) return ERRORS[code] as string;
   if (status === 403) return "You are not allowed to send an urgent clinical message here.";
   if (status === 404) return "Urgent clinical messages are not available here.";

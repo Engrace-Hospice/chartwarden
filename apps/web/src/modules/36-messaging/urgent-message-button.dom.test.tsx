@@ -1,25 +1,34 @@
 // M36 WP 4.1: the composer action is shown only when the options route allows it and the channel is a patient care-team
 // conversation; the dialog shows the emergency-procedure notice, requires a chosen recipient and the SBAR sections, and
 // sends exactly what the server needs (an SBAR document, one recipient, a client id); the outcome stays on screen.
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { ApiClientProvider } from "@wardenx/ui";
 import axe from "axe-core";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
-import { UrgentMessageButton } from "./urgent-message-button";
+import { SENT_STATUS_MS, UrgentMessageButton } from "./urgent-message-button";
 import {
   OPTIONS_PATH,
+  POLICY_PATH,
   RN,
   mountWithClient,
   optionsAnswer,
+  policyAnswer,
   refusal,
   sentAnswer,
 } from "./urgent-test-fixture";
 import {
+  DISCARD_LABEL,
+  INDETERMINATE_TEXT,
+  KEEP_DRAFT_LABEL,
+  KEEP_EDITING_LABEL,
   NOT_EMERGENCY_NOTICE,
   NO_PAGE_NOTICE,
   NO_RECIPIENT_TEXT,
   SENT_REPLAY_TEXT,
   SENT_TEXT,
+  UNAVAILABLE_TEXT,
   URGENT_BUTTON_LABEL,
 } from "./urgent-wording";
 
@@ -94,7 +103,7 @@ describe("UrgentMessageDialog", () => {
     await open();
     await fill();
     await userEvent.click(screen.getByRole("button", { name: "Send urgent message" }));
-    expect((await screen.findByRole("alert")).textContent).toMatch(/Choose who this goes to/);
+    expect(await screen.findByText(/Choose who this goes to/)).toBeTruthy();
     expect(POST).not.toHaveBeenCalled();
   });
 
@@ -223,7 +232,7 @@ describe("UrgentMessageDialog", () => {
 
   it("offers no send and says what to do when nobody qualified is available", async () => {
     const { POST } = mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" />, {
-      get: (path) => (path === OPTIONS_PATH ? optionsAnswer({ recipients: [] }) : undefined),
+      get: (path) => (path === OPTIONS_PATH ? optionsAnswer({ recipients: [] }) : policyAnswer),
     });
     await userEvent.click(await screen.findByRole("button", { name: URGENT_BUTTON_LABEL }));
     expect(await screen.findByText(NO_RECIPIENT_TEXT)).toBeTruthy();
@@ -239,5 +248,358 @@ describe("UrgentMessageDialog", () => {
     await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(document.activeElement).toBe(screen.getByRole("button", { name: URGENT_BUTTON_LABEL }));
+  });
+});
+
+const sendBtn = () => screen.getByRole("button", { name: /Send urgent message to/ });
+const choose = async () => userEvent.click(screen.getByRole("radio", { name: RN.display_name }));
+type Call = [
+  string,
+  { params: { header: Record<string, string> }; body: { client_message_id: string } },
+];
+
+describe("accessibility of the notices", () => {
+  it("associates both notices with the dialog through aria-describedby (announced with it)", async () => {
+    mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" />);
+    await open();
+    const dialog = screen.getByRole("dialog");
+    const target = document.getElementById(dialog.getAttribute("aria-describedby") ?? "");
+    expect(target).not.toBeNull();
+    expect(target?.textContent).toContain(NOT_EMERGENCY_NOTICE);
+    expect(target?.textContent).toContain(NO_PAGE_NOTICE);
+  });
+
+  it("restates the recipient in a polite live region", async () => {
+    mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" />);
+    await open();
+    await choose();
+    const line = screen.getByText(/This goes to Rita Nurse/);
+    expect(line.getAttribute("aria-live")).toBe("polite");
+  });
+
+  it("moves focus to the recipient group and links the error when no one is chosen", async () => {
+    mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" />);
+    await open();
+    await fill();
+    await userEvent.click(screen.getByRole("button", { name: "Send urgent message" }));
+    const group = screen.getByRole("group", { name: /required/ });
+    await waitFor(() => expect(document.activeElement).toBe(group));
+    expect(
+      document.getElementById(group.getAttribute("aria-describedby") ?? "")?.textContent,
+    ).toMatch(/Choose who this goes to/);
+  });
+});
+
+describe("a dirty draft is never lost by a stray close", () => {
+  it.each([
+    ["Escape", () => userEvent.keyboard("{Escape}")],
+    [
+      "a scrim click",
+      () => userEvent.click(document.querySelector('button[aria-label="Close"]') as Element),
+    ],
+    ["Cancel", () => userEvent.click(screen.getByRole("button", { name: "Cancel" }))],
+  ])("%s asks first, in the dialog, and Keep editing leaves the text", async (_n, close) => {
+    mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" />);
+    await open();
+    await fill("Still typing");
+    await close();
+    expect(await screen.findByText(/Close this urgent message/)).toBeTruthy();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: KEEP_EDITING_LABEL })),
+    );
+    await userEvent.click(screen.getByRole("button", { name: KEEP_EDITING_LABEL }));
+    expect((screen.getByLabelText("Situation") as HTMLTextAreaElement).value).toBe("Still typing");
+  });
+
+  it("an empty draft closes at once", async () => {
+    mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" />);
+    await open();
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("Discard forgets the text; Close-keep-draft keeps it for the next open", async () => {
+    mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" />);
+    await open();
+    await fill("Keep me");
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(await screen.findByRole("button", { name: KEEP_DRAFT_LABEL }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await open();
+    expect((screen.getByLabelText("Situation") as HTMLTextAreaElement).value).toBe("Keep me");
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(await screen.findByRole("button", { name: DISCARD_LABEL }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await open();
+    expect((screen.getByLabelText("Situation") as HTMLTextAreaElement).value).toBe("");
+  });
+});
+
+describe("sending", () => {
+  it("Ctrl+Enter sends", async () => {
+    const { POST } = mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" />);
+    await open();
+    await choose();
+    await fill();
+    fireEvent.keyDown(screen.getByLabelText("Situation"), { key: "Enter", ctrlKey: true });
+    await waitFor(() => expect(POST).toHaveBeenCalledTimes(1));
+  });
+
+  it("a double submit while in flight posts once", async () => {
+    let release: (v: unknown) => void = () => {};
+    const post = vi.fn().mockReturnValue(
+      new Promise((r) => {
+        release = r;
+      }),
+    );
+    mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" />, { post });
+    await open();
+    await choose();
+    await fill();
+    const form = screen.getByRole("dialog").querySelector("form") as HTMLFormElement;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    fireEvent.keyDown(screen.getByLabelText("Situation"), { key: "Enter", ctrlKey: true });
+    expect(post).toHaveBeenCalledTimes(1);
+    await act(async () => release(sentAnswer()));
+  });
+
+  it("a 409 keeps the message id and rotates only the Idempotency-Key", async () => {
+    const post = vi
+      .fn()
+      .mockResolvedValueOnce(refusal(409, "IDEMPOTENCY_IN_PROGRESS"))
+      .mockResolvedValue(sentAnswer());
+    mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" />, { post });
+    await open();
+    await choose();
+    await fill();
+    await userEvent.click(sendBtn());
+    expect((await screen.findByRole("alert")).textContent).toBe(INDETERMINATE_TEXT);
+    await userEvent.click(sendBtn());
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+    const [a, b] = post.mock.calls as [Call, Call];
+    expect(b[1].body.client_message_id).toBe(a[1].body.client_message_id);
+    expect(b[1].params.header["Idempotency-Key"]).not.toBe(a[1].params.header["Idempotency-Key"]);
+  });
+
+  it.each([
+    ["thrown", () => Promise.reject(new Error("net"))],
+    ["a 503", () => Promise.resolve(refusal(503, "X"))],
+  ])(
+    "%s: says it may not have been sent, re-reads the thread, and a close/reopen retry reuses the same ids",
+    async (_n, fail) => {
+      const onSent = vi.fn();
+      const post = vi.fn().mockImplementationOnce(fail).mockResolvedValue(sentAnswer());
+      mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" onSent={onSent} />, {
+        post,
+      });
+      await open();
+      await choose();
+      await fill();
+      await userEvent.click(sendBtn());
+      expect((await screen.findByRole("alert")).textContent).toBe(INDETERMINATE_TEXT);
+      expect(onSent).toHaveBeenCalledTimes(1); // the thread is reloaded so the sender can check it
+      await userEvent.keyboard("{Escape}");
+      await userEvent.click(await screen.findByRole("button", { name: KEEP_DRAFT_LABEL }));
+      await open();
+      await userEvent.click(sendBtn());
+      await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+      const [a, b] = post.mock.calls as [Call, Call];
+      expect(b[1].body.client_message_id).toBe(a[1].body.client_message_id);
+      expect(b[1].params.header["Idempotency-Key"]).toBe(a[1].params.header["Idempotency-Key"]);
+    },
+  );
+
+  it("a definitive refusal says nothing was sent and does not reload the thread", async () => {
+    const onSent = vi.fn();
+    mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" onSent={onSent} />, {
+      post: vi.fn().mockResolvedValue(refusal(422, "URGENT_RECIPIENT_INVALID")),
+    });
+    await open();
+    await choose();
+    await fill();
+    await userEvent.click(sendBtn());
+    expect((await screen.findByRole("alert")).textContent).toMatch(/cannot take this message/);
+    expect(onSent).not.toHaveBeenCalled();
+  });
+
+  it("a 429 tells the sender to wait and that nothing was sent", async () => {
+    mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" />, {
+      post: vi.fn().mockResolvedValue(refusal(429, "RATE_LIMITED")),
+    });
+    await open();
+    await choose();
+    await fill();
+    await userEvent.click(sendBtn());
+    expect((await screen.findByRole("alert")).textContent).toMatch(/Nothing was sent/);
+  });
+});
+
+describe("channel switch", () => {
+  const rerenderWith = (
+    view: ReturnType<typeof mountWithClient>,
+    channelId: string,
+    onSent?: () => void,
+  ) =>
+    view.rerender(
+      <MemoryRouter>
+        <ApiClientProvider client={view.client}>
+          <UrgentMessageButton channelId={channelId} kind="care_team" onSent={onSent} />
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+
+  it("closes an open dialog and starts the new conversation with a clean draft", async () => {
+    const view = mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" />);
+    await open();
+    await fill("From c1");
+    rerenderWith(view, "c2");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await open();
+    expect((screen.getByLabelText("Situation") as HTMLTextAreaElement).value).toBe("");
+  });
+
+  it("ignores a send that finishes after the person left (no status, no reload)", async () => {
+    let release: (v: unknown) => void = () => {};
+    const post = vi.fn().mockReturnValue(
+      new Promise((r) => {
+        release = r;
+      }),
+    );
+    const onSent = vi.fn();
+    const view = mountWithClient(
+      <UrgentMessageButton channelId="c1" kind="care_team" onSent={onSent} />,
+      { post },
+    );
+    await open();
+    await choose();
+    await fill();
+    await userEvent.click(sendBtn());
+    rerenderWith(view, "c2", onSent);
+    await act(async () => release(sentAnswer()));
+    expect(onSent).not.toHaveBeenCalled();
+    expect(screen.queryByText(SENT_TEXT)).toBeNull();
+  });
+});
+
+describe("options failures", () => {
+  it.each([
+    ["a 503", () => refusal(503, "X")],
+    ["a thrown client", () => Promise.reject(new Error("net"))],
+  ])(
+    "%s is transient: unavailable text while retrying, then the button works",
+    async (_n, fail) => {
+      let first = true;
+      const { GET } = mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" />, {
+        get: (path) => {
+          if (path === OPTIONS_PATH && first) {
+            first = false;
+            return fail();
+          }
+          return path === OPTIONS_PATH ? optionsAnswer() : policyAnswer;
+        },
+      });
+      expect(await screen.findByText(UNAVAILABLE_TEXT)).toBeTruthy();
+      expect(
+        (screen.getByRole("button", { name: URGENT_BUTTON_LABEL }) as HTMLButtonElement).disabled,
+      ).toBe(true);
+      await waitFor(
+        () =>
+          expect(
+            (screen.getByRole("button", { name: URGENT_BUTTON_LABEL }) as HTMLButtonElement)
+              .disabled,
+          ).toBe(false),
+        { timeout: 4000 },
+      );
+      expect(GET.mock.calls.filter((c) => c[0] === OPTIONS_PATH).length).toBeGreaterThanOrEqual(2);
+    },
+  );
+
+  it("re-reads the options each time the dialog opens", async () => {
+    const { GET } = mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" />);
+    await open();
+    await waitFor(() =>
+      expect(GET.mock.calls.filter((c) => c[0] === OPTIONS_PATH).length).toBeGreaterThanOrEqual(2),
+    );
+  });
+});
+
+describe("recipient names", () => {
+  it("never offers a colleague whose name is missing, and says some are not listed", async () => {
+    mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" />, {
+      get: (path) =>
+        path === OPTIONS_PATH
+          ? optionsAnswer({
+              recipients: [
+                RN,
+                { user_id: "u-x", display_name: null },
+                { user_id: "u-y", display_name: "  " },
+              ],
+            })
+          : path === POLICY_PATH
+            ? policyAnswer
+            : undefined,
+    });
+    await open();
+    expect(screen.getAllByRole("radio")).toHaveLength(1);
+    expect(screen.getByText(/not listed because their names could not be shown/)).toBeTruthy();
+  });
+
+  it("tells two people with the same name apart, and the restated name matches the one chosen", async () => {
+    mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" />, {
+      get: (path) =>
+        path === OPTIONS_PATH
+          ? optionsAnswer({
+              recipients: [
+                { user_id: "u-1", display_name: "Sam Lee" },
+                { user_id: "u-2", display_name: "Sam Lee" },
+              ],
+            })
+          : path === POLICY_PATH
+            ? policyAnswer
+            : undefined,
+    });
+    await open();
+    await userEvent.click(screen.getByRole("radio", { name: "Sam Lee (2 of 2)" }));
+    expect(screen.getByText(/This goes to Sam Lee \(2 of 2\)/)).toBeTruthy();
+    expect(sendBtn().textContent).toBe("Send urgent message to Sam Lee (2 of 2)");
+  });
+});
+
+describe("the sent status", () => {
+  it("clears when the composer text changes", async () => {
+    const view = mountWithClient(
+      <UrgentMessageButton channelId="c1" kind="care_team" statusResetKey="a" />,
+    );
+    await open();
+    await choose();
+    await fill();
+    await userEvent.click(sendBtn());
+    expect(await screen.findByText(SENT_TEXT)).toBeTruthy();
+    view.rerender(
+      <MemoryRouter>
+        <ApiClientProvider client={view.client}>
+          <UrgentMessageButton channelId="c1" kind="care_team" statusResetKey="ab" />
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.queryByText(SENT_TEXT)).toBeNull());
+  });
+
+  it("clears by itself after a while", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" />);
+      await open();
+      await choose();
+      await fill();
+      await userEvent.click(sendBtn());
+      expect(await screen.findByText(SENT_TEXT)).toBeTruthy();
+      await act(async () => void (await vi.advanceTimersByTimeAsync(SENT_STATUS_MS + 100)));
+      expect(screen.queryByText(SENT_TEXT)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

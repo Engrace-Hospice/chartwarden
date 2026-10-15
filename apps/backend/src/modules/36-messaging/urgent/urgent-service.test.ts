@@ -57,6 +57,8 @@ function setup(
   const published: Array<{ eventName: string; payload: Record<string, unknown> }> = [];
   const sends: Array<Record<string, unknown>> = [];
   const byClient = new Map<string, string>();
+  const recipientOf = new Map<string, string>();
+  const state = { unqualified: new Set(over.unqualified ?? []) };
   const viewers = new Set(over.viewers ?? [AIDE, RN, RN2]);
   const sendMessage = (async (_org: string, i: Record<string, unknown>) => {
     if (over.sendFails) throw new Error("db down");
@@ -65,6 +67,7 @@ function setup(
     if (prior) return { messageId: prior, channelId: CH, createdAt: "t" };
     const messageId = "00000000-0000-4000-8000-000000000091";
     sends.push(i);
+    recipientOf.set(key, String(i.urgentRecipientUserId));
     await (i.inTransaction as (tx: unknown, s: unknown) => Promise<void>)(null, {
       messageId,
       createdAt: "t",
@@ -80,11 +83,12 @@ function setup(
     messaging: { canViewChannel: async (_o, u) => viewers.has(u), sendMessage },
     channelFacts: async () => ({ kind: over.kind ?? "care_team", subjectId: PAT }),
     careTeamMembers: async () => over.team ?? [RN, RN2, AIDE],
-    isQualified: async (_o, u) => !(over.unqualified ?? []).includes(u) && u !== AIDE,
+    isQualified: async (_o, u) => !state.unqualified.has(u) && u !== AIDE,
+    findReplayRecipient: async (_o, _a, _c, clientId) => recipientOf.get(clientId) ?? null,
     displayName: async (_o, u) => (u === RN ? "Rita RN" : u === RN2 ? "Al RN" : null),
     now: () => new Date("2026-10-14T12:00:00.000Z"),
   };
-  return { service: createUrgentService(deps), published, sends };
+  return { service: createUrgentService(deps), published, sends, state };
 }
 
 const code = async (p: Promise<unknown>): Promise<string> => {
@@ -185,6 +189,25 @@ describe("send: happy path and replay", () => {
     expect(published).toHaveLength(1);
   });
 
+  it("replays a committed send even after the recipient lost access (200, not a confusing 422), and publishes nothing", async () => {
+    const { service, sends, published, state } = setup();
+    await service.send(actor, input(), noLinks);
+    state.unqualified.add(RN);
+    const again = await service.send(actor, input(), noLinks);
+    expect(again).toMatchObject({ created: false, recipient_user_id: RN });
+    expect(sends).toHaveLength(1);
+    expect(published).toHaveLength(1);
+  });
+
+  it("does not skip the eligibility check when the reused id names a different recipient", async () => {
+    const { service, state } = setup();
+    await service.send(actor, input(), noLinks);
+    state.unqualified.add(RN2);
+    expect(await code(service.send(actor, input({ recipientUserId: RN2 }), noLinks))).toBe(
+      "422:URGENT_RECIPIENT_INVALID",
+    );
+  });
+
   it("does not read the SBAR urgency hint or the text: a 'routine' hint with calm text is still urgent", async () => {
     const { service, sends } = setup();
     await service.send(actor, input({ bodyDoc: sbarDoc("routine", "all calm today") }), noLinks);
@@ -199,6 +222,31 @@ describe("send: happy path and replay", () => {
 });
 
 describe("options", () => {
+  it("examines at most URGENT_CANDIDATE_CAP care-team members", async () => {
+    const many = Array.from(
+      { length: 250 },
+      (_, n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`,
+    );
+    const seen: string[] = [];
+    const { service } = setup({ team: many, viewers: [AIDE, ...many] });
+    const deps = service as unknown as object;
+    expect(deps).toBeDefined();
+    const counted = createUrgentService({
+      isEnabled: async () => true,
+      outbox: undefined,
+      messaging: { canViewChannel: async () => true, sendMessage: (async () => ({})) as never },
+      channelFacts: async () => ({ kind: "care_team", subjectId: PAT }),
+      careTeamMembers: async () => many,
+      isQualified: async (_o, u) => {
+        seen.push(u);
+        return false;
+      },
+      displayName: async () => null,
+    });
+    await counted.options(actor, CH);
+    expect(seen.length).toBe(100);
+  });
+
   it("answers disabled while the flag is off", async () => {
     const { service } = setup({ enabled: false });
     expect(await service.options(actor, CH)).toEqual({ enabled: false });

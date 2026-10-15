@@ -310,6 +310,25 @@ describe.skipIf(!DB_URL)("M36 WP 4.1 urgency model - LIVE Postgres", () => {
       expect(await urgentOutboxCount(first.json().message_id)).toBe(1);
     });
 
+    it("a retry after the recipient left the channel still replays the original (200), writes nothing and notifies nobody again", async () => {
+      const clientId = randomUUID();
+      const first = await send(app, nurse, { client_message_id: clientId, recipient_user_id: rn2 });
+      expect(first.statusCode).toBe(201);
+      await kit.admin.query(
+        "UPDATE channel_member SET removed_at = now() WHERE channel_id=$1 AND user_id=$2",
+        [channel, rn2],
+      );
+      const before = await snapshot();
+      const again = await send(app, nurse, { client_message_id: clientId, recipient_user_id: rn2 });
+      expect(again.statusCode, again.body).toBe(200);
+      expect(again.json()).toMatchObject({ created: false, message_id: first.json().message_id });
+      expect(await snapshot()).toEqual(before);
+      await kit.admin.query(
+        "UPDATE channel_member SET removed_at = NULL WHERE channel_id=$1 AND user_id=$2",
+        [channel, rn2],
+      );
+    });
+
     it("a reused client_message_id naming a different recipient is the idempotency conflict, never a silent replay", async () => {
       const clientId = randomUUID();
       expect((await send(app, nurse, { client_message_id: clientId })).statusCode).toBe(201);
@@ -488,6 +507,18 @@ describe.skipIf(!DB_URL)("M36 WP 4.1 urgency model - LIVE Postgres", () => {
       await expect(insert("urgent", null)).rejects.toThrow(/message_urgency_shape/);
       await expect(insert("routine", rn)).rejects.toThrow(/message_urgency_shape/);
       await expect(insert("important", null)).resolves.toBeDefined();
+    });
+
+    it("refuses an urgent recipient who is not an active member of the message's organization (cross-tenant)", async () => {
+      const insert = (recipient: string) =>
+        kit.admin.query(
+          `INSERT INTO message (channel_id, organization_id, author_user_id, author_kind, body_cipher, body_sha256, urgency, urgent_recipient_user_id)
+           VALUES ($1,$2,$3,'user','\\x00',$4,'urgent',$5)`,
+          [channel, ORG_A, nurse, "b".repeat(64), recipient],
+        );
+      await expect(insert(orgBUser)).rejects.toThrow(/not an active member/);
+      await expect(insert(randomUUID())).rejects.toThrow();
+      await expect(insert(rn)).resolves.toBeDefined();
     });
 
     it("wardenx_app cannot see another tenant's urgent message (RLS)", async () => {

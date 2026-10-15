@@ -20,6 +20,8 @@ type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void
 
 export interface UrgentRouteDeps {
   readonly service: UrgentService;
+  /** WP 4.1: the per-user / per-org / per-pair limiter (fail closed), run after authorisation and before the send. */
+  readonly rateLimit?: PreHandler;
 }
 
 /** The guards and link validator `registerMessagingRoutes` already built (passed in to avoid an import cycle). */
@@ -56,7 +58,7 @@ export function registerUrgentRoutes(
   deps: UrgentRouteDeps,
   guards: UrgentRouteGuards,
 ): void {
-  const { service } = deps;
+  const { service, rateLimit } = deps;
   const urgentSend = requirePermission(URGENT_SEND_PERMISSION) as PreHandler;
 
   app.post(
@@ -68,6 +70,7 @@ export function registerUrgentRoutes(
         urgentSend,
         guards.sendToChannel,
         guards.requireIdempotencyKey,
+        ...(rateLimit ? [rateLimit] : []),
       ],
       config: {
         auditRead: {
