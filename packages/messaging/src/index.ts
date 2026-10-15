@@ -470,6 +470,9 @@ export * from "./search/global";
 export * from "./sbar/sbar-policy";
 export * from "./sbar/sbar-write";
 
+// M36 WP 4.1 urgent clinical message - pure write rules
+export * from "./urgent/urgent-rules";
+
 // M36 WP 3.4 communication tasks - pure rules
 export * from "./tasks";
 

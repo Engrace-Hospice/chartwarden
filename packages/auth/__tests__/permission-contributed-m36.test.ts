@@ -38,6 +38,8 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
         "messaging.global_search.manage",
         "messaging.promote",
         "messaging.review",
+        "messaging.urgent.send",
+        "messaging.urgent.receive",
         "alert.inbox.self",
       ].sort(),
     );

@@ -21,7 +21,7 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
-import { messageAuthorKind, messageBodyKind, messageStatus } from "../../enums";
+import { messageAuthorKind, messageBodyKind, messageStatus, messageUrgency } from "../../enums";
 import { organizations } from "../organizations";
 import { users } from "../users";
 import { channels } from "./channels";
@@ -55,6 +55,10 @@ export const messages = pgTable(
     // WP 1.2: client-minted, stable across retries; the DB backstop behind the Idempotency-Key middleware.
     clientMessageId: uuid("client_message_id"),
     status: messageStatus("status").notNull().default("sent"),
+    // 1105 (WP 4.1, ADR-0068): set once by the "Urgent clinical" entry, never changed (trigger). An urgent message names
+    // exactly one recipient (CHECK below). Neither column is read from message text.
+    urgency: messageUrgency("urgency").notNull().default("routine"),
+    urgentRecipientUserId: uuid("urgent_recipient_user_id").references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     editedAt: timestamp("edited_at", { withTimezone: true }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
@@ -125,6 +129,15 @@ export const messages = pgTable(
       AND (status = 'deleted') = (deleted_at IS NOT NULL)
     `,
     ),
+    // 1105: an urgent message has a named recipient and nobody else does.
+    urgencyShape: check(
+      "message_urgency_shape",
+      sql`(urgency = 'urgent') = (urgent_recipient_user_id IS NOT NULL)`,
+    ),
+    // 1105: the recipient FK's covering index (the 4.9 unacknowledged queue reads by recipient).
+    byUrgentRecipientIdx: index("message_urgent_recipient_idx")
+      .on(t.organizationId, t.urgentRecipientUserId, t.createdAt)
+      .where(sql`urgent_recipient_user_id IS NOT NULL`),
     // M36-F03: body_sha256 must be a 64-char lowercase hex string (SHA-256).
     sha256Shape: check("message_sha256_shape", sql`body_sha256 ~ '^[0-9a-f]{64}$'`),
   }),

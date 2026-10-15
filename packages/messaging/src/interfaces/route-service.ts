@@ -266,6 +266,12 @@ export interface MessagingRouteService extends MessageReactionPinService, Messag
         tx: unknown,
         sent: { messageId: string; createdAt: string },
       ) => Promise<void>;
+      /**
+       * WP 4.1: makes this an urgent clinical message to ONE named recipient. Only the urgent entry sets it; the core
+       * re-checks the structural rules (patient care-team channel, SBAR body, active channel member, not the author) and
+       * stores `urgency = 'urgent'`. Qualification of the recipient is the caller's job (service eligibility ports).
+       */
+      urgentRecipientUserId?: string;
     },
   ): Promise<{ messageId: string; channelId: string; createdAt: string }>;
   /** Edit within the edit window; FORBIDDEN unless the actor authored it (§4.2 PATCH). */

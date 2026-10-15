@@ -312,6 +312,21 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "none",
   },
+  // --- WP 4.1: the urgent clinical message (ADR-0068). `send` raises one (05 matrix "Initiate urgent escalation": clinician,
+  //     aide, team lead; not org admin or compliance by default); `receive` lets a user be NAMED as its recipient (matrix
+  //     "Acknowledge clinical responsibility": a qualified clinical role, never an aide). Granted by migration 1105. ---
+  "messaging.urgent.send": {
+    resource: "urgent_message",
+    action: "send",
+    category: "clinical",
+    abac: "none",
+  },
+  "messaging.urgent.receive": {
+    resource: "urgent_message",
+    action: "receive",
+    category: "clinical",
+    abac: "none",
+  },
   // --- WP 2.7b C4: switch tenant global search on/off (ADR-0058 decision 2; the route also demands a fresh step-up) ---
   "messaging.global_search.manage": {
     resource: "global_search",

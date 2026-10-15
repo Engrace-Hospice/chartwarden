@@ -1430,6 +1430,7 @@ import {
   buildReviewDeps,
   buildSbarDeps,
   buildTaskDeps,
+  buildUrgentDeps,
   createAttachmentService,
   createDbMessagingProvider,
   createDbMessagingRouteService,
@@ -1492,6 +1493,7 @@ import { buildM36PromotionOutcomesConsumer } from "./modules/36-messaging/outbox
 import { buildM36QualityAlertConsumer } from "./modules/36-messaging/outbox-consumers/quality-alerts";
 import { buildM36ScheduleBlockedConsumer } from "./modules/36-messaging/outbox-consumers/schedule-blocked";
 import { buildM36TaskNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/task-notifications";
+import { buildM36UrgentNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/urgent-notifications";
 import { bindTransactionalEmail } from "./modules/36-messaging/transactional-email-binding";
 // M37 (Inpatient Unit / IPU Management) boot surface — the §4.7 ABAC predicates, the §4.4 outbox catalog,
 // and the §4.1 core route mount over the Drizzle route service. The write path emits `m37.*` through the
@@ -4240,6 +4242,27 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         });
       })()
     : undefined;
+  // WP 4.1 - "Urgent clinical". One binding for the routes; off unless the tenant flags `messaging.urgent_clinical` AND
+  // `messaging.sbar` are on. It stores and marks an urgent message and tells the named recipient in-app; it does not page,
+  // escalate or acknowledge (WP 4.2 - 4.4).
+  const m36Urgent = dbHandle
+    ? (() => {
+        const messaging = createDbMessagingRouteService(dbHandle.db, {
+          outbox: m36OutboxPublisher,
+        });
+        return buildUrgentDeps({
+          db: dbHandle.db,
+          flags: featureFlagReader,
+          outbox: m36OutboxPublisher,
+          messaging: {
+            canViewChannel: messaging.canViewChannel,
+            sendMessage: messaging.sendMessage,
+          },
+          permissionsFor: async (organizationId, userId) =>
+            resolveActorPermissions({ organizationId, userId }),
+        });
+      })()
+    : undefined;
   // WP 3.7 - chart promotion. ONE binding for the routes (flag + service), the ChartPromotionSourceReader seam M8 and M14
   // read, and the two outbox consumers' ports; off unless the tenant flag `messaging.promotions` is on (the outcome
   // consumer records an owner's decision regardless of the flag). The snapshot reader opens message bodies with the SAME
@@ -4771,6 +4794,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             ...(m36Review ? { review: m36Review } : {}),
             // WP 3.10 - ask a nurse about a medication; off unless tenant flags `messaging.medication_questions` AND `messaging.tasks` are on.
             ...(m36MedicationQuestions ? { medicationQuestions: m36MedicationQuestions } : {}),
+            // WP 4.1 - urgent clinical message; off unless tenant flags `messaging.urgent_clinical` AND `messaging.sbar` are on.
+            ...(m36Urgent ? { urgent: m36Urgent } : {}),
             // WP 3.7 - chart promotion; off unless the tenant flag `messaging.promotions` is on.
             ...(m36Promotions ? { promotions: m36Promotions } : {}),
             // WP 3.6 - IDG discussions (read-only); off unless tenant flags `messaging.idg` AND `messaging.clinical_links` are on.
@@ -9856,6 +9881,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           // WP 3.10 - one fixed-text in-app alert for the supervisor audience when a medication question has no nurse.
           buildM36MedicationQuestionNotificationsConsumer({
             alerts: getSeam("AlertEmitter") as AlertEmitter,
+          }),
+          // WP 4.1 - one fixed-text in-app alert for the named recipient of an urgent clinical message (not a page).
+          buildM36UrgentNotificationsConsumer({
+            alerts: getSeam("AlertEmitter") as AlertEmitter,
+            messaging: createDbMessagingRouteService(dbHandle.db),
           }),
           // WP 3.7 - records the decision M8 / M14 report for a chart-promotion proposal (always, regardless of the flag) and
           // tells the requester; and tells the reviewers a proposal is waiting (the requester when nobody can be reached).

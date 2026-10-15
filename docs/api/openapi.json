@@ -158707,6 +158707,18 @@
                               }
                             ]
                           },
+                          "urgency": {
+                            "anyOf": [
+                              {
+                                "const": "important",
+                                "type": "string"
+                              },
+                              {
+                                "const": "urgent",
+                                "type": "string"
+                              }
+                            ]
+                          },
                           "replyCount": {
                             "minimum": 0,
                             "type": "integer"
@@ -160022,6 +160034,18 @@
                               },
                               {
                                 "type": "null"
+                              }
+                            ]
+                          },
+                          "urgency": {
+                            "anyOf": [
+                              {
+                                "const": "important",
+                                "type": "string"
+                              },
+                              {
+                                "const": "urgent",
+                                "type": "string"
                               }
                             ]
                           },
@@ -162256,6 +162280,18 @@
                             }
                           ]
                         },
+                        "urgency": {
+                          "anyOf": [
+                            {
+                              "const": "important",
+                              "type": "string"
+                            },
+                            {
+                              "const": "urgent",
+                              "type": "string"
+                            }
+                          ]
+                        },
                         "replyCount": {
                           "minimum": 0,
                           "type": "integer"
@@ -162652,6 +162688,18 @@
                               },
                               {
                                 "type": "null"
+                              }
+                            ]
+                          },
+                          "urgency": {
+                            "anyOf": [
+                              {
+                                "const": "important",
+                                "type": "string"
+                              },
+                              {
+                                "const": "urgent",
+                                "type": "string"
                               }
                             ]
                           },
@@ -163108,6 +163156,18 @@
                               },
                               {
                                 "type": "null"
+                              }
+                            ]
+                          },
+                          "urgency": {
+                            "anyOf": [
+                              {
+                                "const": "important",
+                                "type": "string"
+                              },
+                              {
+                                "const": "urgent",
+                                "type": "string"
                               }
                             ]
                           },
@@ -164061,6 +164121,18 @@
                               }
                             ]
                           },
+                          "urgency": {
+                            "anyOf": [
+                              {
+                                "const": "important",
+                                "type": "string"
+                              },
+                              {
+                                "const": "urgent",
+                                "type": "string"
+                              }
+                            ]
+                          },
                           "replyCount": {
                             "minimum": 0,
                             "type": "integer"
@@ -164393,6 +164465,242 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/channels/{id}/urgent-messages": {
+      "post": {
+        "operationId": "postApiV1MessagingChannelsByIdUrgentmessages",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Send an urgent clinical message (WP 4.1, ADR-0068; messaging.send + messaging.urgent.send + channel visibility + a required Idempotency-Key; 404 while the tenant flags `messaging.urgent_clinical` AND `messaging.sbar` are not both on). The body is an SBAR document (`body_doc`) and ONE named recipient; the message is stored with urgency `urgent`, fixed at send, and cannot be edited. The recipient must be a qualified clinician (holds messaging.urgent.receive, never an aide), on the patient's care team, an active member of the channel, not the sender and admitted by the Part 2 gate: any failure is one uniform 422 URGENT_RECIPIENT_INVALID that names no reason. 422 URGENT_NOT_PATIENT_CHANNEL (only a patient's care-team channel qualifies; the patient comes from the channel), URGENT_SBAR_REQUIRED, SBAR_INVALID, CLINICAL_LINK_NOT_AVAILABLE. The recipient gets ONE generic in-app alert; nobody is paged, escalated or asked to acknowledge (WP 4.2 - 4.4), and the message text is never parsed. NOT the emergency path: critical symptoms follow the agency telephone procedure. 201 created; 200 created:false replays the same client_message_id (409 if that id names a different recipient). Read-audited against the message and patient",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "message_id",
+                    "channel_id",
+                    "patient_id",
+                    "recipient_user_id",
+                    "created"
+                  ],
+                  "properties": {
+                    "message_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "channel_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patient_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "recipient_user_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "created": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "body_doc",
+                  "recipient_user_id",
+                  "client_message_id"
+                ],
+                "properties": {
+                  "body_doc": {
+                    "type": "object",
+                    "required": [
+                      "schemaVersion",
+                      "doc"
+                    ],
+                    "properties": {
+                      "schemaVersion": {
+                        "const": 1,
+                        "type": "number"
+                      },
+                      "doc": {
+                        "type": "object",
+                        "required": [
+                          "type",
+                          "content"
+                        ],
+                        "properties": {
+                          "type": {
+                            "const": "doc",
+                            "type": "string"
+                          },
+                          "content": {
+                            "maxItems": 500,
+                            "type": "array",
+                            "items": {}
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "recipient_user_id": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  },
+                  "client_message_id": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/channels/{id}/urgent-messages/options": {
+      "get": {
+        "operationId": "getApiV1MessagingChannelsByIdUrgentmessagesOptions",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Who can receive an urgent clinical message in this channel (WP 4.1; messaging.read + channel visibility): up to 30 qualified care-team colleagues who can see the channel (names only), never the caller. 200 {enabled:false} while the feature flags are off; a hidden channel is the uniform 404. Read-audited (it discloses care-team names)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "enabled"
+                      ],
+                      "properties": {
+                        "enabled": {
+                          "const": false,
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "enabled",
+                        "patient_linked",
+                        "patient_id",
+                        "recipients"
+                      ],
+                      "properties": {
+                        "enabled": {
+                          "const": true,
+                          "type": "boolean"
+                        },
+                        "patient_linked": {
+                          "type": "boolean"
+                        },
+                        "patient_id": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "recipients": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "user_id",
+                              "display_name"
+                            ],
+                            "properties": {
+                              "user_id": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "display_name": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -171301,6 +171609,18 @@
                                   },
                                   {
                                     "type": "null"
+                                  }
+                                ]
+                              },
+                              "urgency": {
+                                "anyOf": [
+                                  {
+                                    "const": "important",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "urgent",
+                                    "type": "string"
                                   }
                                 ]
                               },

@@ -57,6 +57,8 @@ import {
   type PatientLocationResolver,
   assertLockedRulePatchAllowed,
   assertMayArchiveChannel,
+  assertUrgencyEditable,
+  assertUrgentSend,
   isSystemLockedEventType,
   mayManageChannelMembersResolved,
   rollUpAlertOutcome,
@@ -94,6 +96,7 @@ import { createDbMessageSearchService } from "./message-search-service-db";
 import { MESSAGE_ROW_COLUMNS, hydrateMessages } from "./messaging-message-hydration";
 import {
   type MessageBodyCipher,
+  activeMemberIds,
   blankMessageError,
   channelOr404,
   createMessageBodyCipher,
@@ -1383,6 +1386,18 @@ export function createDbMessagingRouteService(
           if (ch.isArchived) throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
           // WP 3.3: channel kind, tenant policy and section lengths; a refusal rolls the whole send back.
           await assertSbarWritable(tx, orgId, input.richBody, ch.kind);
+          // WP 4.1: the structural rules of an urgent clinical message, re-checked here whatever the caller did.
+          if (input.urgentRecipientUserId) {
+            assertUrgentSend({
+              channelKind: ch.kind,
+              richBody: input.richBody,
+              authorUserId: input.authorUserId,
+              recipientUserId: input.urgentRecipientUserId,
+              recipientIsActiveMember: (await activeMemberIds(tx, orgId, input.channelId)).includes(
+                input.urgentRecipientUserId,
+              ),
+            });
+          }
           const { messageId, createdAt, replayed } = await insertEncryptedMessage(tx, cipher, {
             orgId,
             channelId: input.channelId,
@@ -1393,6 +1408,7 @@ export function createDbMessagingRouteService(
             parentMessageId: input.parentMessageId,
             quotedMessageId: input.quotedMessageId,
             clientMessageId: input.clientMessageId,
+            urgentRecipientUserId: input.urgentRecipientUserId,
           });
           // WP 1.2: a retry of an already-committed send returns the original and emits nothing again.
           if (replayed) return { messageId, channelId: input.channelId, createdAt };
@@ -1527,6 +1543,7 @@ export function createDbMessagingRouteService(
             bodyCipher: MSG.bodyCipher,
             bodySha256: MSG.bodySha256,
             bodyKind: MSG.bodyKind,
+            urgency: MSG.urgency,
             createdAt: MSG.createdAt,
             editedAt: MSG.editedAt,
             ageMs: sql<number>`extract(epoch from (clock_timestamp() - ${MSG.createdAt})) * 1000`,
@@ -1539,6 +1556,8 @@ export function createDbMessagingRouteService(
         if (m.authorUserId !== input.userId) {
           throw new ForbiddenError("only the author may edit a message");
         }
+        // WP 4.1: an urgent clinical message is final once sent (before the window check: never a window answer).
+        assertUrgencyEditable(m.urgency);
         // WP 1.5: text may be cleared only while the message still shows an attachment.
         if (!input.body.trim()) {
           const kept = await loadAttachmentViews(tx, {

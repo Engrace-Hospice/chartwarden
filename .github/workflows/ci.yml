@@ -795,6 +795,8 @@ jobs:
           - { name: "M36 clinical handoffs", scripts: "test:m36:handoffs:live" }
           # WP 3.10 - medication clarification (Workflow D acceptance): one atomic message + read-only link + nurse task, idempotent replay, rollback, no-nurse event, offboarding never back to the asker, source_kind immutable + not-creator CHECK, no M11/M12 table or event moves, read audit, flag.
           - { name: "M36 medication clarification", scripts: "test:m36:medication-question:live" }
+          # WP 4.1 - urgency model (Urgent clinical): one urgent message with a named qualified recipient and one id-only event, replay/conflict, every refusal writes nothing, urgent not editable, urgency immutable + shape CHECK, atomic with the event, generic in-app alert (no PHI), options list, tenant IDOR, read audit, migration role grants.
+          - { name: "M36 urgency model", scripts: "test:m36:urgency:live" }
           # WP 3.5 - handoff lifecycle: the expiry tick with the real dispatcher + AlertEmitter (supervisor role rule, needs_attention fallback), flag-off tenants, lowered policy, offboarding both directions, sockets dropped when resolution fails.
           - { name: "M36 handoff lifecycle", scripts: "test:m36:handoff-lifecycle:live" }
           # WP 3.8 - lifecycle review queue: death/discharge/transfer queue the open care-team tasks (bereavement excluded), nothing deleted (row-count snapshots), supervisor reassign/close with task events + outbox, resolved rows final, closed_elsewhere trigger, audit scrub, Part 2 restricted rows, tenant IDOR.

@@ -47,11 +47,15 @@ export async function recipientEligible(
   orgId: string,
   userId: string,
   patientIds: readonly string[],
+  /** WP 4.1: permissions required on top of the three above (the urgent recipient also needs `messaging.urgent.receive`). */
+  extraPermissions: readonly string[] = [],
 ): Promise<boolean> {
   try {
     if (!(await ports.isActiveUser(orgId, userId))) return false;
     const permissions = await ports.permissionsFor(orgId, userId);
-    if (!HANDOFF_RECIPIENT_PERMISSIONS.every((p) => permissions.has(p))) return false;
+    if (![...HANDOFF_RECIPIENT_PERMISSIONS, ...extraPermissions].every((p) => permissions.has(p))) {
+      return false;
+    }
   } catch {
     return false;
   }

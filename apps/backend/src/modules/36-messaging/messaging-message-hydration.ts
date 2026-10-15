@@ -32,6 +32,7 @@ export const MESSAGE_ROW_COLUMNS = {
   createdAt: MSG.createdAt,
   createdAtMicros: sql<string>`${MSG.createdAt}::text`,
   parentMessageId: MSG.parentMessageId,
+  urgency: MSG.urgency,
 };
 
 export interface MessageRow {
@@ -45,6 +46,7 @@ export interface MessageRow {
   readonly editedAt: Date | null;
   readonly createdAt: Date;
   readonly parentMessageId: string | null;
+  readonly urgency: string;
 }
 
 /**
@@ -215,6 +217,8 @@ export async function hydrateMessages(
         createdAt: m.createdAt.toISOString(),
         editedAt: visibleEditedAt(m),
         parentMessageId: m.parentMessageId,
+        // WP 4.1: display only; a tombstone shows nothing, and routine is simply absent.
+        ...(m.urgency === "urgent" && m.status !== "deleted" ? { urgency: "urgent" as const } : {}),
         reactions: annotations.reactions.get(m.id) ?? [],
         pinned: annotations.pinned.has(m.id),
         ...(polls.has(m.id) ? { poll: polls.get(m.id) } : {}),

@@ -178,6 +178,7 @@ import type { ReviewRouteDeps as _ReviewRouteDeps } from "./routes/review-routes
 import { registerScheduledSendRoutes as _registerScheduledSendRoutes } from "./routes/scheduled-send-routes";
 import type { TaskRouteDeps as _TaskRouteDeps } from "./routes/task-routes";
 import { registerTemplateRoutes as _registerTemplateRoutes } from "./routes/template-routes";
+import type { UrgentRouteDeps as _UrgentRouteDeps } from "./routes/urgent-routes";
 import type { buildSbarDeps as _buildSbarDeps } from "./sbar/binding";
 import { createDbScheduledSendService as _createDbScheduledSendService } from "./scheduled/scheduled-send-service-db";
 import { createDbTemplateService as _createDbTemplateService } from "./templates/template-service-db";
@@ -216,6 +217,8 @@ export function mountMessagingRoutes(
     review?: _ReviewRouteDeps;
     /** WP 3.10: medication questions (service). Omitted => flag off. */
     medicationQuestions?: _MedicationQuestionRouteDeps;
+    /** WP 4.1: urgent clinical message (service). Omitted => flag off. */
+    urgent?: _UrgentRouteDeps;
     /** WP 3.7: chart promotion (tenant flag + service). Omitted => flag off. */
     promotions?: _PromotionRouteDeps;
     /** WP 3.6: IDG discussions (tenant flags + read-only store). Omitted => flag off. */
@@ -241,6 +244,7 @@ export function mountMessagingRoutes(
     ...(opts.handoffs ? { handoffs: opts.handoffs } : {}),
     ...(opts.review ? { review: opts.review } : {}),
     ...(opts.medicationQuestions ? { medicationQuestions: opts.medicationQuestions } : {}),
+    ...(opts.urgent ? { urgent: opts.urgent } : {}),
     ...(opts.promotions ? { promotions: opts.promotions } : {}),
     ...(opts.idgDiscussions ? { idgDiscussions: opts.idgDiscussions } : {}),
   }); // WP 2.9, 2.12, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8
@@ -302,6 +306,7 @@ export { buildTaskDeps } from "./tasks/deps";
 export { buildHandoffDeps } from "./handoffs/deps";
 export { buildReviewDeps } from "./review/deps";
 export { buildMedicationQuestionDeps } from "./medication-questions/deps";
+export { buildUrgentDeps } from "./urgent/deps";
 export { buildPromotionDeps } from "./promotions/deps";
 export { buildIdgDiscussionDeps } from "./idg/deps";
 export {
