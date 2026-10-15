@@ -134,6 +134,19 @@ describe("migration 1108 escalation write", () => {
     );
   });
 
+  it("refuses a sender as the recipient and a window that does not end within the next 60 minutes", () => {
+    expect(guard).toContain("IF NEW.assigned_user_id = NEW.requester_user_id THEN");
+    expect(guard).toContain(
+      "IF NEW.deadline_at <= now() OR NEW.deadline_at > now() + interval '60 minutes' THEN",
+    );
+  });
+
+  it("stays SECURITY DEFINER with a pinned search_path, like 1107's guard", () => {
+    expect(guard).toContain(
+      "LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp",
+    );
+  });
+
   it("keeps the transition table and the immutable columns of 1107", () => {
     for (const status of ACK_STATUSES.filter((s) => ACK_TRANSITIONS[s].length > 0)) {
       expect(guard).toContain(

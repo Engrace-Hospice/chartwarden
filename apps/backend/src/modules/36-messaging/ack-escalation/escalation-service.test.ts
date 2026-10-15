@@ -271,7 +271,7 @@ describe("escalation service", () => {
       expect(ctx.published.map((p) => p.eventName)).toEqual(["m36.ack.route_unavailable"]);
     });
 
-    it("asks again on every sweep but records and alerts at most once per hour", async () => {
+    it("backs off 1 h, 2 h ... between records: inside the backoff the router is not asked at all", async () => {
       const ctx = setup();
 
       await ctx.service.processDue(ORG, ctx.row.id);
@@ -279,11 +279,34 @@ describe("escalation service", () => {
       const second = await ctx.service.processDue(ORG, ctx.row.id);
       ctx.clock.now = new Date(ctx.clock.now.getTime() + minutes(31));
       const third = await ctx.service.processDue(ORG, ctx.row.id);
+      ctx.clock.now = new Date(ctx.clock.now.getTime() + minutes(61));
+      const fourth = await ctx.service.processDue(ORG, ctx.row.id);
 
-      expect(second).toEqual({ kind: "not_routed", reason: "route_unavailable", recorded: false });
-      expect(third).toMatchObject({ recorded: true });
+      expect(second).toEqual({ kind: "backed_off" });
+      expect(third).toMatchObject({ kind: "not_routed", recorded: true });
+      // The second record doubles the wait to 2 h, so 61 minutes later it is still backed off.
+      expect(fourth).toEqual({ kind: "backed_off" });
+      expect(ctx.asked).toHaveLength(2);
       expect(ctx.store.events).toHaveLength(2);
-      expect(ctx.published).toHaveLength(2);
+      expect(ctx.published.map((p) => p.payload.occurrence)).toEqual([1, 2]);
+    });
+
+    it("stops writing rows, events and alerts after 8 records but keeps probing the router (a bound router still escalates)", async () => {
+      const answers: Record<number, EscalationRouteAnswer> = {};
+      const ctx = setup({ answers });
+      const day = 24 * 60 * minutes(1);
+      for (let i = 0; i < 12; i += 1) {
+        await ctx.service.processDue(ORG, ctx.row.id);
+        ctx.clock.now = new Date(ctx.clock.now.getTime() + day);
+      }
+      expect(ctx.store.events).toHaveLength(8);
+      expect(ctx.published).toHaveLength(8);
+      expect(ctx.asked).toHaveLength(12);
+
+      answers[1] = resolved(1, [TIER1_A], null);
+      const outcome = await ctx.service.processDue(ORG, ctx.row.id);
+
+      expect(outcome).toMatchObject({ kind: "escalated", assignedUserId: TIER1_A });
     });
 
     it("escalates on the first attempt after a router is bound", async () => {
@@ -292,6 +315,7 @@ describe("escalation service", () => {
 
       await ctx.service.processDue(ORG, ctx.row.id);
       answers[1] = resolved(1, [TIER1_A], null);
+      ctx.clock.now = new Date(ctx.clock.now.getTime() + minutes(61)); // the first backoff has elapsed
       const outcome = await ctx.service.processDue(ORG, ctx.row.id);
 
       expect(outcome).toMatchObject({ kind: "escalated", assignedUserId: TIER1_A });
@@ -309,7 +333,7 @@ describe("escalation service", () => {
       expect(stored(ctx).status).toBe("pending");
     });
 
-    it("is not routed when the tier exists but nobody on it is usable (the sender, the assignee, an unqualified user)", async () => {
+    it("is ladder_exhausted when the FINAL tier exists but nobody on it is usable (the sender, the assignee, an unqualified user)", async () => {
       const ctx = setup({
         answers: { 1: resolved(1, [REQUESTER, ASSIGNEE, TIER1_B], null) },
         qualified: (userId) => userId !== TIER1_B,
@@ -317,7 +341,7 @@ describe("escalation service", () => {
 
       const outcome = await ctx.service.processDue(ORG, ctx.row.id);
 
-      expect(outcome).toMatchObject({ kind: "not_routed", reason: "route_unavailable" });
+      expect(outcome).toMatchObject({ kind: "not_routed", reason: "ladder_exhausted" });
       expect(stored(ctx).assignedUserId).toBe(ASSIGNEE);
     });
   });

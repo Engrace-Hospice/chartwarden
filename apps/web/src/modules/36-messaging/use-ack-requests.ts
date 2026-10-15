@@ -11,12 +11,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ACK_CHANGED_TEXT,
   ACK_CLOSE_NOT_QUALIFIED_TEXT,
+  ACK_ESCALATED_TO_YOU_NOTICE,
   ACK_FAILED_TEXT,
   ACK_GONE_TEXT,
   ACK_INDETERMINATE_TEXT,
   ACK_INVALID_TEXT,
   ACK_NOT_PERMITTED_TEXT,
   ACK_NOT_QUALIFIED_TEXT,
+  ACK_PASSED_ON_NOTICE,
   ACK_SAVED_CLOSED_TEXT,
   ACK_SAVED_TAKEN_TEXT,
   ACK_SIGN_IN_TEXT,
@@ -96,6 +98,28 @@ function failureText(action: AckAction, status: number | undefined, error: unkno
   return ACK_FAILED_TEXT;
 }
 
+/**
+ * WP 4.4: what changed for THIS viewer between two reads of the same channel. A request that gained `can_acknowledge` was escalated
+ * (or reassigned) to them; one that lost it while still waiting was passed on. First loads and unchanged reads say nothing.
+ */
+export function movedOnNotice(
+  before: readonly AckRequestDto[],
+  after: readonly AckRequestDto[],
+): string | null {
+  const earlier = new Map(before.map((r) => [r.id, r]));
+  let passedOn = false;
+  for (const next of after) {
+    const prev = earlier.get(next.id);
+    if (!prev) continue;
+    const could = prev.viewer_actions.can_acknowledge;
+    const can = next.viewer_actions.can_acknowledge;
+    if (!could && can) return ACK_ESCALATED_TO_YOU_NOTICE;
+    if (could && !can && (next.status === "escalated" || next.status === "pending"))
+      passedOn = true;
+  }
+  return passedOn ? ACK_PASSED_ON_NOTICE : null;
+}
+
 export function useAckRequests(channelId: string, enabled: boolean, refreshKey?: string | null) {
   const client = useApiClient() as unknown as AckClient;
   const [loaded, setLoaded] = useState<Loaded>({ channelId, status: "loading", requests: [] });
@@ -103,6 +127,10 @@ export function useAckRequests(channelId: string, enabled: boolean, refreshKey?:
   const [notice, setNotice] = useState<string | null>(null);
   const [noticeIsFailure, setNoticeIsFailure] = useState(false);
   const [focusRequestId, setFocusRequestId] = useState<string | null>(null);
+  const loadedRef = useRef(loaded);
+  loadedRef.current = loaded;
+  /** True while the polite notice on screen is a moved-on announcement (so the next unchanged read clears it, an action's notice stays). */
+  const announcedRef = useRef(false);
   const latest = useRef(0);
   const epoch = useRef(0);
   const busyRef = useRef<Busy | null>(null);
@@ -120,7 +148,9 @@ export function useAckRequests(channelId: string, enabled: boolean, refreshKey?:
 
   /** `background`: a read the person did not cause (timer, new message). It must not count as activity for the idle logoff. */
   const load = useCallback(
-    async (opts: { readonly background?: boolean } = {}): Promise<void> => {
+    async (
+      opts: { readonly background?: boolean; readonly announce?: boolean } = {},
+    ): Promise<void> => {
       latest.current += 1;
       const token = latest.current;
       const settle = (status: AckListStatus, requests: readonly AckRequestDto[] = []): void => {
@@ -128,6 +158,20 @@ export function useAckRequests(channelId: string, enabled: boolean, refreshKey?:
         // A focus request for a request this read no longer shows can never be honoured: drop it.
         if (status === "ready") {
           setFocusRequestId((prev) => (prev && requests.some((r) => r.id === prev) ? prev : null));
+          const before = loadedRef.current;
+          const text =
+            opts.announce !== false && before.channelId === channelId && before.status === "ready"
+              ? movedOnNotice(before.requests, requests)
+              : null;
+          if (text) {
+            announcedRef.current = true;
+            setNotice(text);
+            setNoticeIsFailure(false);
+          } else if (announcedRef.current) {
+            // Spoken once; the next read that shows nothing new clears it.
+            announcedRef.current = false;
+            setNotice(null);
+          }
         }
         setLoaded((prev) => {
           const keep = KEEPS_LAST_GOOD.has(status) && prev.channelId === channelId;
@@ -154,7 +198,7 @@ export function useAckRequests(channelId: string, enabled: boolean, refreshKey?:
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
-        load(),
+        load({ announce: false }),
         new Promise<void>((resolveTimeout) => {
           timer = setTimeout(resolveTimeout, ACK_RELOAD_TIMEOUT_MS);
         }),
@@ -213,6 +257,7 @@ export function useAckRequests(channelId: string, enabled: boolean, refreshKey?:
       busyRef.current = mine;
       const startedEpoch = epoch.current;
       setBusy(mine);
+      announcedRef.current = false;
       setNotice(null);
       const release = (): void => {
         if (busyRef.current === mine) busyRef.current = null;

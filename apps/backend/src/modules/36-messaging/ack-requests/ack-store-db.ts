@@ -4,6 +4,7 @@
 // racing writers serialise and the loser sees the winner's state (a repeat or a conflict), never a lost update. The database
 // triggers (migration 1107) refuse any transition off the table, whatever this code does.
 import { type DbClient, schema } from "@wardenx/db";
+import { UNROUTED_MAX_RECORDS, UNROUTED_PROBE_WINDOW_MS } from "@wardenx/messaging";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { ACK_OPEN_STATUSES } from "@wardenx/types";
 import { and, asc, desc, eq, inArray, lte, notInArray, sql } from "drizzle-orm";
@@ -159,16 +160,37 @@ export function ackTxOver(tx: Tx, orgId: string): AckTx {
       return toRow(updated);
     },
 
-    async lastEventAt(requestId, eventType) {
-      const [row] = await tx
-        .select({ at: E.createdAt })
+    async unroutedSummary(requests) {
+      if (requests.length === 0) return new Map();
+      const rows = await tx
+        .select({
+          requestId: E.requestId,
+          count: sql<number>`count(*)::int`,
+          lastAt: sql<Date>`max(${E.createdAt})`,
+          lastType: sql<
+            "route_unavailable" | "ladder_exhausted"
+          >`(array_agg(${E.eventType} order by ${E.createdAt} desc))[1]`,
+        })
         .from(E)
+        .innerJoin(R, and(eq(R.organizationId, E.organizationId), eq(R.id, E.requestId)))
         .where(
-          and(eq(E.organizationId, orgId), eq(E.requestId, requestId), eq(E.eventType, eventType)),
+          and(
+            eq(E.organizationId, orgId),
+            inArray(
+              E.requestId,
+              requests.map((r) => r.id),
+            ),
+            inArray(E.eventType, ["route_unavailable", "ladder_exhausted"]),
+            sql`${E.createdAt} >= ${R.windowStartedAt}`,
+          ),
         )
-        .orderBy(desc(E.createdAt))
-        .limit(1);
-      return row?.at ?? null;
+        .groupBy(E.requestId);
+      return new Map(
+        rows.map((r) => [
+          r.requestId,
+          { count: r.count, lastAt: new Date(r.lastAt), lastType: r.lastType },
+        ]),
+      );
     },
 
     async listDue(asOf, limit) {
@@ -180,6 +202,22 @@ export function ackTxOver(tx: Tx, orgId: string): AckTx {
             eq(R.organizationId, orgId),
             inArray(R.status, ["pending", "escalated"]),
             lte(R.deadlineAt, asOf),
+            // The mirror of unroutedRetryDue (ack-timer-rules.ts): a request with unroutable records in its current window is left out
+            // until its backoff has elapsed (1 h, 2 h ... 24 h), or, at the cap, until the daily probe window.
+            sql`NOT EXISTS (
+              SELECT 1 FROM (
+                SELECT count(*) AS n, max(e.created_at) AS last_at
+                  FROM message_acknowledgment_event e
+                 WHERE e.organization_id = ${R.organizationId} AND e.request_id = ${R.id}
+                   AND e.event_type IN ('route_unavailable', 'ladder_exhausted')
+                   AND e.created_at >= ${R.windowStartedAt}
+              ) s
+              WHERE s.n > 0 AND NOT (
+                CASE WHEN s.n >= ${UNROUTED_MAX_RECORDS}
+                  THEN extract(epoch FROM (${asOf.toISOString()}::timestamptz - s.last_at)) >= 86400
+                   AND mod(extract(epoch FROM (${asOf.toISOString()}::timestamptz - s.last_at))::numeric, 86400) < ${UNROUTED_PROBE_WINDOW_MS / 1000}
+                  ELSE ${asOf.toISOString()}::timestamptz >= s.last_at + least(interval '1 hour' * power(2, s.n - 1), interval '24 hours')
+                END))`,
           ),
         )
         .orderBy(asc(R.deadlineAt), asc(R.id))

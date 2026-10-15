@@ -64,7 +64,12 @@ import {
   withOrgContext,
   withPlatformContext,
 } from "@wardenx/tenancy";
-import { DegradedError, type Npi, WardenXError } from "@wardenx/types";
+import {
+  ACK_ESCALATION_REQUIRED_ROLE,
+  DegradedError,
+  type Npi,
+  WardenXError,
+} from "@wardenx/types";
 import type {
   AdmissionStatusReader,
   ChartPromotionSourceReader,
@@ -6093,7 +6098,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     getEscalationRouter()
       .resolveTier(NIL_UUID, {
         patientId: NIL_UUID,
-        requiredRole: "rn",
+        requiredRole: ACK_ESCALATION_REQUIRED_ROLE,
         tier: 1,
         asOf: new Date().toISOString(),
       })
@@ -8910,6 +8915,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       app.addHook("onClose", async () => {
         await Promise.all(m36AckEscalationWorkers.workers.map((w) => w.close()));
         await m36AckEscalationWorkers.dlqQueue.close();
+        await m36AckEscalationWorkers.timerQueue.close();
+        await m36AckEscalationWorkers.events.close();
       });
       try {
         const m36AckEscalationQueues = await scheduleM36AckEscalationJobs(queueConnection);

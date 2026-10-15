@@ -15,6 +15,7 @@ import {
   type ConnectionOptions,
   type Job,
   Queue,
+  QueueEvents,
   UnrecoverableError,
   Worker,
   type WorkerOptions,
@@ -37,7 +38,9 @@ export interface M36AckEscalationWorkerDeps
     requestId: string | null,
   ) => Promise<void>;
   /** Tests only: stall detection timing for the timer worker (a killed worker's job is taken over after `lockDuration`). */
-  readonly timerWorkerOptions?: Partial<Pick<WorkerOptions, "lockDuration" | "stalledInterval">>;
+  readonly timerWorkerOptions?: Partial<
+    Pick<WorkerOptions, "lockDuration" | "stalledInterval" | "maxStalledCount">
+  >;
   readonly onDlqError?: (context: { jobId: string }, error: unknown) => void;
   readonly now?: () => Date;
 }
@@ -72,8 +75,16 @@ export async function sweepTick(
   return { flagOff: false, ...totals };
 }
 
-const isFinalFailure = (job: Job, error: Error): boolean =>
-  error instanceof UnrecoverableError || job.attemptsMade >= (job.opts.attempts ?? 1);
+/** BullMQ's reason when a job's lock expired more often than `maxStalledCount` allows: it is failed inside Redis, final. */
+export const STALLED_LIMIT_REASON = "stalled more than allowable limit";
+
+export const isFinalFailure = (job: Pick<Job, "attemptsMade" | "opts">, error: Error): boolean =>
+  error instanceof UnrecoverableError ||
+  error.message.includes(STALLED_LIMIT_REASON) ||
+  job.attemptsMade >= (job.opts.attempts ?? 1);
+
+// ponytail: process-local, grows by one id per dead job; the DLQ job id is the cross-process dedupe and a replica restart may audit twice.
+const landed = new Set<string>();
 
 /** Copy a dead timer job to its DLQ queue and write the audit row. Exposed so a test can drive it without a worker. */
 export async function landInDlq(
@@ -83,6 +94,9 @@ export async function landInDlq(
   error: Error,
 ): Promise<void> {
   const jobId = String(job.id ?? "unknown");
+  // A job can be reported dead by the Worker AND by the queue events; land it (and audit it) once.
+  if (landed.has(jobId)) return;
+  landed.add(jobId);
   const failedAt = (deps.now ?? (() => new Date()))().toISOString();
   const landing: DlqLanding = {
     queue: TIMER_QUEUE,
@@ -99,6 +113,7 @@ export async function landInDlq(
       await deps.recordDlq(parsed.organizationId, buildDlqAuditRecord(landing), parsed.requestId);
     }
   } catch (dlqError) {
+    landed.delete(jobId); // a failed landing may be tried again by the other report of the same death
     deps.onDlqError?.({ jobId }, dlqError);
   }
 }
@@ -107,10 +122,14 @@ export async function landInDlq(
 export function registerM36AckEscalationWorkers(deps: M36AckEscalationWorkerDeps): {
   readonly workers: Worker[];
   readonly dlqQueue: Queue;
+  /** Listens for jobs BullMQ fails inside Redis (stalled too often): the Worker itself emits no `failed` for those. */
+  readonly events: QueueEvents;
+  readonly timerQueue: Queue;
 } {
   const dlqQueue = new Queue(MESSAGING_QUEUE_PARAMETERS[TIMER_QUEUE].dlq, {
     connection: deps.connection,
   });
+  const timerQueue = new Queue(TIMER_QUEUE, { connection: deps.connection });
   const timer = new Worker(TIMER_QUEUE, (job) => timerJobTick(deps, job.data), {
     connection: deps.connection,
     concurrency: MESSAGING_QUEUE_PARAMETERS[TIMER_QUEUE].concurrency,
@@ -119,11 +138,19 @@ export function registerM36AckEscalationWorkers(deps: M36AckEscalationWorkerDeps
   timer.on("failed", (job, error) => {
     if (job && isFinalFailure(job, error)) void landInDlq(deps, dlqQueue, job, error);
   });
+  const events = new QueueEvents(TIMER_QUEUE, { connection: deps.connection });
+  events.on("failed", ({ jobId, failedReason }) => {
+    if (!failedReason.includes(STALLED_LIMIT_REASON)) return; // every other failure is handled by the worker's own event
+    void timerQueue
+      .getJob(jobId)
+      .then((job) => (job ? landInDlq(deps, dlqQueue, job, new Error(failedReason)) : undefined))
+      .catch((error) => deps.onDlqError?.({ jobId }, error));
+  });
   const sweep = new Worker(SWEEP_QUEUE, () => sweepTick(deps), {
     connection: deps.connection,
     concurrency: MESSAGING_QUEUE_PARAMETERS[SWEEP_QUEUE].concurrency,
   });
-  return { workers: [timer, sweep], dlqQueue };
+  return { workers: [timer, sweep], dlqQueue, events, timerQueue };
 }
 
 /** Register the repeatable sweep trigger (idempotent under a fixed scheduler id). Returns the `Queue`s to `close()`. */

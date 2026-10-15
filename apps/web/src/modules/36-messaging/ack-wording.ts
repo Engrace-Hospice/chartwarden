@@ -60,4 +60,8 @@ export const waitingFor = (forViewer: boolean): string =>
 export const escalatedWaitingFor = (forViewer: boolean): string =>
   forViewer
     ? "Escalated to you because it was not taken in time"
-    : "Escalated to the next responsible person because it was not taken in time";
+    : "Escalated to the next responsible person because it was not taken in time. Nobody has taken responsibility yet";
+
+/** WP 4.4: one-shot polite announcements when a background re-read shows the request moved on. Never paged, never an alert. */
+export const ACK_ESCALATED_TO_YOU_NOTICE = "A response request was escalated to you.";
+export const ACK_PASSED_ON_NOTICE = "A response request was passed on to the next person.";

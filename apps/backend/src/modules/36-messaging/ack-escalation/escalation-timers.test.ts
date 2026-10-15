@@ -2,7 +2,7 @@ import { escalationJobId } from "@wardenx/messaging";
 import { UnrecoverableError } from "bullmq";
 import { describe, expect, it, vi } from "vitest";
 import { createBullmqTimerPort, parseTimerJobData } from "./escalation-timers";
-import { landInDlq, sweepTick, timerJobTick } from "./escalation-worker";
+import { isFinalFailure, landInDlq, sweepTick, timerJobTick } from "./escalation-worker";
 
 const ORG = "00000000-0000-4000-8000-00000000000a";
 const REQUEST = "00000000-0000-4000-8000-0000000000f1";
@@ -141,5 +141,15 @@ describe("the worker bodies", () => {
     );
 
     expect(onDlqError).toHaveBeenCalledWith({ jobId: "job-2" }, expect.any(Error));
+  });
+});
+
+describe("isFinalFailure", () => {
+  const job = (attemptsMade: number) => ({ attemptsMade, opts: { attempts: 5 } });
+  it("is final on the last attempt, on an unrecoverable error, and when BullMQ failed the job for stalling too often", () => {
+    expect(isFinalFailure(job(4), new Error("boom"))).toBe(false);
+    expect(isFinalFailure(job(5), new Error("boom"))).toBe(true);
+    expect(isFinalFailure(job(1), new UnrecoverableError("poison"))).toBe(true);
+    expect(isFinalFailure(job(0), new Error("job stalled more than allowable limit"))).toBe(true);
   });
 });

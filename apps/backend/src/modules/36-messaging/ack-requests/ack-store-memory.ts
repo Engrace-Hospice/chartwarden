@@ -1,6 +1,7 @@
 // apps/backend/src/modules/36-messaging/ack-requests/ack-store-memory.ts - WP 4.2: an in-memory twin of the store for the service's
 // unit tests. It mirrors the unique-per-message arbiter and the optimistic version; the state machine itself is the service's
 // (and, in production, the database trigger's) - the live suite proves that one.
+import { unroutedRetryDue } from "@wardenx/messaging";
 import { ACK_OPEN_STATUSES } from "@wardenx/types";
 import {
   type AckEscalation,
@@ -13,6 +14,7 @@ import {
   type AckTx,
   type NewAckEvent,
   type NewAckRequest,
+  type UnroutedSummary,
 } from "./ack-types";
 
 export interface MemoryAckStore extends AckStore {
@@ -107,23 +109,42 @@ export function createMemoryAckStore(): MemoryAckStore {
       requests.set(id, next);
       return next;
     },
-    async lastEventAt(requestId, eventType) {
-      const at = events
-        .filter(
-          (e) =>
-            e.organizationId === orgId && e.requestId === requestId && e.eventType === eventType,
-        )
-        .map((e) => e.at.getTime());
-      return at.length > 0 ? new Date(Math.max(...at)) : null;
+    async unroutedSummary(reqs) {
+      const out = new Map<string, UnroutedSummary>();
+      for (const r of reqs) {
+        const own = events
+          .filter(
+            (e) =>
+              e.organizationId === orgId &&
+              e.requestId === r.id &&
+              (e.eventType === "route_unavailable" || e.eventType === "ladder_exhausted") &&
+              e.at.getTime() >= r.windowStartedAt.getTime(),
+          )
+          .sort((x, y) => y.at.getTime() - x.at.getTime());
+        const newest = own[0];
+        if (newest) {
+          out.set(r.id, {
+            count: own.length,
+            lastAt: newest.at,
+            lastType: newest.eventType as UnroutedSummary["lastType"],
+          });
+        }
+      }
+      return out;
     },
     async listDue(asOf, limit) {
-      return [...requests.values()]
-        .filter(
-          (r) =>
-            r.organizationId === orgId &&
-            (r.status === "pending" || r.status === "escalated") &&
-            r.deadlineAt.getTime() <= asOf.getTime(),
-        )
+      const waiting = [...requests.values()].filter(
+        (r) =>
+          r.organizationId === orgId &&
+          (r.status === "pending" || r.status === "escalated") &&
+          r.deadlineAt.getTime() <= asOf.getTime(),
+      );
+      const summary = await this.unroutedSummary(waiting);
+      return waiting
+        .filter((r) => {
+          const u = summary.get(r.id);
+          return !u || unroutedRetryDue(u.count, u.lastAt.getTime(), asOf.getTime());
+        })
         .sort((a, b) => a.deadlineAt.getTime() - b.deadlineAt.getTime() || a.id.localeCompare(b.id))
         .slice(0, limit);
     },

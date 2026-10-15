@@ -87,6 +87,12 @@ export interface AckEscalation {
   readonly updatedAt: Date;
 }
 
+export interface UnroutedSummary {
+  readonly count: number;
+  readonly lastAt: Date;
+  readonly lastType: "route_unavailable" | "ladder_exhausted";
+}
+
 /** What the service needs to know about the message a request is about. */
 export interface AckMessageFacts {
   readonly channelId: string;
@@ -115,9 +121,17 @@ export interface AckTx {
   insertEvent(event: NewAckEvent): Promise<void>;
   /** WP 4.4: applies an escalation only if the stored version is `expectedVersion`; else throws AckStaleError. */
   escalate(id: string, expectedVersion: number, escalation: AckEscalation): Promise<AckRow>;
-  /** WP 4.4: the stamp of the newest history row of this type for the request, or null. */
-  lastEventAt(requestId: string, eventType: AckEventType): Promise<Date | null>;
-  /** WP 4.4: open waiting requests (pending or escalated) whose deadline is at or before `asOf`, oldest deadline first. */
+  /**
+   * WP 4.4: ONE batched read of the unroutable history (`route_unavailable` / `ladder_exhausted` rows written inside each request's
+   * CURRENT window): how many, when the newest was written and which type it was. Requests with none are absent from the map.
+   */
+  unroutedSummary(
+    requests: readonly { readonly id: string; readonly windowStartedAt: Date }[],
+  ): Promise<ReadonlyMap<string, UnroutedSummary>>;
+  /**
+   * WP 4.4: open waiting requests (pending or escalated) whose deadline is at or before `asOf`, oldest deadline first, EXCLUDING the
+   * ones whose unroutable backoff has not elapsed (decided in the query, so backed-off rows never consume the batch).
+   */
   listDue(asOf: Date, limit: number): Promise<readonly AckRow[]>;
   listEvents(requestId: string): Promise<readonly AckEventRow[]>;
   /** Every open request, then the newest closed ones up to `limit` in all; newest first within each group. */

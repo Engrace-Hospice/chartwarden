@@ -38,6 +38,8 @@ export interface AckEventFacts {
   readonly previousAssignedUserId?: string;
   /** WP 4.4: the router tier the request was escalated to, or the tier that could not be reached. */
   readonly tier?: number;
+  /** WP 4.4 (`route_unavailable` / `ladder_exhausted`): which such record this is for the request's current window (1-based). */
+  readonly occurrence?: number;
   /** WP 4.4 (`escalated` only): the deadline of the window the escalation started. */
   readonly deadlineAt?: Date;
   readonly at: Date;
@@ -56,6 +58,7 @@ export function ackEventPayload(f: AckEventFacts): Record<string, unknown> {
     at: f.at.toISOString(),
     ...(f.previousAssignedUserId ? { previousAssignedUserId: f.previousAssignedUserId } : {}),
     ...(f.tier !== undefined ? { tier: f.tier } : {}),
+    ...(f.occurrence !== undefined ? { occurrence: f.occurrence } : {}),
     ...(f.deadlineAt ? { deadlineAt: f.deadlineAt.toISOString() } : {}),
   };
 }

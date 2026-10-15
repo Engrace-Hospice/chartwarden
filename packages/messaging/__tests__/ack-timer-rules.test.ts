@@ -3,9 +3,13 @@ import { ACK_CLASSES, ACK_DEADLINE_POLICY } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 import {
   ACK_TIER_WINDOW_MINUTES,
+  UNROUTED_MAX_RECORDS,
   escalationJobId,
   isEscalationDue,
   tierWindowMinutes,
+  unroutedBackoffMs,
+  unroutedRetryDue,
+  unroutedShouldRecord,
 } from "../src/ack-requests/ack-timer-rules";
 
 const REQUEST = "00000000-0000-4000-8000-0000000000a1";
@@ -69,5 +73,33 @@ describe("isEscalationDue", () => {
     for (const status of ["acknowledged", "resolved", "cancelled", "failed_unreachable"] as const) {
       expect(isEscalationDue(status, deadline, new Date(deadline.getTime() + 60_000))).toBe(false);
     }
+  });
+});
+
+describe("unroutable backoff", () => {
+  const HOUR = 3_600_000;
+  it("doubles from an hour and is capped at a day", () => {
+    expect([1, 2, 3, 4, 5, 6, 7, 8, 20].map((n) => unroutedBackoffMs(n) / HOUR)).toEqual([
+      1, 2, 4, 8, 16, 24, 24, 24, 24,
+    ]);
+    expect(() => unroutedBackoffMs(0)).toThrow();
+  });
+
+  it("is always due when never recorded, and waits out the backoff below the cap", () => {
+    expect(unroutedRetryDue(0, 0, 5)).toBe(true);
+    expect(unroutedRetryDue(2, 0, 2 * HOUR - 1)).toBe(false);
+    expect(unroutedRetryDue(2, 0, 2 * HOUR)).toBe(true);
+    expect(unroutedShouldRecord(2, 0, 2 * HOUR - 1)).toBe(false);
+    expect(unroutedShouldRecord(2, 0, 2 * HOUR)).toBe(true);
+  });
+
+  it("at the cap writes nothing more but probes in a 5 minute window every 24 hours", () => {
+    const n = UNROUTED_MAX_RECORDS;
+    expect(unroutedShouldRecord(n, 0, 100 * HOUR)).toBe(false);
+    expect(unroutedRetryDue(n, 0, 24 * HOUR - 1)).toBe(false);
+    expect(unroutedRetryDue(n, 0, 24 * HOUR)).toBe(true);
+    expect(unroutedRetryDue(n, 0, 24 * HOUR + 4 * 60_000)).toBe(true);
+    expect(unroutedRetryDue(n, 0, 24 * HOUR + 6 * 60_000)).toBe(false);
+    expect(unroutedRetryDue(n, 0, 48 * HOUR + 60_000)).toBe(true);
   });
 });

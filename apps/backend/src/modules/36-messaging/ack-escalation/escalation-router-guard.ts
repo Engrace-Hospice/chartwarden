@@ -23,6 +23,14 @@ export interface GuardOptions {
   readonly allowFakeSource?: boolean;
 }
 
+/** `nextTier` is null (no further tier) or a whole number above the tier asked about, up to the ceiling. */
+const validNextTier = (next: unknown, tier: number): boolean =>
+  next === null ||
+  (typeof next === "number" &&
+    Number.isSafeInteger(next) &&
+    next > tier &&
+    next <= ESCALATION_MAX_TIER);
+
 export function guardEscalationRouter(
   router: EscalationRouter,
   options: GuardOptions = {},
@@ -51,6 +59,16 @@ export function guardEscalationRouter(
         if (ids.length === 0 || !ids.every((id) => typeof id === "string" && UUID.test(id))) {
           throw new EscalationRouterAnswerError("recipients must be a non-empty list of ids");
         }
+      }
+      if (answer.kind !== "unavailable" && !validNextTier(answer.nextTier, request.tier)) {
+        // A buggy router must not turn into a retry loop that dead-letters: it is "cannot route", recorded and visible.
+        return {
+          kind: "unavailable",
+          reason: "no_route_configured",
+          tier: answer.tier,
+          asOf: answer.asOf,
+          source: answer.source,
+        };
       }
       return answer;
     },

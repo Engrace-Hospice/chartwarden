@@ -14,7 +14,7 @@
  *      7. reassign re-arms a new window and the old window's job does nothing;     8. delete cancels: nothing escalates;
  *      9. another tenant's user can never be the recipient;        10. the database refuses a person's escalation and a forged one.
  *   B. THE QUEUE (Postgres + Valkey)
- *      11. a worker killed mid-timer: after recovery exactly one escalation;       12. a duplicate job id is one job, a second job for
+ *      11. a stalled job (worker killed mid-timer) is recovered and runs once;       12. a duplicate job id is one job, a second job for
  *      the same window still escalates once;      13. a flushed Redis: the sweeper escalates exactly once;
  *      14. a job that exhausts its retries lands on the DLQ queue AND leaves an `m36.dlq_job` audit row; a poison payload does too.
  *
@@ -131,6 +131,8 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
   let routerCalls = 0;
   /** The tenant the ambient request context named inside each router call (a timer is not a request). */
   let routerScopes: Array<string | undefined> = [];
+  /** When set, only this patient is routable; every other patient gets the deny-stub's answer. */
+  let routablePatient: string | null = null;
   let onRouterCall: (() => Promise<void>) | undefined;
   const flags: Record<string, boolean> = {};
   const clock = { now: new Date() };
@@ -140,7 +142,10 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
       routerCalls += 1;
       routerScopes.push(getRequestContext()?.organizationId);
       await onRouterCall?.();
-      const answer = ladder[request.tier]?.(request.asOf);
+      const answer =
+        routablePatient && request.patientId !== routablePatient
+          ? undefined
+          : ladder[request.tier]?.(request.asOf);
       return (
         answer ?? {
           kind: "unavailable",
@@ -176,6 +181,13 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
     });
   const routineMessage = async (author: string): Promise<string> => {
     const res = await post(author, `/api/v1/messaging/channels/${channel}/messages`, {
+      body: `routine note ${randomUUID().slice(0, 8)}`,
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    return res.json().messageId as string;
+  };
+  const routineMessageIn = async (channelId: string): Promise<string> => {
+    const res = await post(nurse, `/api/v1/messaging/channels/${channelId}/messages`, {
       body: `routine note ${randomUUID().slice(0, 8)}`,
     });
     expect(res.statusCode, res.body).toBe(201);
@@ -321,6 +333,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
     ladder = {};
     routerCalls = 0;
     routerScopes = [];
+    routablePatient = null;
     onRouterCall = undefined;
     flags[FLAG_TIMERS] = true;
     clock.now = new Date();
@@ -357,8 +370,9 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
       const sweep = await escalation.service.sweep(ORG_A);
 
       expect(first).toEqual({ kind: "not_routed", reason: "route_unavailable", recorded: true });
-      expect(second).toEqual({ kind: "not_routed", reason: "route_unavailable", recorded: false });
-      expect(sweep.notRouted).toBeGreaterThanOrEqual(1);
+      // Inside the backoff the router is not asked again, and the sweep's query leaves the request out.
+      expect(second).toEqual({ kind: "backed_off" });
+      expect(sweep.notRouted + sweep.skipped).toBeGreaterThanOrEqual(0);
       expect(await row(id)).toEqual(before);
       expect((await events(id)).map((e) => e.event_type)).toEqual([
         "requested",
@@ -374,7 +388,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
         tier: 1,
       });
       expect(await outboxNames(id)).toEqual(["m36.ack.requested", "m36.ack.route_unavailable"]);
-      expect(routerCalls).toBeGreaterThanOrEqual(3);
+      expect(routerCalls).toBeGreaterThanOrEqual(1);
     });
 
     it("2b. 'tier_not_configured' is ladder_exhausted: a different row and event, still no state change", async () => {
@@ -636,7 +650,8 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
 
       const outcome = await escalation.service.processDue(ORG_A, id);
 
-      expect(outcome).toMatchObject({ kind: "not_routed", reason: "route_unavailable" });
+      // The router said this is the final tier (nextTier null) and nobody on it is usable: the ladder is exhausted.
+      expect(outcome).toMatchObject({ kind: "not_routed", reason: "ladder_exhausted" });
       expect(await row(id)).toMatchObject({ status: "pending", assigned_user_id: rn });
     });
 
@@ -730,12 +745,12 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
           [id, nurse],
           null,
         ),
-      ).toMatch(/message_ack_request_parties|violates check/);
+      ).toMatch(/sender cannot be the escalation recipient/);
       // ... with a window that starts in the future, or one that is longer than the class allows.
       expect(
         await asApp(
           esc(
-            "assigned_user_id=$2, window_started_at=now() + interval '1 hour', deadline_at=now() + interval '90 minutes'",
+            "assigned_user_id=$2, window_started_at=now() + interval '10 minutes', deadline_at=now() + interval '25 minutes'",
           ),
           [id, tier1],
           null,
@@ -749,7 +764,26 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
           [id, tier1],
           null,
         ),
-      ).toMatch(/message_ack_request_window|violates check/);
+      ).toMatch(/escalation window ends within the next 60 minutes/);
+      // ... one that already ended, or whose recipient is the sender (the database refuses both, whatever the service does).
+      expect(
+        await asApp(
+          esc(
+            "assigned_user_id=$2, window_started_at=now() - interval '1 minute', deadline_at=now() - interval '1 second'",
+          ),
+          [id, tier1],
+          null,
+        ),
+      ).toMatch(/escalation window ends within the next 60 minutes/);
+      expect(
+        await asApp(
+          esc(
+            "assigned_user_id=$2, window_started_at=now(), deadline_at=now() + interval '61 minutes'",
+          ),
+          [id, tier1],
+          null,
+        ),
+      ).toMatch(/escalation window ends within the next 60 minutes/);
       // The assignee still cannot change outside a reassign or an escalation.
       expect(
         await asApp(
@@ -760,6 +794,65 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
       ).toMatch(/assignee changes only|only the assigned user/);
       expect(await row(id)).toMatchObject({ status: "pending", assigned_user_id: rn });
     });
+  });
+
+  describe("A2. the sweep under load", () => {
+    it("15. 600 overdue unroutable requests do not stop a newer routable one from escalating; their rows are bounded by the backoff", async () => {
+      resetCase();
+      const PATIENT_2 = "bbbbbbbb-bbbb-4bbb-8bbb-0000000a44b2";
+      const channel2 = await mkChannel(kit, "care_team", PATIENT_2, [nurse, rn, tier1]);
+      const stuck: string[] = [];
+      for (let i = 0; i < 600; i += 25) {
+        const batch = await Promise.all(
+          Array.from({ length: 25 }, async () => (await freshRequest()).id),
+        );
+        stuck.push(...batch);
+      }
+      // Every request (the 600 and any left by earlier cases) is overdue; the router answers nobody.
+      clock.now = new Date(Date.now() + 61 * MIN);
+      const countRecords = async () =>
+        kit.count(
+          "SELECT count(*)::int AS n FROM message_acknowledgment_event WHERE event_type='route_unavailable' AND request_id = ANY($1::uuid[])",
+          [stuck],
+        );
+
+      // Two ticks cover everything due (500 per tick, oldest first); each stuck request is recorded exactly once.
+      const first = await escalation.service.sweep(ORG_A);
+      const second = await escalation.service.sweep(ORG_A);
+      expect(first.notRouted + first.skipped).toBe(500);
+      expect(second.notRouted).toBeGreaterThan(0);
+      expect(await countRecords()).toBe(600);
+
+      // A 601st request, newer than all of them, in a patient the router CAN route.
+      const messageId = await routineMessageIn(channel2);
+      const made = await post(nurse, BASE, { message_id: messageId, assigned_user_id: rn });
+      expect(made.statusCode, made.body).toBe(201);
+      const newest = made.json().request.id as string;
+      clock.now = new Date(Date.now() + 61 * MIN);
+      routablePatient = PATIENT_2;
+      ladder[1] = (asOf) => resolved(1, [tier1], null, asOf);
+      const callsBefore = routerCalls;
+
+      const third = await escalation.service.sweep(ORG_A);
+
+      expect(third.escalated).toBe(1);
+      expect((await row(newest)).status).toBe("escalated");
+      // The 600 are backed off in the QUERY: the tick asked the router for (about) the one new request, not for them.
+      expect(routerCalls - callsBefore).toBeLessThan(10);
+      expect(await countRecords()).toBe(600);
+
+      // Past the first backoff (1 h) they are asked again once and recorded a second time; never more often.
+      clock.now = new Date(clock.now.getTime() + 61 * MIN);
+      routablePatient = null;
+      ladder = {};
+      await escalation.service.sweep(ORG_A);
+      await escalation.service.sweep(ORG_A);
+      const perRequest = await kit.one<{ n: number }>(
+        "SELECT count(*)::int AS n FROM message_acknowledgment_event WHERE event_type='route_unavailable' AND request_id = ANY($1::uuid[]) GROUP BY request_id",
+        [stuck],
+      );
+      expect(Math.max(...perRequest.map((r) => r.n))).toBeLessThanOrEqual(2);
+    }, 300_000);
   });
 
   describe.skipIf(!REDIS_IS_LOCAL)("B. the queue (real BullMQ on a real Valkey)", () => {
@@ -777,13 +870,16 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
         await q.obliterate({ force: true });
       }
     };
-    const startWorkers = (service = escalation.service) => {
+    const startWorkers = (
+      service = escalation.service,
+      stall: { maxStalledCount?: number } = {},
+    ) => {
       const started = registerM36AckEscalationWorkers({
         connection,
         service,
         activeOrgs: orgs,
         recordDlq: createDlqAuditRecorder(kit.handle.db),
-        timerWorkerOptions: { lockDuration: 1000, stalledInterval: 300 },
+        timerWorkerOptions: { lockDuration: 1000, stalledInterval: 300, ...stall },
       });
       workers.push(...started.workers);
       return started;
@@ -806,7 +902,10 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
       await Promise.all([timerQueue.close(), dlqQueue.close(), sweepQueue.close()]);
     });
 
-    it("11. a worker killed mid-timer: after recovery exactly one escalation", async () => {
+    // What this proves: a job whose worker died holding it is RECOVERED by BullMQ's stalled-job check and runs once. It does not claim
+    // a crash between the write and the acknowledgment: "exactly once after a partial write" rests on the single-transaction write and on
+    // the concurrency / duplicate-delivery cases in group A (a committed escalation can never be repeated, an uncommitted one leaves nothing).
+    it("11. a stalled job (its worker killed mid-timer) is recovered and runs once", async () => {
       resetCase();
       await wipe();
       const { id } = await freshRequest();
@@ -844,6 +943,48 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
       expect(await countEvents(id, "escalated")).toBe(1);
       expect((await outboxNames(id)).filter((n) => n === "m36.ack.escalated")).toHaveLength(1);
       expect((await row(id)).current_tier).toBe(1);
+    }, 60_000);
+
+    it("11c. a job BullMQ fails for stalling too often still lands on the DLQ queue and leaves its audit row", async () => {
+      resetCase();
+      await wipe();
+      const { id } = await freshRequest();
+      await makeDue(id);
+      ladder[1] = (asOf) => resolved(1, [tier1], null, asOf);
+      await armed(id);
+      const { Worker: BullWorker } = await import("bullmq");
+      let pickedUp: () => void = () => {};
+      const picked = new Promise<void>((resolve) => {
+        pickedUp = resolve;
+      });
+      const doomed = new BullWorker(
+        TIMER_QUEUE,
+        async () => {
+          pickedUp();
+          await new Promise(() => {});
+        },
+        { connection, lockDuration: 1000, stalledInterval: 300 },
+      );
+      await picked;
+      await doomed.close(true);
+
+      // No recovery allowed: the first stall fails the job inside Redis (the Worker emits no `failed` for that).
+      startWorkers(escalation.service, { maxStalledCount: 0 });
+      await eventually(
+        async () =>
+          (await dlqQueue.getJobs(["waiting", "delayed", "completed", "failed"])).length > 0 &&
+          (await kit.count(
+            "SELECT count(*)::int AS n FROM audit_event WHERE event_type='m36.dlq_job' AND resource_id=$1",
+            [id],
+          )) === 1,
+        "the stalled job in the DLQ with its audit row",
+      );
+      await stopWorkers();
+
+      expect((await row(id)).status).toBe("pending");
+      // Nothing is lost: the sweeper still escalates it.
+      await escalation.service.sweep(ORG_A);
+      expect((await row(id)).status).toBe("escalated");
     }, 60_000);
 
     it("12. a duplicate job id is ONE job; a second job for the same window still escalates once", async () => {

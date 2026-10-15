@@ -164,4 +164,25 @@ describe("M36 ack escalation notifications consumer", () => {
 
     expect(emit).not.toHaveBeenCalled();
   });
+
+  it("tells the supervisor audience of an exhausted ladder on the first record only; later records go to the parties under the not-routed rule", async () => {
+    const first = setup({ request: row({ status: "pending", version: 0 }) });
+    await first.consumer.handle(
+      event("m36.ack.ladder_exhausted", { requestVersion: 0, occurrence: 1 }),
+    );
+    const later = setup({ request: row({ status: "pending", version: 0 }) });
+    await later.consumer.handle(
+      event("m36.ack.ladder_exhausted", { requestVersion: 0, occurrence: 2 }),
+    );
+
+    expect((first.emit.mock.calls[0] as [string, { eventType: string }])[1].eventType).toBe(
+      "m36.ack.ladder_exhausted",
+    );
+    const [, again] = later.emit.mock.calls[0] as [
+      string,
+      { eventType: string; payload: { message: string } },
+    ];
+    expect(again.eventType).toBe("m36.ack.route_unavailable");
+    expect(again.payload.message).toBe(ACK_ESCALATION_NOTIFICATION_TEXT.ladder_exhausted);
+  });
 });

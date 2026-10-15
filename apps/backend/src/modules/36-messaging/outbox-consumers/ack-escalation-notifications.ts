@@ -111,8 +111,15 @@ export function buildM36AckEscalationNotificationsConsumer(deps: {
       if (recipients.length === 0 && event.eventType !== M36_ACK_LADDER_EXHAUSTED) {
         return skip("no_recipient_can_view_channel");
       }
+      // The supervisor audience is told of an exhausted ladder on the FIRST such record only; a later record (the backoff reminders)
+      // goes to the parties alone, under the not-routed rule, with the same text.
+      const occurrence = typeof payload.occurrence === "number" ? payload.occurrence : 1;
+      const alertType =
+        event.eventType === M36_ACK_LADDER_EXHAUSTED && occurrence > 1
+          ? M36_ACK_ROUTE_UNAVAILABLE
+          : event.eventType;
       await deps.alerts.emit(event.organizationId, {
-        eventType: event.eventType,
+        eventType: alertType,
         severity: "warn",
         // One alert per recorded event (its own instant): the hourly re-record is a deliberate reminder.
         correlationId: `ack-unrouted:${requestId}:${version}:${event.eventType}:${at}`,

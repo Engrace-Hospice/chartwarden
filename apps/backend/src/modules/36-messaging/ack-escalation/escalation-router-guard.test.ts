@@ -93,4 +93,34 @@ describe("guardEscalationRouter", () => {
       source: "in_memory_fake",
     });
   });
+
+  it.each([0, 1, -3, 1e9, 1.5, 100])(
+    "treats a malformed nextTier (%s) as 'cannot route' instead of throwing",
+    async (nextTier) => {
+      for (const answer of [
+        { kind: "resolved", userIds: [USER], nextTier, timeZone: "UTC" },
+        { kind: "coverage_gap", nextTier, timeZone: "UTC" },
+      ] as never[]) {
+        const guarded = guardEscalationRouter(routerAnswering(answer));
+        expect(await guarded.resolveTier(ORG, ASK)).toMatchObject({
+          kind: "unavailable",
+          tier: 1,
+          asOf: ASK.asOf,
+          source: "m19",
+        });
+      }
+    },
+  );
+
+  it("accepts a nextTier above the tier, up to the ceiling", async () => {
+    const guarded = guardEscalationRouter(
+      routerAnswering({
+        kind: "resolved",
+        userIds: [USER],
+        nextTier: 99,
+        timeZone: "UTC",
+      } as never),
+    );
+    expect(await guarded.resolveTier(ORG, ASK)).toMatchObject({ kind: "resolved", nextTier: 99 });
+  });
 });

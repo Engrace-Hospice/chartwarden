@@ -140,15 +140,15 @@ const ACK_EVENT_ENTRIES = [
   ),
   ackEntry(
     "m36.ack.route_unavailable",
-    "The deadline passed and no tier could be reached (no router bound, a coverage gap, or nobody qualified), so the request stays open with its current assignee (WP 4.4). At most once per request per hour. M36 tells the sender and the assignee in-app, generically.",
+    "The deadline passed and no tier could be reached (no router bound, a coverage gap, or nobody qualified), so the request stays open with its current assignee (WP 4.4). Written with an increasing backoff (1 h, 2 h ... 24 h) and at most 8 times per window (`occurrence`). M36 tells the sender and the assignee in-app, generically.",
     ["m36"],
-    { tier: Type.Integer({ minimum: 1 }) },
+    { tier: Type.Integer({ minimum: 1 }), occurrence: Type.Integer({ minimum: 1 }) },
   ),
   ackEntry(
     "m36.ack.ladder_exhausted",
-    "The deadline passed and the escalation ladder has no further tier, so the request stays open (WP 4.4; a request that nobody can be reached for is WP 4.5). At most once per request per hour. M36 tells the sender, the assignee and the supervisor audience in-app, generically.",
+    "The deadline passed and the escalation ladder has no further tier, so the request stays open (WP 4.4; a request that nobody can be reached for is WP 4.5). Written with an increasing backoff and at most 8 times per window (`occurrence`). M36 tells the sender and the assignee in-app, and the supervisor audience on the FIRST record only.",
     ["m36"],
-    { tier: Type.Integer({ minimum: 1 }) },
+    { tier: Type.Integer({ minimum: 1 }), occurrence: Type.Integer({ minimum: 1 }) },
   ),
 ];
 

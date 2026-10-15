@@ -5,7 +5,10 @@
 --      * `escalated` is written only by the timer (an empty app.user_id): a person's session is refused;
 --      * an escalation may move the assignee to the tier's user (still an active member, never the sender) and start the next
 --        tier's window (within five minutes of the database's now(), like a reassign), so the tier's clinician can acknowledge.
---      The transition table, the immutable columns, the version rule and every other actor rule are unchanged.
+--      * an escalation's recipient is never the sender, and its deadline falls within (now(), now() + 60 minutes].
+--      The transition table, the immutable columns, the version rule and every other actor rule are unchanged. Like 1107's it is
+--      SECURITY DEFINER with a pinned search_path (it reads `membership` and the session's app.user_id). The database refuses only a
+--      non-member / inactive assignee (and the sender); that the recipient is qualified and on the right tier is the APPLICATION's check.
 -- ALTER TYPE ... ADD VALUE stands first; nothing below uses the new values in this transaction.
 
 ALTER TYPE "message_ack_event_type" ADD VALUE IF NOT EXISTS 'route_unavailable';--> statement-breakpoint
@@ -52,6 +55,16 @@ BEGIN
   END IF;
   IF v_escalation AND v_actor IS NOT NULL THEN
     RAISE EXCEPTION 'message_ack_request_actor: only the escalation timer escalates a request' USING ERRCODE = 'check_violation';
+  END IF;
+  -- The timer's recipient is never the sender, and its new window is a real one: it ends in the future and within the longest tier
+  -- window (60 minutes, the important class's default). The class maximum from the CHECK still applies on top.
+  IF v_escalation THEN
+    IF NEW.assigned_user_id = NEW.requester_user_id THEN
+      RAISE EXCEPTION 'message_ack_request_escalation: the sender cannot be the escalation recipient' USING ERRCODE = 'check_violation';
+    END IF;
+    IF NEW.deadline_at <= now() OR NEW.deadline_at > now() + interval '60 minutes' THEN
+      RAISE EXCEPTION 'message_ack_request_escalation: an escalation window ends within the next 60 minutes' USING ERRCODE = 'check_violation';
+    END IF;
   END IF;
   -- Who acts. Taking responsibility and closing are the ASSIGNED user's own acts (nobody acts on another person's behalf); a
   -- reassign is by a party; a cancel is the requester's (the author deleting the message). An empty actor is a system write.

@@ -10,13 +10,16 @@
 // assignee are written onto the request, and the next window is keyed on the request and its tier.
 //
 // With no router bound (today: the deny-stub), or when no tier answers, NOTHING is invented: the request stays open with its
-// current assignee, one `route_unavailable` / `ladder_exhausted` history row and one outbox event per hour say so, and every sweep
-// asks again, so the moment a router is bound the request escalates. `failed_unreachable` is WP 4.5's and is never written here.
+// current assignee, a `route_unavailable` / `ladder_exhausted` history row and outbox event say so (with a growing backoff, 1 h to
+// 24 h, and at most 8 per window), and the router is asked again on that schedule (daily once the cap is reached), so the moment a
+// router is bound the request escalates. THE DATABASE decides what is due; the comparison "is it past its deadline" uses the application
+// clock, and only the new window's start and the guard trigger use the database's now(). `failed_unreachable` is WP 4.5's and is never written here.
 import {
   ESCALATION_SWEEP_BATCH,
-  ROUTE_UNAVAILABLE_RECORD_INTERVAL_MS,
   isEscalationDue,
   tierWindowMinutes,
+  unroutedRetryDue,
+  unroutedShouldRecord,
 } from "@wardenx/messaging";
 import {
   ACK_ESCALATION_REQUIRED_ROLE,
@@ -49,7 +52,9 @@ export type EscalationOutcome =
       readonly assignedUserId: string;
       readonly deadlineAt: Date;
     }
-  /** No tier could be reached. `recorded` is false when a row was already written inside the hourly window. */
+  /** The request was recently found unroutable and its backoff has not elapsed: the router was not asked. */
+  | { readonly kind: "backed_off" }
+  /** No tier could be reached. `recorded` is false when the cap is reached or the backoff had not elapsed (a concurrent run). */
   | { readonly kind: "not_routed"; readonly reason: NotRoutedReason; readonly recorded: boolean };
 
 export interface SweepSummary {
@@ -126,6 +131,8 @@ export function createEscalationService(deps: EscalationDeps): EscalationService
             return { kind: "routed", tier, userId };
           }
         }
+        // The final tier exists but nobody on it can take the request: there is nothing further, which is the exhausted ladder.
+        if (answer.nextTier === null) return { kind: "none", reason: "ladder_exhausted" };
       }
       if (answer.nextTier === null) return NONE_UNAVAILABLE;
       tier = answer.nextTier;
@@ -205,8 +212,9 @@ export function createEscalationService(deps: EscalationDeps): EscalationService
           deadlineAt: next.deadlineAt,
         };
       }
-      const last = await tx.lastEventAt(row.id, decision.reason);
-      if (last && at.getTime() - last.getTime() < ROUTE_UNAVAILABLE_RECORD_INTERVAL_MS) {
+      const history = (await tx.unroutedSummary([row])).get(row.id);
+      const count = history?.count ?? 0;
+      if (history && !unroutedShouldRecord(count, history.lastAt.getTime(), at.getTime())) {
         return { kind: "not_routed", reason: decision.reason, recorded: false };
       }
       const tier = row.currentTier + 1;
@@ -228,7 +236,7 @@ export function createEscalationService(deps: EscalationDeps): EscalationService
         decision.reason === "ladder_exhausted"
           ? M36_ACK_LADDER_EXHAUSTED
           : M36_ACK_ROUTE_UNAVAILABLE,
-        factsFor(row, { tier }, at),
+        factsFor(row, { tier, occurrence: count + 1 }, at),
       );
       return { kind: "not_routed", reason: decision.reason, recorded: true };
     });
@@ -249,6 +257,13 @@ export function createEscalationService(deps: EscalationDeps): EscalationService
         row.deadlineAt.getTime() !== expected.deadlineAt.getTime())
     ) {
       return { kind: "not_due" };
+    }
+    // A request found unroutable recently is not asked again until its backoff has elapsed (the sweep's query already leaves it out).
+    const history = (await deps.store.readAsSystem(orgId, (tx) => tx.unroutedSummary([row]))).get(
+      row.id,
+    );
+    if (history && !unroutedRetryDue(history.count, history.lastAt.getTime(), at.getTime())) {
+      return { kind: "backed_off" };
     }
     const decision = await decide(orgId, row, at.toISOString());
     try {
