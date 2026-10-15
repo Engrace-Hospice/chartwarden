@@ -240,7 +240,13 @@ function MessageRowImpl({
                 {deleted ? null : <EditedIndicator editedAt={message.editedAt} />}
               </div>
             </div>
-            {!deleted && patientLinked ? <AckForMessage messageId={message.messageId} /> : null}
+            {!deleted && patientLinked ? (
+              <AckForMessage
+                messageId={message.messageId}
+                authorName={message.authorDisplayName}
+                sentAt={message.createdAt}
+              />
+            ) : null}
             {!deleted ? (
               <MessageAnnotations message={message} canAnnotate={canAnnotate} canPin={canPin} />
             ) : null}

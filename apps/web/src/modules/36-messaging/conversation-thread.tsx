@@ -630,6 +630,7 @@ function ConversationThreadView({
         <AckRequestsProvider
           channelId={channel.channelId}
           enabled={channel.kind === "care_team" && Boolean(channel.subjectId)}
+          refreshKey={messages?.at(-1)?.messageId ?? null}
         >
           <MessageTimeline
             timelineRef={timelineRef}
