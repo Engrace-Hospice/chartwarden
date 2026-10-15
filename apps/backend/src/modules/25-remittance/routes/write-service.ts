@@ -57,6 +57,8 @@ export interface ReasonInput {
 }
 export interface AppealCreateInput {
   readonly tier?: "redetermination" | "reconsideration" | "alj" | "council" | "federal_court";
+  /** YYYY-MM-DD printed on the notice the tier's clock runs from; inferred from the remittance / prior decision when absent. */
+  readonly noticeDate?: string;
 }
 export interface AppealSubmitInput {
   readonly appealNarrative: string;
@@ -71,6 +73,8 @@ export interface AppealLateGoodCauseInput extends AppealSubmitInput {
 export interface AppealDecideInput {
   readonly outcome: "favorable" | "partial" | "unfavorable";
   readonly decidedAt: string;
+  /** YYYY-MM-DD printed on the decision letter; the next tier's notice date. Defaults to the UTC date of `decidedAt`. */
+  readonly decisionNoticeDate?: string;
   readonly macReferenceNumbers?: Record<string, string>;
   readonly reason: string;
 }

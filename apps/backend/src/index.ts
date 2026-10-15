@@ -5321,6 +5321,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             // published seams, so a bad enclosure id is refused at submit.
             writeService: buildDrizzleM25WriteService(dbHandle.db, m25OutboxPublisher, {
               appealSources: buildSeamAppealSourcePorts(),
+              providerZones: (tx, providerEntityId) =>
+                buildFoundationSiteReader().providerEntityTimezones(tx, providerEntityId),
             }),
             ingestService: m25IngestService,
           });

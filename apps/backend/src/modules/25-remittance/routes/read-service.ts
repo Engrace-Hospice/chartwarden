@@ -59,6 +59,11 @@ export interface AppealSummary {
   readonly state: string;
   readonly decisionOutcome: string | null;
   readonly tierDeadlineAt: string;
+  /** How the deadline was reached; all null on rows created before CMS-correct deadlines. */
+  readonly noticeDatedOn: string | null;
+  readonly presumedReceiptOn: string | null;
+  readonly windowDays: number | null;
+  readonly lastFilingDay: string | null;
   readonly version: number;
 }
 

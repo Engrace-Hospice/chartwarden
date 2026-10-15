@@ -11,11 +11,16 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, eq, sql } from "drizzle-orm";
 import {
+  type AppealTier,
   type DenialState,
   canTransitionAppeal,
   canTransitionDenial,
   computeTierDeadline,
+  DEFAULT_DEADLINE_ZONE,
+  deriveTierDeadline,
+  isKnownZone,
   nextTier,
+  noticeDayOf,
 } from "../domain";
 import type { M25WriteActor } from "./actor";
 import { loadAppealPacketPayload } from "./appeal-packet-payload";
@@ -54,6 +59,8 @@ export function buildDrizzleM25WriteService(
   db: DbClient,
   outbox: WriteOutboxPort = NOOP_OUTBOX,
   ports: Pick<RemittanceCommandDeps, "claims" | "audit"> & {
+    /** The timezones of a provider entity's locations (M1's published reader); absent → the default zone. */
+    readonly providerZones?: (tx: DbClient, providerEntityId: string) => Promise<readonly string[]>;
     /** GAP-036 - where the appeal packet reads the claim copy and the enclosure facts (default: refuse). */
     readonly appealSources?: AppealSourcePorts;
   } = {},
@@ -80,6 +87,143 @@ export function buildDrizzleM25WriteService(
       .limit(1);
     if (!rows[0]) throw new NotFoundError("denial case not found");
     return rows[0];
+  }
+
+  /**
+   * The zone in which a provider's last filing day ends: the zone of its locations when they all agree,
+   * otherwise the conservative default (earliest-ending mainland zone).
+   */
+  async function providerZone(tx: M25Tx, providerEntityId: string): Promise<string> {
+    const zones = new Set(
+      ports.providerZones ? await ports.providerZones(tx as unknown as DbClient, providerEntityId) : [],
+    );
+    const only = zones.size === 1 ? [...zones][0]! : null;
+    return only && isKnownZone(only) ? only : DEFAULT_DEADLINE_ZONE;
+  }
+
+  /**
+   * The date printed on the notice a new appeal tier's clock runs from (CMS: the window runs from receipt,
+   * presumed 5 days after this date). An explicit `noticeDate` wins. A redetermination uses the remittance
+   * advice date of the denied line (the date WardenX ingested the file is NOT the notice date), falling back
+   * to the denial's open date when no 835 is linked (e.g. a 277CA-seeded denial). A later tier uses the prior
+   * tier's decision-letter date, and refuses to guess when no prior tier was decided here.
+   */
+  async function resolveNoticeDay(
+    tx: M25Tx,
+    denialCaseId: string,
+    tier: AppealTier,
+    explicit: string | undefined,
+  ): Promise<string> {
+    const given = explicit === undefined ? undefined : checkedNoticeDay(explicit);
+    // A later tier is opened automatically on an unfavorable decision (see decideAppeal), so a manual one
+    // cannot be inferred: the printed date of the prior notice must be supplied, never guessed.
+    if (tier !== "redetermination") {
+      if (!given) {
+        throw new WardenXError(
+          "NOTICE_DATE_REQUIRED",
+          `a ${tier} appeal needs the date printed on the prior tier's decision notice (noticeDate)`,
+          422,
+        );
+      }
+      await assertTierOpenable(tx, denialCaseId, tier, given);
+      return given;
+    }
+    const denial = await tx
+      .select({ remittanceLineId: DC.remittanceLineId, openedAt: DC.openedAt })
+      .from(DC)
+      .where(eq(DC.id, denialCaseId))
+      .limit(1);
+    const lineId = denial[0]?.remittanceLineId;
+    const advice = lineId
+      ? await tx
+          .select({ productionDate: RA.productionDate })
+          .from(RL)
+          .innerJoin(RA, eq(RA.id, RL.remittanceAdviceId))
+          .where(eq(RL.id, lineId))
+          .limit(1)
+      : [];
+    const adviceDay = advice[0]?.productionDate ? noticeDayOf(advice[0].productionDate) : null;
+    if (given) {
+      // The remittance is the notice; a later date cannot lengthen the window it set. With no 835, the
+      // denial's open date is the latest the notice can be.
+      const latest = adviceDay ?? (denial[0] ? noticeDayOf(denial[0].openedAt) : null);
+      if (latest && given > latest) {
+        throw new WardenXError(
+          "NOTICE_DATE_AFTER_REMITTANCE",
+          `notice date ${given} is later than the ${adviceDay ? "remittance advice" : "denial open"} date ${latest}`,
+          422,
+        );
+      }
+      return given;
+    }
+    if (adviceDay) return adviceDay;
+    // No 835 is linked (e.g. a 277CA-seeded denial): the denial's open date is later than the real notice, so
+    // it would silently lengthen the deadline. Ask for the printed date instead.
+    throw new WardenXError(
+      "NOTICE_DATE_REQUIRED",
+      "this denial has no remittance advice; supply the date printed on the notice (noticeDate)",
+      422,
+    );
+  }
+
+  /**
+   * A manual later tier must not restart a window the prior decision already started: no live appeal of the
+   * same tier may exist on the denial, and the date cannot be later than the prior tier's decision day.
+   */
+  async function assertTierOpenable(
+    tx: M25Tx,
+    denialCaseId: string,
+    tier: AppealTier,
+    given: string,
+  ): Promise<void> {
+    const rows = await tx
+      .select({
+        tier: AC.tier,
+        state: AC.state,
+        decidedAt: AC.decidedAt,
+        outcome: AC.decisionOutcome,
+      })
+      .from(AC)
+      .where(eq(AC.denialCaseId, denialCaseId));
+    if (rows.some((r) => r.tier === tier && r.state !== "withdrawn" && r.state !== "closed")) {
+      throw new WardenXError("APPEAL_TIER_EXISTS", `a ${tier} appeal is already open on this denial`, 409);
+    }
+    // Only a recorded, not-fully-favorable decision of the previous tier opens the next one; without it
+    // nothing bounds the supplied date and a lapsed window could be reopened.
+    const prior = rows.find(
+      (r) => r.decidedAt && r.outcome !== "favorable" && nextTier(r.tier) === tier,
+    );
+    if (!prior?.decidedAt) {
+      throw new WardenXError(
+        "PRIOR_TIER_REQUIRED",
+        `a ${tier} appeal needs a recorded unfavorable or partial decision of the prior tier on this denial`,
+        422,
+      );
+    }
+    if (given > noticeDayOf(prior.decidedAt)) {
+      throw new WardenXError(
+        "NOTICE_DATE_AFTER_DECISION",
+        `notice date ${given} is later than the prior tier's decision date`,
+        422,
+      );
+    }
+  }
+
+  /** A notice date must be a real calendar day and cannot be in the future (allowing for time zones). */
+  function checkedNoticeDay(day: string): string {
+    try {
+      deriveTierDeadline("redetermination", day);
+    } catch {
+      throw new WardenXError(
+        "INVALID_NOTICE_DATE",
+        "notice date must be a real calendar date (YYYY-MM-DD)",
+        422,
+      );
+    }
+    if (day > noticeDayOf(new Date(Date.now() + 86_400_000))) {
+      throw new WardenXError("NOTICE_DATE_IN_FUTURE", "notice date cannot be in the future", 422);
+    }
+    return day;
   }
 
   /**
@@ -238,29 +382,14 @@ export function buildDrizzleM25WriteService(
       const result = await withOrgContext(db, actor, async (tx) => {
         const cur = await denialState(tx, denialCaseId);
         const tier = input.tier ?? "redetermination";
-        // Anchor the redetermination clock on the linked line's received date when available (F04), else
-        // the denial open date. Later tiers anchor on a prior decision (handled when that appeal decides).
-        const anchorRows = await tx
-          .select({ openedAt: DC.openedAt, remittanceLineId: DC.remittanceLineId })
-          .from(DC)
-          .where(eq(DC.id, denialCaseId))
-          .limit(1);
-        let anchor = anchorRows[0]?.openedAt ?? new Date();
-        const lineId = anchorRows[0]?.remittanceLineId;
-        if (lineId) {
-          const lr = await tx
-            .select({ receivedAt: RL.receivedAt })
-            .from(RL)
-            .where(eq(RL.id, lineId))
-            .limit(1);
-          if (lr[0]?.receivedAt) anchor = lr[0].receivedAt;
-        }
-        const deadline = computeTierDeadline(
-          tier,
-          anchor instanceof Date ? anchor : new Date(anchor),
-        );
         if (!cur.claimId)
           throw new WardenXError("INVALID_STATE", "the denial has no claim to appeal", 409);
+        const noticeDay = await resolveNoticeDay(tx, denialCaseId, tier, input.noticeDate);
+        const deadline = computeTierDeadline(
+          tier,
+          noticeDay,
+          await providerZone(tx, cur.providerEntityId),
+        );
         const inserted = await tx
           .insert(AC)
           .values({
@@ -271,6 +400,7 @@ export function buildDrizzleM25WriteService(
             tier,
             state: "draft",
             tierDeadlineAt: deadline,
+            noticeDatedOn: noticeDay,
           })
           .returning({ id: AC.id, version: AC.version });
         const appealId = inserted[0]!.id;
@@ -435,6 +565,15 @@ export function buildDrizzleM25WriteService(
         const cur = await appealRow(tx, id);
         if (!canTransitionAppeal(cur.state, "decided"))
           throw new InvalidTransitionError(cur.state, "decided");
+        const decidedAt = new Date(input.decidedAt);
+        const noticeDay = checkedNoticeDay(input.decisionNoticeDate ?? noticeDayOf(decidedAt));
+        if (noticeDay > noticeDayOf(decidedAt)) {
+          throw new WardenXError(
+            "NOTICE_DATE_AFTER_DECISION",
+            "decision notice date cannot be later than the decided-at date",
+            422,
+          );
+        }
         const updated = await tx
           .update(AC)
           .set({
@@ -457,6 +596,7 @@ export function buildDrizzleM25WriteService(
         if (input.outcome === "unfavorable") {
           const nt = nextTier(cur.tier);
           if (nt) {
+            // The printed decision-letter date (validated above), not the calendar day of an instant.
             await tx.insert(AC).values({
               organizationId: actor.organizationId,
               providerEntityId: cur.providerEntityId,
@@ -465,7 +605,12 @@ export function buildDrizzleM25WriteService(
               priorTierAppealCaseId: id,
               tier: nt,
               state: "draft",
-              tierDeadlineAt: computeTierDeadline(nt, new Date(input.decidedAt)),
+              tierDeadlineAt: computeTierDeadline(
+                nt,
+                noticeDay,
+                await providerZone(tx, cur.providerEntityId),
+              ),
+              noticeDatedOn: noticeDay,
             });
           }
         }

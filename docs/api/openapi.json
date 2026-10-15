@@ -36992,6 +36992,10 @@
                           "state",
                           "decisionOutcome",
                           "tierDeadlineAt",
+                          "noticeDatedOn",
+                          "presumedReceiptOn",
+                          "windowDays",
+                          "lastFilingDay",
                           "version"
                         ],
                         "properties": {
@@ -37026,6 +37030,46 @@
                           "tierDeadlineAt": {
                             "format": "date-time",
                             "type": "string"
+                          },
+                          "noticeDatedOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "presumedReceiptOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "windowDays": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastFilingDay": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "version": {
                             "type": "integer"
@@ -37089,6 +37133,10 @@
                     "state",
                     "decisionOutcome",
                     "tierDeadlineAt",
+                    "noticeDatedOn",
+                    "presumedReceiptOn",
+                    "windowDays",
+                    "lastFilingDay",
                     "version",
                     "appealPacketDocumentId",
                     "submittedAt",
@@ -37127,6 +37175,46 @@
                     "tierDeadlineAt": {
                       "format": "date-time",
                       "type": "string"
+                    },
+                    "noticeDatedOn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "presumedReceiptOn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "windowDays": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastFilingDay": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "version": {
                       "type": "integer"
@@ -37446,6 +37534,10 @@
                   },
                   "decidedAt": {
                     "format": "date-time",
+                    "type": "string"
+                  },
+                  "decisionNoticeDate": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
                     "type": "string"
                   },
                   "macReferenceNumbers": {
@@ -94844,6 +94936,10 @@
                         "type": "string"
                       }
                     ]
+                  },
+                  "noticeDate": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
                   }
                 }
               }

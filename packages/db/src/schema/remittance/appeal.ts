@@ -13,7 +13,7 @@ import { sql } from "drizzle-orm";
 // FKs. claim_id (M23), appeal_packet_document_id (M22), prior_tier_appeal_case_id (self, logical to
 // avoid a self-FK ordering constraint), actor_membership_id (core) are LOGICAL uuid FKs.
 // appeal_narrative / mac_reference_numbers / event_payload are audit-denylisted (§3.6).
-import { index, integer, jsonb, pgTable, timestamp, uuid } from "drizzle-orm/pg-core";
+import { date, index, integer, jsonb, pgTable, timestamp, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { denialCase } from "./denial";
 import {
@@ -41,6 +41,10 @@ export const appealCase = pgTable(
     state: m25AppealState("state").notNull().default("draft"),
     decisionOutcome: m25AppealDecisionOutcome("decision_outcome"),
     tierDeadlineAt: timestamp("tier_deadline_at", { withTimezone: true }).notNull(),
+    // The date printed on the notice this tier's clock runs from (remittance advice / prior decision
+    // letter). The deadline is derived from it (receipt presumed 5 days later); NULL on rows created before
+    // CMS-correct deadlines, whose stored tier_deadline_at is left as it was.
+    noticeDatedOn: date("notice_dated_on"),
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     closedAt: timestamp("closed_at", { withTimezone: true }),

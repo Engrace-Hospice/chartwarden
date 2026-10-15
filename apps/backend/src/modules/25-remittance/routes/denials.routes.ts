@@ -196,7 +196,10 @@ export function registerDenialRoutes(app: FastifyInstance, deps: DenialRouteDeps
     async (request, reply) => {
       const actor = writeActorOf(request);
       const body = parse(AppealCreateRequestSchema, request.body);
-      const res = await writeService.createAppeal(actor, idOf(request), { tier: body.tier });
+      const res = await writeService.createAppeal(actor, idOf(request), {
+        tier: body.tier,
+        noticeDate: body.noticeDate,
+      });
       return reply.code(201).send(res);
     },
   );

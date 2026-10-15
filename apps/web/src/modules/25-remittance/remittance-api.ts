@@ -111,7 +111,7 @@ export type DenialAction =
   | { kind: "close" }
   | { kind: "close-write-off"; reason: string }
   | { kind: "reopen"; reason: string }
-  | { kind: "appeal"; tier?: AppealTier };
+  | { kind: "appeal"; tier?: AppealTier; noticeDate?: string };
 
 /** Run one denial action. `version` is the row version the panel read (sent as If-Match where required). */
 export async function runDenialAction(
@@ -183,7 +183,10 @@ export async function runDenialAction(
     case "appeal": {
       const { data, error, response } = await client.POST("/api/v1/denials/{id}/appeals", {
         params,
-        body: action.tier ? { tier: action.tier } : {},
+        body: {
+          ...(action.tier ? { tier: action.tier } : {}),
+          ...(action.noticeDate ? { noticeDate: action.noticeDate } : {}),
+        },
       });
       return error || !data ? failure(response?.status, error) : ok(data);
     }
@@ -200,6 +203,8 @@ export type AppealAction =
       kind: "decide";
       outcome: AppealOutcome;
       decidedAt: string;
+      /** The date printed on the decision letter (YYYY-MM-DD); the next tier's clock runs from it. */
+      decisionNoticeDate?: string;
       reason: string;
       macReferenceNumbers?: Record<string, string>;
     }
@@ -248,6 +253,7 @@ export async function runAppealAction(
         body: {
           outcome: action.outcome,
           decidedAt: action.decidedAt,
+          ...(action.decisionNoticeDate ? { decisionNoticeDate: action.decisionNoticeDate } : {}),
           reason: action.reason,
           ...(action.macReferenceNumbers
             ? { macReferenceNumbers: action.macReferenceNumbers }

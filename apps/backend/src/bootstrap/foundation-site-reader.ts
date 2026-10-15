@@ -56,6 +56,11 @@ export interface FoundationSiteReader {
    */
   locationTimezone(tx: DbClient, locationId: string): Promise<string | null>;
   /**
+   * The distinct IANA timezones of a provider entity's locations (empty when it has none). M25 ends an
+   * appeal's last filing day in this zone when the locations agree on one.
+   */
+  providerEntityTimezones(tx: DbClient, providerEntityId: string): Promise<readonly string[]>;
+  /**
    * GAP-057 — which of `providerEntityIds` are `active` in the caller's org. M19's §4.8 coverage-gap
    * watchdog narrows its own policy-bearing entities to the ones that are live (a suspended CCN has no
    * coverage obligation). Ids that do not resolve under the caller's RLS scope are simply absent.
@@ -150,6 +155,14 @@ export function buildFoundationSiteReader(): FoundationSiteReader {
         .where(eq(LOCATION.id, locationId))
         .limit(1);
       return location?.timezone ?? null;
+    },
+
+    async providerEntityTimezones(tx, providerEntityId) {
+      const rows = await tx
+        .selectDistinct({ timezone: LOCATION.timezone })
+        .from(LOCATION)
+        .where(eq(LOCATION.providerEntityId, providerEntityId));
+      return rows.map((r) => r.timezone);
     },
 
     async allLocationsOpenInOrg(tx, organizationId, locationIds) {
