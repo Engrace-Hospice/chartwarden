@@ -12,8 +12,8 @@
 import { type Static, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 
-/** The most enclosures one ADR response may carry (a MAC portal / fax packet has a hard ceiling). */
-export const MAX_ADR_ENCLOSURES = 100;
+/** The most enclosures one ADR response may carry (a MAC portal / fax packet has a hard ceiling; the same cap as an appeal, enforced by the shared validator). */
+export const MAX_ADR_ENCLOSURES = 50;
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

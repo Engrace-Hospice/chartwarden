@@ -323,6 +323,13 @@ describe.skipIf(!DB_URL)("M25 ADR response packet - LIVE Postgres", () => {
     ).rejects.toThrow(/M25_ADR_PACKET_FROZEN/);
   });
 
+  it("the database refuses a submitted case without its manifest", async () => {
+    const id = await inReview();
+    await expect(
+      admin.query("UPDATE adr_case SET state='submitted' WHERE id=$1", [id]),
+    ).rejects.toThrow(/adr_case_submitted_has_filing/);
+  });
+
   it("refuses attachments by the appeal enclosure rules, naming the reason and never the title", async () => {
     const id = await inAssembly();
     for (const [documentId, reason] of [
@@ -471,6 +478,15 @@ describe.skipIf(!DB_URL)("M25 ADR response packet - LIVE Postgres", () => {
       statusCode: 503,
     });
     expect((await row(id)).state).toBe("in_review");
+  });
+
+  it("caps a packet at the shared enclosure limit at attach, so filing cannot fail on size later", async () => {
+    const id = await inAssembly();
+    for (let i = 0; i < 50; i += 1) await attach(id, await seedDocument(ORG, patient, `Bulk ${i}`));
+    const e = await refused(
+      svc().attachAdrDocument(A(), id, { documentId: docF2f }, await ver(id)),
+    );
+    expect(e).toMatchObject({ code: "ADR_TOO_MANY_ENCLOSURES", statusCode: 422 });
   });
 
   it("another tenant cannot see or change an ADR's packet", async () => {

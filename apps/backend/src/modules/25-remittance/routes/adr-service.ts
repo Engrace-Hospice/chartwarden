@@ -319,7 +319,9 @@ export function buildDrizzleAdrService(db: DbClient, ports: AdrServicePorts = {}
                 reviewedByMembershipId: null,
                 reviewedAt: null,
               }
-            : { reviewedByMembershipId: null, reviewedAt: null };
+            : cur.state === "submitted"
+              ? {} // a filed case's review facts are frozen by trigger
+              : { reviewedByMembershipId: null, reviewedAt: null };
         const updated = await tx
           .update(ADR)
           .set({ state: to, version: cur.version + 1, ...reviewBookkeeping })

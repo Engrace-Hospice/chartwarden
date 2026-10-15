@@ -84,11 +84,16 @@ BEGIN
     OR NEW.filing_confirmation_ref IS DISTINCT FROM OLD.filing_confirmation_ref
     OR NEW.filed_at IS DISTINCT FROM OLD.filed_at
     OR NEW.filed_late IS DISTINCT FROM OLD.filed_late
+    OR NEW.receipt_document_id IS DISTINCT FROM OLD.receipt_document_id
     OR NEW.reviewed_by_membership_id IS DISTINCT FROM OLD.reviewed_by_membership_id) THEN
     RAISE EXCEPTION 'M25_ADR_FILING_IMMUTABLE: adr_case % has been filed; the filing record cannot change', OLD.id;
   END IF;
   RETURN NEW;
 END $$;--> statement-breakpoint
+-- A submitted case always carries its frozen manifest and filing time: no path (including a future bug) can record
+-- "submitted" without them.
+ALTER TABLE "adr_case" ADD CONSTRAINT "adr_case_submitted_has_filing"
+  CHECK ("state" <> 'submitted' OR ("packet_manifest" IS NOT NULL AND "filed_at" IS NOT NULL));--> statement-breakpoint
 CREATE TRIGGER "trg_adr_filing_immutable" BEFORE UPDATE ON adr_case FOR EACH ROW EXECUTE FUNCTION m25_adr_filing_immutable();--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION m25_adr_document_frozen() RETURNS trigger

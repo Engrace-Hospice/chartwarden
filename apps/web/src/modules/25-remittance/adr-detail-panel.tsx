@@ -140,6 +140,8 @@ export function AdrDetailPanel({ adrId, onClose, onChanged }: AdrDetailPanelProp
           </ButtonRow>
           <AdrPacketPanel
             adr={adr}
+            locked={busy}
+            onBusyChange={setBusy}
             onChanged={async () => {
               onChanged();
               await load();

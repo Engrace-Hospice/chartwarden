@@ -18,7 +18,11 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useSession } from "../../shell/session";
-import { findStepUpDraftResourceId } from "../../shell/step-up-redirect";
+import {
+  clearStepUpDraft,
+  findStepUpDraftResourceId,
+  stepUpDraftKey,
+} from "../../shell/step-up-redirect";
 import { AdrDetailPanel } from "./adr-detail-panel";
 import { LogAdrModal, MacRulesModal } from "./adr-forms";
 import { ADR_DRAFT_ACTION } from "./adr-packet-panel";
@@ -268,7 +272,11 @@ export function AdrWorklist(): JSX.Element {
             <AdrDetailPanel
               key={workingId}
               adrId={workingId}
-              onClose={() => setWorkingId(null)}
+              onClose={() => {
+                // Closing abandons a stashed filing form (it would otherwise reopen this case on every visit).
+                clearStepUpDraft(stepUpDraftKey(session, ADR_DRAFT_ACTION, workingId));
+                setWorkingId(null);
+              }}
               onChanged={() => void load()}
             />
           ) : null

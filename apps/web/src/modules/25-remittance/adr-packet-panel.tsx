@@ -17,6 +17,7 @@ import {
 } from "../../shell/step-up-redirect";
 import { ButtonRow, ErrorAlert, Facts, Hint, NoticeAlert } from "./action-ui";
 import {
+  type AdrAttachInput,
   type AdrChecklistState,
   type AdrDetail,
   type AdrFilingInput,
@@ -63,9 +64,18 @@ export interface AdrPacketPanelProps {
   readonly adr: AdrDetail;
   /** Reload the case (and the worklist) after a change. */
   readonly onChanged: () => Promise<void>;
+  /** Tells the parent a packet command is in flight, so a case move cannot race it on the same version. */
+  readonly onBusyChange?: (busy: boolean) => void;
+  /** The parent is mid-move: packet commands wait, as both use the same If-Match version. */
+  readonly locked?: boolean;
 }
 
-export function AdrPacketPanel({ adr, onChanged }: AdrPacketPanelProps): JSX.Element | null {
+export function AdrPacketPanel({
+  adr,
+  onChanged,
+  onBusyChange,
+  locked = false,
+}: AdrPacketPanelProps): JSX.Element | null {
   const client = useApiClient();
   const navigate = useNavigate();
   const location = useLocation();
@@ -82,7 +92,12 @@ export function AdrPacketPanel({ adr, onChanged }: AdrPacketPanelProps): JSX.Ele
   const [filedAt, setFiledAt] = useState(restored?.filedAt ?? nowLocal());
   const [lateAcknowledged, setLateAcknowledged] = useState(restored?.lateAcknowledged ?? false);
   const [receiptDocumentId, setReceiptDocumentId] = useState(restored?.receiptDocumentId ?? "");
-  const [busy, setBusy] = useState(false);
+  const [ownBusy, setOwnBusy] = useState(false);
+  const busy = ownBusy || locked;
+  const setBusy = (next: boolean): void => {
+    setOwnBusy(next);
+    onBusyChange?.(next);
+  };
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const mounted = useRef(true);
@@ -111,23 +126,23 @@ export function AdrPacketPanel({ adr, onChanged }: AdrPacketPanelProps): JSX.Ele
   ): Promise<boolean> {
     setBusy(true);
     setError(null);
+    setNotice(null);
     const res = await call();
     if (!mounted.current) return false;
-    setBusy(false);
-    if (!res.ok) {
-      setError(res.message);
-      return false;
-    }
-    setNotice(`${label}: done.`);
+    if (!res.ok) setError(res.message);
+    else setNotice(`${label}: done.`);
+    // Reload before re-enabling: after a success or a refusal (e.g. a 409) the next command must carry the
+    // version the server holds NOW, never the one this render started with.
     await onChanged();
-    return true;
+    if (mounted.current) setBusy(false);
+    return res.ok;
   }
 
   async function attach(): Promise<void> {
     const ok = await run("Attach document", () =>
       attachAdrDocument(client, adr.id, adr.version, {
         documentId: documentId.trim(),
-        ...(answers ? { checklistKey: answers as never } : {}),
+        ...(answers ? { checklistKey: answers as AdrAttachInput["checklistKey"] } : {}),
       }),
     );
     if (ok && mounted.current) {
@@ -140,6 +155,7 @@ export function AdrPacketPanel({ adr, onChanged }: AdrPacketPanelProps): JSX.Ele
     if (filedIso === null) return;
     setBusy(true);
     setError(null);
+    setNotice(null);
     const res = await submitAdr(client, adr.id, adr.version, {
       channel,
       confirmationRef: confirmationRef.trim(),
@@ -148,9 +164,9 @@ export function AdrPacketPanel({ adr, onChanged }: AdrPacketPanelProps): JSX.Ele
       ...(receiptDocumentId.trim() ? { receiptDocumentId: receiptDocumentId.trim() } : {}),
     });
     if (!mounted.current) return;
-    setBusy(false);
     if (!res.ok) {
       if (res.stepUp) {
+        setBusy(false);
         stashStepUpDraft(draftKey, {
           channel,
           confirmationRef,
@@ -164,11 +180,14 @@ export function AdrPacketPanel({ adr, onChanged }: AdrPacketPanelProps): JSX.Ele
         return;
       }
       setError(res.message);
+      await onChanged();
+      if (mounted.current) setBusy(false);
       return;
     }
     clearStepUpDraft(draftKey);
     setNotice("Record filing: done.");
     await onChanged();
+    if (mounted.current) setBusy(false);
   }
 
   const showPacket = adr.state === "in_assembly" || adr.state === "in_review" || packet.filing;
