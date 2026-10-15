@@ -1,4 +1,4 @@
-// WP 4.2 - the TypeScript enums and constants, the Drizzle schema, the manifest and migration 1106 agree, and the structural
+// WP 4.2 - the TypeScript enums and constants, the Drizzle schema, the manifest and migration 1107 agree, and the structural
 // promises of the migration (the state machine, the deadline maximum, append-only history, grants, RLS) are asserted on its text, so a
 // change in one place without the others fails here. The live suite proves the same rules against a real database.
 import { readFileSync } from "node:fs";
@@ -15,12 +15,12 @@ import { describe, expect, it } from "vitest";
 
 const root = join(__dirname, "../../..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
-const sql = read("packages/db/migrations/1106_m36_message_acknowledgment_request.sql");
+const sql = read("packages/db/migrations/1107_m36_message_acknowledgment_request.sql");
 const flat = (s: string) => s.replace(/\s+/g, " ");
 const list = (values: readonly string[]) => values.map((v) => `'${v}'`).join(", ");
 const quoted = (values: readonly string[]) => values.map((v) => `"${v}"`).join(", ");
 
-describe("migration 1106 enums", () => {
+describe("migration 1107 enums", () => {
   it.each([
     ["message_ack_status", ACK_STATUSES],
     ["message_ack_class", ACK_CLASSES],
@@ -38,7 +38,7 @@ describe("migration 1106 enums", () => {
   );
 });
 
-describe("migration 1106 state machine", () => {
+describe("migration 1107 state machine", () => {
   const guard = flat(sql.slice(sql.indexOf("message_ack_request_update_guard()")));
 
   it("final states cannot change", () => {
@@ -94,7 +94,7 @@ describe("migration 1106 state machine", () => {
   });
 });
 
-describe("migration 1106 insert guard", () => {
+describe("migration 1107 insert guard", () => {
   const guard = flat(sql.slice(sql.indexOf("message_ack_request_insert_guard()")));
 
   it("requires the author as requester, a live message, a pending first window and an active assignee", () => {
@@ -124,7 +124,7 @@ describe("migration 1106 insert guard", () => {
   });
 });
 
-describe("migration 1106 deadline maximum", () => {
+describe("migration 1107 deadline maximum", () => {
   it("pins the per-class window maximum to the platform policy constants", () => {
     const check = flat(sql.slice(sql.indexOf('CONSTRAINT "message_ack_request_window"')));
     for (const ackClass of ACK_CLASSES) {
@@ -146,7 +146,7 @@ describe("migration 1106 deadline maximum", () => {
   });
 });
 
-describe("migration 1106 history, grants, tenancy", () => {
+describe("migration 1107 history, grants, tenancy", () => {
   it("refuses UPDATE for every role and DELETE for all but the destruction role on the event table", () => {
     expect(sql).toContain('BEFORE UPDATE OR DELETE ON "message_acknowledgment_event"');
     // The destruction role is recognised by what survives a referential cascade (the session's own role), not only current_user.

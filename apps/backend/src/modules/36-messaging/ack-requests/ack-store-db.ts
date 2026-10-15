@@ -2,7 +2,7 @@
 // service. Every statement names the organization on top of RLS. `wardenx_app` may UPDATE only the transition columns and has
 // no DELETE; the event table takes INSERT only. Transitions take the row FOR UPDATE and carry the expected version, so two
 // racing writers serialise and the loser sees the winner's state (a repeat or a conflict), never a lost update. The database
-// triggers (migration 1106) refuse any transition off the table, whatever this code does.
+// triggers (migration 1107) refuse any transition off the table, whatever this code does.
 import { type DbClient, schema } from "@wardenx/db";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { ACK_OPEN_STATUSES } from "@wardenx/types";

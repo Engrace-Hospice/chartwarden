@@ -1,6 +1,6 @@
 // M36 WP 4.2 - the acknowledgment-request aggregate (ADR-0069): one request per message that asks ONE named, qualified
 // clinician to take clinical responsibility, plus its append-only event history. Ids, enums and instants only (no note or
-// free text). The CHECK/index/trigger names match migration 1106 (pinned by a test); the state machine, the immutable
+// free text). The CHECK/index/trigger names match migration 1107 (pinned by a test); the state machine, the immutable
 // columns and the deadline maximum are enforced by the database, not only by the service.
 import { sql } from "drizzle-orm";
 import {

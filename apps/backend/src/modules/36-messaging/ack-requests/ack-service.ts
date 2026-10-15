@@ -142,7 +142,7 @@ function pgErrorOf(err: unknown): PgErrorLike | undefined {
   return undefined;
 }
 
-/** The migration-1106 guards (CHECK constraint or trigger) all carry this prefix in `constraint` or the message. */
+/** The migration-1107 guards (CHECK constraint or trigger) all carry this prefix in `constraint` or the message. */
 const ACK_GUARD_NAME = /^message_ack_(?:request|event)[a-z_]*/;
 
 /** The name of the ack guard that fired (SQLSTATE 23514), or null for any other failure (including other 23514s). */

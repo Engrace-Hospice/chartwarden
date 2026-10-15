@@ -66,7 +66,7 @@ export const ACK_EVENT_TYPES_WRITTEN_BY_4_2 = [
 
 /**
  * Deadline policy (ADR-0056 decision D4). PROVISIONAL platform defaults pending clinical-lead sign-off. The maximum is also a
- * database CHECK (migration 1106) so no code path can store a longer window. A tenant may only SHORTEN a default (tenant
+ * database CHECK (migration 1107) so no code path can store a longer window. A tenant may only SHORTEN a default (tenant
  * tightening is deferred; WP 4.2 ships the platform values).
  */
 export const ACK_DEADLINE_POLICY: Readonly<

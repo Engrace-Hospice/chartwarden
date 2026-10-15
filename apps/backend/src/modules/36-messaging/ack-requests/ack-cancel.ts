@@ -2,7 +2,7 @@ import type { HintOutboxPort } from "../message-hint-events";
 // apps/backend/src/modules/36-messaging/ack-requests/ack-cancel.ts - WP 4.2: withdraw the open request of a message that is being
 // deleted. Plain SQL over the caller's transaction (no service, flag or seam), so EVERY delete path cancels the request in the
 // same transaction as the tombstone - a flag that is off, or a wiring that forgot the service, cannot strand a request on a
-// deleted message. The database also refuses to tombstone a message while its request is open (migration 1106), so a path
+// deleted message. The database also refuses to tombstone a message while its request is open (migration 1107), so a path
 // that forgets to call this fails loudly instead of leaving an orphan. Deleting never "closes the loop": the request ends
 // `cancelled`, with an event naming who deleted the message.
 import type { Tx } from "../messaging-write-core";

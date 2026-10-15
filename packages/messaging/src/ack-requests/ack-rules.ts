@@ -1,5 +1,5 @@
 // @wardenx/messaging - the pure rules of the acknowledgment-request aggregate (M36 WP 4.2, ADR-0069): the state machine, the
-// deadline policy and the viewer hints. The SAME transition table is enforced by the database trigger in migration 1106 (a pin
+// deadline policy and the viewer hints. The SAME transition table is enforced by the database trigger in migration 1107 (a pin
 // test compares them), so a later writer (WP 4.4 timers) cannot step outside it. Nothing here reads message text.
 import {
   ACK_DEADLINE_POLICY,

@@ -333,7 +333,7 @@ export const messageStatus = pgEnum("message_status", ["sent", "edited", "delete
 // "Urgent clinical" entry and is fixed at send; `important` has no writer until WP 4.2. Never inferred from text.
 export const messageUrgency = pgEnum("message_urgency", ["routine", "important", "urgent"]);
 
-// WP 4.2 (ADR-0069, migration 1106): the acknowledgment-request aggregate. Mirrors ACK_STATUSES / ACK_CLASSES / ACK_EVENT_TYPES in
+// WP 4.2 (ADR-0069, migration 1107): the acknowledgment-request aggregate. Mirrors ACK_STATUSES / ACK_CLASSES / ACK_EVENT_TYPES in
 // @wardenx/types (pinned by a test). `escalated` and `failed_unreachable` have no writer until WP 4.4 / 4.5; `critical_symptom`
 // has none until the clinical lead signs off who may raise or take it.
 export const messageAckStatus = pgEnum("message_ack_status", [
