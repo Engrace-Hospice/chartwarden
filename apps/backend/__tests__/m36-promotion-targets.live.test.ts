@@ -529,7 +529,7 @@ describe.skipIf(!DB_URL)(
         await expect(reject()).resolves.toMatchObject({ outcome: "rejected" });
       });
 
-      it("a stale draft signed after the message was edited accepts the old request and closes its replacement", async () => {
+      it("a stale draft signed after the message was edited accepts the old request and leaves the edited-text proposal open", async () => {
         const encounterId = await signedEncounter();
         const p = await propose(M8T);
         const draft = await promotedDraft(encounterId, p.id);
@@ -554,11 +554,8 @@ describe.skipIf(!DB_URL)(
         await deliver("m8.chart_promotion.decided", p.id);
 
         expect(await request(p.id)).toMatchObject({ status: "accepted", result_ref: draft.id });
-        expect(await request(newer)).toMatchObject({
-          status: "superseded",
-          reason_code: "superseded",
-          result_ref: null,
-        });
+        // The replacement covers the edited text, which the stale signed record does not: it stays open.
+        expect((await request(newer))?.status).toBe("proposed");
       });
 
       it("the reviewer's list serves no text for an edited message, and an M8 reviewer without encounter.addendum_sign sees nothing", async () => {
