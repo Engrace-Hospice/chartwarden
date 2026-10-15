@@ -298,3 +298,54 @@ export async function manualMatchLine(
   );
   return error || !data ? failure(response?.status, error) : ok(data);
 }
+
+// ── ADR intake (hospice ADR/TPE/QIC PRD, milestone 2a) ─────────────────────────────────────────────────
+
+export type AdrDetail = Ok<operations["getApiV1AdrsById"]>;
+export type AdrCreateInput = ReqBody<operations["postApiV1Adrs"]>;
+export type AdrTransitionTarget = ReqBody<operations["postApiV1AdrsByIdTransition"]>["to"];
+export type MacRuleInput = ReqBody<operations["putApiV1Macrules"]>;
+export type MacRulesPage = Ok<operations["getApiV1Macrules"]>;
+export type AdrReviewType = AdrCreateInput["reviewType"];
+
+export async function loadAdr(client: ApiClient, id: string): Promise<WriteResult<AdrDetail>> {
+  const { data, error, response } = await client.GET("/api/v1/adrs/{id}", {
+    params: { path: { id } },
+  });
+  return error || !data ? failure(response?.status, error) : ok(data);
+}
+
+export async function createAdr(
+  client: ApiClient,
+  body: AdrCreateInput,
+): Promise<WriteResult<VersionedResult>> {
+  const { data, error, response } = await client.POST("/api/v1/adrs", { body });
+  return error || !data ? failure(response?.status, error) : ok(data);
+}
+
+export async function transitionAdr(
+  client: ApiClient,
+  id: string,
+  version: number,
+  to: AdrTransitionTarget,
+): Promise<WriteResult<VersionedResult>> {
+  const { data, error, response } = await client.POST("/api/v1/adrs/{id}/transition", {
+    params: { path: { id } },
+    headers: ifMatch(version),
+    body: { to },
+  });
+  return error || !data ? failure(response?.status, error) : ok(data);
+}
+
+export async function loadMacRules(client: ApiClient): Promise<WriteResult<MacRulesPage>> {
+  const { data, error, response } = await client.GET("/api/v1/mac-rules");
+  return error || !data ? failure(response?.status, error) : ok(data);
+}
+
+export async function saveMacRule(
+  client: ApiClient,
+  body: MacRuleInput,
+): Promise<WriteResult<VersionedResult>> {
+  const { data, error, response } = await client.PUT("/api/v1/mac-rules", { body });
+  return error || !data ? failure(response?.status, error) : ok(data);
+}

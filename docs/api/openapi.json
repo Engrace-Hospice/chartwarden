@@ -31397,15 +31397,6 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "name": "If-Match",
-            "in": "header",
-            "required": true,
-            "description": "The ADR version the client last read.",
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "responses": {

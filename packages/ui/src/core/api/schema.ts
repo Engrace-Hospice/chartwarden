@@ -31640,10 +31640,7 @@ export interface operations {
     postApiV1AdrsByIdTransition: {
         parameters: {
             query?: never;
-            header: {
-                /** @description The ADR version the client last read. */
-                "If-Match": string;
-            };
+            header?: never;
             path: {
                 id: string;
             };

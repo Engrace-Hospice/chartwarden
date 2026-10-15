@@ -1903,6 +1903,14 @@
       "app": "web",
       "module": "25-remittance",
       "moduleId": 25,
+      "id": "remittance.adrs",
+      "path": "/remittance/adrs",
+      "permission": "adr.read"
+    },
+    {
+      "app": "web",
+      "module": "25-remittance",
+      "moduleId": 25,
       "id": "remittance.appeals",
       "path": "/remittance/appeals",
       "permission": "appeal.read"

@@ -176,6 +176,23 @@ export function buildDrizzleAdrService(db: DbClient, ports: AdrServicePorts = {}
         if (!claim || (scope !== undefined && !scope.includes(claim.providerEntityId))) {
           throw new NotFoundError("claim not found");
         }
+        // A linked denial must be visible to THIS org under RLS (a foreign key alone ignores RLS, so another
+        // tenant's id would otherwise be accepted), be on the same claim, and be inside the actor's scope.
+        if (input.denialCaseId) {
+          const DC = schema.denialCase;
+          const denial = await tx
+            .select({ claimId: DC.claimId, providerEntityId: DC.providerEntityId })
+            .from(DC)
+            .where(eq(DC.id, input.denialCaseId))
+            .limit(1);
+          if (
+            !denial[0] ||
+            denial[0].claimId !== claim.id ||
+            (scope !== undefined && !scope.includes(denial[0].providerEntityId))
+          ) {
+            throw new NotFoundError("denial case not found");
+          }
+        }
         const window = resolveAdrWindow(await rulesInForce(tx), macName, input.reviewType);
         const derived = deriveAdrDeadline(
           input.requestedOn,

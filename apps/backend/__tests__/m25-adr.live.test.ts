@@ -206,6 +206,36 @@ describe.skipIf(!DB_URL)("M25 ADR intake - LIVE Postgres", () => {
     expect((await svc().listAdrs(scoped, {}, 50)).items).toHaveLength(0);
   });
 
+  it("refuses a linked denial from another tenant, on another claim, or that does not exist", async () => {
+    const mkDenial = async (org: string, pe: string, claim: string) =>
+      (
+        await admin.query(
+          `INSERT INTO denial_case (organization_id, provider_entity_id, claim_id, source_evv_aggregator_submission_id,
+             carc_code, category, source, state, dollar_value, taxonomy_status)
+           VALUES ($1,$2,$3,$4,'50','denial','evv_aggregator_rejection','open',10,'mapped') RETURNING id`,
+          [org, pe, claim, randomUUID()],
+        )
+      ).rows[0].id as string;
+    const foreignPe = (
+      await admin.query(
+        `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+         VALUES ($1,'CCN-ADR-B','B','NPI-ADR-B','enc','12-31') RETURNING id`,
+        [ORG_B],
+      )
+    ).rows[0].id as string;
+    const foreignDenial = await mkDenial(ORG_B, foreignPe, claimId);
+    const otherClaimDenial = await mkDenial(ORG, providerEntityId, randomUUID());
+    const base = { claimId, macName: "CGS", reviewType: "adr" as const, requestedOn: daysAgo(1) };
+    for (const denialCaseId of [foreignDenial, otherClaimDenial, randomUUID()]) {
+      expect(await refused(svc().createAdr(actor(), { ...base, denialCaseId }))).toMatchObject({
+        statusCode: 404,
+      });
+    }
+    const goodDenial = await mkDenial(ORG, providerEntityId, claimId);
+    const { id } = await svc().createAdr(actor(), { ...base, denialCaseId: goodDenial });
+    expect((await row(id)).denial_case_id).toBe(goodDenial);
+  });
+
   it("walks assembly -> review, refuses a skip, and a stale version is a 409", async () => {
     const { id, version } = await svc().createAdr(actor(), {
       claimId,

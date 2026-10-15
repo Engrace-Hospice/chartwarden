@@ -8105,7 +8105,6 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Move an ADR through assembly, review, withdrawal or a missed response (If-Match)",
     body: M25AdrTransitionRequestSchema,
     response: M25AdrVersionedResultSchema,
-    headers: { "If-Match": { required: true, description: "The ADR version the client last read." } },
   },
   "GET /api/v1/mac-rules": {
     summary: "The organization's MAC response-window rules",
