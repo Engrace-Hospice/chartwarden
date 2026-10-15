@@ -61,7 +61,7 @@ export const adrCase = pgTable(
     responseDueAt: timestamp("response_due_at", { withTimezone: true }).notNull(),
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
     closedAt: timestamp("closed_at", { withTimezone: true }),
-    // Milestone 2b — packet review and filing (mig 1109). membership ids are logical; the manifest is frozen
+    // Milestone 2b — packet review and filing (mig 1110). membership ids are logical; the manifest is frozen
     // at filing by trigger. filing_confirmation_ref is free text (audit-scrubbed).
     checklist: jsonb("checklist").notNull().default(sql`'{}'::jsonb`),
     sentToReviewByMembershipId: uuid("sent_to_review_by_membership_id"),
@@ -104,7 +104,7 @@ export const adrCaseEvent = pgTable(
   }),
 );
 
-// Milestone 2b (mig 1109): the M22 documents attached to an ADR response. document_id is a LOGICAL M22 id; a
+// Milestone 2b (mig 1110): the M22 documents attached to an ADR response. document_id is a LOGICAL M22 id; a
 // detach stamps removed_at (rows are never deleted, and none changes once the case has been filed).
 export const adrCaseDocument = pgTable(
   "adr_case_document",

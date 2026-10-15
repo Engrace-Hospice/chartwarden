@@ -74,6 +74,9 @@ import {
 } from "@wardenx/types";
 import { type SQL, and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
+import { cancelOpenRequestForMessage } from "./ack-requests/ack-cancel";
+import { assertMessageEditable } from "./ack-requests/ack-edit-lock";
+import { ackGuardName } from "./ack-requests/ack-service";
 import { projectAlertInboxPresentation } from "./alert-inbox-presentation";
 import { attachmentPreviewLabel } from "./attachment-preview-label";
 import { bindAttachmentsInTx, loadAttachmentViews } from "./attachments/attachment-service-db";
@@ -1560,6 +1563,8 @@ export function createDbMessagingRouteService(
         }
         // WP 4.1: an urgent clinical message is final once sent (before the window check: never a window answer).
         assertUrgencyEditable(m.urgency);
+        // WP 4.2: a message that asks for a response is final too (ADR-0056 D8); a correction is a new message.
+        await assertMessageEditable(tx, orgId, input.messageId);
         // WP 1.5: text may be cleared only while the message still shows an attachment.
         if (!input.body.trim()) {
           const kept = await loadAttachmentViews(tx, {
@@ -1693,10 +1698,30 @@ export function createDbMessagingRouteService(
         // The body_cipher is retained through the retention window; only status/deleted_at change.
         // edited_at is cleared so the mutually-exclusive `message_status_shape` CHECK holds.
         const deletedAt = new Date();
-        await tx
-          .update(MSG)
-          .set({ status: "deleted", deletedAt: deletedAt, editedAt: null })
-          .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, input.messageId)));
+        // WP 4.2: the message's open response request ends with it, in this transaction (the database refuses the tombstone otherwise).
+        await cancelOpenRequestForMessage(tx, {
+          orgId,
+          messageId: input.messageId,
+          actorUserId: input.userId,
+          outbox: opts.outbox,
+          at: deletedAt,
+        });
+        try {
+          await tx
+            .update(MSG)
+            .set({ status: "deleted", deletedAt: deletedAt, editedAt: null })
+            .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, input.messageId)));
+        } catch (err) {
+          // A request raised after the cancel above (a race) makes the database refuse the tombstone: a conflict to retry, not a 500.
+          if (ackGuardName(err)) {
+            throw new WardenXError(
+              "ACK_MESSAGE_HAS_OPEN_REQUEST",
+              "This message has an open response request. Try deleting it again.",
+              409,
+            );
+          }
+          throw err;
+        }
         // WP 2.4: a deleted message frees its pin (the 20-pin cap counts live pins only). Same per-channel lock a pin
         // takes, so a pin racing this delete either lands first (and is freed here) or waits and then finds the
         // message deleted; it can never leave a pin on a deleted message.

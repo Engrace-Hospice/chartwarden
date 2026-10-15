@@ -49,6 +49,7 @@ import type {
   ElevatedApprovalReader,
   EmergencyServiceJurisdictionReader,
   EncounterCreator,
+  EscalationRouter,
   EvvAggregatorReferenceReader,
   EvvBracketResolver,
   EvvComplianceReader,
@@ -1546,6 +1547,25 @@ export const onCallProviderDenyStub: OnCallProvider = {
   },
   activeShiftsAt() {
     throw new NotImplementedError("OnCallProvider");
+  },
+};
+
+/**
+ * M19 (via M36 WP 4.3, ADR-0057) - the EscalationRouter default until M19 binds a real router. Unlike its neighbours it does NOT
+ * throw: it ANSWERS `unavailable` / `router_not_bound` stamped `source: "deny_stub"`, so the future timer worker (WP 4.4) gets a typed
+ * "cannot route" it must surface. It never names a recipient and never reports a coverage gap or an empty list ("nobody needed").
+ * NOTE for WP 4.4: `unavailable` is also what this stub answers for a MALFORMED request (it does not validate), so a caller must read
+ * `unavailable` as "cannot route" whatever the reason and never retry it as if it were transient routing data.
+ */
+export const escalationRouterDenyStub: EscalationRouter = {
+  async resolveTier(_orgId, request) {
+    return {
+      kind: "unavailable",
+      reason: "router_not_bound",
+      tier: request.tier,
+      asOf: request.asOf,
+      source: "deny_stub",
+    };
   },
 };
 

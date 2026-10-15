@@ -1,14 +1,20 @@
-import { Button, CenteredCardLayout, InlineAlert, t, useApiClient } from "@wardenx/ui";
-// @wardenx/portal — Signed in (`/signed-in`). The landing for the sign-in link / password flow: the browser is now
-// AUTHENTICATED but its session is not yet a portal session. This screen asks the server which family portal accounts
-// the signed-in user holds (their OWN, no PHI — a tenant name and a relationship), binds the session to the right one,
-// and moves on to the patient picker. One eligible account binds automatically; several ask the person to choose; a
-// blocked account says why in plain words (invitation not accepted yet, suspended, email not verified, no access).
+import {
+  Button,
+  CenteredCardLayout,
+  Glyph,
+  InlineAlert,
+  useApiClient,
+} from "@wardenx/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { signOut } from "../auth-http";
 import { humanize } from "./portal-format";
+import {
+  PortalOnboardingBrand,
+  PortalOnboardingHeading,
+  PortalOnboardingHelp,
+} from "./onboarding-ui";
 
 interface AccountChoice {
   portalAccountId: string;
@@ -23,7 +29,6 @@ type Phase =
   | { kind: "blocked"; message: string }
   | { kind: "failed"; message: string };
 
-/** Plain-language copy for each typed refusal (the server names the real reason; the page never shows the code). */
 export function blockedMessage(reason: string | null): string {
   switch (reason) {
     case "SIGN_IN_ACCOUNT_NOT_ACTIVATED":
@@ -48,100 +53,192 @@ export function PortalSignedIn(): JSX.Element {
   const navigate = useNavigate();
   const [phase, setPhase] = useState<Phase>({ kind: "working" });
   const [busyId, setBusyId] = useState<string | null>(null);
-  const started = useRef(false);
+  const [attempt, setAttempt] = useState(0);
+  const generation = useRef(0);
+  const pendingBind = useRef(false);
+  const bindRef = useRef<((id: string) => void) | null>(null);
 
-  async function establish(portalAccountId?: string): Promise<void> {
-    setBusyId(portalAccountId ?? "auto");
-    const res = await client.POST("/api/v1/portal/sign-in/establish", {
-      body: portalAccountId ? { portalAccountId } : {},
-    });
-    setBusyId(null);
-    if (res.error) {
-      const code = (res.error as { error?: { code?: string } } | undefined)?.error?.code ?? null;
-      if (res.response?.status === 429) {
-        setPhase({
-          kind: "failed",
-          message: "Too many attempts. Please wait a few minutes and try again.",
-        });
-      } else if (res.response?.status === 401) {
-        navigate("/");
-      } else {
-        setPhase({ kind: "blocked", message: blockedMessage(code) });
-      }
-      return;
-    }
-    navigate("/patient-picker");
-  }
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once per mount; `establish` is stable enough here
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
-    void (async () => {
-      const res = await client.GET("/api/v1/portal/sign-in/accounts", {});
-      if (res.error) {
-        if (res.response?.status === 401) navigate("/");
-        else
+    const version = ++generation.current;
+    const current = () => version === generation.current;
+    setPhase({ kind: "working" });
+    setBusyId(null);
+    pendingBind.current = false;
+
+    async function bind(portalAccountId: string): Promise<void> {
+      if (!current() || pendingBind.current) return;
+      pendingBind.current = true;
+      setBusyId(portalAccountId);
+      try {
+        const res = await client.POST("/api/v1/portal/sign-in/establish", {
+          body: { portalAccountId },
+        });
+        if (!current()) return;
+        if ("error" in res) {
+          const code =
+            (res.error as { error?: { code?: string } } | undefined)?.error
+              ?.code ?? null;
+          if (res.response?.status === 401) navigate("/", { replace: true });
+          else if (res.response?.status === 429)
+            setPhase({
+              kind: "failed",
+              message:
+                "Too many attempts. Please wait a few minutes and try again.",
+            });
+          else if (res.response?.status === 403 || res.response?.status === 404)
+            setPhase({ kind: "blocked", message: blockedMessage(code) });
+          else
+            setPhase({
+              kind: "failed",
+              message: "We couldn't open your account. Please try again.",
+            });
+        } else {
+          navigate("/patient-picker", {
+            replace: true,
+            state: { openOnlyPatient: true },
+          });
+        }
+      } catch {
+        if (current())
           setPhase({
             kind: "failed",
-            message: "We couldn't check your account. Please try again.",
+            message: "We couldn't connect securely. Please try again.",
           });
-        return;
+      } finally {
+        if (current()) {
+          pendingBind.current = false;
+          setBusyId(null);
+        }
       }
-      const items = (res.data?.items ?? []) as AccountChoice[];
-      if (items.length === 0) {
-        setPhase({ kind: "blocked", message: blockedMessage(null) });
-        return;
+    }
+
+    // A single eligible account must be bound explicitly: the response may also include blocked accounts.
+    async function load(): Promise<void> {
+      try {
+        const res = await client.GET("/api/v1/portal/sign-in/accounts", {});
+        if (!current()) return;
+        if ("error" in res) {
+          if (res.response?.status === 401) navigate("/", { replace: true });
+          else
+            setPhase({
+              kind: "failed",
+              message: "We couldn't check your account. Please try again.",
+            });
+          return;
+        }
+        const items = (res.data?.items ?? []) as AccountChoice[];
+        const eligible = items.filter((item) => item.blockedReason === null);
+        if (!items.length)
+          setPhase({ kind: "blocked", message: blockedMessage(null) });
+        else if (!eligible.length)
+          setPhase({
+            kind: "blocked",
+            message: blockedMessage(items[0]?.blockedReason ?? null),
+          });
+        else if (eligible.length === 1)
+          await bind(eligible[0]!.portalAccountId);
+        else setPhase({ kind: "choose", choices: eligible });
+      } catch {
+        if (current())
+          setPhase({
+            kind: "failed",
+            message: "We couldn't connect securely. Please try again.",
+          });
       }
-      const eligible = items.filter((a) => a.blockedReason === null);
-      if (eligible.length === 0) {
-        setPhase({ kind: "blocked", message: blockedMessage(items[0]?.blockedReason ?? null) });
-      } else if (eligible.length === 1) {
-        await establish();
-      } else {
-        setPhase({ kind: "choose", choices: eligible });
-      }
-    })();
-  }, [client, navigate]);
+    }
+    void load();
+
+    // The account selection handler uses this effect-scoped closure, never a stale account list.
+    bindRef.current = (id: string) => void bind(id);
+    return () => {
+      generation.current++;
+      bindRef.current = null;
+    };
+  }, [client, navigate, attempt]);
 
   async function leave(): Promise<void> {
+    generation.current++;
     await signOut();
-    navigate("/");
+    navigate("/", { replace: true });
   }
 
   return (
     <CenteredCardLayout
-      brand={
-        <div style={{ fontFamily: t.fontDisplay, fontSize: "1.5rem", fontWeight: 600 }}>
-          WardenX Family Portal
-        </div>
-      }
+      brand={<PortalOnboardingBrand />}
+      footer={<PortalOnboardingHelp />}
     >
-      {phase.kind === "working" ? (
-        <output style={{ margin: 0 }}>Opening your account…</output>
-      ) : phase.kind === "choose" ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: t.space3 }}>
-          <h1 style={{ margin: 0, fontSize: "1.15rem" }}>Which account would you like to open?</h1>
-          {phase.choices.map((choice) => (
-            <Button
-              key={choice.portalAccountId}
-              tone="secondary"
-              loading={busyId === choice.portalAccountId}
-              onClick={() => void establish(choice.portalAccountId)}
+      <div className="wx-portal-onboarding wx-portal-onboarding--accounts">
+        {phase.kind === "working" ? (
+          <div role="status" className="wx-portal-onboarding__busy">
+            <span
+              className="wx-portal-onboarding__busy-icon"
+              aria-hidden="true"
             >
-              {choice.organizationName} · {humanize(choice.relationship)}
+              <Glyph name="shield-check" size={26} />
+            </span>
+            <PortalOnboardingHeading
+              eyebrow="Secure access"
+              title="Opening your account"
+              description="Checking which care information you are allowed to view."
+            />
+          </div>
+        ) : phase.kind === "choose" ? (
+          <div className="wx-portal-auth-form">
+            <PortalOnboardingHeading
+              eyebrow="Your organizations"
+              title="Choose your care team"
+              description="Select the hospice organization whose portal you'd like to open."
+            />
+            <div
+              className="wx-portal-account-choices"
+              aria-label="Available portal accounts"
+            >
+              {phase.choices.map((choice) => (
+                <button
+                  key={choice.portalAccountId}
+                  type="button"
+                  className="wx-portal-account-choice"
+                  disabled={busyId !== null}
+                  onClick={() => bindRef.current?.(choice.portalAccountId)}
+                >
+                  <span
+                    className="wx-portal-account-choice__icon"
+                    aria-hidden="true"
+                  >
+                    <Glyph name="heart" size={22} />
+                  </span>
+                  <span className="wx-portal-account-choice__content">
+                    <strong>
+                      {choice.organizationName || "Your hospice team"}
+                    </strong>
+                    <small>Access as {humanize(choice.relationship)}</small>
+                  </span>
+                  <span aria-hidden="true">
+                    {busyId === choice.portalAccountId ? "Opening…" : "→"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="wx-portal-auth-form">
+            <PortalOnboardingHeading
+              eyebrow="Account access"
+              title="We couldn't open the portal"
+              description="Your hospice care team can help if your access has changed."
+            />
+            <InlineAlert tone="error">{phase.message}</InlineAlert>
+            {phase.kind === "failed" ? (
+              <Button onClick={() => setAttempt((n) => n + 1)}>
+                Try again
+              </Button>
+            ) : null}
+            <Button tone="secondary" onClick={() => void leave()}>
+              Back to sign in
             </Button>
-          ))}
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: t.space3 }}>
-          <h1 style={{ margin: 0, fontSize: "1.15rem" }}>We couldn't open the portal</h1>
-          <InlineAlert tone="error">{phase.message}</InlineAlert>
-          <Button tone="secondary" onClick={() => void leave()}>
-            Back to sign in
-          </Button>
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </CenteredCardLayout>
   );
 }

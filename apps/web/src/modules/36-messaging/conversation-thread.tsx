@@ -1,6 +1,7 @@
 import { BACKGROUND_REQUEST_HEADERS, useApiClient } from "@wardenx/ui";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { JSX, KeyboardEvent, RefObject, UIEvent } from "react";
+import { AckRequestsProvider } from "./ack-request-card";
 import { sendBlockedReason } from "./attachment-utils";
 import { applyTextEdit, detectMac, insertText } from "./composer-format";
 import { handleComposerKeyDown } from "./composer-keys";
@@ -626,38 +627,44 @@ function ConversationThreadView({
       <PresenceMembers presence={presence} />
 
       <div className="wx-messaging-thread-body">
-        <MessageTimeline
-          timelineRef={timelineRef}
-          messages={messages}
-          loadError={loadError}
-          loadCorrelationId={loadCorrelationId}
-          olderCursor={olderCursor}
-          loadingOlder={loadingOlder}
-          meId={meId}
-          highlightedMessageId={jump.highlightId ?? anchorMessageId}
-          authorById={authorById}
-          canReply={!channel.archivedAt && tools.canReply}
-          canAnnotate={!channel.archivedAt}
-          patientLinked={channel.kind === "care_team" && Boolean(channel.subjectId)}
-          onShowReceipts={tools.onShowReceipts}
-          onScroll={handleTimelineScroll}
-          onRetry={() => void loadLatest()}
-          onLoadOlder={() => void loadOlder()}
-          onOpenThread={panel.openThread}
-          onJumpToMessage={jump.jumpToMessage}
-          pending={
-            <PendingMessageList
-              items={outbox.itemsFor(channel.channelId)}
-              delivered={outbox.deliveredFor(channel.channelId)}
-              channelId={channel.channelId}
-              onFocusComposer={focusComposer}
-              meId={meId}
-              meDisplayName={meDisplayName}
-              onRetry={(localId) => void outbox.retry(localId)}
-              onDiscard={outbox.discard}
-            />
-          }
-        />
+        <AckRequestsProvider
+          channelId={channel.channelId}
+          enabled={channel.kind === "care_team" && Boolean(channel.subjectId)}
+          refreshKey={messages ? (messages.at(-1)?.messageId ?? "") : null}
+        >
+          <MessageTimeline
+            timelineRef={timelineRef}
+            messages={messages}
+            loadError={loadError}
+            loadCorrelationId={loadCorrelationId}
+            olderCursor={olderCursor}
+            loadingOlder={loadingOlder}
+            meId={meId}
+            highlightedMessageId={jump.highlightId ?? anchorMessageId}
+            authorById={authorById}
+            canReply={!channel.archivedAt && tools.canReply}
+            canAnnotate={!channel.archivedAt}
+            patientLinked={channel.kind === "care_team" && Boolean(channel.subjectId)}
+            onShowReceipts={tools.onShowReceipts}
+            onScroll={handleTimelineScroll}
+            onRetry={() => void loadLatest()}
+            onLoadOlder={() => void loadOlder()}
+            onOpenThread={panel.openThread}
+            onJumpToMessage={jump.jumpToMessage}
+            pending={
+              <PendingMessageList
+                items={outbox.itemsFor(channel.channelId)}
+                delivered={outbox.deliveredFor(channel.channelId)}
+                channelId={channel.channelId}
+                onFocusComposer={focusComposer}
+                meId={meId}
+                meDisplayName={meDisplayName}
+                onRetry={(localId) => void outbox.retry(localId)}
+                onDiscard={outbox.discard}
+              />
+            }
+          />
+        </AckRequestsProvider>
 
         {contextOpen && patient ? (
           <PatientContextAside

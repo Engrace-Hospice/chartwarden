@@ -36,6 +36,12 @@ describe("urgent writer is singular", () => {
     "apps/backend/src/modules/36-messaging/messaging-message-hydration.ts",
     "packages/messaging/src/store/in-memory-service.ts",
     "packages/messaging/src/interfaces/route-service.ts",
+    // WP 4.2: READ the message's urgency and named recipient to derive the request's class and enforce that an urgent request names
+    // that recipient. None of them writes `urgency` or the recipient (the one writer stays the urgent service plus the two cores).
+    "apps/backend/src/modules/36-messaging/ack-requests/ack-service.ts",
+    "apps/backend/src/modules/36-messaging/ack-requests/ack-store-db.ts",
+    "apps/backend/src/modules/36-messaging/ack-requests/ack-store-memory.ts",
+    "apps/backend/src/modules/36-messaging/ack-requests/ack-types.ts",
   ]);
   const scanned = ["apps/backend/src", "packages/messaging/src"].flatMap((d) =>
     walk(join(ROOT, d)).map((f) => relative(ROOT, f)),

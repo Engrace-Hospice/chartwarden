@@ -72,6 +72,25 @@ export interface UrgentServiceDeps {
     channelId: string,
     clientMessageId: string,
   ) => Promise<string | null>;
+  /**
+   * WP 4.2: tracks a response to the urgent message. When present and `enabled`, the tracker's request is created in the SAME
+   * transaction as the message (the send core's hook), so a committed urgent message always has its request and a rolled-back
+   * one never does. Off or absent: the urgent entry behaves exactly as in WP 4.1. A throw from `enabled` fails the send (never silently untracked).
+   */
+  readonly responseTracker?: {
+    readonly enabled: (orgId: string) => Promise<boolean>;
+    readonly createInTx: (
+      tx: unknown,
+      facts: {
+        readonly orgId: string;
+        readonly messageId: string;
+        readonly channelId: string;
+        readonly patientId: string;
+        readonly requesterUserId: string;
+        readonly assigneeUserId: string;
+      },
+    ) => Promise<void>;
+  };
   readonly now?: () => Date;
 }
 
@@ -163,6 +182,9 @@ export function createUrgentService(deps: UrgentServiceDeps): UrgentService {
         throw linkNotAvailable();
       }
 
+      const tracker = deps.responseTracker;
+      // A flag lookup ERROR propagates: an urgent message must never silently lose its request on a blip.
+      const track = tracker ? await tracker.enabled(actor.orgId) : false;
       const outcome = { hookRan: false };
       const sent = await deps.messaging.sendMessage(actor.orgId, {
         channelId: input.channelId,
@@ -185,6 +207,16 @@ export function createUrgentService(deps: UrgentServiceDeps): UrgentService {
             recipientUserId: input.recipientUserId,
             at: clock(),
           });
+          if (track && tracker) {
+            await tracker.createInTx(tx, {
+              orgId: actor.orgId,
+              messageId,
+              channelId: input.channelId,
+              patientId,
+              requesterUserId: actor.userId,
+              assigneeUserId: input.recipientUserId,
+            });
+          }
         },
       });
       return {

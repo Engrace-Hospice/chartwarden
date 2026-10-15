@@ -78,6 +78,29 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     enabled: true,
   },
   {
+    eventType: "m36.ack.requested",
+    category: "clinical_urgent",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    // WP 4.2: the assignee of an IMPORTANT acknowledgment request is told, in-app only, with generic text (an urgent message has
+    // its own m36.message.urgent_sent alert; the consumer sends nothing for that class). NOT a page and NOT the emergency path.
+    resolverArgs: { roleKeys: [], userIdPaths: ["recipientUserId"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.ack.reassigned",
+    category: "clinical_urgent",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    // WP 4.2: the NEW assignee of a reassigned request is told, in-app only, with generic text. Out-of-band delivery is WP 4.6.
+    resolverArgs: { roleKeys: [], userIdPaths: ["recipientUserId"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
     eventType: "m36.medication_question.unrouted",
     category: "clinical_routine",
     severityFloor: "warn",

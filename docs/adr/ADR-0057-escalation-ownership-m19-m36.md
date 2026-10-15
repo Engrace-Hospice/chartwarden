@@ -1,6 +1,6 @@
 # ADR-0057 — M19 owns on-call, tiers and triage escalation; M36 owns only acknowledgment-request state and timers and reaches M19 through one `EscalationRouter` seam
 
-- **Status:** **Proposed** — requires a named M19 owner (still open) before WP 4.3; tier-timing policy is decided (D6, 2026-10-11). Drafted in Phase 0.
+- **Status:** **Proposed** — the contract and a fail-closed stub ship in WP 4.3 (2026-10-15); the real M19 side still requires a named M19 owner (open); tier-timing policy is decided (D6, 2026-10-11). Drafted in Phase 0.
 - **Date:** 2026-10-11
 - **Phase:** Messaging Hub Phase 4 (WP 4.3, 4.4, 4.5); the seam contract is a Phase 0 deliverable (plan WP 0.5).
 - **Extends:** [ADR-0005](ADR-0005-manifest-single-source-of-truth.md) (seam interfaces live in `packages/types`; consumption needs no
@@ -92,6 +92,65 @@ proposal; the M19 owner confirms or amends it.
 10. **Critical class (D7, decided 2026-10-11 by the product owner).** Critical is modelled as `ack_class = critical_symptom`
     (ADR-0056 item 7) with a permanent "not the emergency path" UI notice. The router treats it like any other class; it adds no
     new M19 behaviour. The owner of the M19 side of this seam is still to be named.
+
+11. **WP 4.3 delivery (2026-10-15): the contract and a deny-stub, not a router.** With no M19 owner, 4.3 ships only what M36 can own:
+    - **Contract** in `packages/types/src/messaging-escalation.ts`, refining the working shape above. `resolveTier(orgId, { patientId,
+      requiredRole, tier, asOf })` answers one of `resolved` (`userIds`, `nextTier` or null, the schedule's IANA `timeZone`), `coverage_gap`
+      (the tier exists, nobody covers it at `asOf`; `nextTier`) or `unavailable` (`router_not_bound`, `no_route_configured`). Every answer
+      echoes `tier` and `asOf` and carries `source` (`m19`, `deny_stub`, `in_memory_fake`). Ids only. `orgId` stays positional and first. The
+      earlier `OnCallActor[]` and `tierAckWindowMinutes` are not in the contract: actors are ids (M36 resolves display data itself under
+      its own authorization) and the per-tier window is deferred to the owner conversation (see "What M19 must provide").
+    - **Seam `EscalationRouter`** (owner module 19, `phi: false`) in the M1 registry (`REQUIRED_SEAMS`, `SeamName`, `SeamContracts`). Its
+      deny-stub does **not** throw (unlike `OnCallProvider`'s): it answers `unavailable` / `router_not_bound` / `source: "deny_stub"`, so a
+      caller gets a typed "cannot route" to surface and can never read the stub as `coverage_gap`, an empty list or "nobody needed". A
+      real store failure in a bound router still throws (item 5 is unchanged).
+    - **M36 only resolves it**, through `getEscalationRouter()` in `36-messaging/seams.ts`; M36 never registers an implementation. A
+      backend test fails the build if production code imports the in-memory router, registers one from M36, or resolves the seam any
+      other way.
+    - **Shift semantics, tested in `packages/messaging`** (`shift-window.ts`, reference for M19): windows are wall-clock in the
+      schedule's zone, start inclusive and end exclusive, a window ending at or before its start crosses midnight and its weekday is the
+      start day. Spring-forward: a start in the skipped hour begins at the first instant after the gap. Fall-back: the repeated hour is
+      inside a window spanning it on both passes. Adjacent windows never gap or overlap. An unknown zone throws; there is no server-zone
+      fallback. A test-only in-memory router (`source: "in_memory_fake"`) runs the contract over these rules to prove the shift-boundary
+      and time-zone acceptance.
+    - **Request validation (review fixes).** `asOf` must be a full ISO-8601 date-time with an explicit offset (`Z` or `+hh:mm`), at most
+      40 characters; an offset-less or loose string is refused (never read in the server's zone). `tier` is a safe integer 1..99. A
+      resolved answer's `userIds` is a non-empty tuple. A tier the role's ladder does not have is `unavailable` / `tier_not_configured`,
+      never `coverage_gap` (a gap strictly means "the tier exists, nobody covers `asOf`"); `nextTier` is `tier + 1` when that tier exists,
+      else null; the fake requires contiguous tiers from 1. The answer's `timeZone` is the covering rotation's zone (the tier's first
+      rotation's zone for a gap). The whole schedule is validated up front (`validateShiftSchedule`).
+    - **Fall-back double handoff.** Because the rule is wall-clock, a handoff at a time inside the repeated fall-back hour happens twice
+      as elapsed time runs (A, B, A, B for a 01:30 handoff on 2026-11-01 in New York; a test documents it). WP 4.4 must not re-evaluate
+      the router at later instants to decide who owns a request already routed: it records the resolved tier and assignee on the request
+      and keys idempotency on the request, not on the clock.
+    - **Org and patient checks are M19's.** The implementation MUST enforce `orgId` against the request context and MUST verify
+      `patientId` belongs to `orgId`; the in-memory fake enforces only the org it was built for. `getEscalationRouter()` is the raw seam
+      with no wrapper; WP 4.4 adds an org-checking wrapper (and a boot report that the router is still the stub; no such warning pattern
+      exists for other stubs today) before any worker passes an org read from an event payload.
+    - **Fake not on the barrel.** The in-memory router is reachable only at `@wardenx/messaging/testing/in-memory-escalation-router`.
+    - **No M36 timer, caller, table, route, event or flag change.** Wiring the router into timers is WP 4.4.
+
+## What M19 must provide (when an owner is named)
+
+- A real `EscalationRouter` registered over the stub from M19's own init (`registerSeam("EscalationRouter", ...)`), stamping
+  `source: "m19"`, reading its own roster and tier config, with the `orgId` assertion (`assertCallerOrg`) and a store failure that throws.
+- For each (org, role, tier): the user ids covering `asOf`, whether a tier n+1 exists, and the **IANA zone of the schedule** the shift
+  was read in. Shift boundaries follow the rules in item 11 (it may reuse `shift-window.ts` or must pass the same cases).
+- Answers for a role with no triage call and for a patient-scoped lookup; if M19 cannot resolve role-level tiers without a triage
+  call, say so (open question below), because the contract then needs a field.
+- Optional, deferred: the per-tier ack window (`tierAckWindowMinutes`). Adding it later is an additive contract change under this ADR.
+- No new M19 table is expected; if a field is missing, extend M19's seam (this ADR), never a parallel roster in M36.
+
+## Accepted limits (WP 4.3)
+
+- Until M19 binds a router, every call answers `unavailable`; escalation cannot route and the flags `messaging.urgent_clinical` and
+  `messaging.ack_requests` stay off.
+- The shift rule is wall-clock based: in a fall-back hour a window ending inside the repeated hour covers both passes, and a window
+  starting in the spring-forward gap starts after it. M19 may differ only by agreeing a documented alternative here.
+- Patient-level overrides of the ladder are not modelled in the contract beyond carrying `patientId`; M19 decides what it does with it.
+- The in-memory router is a test fixture, not a roster; it has its own subpath export (not the barrel) and a test scanning `apps/` and
+  `packages/` guards production against using it.
+- The deny-stub does not validate: a malformed request also gets `unavailable` from it.
 
 ## Alternatives considered
 

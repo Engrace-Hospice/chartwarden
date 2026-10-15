@@ -3404,7 +3404,7 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "provider_entity_scope",
   },
-  // --- ADR surface (hospice ADR/TPE/QIC PRD milestone 2a; granted by migration 1107) ---
+  // --- ADR surface (hospice ADR/TPE/QIC PRD milestone 2a; granted by migration 1108) ---
   "adr.read": {
     resource: "adr_case",
     action: "read",
@@ -3417,7 +3417,7 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "provider_entity_scope",
   },
-  // Milestone 2b (migration 1109): sign off a packet / record the filing (the filing is also step-up gated).
+  // Milestone 2b (migration 1110): sign off a packet / record the filing (the filing is also step-up gated).
   "adr.review": {
     resource: "adr_case",
     action: "review",

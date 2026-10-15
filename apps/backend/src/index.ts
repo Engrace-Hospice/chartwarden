@@ -264,6 +264,7 @@ import {
   embedderUnavailable,
   licensedSourceDenyStub,
 } from "@wardenx/terminology-loader";
+import { buildAckRateLimit } from "./bootstrap/plugins/ack-rate-limit";
 import { buildGlobalSearchRateLimit } from "./bootstrap/plugins/global-search-rate-limit";
 import { buildUrgentRateLimit } from "./bootstrap/plugins/urgent-rate-limit";
 import {
@@ -1419,6 +1420,7 @@ import {
   M36_INTEGRITY_PLATFORM_JOB_ID,
   M36_OUTBOX_EVENTS,
   bindOutOfBandTransports,
+  buildAckDeps,
   buildClinicalLinkDeps,
   buildHandoffDeps,
   buildIdgAlertConsumers,
@@ -1474,6 +1476,7 @@ import {
   buildM36AccessRevocationPlatformConsumer,
   combineReassignments,
 } from "./modules/36-messaging/outbox-consumers/access-revocation";
+import { buildM36AckNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/ack-notifications";
 import { buildM36AdmissionComplianceAlertConsumer } from "./modules/36-messaging/outbox-consumers/admission-compliance-alerts";
 import { buildM36AmendmentSlaAlertConsumer } from "./modules/36-messaging/outbox-consumers/amendment-sla-alerts";
 import { buildM36CapThresholdAlertConsumer } from "./modules/36-messaging/outbox-consumers/cap-threshold-alerts";
@@ -3481,6 +3484,13 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   const rateLimitStore = rateLimitRedisClient
     ? createRedisRateLimitStore(rateLimitRedisClient)
     : undefined;
+  // M36 WP 4.1/4.2 - the urgent and acknowledgment-request limiters fall back to per-replica memory without a shared store: N
+  // replicas then allow N times the budget. That is bounded but weaker, so say so loudly in production instead of silently.
+  if (!rateLimitStore && process.env.NODE_ENV === "production") {
+    console.warn(
+      "[m36] WARNING: no shared rate-limit store is configured (REDIS_URL); the urgent-message and acknowledgment-request limiters use per-replica memory, so each replica allows its own full budget.",
+    );
+  }
   // WP 2.7b / ADR-0058 P2 - the global-search limiter (active only on the cluster-wide store) and P1 ring key provider.
   // Both are shared by the route mount and the indexer/worker; the ring cache is resolved per call (bound later at boot).
   const m36SearchRateLimit = buildGlobalSearchRateLimit(rateLimitStore);
@@ -4244,6 +4254,25 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         });
       })()
     : undefined;
+  // WP 4.2 - acknowledgment requests (ADR-0069). ONE binding for the routes, the urgent entry's in-transaction hook and the
+  // notification consumer; creating a request is off unless the tenant flag `messaging.ack_requests` is on (an existing request can
+  // always be settled). Stores the request and its history and exposes four transitions; it does not time, route, escalate or page
+  // anyone (WP 4.3 - 4.5).
+  const m36Ack = dbHandle
+    ? (() => {
+        const messaging = createDbMessagingRouteService(dbHandle.db, {
+          outbox: m36OutboxPublisher,
+        });
+        return buildAckDeps({
+          db: dbHandle.db,
+          flags: featureFlagReader,
+          outbox: m36OutboxPublisher,
+          messaging: { canViewChannel: messaging.canViewChannel },
+          permissionsFor: async (organizationId, userId) =>
+            resolveActorPermissions({ organizationId, userId }),
+        });
+      })()
+    : undefined;
   // WP 4.1 - "Urgent clinical". One binding for the routes; off unless the tenant flags `messaging.urgent_clinical` AND
   // `messaging.sbar` are on. It stores and marks an urgent message and tells the named recipient in-app; it does not page,
   // escalate or acknowledge (WP 4.2 - 4.4).
@@ -4262,6 +4291,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           },
           permissionsFor: async (organizationId, userId) =>
             resolveActorPermissions({ organizationId, userId }),
+          // WP 4.2: the request is created in the send transaction when `messaging.ack_requests` is on.
+          ...(m36Ack ? { responseTracker: m36Ack.responseTracker } : {}),
         });
       })()
     : undefined;
@@ -4806,6 +4837,16 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                       rateLimitStore ?? createInMemoryRateLimitStore(),
                       { isReplay: m36Urgent.isReplay },
                     ),
+                  },
+                }
+              : {}),
+            // WP 4.2 - acknowledgment requests; creating one is off unless tenant flag `messaging.ack_requests` is on.
+            ...(m36Ack
+              ? {
+                  ackRequests: {
+                    service: m36Ack.service,
+                    // Fail-closed per-user / per-org / per-pair limiter on create and reassign; per replica on the in-memory store.
+                    rateLimit: buildAckRateLimit(rateLimitStore ?? createInMemoryRateLimitStore()),
                   },
                 }
               : {}),
@@ -9912,6 +9953,18 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                   alerts: getSeam("AlertEmitter") as AlertEmitter,
                   messaging: createDbMessagingRouteService(dbHandle.db),
                   stillQualified: m36Urgent.stillQualified,
+                  warn: (message, context) => app.log.warn(context, message),
+                }),
+              ]
+            : []),
+          // WP 4.2 - one fixed-text in-app alert for the assignee of an important request, or the new assignee of a reassign.
+          ...(m36Ack
+            ? [
+                buildM36AckNotificationsConsumer({
+                  alerts: getSeam("AlertEmitter") as AlertEmitter,
+                  messaging: createDbMessagingRouteService(dbHandle.db),
+                  isWaitingForAssignee: m36Ack.isWaitingForAssignee,
+                  stillQualified: m36Ack.stillQualified,
                   warn: (message, context) => app.log.warn(context, message),
                 }),
               ]

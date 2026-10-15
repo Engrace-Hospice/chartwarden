@@ -52,6 +52,7 @@ function setup(
     viewers?: string[];
     enabled?: boolean;
     sendFails?: boolean;
+    tracker?: UrgentServiceDeps["responseTracker"];
   } = {},
 ) {
   const published: Array<{ eventName: string; payload: Record<string, unknown> }> = [];
@@ -86,6 +87,7 @@ function setup(
     isQualified: async (_o, u) => !state.unqualified.has(u) && u !== AIDE,
     findReplayRecipient: async (_o, _a, _c, clientId) => recipientOf.get(clientId) ?? null,
     displayName: async (_o, u) => (u === RN ? "Rita RN" : u === RN2 ? "Al RN" : null),
+    ...(over.tracker ? { responseTracker: over.tracker } : {}),
     now: () => new Date("2026-10-14T12:00:00.000Z"),
   };
   return { service: createUrgentService(deps), published, sends, state };
@@ -270,5 +272,74 @@ describe("options", () => {
       patient_id: null,
       recipients: [],
     });
+  });
+});
+
+describe("the response tracker hook (WP 4.2)", () => {
+  type Tracker = NonNullable<UrgentServiceDeps["responseTracker"]>;
+  const tracker = (enabled: () => Promise<boolean>, calls: unknown[][] = []): Tracker => ({
+    enabled,
+    createInTx: async (...args) => void calls.push(args),
+  });
+
+  it("creates the request inside the send transaction, naming the author, the recipient and the patient", async () => {
+    const calls: unknown[][] = [];
+    const { service } = setup({ tracker: tracker(async () => true, calls) });
+
+    await service.send(actor, input(), noLinks);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[1]).toEqual({
+      orgId: ORG,
+      messageId: "00000000-0000-4000-8000-000000000091",
+      channelId: CH,
+      patientId: PAT,
+      requesterUserId: AIDE,
+      assigneeUserId: RN,
+    });
+  });
+
+  it("does nothing while its flag is off, and the urgent send still works", async () => {
+    const calls: unknown[][] = [];
+    const { service, sends } = setup({ tracker: tracker(async () => false, calls) });
+
+    const res = await service.send(actor, input(), noLinks);
+
+    expect(res.created).toBe(true);
+    expect(sends).toHaveLength(1);
+    expect(calls).toEqual([]);
+  });
+
+  it("fails the send when its flag cannot be read (never silently untracked)", async () => {
+    const { service, sends } = setup({
+      tracker: tracker(async () => Promise.reject(new Error("flags down"))),
+    });
+
+    await expect(service.send(actor, input(), noLinks)).rejects.toThrow("flags down");
+    expect(sends).toHaveLength(0);
+  });
+
+  it("is not called again on a replay (the hook runs only for a new message)", async () => {
+    const calls: unknown[][] = [];
+    const { service } = setup({ tracker: tracker(async () => true, calls) });
+
+    await service.send(actor, input(), noLinks);
+    const again = await service.send(actor, input(), noLinks);
+
+    expect(again.created).toBe(false);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("fails the whole send when the tracker fails, so the message cannot exist without its request", async () => {
+    const { service } = setup({
+      tracker: {
+        enabled: async () => true,
+        createInTx: async () => {
+          throw new Error("insert failed");
+        },
+      },
+    });
+
+    await expect(service.send(actor, input(), noLinks)).rejects.toThrow("insert failed");
   });
 });

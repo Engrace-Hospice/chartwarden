@@ -1,5 +1,5 @@
 -- M25 ADR permissions (hospice ADR/TPE/QIC PRD, milestones 2a/2b): grant the ADR keys to the roles that already
--- hold the matching appeal key, in every tenant that has them. 1107 and 1109 added the catalog rows only and the
+-- hold the matching appeal key, in every tenant that has them. 1108 and 1110 added the catalog rows only and the
 -- template materializer runs at tenant creation, so an EXISTING tenant's roles held none of the adr.* keys and
 -- nobody could open the ADR screen (found by the Docker route check: administrator / org_admin got 403
 -- "requires permission 'adr.read'" while holding all six appeal.* keys).

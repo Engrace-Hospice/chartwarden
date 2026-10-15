@@ -240,6 +240,8 @@ exports.MODULES = [
       "clinical_handoff",
       "clinical_handoff_item",
       "clinical_handoff_event",
+      "message_acknowledgment_request",
+      "message_acknowledgment_event",
       "messaging_review_item",
       "chart_promotion_request",
       "tenant_handoff_policy",
