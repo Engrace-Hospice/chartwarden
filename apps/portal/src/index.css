@@ -457,6 +457,8 @@
     color: var(--color-primary-strong);
     font-size: 0.75rem;
     font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
   }
 
   .wx-portal-auth-heading h1 {
@@ -848,6 +850,8 @@
     color: var(--color-on-surface-variant);
     font-size: 0.75rem;
     font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
   }
 
   .wx-portal-content-list {
@@ -2027,4 +2031,482 @@
 
 @media (prefers-reduced-motion: reduce) {
   .wx-portal-conversation-body { scroll-behavior: auto; }
+}
+
+/* PR6.1 — Messages: a single bounded workspace, not another vertically scrolling page.
+   Route-scoped shell sizing protects every other portal screen and the Lantern tokens. */
+.wx-portal-shell--messages {
+  height: 100vh;
+  height: var(--wx-message-viewport-height, 100dvh);
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+.wx-portal-shell--messages .wx-portal-workspace {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.wx-portal-shell--messages .wx-portal-topbar {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 4rem;
+  padding-inline: clamp(var(--space-4), 2vw, var(--space-6));
+}
+.wx-portal-shell--messages .wx-portal-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.wx-portal-shell--messages .wx-portal-message-page {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  max-width: none;
+  padding: var(--space-3) clamp(var(--space-4), 2vw, var(--space-6)) 0;
+  gap: 0;
+  overflow: hidden;
+}
+.wx-portal-message-page__heading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.wx-portal-message-page__heading h1 { margin: 0; }
+.wx-portal-shell--messages .wx-portal-messaging {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: 100%;
+  min-height: 0;
+  max-height: none;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+}
+.wx-portal-shell--messages .wx-portal-conversation-header {
+  min-height: 3.6rem;
+  padding: 0.55rem 1rem;
+  gap: var(--space-2);
+}
+.wx-portal-shell--messages .wx-portal-conversation-header > span {
+  width: 2.15rem;
+  height: 2.15rem;
+  border-radius: var(--radius-lg);
+}
+.wx-portal-shell--messages .wx-portal-conversation-header h2 { font-size: 0.925rem; }
+.wx-portal-shell--messages .wx-portal-conversation-header p { margin-top: 0.1rem; font-size: 0.7rem; }
+.wx-portal-shell--messages .wx-portal-conversation-header button {
+  min-height: 2.75rem;
+  padding-inline: var(--space-3);
+}
+.wx-portal-shell--messages .wx-portal-conversation-body {
+  min-height: 0;
+  max-height: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-4);
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+}
+.wx-portal-shell--messages .wx-portal-message-timeline { gap: var(--space-2); }
+.wx-portal-shell--messages .wx-portal-message-bubble {
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+}
+.wx-portal-shell--messages .wx-portal-message-bubble p { margin-top: 0.3rem; line-height: 1.48; }
+.wx-portal-shell--messages .wx-portal-message-composer {
+  min-height: 0;
+  padding: 0.7rem var(--space-4) 0.65rem;
+}
+.wx-portal-shell--messages .wx-portal-message-composer textarea {
+  min-height: 3.1rem;
+  max-height: 7rem;
+  resize: vertical;
+  border-radius: var(--radius-md) !important;
+  font-size: 0.875rem;
+}
+.wx-portal-shell--messages .wx-portal-message-composer__footer {
+  margin-top: var(--space-2);
+  gap: var(--space-2);
+}
+.wx-portal-shell--messages .wx-portal-message-composer__footer p {
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+.wx-portal-shell--messages .wx-portal-message-composer__footer button { min-height: 2.75rem; }
+.wx-portal-shell--messages .wx-portal-messaging-error {
+  min-height: 0;
+  max-width: 46rem;
+  margin: auto;
+  padding: var(--space-3);
+  align-content: center;
+  align-items: center;
+  gap: var(--space-2);
+}
+.wx-portal-shell--messages .wx-portal-messaging-error strong { font-size: 0.875rem; }
+.wx-portal-shell--messages .wx-portal-messaging-error p { font-size: 0.75rem; line-height: 1.5; }
+.wx-portal-shell--messages .wx-portal-messaging-error button { font-size: 0.8rem; }
+.wx-portal-shell--messages .wx-portal-messaging-empty {
+  min-height: 0;
+  margin: auto;
+  padding: var(--space-4);
+}
+.wx-portal-shell--messages .wx-portal-messaging-empty > svg { width: 1.5rem; height: 1.5rem; }
+.wx-portal-shell--messages .wx-portal-messaging-skeleton {
+  min-height: 0;
+  width: 100%;
+  padding: var(--space-3);
+  gap: var(--space-3);
+}
+.wx-portal-shell--messages .wx-portal-messaging-skeleton span { height: 2.75rem; }
+.wx-portal-shell--messages .wx-portal-urgent-help {
+  flex: 0 0 auto;
+  margin: 0 clamp(var(--space-4), 2vw, var(--space-6)) var(--space-2);
+  padding: 0.4rem 0.75rem;
+  gap: var(--space-2);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+.wx-portal-shell--messages .wx-portal-urgent-help > svg { width: 1rem; height: 1rem; }
+.wx-portal-shell--messages .wx-portal-urgent-help strong { font-size: 0.72rem; }
+.wx-portal-shell--messages .wx-portal-urgent-help p {
+  font-size: 0.7rem;
+  line-height: 1.3;
+  margin-top: 0.05rem;
+}
+
+@media (max-width: 47.99rem) {
+  .wx-portal-shell--messages {
+    height: 100dvh;
+    padding-bottom: calc(4.75rem + env(safe-area-inset-bottom));
+  }
+  .wx-portal-shell--messages .wx-portal-workspace { height: 100%; }
+  .wx-portal-shell--messages .wx-portal-topbar { min-height: 3.75rem; }
+  .wx-portal-shell--messages .wx-portal-message-page {
+    padding: var(--space-2) var(--space-2) 0;
+  }
+  .wx-portal-message-page__heading {
+    position: static;
+    width: auto;
+    height: auto;
+    clip-path: none;
+    overflow: visible;
+    white-space: normal;
+    padding: 0 var(--space-2) var(--space-2);
+  }
+  .wx-portal-message-page__heading h1 {
+    font: 650 1rem/1.4 var(--font-display);
+  }
+  .wx-portal-shell--messages .wx-portal-conversation-header { padding-inline: var(--space-3); }
+  .wx-portal-shell--messages .wx-portal-conversation-header button span { display: none; }
+  .wx-portal-shell--messages .wx-portal-conversation-body { padding: var(--space-2) var(--space-3); }
+  .wx-portal-shell--messages .wx-portal-message-composer { padding: var(--space-2) var(--space-3); }
+  .wx-portal-shell--messages .wx-portal-message-composer__footer {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .wx-portal-shell--messages .wx-portal-message-composer__footer p { max-width: 60%; }
+  .wx-portal-shell--messages .wx-portal-message-composer__footer button { width: auto; min-width: 0; }
+  .wx-portal-shell--messages .wx-portal-messaging-error {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: var(--space-2);
+  }
+  .wx-portal-shell--messages .wx-portal-messaging-error button {
+    grid-column: 1 / -1;
+    width: auto;
+    justify-self: start;
+  }
+  .wx-portal-shell--messages .wx-portal-urgent-help {
+    margin: 0 var(--space-2) var(--space-1);
+    padding: 0.35rem var(--space-2);
+  }
+  .wx-portal-shell--messages .wx-portal-urgent-help p { font-size: 0.66rem; }
+}
+
+@media (max-width: 22rem) {
+  .wx-portal-shell--messages .wx-portal-message-composer__footer p { max-width: 52%; }
+  .wx-portal-shell--messages .wx-portal-message-composer__footer button { padding-inline: var(--space-2); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wx-portal-shell--messages .wx-portal-conversation-body { scroll-behavior: auto; }
+}
+
+/* When the mobile keyboard shrinks the visual viewport, prioritize composing.
+   The full emergency guidance remains available when the keyboard closes;
+   the composer still states that messaging is not for emergencies. */
+@media (max-width: 47.99rem) {
+  .wx-portal-shell--messages.wx-portal-shell--keyboard { padding-bottom: 0; }
+  .wx-portal-shell--keyboard .wx-portal-mobile-nav { display: none; }
+  .wx-portal-shell--keyboard .wx-portal-urgent-help { display: none; }
+}
+
+/* PR6.2 — Familiar two-pane messaging layout, adapted to the portal's single authorized channel. */
+.wx-portal-shell--messages .wx-portal-message-page {
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-2);
+}
+.wx-portal-message-page__heading {
+  position: static;
+  width: auto;
+  height: auto;
+  padding: 0 var(--space-1);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  overflow: visible;
+  clip-path: none;
+  white-space: normal;
+}
+.wx-portal-message-page__heading h1 {
+  margin: 0;
+  font: 700 1.35rem/1.25 var(--font-display);
+}
+.wx-portal-message-page__heading p {
+  margin: var(--space-1) 0 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.wx-portal-message-workspace {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(13.5rem, 15.5rem) minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+}
+.wx-portal-conversation-list {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  padding: var(--space-3);
+  overflow: hidden;
+  border-right: 1px solid var(--color-outline-variant);
+  background: var(--color-surface-low);
+}
+.wx-portal-conversation-list__heading {
+  min-height: 2.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.wx-portal-conversation-list__heading h2 {
+  margin: 0;
+  font: 700 0.82rem/1.3 var(--font-display);
+}
+.wx-portal-conversation-list__heading > span {
+  color: var(--color-muted);
+  font-size: 0.68rem;
+}
+.wx-portal-conversation-search {
+  position: relative;
+  margin: var(--space-2) 0 var(--space-3);
+  display: block;
+}
+.wx-portal-conversation-search > svg {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: var(--space-3);
+  color: var(--color-muted);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.wx-portal-conversation-search input {
+  width: 100%;
+  min-height: 2.6rem;
+  padding: 0.55rem var(--space-3) 0.55rem 2.25rem;
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-lowest);
+  color: var(--color-on-surface);
+  font: 500 0.76rem/1.35 var(--font-sans);
+}
+.wx-portal-conversation-search input::placeholder { color: var(--color-muted); }
+.wx-portal-conversation-search input:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+.wx-portal-conversation-list__items {
+  min-height: 0;
+  overflow-y: auto;
+}
+.wx-portal-conversation-item {
+  width: 100%;
+  min-height: 5rem;
+  padding: var(--space-3);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-on-surface);
+  text-align: left;
+}
+.wx-portal-conversation-item.is-selected {
+  border-color: var(--color-primary-dim);
+  background: var(--color-primary-tint);
+}
+.wx-portal-conversation-item:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+.wx-portal-conversation-item__avatar,
+.wx-portal-message-avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+.wx-portal-conversation-item__avatar { width: 2.25rem; height: 2.25rem; }
+.wx-portal-conversation-item__content,
+.wx-portal-conversation-item__content > span,
+.wx-portal-conversation-item__content small { display: block; min-width: 0; }
+.wx-portal-conversation-item__topline {
+  display: flex !important;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.wx-portal-conversation-item__topline strong {
+  overflow: hidden;
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wx-portal-conversation-item__topline time,
+.wx-portal-conversation-item__content small {
+  color: var(--color-muted);
+  font-size: 0.64rem;
+  white-space: nowrap;
+}
+.wx-portal-conversation-item__content > span:last-child {
+  margin-top: var(--space-2);
+  overflow: hidden;
+  color: var(--color-on-surface-variant);
+  font-size: 0.68rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wx-portal-conversation-list__empty {
+  margin: var(--space-3) 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+.wx-portal-shell--messages .wx-portal-messaging {
+  border: 0;
+  border-radius: 0;
+  background: var(--color-surface-lowest);
+}
+.wx-portal-shell--messages .wx-portal-conversation-header {
+  background: var(--color-surface-lowest);
+}
+.wx-portal-shell--messages .wx-portal-conversation-header button {
+  width: 2.75rem;
+  padding: 0;
+  justify-content: center;
+  border-color: transparent;
+  background: transparent;
+}
+.wx-portal-shell--messages .wx-portal-conversation-header button span { display: none; }
+.wx-portal-message-entry {
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+.is-outgoing .wx-portal-message-entry { flex-direction: row-reverse; }
+.wx-portal-message-avatar {
+  width: 1.75rem;
+  height: 1.75rem;
+  background: var(--color-surface-highest);
+  color: var(--color-on-surface-variant);
+  font-size: 0.58rem;
+  font-weight: 750;
+}
+.is-outgoing .wx-portal-message-avatar {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+.wx-portal-shell--messages .wx-portal-message-bubble {
+  max-width: min(76%, 38rem);
+  background: var(--color-surface-container);
+}
+.wx-portal-shell--messages .is-outgoing .wx-portal-message-bubble {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+.wx-portal-shell--messages .is-outgoing .wx-portal-message-bubble strong,
+.wx-portal-shell--messages .is-outgoing .wx-portal-message-bubble time,
+.wx-portal-shell--messages .is-outgoing .wx-portal-message-bubble p {
+  color: var(--color-on-primary);
+}
+.wx-portal-shell--messages .wx-portal-message-composer {
+  position: relative;
+  padding: var(--space-3);
+  background: var(--color-surface-lowest);
+}
+.wx-portal-shell--messages .wx-portal-message-composer .wx-field > span:first-child {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.wx-portal-shell--messages .wx-portal-message-composer textarea {
+  min-height: 4.5rem;
+  padding: var(--space-3) 4rem var(--space-3) var(--space-3) !important;
+  resize: none;
+  border-radius: var(--radius-md) !important;
+  background: var(--color-surface-low) !important;
+}
+.wx-portal-shell--messages .wx-portal-message-composer__footer {
+  margin-top: var(--space-1);
+  padding-right: 3.5rem;
+}
+.wx-portal-shell--messages .wx-portal-message-composer__footer button {
+  position: absolute;
+  right: 1.25rem;
+  top: 1.55rem;
+  width: 2.75rem;
+  min-width: 2.75rem;
+  padding: 0;
+  border-radius: 50%;
+}
+
+@media (max-width: 47.99rem) {
+  .wx-portal-shell--messages .wx-portal-message-page { gap: var(--space-2); }
+  .wx-portal-message-page__heading { padding: 0 var(--space-1); }
+  .wx-portal-message-page__heading h1 { font-size: 1rem; }
+  .wx-portal-message-page__heading p { display: none; }
+  .wx-portal-message-workspace { grid-template-columns: minmax(0, 1fr); }
+  .wx-portal-conversation-list { display: none; }
+  .wx-portal-shell--messages .wx-portal-message-bubble { max-width: 86%; }
+  .wx-portal-message-avatar { width: 1.6rem; height: 1.6rem; }
+  .wx-portal-shell--messages .wx-portal-message-composer__footer p {
+    max-width: calc(100% - 1rem);
+  }
 }

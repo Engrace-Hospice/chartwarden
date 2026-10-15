@@ -326,9 +326,51 @@ function PortalUrgentHelp(): JSX.Element {
 export function PortalAppShell(): JSX.Element {
   const { pathname } = useLocation();
   const patientId = currentPatientId(pathname);
+  // Messaging is a bounded workspace: the history scrolls while the composer remains visible.
+  // Keep the mode route-driven so no layout class leaks into other portal screens.
+  const messagingWorkspace = /^\/p\/[^/]+\/messages\/?$/.test(pathname);
+  const shellRef = useRef<HTMLDivElement>(null);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  useEffect(() => {
+    if (!messagingWorkspace || !window.visualViewport) {
+      setKeyboardOpen(false);
+      return;
+    }
+    const viewport = window.visualViewport;
+    const shell = shellRef.current;
+    const update = () => {
+      // dvh is not keyboard-aware on every mobile browser. Constrain the
+      // workspace to the actually visible bottom while the keyboard is open.
+      const visibleBottom = viewport.height + viewport.offsetTop;
+      const isKeyboardOpen =
+        window.innerWidth < 768 && visibleBottom < window.innerHeight - 120;
+      setKeyboardOpen(isKeyboardOpen);
+      if (isKeyboardOpen) {
+        shell?.style.setProperty(
+          "--wx-message-viewport-height",
+          `${Math.floor(visibleBottom)}px`,
+        );
+      } else {
+        shell?.style.removeProperty("--wx-message-viewport-height");
+      }
+    };
+    update();
+    viewport.addEventListener("resize", update);
+    viewport.addEventListener("scroll", update);
+    window.addEventListener("resize", update);
+    return () => {
+      viewport.removeEventListener("resize", update);
+      viewport.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+      shell?.style.removeProperty("--wx-message-viewport-height");
+    };
+  }, [messagingWorkspace]);
   return (
     <PortalPatientContext patientId={patientId}>
-      <div className="wx-portal-shell">
+      <div
+        ref={shellRef}
+        className={`wx-portal-shell${messagingWorkspace ? " wx-portal-shell--messages" : ""}${messagingWorkspace && keyboardOpen ? " wx-portal-shell--keyboard" : ""}`}
+      >
         <a className="wx-portal-skip-link" href="#portal-main">
           Skip to main content
         </a>

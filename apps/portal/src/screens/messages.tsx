@@ -1,21 +1,7 @@
-import {
-  Button,
-  Glyph,
-  InlineAlert,
-  TextAreaField,
-  useApiClient,
-} from "@wardenx/ui";
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { Button, Glyph, InlineAlert, TextAreaField, useApiClient } from "@wardenx/ui";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { usePortalPatient } from "../patient-context";
-import { PortalPage } from "./portal-page";
 
 interface Channel {
   channelId: string;
@@ -48,9 +34,7 @@ const sortMessages = (messages: PortalMessage[]): PortalMessage[] =>
     const rightTime = Date.parse(right.sentAt);
     if (!Number.isFinite(leftTime) || !Number.isFinite(rightTime))
       return left.messageId.localeCompare(right.messageId);
-    return (
-      leftTime - rightTime || left.messageId.localeCompare(right.messageId)
-    );
+    return leftTime - rightTime || left.messageId.localeCompare(right.messageId);
   });
 
 function messageTime(value: string): string {
@@ -82,12 +66,19 @@ function messageDay(value: string): string {
   }).format(instant);
 }
 
+function senderInitials(label: string): string {
+  const initials = label
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+  return initials || "CT";
+}
+
 function MessagingSkeleton(): JSX.Element {
   return (
-    <output
-      className="wx-portal-messaging-skeleton"
-      aria-label="Loading messages"
-    >
+    <output className="wx-portal-messaging-skeleton" aria-label="Loading messages">
       <span />
       <span />
       <span />
@@ -99,13 +90,10 @@ function MessagingSkeleton(): JSX.Element {
 function MessagingError({ onRetry }: { onRetry: () => void }): JSX.Element {
   return (
     <div className="wx-portal-messaging-error" role="alert">
-      <Glyph name="alert-circle" size={22} />
+      <Glyph name="alert-circle" size={19} />
       <div>
         <strong>Messages are unavailable</strong>
-        <p>
-          We couldn't load this conversation. Your typed message has not been
-          removed.
-        </p>
+        <p>We couldn't load the conversation. Try again to see your messages.</p>
       </div>
       <button type="button" onClick={onRetry}>
         Try again
@@ -127,10 +115,7 @@ function MessageTimeline({
 }): JSX.Element {
   let previousDay: string | null = null;
   return (
-    <ol
-      className="wx-portal-message-timeline"
-      aria-label="Conversation with your care team"
-    >
+    <ol className="wx-portal-message-timeline" aria-label="Conversation with your care team">
       <li className="wx-portal-message-history-control">
         {olderCursor ? (
           <button type="button" onClick={onLoadOlder} disabled={loadingOlder}>
@@ -145,24 +130,24 @@ function MessageTimeline({
         const separator = day !== previousDay;
         previousDay = day;
         return (
-          <li
-            key={message.messageId}
-            className={`wx-portal-message-row is-${message.direction}`}
-          >
+          <li key={message.messageId} className={`wx-portal-message-row is-${message.direction}`}>
             {separator ? (
               <div className="wx-portal-message-day">
                 <span>{day}</span>
               </div>
             ) : null}
-            <article className="wx-portal-message-bubble">
-              <header>
-                <strong>{message.senderLabel}</strong>
-                <time dateTime={message.sentAt}>
-                  {messageTime(message.sentAt)}
-                </time>
-              </header>
-              <p>{message.body}</p>
-            </article>
+            <div className="wx-portal-message-entry">
+              <span className="wx-portal-message-avatar" aria-hidden="true">
+                {message.direction === "outgoing" ? "You" : senderInitials(message.senderLabel)}
+              </span>
+              <article className="wx-portal-message-bubble">
+                <header>
+                  <strong>{message.senderLabel}</strong>
+                  <time dateTime={message.sentAt}>{messageTime(message.sentAt)}</time>
+                </header>
+                <p>{message.body}</p>
+              </article>
+            </div>
           </li>
         );
       })}
@@ -189,29 +174,27 @@ function MessageComposer({
       <TextAreaField
         id="portal-msg"
         label="Message your care team"
-        hint={`${draft.length.toLocaleString()} of 8,000 characters · Enter adds a new line.`}
-        error={
-          tooLong
-            ? "Your message must be 8,000 characters or fewer."
-            : undefined
-        }
+        aria-label="Message your care team"
+        hint={`${draft.length.toLocaleString()} / 8,000 characters`}
+        error={tooLong ? "Your message must be 8,000 characters or fewer." : undefined}
         value={draft}
         onChange={(event) => onDraft(event.target.value)}
-        placeholder="Write a message…"
+        placeholder="Type a message to your care team…"
         disabled={sending}
-        rows={4}
+        rows={3}
       />
       <div className="wx-portal-message-composer__footer">
         <p>
-          <Glyph name="shield-check" size={16} /> Sent securely to the hospice
-          care team.
+          <Glyph name="lock" size={14} aria-hidden="true" /> Secure message · Not for emergencies
         </p>
         <Button
           type="submit"
+          aria-label="Send message"
+          title="Send message"
           loading={sending}
           disabled={!draft.trim() || tooLong || sending}
         >
-          <Glyph name="send" size={16} /> Send message
+          <Glyph name="send" size={18} aria-hidden="true" />
         </Button>
       </div>
       {feedback ? (
@@ -227,12 +210,7 @@ export function PortalMessages(): JSX.Element {
   const { patientId } = usePortalPatient();
   // A fresh component per care record isolates the draft, channel and asynchronous
   // pagination/send state even when React Router reuses the same route component.
-  return (
-    <PortalMessagesForPatient
-      key={patientId ?? "no-patient"}
-      patientId={patientId}
-    />
-  );
+  return <PortalMessagesForPatient key={patientId ?? "no-patient"} patientId={patientId} />;
 }
 
 function PortalMessagesForPatient({
@@ -243,25 +221,18 @@ function PortalMessagesForPatient({
   const client = useApiClient();
   // Keep this screen insulated from openapi-fetch's repository-wide path-union recursion limit.
   const portalGet = useMemo(
-    () =>
-      client.GET as unknown as (
-        path: string,
-        init: unknown,
-      ) => Promise<ApiResult>,
+    () => client.GET as unknown as (path: string, init: unknown) => Promise<ApiResult>,
     [client],
   );
   const portalPost = useMemo(
-    () =>
-      client.POST as unknown as (
-        path: string,
-        init: unknown,
-      ) => Promise<ApiResult>,
+    () => client.POST as unknown as (path: string, init: unknown) => Promise<ApiResult>,
     [client],
   );
   const [channel, setChannel] = useState<Resource<Channel>>(loading);
   const [history, setHistory] = useState<Resource<HistoryPage>>(loading);
   const [attempt, setAttempt] = useState(0);
   const [draft, setDraft] = useState("");
+  const [conversationQuery, setConversationQuery] = useState("");
   const [sending, setSending] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [olderError, setOlderError] = useState(false);
@@ -273,6 +244,7 @@ function PortalMessagesForPatient({
   } | null>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const previousHeightRef = useRef<number | null>(null);
+  const initialScrollDoneRef = useRef(false);
 
   const loadHistory = useCallback(
     async (cursor?: string): Promise<HistoryPage | null> => {
@@ -293,8 +265,12 @@ function PortalMessagesForPatient({
     void attempt;
     let active = true;
     pageGeneration.current += 1;
-    setChannel(loading());
-    setHistory(loading());
+    // Keep the existing conversation/composer mounted on manual refresh so an
+    // unsent draft retains focus. Initial entry still displays skeletons.
+    if (attempt === 0) {
+      setChannel(loading());
+      setHistory(loading());
+    }
     setOlderError(false);
     setLoadingOlder(false);
     previousHeightRef.current = null;
@@ -317,11 +293,7 @@ function PortalMessagesForPatient({
         }
         const page = await loadHistory();
         if (!active) return;
-        setHistory(
-          page
-            ? { status: "ready", data: page }
-            : { status: "error", data: null },
-        );
+        setHistory(page ? { status: "ready", data: page } : { status: "error", data: null });
       } catch {
         if (active) {
           setChannel({ status: "error", data: null });
@@ -335,16 +307,23 @@ function PortalMessagesForPatient({
   }, [patientId, attempt, loadHistory, portalGet]);
 
   useLayoutEffect(() => {
-    void history;
-    if (previousHeightRef.current === null || !timelineRef.current) return;
-    timelineRef.current.scrollTop +=
-      timelineRef.current.scrollHeight - previousHeightRef.current;
-    previousHeightRef.current = null;
+    const viewport = timelineRef.current;
+    if (!viewport) return;
+    if (previousHeightRef.current !== null) {
+      viewport.scrollTop += viewport.scrollHeight - previousHeightRef.current;
+      previousHeightRef.current = null;
+      return;
+    }
+    // Open a conversation at the latest message, not at the oldest message.
+    // Do not repeat this after a manual refresh while someone reads history.
+    if (!initialScrollDoneRef.current && history.status === "ready") {
+      viewport.scrollTop = viewport.scrollHeight;
+      initialScrollDoneRef.current = true;
+    }
   }, [history]);
 
   async function loadOlder(): Promise<void> {
-    if (history.status !== "ready" || !history.data.nextCursor || loadingOlder)
-      return;
+    if (history.status !== "ready" || !history.data.nextCursor || loadingOlder) return;
     const generation = pageGeneration.current;
     setLoadingOlder(true);
     setOlderError(false);
@@ -362,10 +341,7 @@ function PortalMessagesForPatient({
           ? {
               status: "ready",
               data: {
-                messages: sortMessages([
-                  ...page.messages,
-                  ...current.data.messages,
-                ]),
+                messages: sortMessages([...page.messages, ...current.data.messages]),
                 nextCursor: page.nextCursor,
               },
             }
@@ -448,87 +424,146 @@ function PortalMessagesForPatient({
   }
 
   const unavailable = channel.status === "ready" && !channel.data.channelId;
+  const latestMessage = history.status === "ready" ? history.data.messages.at(-1) : undefined;
+  const conversationPreview = latestMessage?.body.trim()
+    ? latestMessage.body
+    : unavailable
+      ? "Secure messaging is not available yet."
+      : "Start a secure conversation with your care team.";
+  const normalizedQuery = conversationQuery.trim().toLocaleLowerCase();
+  const conversationMatches =
+    !normalizedQuery ||
+    "your care team".includes(normalizedQuery) ||
+    conversationPreview.toLocaleLowerCase().includes(normalizedQuery);
+
   return (
-    <PortalPage
-      title="Messages"
-      subtitle="Communicate securely with your hospice care team."
-      width="workspace"
-    >
-      <section
-        className="wx-portal-messaging"
-        aria-labelledby="portal-conversation-title"
-      >
-        <header className="wx-portal-conversation-header">
-          <span>
-            <Glyph name="users" size={22} />
-          </span>
-          <div>
-            <h2 id="portal-conversation-title">Your hospice care team</h2>
-            <p>
-              <Glyph name="lock" size={14} /> Secure conversation
-            </p>
-          </div>
-          <button
-            type="button"
-            aria-label="Refresh conversation"
-            disabled={sending}
-            onClick={() => setAttempt((value) => value + 1)}
-          >
-            <Glyph name="rotate-ccw" size={18} /> <span>Refresh</span>
-          </button>
-        </header>
-        <div className="wx-portal-conversation-body" ref={timelineRef}>
-          {channel.status === "loading" || history.status === "loading" ? (
-            <MessagingSkeleton />
-          ) : null}
-          {channel.status === "error" || history.status === "error" ? (
-            <MessagingError onRetry={() => setAttempt((value) => value + 1)} />
-          ) : null}
-          {unavailable ? (
-            <div className="wx-portal-messaging-empty">
-              <Glyph name="message-square" size={28} />
-              <strong>Secure messaging isn't available yet.</strong>
-              <p>Contact your hospice team directly if you need help.</p>
-            </div>
-          ) : null}
-          {history.status === "ready" &&
-          !unavailable &&
-          history.data.messages.length === 0 ? (
-            <div className="wx-portal-messaging-empty">
-              <Glyph name="message-square" size={28} />
-              <strong>No messages yet</strong>
-              <p>Send a message to your care team to start the conversation.</p>
-            </div>
-          ) : null}
-          {history.status === "ready" && history.data.messages.length > 0 ? (
-            <>
-              {olderError ? (
-                <p role="alert" className="wx-portal-messaging-older-error">
-                  Earlier messages couldn't be loaded. You can try again.
-                </p>
-              ) : null}
-              <MessageTimeline
-                messages={history.data.messages}
-                olderCursor={history.data.nextCursor}
-                loadingOlder={loadingOlder}
-                onLoadOlder={() => void loadOlder()}
-              />
-            </>
-          ) : null}
+    <div className="wx-portal-page wx-portal-page--workspace wx-portal-message-page">
+      <header className="wx-portal-message-page__heading">
+        <div>
+          <h1>Messages</h1>
+          <p>Communicate securely with your hospice care team.</p>
         </div>
-        {channel.status === "ready" && channel.data.channelId ? (
-          <MessageComposer
-            draft={draft}
-            sending={sending}
-            feedback={feedback}
-            onDraft={(value) => {
-              setDraft(value);
-              setFeedback(null);
-            }}
-            onSubmit={(event) => void send(event)}
-          />
-        ) : null}
-      </section>
-    </PortalPage>
+      </header>
+      <div className="wx-portal-message-workspace">
+        <aside className="wx-portal-conversation-list" aria-label="Conversations">
+          <div className="wx-portal-conversation-list__heading">
+            <h2>Conversations</h2>
+            <span>1 active</span>
+          </div>
+          <label className="wx-portal-conversation-search">
+            <span className="sr-only">Search conversations</span>
+            <Glyph name="search" size={16} aria-hidden="true" />
+            <input
+              type="search"
+              value={conversationQuery}
+              onChange={(event) => setConversationQuery(event.target.value)}
+              placeholder="Search messages…"
+            />
+          </label>
+          <div className="wx-portal-conversation-list__items">
+            {conversationMatches ? (
+              <button
+                type="button"
+                className="wx-portal-conversation-item is-selected"
+                aria-pressed="true"
+              >
+                <span className="wx-portal-conversation-item__avatar" aria-hidden="true">
+                  <Glyph name="users" size={19} />
+                </span>
+                <span className="wx-portal-conversation-item__content">
+                  <span className="wx-portal-conversation-item__topline">
+                    <strong>Your care team</strong>
+                    {latestMessage ? (
+                      <time dateTime={latestMessage.sentAt}>
+                        {messageTime(latestMessage.sentAt)}
+                      </time>
+                    ) : null}
+                  </span>
+                  <small>General care team</small>
+                  <span>{conversationPreview}</span>
+                </span>
+              </button>
+            ) : (
+              <p className="wx-portal-conversation-list__empty">
+                No conversations match your search.
+              </p>
+            )}
+          </div>
+        </aside>
+        <section className="wx-portal-messaging" aria-labelledby="portal-conversation-title">
+          <header className="wx-portal-conversation-header">
+            <span aria-hidden="true">
+              <Glyph name="users" size={18} />
+            </span>
+            <div>
+              <h2 id="portal-conversation-title">Your care team</h2>
+              <p>
+                General care team <span aria-hidden="true">·</span>{" "}
+                <Glyph name="lock" size={13} aria-hidden="true" /> Secure conversation
+              </p>
+            </div>
+            <button
+              type="button"
+              aria-label="Refresh conversation"
+              title="Refresh conversation"
+              disabled={sending}
+              onClick={() => setAttempt((value) => value + 1)}
+            >
+              <Glyph name="rotate-ccw" size={16} aria-hidden="true" />
+              <span>Refresh</span>
+            </button>
+          </header>
+          <div className="wx-portal-conversation-body" ref={timelineRef}>
+            {channel.status === "loading" || history.status === "loading" ? (
+              <MessagingSkeleton />
+            ) : null}
+            {channel.status === "error" || history.status === "error" ? (
+              <MessagingError onRetry={() => setAttempt((value) => value + 1)} />
+            ) : null}
+            {unavailable ? (
+              <div className="wx-portal-messaging-empty">
+                <Glyph name="message-square" size={28} />
+                <strong>Secure messaging isn't available yet.</strong>
+                <p>Contact your hospice team directly if you need help.</p>
+              </div>
+            ) : null}
+            {history.status === "ready" && !unavailable && history.data.messages.length === 0 ? (
+              <div className="wx-portal-messaging-empty">
+                <Glyph name="message-square" size={28} />
+                <strong>No messages yet</strong>
+                <p>Send a message to your care team to start the conversation.</p>
+              </div>
+            ) : null}
+            {history.status === "ready" && history.data.messages.length > 0 ? (
+              <>
+                {olderError ? (
+                  <p role="alert" className="wx-portal-messaging-older-error">
+                    Earlier messages couldn't be loaded. You can try again.
+                  </p>
+                ) : null}
+                <MessageTimeline
+                  messages={history.data.messages}
+                  olderCursor={history.data.nextCursor}
+                  loadingOlder={loadingOlder}
+                  onLoadOlder={() => void loadOlder()}
+                />
+              </>
+            ) : null}
+          </div>
+          {channel.status === "ready" && channel.data.channelId ? (
+            <MessageComposer
+              draft={draft}
+              sending={sending}
+              feedback={feedback}
+              onDraft={(value) => {
+                setDraft(value);
+                setFeedback(null);
+              }}
+              onSubmit={(event) => void send(event)}
+            />
+          ) : null}
+        </section>
+      </div>
+    </div>
   );
 }
