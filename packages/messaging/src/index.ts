@@ -475,6 +475,7 @@ export * from "./urgent/urgent-rules";
 
 // M36 WP 4.2 acknowledgment-request aggregate - pure state machine and deadline rules
 export * from "./ack-requests/ack-rules";
+export * from "./escalation/shift-window";
 
 // M36 WP 3.4 communication tasks - pure rules
 export * from "./tasks";

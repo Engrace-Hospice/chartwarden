@@ -58,6 +58,7 @@ export type {
   ExtractionProvenanceReader,
   ElectionPeriodReader,
   EncounterCreator,
+  EscalationRouter,
   EvvAggregatorReferenceReader,
   EvvBracketResolver,
   EvvComplianceReader,

@@ -6,7 +6,7 @@ import type { AckRequestDto } from "@wardenx/types";
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import axe from "axe-core";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AckForMessage, AckRequestsProvider } from "./ack-request-card";
 import {
   ACK_CHANGED_TEXT,
@@ -26,6 +26,21 @@ import {
   ACK_TOO_MANY_TEXT,
 } from "./ack-wording";
 import { ACK_POLL_MS, ACK_RELOAD_TIMEOUT_MS, useAckRequests } from "./use-ack-requests";
+
+// The fixtures hold absolute instants (deadline 2026-10-15T13:00Z); pin the clock before them so "Respond by" never turns into
+// "Overdue" as the real date passes. Date is faked in every test; the timer functions only where a test advances time.
+const FIXED_NOW = new Date("2026-10-15T12:10:00.000Z");
+const TIMER_FUNCTIONS = ["setInterval", "clearInterval", "setTimeout", "clearTimeout"] as const;
+const FAKE_CLOCK = {
+  now: FIXED_NOW,
+  toFake: [...TIMER_FUNCTIONS, "Date"] as ("Date" | (typeof TIMER_FUNCTIONS)[number])[],
+};
+beforeEach(() => {
+  vi.useFakeTimers({ now: FIXED_NOW, toFake: ["Date"] });
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const LIST = "/api/v1/messaging/channels/{id}/escalations";
 const request = (over: Partial<AckRequestDto> = {}): AckRequestDto => ({
@@ -546,7 +561,7 @@ describe("ack hook - background reads, focus, timeouts", () => {
     (GET.mock.calls[i]?.[1] as { headers?: unknown }).headers;
 
   it("the interval poll is a BACKGROUND read, the first read and a focus read are not, and it skips a hidden tab", async () => {
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
+    vi.useFakeTimers(FAKE_CLOCK);
     try {
       const { GET, client } = hookClient(() => ok([request()]));
       renderHook(() => useAckRequests("c-1", true), { wrapper: wrap(client) });
@@ -580,7 +595,7 @@ describe("ack hook - background reads, focus, timeouts", () => {
   });
 
   it("sets no timer when no request is open", async () => {
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
+    vi.useFakeTimers(FAKE_CLOCK);
     try {
       const { GET, client } = hookClient(() =>
         ok([
@@ -636,7 +651,7 @@ describe("ack hook - background reads, focus, timeouts", () => {
   });
 
   it("the post-action reload is a foreground read and its 15 s timer is cleared", async () => {
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
+    vi.useFakeTimers(FAKE_CLOCK);
     try {
       const done = {
         status: "resolved" as const,
@@ -661,7 +676,7 @@ describe("ack hook - background reads, focus, timeouts", () => {
   });
 
   it("a hung reload cannot hold the busy state forever", async () => {
-    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
+    vi.useFakeTimers(FAKE_CLOCK);
     try {
       let gets = 0;
       const { client } = hookClient(() => {

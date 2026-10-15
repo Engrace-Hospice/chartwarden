@@ -27,7 +27,7 @@ import {
 // seams) by default — the M36-T04 resolution/fan-out engine over empty recipient ports + the
 // platform-default rule seed. Production injects the Drizzle/seam-backed ports (T07/T08) via
 // `deps.emitter`.
-import type { ChartPromotionSourceReader } from "@wardenx/types";
+import type { ChartPromotionSourceReader, EscalationRouter } from "@wardenx/types";
 import { getSeam, registerSeam } from "../../bootstrap/index";
 
 /** Injected production wiring for M36's published seams (the slice defaults to in-memory). */
@@ -69,4 +69,13 @@ export function getAlertEmitter(): AlertEmitter {
  */
 export function getMessagingProvider(): import("@wardenx/messaging").MessagingProvider {
   return getSeam("MessagingProvider") as import("@wardenx/messaging").MessagingProvider;
+}
+
+/**
+ * Typed resolver for the `EscalationRouter` (WP 4.3, ADR-0057). M36 only ever REACHES M19 through this accessor: it never registers
+ * an implementation (M19 owns it). With no M19 binding the registry holds the deny-stub, which answers `unavailable` /
+ * `source: "deny_stub"`; a caller must treat that as "cannot route", never as "nobody needed". WP 4.4 is its first caller.
+ */
+export function getEscalationRouter(): EscalationRouter {
+  return getSeam("EscalationRouter");
 }

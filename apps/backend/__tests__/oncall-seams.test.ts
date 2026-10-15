@@ -88,9 +88,10 @@ afterEach(() => {
 });
 
 describe("M19 §4.3 — registry wiring", () => {
-  it("declares all five published seams as boot-required with a deny-stub, owned by M19", () => {
+  it("declares all five published seams, plus the WP 4.3 EscalationRouter, as boot-required with a deny-stub, owned by M19", () => {
     const m19 = REQUIRED_SEAMS.filter((s) => s.ownerModule === 19);
     expect(m19.map((s) => s.key).sort()).toEqual([
+      "EscalationRouter",
       "OnCallProvider",
       "PortalTriageReader",
       "TriageCallMetricsProvider",
