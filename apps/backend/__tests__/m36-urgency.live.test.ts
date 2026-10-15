@@ -329,6 +329,34 @@ describe.skipIf(!DB_URL)("M36 WP 4.1 urgency model - LIVE Postgres", () => {
       );
     });
 
+    it("a retry after the recipient's ORGANIZATION membership lapsed still replays (200), not a trigger error", async () => {
+      const clientId = randomUUID();
+      const first = await send(app, nurse, { client_message_id: clientId, recipient_user_id: rn2 });
+      expect(first.statusCode).toBe(201);
+      await kit.admin.query(
+        "UPDATE membership SET status='suspended' WHERE user_id=$1 AND organization_id=$2",
+        [rn2, ORG_A],
+      );
+      try {
+        const before = await snapshot();
+        const again = await send(app, nurse, {
+          client_message_id: clientId,
+          recipient_user_id: rn2,
+        });
+        expect(again.statusCode, again.body).toBe(200);
+        expect(again.json()).toMatchObject({ created: false, message_id: first.json().message_id });
+        expect(await snapshot()).toEqual(before);
+        // a NEW urgent message to the lapsed member is still refused (the trigger and the app both say no)
+        const fresh = await send(app, nurse, { recipient_user_id: rn2 });
+        expect(fresh.statusCode).toBe(422);
+      } finally {
+        await kit.admin.query(
+          "UPDATE membership SET status='active' WHERE user_id=$1 AND organization_id=$2",
+          [rn2, ORG_A],
+        );
+      }
+    });
+
     it("a reused client_message_id naming a different recipient is the idempotency conflict, never a silent replay", async () => {
       const clientId = randomUUID();
       expect((await send(app, nurse, { client_message_id: clientId })).statusCode).toBe(201);

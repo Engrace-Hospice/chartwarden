@@ -39,6 +39,16 @@ CREATE TRIGGER "trg_message_urgency_immutable"
 CREATE OR REPLACE FUNCTION message_urgent_recipient_in_org() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 BEGIN
+  -- A retry of a send that already committed (same organization, author and client_message_id) is a no-op replay at the
+  -- insert (ON CONFLICT DO NOTHING): it must not be refused because the recipient's membership has lapsed since.
+  IF NEW.client_message_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM message x
+     WHERE x.organization_id = NEW.organization_id
+       AND x.author_user_id = NEW.author_user_id
+       AND x.client_message_id = NEW.client_message_id
+  ) THEN
+    RETURN NEW;
+  END IF;
   IF NEW.urgent_recipient_user_id IS NOT NULL AND NOT EXISTS (
     SELECT 1 FROM membership m
      WHERE m.user_id = NEW.urgent_recipient_user_id

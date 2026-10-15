@@ -22,15 +22,15 @@ const event = (payload: Record<string, unknown> = {}) =>
     },
   }) as never;
 
-function setup(canView = true, canReceive?: () => Promise<boolean>) {
+function setup(canView = true, stillQualified?: () => Promise<boolean>) {
   const log = vi.fn();
   const emit = vi.fn().mockResolvedValue({ alertId: "a", resolvedRecipientCount: 1 });
   const canViewChannel = vi.fn().mockResolvedValue(canView);
   const consumer = buildM36UrgentNotificationsConsumer({
     alerts: { emit } as unknown as AlertEmitter,
     messaging: { canViewChannel },
-    ...(canReceive ? { canReceive } : {}),
-    log,
+    ...(stillQualified ? { stillQualified } : {}),
+    warn: log,
   });
   return { emit, canViewChannel, consumer, log };
 }
@@ -93,19 +93,24 @@ describe("M36 urgent notifications consumer", () => {
     });
   });
 
-  it("re-checks messaging.urgent.receive at consume time and fails quiet (logged) when it is gone or the lookup throws", async () => {
-    for (const check of [async () => false, async () => Promise.reject(new Error("seam down"))]) {
-      const { emit, consumer, log } = setup(true, check);
-      await consumer.handle(event());
-      expect(emit).not.toHaveBeenCalled();
-      expect(log).toHaveBeenCalledWith(
-        "urgent notification not delivered",
-        expect.objectContaining({ reason: "recipient_not_qualified" }),
-      );
-    }
-    const { emit, consumer } = setup(true, async () => true);
+  it("re-checks the recipient's qualification at consume time and skips quietly (warned) on a clean no", async () => {
+    const { emit, consumer, log } = setup(true, async () => false);
     await consumer.handle(event());
-    expect(emit).toHaveBeenCalledTimes(1);
+    expect(emit).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith(
+      "urgent notification not delivered",
+      expect.objectContaining({ reason: "recipient_not_qualified" }),
+    );
+    const ok = setup(true, async () => true);
+    await ok.consumer.handle(event());
+    expect(ok.emit).toHaveBeenCalledTimes(1);
+  });
+
+  it("RETHROWS when the qualification lookup fails, so the outbox retries and the alert is not lost", async () => {
+    const { emit, consumer, log } = setup(true, async () => Promise.reject(new Error("db blip")));
+    await expect(consumer.handle(event())).rejects.toThrow("db blip");
+    expect(emit).not.toHaveBeenCalled();
+    expect(log).not.toHaveBeenCalled();
   });
 
   it("throws on a payload missing the recipient so the dispatcher retries and dead-letters it", async () => {

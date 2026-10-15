@@ -21,6 +21,10 @@ export const URGENT_PAIR_LIMIT = { max: 5, windowMs: 5 * 60_000 } as const;
 
 export type UrgentRouteRateLimit = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** A retry of one message (same client_message_id) is bounded, but never counts against the send budgets. */
+export const URGENT_RETRY_CAP = 30;
+
 export function buildUrgentRateLimit(
   store: RateLimitStore,
   onStoreError?: (err: unknown) => void,
@@ -31,30 +35,60 @@ export function buildUrgentRateLimit(
     keyPrefix: URGENT_RATE_LIMIT_KEY_PREFIX,
     ...(onStoreError ? { onStoreError } : {}),
   });
+  const closed = (request: FastifyRequest, err: unknown): never => {
+    onStoreError?.(err);
+    request.log.warn(
+      { keyPrefix: URGENT_RATE_LIMIT_KEY_PREFIX },
+      "urgent rate-limit store unavailable",
+    );
+    throw new DegradedError("rate-limit", "temporarily unavailable");
+  };
+  const count = async (request: FastifyRequest, key: string, windowMs: number): Promise<number> => {
+    try {
+      const n = await store.increment(key, windowMs);
+      if (!Number.isInteger(n) || n < 1) throw new Error("bad count");
+      return n;
+    } catch (err) {
+      return closed(request, err);
+    }
+  };
+  const refuse = (reply: FastifyReply, windowMs: number): never => {
+    reply.header("Retry-After", String(Math.ceil(windowMs / 1000)));
+    throw new RateLimitedError();
+  };
   return async (request, reply) => {
-    await base(request, reply);
     const { organizationId, userId } = request.context ?? {};
     if (!organizationId || !userId) throw new UnauthorizedError();
-    const recipient = (request.body as { recipient_user_id?: unknown } | null)?.recipient_user_id;
-    if (typeof recipient !== "string" || recipient.length === 0) return;
-    let count: number;
-    try {
-      count = await store.increment(
-        `${URGENT_RATE_LIMIT_KEY_PREFIX}:pair:${organizationId}:${userId}:${recipient.toLowerCase()}`,
+    const body = (request.body ?? {}) as {
+      recipient_user_id?: unknown;
+      client_message_id?: unknown;
+    };
+    const clientId =
+      typeof body.client_message_id === "string" && UUID.test(body.client_message_id)
+        ? body.client_message_id.toLowerCase()
+        : null;
+    const recipient =
+      typeof body.recipient_user_id === "string" && UUID.test(body.recipient_user_id)
+        ? body.recipient_user_id.toLowerCase()
+        : null;
+    // A flaky-network retry of ONE message must never lock the sender out: the second and later sightings of the same
+    // client_message_id are bounded by their own cap and skip the send budgets (the core replays the original anyway).
+    if (clientId) {
+      const seen = await count(
+        request,
+        `${URGENT_RATE_LIMIT_KEY_PREFIX}:seen:${organizationId}:${userId}:${clientId}`,
         URGENT_PAIR_LIMIT.windowMs,
       );
-      if (!Number.isInteger(count) || count < 1) throw new Error("bad count");
-    } catch (err) {
-      onStoreError?.(err);
-      request.log.warn(
-        { keyPrefix: URGENT_RATE_LIMIT_KEY_PREFIX },
-        "urgent rate-limit store unavailable",
-      );
-      throw new DegradedError("rate-limit", "temporarily unavailable");
+      if (seen > URGENT_RETRY_CAP) refuse(reply, URGENT_PAIR_LIMIT.windowMs);
+      if (seen > 1) return;
     }
-    if (count > URGENT_PAIR_LIMIT.max) {
-      reply.header("Retry-After", String(Math.ceil(URGENT_PAIR_LIMIT.windowMs / 1000)));
-      throw new RateLimitedError();
-    }
+    await base(request, reply);
+    if (!recipient) return;
+    const pair = await count(
+      request,
+      `${URGENT_RATE_LIMIT_KEY_PREFIX}:pair:${organizationId}:${userId}:${recipient}`,
+      URGENT_PAIR_LIMIT.windowMs,
+    );
+    if (pair > URGENT_PAIR_LIMIT.max) refuse(reply, URGENT_PAIR_LIMIT.windowMs);
   };
 }

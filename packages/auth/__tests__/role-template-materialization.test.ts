@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 /**
  * GAP-006 - the pure plan for materializing ROLE_TEMPLATES into one tenant's `role` rows.
  * The DB executor is proven live (m3-role-template-materialization.live.test.ts); this pins the decisions.
@@ -61,16 +63,32 @@ describe("planRoleTemplateMaterialization", () => {
       expect(plan().find((r) => r.key === key)?.permissionKeys).not.toContain("messaging.review");
   });
 
-  it("keeps the urgent clinical keys off org_admin and administrator, and grants them only to the clinical templates 1105 names", () => {
+  it("keeps the urgent clinical keys off org_admin and administrator, and gives them to exactly the role templates migration 1105 names", () => {
+    const sql = readFileSync(
+      join(__dirname, "../../db/migrations/1105_m36_message_urgency.sql"),
+      "utf8",
+    );
+    // The role-key list 1105 grants each permission to (the `r."key" IN (...)` after that permission's SELECT).
+    const granted = (permission: string): string[] => {
+      const at = sql.indexOf(`'${permission}'\n  FROM "role" r`);
+      const list = /IN \(([^)]*)\)/.exec(sql.slice(at))?.[1] ?? "";
+      return [...list.matchAll(/'([^']+)'/g)].map((m) => m[1] as string);
+    };
+    const templateKeys = new Set(ROLE_TEMPLATES.map((t) => t.key));
     for (const key of ["messaging.urgent.send", "messaging.urgent.receive"]) {
       expect(MIRROR.some((p) => p.key === key)).toBe(true);
-      for (const role of ["org_admin", "administrator"])
+      for (const role of ["org_admin", "administrator", "compliance_officer"])
         expect(plan().find((r) => r.key === role)?.permissionKeys).not.toContain(key);
       const holders = plan()
         .filter((r) => r.permissionKeys.includes(key))
         .map((r) => r.key)
         .sort();
-      expect(holders).toEqual(["director_of_nursing", "medical_director"]);
+      const expected = granted(key)
+        .filter((role) => templateKeys.has(role))
+        .sort();
+      expect(expected.length).toBeGreaterThan(0);
+      expect(granted(key).length).toBeGreaterThan(5);
+      expect(holders).toEqual(expected);
     }
   });
 

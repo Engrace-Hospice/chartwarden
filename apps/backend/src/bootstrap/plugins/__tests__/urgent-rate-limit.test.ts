@@ -5,6 +5,7 @@ import { applyErrorHandler } from "../error-handler";
 import { type RateLimitStore, createInMemoryRateLimitStore } from "../rate-limit-store";
 import {
   URGENT_PAIR_LIMIT,
+  URGENT_RETRY_CAP,
   URGENT_ROUTE_RATE_LIMIT,
   buildUrgentRateLimit,
 } from "../urgent-rate-limit";
@@ -12,6 +13,8 @@ import {
 const ORG = "00000000-0000-0000-0000-00000000000a";
 const R1 = "00000000-0000-0000-0000-0000000000a1";
 const R2 = "00000000-0000-0000-0000-0000000000a2";
+let seq = 0;
+const newId = () => `00000000-0000-4000-8000-${String(++seq).padStart(12, "0")}`;
 
 function build(store: RateLimitStore) {
   const app = Fastify();
@@ -26,12 +29,17 @@ function build(store: RateLimitStore) {
   app.post("/u", { preHandler: [buildUrgentRateLimit(store)] }, async () => ({ ok: true }));
   return app;
 }
-const send = (app: ReturnType<typeof build>, user: string | null, recipient: string) =>
+const send = (
+  app: ReturnType<typeof build>,
+  user: string | null,
+  recipient: string,
+  clientId: string = newId(),
+) =>
   app.inject({
     method: "POST",
     url: "/u",
     headers: user ? { "x-test-user": user } : {},
-    payload: { recipient_user_id: recipient },
+    payload: { recipient_user_id: recipient, client_message_id: clientId },
   });
 
 describe("urgent rate limit", () => {
@@ -82,5 +90,39 @@ describe("urgent rate limit", () => {
     } as unknown as RateLimitStore;
     expect((await send(build(flaky), "u1", R1)).statusCode).toBe(503);
     expect(calls).toBeGreaterThan(1);
+  });
+
+  it("a retry of the same message never burns the budgets, so a flaky network cannot lock the sender out", async () => {
+    const app = build(createInMemoryRateLimitStore());
+    const id = newId();
+    for (let i = 0; i < URGENT_RETRY_CAP; i++) {
+      expect((await send(app, "u1", R1, id)).statusCode).toBe(200);
+    }
+    // ...and the sender can still send fresh messages to the same recipient afterwards (only 1 of 5 pair slots used)
+    for (let i = 0; i < URGENT_PAIR_LIMIT.max - 1; i++) {
+      expect((await send(app, "u1", R1)).statusCode).toBe(200);
+    }
+    expect((await send(app, "u1", R1)).statusCode).toBe(429);
+  });
+
+  it("bounds retries of one message with their own cap", async () => {
+    const app = build(createInMemoryRateLimitStore());
+    const id = newId();
+    for (let i = 0; i < URGENT_RETRY_CAP; i++) await send(app, "u1", R1, id);
+    expect((await send(app, "u1", R1, id)).statusCode).toBe(429);
+  });
+
+  it("builds keys only from UUIDs: a hostile recipient or message id never reaches a key", async () => {
+    const keys: string[] = [];
+    const real = createInMemoryRateLimitStore();
+    const spy = {
+      increment: async (key: string, windowMs: number) => {
+        keys.push(key);
+        return real.increment(key, windowMs);
+      },
+    } as unknown as RateLimitStore;
+    const app = build(spy);
+    await send(app, "u1", "x:y:z;DROP", "not-a-uuid");
+    expect(keys.some((k) => k.includes(":pair:") || k.includes(":seen:"))).toBe(false);
   });
 });

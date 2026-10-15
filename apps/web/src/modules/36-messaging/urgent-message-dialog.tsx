@@ -28,6 +28,7 @@ import {
   RECIPIENT_LEGEND,
   SBAR_LOADING_TEXT,
   SBAR_UNAVAILABLE_TEXT,
+  TURNED_OFF_NOTICE,
   URGENT_DIALOG_TITLE,
   confirmLine,
   isIndeterminate,
@@ -47,6 +48,8 @@ export interface UrgentSent {
 export interface UrgentMessageDialogProps {
   readonly channelId: string;
   readonly options: EnabledUrgentOptions;
+  /** The feature was turned off while the dialog was open: the draft stays, sending is blocked, the person is told. */
+  readonly blocked?: boolean;
   readonly draft: UrgentDraft;
   readonly onClose: () => void;
   readonly onSent: (sent: UrgentSent) => void;
@@ -84,6 +87,7 @@ export function recipientChoices(options: EnabledUrgentOptions): {
 export function UrgentMessageDialog({
   channelId,
   options,
+  blocked = false,
   draft,
   onClose,
   onSent,
@@ -101,16 +105,28 @@ export function UrgentMessageDialog({
   const refs = useRef<Partial<Record<SbarSectionKey, HTMLTextAreaElement | null>>>({});
   const recipientRef = useRef<HTMLFieldSetElement>(null);
   const keepRef = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLDivElement>(null);
   const { choices, hidden } = recipientChoices(options);
   const chosen = choices.find((c) => c.userId === draft.recipientId) ?? null;
   const values: SbarFormValues = { sections: draft.sections, urgency: "urgent" };
 
+  const wasConfirming = useRef(false);
   useEffect(() => {
     if (confirmingDiscard) keepRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    else if (wasConfirming.current) {
+      // Back to editing: focus the first section (the Cancel button when the form has not loaded).
+      (refs.current[SBAR_SECTION_KEYS[0]] ?? cancelRef.current?.querySelector("button"))?.focus();
+    }
+    wasConfirming.current = confirmingDiscard;
   }, [confirmingDiscard]);
 
   function requestClose(): void {
     if (submitting) return;
+    if (confirmingDiscard) {
+      // Escape (or a scrim click) inside the prompt means "keep editing", never "close".
+      setConfirmingDiscard(false);
+      return;
+    }
     if (draft.dirty) {
       setConfirmingDiscard(true);
       return;
@@ -119,7 +135,7 @@ export function UrgentMessageDialog({
   }
 
   async function submit(): Promise<void> {
-    if (inFlight.current || !policy) return;
+    if (inFlight.current || !policy || blocked || confirmingDiscard) return;
     setError(null);
     if (!chosen) {
       setError(CHOOSE_RECIPIENT_TEXT);
@@ -197,6 +213,11 @@ export function UrgentMessageDialog({
           <p className="wx-urgent-notice">{NOT_EMERGENCY_NOTICE}</p>
           <p className="wx-urgent-notice">{NO_PAGE_NOTICE}</p>
         </div>
+        {blocked ? (
+          <p className="wx-urgent-error" role="alert">
+            {TURNED_OFF_NOTICE}
+          </p>
+        ) : null}
         {choices.length === 0 ? (
           <p className="wx-urgent-error" role="alert">
             {NO_RECIPIENT_TEXT}
@@ -205,7 +226,7 @@ export function UrgentMessageDialog({
           <fieldset
             ref={recipientRef}
             tabIndex={-1}
-            disabled={submitting}
+            disabled={submitting || confirmingDiscard}
             aria-describedby={missingRecipient ? `${id}-recipient-error` : undefined}
           >
             <legend>{RECIPIENT_LEGEND} (required)</legend>
@@ -257,7 +278,7 @@ export function UrgentMessageDialog({
                     }}
                     rows={3}
                     value={draft.sections[key]}
-                    disabled={submitting}
+                    disabled={submitting || confirmingDiscard}
                     aria-invalid={issue ? true : undefined}
                     aria-describedby={`${ids}-hint ${ids}-count${issue ? ` ${ids}-error` : ""}`}
                     onChange={(event) => {
@@ -287,8 +308,13 @@ export function UrgentMessageDialog({
           </p>
         ) : null}
         {confirmingDiscard ? (
-          <div className="wx-urgent-notice" role="alertdialog" aria-label={DISCARD_PROMPT}>
-            <p>{DISCARD_PROMPT}</p>
+          <div
+            className="wx-urgent-notice"
+            role="alertdialog"
+            aria-label={URGENT_DIALOG_TITLE}
+            aria-describedby={`${id}-discard`}
+          >
+            <p id={`${id}-discard`}>{DISCARD_PROMPT}</p>
             <div className="wx-urgent-actions" ref={keepRef}>
               <Button type="button" tone="secondary" onClick={() => setConfirmingDiscard(false)}>
                 {KEEP_EDITING_LABEL}
@@ -309,11 +335,20 @@ export function UrgentMessageDialog({
             </div>
           </div>
         ) : null}
-        <div className="wx-urgent-actions">
-          <Button type="button" tone="secondary" disabled={submitting} onClick={requestClose}>
+        <div className="wx-urgent-actions" ref={cancelRef}>
+          <Button
+            type="button"
+            tone="secondary"
+            disabled={submitting || confirmingDiscard}
+            onClick={requestClose}
+          >
             Cancel
           </Button>
-          <Button type="submit" loading={submitting} disabled={!policy || choices.length === 0}>
+          <Button
+            type="submit"
+            loading={submitting}
+            disabled={!policy || choices.length === 0 || blocked || confirmingDiscard}
+          >
             {chosen ? sendLabel(chosen.label) : "Send urgent message"}
           </Button>
         </div>

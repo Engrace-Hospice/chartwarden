@@ -28,6 +28,10 @@ export const DISCARD_PROMPT =
 export const NAME_UNAVAILABLE_TEXT =
   "Some colleagues are not listed because their names could not be shown. Use the agency telephone procedure for them.";
 export const UNAVAILABLE_TEXT = "Urgent clinical is temporarily unavailable. Retrying.";
+export const LOAD_FAILED_TEXT = "Could not load Urgent clinical. Try again.";
+export const RETRY_LABEL = "Try again";
+export const TURNED_OFF_NOTICE =
+  "Urgent clinical has been turned off for your organization. Your draft is kept, but it cannot be sent. Use the agency telephone procedure.";
 export const SENT_TEXT =
   "Urgent message sent. Your colleague has been told in the app. This is not a page.";
 export const SENT_REPLAY_TEXT = "That urgent message was already sent. It was not sent again.";
@@ -48,11 +52,11 @@ const ERRORS: Readonly<Record<string, string>> = {
   CHANNEL_ARCHIVED: "This conversation is archived. Nothing was sent.",
 };
 
-/** A server refusal as text: the typed code wins, then the HTTP status, then a generic line. */
 /** A failure that does not prove the message was NOT stored: no response, a 5xx, or a 409 (still processing). */
 export const isIndeterminate = (status: number | undefined): boolean =>
   status === undefined || status >= 500 || status === 409;
 
+/** A server refusal as text: an indeterminate failure first, then the typed code, then the HTTP status, then a generic line. */
 export function urgentErrorText(status: number | undefined, code: string | undefined): string {
   if (isIndeterminate(status)) return INDETERMINATE_TEXT;
   if (status === 429) return RATE_LIMITED_TEXT;

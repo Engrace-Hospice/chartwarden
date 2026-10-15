@@ -322,7 +322,7 @@ export function ThreadComposer({
           channelId={channel.channelId}
           kind={channel.kind}
           disabled={sending}
-          onSent={onPollCreated}
+          onThreadChanged={onPollCreated}
           statusResetKey={draft}
         />
         <NonMemberMentionPrompt

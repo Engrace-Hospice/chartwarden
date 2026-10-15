@@ -9,13 +9,15 @@ import type { JSX } from "react";
 import type { ChannelKind } from "./messaging-types";
 import { UrgentMessageDialog, type UrgentSent } from "./urgent-message-dialog";
 import {
+  LOAD_FAILED_TEXT,
+  RETRY_LABEL,
   SENT_REPLAY_TEXT,
   SENT_TEXT,
   UNAVAILABLE_TEXT,
   URGENT_BUTTON_LABEL,
 } from "./urgent-wording";
 import { useUrgentDraft } from "./use-urgent-draft";
-import { useUrgentOptions } from "./use-urgent-options";
+import { type EnabledUrgentOptions, useUrgentOptions } from "./use-urgent-options";
 import "./urgent.css";
 
 /** How long the "sent" status stays on screen. */
@@ -25,8 +27,8 @@ interface ButtonProps {
   channelId: string;
   kind: ChannelKind;
   disabled?: boolean;
-  /** The thread reloads so the new message shows without waiting for the next poll. */
-  onSent?: () => void;
+  /** The conversation's message list is re-read (a message was sent, or a failed send may have stored one). */
+  onThreadChanged?: () => void;
   /** Changes whenever the composer text changes: the previous outcome is no longer news. */
   statusResetKey?: string;
 }
@@ -40,13 +42,17 @@ function UrgentControl({
   channelId,
   kind,
   disabled = false,
-  onSent,
+  onThreadChanged,
   statusResetKey,
 }: ButtonProps): JSX.Element | null {
   const state = useUrgentOptions(channelId, kind !== "care_team");
   const draft = useUrgentDraft();
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState("");
+  // What the open dialog shows. Fixed while a recipient is chosen (the list must not shift under the person's hands) and kept
+  // when a refetch comes back "off" mid-edit (the draft survives, sending is blocked, the person is told).
+  const [dialogOptions, setDialogOptions] = useState<EnabledUrgentOptions | null>(null);
+  const [turnedOff, setTurnedOff] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const wasOpen = useRef(false);
   const mounted = useRef(true);
@@ -70,7 +76,15 @@ function UrgentControl({
     const timer = setTimeout(() => setStatus(""), SENT_STATUS_MS);
     return () => clearTimeout(timer);
   }, [status]);
-  if (state.status === "hidden") return null;
+  useEffect(() => {
+    if (!open) return;
+    if (state.status === "hidden") setTurnedOff(true);
+    if (state.status === "ready") {
+      setTurnedOff(false);
+      if (draft.recipientId === "") setDialogOptions(state.options);
+    }
+  }, [open, state, draft.recipientId]);
+  if (state.status === "hidden" && !open) return null;
   const sentText = (sent: UrgentSent): string => (sent.created ? SENT_TEXT : SENT_REPLAY_TEXT);
   return (
     <div className="wx-urgent" ref={rootRef}>
@@ -81,16 +95,19 @@ function UrgentControl({
         disabled={disabled || state.status !== "ready"}
         onClick={() => {
           setStatus("");
+          if (state.status === "ready") setDialogOptions(state.options);
+          setTurnedOff(false);
           state.reload();
           setOpen(true);
         }}
       >
         {URGENT_BUTTON_LABEL}
       </Button>
-      {open && state.status === "ready" ? (
+      {open && dialogOptions ? (
         <UrgentMessageDialog
           channelId={channelId}
-          options={state.options}
+          options={dialogOptions}
+          blocked={turnedOff}
           draft={draft}
           onClose={() => setOpen(false)}
           onSent={(sent) => {
@@ -98,16 +115,25 @@ function UrgentControl({
             draft.reset();
             setStatus(sentText(sent));
             setOpen(false);
-            onSent?.();
+            onThreadChanged?.();
           }}
           onIndeterminate={() => {
-            if (mounted.current) onSent?.();
+            if (mounted.current) onThreadChanged?.();
           }}
         />
       ) : null}
       <output className="wx-urgent-status" tabIndex={status ? 0 : undefined}>
-        {state.status === "unavailable" ? UNAVAILABLE_TEXT : status}
+        {state.status === "unavailable"
+          ? UNAVAILABLE_TEXT
+          : state.status === "failed"
+            ? LOAD_FAILED_TEXT
+            : status}
       </output>
+      {state.status === "failed" ? (
+        <Button type="button" tone="secondary" onClick={state.reload}>
+          {RETRY_LABEL}
+        </Button>
+      ) : null}
     </div>
   );
 }

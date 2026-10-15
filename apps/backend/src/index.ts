@@ -9894,15 +9894,16 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             alerts: getSeam("AlertEmitter") as AlertEmitter,
           }),
           // WP 4.1 - one fixed-text in-app alert for the named recipient of an urgent clinical message (not a page).
-          buildM36UrgentNotificationsConsumer({
-            alerts: getSeam("AlertEmitter") as AlertEmitter,
-            messaging: createDbMessagingRouteService(dbHandle.db),
-            canReceive: async (organizationId, userId) =>
-              (await resolveActorPermissions({ organizationId, userId })).has(
-                "messaging.urgent.receive",
-              ),
-            log: (message, context) => app.log.info(context, message),
-          }),
+          ...(m36Urgent
+            ? [
+                buildM36UrgentNotificationsConsumer({
+                  alerts: getSeam("AlertEmitter") as AlertEmitter,
+                  messaging: createDbMessagingRouteService(dbHandle.db),
+                  stillQualified: m36Urgent.stillQualified,
+                  warn: (message, context) => app.log.warn(context, message),
+                }),
+              ]
+            : []),
           // WP 3.7 - records the decision M8 / M14 report for a chart-promotion proposal (always, regardless of the flag) and
           // tells the requester; and tells the reviewers a proposal is waiting (the requester when nobody can be reached).
           ...(m36Promotions

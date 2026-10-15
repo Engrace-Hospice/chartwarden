@@ -25,10 +25,14 @@ function requireId(payload: Record<string, unknown>, key: string): string {
 export function buildM36UrgentNotificationsConsumer(deps: {
   readonly alerts: AlertEmitter;
   readonly messaging: Pick<MessagingRouteService, "canViewChannel">;
-  /** Re-checks the recipient still holds `messaging.urgent.receive` now. A throw reads as "no" (fail quiet, logged). */
-  readonly canReceive?: (orgId: string, userId: string) => Promise<boolean>;
-  /** Ids and a reason code only - never a name, patient or text. */
-  readonly log?: (message: string, context: Record<string, string>) => void;
+  /**
+   * Consume-time re-check: the recipient is still active, holds `messaging.urgent.receive` and passes the Part 2 gate for the
+   * channel's patient. A clean `false` is a quiet skip (logged); a THROW propagates so the outbox retries and dead-letters
+   * (a database blip must never swallow an urgent alert).
+   */
+  readonly stillQualified?: (orgId: string, userId: string, channelId: string) => Promise<boolean>;
+  /** Warn-level, ids and a reason code only - never a name, patient or text. */
+  readonly warn?: (message: string, context: Record<string, string>) => void;
 }): OutboxConsumerBinding {
   return {
     consumerName: M36_URGENT_NOTIFICATION_CONSUMER,
@@ -40,7 +44,7 @@ export function buildM36UrgentNotificationsConsumer(deps: {
       const channelId = requireId(payload, "channelId");
       const recipientUserId = requireId(payload, "recipientUserId");
       const skip = (reason: string): void =>
-        deps.log?.("urgent notification not delivered", {
+        deps.warn?.("urgent notification not delivered", {
           reason,
           organizationId: event.organizationId,
           channelId,
@@ -52,14 +56,13 @@ export function buildM36UrgentNotificationsConsumer(deps: {
       ) {
         return skip("recipient_cannot_view_channel");
       }
-      if (deps.canReceive) {
-        let allowed = false;
-        try {
-          allowed = await deps.canReceive(event.organizationId, recipientUserId);
-        } catch {
-          allowed = false;
-        }
-        if (!allowed) return skip("recipient_not_qualified");
+      if (deps.stillQualified) {
+        const qualified = await deps.stillQualified(
+          event.organizationId,
+          recipientUserId,
+          channelId,
+        );
+        if (!qualified) return skip("recipient_not_qualified");
       }
       await deps.alerts.emit(event.organizationId, {
         eventType: event.eventType,

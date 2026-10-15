@@ -13,6 +13,8 @@ export type EnabledUrgentOptions = Extract<UrgentMessageOptions, { readonly enab
 export type UrgentOptionsState =
   | { readonly status: "hidden" }
   | { readonly status: "unavailable" }
+  /** Every retry failed: the person is told, and `reload` (a Retry button) starts over. */
+  | { readonly status: "failed" }
   | { readonly status: "ready"; readonly options: EnabledUrgentOptions };
 
 const HIDDEN: UrgentOptionsState = { status: "hidden" };
@@ -34,11 +36,6 @@ export function useUrgentOptions(
     latest.current += 1;
     const requestId = latest.current;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    setAnswer((current) =>
-      current.channelId === channelId && current.state.status === "ready"
-        ? current
-        : { channelId, state: HIDDEN },
-    );
     if (skip) return;
     const settle = (next: UrgentOptionsState): void => {
       if (requestId === latest.current) setAnswer({ channelId, state: next });
@@ -53,7 +50,15 @@ export function useUrgentOptions(
             : { channelId, state: { status: "unavailable" } },
         );
         const delay = POLICY_RETRY_DELAYS_MS[retry];
-        if (delay !== undefined) timer = setTimeout(() => attempt(retry + 1), delay);
+        if (delay !== undefined) {
+          timer = setTimeout(() => attempt(retry + 1), delay);
+          return;
+        }
+        setAnswer((current) =>
+          current.channelId === channelId && current.state.status === "ready"
+            ? current
+            : { channelId, state: { status: "failed" } },
+        );
       };
       // Deferred a tick so a client that throws (not just rejects) is treated as transient too.
       void Promise.resolve()
