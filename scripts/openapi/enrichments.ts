@@ -564,6 +564,20 @@ import {
   MacRuleRequestSchema as M25MacRuleRequestSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/adr.routes";
 import { M25ListQuerySchema } from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
+import {
+  DenialRouteSchema as M25DenialRouteSchema,
+  MacReasonCodeRequestSchema as M25MacReasonCodeRequestSchema,
+  ReopeningCreateRequestSchema as M25ReopeningCreateRequestSchema,
+  ReopeningDecideRequestSchema as M25ReopeningDecideRequestSchema,
+  ReopeningDetailSchema as M25ReopeningDetailSchema,
+  ReopeningDueRequestSchema as M25ReopeningDueRequestSchema,
+  ReopeningListQuerySchema as M25ReopeningListQuerySchema,
+  ReopeningPageSchema as M25ReopeningPageSchema,
+  ReopeningSubmitRequestSchema as M25ReopeningSubmitRequestSchema,
+  ReopeningVersionedResultSchema as M25ReopeningVersionedResultSchema,
+  RouteRulePageSchema as M25RouteRulePageSchema,
+  RouteRuleRequestSchema as M25RouteRuleRequestSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/reopening.routes";
 // M28 FHIR Gateway — the §4.2 request bodies + list queries the §4.1 route handlers validate against.
 import {
   AcceptProposalBody as M28AcceptProposalBody,
@@ -980,6 +994,7 @@ import {
   AppealDecideRequestSchema as M25AppealDecideRequestSchema,
   // detail responses
   AppealDetailSchema as M25AppealDetailSchema,
+  AppealOverrideRequestSchema as M25AppealOverrideRequestSchema,
   AppealSubmitLateGoodCauseRequestSchema as M25AppealSubmitLateGoodCauseRequestSchema,
   AppealSubmitRequestSchema as M25AppealSubmitRequestSchema,
   // list/page responses
@@ -8101,9 +8116,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M25VersionedResultSchema,
   },
   "POST /api/v1/denials/:id/appeals": {
-    summary: "Open an appeal against a denial case (§4.1)",
+    summary:
+      "Open an appeal against a denial case (§4.1); refused with 409 ROUTE_IS_REOPENING when the routing rules send the denial to a MAC reopening",
     body: M25AppealCreateRequestSchema,
     response: M25VersionedResultSchema,
+  },
+  "POST /api/v1/denials/:id/appeals/override": {
+    summary:
+      "Appeal a denial the routing rules send to a MAC reopening, with an audited reason (milestone 3)",
+    body: M25AppealOverrideRequestSchema,
+    response: M25VersionedResultSchema,
+    status: 201,
   },
 
   // ── adr.routes.ts (hospice ADR/TPE/QIC PRD, milestone 2a) ───────────────────────────────────────
@@ -8160,6 +8183,67 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Create or update a MAC response-window rule",
     body: M25MacRuleRequestSchema,
     response: M25AdrVersionedResultSchema,
+  },
+
+  // ── reopening.routes.ts (hospice ADR/TPE/QIC PRD, milestone 3) ──────────────────────────────────
+  "GET /api/v1/reopenings": {
+    summary: "MAC reopening worklist, newest first",
+    query: M25ReopeningListQuerySchema,
+    response: M25ReopeningPageSchema,
+  },
+  "GET /api/v1/reopenings/:id": {
+    summary: "MAC reopening detail with its filing proof and event timeline",
+    response: M25ReopeningDetailSchema,
+  },
+  "POST /api/v1/reopenings": {
+    summary:
+      "Open a MAC reopening for a denial the routing rules send to one; an ADR it links to becomes a non-response",
+    body: M25ReopeningCreateRequestSchema,
+    response: M25ReopeningVersionedResultSchema,
+    status: 201,
+  },
+  "PUT /api/v1/reopenings/:id/due": {
+    summary: "Record (or clear) the deadline the MAC gave for the reopening (If-Match)",
+    body: M25ReopeningDueRequestSchema,
+    response: M25ReopeningVersionedResultSchema,
+  },
+  "POST /api/v1/reopenings/:id/submit": {
+    summary:
+      "Record the reopening request filed with the MAC and its proof: step-up, frozen once recorded (If-Match)",
+    body: M25ReopeningSubmitRequestSchema,
+    response: M25ReopeningVersionedResultSchema,
+  },
+  "POST /api/v1/reopenings/:id/decide": {
+    summary: "Record the MAC's decision on a filed reopening (If-Match)",
+    body: M25ReopeningDecideRequestSchema,
+    response: M25ReopeningVersionedResultSchema,
+  },
+  "POST /api/v1/reopenings/:id/withdraw": {
+    summary: "Withdraw a reopening that has not been decided (If-Match)",
+    response: M25ReopeningVersionedResultSchema,
+  },
+  "POST /api/v1/reopenings/:id/close": {
+    summary: "Close a decided reopening (If-Match)",
+    response: M25ReopeningVersionedResultSchema,
+  },
+  "GET /api/v1/denials/:id/route": {
+    summary:
+      "Which path a denial takes (appeal, reopening or undetermined) and the routing rule that decided",
+    response: M25DenialRouteSchema,
+  },
+  "PUT /api/v1/denials/:id/mac-reason-code": {
+    summary: "Record the MAC's own reason code on a denial, for example 56900 (If-Match)",
+    body: M25MacReasonCodeRequestSchema,
+    response: M25ReopeningVersionedResultSchema,
+  },
+  "GET /api/v1/denial-route-rules": {
+    summary: "The organization's denial routing rules",
+    response: M25RouteRulePageSchema,
+  },
+  "PUT /api/v1/denial-route-rules": {
+    summary: "Create or update a denial routing rule",
+    body: M25RouteRuleRequestSchema,
+    response: M25ReopeningVersionedResultSchema,
   },
 
   // ── appeals.routes.ts (§4.1 routes 19-26) ─────────────────────────────────────────────────────

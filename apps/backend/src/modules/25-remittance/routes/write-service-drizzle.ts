@@ -12,11 +12,11 @@ import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, eq, sql } from "drizzle-orm";
 import {
   type AppealTier,
+  DEFAULT_DEADLINE_ZONE,
   type DenialState,
   canTransitionAppeal,
   canTransitionDenial,
   computeTierDeadline,
-  DEFAULT_DEADLINE_ZONE,
   deriveTierDeadline,
   isKnownZone,
   nextTier,
@@ -26,6 +26,7 @@ import type { M25WriteActor } from "./actor";
 import { loadAppealPacketPayload } from "./appeal-packet-payload";
 import { type AppealSourcePorts, UNBOUND_APPEAL_SOURCES } from "./appeal-packet-sources";
 import { VersionConflictError } from "./concurrency";
+import { resolveDenialRoute } from "./denial-route-service";
 import { type RemittanceCommandDeps, buildRemittanceCommands } from "./remittance-commands-drizzle";
 import type {
   AppealCreateInput,
@@ -95,7 +96,9 @@ export function buildDrizzleM25WriteService(
    */
   async function providerZone(tx: M25Tx, providerEntityId: string): Promise<readonly string[]> {
     const zones = (
-      ports.providerZones ? await ports.providerZones(tx as unknown as DbClient, providerEntityId) : []
+      ports.providerZones
+        ? await ports.providerZones(tx as unknown as DbClient, providerEntityId)
+        : []
     ).filter(isKnownZone);
     return zones.length > 0 ? zones : [DEFAULT_DEADLINE_ZONE];
   }
@@ -185,7 +188,11 @@ export function buildDrizzleM25WriteService(
       .from(AC)
       .where(eq(AC.denialCaseId, denialCaseId));
     if (rows.some((r) => r.tier === tier && r.state !== "withdrawn" && r.state !== "closed")) {
-      throw new WardenXError("APPEAL_TIER_EXISTS", `a ${tier} appeal is already open on this denial`, 409);
+      throw new WardenXError(
+        "APPEAL_TIER_EXISTS",
+        `a ${tier} appeal is already open on this denial`,
+        409,
+      );
     }
     // Only a recorded, not-fully-favorable decision of the previous tier opens the next one; without it
     // nothing bounds the supplied date and a lapsed window could be reopened.
@@ -383,6 +390,32 @@ export function buildDrizzleM25WriteService(
         const tier = input.tier ?? "redetermination";
         if (!cur.claimId)
           throw new WardenXError("INVALID_STATE", "the denial has no claim to appeal", 409);
+        // Milestone 3: a denial the routing rules send to a MAC reopening (a 56900 non-response) is not appealable.
+        // The first appeal needs an audited override reason; a later tier follows an appeal that already existed.
+        let routeOverride: { reason: string; ruleId: string | null } | null = null;
+        if (tier === "redetermination") {
+          const routed = await resolveDenialRoute(tx, denialCaseId, actor.providerEntityScope);
+          // A reopening already being worked on this denial means it is on the reopening path whatever the rules
+          // say now, so a later rule or reason-code change cannot make the plain appeal route open again.
+          const reopenings = await tx
+            .select({ state: schema.reopeningCase.state })
+            .from(schema.reopeningCase)
+            .where(eq(schema.reopeningCase.denialCaseId, denialCaseId));
+          const reopeningLive = reopenings.some((r) =>
+            ["draft", "submitted", "decided"].includes(r.state),
+          );
+          if (routed.route === "reopening" || reopeningLive) {
+            const reason = input.routeOverrideReason?.trim() ?? "";
+            if (reason.length < 10) {
+              throw new WardenXError(
+                "ROUTE_IS_REOPENING",
+                "the routing rules send this denial to a MAC reopening, not an appeal; open a reopening, or appeal with an override reason of at least 10 characters",
+                409,
+              );
+            }
+            routeOverride = { reason, ruleId: routed.rule?.id ?? null };
+          }
+        }
         const noticeDay = await resolveNoticeDay(tx, denialCaseId, tier, input.noticeDate);
         const deadline = computeTierDeadline(
           tier,
@@ -408,6 +441,15 @@ export function buildDrizzleM25WriteService(
           appealCaseId: appealId,
           eventKind: "created",
           actorMembershipId: actor.membershipId,
+          // The override reason is free text: it rides the denylisted event payload, so the audit trail keeps it.
+          ...(routeOverride
+            ? {
+                eventPayload: {
+                  routeOverrideReason: routeOverride.reason,
+                  routeRuleId: routeOverride.ruleId,
+                },
+              }
+            : {}),
         });
         // Move the denial onto the appealed track when the edge is legal (escalated → appealed).
         if (canTransitionDenial(cur.state, "appealed")) {

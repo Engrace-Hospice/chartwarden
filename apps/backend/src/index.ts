@@ -1050,10 +1050,12 @@ import {
   M25_PLATFORM_JOB_ID,
   type TerminologyLookupPort,
   buildDrizzleAdrService,
+  buildDrizzleDenialRouteService,
   buildDrizzleDenialSeedStore,
   buildDrizzleM25IngestService,
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,
+  buildDrizzleReopeningService,
   buildM18EvvAggregatorRejectedConsumer,
   buildM23BackedClaimMatchCandidateProvider,
   buildM23ClaimRejectedConsumer,
@@ -5378,6 +5380,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
               providerZones: (tx, providerEntityId) =>
                 buildFoundationSiteReader().providerEntityTimezones(tx, providerEntityId),
             }),
+            // Milestone 3: which path a denial takes (appeal vs. MAC reopening) and the reopening aggregate.
+            reopeningService: buildDrizzleReopeningService(dbHandle.db),
+            denialRouteService: buildDrizzleDenialRouteService(dbHandle.db),
           });
           // M26 (Cap Management) — mount the §4.1 route plugins over the Drizzle READ + WRITE services; the
           // §4.10 `m26.cap.*` transactional outbox publisher binds here (events persist on the mutation's tx).

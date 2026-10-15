@@ -31,16 +31,20 @@ import {
   NoticeAlert,
   ReasonField,
 } from "./action-ui";
+import { DenialRoutePanel } from "./denial-route-panel";
 import {
   type AppealTier,
   type DenialAction,
   type DenialDetail,
+  type DenialRouteView,
   MIN_REASON,
+  MIN_ROUTE_OVERRIDE_REASON,
   isUuid,
   loadDenial,
   runDenialAction,
 } from "./remittance-api";
 import { DENIAL_STATE_TONE, humanize, money, toneOf } from "./remittance-status";
+import { REOPENING_DRAFT_ACTION } from "./reopening-panel";
 
 /** Which actions the §2.4 ladder has an arc for from each state (the server re-validates every one). */
 const ACTIONS_BY_STATE: Record<string, readonly DenialAction["kind"][]> = {
@@ -115,7 +119,17 @@ export function DenialDetailPanel({
   const [assignee, setAssignee] = useState(restored?.assignee ?? "");
   const [tier, setTier] = useState<AppealTier>(restored?.tier ?? "redetermination");
   const [noticeDate, setNoticeDate] = useState(restored?.noticeDate ?? "");
-  const [busy, setBusy] = useState(false);
+  // Which path the routing rules send this denial to; a reopening route makes an appeal need a recorded reason.
+  const [route, setRoute] = useState<DenialRouteView["route"] | null>(null);
+  // The path section mutates the same denial version as this form, so each waits for the other.
+  const [routeBusy, setRouteBusy] = useState(false);
+  // Bumped after a successful action so the path is read again (an action can change what the rules decide).
+  const [refreshToken, setRefreshToken] = useState(0);
+  // Whether the appeal in progress needs an override reason, fixed when the action is picked so a reason-code
+  // change mid-form cannot add or drop the field under the person's typing.
+  const [overrideMode, setOverrideMode] = useState(false);
+  const [ownBusy, setBusy] = useState(false);
+  const busy = ownBusy || routeBusy;
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -136,6 +150,7 @@ export function DenialDetailPanel({
 
   function pick(next: DenialAction["kind"] | null): void {
     clearStepUpDraft(draftKey);
+    setOverrideMode(next === "appeal" && route === "reopening");
     setAct(next);
     setReason("");
     setAssignee("");
@@ -143,7 +158,8 @@ export function DenialDetailPanel({
     setError(null);
   }
 
-  const floor = act ? (REASON_FLOOR[act] ?? 0) : 0;
+  const appealOverride = act === "appeal" && overrideMode;
+  const floor = appealOverride ? MIN_ROUTE_OVERRIDE_REASON : act ? (REASON_FLOOR[act] ?? 0) : 0;
   const blocked =
     act === null ||
     (floor > 0 && reason.trim().length < floor) ||
@@ -164,7 +180,12 @@ export function DenialDetailPanel({
       case "reopen":
         return { kind, reason: reason.trim() };
       case "appeal":
-        return { kind, tier, ...(noticeDate ? { noticeDate } : {}) };
+        return {
+          kind,
+          tier,
+          ...(noticeDate ? { noticeDate } : {}),
+          ...(appealOverride ? { overrideReason: reason.trim() } : {}),
+        };
       default:
         return { kind };
     }
@@ -190,11 +211,13 @@ export function DenialDetailPanel({
     setNotice(`${LABEL[act]}: done.`);
     pick(null);
     onChanged();
+    setRefreshToken((n) => n + 1);
     await load();
   }
 
   function closePanel(): void {
     clearStepUpDraft(draftKey);
+    clearStepUpDraft(stepUpDraftKey(session, REOPENING_DRAFT_ACTION, denialId));
     onClose();
   }
 
@@ -231,11 +254,29 @@ export function DenialDetailPanel({
             ]}
           />
           <NoticeAlert message={notice} />
+          <DenialRoutePanel
+            key={denialId}
+            denialId={denialId}
+            denialVersion={version}
+            onDenialChanged={load}
+            onChanged={onChanged}
+            onRoute={setRoute}
+            locked={ownBusy}
+            onBusyChange={setRouteBusy}
+            refreshToken={refreshToken}
+          />
           {act === null ? (
             <ButtonRow>
               {available.map((kind) => (
-                <Button key={kind} tone="secondary" size="sm" onClick={() => pick(kind)}>
-                  {LABEL[kind]}
+                <Button
+                  key={kind}
+                  tone="secondary"
+                  size="sm"
+                  // An appeal waits for the path: without it the right endpoint (and the override reason) is unknown.
+                  disabled={kind === "appeal" && route === null}
+                  onClick={() => pick(kind)}
+                >
+                  {kind === "appeal" && route === "reopening" ? "Appeal anyway" : LABEL[kind]}
                 </Button>
               ))}
               {available.length === 0 ? <Hint>No action is available from this state.</Hint> : null}
@@ -283,9 +324,15 @@ export function DenialDetailPanel({
                   onChange={(e) => setNoticeDate(e.target.value)}
                 />
               ) : null}
+              {appealOverride ? (
+                <Hint>
+                  The routing rules send this denial to a MAC reopening, not an appeal. Appealing it
+                  anyway needs a reason, which is kept on the appeal.
+                </Hint>
+              ) : null}
               {floor > 0 ? (
                 <ReasonField
-                  label="Reason"
+                  label={appealOverride ? "Why appeal this anyway?" : "Reason"}
                   value={reason}
                   min={floor}
                   max={1000}
