@@ -177,14 +177,30 @@ export function buildDrizzleM25WriteService(
     given: string,
   ): Promise<void> {
     const rows = await tx
-      .select({ tier: AC.tier, state: AC.state, decidedAt: AC.decidedAt })
+      .select({
+        tier: AC.tier,
+        state: AC.state,
+        decidedAt: AC.decidedAt,
+        outcome: AC.decisionOutcome,
+      })
       .from(AC)
       .where(eq(AC.denialCaseId, denialCaseId));
     if (rows.some((r) => r.tier === tier && r.state !== "withdrawn" && r.state !== "closed")) {
       throw new WardenXError("APPEAL_TIER_EXISTS", `a ${tier} appeal is already open on this denial`, 409);
     }
-    const prior = rows.find((r) => r.decidedAt && nextTier(r.tier) === tier);
-    if (prior?.decidedAt && given > noticeDayOf(new Date(prior.decidedAt.getTime() + 86_400_000))) {
+    // Only a recorded, not-fully-favorable decision of the previous tier opens the next one; without it
+    // nothing bounds the supplied date and a lapsed window could be reopened.
+    const prior = rows.find(
+      (r) => r.decidedAt && r.outcome !== "favorable" && nextTier(r.tier) === tier,
+    );
+    if (!prior?.decidedAt) {
+      throw new WardenXError(
+        "PRIOR_TIER_REQUIRED",
+        `a ${tier} appeal needs a recorded unfavorable or partial decision of the prior tier on this denial`,
+        422,
+      );
+    }
+    if (given > noticeDayOf(prior.decidedAt)) {
       throw new WardenXError(
         "NOTICE_DATE_AFTER_DECISION",
         `notice date ${given} is later than the prior tier's decision date`,
@@ -551,7 +567,7 @@ export function buildDrizzleM25WriteService(
           throw new InvalidTransitionError(cur.state, "decided");
         const decidedAt = new Date(input.decidedAt);
         const noticeDay = checkedNoticeDay(input.decisionNoticeDate ?? noticeDayOf(decidedAt));
-        if (noticeDay > noticeDayOf(new Date(decidedAt.getTime() + 86_400_000))) {
+        if (noticeDay > noticeDayOf(decidedAt)) {
           throw new WardenXError(
             "NOTICE_DATE_AFTER_DECISION",
             "decision notice date cannot be later than the decided-at date",

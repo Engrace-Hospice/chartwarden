@@ -108,6 +108,7 @@ interface AppealDraft {
   readonly narrative: string;
   readonly outcome: AppealOutcome;
   readonly decidedAt: string;
+  readonly letterDate?: string;
   readonly macRefs: string;
 }
 
@@ -133,6 +134,8 @@ export function AppealDetailPanel({
   const [narrative, setNarrative] = useState(restored?.narrative ?? "");
   const [outcome, setOutcome] = useState<AppealOutcome>(restored?.outcome ?? "favorable");
   const [decidedAt, setDecidedAt] = useState(restored?.decidedAt ?? nowLocal());
+  // The date printed on the decision letter starts the next tier's clock, so it is never pre-filled.
+  const [letterDate, setLetterDate] = useState(restored?.letterDate ?? "");
   const [macRefs, setMacRefs] = useState(restored?.macRefs ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -161,6 +164,7 @@ export function AppealDetailPanel({
     setNarrative("");
     setMacRefs("");
     setDecidedAt(nowLocal());
+    setLetterDate("");
     setError(null);
   }
 
@@ -180,7 +184,12 @@ export function AppealDetailPanel({
           !submitIds.every(isUuid)
         );
       case "decide":
-        return reason.trim().length < MIN_REASON.decide || decidedIso === null || mac === null;
+        return (
+          reason.trim().length < MIN_REASON.decide ||
+          decidedIso === null ||
+          mac === null ||
+          (outcome === "unfavorable" && !letterDate)
+        );
       case "withdraw":
         return reason.trim().length < MIN_REASON.withdraw;
       case "ack":
@@ -203,8 +212,7 @@ export function AppealDetailPanel({
               kind,
               outcome,
               decidedAt: decidedIso,
-              // The calendar date the user entered (the letter's printed date), not a UTC-shifted day.
-              decisionNoticeDate: decidedAt.slice(0, 10),
+              ...(letterDate ? { decisionNoticeDate: letterDate } : {}),
               reason: reason.trim(),
               ...(mac ? { macReferenceNumbers: mac } : {}),
             }
@@ -234,6 +242,7 @@ export function AppealDetailPanel({
           narrative,
           outcome,
           decidedAt,
+          letterDate,
           macRefs,
         });
         navigate(
@@ -299,7 +308,7 @@ export function AppealDetailPanel({
               [
                 "Deadline basis",
                 appeal.noticeDatedOn
-                  ? `Notice dated ${appeal.noticeDatedOn}; receipt presumed ${appeal.presumedReceiptOn} (5 days later); ${appeal.windowDays}-day window; last filing day ${appeal.lastFilingDay}.`
+                  ? `Notice dated ${appeal.noticeDatedOn}; receipt presumed ${appeal.presumedReceiptOn}; ${appeal.windowDays}-day window; last filing day ${appeal.lastFilingDay}.`
                   : "Set before notice dates were recorded. Confirm the deadline against the notice.",
               ],
               ["Packet document", appeal.appealPacketDocumentId ?? "None attached"],
@@ -369,10 +378,20 @@ export function AppealDetailPanel({
                     options={OUTCOMES.map((o) => ({ value: o, label: humanize(o) }))}
                   />
                   <TextField
-                    label="Decided at (date on the decision letter)"
+                    label="Decided at"
                     type="datetime-local"
                     value={decidedAt}
                     onChange={(e) => setDecidedAt(e.target.value)}
+                  />
+                  <TextField
+                    label={
+                      outcome === "unfavorable"
+                        ? "Date printed on the decision letter (required: it starts the next appeal deadline)"
+                        : "Date printed on the decision letter (optional)"
+                    }
+                    type="date"
+                    value={letterDate}
+                    onChange={(e) => setLetterDate(e.target.value)}
                   />
                   <TextAreaField
                     label="MAC reference numbers (optional)"

@@ -204,7 +204,7 @@ export type AppealAction =
       outcome: AppealOutcome;
       decidedAt: string;
       /** The date printed on the decision letter (YYYY-MM-DD); the next tier's clock runs from it. */
-      decisionNoticeDate: string;
+      decisionNoticeDate?: string;
       reason: string;
       macReferenceNumbers?: Record<string, string>;
     }
@@ -253,7 +253,7 @@ export async function runAppealAction(
         body: {
           outcome: action.outcome,
           decidedAt: action.decidedAt,
-          decisionNoticeDate: action.decisionNoticeDate,
+          ...(action.decisionNoticeDate ? { decisionNoticeDate: action.decisionNoticeDate } : {}),
           reason: action.reason,
           ...(action.macReferenceNumbers
             ? { macReferenceNumbers: action.macReferenceNumbers }

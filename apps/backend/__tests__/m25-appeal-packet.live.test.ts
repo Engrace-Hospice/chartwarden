@@ -632,6 +632,16 @@ describe.skipIf(!DB_URL)("GAP-036 - appeal packet render payload - LIVE Postgres
       expect((await appealRow(next.id)).notice).toBe("2026-03-01");
     });
 
+    it("a manual later tier needs a recorded unfavorable or partial decision of the prior tier", async () => {
+      const err = await refused(
+        write().createAppeal(actor, await seedDenial(true), {
+          tier: "reconsideration",
+          noticeDate: "2026-03-01",
+        }),
+      );
+      expect(err).toMatchObject({ code: "PRIOR_TIER_REQUIRED", statusCode: 422 });
+    });
+
     it("a manual later tier cannot restart a window: a live same-tier appeal blocks it, and so does a later date", async () => {
       const denialId = await seedDenial(true);
       const first = await write().createAppeal(actor, denialId, {});
