@@ -89,6 +89,8 @@ export interface AckEscalation {
 
 export interface UnroutedSummary {
   readonly count: number;
+  /** How many of `count` are `ladder_exhausted` (the rest are `route_unavailable`): the per-type occurrence is derived from it. */
+  readonly ladderCount: number;
   readonly lastAt: Date;
   readonly lastType: "route_unavailable" | "ladder_exhausted";
 }

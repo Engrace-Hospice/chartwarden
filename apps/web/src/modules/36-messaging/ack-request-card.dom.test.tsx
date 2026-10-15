@@ -21,6 +21,7 @@ import {
   ACK_NOT_PERMITTED_TEXT,
   ACK_NOT_QUALIFIED_TEXT,
   ACK_PASSED_ON_NOTICE,
+  ACK_REASSIGNED_AWAY_NOTICE,
   ACK_SAVED_TAKEN_TEXT,
   ACK_SIGN_IN_TEXT,
   ACK_STALE_TEXT,
@@ -938,6 +939,34 @@ describe("ack request card - moved-on announcement (WP 4.4)", () => {
       expect(screen.queryByText(ACK_NOTICE)).toBeNull();
       expect(screen.getByText(/Nobody has taken responsibility yet/)).toBeTruthy();
       expect(alertText()).toBe("");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a reassign away (the request is still pending, not escalated) is announced neutrally, once", async () => {
+    vi.useFakeTimers(FAKE_CLOCK);
+    try {
+      let phase = 0;
+      mount({
+        get: () =>
+          ok([
+            phase === 0
+              ? request()
+              : request({ assigned_user_id: "u-9", viewer_actions: NO_ACTIONS }),
+          ]),
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      phase = 1;
+      await tick();
+
+      expect(polite()).toBe(ACK_REASSIGNED_AWAY_NOTICE);
+      expect(polite()).not.toMatch(/next person/);
+      expect(alertText()).toBe("");
+      await tick();
+      expect(polite()).toBe("");
     } finally {
       vi.useRealTimers();
     }

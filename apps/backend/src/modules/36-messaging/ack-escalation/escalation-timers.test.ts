@@ -125,6 +125,22 @@ describe("the worker bodies", () => {
     expect(JSON.stringify(record)).not.toContain(REQUEST);
   });
 
+  it("a failed first landing is retried by the second report of the same death, then not repeated", async () => {
+    const add = vi.fn().mockRejectedValueOnce(new Error("redis blip")).mockResolvedValue({});
+    const recordDlq = vi.fn().mockResolvedValue(undefined);
+    const onDlqError = vi.fn();
+    const deps = { recordDlq, onDlqError };
+    const job = { id: "job-retry", data: GOOD };
+
+    await landInDlq(deps, { add }, job, new Error("boom"));
+    await landInDlq(deps, { add }, job, new Error("boom"));
+    await landInDlq(deps, { add }, job, new Error("boom"));
+
+    expect(onDlqError).toHaveBeenCalledTimes(1);
+    expect(add).toHaveBeenCalledTimes(2);
+    expect(recordDlq).toHaveBeenCalledTimes(1);
+  });
+
   it("reports (never swallows) a DLQ audit failure", async () => {
     const onDlqError = vi.fn();
 

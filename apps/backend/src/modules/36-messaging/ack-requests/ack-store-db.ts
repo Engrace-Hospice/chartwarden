@@ -166,6 +166,7 @@ export function ackTxOver(tx: Tx, orgId: string): AckTx {
         .select({
           requestId: E.requestId,
           count: sql<number>`count(*)::int`,
+          ladderCount: sql<number>`(count(*) filter (where ${E.eventType} = 'ladder_exhausted'))::int`,
           lastAt: sql<Date>`max(${E.createdAt})`,
           lastType: sql<
             "route_unavailable" | "ladder_exhausted"
@@ -188,7 +189,12 @@ export function ackTxOver(tx: Tx, orgId: string): AckTx {
       return new Map(
         rows.map((r) => [
           r.requestId,
-          { count: r.count, lastAt: new Date(r.lastAt), lastType: r.lastType },
+          {
+            count: r.count,
+            ladderCount: r.ladderCount,
+            lastAt: new Date(r.lastAt),
+            lastType: r.lastType,
+          },
         ]),
       );
     },

@@ -410,6 +410,39 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
       expect(await outboxNames(id)).toContain("m36.ack.ladder_exhausted");
     });
 
+    it("2c. a ladder_exhausted after a route_unavailable is still the first ladder_exhausted (supervisors are told once)", async () => {
+      resetCase();
+      const { id } = await freshRequest();
+      await makeDue(id);
+      await escalation.service.processDue(ORG_A, id); // deny-stub: route_unavailable
+      clock.now = new Date(clock.now.getTime() + 61 * MIN);
+      ladder[1] = (asOf) => ({
+        kind: "unavailable",
+        reason: "tier_not_configured",
+        tier: 1,
+        asOf,
+        source: "m19",
+      });
+      await escalation.service.processDue(ORG_A, id);
+      clock.now = new Date(clock.now.getTime() + 121 * MIN);
+      await escalation.service.processDue(ORG_A, id);
+
+      const payloads = await kit.one<{
+        event_type: string;
+        payload: { occurrence: number; typeOccurrence: number };
+      }>(
+        "SELECT event_type, payload FROM outbox_event WHERE aggregate_id=$1 AND event_type LIKE 'm36.ack.%' AND event_type <> 'm36.ack.requested' ORDER BY created_at, id",
+        [id],
+      );
+      expect(
+        payloads.map((p) => [p.event_type, p.payload.occurrence, p.payload.typeOccurrence]),
+      ).toEqual([
+        ["m36.ack.route_unavailable", 1, 1],
+        ["m36.ack.ladder_exhausted", 2, 1],
+        ["m36.ack.ladder_exhausted", 3, 2],
+      ]);
+    });
+
     it("3. with a router bound it escalates once: tier, assignee, a window on the database clock, history, audit and an id-only event", async () => {
       resetCase();
       const { id } = await freshRequest();

@@ -113,7 +113,7 @@ export function buildM36AckEscalationNotificationsConsumer(deps: {
       }
       // The supervisor audience is told of an exhausted ladder on the FIRST such record only; a later record (the backoff reminders)
       // goes to the parties alone, under the not-routed rule, with the same text.
-      const occurrence = typeof payload.occurrence === "number" ? payload.occurrence : 1;
+      const occurrence = typeof payload.typeOccurrence === "number" ? payload.typeOccurrence : 1;
       const alertType =
         event.eventType === M36_ACK_LADDER_EXHAUSTED && occurrence > 1
           ? M36_ACK_ROUTE_UNAVAILABLE

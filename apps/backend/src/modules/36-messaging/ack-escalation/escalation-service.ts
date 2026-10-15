@@ -236,7 +236,18 @@ export function createEscalationService(deps: EscalationDeps): EscalationService
         decision.reason === "ladder_exhausted"
           ? M36_ACK_LADDER_EXHAUSTED
           : M36_ACK_ROUTE_UNAVAILABLE,
-        factsFor(row, { tier, occurrence: count + 1 }, at),
+        factsFor(
+          row,
+          {
+            tier,
+            occurrence: count + 1,
+            typeOccurrence:
+              (decision.reason === "ladder_exhausted"
+                ? (history?.ladderCount ?? 0)
+                : count - (history?.ladderCount ?? 0)) + 1,
+          },
+          at,
+        ),
       );
       return { kind: "not_routed", reason: decision.reason, recorded: true };
     });

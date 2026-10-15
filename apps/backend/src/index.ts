@@ -8913,10 +8913,13 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       });
       attachDlqAlertsToAll(m36AckEscalationWorkers.workers, "m36");
       app.addHook("onClose", async () => {
-        await Promise.all(m36AckEscalationWorkers.workers.map((w) => w.close()));
-        await m36AckEscalationWorkers.dlqQueue.close();
-        await m36AckEscalationWorkers.timerQueue.close();
-        await m36AckEscalationWorkers.events.close();
+        // The queue-events listener first (it feeds the DLQ queue), then the workers, then the queues; one failure skips none.
+        await Promise.allSettled([m36AckEscalationWorkers.events.close()]);
+        await Promise.allSettled(m36AckEscalationWorkers.workers.map((w) => w.close()));
+        await Promise.allSettled([
+          m36AckEscalationWorkers.dlqQueue.close(),
+          m36AckEscalationWorkers.timerQueue.close(),
+        ]);
       });
       try {
         const m36AckEscalationQueues = await scheduleM36AckEscalationJobs(queueConnection);

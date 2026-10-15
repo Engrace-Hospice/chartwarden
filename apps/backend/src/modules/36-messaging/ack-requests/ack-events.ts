@@ -40,6 +40,8 @@ export interface AckEventFacts {
   readonly tier?: number;
   /** WP 4.4 (`route_unavailable` / `ladder_exhausted`): which such record this is for the request's current window (1-based). */
   readonly occurrence?: number;
+  /** WP 4.4: which record of THIS event type this is for the window (1-based); the supervisor audience is told on the first `ladder_exhausted` only. */
+  readonly typeOccurrence?: number;
   /** WP 4.4 (`escalated` only): the deadline of the window the escalation started. */
   readonly deadlineAt?: Date;
   readonly at: Date;
@@ -59,6 +61,7 @@ export function ackEventPayload(f: AckEventFacts): Record<string, unknown> {
     ...(f.previousAssignedUserId ? { previousAssignedUserId: f.previousAssignedUserId } : {}),
     ...(f.tier !== undefined ? { tier: f.tier } : {}),
     ...(f.occurrence !== undefined ? { occurrence: f.occurrence } : {}),
+    ...(f.typeOccurrence !== undefined ? { typeOccurrence: f.typeOccurrence } : {}),
     ...(f.deadlineAt ? { deadlineAt: f.deadlineAt.toISOString() } : {}),
   };
 }

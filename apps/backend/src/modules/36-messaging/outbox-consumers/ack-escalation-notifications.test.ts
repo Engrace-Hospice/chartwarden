@@ -168,11 +168,11 @@ describe("M36 ack escalation notifications consumer", () => {
   it("tells the supervisor audience of an exhausted ladder on the first record only; later records go to the parties under the not-routed rule", async () => {
     const first = setup({ request: row({ status: "pending", version: 0 }) });
     await first.consumer.handle(
-      event("m36.ack.ladder_exhausted", { requestVersion: 0, occurrence: 1 }),
+      event("m36.ack.ladder_exhausted", { requestVersion: 0, occurrence: 1, typeOccurrence: 1 }),
     );
     const later = setup({ request: row({ status: "pending", version: 0 }) });
     await later.consumer.handle(
-      event("m36.ack.ladder_exhausted", { requestVersion: 0, occurrence: 2 }),
+      event("m36.ack.ladder_exhausted", { requestVersion: 0, occurrence: 3, typeOccurrence: 2 }),
     );
 
     expect((first.emit.mock.calls[0] as [string, { eventType: string }])[1].eventType).toBe(
@@ -184,5 +184,18 @@ describe("M36 ack escalation notifications consumer", () => {
     ];
     expect(again.eventType).toBe("m36.ack.route_unavailable");
     expect(again.payload.message).toBe(ACK_ESCALATION_NOTIFICATION_TEXT.ladder_exhausted);
+  });
+
+  it("a route_unavailable record first does not cost the supervisors their alert: the first ladder_exhausted (per-type occurrence 1) still reaches them", async () => {
+    const { emit, consumer } = setup({ request: row({ status: "pending", version: 0 }) });
+
+    // The request's 3rd record overall, but the first ladder_exhausted.
+    await consumer.handle(
+      event("m36.ack.ladder_exhausted", { requestVersion: 0, occurrence: 3, typeOccurrence: 1 }),
+    );
+
+    expect((emit.mock.calls[0] as [string, { eventType: string }])[1].eventType).toBe(
+      "m36.ack.ladder_exhausted",
+    );
   });
 });

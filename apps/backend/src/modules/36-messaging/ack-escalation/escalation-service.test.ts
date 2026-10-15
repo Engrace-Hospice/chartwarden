@@ -291,6 +291,26 @@ describe("escalation service", () => {
       expect(ctx.published.map((p) => p.payload.occurrence)).toEqual([1, 2]);
     });
 
+    it("counts occurrences per event type: a ladder_exhausted after a route_unavailable is still the FIRST ladder_exhausted", async () => {
+      const answers: Record<number, EscalationRouteAnswer> = {};
+      const ctx = setup({ answers });
+
+      await ctx.service.processDue(ORG, ctx.row.id); // route_unavailable
+      answers[1] = unavailable("tier_not_configured");
+      ctx.clock.now = new Date(ctx.clock.now.getTime() + minutes(61));
+      await ctx.service.processDue(ORG, ctx.row.id); // ladder_exhausted
+      ctx.clock.now = new Date(ctx.clock.now.getTime() + minutes(121));
+      await ctx.service.processDue(ORG, ctx.row.id); // ladder_exhausted again
+
+      expect(
+        ctx.published.map((p) => [p.eventName, p.payload.occurrence, p.payload.typeOccurrence]),
+      ).toEqual([
+        ["m36.ack.route_unavailable", 1, 1],
+        ["m36.ack.ladder_exhausted", 2, 1],
+        ["m36.ack.ladder_exhausted", 3, 2],
+      ]);
+    });
+
     it("stops writing rows, events and alerts after 8 records but keeps probing the router (a bound router still escalates)", async () => {
       const answers: Record<number, EscalationRouteAnswer> = {};
       const ctx = setup({ answers });

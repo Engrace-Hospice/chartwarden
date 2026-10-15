@@ -19,6 +19,7 @@ import {
   ACK_NOT_PERMITTED_TEXT,
   ACK_NOT_QUALIFIED_TEXT,
   ACK_PASSED_ON_NOTICE,
+  ACK_REASSIGNED_AWAY_NOTICE,
   ACK_SAVED_CLOSED_TEXT,
   ACK_SAVED_TAKEN_TEXT,
   ACK_SIGN_IN_TEXT,
@@ -108,16 +109,20 @@ export function movedOnNotice(
 ): string | null {
   const earlier = new Map(before.map((r) => [r.id, r]));
   let passedOn = false;
+  let reassigned = false;
   for (const next of after) {
     const prev = earlier.get(next.id);
     if (!prev) continue;
     const could = prev.viewer_actions.can_acknowledge;
     const can = next.viewer_actions.can_acknowledge;
     if (!could && can) return ACK_ESCALATED_TO_YOU_NOTICE;
-    if (could && !can && (next.status === "escalated" || next.status === "pending"))
-      passedOn = true;
+    if (could && !can) {
+      if (next.status === "escalated") passedOn = true;
+      else if (next.status === "pending") reassigned = true;
+    }
   }
-  return passedOn ? ACK_PASSED_ON_NOTICE : null;
+  if (passedOn) return ACK_PASSED_ON_NOTICE;
+  return reassigned ? ACK_REASSIGNED_AWAY_NOTICE : null;
 }
 
 export function useAckRequests(channelId: string, enabled: boolean, refreshKey?: string | null) {

@@ -125,6 +125,7 @@ export function createMemoryAckStore(): MemoryAckStore {
         if (newest) {
           out.set(r.id, {
             count: own.length,
+            ladderCount: own.filter((e) => e.eventType === "ladder_exhausted").length,
             lastAt: newest.at,
             lastType: newest.eventType as UnroutedSummary["lastType"],
           });

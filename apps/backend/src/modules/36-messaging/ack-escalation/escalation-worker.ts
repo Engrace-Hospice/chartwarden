@@ -83,7 +83,10 @@ export const isFinalFailure = (job: Pick<Job, "attemptsMade" | "opts">, error: E
   error.message.includes(STALLED_LIMIT_REASON) ||
   job.attemptsMade >= (job.opts.attempts ?? 1);
 
-// ponytail: process-local, grows by one id per dead job; the DLQ job id is the cross-process dedupe and a replica restart may audit twice.
+// ponytail: process-local, grows by one id per dead job. A job id is remembered only AFTER the DLQ copy and the audit both succeeded, so a
+// failed first landing can be retried by the second report of the same death. The DLQ job id is the cross-process dedupe; a replica restart
+// may audit twice, and a re-armed job with the same id dying again in the same process is not re-audited (the sweeper covers the request).
+const inFlight = new Set<string>();
 const landed = new Set<string>();
 
 /** Copy a dead timer job to its DLQ queue and write the audit row. Exposed so a test can drive it without a worker. */
@@ -95,8 +98,8 @@ export async function landInDlq(
 ): Promise<void> {
   const jobId = String(job.id ?? "unknown");
   // A job can be reported dead by the Worker AND by the queue events; land it (and audit it) once.
-  if (landed.has(jobId)) return;
-  landed.add(jobId);
+  if (landed.has(jobId) || inFlight.has(jobId)) return;
+  inFlight.add(jobId);
   const failedAt = (deps.now ?? (() => new Date()))().toISOString();
   const landing: DlqLanding = {
     queue: TIMER_QUEUE,
@@ -112,9 +115,11 @@ export async function landInDlq(
     if (parsed) {
       await deps.recordDlq(parsed.organizationId, buildDlqAuditRecord(landing), parsed.requestId);
     }
+    landed.add(jobId);
   } catch (dlqError) {
-    landed.delete(jobId); // a failed landing may be tried again by the other report of the same death
     deps.onDlqError?.({ jobId }, dlqError);
+  } finally {
+    inFlight.delete(jobId);
   }
 }
 
