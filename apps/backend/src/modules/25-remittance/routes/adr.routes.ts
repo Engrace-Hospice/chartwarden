@@ -155,7 +155,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** The `:id` path param; a non-uuid can never match a row, so it is a 404 rather than a database cast error. */
 const idOf = (request: { params?: unknown }): string => {
   const id = (request.params as { id: string }).id;
-  if (!UUID.test(id)) throw new NotFoundError("ADR case not found");
+  if (!UUID.test(id)) throw new NotFoundError("ADR case");
   return id;
 };
 
@@ -186,7 +186,7 @@ export function registerAdrRoutes(app: FastifyInstance, deps: AdrRouteDeps): voi
     },
     async (request, reply) => {
       const adr = await adrService.getAdr(actorOf(request), idOf(request));
-      if (!adr) throw new NotFoundError("ADR case not found");
+      if (!adr) throw new NotFoundError("ADR case");
       return reply.send(adr);
     },
   );
@@ -234,7 +234,7 @@ export function registerAdrRoutes(app: FastifyInstance, deps: AdrRouteDeps): voi
     { preHandler: [MANAGE, IDEMPOTENT] },
     async (request, reply) => {
       const documentId = (request.params as { documentId: string }).documentId;
-      if (!UUID.test(documentId)) throw new NotFoundError("that document is not attached");
+      if (!UUID.test(documentId)) throw new NotFoundError("attached document");
       return reply.send(
         await adrService.detachAdrDocument(
           writeActorOf(request),

@@ -177,7 +177,7 @@ export function buildAdrPacketOps(db: DbClient, ports: AdrPacketPorts = {}): Adr
       .from(ADR)
       .where(scope ? and(eq(ADR.id, id), scope) : eq(ADR.id, id))
       .limit(1);
-    if (!rows[0]) throw new NotFoundError("ADR case not found");
+    if (!rows[0]) throw new NotFoundError("ADR case");
     return rows[0];
   }
 
@@ -294,7 +294,7 @@ export function buildAdrPacketOps(db: DbClient, ports: AdrPacketPorts = {}): Adr
           .set({ removedAt: new Date() })
           .where(and(eq(DOC.adrCaseId, id), eq(DOC.documentId, documentId), isNull(DOC.removedAt)))
           .returning({ id: DOC.id });
-        if (!removed[0]) throw new NotFoundError("that document is not attached");
+        if (!removed[0]) throw new NotFoundError("attached document");
         const result = await bump(tx, cur, ifMatch);
         await event(tx, actor, id, "document_removed", { documentId });
         return result;

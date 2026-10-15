@@ -199,7 +199,7 @@ export function buildDrizzleAdrService(db: DbClient, ports: AdrServicePorts = {}
         const claim = await claims.byId(tx, input.claimId);
         const scope = actor.providerEntityScope;
         if (!claim || (scope !== undefined && !scope.includes(claim.providerEntityId))) {
-          throw new NotFoundError("claim not found");
+          throw new NotFoundError("claim");
         }
         // A linked denial must be visible to THIS org under RLS (a foreign key alone ignores RLS, so another
         // tenant's id would otherwise be accepted), be on the same claim, and be inside the actor's scope.
@@ -215,7 +215,7 @@ export function buildDrizzleAdrService(db: DbClient, ports: AdrServicePorts = {}
             denial[0].claimId !== claim.id ||
             (scope !== undefined && !scope.includes(denial[0].providerEntityId))
           ) {
-            throw new NotFoundError("denial case not found");
+            throw new NotFoundError("denial case");
           }
         }
         const window = resolveAdrWindow(await rulesInForce(tx), macName, input.reviewType);
@@ -302,7 +302,7 @@ export function buildDrizzleAdrService(db: DbClient, ports: AdrServicePorts = {}
           .where(scope ? and(eq(ADR.id, id), scope) : eq(ADR.id, id))
           .limit(1);
         const cur = rows[0];
-        if (!cur) throw new NotFoundError("ADR case not found");
+        if (!cur) throw new NotFoundError("ADR case");
         if (!canTransitionAdr(cur.state as AdrState, to)) {
           throw new WardenXError(
             "INVALID_TRANSITION",
