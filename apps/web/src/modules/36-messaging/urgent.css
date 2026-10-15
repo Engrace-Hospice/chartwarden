@@ -1,0 +1,105 @@
+/* M36 WP 4.1 - Urgent clinical: composer action, dialog and the message badge. Tokens from the shared kit only. */
+.wx-urgent {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.wx-urgent-status {
+  font-size: 0.8125rem;
+  color: var(--color-on-surface);
+}
+
+.wx-urgent-status:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.wx-urgent-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.wx-urgent-notice {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-left-width: 4px;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-low, var(--color-surface-lowest));
+  color: var(--color-on-surface);
+  font-size: 0.875rem;
+}
+
+.wx-urgent-form fieldset {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+}
+
+.wx-urgent-form fieldset label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2rem;
+}
+
+.wx-urgent-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.wx-urgent-field textarea {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+  color: var(--color-on-surface);
+  font: inherit;
+  resize: vertical;
+}
+
+.wx-urgent-field textarea:focus-visible,
+.wx-urgent-form input[type="radio"]:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.wx-urgent-hint,
+.wx-urgent-count {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--color-on-surface-variant, var(--color-on-surface));
+}
+
+.wx-urgent-error {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-error, var(--color-on-surface));
+  font-weight: 600;
+}
+
+.wx-urgent-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* The badge: an icon AND words (never colour alone), on a bordered chip. */
+.wx-urgent-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-bottom: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  border: 1px solid var(--color-error, var(--color-on-surface));
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-error, var(--color-on-surface));
+  background: var(--color-surface-lowest);
+}

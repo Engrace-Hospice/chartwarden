@@ -88,6 +88,7 @@ import { registerMessagingWebhookRoutes } from "../src/modules/36-messaging/rout
 import { createDbSbarPolicyStore } from "../src/modules/36-messaging/sbar/sbar-policy-store-db";
 import { createDbScheduledSendService } from "../src/modules/36-messaging/scheduled/scheduled-send-service-db";
 import { buildTaskDeps } from "../src/modules/36-messaging/tasks/deps";
+import { buildUrgentDeps } from "../src/modules/36-messaging/urgent/deps";
 import { createDbConsentEvaluator } from "../src/modules/39-consent/index";
 import { appRoleConnectionString } from "./_live-app-role";
 
@@ -200,6 +201,10 @@ const ROUTES: Record<string, Verdict> = {
   // WP 3.10 medication questions: the id is a channel's; every refusal (org B, a non-member, a random id, flag off) is the 404 a
   // random channel gets, and nothing is written (also attacked in m36-medication-question.live).
   "POST /api/v1/messaging/channels/:id/medication-questions": { kind: "idor" },
+  // WP 4.1 urgent clinical: same shape as the medication question - the id is a channel's; every refusal (org B, a non-member, a
+  // random id, flag off) is the 404 a random channel gets, and nothing is written (also attacked in m36-urgency.live).
+  "POST /api/v1/messaging/channels/:id/urgent-messages": { kind: "idor" },
+  "GET /api/v1/messaging/channels/:id/urgent-messages/options": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/medication-questions/options": { kind: "idor" },
   "POST /api/v1/messaging/channels/:id/messages/:messageId/chart-promotions": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/messages/:messageId/chart-promotions": { kind: "idor" },
@@ -307,6 +312,8 @@ const REGISTRAR_FILES = [
   "review-typebox.ts", // schemas only
   "medication-question-routes.ts", // WP 3.10 medication questions, mounted by registerMessagingRoutes
   "medication-question-typebox.ts", // schemas only
+  "urgent-routes.ts", // WP 4.1 urgent clinical message, mounted by registerMessagingRoutes
+  "urgent-typebox.ts", // schemas only
   "promotion-routes.ts", // WP 3.7 chart promotion, mounted by registerMessagingRoutes
   "promotion-typebox.ts", // schemas only
   "idg-discussion-routes.ts", // WP 3.6 IDG discussions, mounted by registerMessagingRoutes
@@ -478,7 +485,8 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       route === "POST /api/v1/messaging/attachments/uploads" ||
       route === "POST /api/v1/messaging/attachments/:id/complete" ||
       route === "POST /api/v1/messaging/announce" ||
-      route === "POST /api/v1/messaging/channels/:id/medication-questions";
+      route === "POST /api/v1/messaging/channels/:id/medication-questions" ||
+      route === "POST /api/v1/messaging/channels/:id/urgent-messages";
     const res = await app.inject({
       method: method as "GET",
       url: url + query,
@@ -662,6 +670,8 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
               // WP 3.8: the org-A reviewer u1 and the org-B reviewerB hold the queue permission (reviewerB also
               // patient.read), so only tenancy - not a missing permission - stops reviewerB. The queue is org-wide for
               // its permission holders by design, so no org-A attacker holds it.
+              // WP 4.1: EVERY persona holds messaging.urgent.send, so only channel visibility / tenancy stops an attacker.
+              "messaging.urgent.send",
               ...(w === u1 ? ["messaging.review"] : []),
               ...(w === reviewerB ? ["messaging.review", "patient.read"] : []),
               ...(w.roles.includes("org_admin") ? adminKeys : ["alert.rules.read"]),
@@ -748,6 +758,18 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         permissionsFor: async () => new Set(["messaging.read", "messaging.send", "patient.read"]),
         careTeamMembers: async () => [],
         primaryRn: async () => null,
+      }),
+      urgent: buildUrgentDeps({
+        db: handle.db,
+        flags: {
+          forOrg: async () => ({ "messaging.urgent_clinical": true, "messaging.sbar": true }),
+        },
+        outbox: outbox as never,
+        messaging: service,
+        part2Gate: { allowedUserIds: async ({ userIds }) => new Set(userIds) },
+        permissionsFor: async () =>
+          new Set(["messaging.read", "messaging.send", "patient.read", "messaging.urgent.receive"]),
+        careTeamMembers: async () => [],
       }),
       promotions: buildPromotionDeps({
         db: handle.db,
@@ -1898,6 +1920,45 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       const sent = await call(askRoute, u1, { id: careTeamA }, { ...body, allow_unrouted: true });
       expect(sent.statusCode, sent.body).toBe(201);
       expect((await messages()).rows[0].n).toBe(before + 1);
+    });
+    it("WP 4.1: org B and an in-org non-member get a random channel's answer for A's care-team urgent message and options, and nothing is written", async () => {
+      const sendRoute = "POST /api/v1/messaging/channels/:id/urgent-messages";
+      const optionsRoute = "GET /api/v1/messaging/channels/:id/urgent-messages/options";
+      const para = (value: string) => ({
+        type: "paragraph",
+        content: [{ type: "text", text: value }],
+      });
+      const body = {
+        client_message_id: randomUUID(),
+        recipient_user_id: u2.userId,
+        body_doc: {
+          schemaVersion: 1,
+          doc: {
+            type: "doc",
+            content: [
+              {
+                type: "sbar",
+                urgencyHint: "routine",
+                situation: [para("Pain is uncontrolled")],
+                background: [para("Day three on service")],
+                assessment: [para("Not responding")],
+                recommendation: [para("Please review")],
+              },
+            ],
+          },
+        },
+      };
+      const urgent = () =>
+        admin.query(
+          "SELECT count(*)::int AS n FROM message WHERE urgency='urgent' AND channel_id=$1",
+          [careTeamA],
+        );
+      const before = (await urgent()).rows[0].n;
+      for (const attacker of [bUser, adminB, outsider]) {
+        await expectNoOracle(sendRoute, attacker, { id: careTeamA }, body);
+        await expectNoOracle(optionsRoute, attacker, { id: careTeamA });
+      }
+      expect((await urgent()).rows[0].n).toBe(before);
     });
     it("WP 3.4: org B and an in-org non-member get a random id's answer for A's task and A's message, and list none of it", async () => {
       const convertRoute = "POST /api/v1/messaging/channels/:id/messages/:messageId/tasks";

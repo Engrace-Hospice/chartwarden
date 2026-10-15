@@ -44,6 +44,8 @@ export interface Message {
   /** WP 1.3: when a live message was last edited; absent/null = never edited (or deleted). */
   editedAt?: string | null;
   parentMessageId: string | null;
+  /** WP 4.1: present only for a non-routine message ("Urgent clinical"). A display marker, never a delivery state. */
+  urgency?: "important" | "urgent";
   /** WP 2.2: live direct replies (deleted ones excluded) and the newest one's time. Absent on older payloads. */
   replyCount?: number;
   lastReplyAt?: string | null;

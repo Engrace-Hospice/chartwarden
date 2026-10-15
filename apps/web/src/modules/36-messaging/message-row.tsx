@@ -10,6 +10,7 @@ import type { Message } from "./messaging-types";
 import { absoluteTime, dayLabel, initialsOf } from "./messaging-utils";
 import { PollCard } from "./poll-card";
 import { RichBodyView } from "./rich-body-view";
+import { UrgentBadge } from "./urgent-badge";
 import "./announcements.css";
 
 export function MessageText({ message }: { message: Message }): JSX.Element {
@@ -203,6 +204,7 @@ function MessageRowImpl({
               </button>
             ) : null}
             <div className="wx-message-bubble">
+              {!deleted && message.urgency === "urgent" ? <UrgentBadge /> : null}
               {message.bodyKind === "rich" ? (
                 <MessageText message={message} />
               ) : (

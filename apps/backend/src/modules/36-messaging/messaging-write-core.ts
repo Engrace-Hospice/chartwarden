@@ -221,6 +221,8 @@ export async function insertEncryptedMessage(
     quotedMessageId?: string | null;
     /** WP 1.2 DB backstop: stable across client retries; a second insert returns the original row. */
     clientMessageId?: string | null;
+    /** WP 4.1: set only by the urgent entry; stores `urgency = 'urgent'` with this recipient (fixed at send). */
+    urgentRecipientUserId?: string | null;
   },
 ): Promise<{ messageId: string; createdAt: string; replayed: boolean }> {
   // Audit F5 / WP 1.7: a reply's parent and a quote's target must be in the same channel. A missing, cross-org or
@@ -263,6 +265,9 @@ export async function insertEncryptedMessage(
       parentMessageId: args.parentMessageId ?? null,
       quotedMessageId: args.quotedMessageId ?? null,
       clientMessageId: args.clientMessageId ?? null,
+      ...(args.urgentRecipientUserId
+        ? { urgency: "urgent" as const, urgentRecipientUserId: args.urgentRecipientUserId }
+        : {}),
     })
     // Concurrent duplicates serialize on the unique index: the loser waits for the winner's commit, then
     // inserts nothing. A null `client_message_id` never conflicts, so unkeyed writes are unaffected.
@@ -300,11 +305,18 @@ async function replayOriginal(
     channelId: string;
     authorUserId: string | null;
     clientMessageId?: string | null;
+    urgentRecipientUserId?: string | null;
   },
   sha256: string,
 ): Promise<{ messageId: string; createdAt: string; replayed: true }> {
   const rows = (await tx
-    .select({ id: MSG.id, createdAt: MSG.createdAt, channelId: MSG.channelId, sha: MSG.bodySha256 })
+    .select({
+      id: MSG.id,
+      createdAt: MSG.createdAt,
+      channelId: MSG.channelId,
+      sha: MSG.bodySha256,
+      urgentRecipient: MSG.urgentRecipientUserId,
+    })
     .from(MSG)
     .where(
       and(
@@ -313,9 +325,21 @@ async function replayOriginal(
         eq(MSG.clientMessageId, args.clientMessageId!),
       ),
     )
-    .limit(1)) as Array<{ id: string; createdAt: Date; channelId: string; sha: string }>;
+    .limit(1)) as Array<{
+    id: string;
+    createdAt: Date;
+    channelId: string;
+    sha: string;
+    urgentRecipient: string | null;
+  }>;
   const original = rows[0];
-  if (!original || original.channelId !== args.channelId || original.sha !== sha256) {
+  // WP 4.1: a reused id naming a different urgent recipient (or turning a routine send urgent) is a caller bug, not a retry.
+  if (
+    !original ||
+    original.channelId !== args.channelId ||
+    original.sha !== sha256 ||
+    original.urgentRecipient !== (args.urgentRecipientUserId ?? null)
+  ) {
     throw new IdempotencyConflictError();
   }
   return { messageId: original.id, createdAt: original.createdAt.toISOString(), replayed: true };

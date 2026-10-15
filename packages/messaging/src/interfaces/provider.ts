@@ -14,7 +14,7 @@
 // fail-closed (deny-stub) in the M1 registry; its DB-backed implementation lands with the routes
 // and realtime/jobs tasks (M36-T07/T08).
 
-import type { MessageReactionSummary, PollView, RichBody } from "@wardenx/types";
+import type { MessageReactionSummary, MessageUrgency, PollView, RichBody } from "@wardenx/types";
 import type { ChannelKind, MessageBodyKind } from "./kinds";
 
 /** An attachment supplied with {@link MessagingProvider.sendMessage} (§3.4, WP 1.5). It references an upload the SAME
@@ -68,6 +68,8 @@ export interface ResolvedMessage {
   /** WP 1.3: when a live message was last edited; null/absent means never edited (or deleted). */
   readonly editedAt?: string | null;
   readonly parentMessageId: string | null;
+  /** WP 4.1: present only when the message is not routine (`urgent` = raised through "Urgent clinical"). Display only. */
+  readonly urgency?: Exclude<MessageUrgency, "routine">;
   /** WP 2.2: live (not deleted) direct replies. Absent on providers that do not compute it; 0 means none. */
   readonly replyCount?: number;
   /** WP 2.2: created_at of the newest live direct reply, or null. */

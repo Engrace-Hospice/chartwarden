@@ -329,6 +329,10 @@ export const messageBodyKind = pgEnum("message_body_kind", ["plain", "markdown",
 // RETAINED until retention expiry (M36-F02 / ADR-0004 / ARCH-185), never zeroed early.
 export const messageStatus = pgEnum("message_status", ["sent", "edited", "deleted"]);
 
+// `message_urgency` (WP 4.1, ADR-0068, migration 1105): `routine` is every message; `urgent` is set only by the
+// "Urgent clinical" entry and is fixed at send; `important` has no writer until WP 4.2. Never inferred from text.
+export const messageUrgency = pgEnum("message_urgency", ["routine", "important", "urgent"]);
+
 // `message_receipt_status` — per-recipient receipt state (§3.4): `delivered` (fanned out server-side) |
 // `read` (explicitly read). `ack` is a retired value kept only to match the DB enum (a Postgres enum value
 // cannot be dropped in place); migration 1079 CHECK-blocks it. It is NOT a clinical acknowledgement

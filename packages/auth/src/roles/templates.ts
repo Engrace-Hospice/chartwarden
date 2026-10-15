@@ -263,6 +263,8 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     systemLocked: true,
     description: "CoP 418.102 hospice medical director.",
     floor: SYSTEM_LOCKED_FLOORS.medical_director,
+    // WP 4.1 (ADR-0068): a physician may raise and receive an urgent clinical message, as migration 1105 grants.
+    grants: ["messaging.urgent.send", "messaging.urgent.receive"],
   },
   {
     key: "director_of_nursing",
@@ -274,7 +276,8 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     description: "CoP 418.64(a) director of nursing services.",
     floor: SYSTEM_LOCKED_FLOORS.director_of_nursing,
     // The lifecycle review queue is a supervisory decision (ADR-0065 D6); no template grants it to the org-wide admins.
-    grants: ["messaging.review"],
+    // WP 4.1 (ADR-0068): the supervisory nurse may raise and receive an urgent clinical message, as migration 1105 grants.
+    grants: ["messaging.review", "messaging.urgent.send", "messaging.urgent.receive"],
   },
   {
     key: "administrator",

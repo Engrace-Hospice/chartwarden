@@ -306,6 +306,25 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m36.message.urgent_sent",
+    moduleOwner: "m36",
+    description:
+      "An urgent clinical message was sent to one named, qualified colleague (WP 4.1, ADR-0068). PHI-free: ids and one instant - no patient id, no name, no text. Published in the same transaction as the message; an idempotent replay publishes nothing. M36 tells the recipient with one generic in-app alert; it is not a page, not a request for a clinician's response and not the emergency path (WP 4.2 - 4.4 add those).",
+    payloadSchema: Type.Object(
+      {
+        organizationId: id,
+        channelId: id,
+        messageId: id,
+        authorUserId: id,
+        recipientUserId: id,
+        at: isoInstant,
+      },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m36.promotion.requested",
     moduleOwner: "m36",
     description:

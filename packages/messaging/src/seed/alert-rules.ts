@@ -66,6 +66,18 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     enabled: true,
   },
   {
+    eventType: "m36.message.urgent_sent",
+    category: "clinical_urgent",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    // WP 4.1: the named recipient of an urgent clinical message is told, in-app only, with generic text (no patient, no
+    // name, no message). This is NOT a page and NOT an acknowledgment request (WP 4.2 - 4.4); per-urgency channel policy is 4.6.
+    resolverArgs: { roleKeys: [], userIdPaths: ["recipientUserId"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
     eventType: "m36.medication_question.unrouted",
     category: "clinical_routine",
     severityFloor: "warn",

@@ -376,6 +376,8 @@ export const ResolvedMessageSchema = Type.Object({
   // WP 1.3: when a live message was last edited (additive; null/absent = never edited or deleted).
   editedAt: Type.Optional(NullableString()),
   parentMessageId: NullableString(),
+  // WP 4.1: present only for a non-routine message ("Urgent clinical"); a display marker, never a delivery state.
+  urgency: Type.Optional(Type.Union([Type.Literal("important"), Type.Literal("urgent")])),
   // WP 2.2: live direct replies and the newest one's time (additive; absent on providers that do not compute it).
   replyCount: Type.Optional(Type.Integer({ minimum: 0 })),
   lastReplyAt: Type.Optional(NullableString()),

@@ -27,6 +27,7 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m36.task.created",
       "m36.task.reassigned",
       "m36.task.needs_owner",
+      "m36.message.urgent_sent",
       "m36.medication_question.unrouted",
       "m36.handoff.offered",
       "m36.handoff.accepted",

@@ -97,6 +97,7 @@ import {
 } from "./sbar-routes";
 import { registerMessageSearchRoutes } from "./search-routes";
 import { DISABLED_TASKS, type TaskRouteDeps, registerTaskRoutes } from "./task-routes";
+import { DISABLED_URGENT, type UrgentRouteDeps, registerUrgentRoutes } from "./urgent-routes";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -130,6 +131,8 @@ export interface MessagingRouteDeps {
   promotions?: PromotionRouteDeps;
   /** WP 3.10: medication questions (service). Omitted => flag off: the ask route 404s and the options read answers disabled. */
   medicationQuestions?: MedicationQuestionRouteDeps;
+  /** WP 4.1: the "Urgent clinical" entry (flag + service). Omitted => flag off: POST is the uniform 404. */
+  urgent?: UrgentRouteDeps;
   /** WP 3.6: IDG discussions (flag + read-only store). Omitted => flag off: the list answers disabled. */
   idgDiscussions?: Omit<IdgDiscussionRouteDeps, "canViewChannel">;
 }
@@ -403,6 +406,17 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   registerReviewRoutes(app, deps.review ?? DISABLED_REVIEW, { read: READ, send: SEND });
   // --- WP 3.10: "ask a nurse about a medication" (message + optional read-only link + the nurse's task; never an order) ---
   registerMedicationQuestionRoutes(app, deps.medicationQuestions ?? DISABLED_MEDICATION_QUESTIONS, {
+    read: READ,
+    viewChannel: VIEW_CHANNEL,
+    send: SEND,
+    sendToChannel: SEND_TO_CHANNEL,
+    requireIdempotencyKey: REQUIRE_IDEMPOTENCY_KEY,
+    validateLinks: (request, richBody) =>
+      validateRichBodyLinks(request, clinicalLinkDeps, richBody),
+  });
+
+  // --- WP 4.1: "Urgent clinical" (an SBAR message to one qualified colleague, marked urgent; no paging or response tracking) ---
+  registerUrgentRoutes(app, deps.urgent ?? DISABLED_URGENT, {
     read: READ,
     viewChannel: VIEW_CHANNEL,
     send: SEND,

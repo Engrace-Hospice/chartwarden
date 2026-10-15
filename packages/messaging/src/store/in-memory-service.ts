@@ -77,6 +77,7 @@ import {
   assertLockedRulePatchAllowed,
   isSystemLockedEventType,
 } from "../seed";
+import { assertUrgencyEditable, assertUrgentSend } from "../urgent/urgent-rules";
 import { createReactionPinState } from "./in-memory-reaction-pin";
 
 // ── value-level mirrors of the §3.2 enum unions (for routing-map validation) ────────────────
@@ -131,6 +132,8 @@ interface MessageRow {
   deletedAt: string | null;
   parentMessageId: string | null;
   references: readonly MessageReferenceInput[];
+  /** WP 4.1: set once at send by the urgent entry; never changed. */
+  readonly urgentRecipientUserId?: string;
 }
 
 /** The same authority the DB service applies: a structured body is re-sanitised here, never trusted. */
@@ -506,6 +509,7 @@ export function createInMemoryMessagingService(
       ...(m.richBody && !m.deletedAt ? { bodyDoc: m.richBody } : {}),
       createdAt: m.createdAt,
       parentMessageId: m.parentMessageId,
+      ...(m.urgentRecipientUserId ? { urgency: "urgent" as const } : {}),
       reactions: m.deletedAt ? [] : reactionPins.summary(m.messageId, viewerUserId),
       pinned: !m.deletedAt && reactionPins.isPinned(m.channelId, m.messageId),
       replyCount: replies.length,
@@ -717,6 +721,15 @@ export function createInMemoryMessagingService(
       }
       const richBody = sanitizedRichBody(input.richBody);
       assertSbarWrite(richBody, ch.kind, effectiveSbarPolicy(options.sbarPolicy ?? null));
+      if (input.urgentRecipientUserId) {
+        assertUrgentSend({
+          channelKind: ch.kind,
+          richBody,
+          authorUserId: input.authorUserId,
+          recipientUserId: input.urgentRecipientUserId,
+          recipientIsActiveMember: ch.members.has(input.urgentRecipientUserId),
+        });
+      }
       validateReferences(input.body, input.references ?? [], ch, eligibleStaff);
       // Same rule as the DB service (audit F5): a missing, cross-org or other-channel parent is one answer.
       if (input.parentMessageId) {
@@ -751,6 +764,9 @@ export function createInMemoryMessagingService(
         deletedAt: null,
         parentMessageId: input.parentMessageId ?? null,
         references: input.references ?? [],
+        ...(input.urgentRecipientUserId
+          ? { urgentRecipientUserId: input.urgentRecipientUserId }
+          : {}),
       });
       // WP 3.10: the same all-or-nothing contract as the database core - a throwing hook removes the message again.
       try {
@@ -774,6 +790,7 @@ export function createInMemoryMessagingService(
       if (m.authorUserId !== input.userId) {
         throw new ForbiddenError("only the author may edit a message");
       }
+      assertUrgencyEditable(m.urgentRecipientUserId ? "urgent" : "routine");
       validateReferences(
         input.body,
         input.references ?? [],

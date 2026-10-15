@@ -13801,6 +13801,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/urgent-messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send an urgent clinical message (WP 4.1, ADR-0068; messaging.send + messaging.urgent.send + channel visibility + a required Idempotency-Key; 404 while the tenant flags `messaging.urgent_clinical` AND `messaging.sbar` are not both on). The body is an SBAR document (`body_doc`) and ONE named recipient; the message is stored with urgency `urgent`, fixed at send, and cannot be edited. The recipient must be a qualified clinician (holds messaging.urgent.receive, never an aide), on the patient's care team, an active member of the channel, not the sender and admitted by the Part 2 gate: any failure is one uniform 422 URGENT_RECIPIENT_INVALID that names no reason. 422 URGENT_NOT_PATIENT_CHANNEL (only a patient's care-team channel qualifies; the patient comes from the channel), URGENT_SBAR_REQUIRED, SBAR_INVALID, CLINICAL_LINK_NOT_AVAILABLE. The recipient gets ONE generic in-app alert; nobody is paged, escalated or asked to acknowledge (WP 4.2 - 4.4), and the message text is never parsed. NOT the emergency path: critical symptoms follow the agency telephone procedure. 201 created; 200 created:false replays the same client_message_id (409 if that id names a different recipient). Read-audited against the message and patient */
+        post: operations["postApiV1MessagingChannelsByIdUrgentmessages"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/channels/{id}/urgent-messages/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who can receive an urgent clinical message in this channel (WP 4.1; messaging.read + channel visibility): up to 30 qualified care-team colleagues who can see the channel (names only), never the caller. 200 {enabled:false} while the feature flags are off; a hidden channel is the uniform 404. Read-audited (it discloses care-team names) */
+        get: operations["getApiV1MessagingChannelsByIdUrgentmessagesOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/chart-promotions": {
         parameters: {
             query?: never;
@@ -63235,6 +63269,7 @@ export interface operations {
                             createdAt: string;
                             editedAt?: string | null;
                             parentMessageId: string | null;
+                            urgency?: "important" | "urgent";
                             replyCount?: number;
                             lastReplyAt?: string | null;
                             reactions?: {
@@ -63596,6 +63631,7 @@ export interface operations {
                             createdAt: string;
                             editedAt?: string | null;
                             parentMessageId: string | null;
+                            urgency?: "important" | "urgent";
                             replyCount?: number;
                             lastReplyAt?: string | null;
                             reactions?: {
@@ -64175,6 +64211,7 @@ export interface operations {
                             createdAt: string;
                             editedAt?: string | null;
                             parentMessageId: string | null;
+                            urgency?: "important" | "urgent";
                             replyCount?: number;
                             lastReplyAt?: string | null;
                             reactions?: {
@@ -64241,6 +64278,7 @@ export interface operations {
                             createdAt: string;
                             editedAt?: string | null;
                             parentMessageId: string | null;
+                            urgency?: "important" | "urgent";
                             replyCount?: number;
                             lastReplyAt?: string | null;
                             reactions?: {
@@ -64334,6 +64372,7 @@ export interface operations {
                             createdAt: string;
                             editedAt?: string | null;
                             parentMessageId: string | null;
+                            urgency?: "important" | "urgent";
                             replyCount?: number;
                             lastReplyAt?: string | null;
                             reactions?: {
@@ -64588,6 +64627,7 @@ export interface operations {
                             createdAt: string;
                             editedAt?: string | null;
                             parentMessageId: string | null;
+                            urgency?: "important" | "urgent";
                             replyCount?: number;
                             lastReplyAt?: string | null;
                             reactions?: {
@@ -64661,6 +64701,96 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingChannelsByIdUrgentmessages: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    body_doc: {
+                        /** @constant */
+                        schemaVersion: 1;
+                        doc: {
+                            /** @constant */
+                            type: "doc";
+                            content: unknown[];
+                        };
+                    };
+                    recipient_user_id: string;
+                    client_message_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        message_id: string;
+                        /** Format: uuid */
+                        channel_id: string;
+                        /** Format: uuid */
+                        patient_id: string;
+                        /** Format: uuid */
+                        recipient_user_id: string;
+                        created: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingChannelsByIdUrgentmessagesOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        enabled: false;
+                    } | {
+                        /** @constant */
+                        enabled: true;
+                        patient_linked: boolean;
+                        patient_id: string | null;
+                        recipients: {
+                            /** Format: uuid */
+                            user_id: string;
+                            display_name: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -66253,6 +66383,7 @@ export interface operations {
                             createdAt: string;
                             editedAt?: string | null;
                             parentMessageId: string | null;
+                            urgency?: "important" | "urgent";
                             replyCount?: number;
                             lastReplyAt?: string | null;
                             reactions?: {

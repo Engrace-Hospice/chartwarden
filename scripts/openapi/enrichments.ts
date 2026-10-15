@@ -1404,6 +1404,12 @@ import {
   TemplateViewSchema as M36TemplateViewSchema,
   UpdateTemplateBodySchema as M36UpdateTemplateBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/template-typebox";
+// M36 WP 4.1 urgent clinical message.
+import {
+  SendUrgentMessageBodySchema as M36SendUrgentMessageBodySchema,
+  UrgentMessageOptionsResponseSchema as M36UrgentMessageOptionsResponseSchema,
+  UrgentMessageResponseSchema as M36UrgentMessageResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/urgent-typebox";
 
 // M36 WP 2.9 — announcement receipts + department channels.
 import {
@@ -9353,6 +9359,19 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Who a medication question in this channel would go to (WP 3.10; messaging.read + channel visibility): the patient's primary RN when eligible, up to 20 eligible care-team colleagues (names only), and whether medication links are on. 200 {enabled:false} while the feature flags are off; a hidden channel is the uniform 404. Read-audited (it discloses care-team names)",
     response: M36MedicationQuestionOptionsResponseSchema,
+  },
+  "POST /api/v1/messaging/channels/:id/urgent-messages": {
+    summary:
+      "Send an urgent clinical message (WP 4.1, ADR-0068; messaging.send + messaging.urgent.send + channel visibility + a required Idempotency-Key; 404 while the tenant flags `messaging.urgent_clinical` AND `messaging.sbar` are not both on). The body is an SBAR document (`body_doc`) and ONE named recipient; the message is stored with urgency `urgent`, fixed at send, and cannot be edited. The recipient must be a qualified clinician (holds messaging.urgent.receive, never an aide), on the patient's care team, an active member of the channel, not the sender and admitted by the Part 2 gate: any failure is one uniform 422 URGENT_RECIPIENT_INVALID that names no reason. 422 URGENT_NOT_PATIENT_CHANNEL (only a patient's care-team channel qualifies; the patient comes from the channel), URGENT_SBAR_REQUIRED, SBAR_INVALID, CLINICAL_LINK_NOT_AVAILABLE. The recipient gets ONE generic in-app alert; nobody is paged, escalated or asked to acknowledge (WP 4.2 - 4.4), and the message text is never parsed. NOT the emergency path: critical symptoms follow the agency telephone procedure. 201 created; 200 created:false replays the same client_message_id (409 if that id names a different recipient). Read-audited against the message and patient",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    body: M36SendUrgentMessageBodySchema,
+    response: M36UrgentMessageResponseSchema,
+    status: 201,
+  },
+  "GET /api/v1/messaging/channels/:id/urgent-messages/options": {
+    summary:
+      "Who can receive an urgent clinical message in this channel (WP 4.1; messaging.read + channel visibility): up to 30 qualified care-team colleagues who can see the channel (names only), never the caller. 200 {enabled:false} while the feature flags are off; a hidden channel is the uniform 404. Read-audited (it discloses care-team names)",
+    response: M36UrgentMessageOptionsResponseSchema,
   },
   "GET /api/v1/messaging/tasks": {
     summary:

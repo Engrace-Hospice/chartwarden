@@ -26,6 +26,7 @@ import { SbarFormDialog } from "./sbar-form-dialog";
 import { sbarAllowedInChannel, sbarOfferedInChannel } from "./sbar-utils";
 import { ScheduleSendButton } from "./schedule-send-button";
 import { TemplatePicker } from "./template-picker";
+import { UrgentMessageButton } from "./urgent-message-button";
 import type { AttachmentUploads } from "./use-attachment-upload";
 import type { useMentionPicker } from "./use-mention-picker";
 import type { SbarCompose } from "./use-sbar-compose";
@@ -316,6 +317,13 @@ export function ThreadComposer({
           kind={channel.kind}
           disabled={sending}
           onSent={onPollCreated}
+        />
+        <UrgentMessageButton
+          channelId={channel.channelId}
+          kind={channel.kind}
+          disabled={sending}
+          onThreadChanged={onPollCreated}
+          statusResetKey={draft}
         />
         <NonMemberMentionPrompt
           person={pendingAdd?.person ?? null}
