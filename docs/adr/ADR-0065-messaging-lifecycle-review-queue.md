@@ -51,7 +51,10 @@ Under `/api/v1/messaging`, guarded by `messaging.read`, `messaging.review` and `
 
 - **Lock order.** The service locks the task, then the review row. The blueprint's text had the review first; the task-close trigger updates the review from the task side, so locking the review first could deadlock against a participant closing the task.
 - **`closed_elsewhere` rows have a NULL `resolved_by_user_id`.** The trigger cannot read the closer: `arch:tenancy` bans `app.user_id` outside audit triggers. The closer is on the task event. The CHECK requires a decider only for `reassigned` and `closed`.
-- **Restricted rows return `task: null` except `item_id`.** The task detail is withheld together with the patient label.
+- **Restricted rows return `task: null`, `item_id: null`, `cause: null` and `source: null`.** Only `id`, `state`, `item_kind` and `created_at` remain, so the row is still listed and counted but names no patient, task or event (a cause alone says what happened to a patient the viewer may not see).
+- **The queue insert cannot race a task close.** The lifecycle queue reads the patient's active tasks `FOR SHARE` in the same transaction as the insert, so an assignee closing a task concurrently waits and its trigger then finds the review (or the queue sees the task closed). As a backstop, a decision on an open row whose task is no longer active resolves the row as `closed_elsewhere` and answers `409`.
+- **Reassign eligibility is judged inside the decision transaction**, after the task and review locks, so a target deactivated or removed from the channel in the gap is refused with `422 REVIEW_ASSIGNEE_INVALID` and nothing changes.
+- **`messaging.review` is excluded from full-catalog role materialization.** `planRoleTemplateMaterialization` gives `org_admin` and `administrator` every non-platform permission; `FULL_CATALOG_EXCLUDED_KEYS` withholds this one, so a newly provisioned tenant has no default holder until it grants the key to a supervisory role it owns (migration 1103 grants the four supervisory role keys where they exist).
 - **The consumer takes one `admissionCare` dependency**, bound to `AdmissionStatusReader.getAdmissionPatientCare`, which answers both the patient id and whether another admission is under care.
 - **The list read audit** uses `resourceIdPayloadPath: "items.0.id"` plus `patientIdsPayload`. `list: true` does not combine with `patientIdsPayload` (the plugin's list branch ignores it), so it is not used.
 - **The queue is org-wide for permission holders**, so a reviewer in the organisation who is not a member of the channel gets `422` on reassign (they cannot be a target) rather than `404`; the reviewer is not told why.
@@ -73,6 +76,8 @@ Under `/api/v1/messaging`, guarded by `messaging.read`, `messaging.review` and `
 - **Non-goals.** A tenant posting policy; cancelling or queuing handoff items; tasks on direct or group channels about the patient (no patient link); a location-scoped queue; free-text justification; message bodies in the queue; paging, escalation or reminders for unresolved reviews (Phase 4); queuing the needs-owner orphans of offboarding; re-evaluation on readmission (open reviews stay until resolved); analytics.
 - **Known limits (accepted).**
   - The queue is org-wide by role (D7).
+  - The list applies its limit in SQL before the per-row Part 2 gate. A supervisor who cannot see some Part 2 patients can therefore get a page with fewer actionable rows than the limit (restricted rows are listed and counted, not dropped, but they occupy page slots). Not redesigned; a keyset cursor or a visibility filter in SQL is the upgrade if it matters.
+  - Display names for a page are looked up one at a time (at most 200 distinct people per response).
   - The supervisor decides from task metadata and may lack channel access.
   - A reassignment by a participant, offboarding or a handoff does not resolve the review.
   - Tasks created on an archived channel before this change are not swept, and a task created between the discharge and the archive is queued only if it exists when the consumer runs.

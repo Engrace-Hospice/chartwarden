@@ -110,7 +110,11 @@ export function NotificationsInbox(): JSX.Element {
   // closed). Its open-items read feeds the badge and is lent to the tab.
   const reviewEnabled = useReviewEnabled();
   const myReview = useReviewItems("open", !reviewEnabled);
-  const reviewVisible = reviewEnabled && myReview.view.status !== "denied";
+  // A later re-read that answers enabled:false (the tenant turned the queue off) hides the tab again.
+  const reviewVisible =
+    reviewEnabled &&
+    myReview.view.status !== "denied" &&
+    !(myReview.view.status === "ready" && !myReview.view.enabled);
   const reviewCount =
     myReview.view.status === "ready" && myReview.view.enabled ? myReview.view.items.length : 0;
   const tab: Tab =

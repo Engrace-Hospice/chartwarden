@@ -65733,8 +65733,8 @@ export interface operations {
                         items: {
                             /** Format: uuid */
                             id: string;
-                            source: "patient_lifecycle" | "care_team_change";
-                            cause: "death" | "discharge" | "transfer" | "care_team_removed";
+                            source: ("patient_lifecycle" | "care_team_change") | null;
+                            cause: ("death" | "discharge" | "transfer" | "care_team_removed") | null;
                             state: "open" | "resolved";
                             resolution: ("reassigned" | "closed" | "closed_elsewhere") | null;
                             resolution_reason: ("action_taken" | "handled_elsewhere" | "no_action_needed" | "unable_to_complete" | "duplicate") | null;
@@ -65744,8 +65744,7 @@ export interface operations {
                             mrn_suffix: string | null;
                             /** @constant */
                             item_kind: "task";
-                            /** Format: uuid */
-                            item_id: string;
+                            item_id: string | null;
                             task: {
                                 status: string;
                                 clinical_concern: boolean;
@@ -65805,8 +65804,8 @@ export interface operations {
                         item: {
                             /** Format: uuid */
                             id: string;
-                            source: "patient_lifecycle" | "care_team_change";
-                            cause: "death" | "discharge" | "transfer" | "care_team_removed";
+                            source: ("patient_lifecycle" | "care_team_change") | null;
+                            cause: ("death" | "discharge" | "transfer" | "care_team_removed") | null;
                             state: "open" | "resolved";
                             resolution: ("reassigned" | "closed" | "closed_elsewhere") | null;
                             resolution_reason: ("action_taken" | "handled_elsewhere" | "no_action_needed" | "unable_to_complete" | "duplicate") | null;
@@ -65816,8 +65815,7 @@ export interface operations {
                             mrn_suffix: string | null;
                             /** @constant */
                             item_kind: "task";
-                            /** Format: uuid */
-                            item_id: string;
+                            item_id: string | null;
                             task: {
                                 status: string;
                                 clinical_concern: boolean;
@@ -65877,8 +65875,8 @@ export interface operations {
                         item: {
                             /** Format: uuid */
                             id: string;
-                            source: "patient_lifecycle" | "care_team_change";
-                            cause: "death" | "discharge" | "transfer" | "care_team_removed";
+                            source: ("patient_lifecycle" | "care_team_change") | null;
+                            cause: ("death" | "discharge" | "transfer" | "care_team_removed") | null;
                             state: "open" | "resolved";
                             resolution: ("reassigned" | "closed" | "closed_elsewhere") | null;
                             resolution_reason: ("action_taken" | "handled_elsewhere" | "no_action_needed" | "unable_to_complete" | "duplicate") | null;
@@ -65888,8 +65886,7 @@ export interface operations {
                             mrn_suffix: string | null;
                             /** @constant */
                             item_kind: "task";
-                            /** Format: uuid */
-                            item_id: string;
+                            item_id: string | null;
                             task: {
                                 status: string;
                                 clinical_concern: boolean;

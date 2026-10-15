@@ -68,7 +68,12 @@ export interface ReviewStore {
     source: ReviewSource,
     triggerRef: string,
   ): Promise<string[]>;
-  /** One page of the patient's active care-team tasks, ordered by id, after `afterId`. Bereavement is excluded by kind. */
+  /**
+   * One page of the patient's active care-team tasks, ordered by id, after `afterId`. Bereavement is excluded by kind.
+   * The task rows are locked FOR SHARE until the caller's transaction ends: an assignee closing a task concurrently waits,
+   * so its close trigger then finds the review this transaction inserted (or the task is seen closed here) - never a
+   * review for a task that was closed in the gap between the read and the insert.
+   */
   activeCareTeamTasks(
     tx: Tx,
     orgId: string,
@@ -82,6 +87,11 @@ export interface ReviewStore {
   getForUpdate(tx: Tx, orgId: string, id: string): Promise<ReviewRow | null>;
   /** Open -> resolved by a decision; null when the row is not open any more. */
   resolve(tx: Tx, a: ResolveReviewArgs): Promise<ReviewRow | null>;
+  /** Open -> closed_elsewhere for a task that is no longer active (the task-close trigger missed it); null when not open. */
+  resolveClosedElsewhere(
+    tx: Tx,
+    a: { orgId: string; id: string; reason: string | null },
+  ): Promise<ReviewRow | null>;
   /** The tasks the rows point at, for the read model. */
   tasksByIds(tx: Tx, orgId: string, ids: readonly string[]): Promise<ReviewTaskRow[]>;
 }
@@ -157,7 +167,8 @@ export function createDbReviewStore(): ReviewStore {
           ),
         )
         .orderBy(asc(T.id))
-        .limit(limit);
+        .limit(limit)
+        .for("share", { of: T });
       return rows;
     },
 
@@ -206,6 +217,23 @@ export function createDbReviewStore(): ReviewStore {
           resolutionReason: a.resolutionReason,
           reassignedToUserId: a.reassignedToUserId,
           resolvedByUserId: a.resolvedByUserId,
+          resolvedAt: now,
+          updatedAt: now,
+          version: sql`${R.version} + 1`,
+        })
+        .where(and(eq(R.organizationId, a.orgId), eq(R.id, a.id), eq(R.state, "open")))
+        .returning();
+      return row ?? null;
+    },
+
+    async resolveClosedElsewhere(tx, a) {
+      const now = new Date();
+      const [row] = await tx
+        .update(R)
+        .set({
+          state: "resolved",
+          resolution: "closed_elsewhere",
+          resolutionReason: a.reason,
           resolvedAt: now,
           updatedAt: now,
           version: sql`${R.version} + 1`,

@@ -151,6 +151,23 @@ export function createMemoryReviewStore(sources: MemoryReviewStoreSources): Memo
       return next;
     },
 
+    async resolveClosedElsewhere(_tx, a) {
+      const cur = rows.get(a.id);
+      if (!cur || cur.organizationId !== a.orgId || cur.state !== "open") return null;
+      const now = new Date();
+      const next: ReviewRow = {
+        ...cur,
+        state: "resolved",
+        resolution: "closed_elsewhere",
+        resolutionReason: a.reason,
+        resolvedAt: now,
+        updatedAt: now,
+        version: cur.version + 1,
+      };
+      rows.set(cur.id, next);
+      return next;
+    },
+
     async tasksByIds(_tx, orgId, ids) {
       const wanted = new Set(ids);
       return [...sources.tasks()].filter((t) => t.organizationId === orgId && wanted.has(t.id));

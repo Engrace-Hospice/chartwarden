@@ -69,8 +69,9 @@ export async function buildReviewDtos(
     const label = restricted ? undefined : labels.get(r.patientId);
     return {
       id: r.id,
-      source: r.source as ReviewSource,
-      cause: r.cause as ReviewCause,
+      // A restricted row keeps only its state and age: no source, cause, item id, label, task or people.
+      source: restricted ? null : (r.source as ReviewSource),
+      cause: restricted ? null : (r.cause as ReviewCause),
       state: r.state as ReviewState,
       resolution: r.resolution as ReviewResolution | null,
       resolution_reason: r.resolutionReason as TaskCloseReason | null,
@@ -79,8 +80,7 @@ export async function buildReviewDtos(
       patient_display_name: label?.displayName ?? null,
       mrn_suffix: label?.mrnSuffix ?? null,
       item_kind: r.itemKind as ReviewItemKind,
-      item_id: r.itemId,
-      // A restricted row keeps only the task id: no channel, message or people.
+      item_id: restricted ? null : r.itemId,
       task:
         task && !restricted
           ? {

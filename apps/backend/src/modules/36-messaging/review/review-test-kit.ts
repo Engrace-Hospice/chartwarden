@@ -33,6 +33,8 @@ export interface KitOptions {
   /** `userId:patientId` pairs the Part 2 gate refuses. */
   part2Denied?: string[];
   part2Throws?: boolean;
+  /** Called with a label each time eligibility is asked, for ordering assertions. */
+  trace?: (event: string) => void;
 }
 
 let messageSeq = 0;
@@ -62,7 +64,10 @@ export function buildKit(opts: KitOptions = {}) {
     store,
     taskStore,
     outbox: { publish: async (_tx, e) => void published.push(e) },
-    isEligible: async (_o, userId) => !(opts.ineligible ?? [DAVE]).includes(userId),
+    isEligible: async (_o, userId) => {
+      opts.trace?.("eligible");
+      return !(opts.ineligible ?? [DAVE]).includes(userId);
+    },
     part2Gate,
     patientLabels: async (_o, ids) =>
       new Map(ids.map((id) => [id, { displayName: "Pat I.", mrnSuffix: "1234" }])),

@@ -169090,32 +169090,46 @@
                           "source": {
                             "anyOf": [
                               {
-                                "const": "patient_lifecycle",
-                                "type": "string"
+                                "anyOf": [
+                                  {
+                                    "const": "patient_lifecycle",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "care_team_change",
+                                    "type": "string"
+                                  }
+                                ]
                               },
                               {
-                                "const": "care_team_change",
-                                "type": "string"
+                                "type": "null"
                               }
                             ]
                           },
                           "cause": {
                             "anyOf": [
                               {
-                                "const": "death",
-                                "type": "string"
+                                "anyOf": [
+                                  {
+                                    "const": "death",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "discharge",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "transfer",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "care_team_removed",
+                                    "type": "string"
+                                  }
+                                ]
                               },
                               {
-                                "const": "discharge",
-                                "type": "string"
-                              },
-                              {
-                                "const": "transfer",
-                                "type": "string"
-                              },
-                              {
-                                "const": "care_team_removed",
-                                "type": "string"
+                                "type": "null"
                               }
                             ]
                           },
@@ -169224,8 +169238,15 @@
                             "type": "string"
                           },
                           "item_id": {
-                            "format": "uuid",
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "task": {
                             "anyOf": [
@@ -169456,32 +169477,46 @@
                         "source": {
                           "anyOf": [
                             {
-                              "const": "patient_lifecycle",
-                              "type": "string"
+                              "anyOf": [
+                                {
+                                  "const": "patient_lifecycle",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "care_team_change",
+                                  "type": "string"
+                                }
+                              ]
                             },
                             {
-                              "const": "care_team_change",
-                              "type": "string"
+                              "type": "null"
                             }
                           ]
                         },
                         "cause": {
                           "anyOf": [
                             {
-                              "const": "death",
-                              "type": "string"
+                              "anyOf": [
+                                {
+                                  "const": "death",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "discharge",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "transfer",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "care_team_removed",
+                                  "type": "string"
+                                }
+                              ]
                             },
                             {
-                              "const": "discharge",
-                              "type": "string"
-                            },
-                            {
-                              "const": "transfer",
-                              "type": "string"
-                            },
-                            {
-                              "const": "care_team_removed",
-                              "type": "string"
+                              "type": "null"
                             }
                           ]
                         },
@@ -169590,8 +169625,15 @@
                           "type": "string"
                         },
                         "item_id": {
-                          "format": "uuid",
-                          "type": "string"
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         },
                         "task": {
                           "anyOf": [
@@ -169861,32 +169903,46 @@
                         "source": {
                           "anyOf": [
                             {
-                              "const": "patient_lifecycle",
-                              "type": "string"
+                              "anyOf": [
+                                {
+                                  "const": "patient_lifecycle",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "care_team_change",
+                                  "type": "string"
+                                }
+                              ]
                             },
                             {
-                              "const": "care_team_change",
-                              "type": "string"
+                              "type": "null"
                             }
                           ]
                         },
                         "cause": {
                           "anyOf": [
                             {
-                              "const": "death",
-                              "type": "string"
+                              "anyOf": [
+                                {
+                                  "const": "death",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "discharge",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "transfer",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "care_team_removed",
+                                  "type": "string"
+                                }
+                              ]
                             },
                             {
-                              "const": "discharge",
-                              "type": "string"
-                            },
-                            {
-                              "const": "transfer",
-                              "type": "string"
-                            },
-                            {
-                              "const": "care_team_removed",
-                              "type": "string"
+                              "type": "null"
                             }
                           ]
                         },
@@ -169995,8 +170051,15 @@
                           "type": "string"
                         },
                         "item_id": {
-                          "format": "uuid",
-                          "type": "string"
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         },
                         "task": {
                           "anyOf": [

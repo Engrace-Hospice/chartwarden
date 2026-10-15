@@ -72,13 +72,14 @@ const COUNTED_TABLES = [
 
 interface ReviewItem {
   id: string;
-  cause: string;
+  cause: string | null;
+  source: string | null;
   state: string;
   resolution: string | null;
   restricted: boolean;
   patient_id: string | null;
   patient_display_name: string | null;
-  item_id: string;
+  item_id: string | null;
   allowed_actions: string[];
   task: { assignee_user_id: string } | null;
 }
@@ -719,11 +720,15 @@ describe.skipIf(!DB_URL)("M36 WP 3.8 lifecycle review queue - LIVE Postgres", ()
 
       part2Denied.add(`${supervisor}:${patientId}`);
       try {
-        const restricted = await itemFor(taskId);
+        const restricted = (await listItems("all")).find((i) => i.id === before.id) as ReviewItem;
         expect(restricted).toMatchObject({
           restricted: true,
           patient_id: null,
           patient_display_name: null,
+          item_id: null,
+          cause: null,
+          source: null,
+          state: "open",
           allowed_actions: [],
         });
         const missing = await call(supervisor, "POST", `${REVIEW_BASE}/${randomUUID()}/close`, {
@@ -740,6 +745,106 @@ describe.skipIf(!DB_URL)("M36 WP 3.8 lifecycle review queue - LIVE Postgres", ()
       } finally {
         part2Denied.clear();
       }
+    });
+  });
+
+  describe("8b. every listed row restricted", () => {
+    it("still lands a list read whose resource id is non-empty (nothing is swallowed by the best-effort wrapper)", async () => {
+      const { patientId } = await patientWithTasks([assignee]);
+      await deathOf(patientId);
+      const reader = await kit.seedUser("all-restricted", ORG_A, REVIEW_KEYS);
+      const visible = await listItems("open", reader);
+      expect(visible.length).toBeGreaterThan(0);
+      for (const i of visible) part2Denied.add(`${reader}:${i.patient_id}`);
+      const viewedCount = () =>
+        kit.count(
+          "SELECT count(*)::int AS n FROM audit_event WHERE event_type='messaging_review_item.viewed' AND actor_user_id=$1",
+          [reader],
+        );
+      try {
+        const before = await viewedCount();
+        const rows = await listItems("open", reader);
+        expect(rows.length).toBeGreaterThan(0);
+        expect(rows.every((r) => r.restricted)).toBe(true);
+        const landed = await kit.one<{ resource_id: string; patient: string | null }>(
+          `SELECT resource_id, context->>'patientId' AS patient FROM audit_event
+            WHERE event_type='messaging_review_item.viewed' AND actor_user_id=$1 ORDER BY created_at DESC LIMIT 1`,
+          [reader],
+        );
+        expect(await viewedCount()).toBe(before + 1);
+        expect(landed[0]?.resource_id).toBe(rows[0]?.id);
+        expect(landed[0]?.patient).toBeNull();
+      } finally {
+        part2Denied.clear();
+      }
+    });
+  });
+
+  describe("8c. the queue/close race", () => {
+    /** Wait until some backend is blocked on a lock (the consumer waiting on the uncommitted close). */
+    async function waitForLockWait(): Promise<void> {
+      for (let i = 0; i < 100; i++) {
+        const n = await kit.count(
+          "SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock'",
+        );
+        if (n > 0) return;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      throw new Error("the consumer never waited on the task lock");
+    }
+
+    it("never queues a task whose close commits between the read and the insert", async () => {
+      const { patientId, taskIds } = await patientWithTasks([assignee]);
+      const taskId = taskIds[0] as string;
+      await kit.admin.query("BEGIN");
+      try {
+        await kit.admin.query(
+          "UPDATE communication_task SET status='done', closed_reason='action_taken', closed_at=now() WHERE id=$1",
+          [taskId],
+        );
+        const queued = deathOf(patientId);
+        await waitForLockWait();
+        await kit.admin.query("COMMIT");
+        await queued;
+      } catch (err) {
+        await kit.admin.query("ROLLBACK").catch(() => undefined);
+        throw err;
+      }
+
+      expect(await reviewRow(taskId)).toBeUndefined();
+    });
+
+    it("clears a stranded open row when a supervisor decides it, answering 409", async () => {
+      const { patientId, taskIds } = await patientWithTasks([assignee]);
+      await deathOf(patientId);
+      const taskId = taskIds[0] as string;
+      const row = await reviewRow(taskId);
+      // Recreate the race outcome: the task closes while the resolving trigger is not running.
+      await kit.admin.query(
+        "ALTER TABLE communication_task DISABLE TRIGGER trg_communication_task_resolve_review",
+      );
+      try {
+        await kit.admin.query(
+          "UPDATE communication_task SET status='done', closed_reason='action_taken', closed_at=now() WHERE id=$1",
+          [taskId],
+        );
+      } finally {
+        await kit.admin.query(
+          "ALTER TABLE communication_task ENABLE TRIGGER trg_communication_task_resolve_review",
+        );
+      }
+      expect(await reviewRow(taskId)).toMatchObject({ state: "open" });
+
+      const res = await call(supervisor, "POST", `${REVIEW_BASE}/${row?.id}/close`, {
+        reason: "duplicate",
+      });
+
+      expect(res.statusCode).toBe(409);
+      expect(await reviewRow(taskId)).toMatchObject({
+        state: "resolved",
+        resolution: "closed_elsewhere",
+        resolution_reason: "action_taken",
+      });
     });
   });
 

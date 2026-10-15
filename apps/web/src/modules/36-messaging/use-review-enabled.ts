@@ -29,6 +29,8 @@ export function useReviewEnabled(): boolean {
   const client = useOptionalApiClient();
   const [enabled, setEnabled] = useState(false);
   useEffect(() => {
+    // A new (or missing) client starts hidden: an earlier client's yes must not outlive it.
+    setEnabled(false);
     if (!client) return;
     let current = true;
     void readReviewEnabled(client).then((value) => {

@@ -413,11 +413,16 @@ describe("Notifications inbox Handoffs tab", () => {
 // WP 3.8: the Review tab exists only while the review list answers enabled:true (any refusal or failure hides it, even for
 // a deep link), carries the open count, and `?tab=review` (the supervisor alert deep link) opens it.
 describe("Notifications inbox Review tab", () => {
+  /** `reviewAnswer` may be a SEQUENCE (an array of answers; the last one repeats) to model a re-read that differs. */
   function mountReview(reviewAnswer: unknown, url = "/notifications") {
+    let reads = 0;
     const GET = vi.fn(async (path: string) => {
       if (path === "/api/v1/messaging/review-items") {
-        if (reviewAnswer instanceof Error) throw reviewAnswer;
-        return reviewAnswer;
+        const answer = Array.isArray(reviewAnswer)
+          ? reviewAnswer[Math.min(reads++, reviewAnswer.length - 1)]
+          : reviewAnswer;
+        if (answer instanceof Error) throw answer;
+        return answer;
       }
       return { data: { alerts: [] } };
     });
@@ -453,6 +458,24 @@ describe("Notifications inbox Review tab", () => {
       expect(GET).toHaveBeenCalledWith("/api/v1/messaging/review-items", expect.anything()),
     );
     expect(screen.queryByRole("tab", { name: /Review/ })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Lifecycle review" })).toBeNull();
+  });
+
+  it("drops the Review tab when a later re-read answers enabled:false (the tenant turned the queue off)", async () => {
+    const GET = mountReview(
+      [
+        { data: { enabled: true, items: [REVIEW_FIXTURE] } },
+        { data: { enabled: false, items: [] } },
+      ],
+      "/notifications?tab=review",
+    );
+    await screen.findByRole("tab", { name: "Mentions" });
+    await waitFor(() =>
+      expect(
+        GET.mock.calls.filter(([p]) => p === "/api/v1/messaging/review-items").length,
+      ).toBeGreaterThanOrEqual(2),
+    );
+    await waitFor(() => expect(screen.queryByRole("tab", { name: /Review/ })).toBeNull());
     expect(screen.queryByRole("heading", { name: "Lifecycle review" })).toBeNull();
   });
 

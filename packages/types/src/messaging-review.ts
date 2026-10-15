@@ -40,8 +40,9 @@ export interface ReviewTaskDto {
 
 export interface ReviewItemDto {
   readonly id: string;
-  readonly source: ReviewSource;
-  readonly cause: ReviewCause;
+  /** Null on a restricted row (the cause alone would say what happened to a patient the viewer may not see). */
+  readonly source: ReviewSource | null;
+  readonly cause: ReviewCause | null;
   readonly state: ReviewState;
   readonly resolution: ReviewResolution | null;
   readonly resolution_reason: TaskCloseReason | null;
@@ -51,7 +52,8 @@ export interface ReviewItemDto {
   readonly patient_display_name: string | null;
   readonly mrn_suffix: string | null;
   readonly item_kind: ReviewItemKind;
-  readonly item_id: string;
+  /** Null on a restricted row. */
+  readonly item_id: string | null;
   readonly task: ReviewTaskDto | null;
   readonly reassigned_to_user_id: string | null;
   readonly reassigned_to_display_name: string | null;

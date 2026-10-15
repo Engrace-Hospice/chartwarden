@@ -87,7 +87,7 @@ function ReviewRow({
         {!item.restricted && item.mrn_suffix ? (
           <span className="wx-task-tag">{`MRN ...${item.mrn_suffix}`}</span>
         ) : null}
-        <StatusPill label={REVIEW_CAUSE_LABELS[item.cause]} tone="neutral" />
+        {item.cause ? <StatusPill label={REVIEW_CAUSE_LABELS[item.cause]} tone="neutral" /> : null}
         {item.task?.needs_owner ? (
           <StatusPill label={NEEDS_OWNER_LABEL} tone="warning" glyph="alert" />
         ) : null}
@@ -132,7 +132,6 @@ export function ReviewQueueList({ meId, shared }: ReviewQueueListProps): JSX.Ele
   const { view, reload } = borrowing ? shared : own;
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [status, setStatus] = useState("");
-  const headingRef = useRef<HTMLHeadingElement>(null);
   const statusRef = useRef<HTMLOutputElement>(null);
   // How many more times to land on the status line: a finished action or a stale refusal re-reads the list and may take the
   // row (and the button that had focus) with it. Once when the dialog closes, once when the re-read arrives.
@@ -159,9 +158,7 @@ export function ReviewQueueList({ meId, shared }: ReviewQueueListProps): JSX.Ele
 
   return (
     <section className="wx-tasks" aria-labelledby="wx-review-heading">
-      <h2 id="wx-review-heading" ref={headingRef} tabIndex={-1}>
-        {REVIEW_HEADING}
-      </h2>
+      <h2 id="wx-review-heading">{REVIEW_HEADING}</h2>
       <p className="wx-task-notice">{REVIEW_NOTICE}</p>
       <fieldset className="wx-task-toggle">
         <legend className="sr-only">Review state</legend>
@@ -179,7 +176,7 @@ export function ReviewQueueList({ meId, shared }: ReviewQueueListProps): JSX.Ele
           </button>
         ))}
       </fieldset>
-      <output className="wx-review-status" ref={statusRef} tabIndex={-1} aria-live="polite">
+      <output className="wx-review-status" ref={statusRef} tabIndex={-1}>
         {status}
       </output>
       {view.status === "loading" ? (

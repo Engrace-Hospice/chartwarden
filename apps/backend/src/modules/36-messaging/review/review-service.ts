@@ -177,14 +177,27 @@ export function createReviewService(deps: ReviewServiceDeps): ReviewService {
     taskId: string,
     channelId: string,
     d: Decision,
-  ): Promise<"applied" | "replay"> {
+  ): Promise<"applied" | "replay" | "stale"> {
     const task = await taskStore.getForUpdate(tx, actor.orgId, taskId);
     const row = await store.getForUpdate(tx, actor.orgId, id);
     if (!row) throw notFound();
     if (isReplay(row, actor, d)) return "replay";
-    if (row.state !== "open" || !task || !isActiveStatus(task.status)) throw stateConflict();
+    if (row.state !== "open" || !task) throw stateConflict();
+    if (!isActiveStatus(task.status)) {
+      // The task closed after the row was queued and its trigger never saw the row (the queue/close race): clear the
+      // stranded row so it does not sit open for ever, then report the conflict AFTER commit ("stale").
+      await store.resolveClosedElsewhere(tx, {
+        orgId: actor.orgId,
+        id,
+        reason: task.closedReason ?? null,
+      });
+      return "stale";
+    }
     if (task.channelId !== channelId) throw assigneeInvalid();
     if (d.kind === "reassign") {
+      // Eligibility is judged HERE, after the locks, so a target deactivated or removed from the channel since the
+      // request began is refused with nothing changed.
+      if (!(await eligible(actor, d.toUserId, channelId))) throw assigneeInvalid();
       const holders = await taskStore.activeAssigneeIds(tx, actor.orgId, task.messageId);
       if (task.assigneeId === d.toUserId || holders.includes(d.toUserId)) throw assigneeInvalid();
     }
@@ -251,13 +264,10 @@ export function createReviewService(deps: ReviewServiceDeps): ReviewService {
     if (isReplay(row, actor, d)) return presentOne(actor, row);
     if (row.state !== "open") throw stateConflict();
     const [task] = await run(actor, (tx) => store.tasksByIds(tx, actor.orgId, [row.itemId]));
-    if (!task || !isActiveStatus(task.status)) throw stateConflict();
-    if (d.kind === "reassign") {
-      if (d.toUserId === task.assigneeId || !(await eligible(actor, d.toUserId, task.channelId))) {
-        throw assigneeInvalid();
-      }
-    }
-    await run(actor, (tx) => decide(tx, actor, id, task.id, task.channelId, d));
+    if (!task) throw stateConflict();
+    if (d.kind === "reassign" && d.toUserId === task.assigneeId) throw assigneeInvalid();
+    const outcome = await run(actor, (tx) => decide(tx, actor, id, task.id, task.channelId, d));
+    if (outcome === "stale") throw stateConflict();
     const after = await run(actor, (tx) => store.get(tx, actor.orgId, id));
     if (!after) throw notFound();
     return presentOne(actor, after);

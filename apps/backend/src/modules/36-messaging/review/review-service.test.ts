@@ -52,8 +52,13 @@ describe("list", () => {
       patient_id: null,
       patient_display_name: null,
       task: null,
+      item_id: null,
+      cause: null,
+      source: null,
+      state: "open",
       allowed_actions: [],
     });
+    expect(item?.created_at).toBeTruthy();
   });
 
   it("treats a throwing Part 2 gate as restricted (fail closed), still listing the row", async () => {
@@ -113,6 +118,27 @@ describe("reassign", () => {
 
     const outcome = await kit.code(kit.service.reassign(sup, reviewId, target));
 
+    expect(outcome).toBe("422:REVIEW_ASSIGNEE_INVALID");
+    expect(kit.store.rows.get(reviewId)?.state).toBe("open");
+    expect(kit.taskStore.tasks.get(task.id)?.assigneeId).toBe(ALICE);
+    expect(kit.published).toHaveLength(0);
+  });
+
+  it("re-checks eligibility only after the task is locked, so a target deactivated in the gap is refused", async () => {
+    const order: string[] = [];
+    const ineligible: string[] = [];
+    const kit = buildKit({ ineligible, trace: (e) => order.push(e) });
+    const { task, reviewId } = await queued(kit);
+    const lock = kit.taskStore.getForUpdate.bind(kit.taskStore);
+    kit.taskStore.getForUpdate = async (...args) => {
+      order.push("lock");
+      ineligible.push(BOB); // BOB is deactivated before the check inside the transaction
+      return lock(...args);
+    };
+
+    const outcome = await kit.code(kit.service.reassign(sup, reviewId, BOB));
+
+    expect(order.indexOf("lock")).toBeLessThan(order.indexOf("eligible"));
     expect(outcome).toBe("422:REVIEW_ASSIGNEE_INVALID");
     expect(kit.store.rows.get(reviewId)?.state).toBe("open");
     expect(kit.taskStore.tasks.get(task.id)?.assigneeId).toBe(ALICE);
@@ -240,6 +266,31 @@ describe("closed elsewhere", () => {
     expect(await kit.code(kit.service.close(sup, reviewId, "duplicate"))).toBe(
       "409:REVIEW_ITEM_STATE_CONFLICT",
     );
+  });
+});
+
+describe("task closed in the gap before the trigger saw a review", () => {
+  it("resolves the stranded open row as closed_elsewhere and answers 409", async () => {
+    const kit = buildKit();
+    const { task, reviewId } = await queued(kit);
+    // The assignee's close committed but the row stayed open (the race): no store.resolveForClosedTask here.
+    await kit.taskStore.transition(null as never, {
+      orgId: task.organizationId,
+      taskId: task.id,
+      actor: { kind: "user", userId: ALICE },
+      action: "complete",
+      reason: "action_taken",
+    });
+
+    const outcome = await kit.code(kit.service.close(sup, reviewId, "duplicate"));
+
+    expect(outcome).toBe("409:REVIEW_ITEM_STATE_CONFLICT");
+    expect(kit.store.rows.get(reviewId)).toMatchObject({
+      state: "resolved",
+      resolution: "closed_elsewhere",
+      resolutionReason: "action_taken",
+    });
+    expect(kit.published).toHaveLength(0);
   });
 });
 

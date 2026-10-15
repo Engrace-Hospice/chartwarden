@@ -50,8 +50,8 @@ const ReviewTaskSchema = Type.Object({
 
 export const ReviewItemSchema = Type.Object({
   id: Type.String({ format: "uuid" }),
-  source: literals(REVIEW_SOURCES),
-  cause: literals(REVIEW_CAUSES),
+  source: nullable(literals(REVIEW_SOURCES)),
+  cause: nullable(literals(REVIEW_CAUSES)),
   state: literals(REVIEW_STATES),
   resolution: nullable(literals(REVIEW_RESOLUTIONS)),
   resolution_reason: nullable(literals(TASK_CLOSE_REASONS)),
@@ -60,7 +60,7 @@ export const ReviewItemSchema = Type.Object({
   patient_display_name: nullable(Type.String()),
   mrn_suffix: nullable(Type.String()),
   item_kind: literals(REVIEW_ITEM_KINDS),
-  item_id: Type.String({ format: "uuid" }),
+  item_id: nullable(Type.String({ format: "uuid" })),
   task: nullable(ReviewTaskSchema),
   reassigned_to_user_id: nullable(Type.String({ format: "uuid" })),
   reassigned_to_display_name: nullable(Type.String()),

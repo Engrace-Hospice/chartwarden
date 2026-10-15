@@ -13,6 +13,39 @@ function gate(GET: unknown) {
   return renderHook(() => useReviewEnabled(), { wrapper });
 }
 
+describe("useReviewEnabled client changes", () => {
+  it("drops back to hidden at once when the client changes, until the new client answers", async () => {
+    let client = {
+      GET: vi.fn().mockResolvedValue({ data: { enabled: true, items: [] } }),
+    } as unknown as ApiClient;
+    const Wrapper = ({ children }: { children: ReactNode }) => (
+      <ApiClientProvider client={client}>{children}</ApiClientProvider>
+    );
+    const { result, rerender } = renderHook(() => useReviewEnabled(), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current).toBe(true));
+
+    client = { GET: vi.fn(() => new Promise(() => undefined)) } as unknown as ApiClient;
+    rerender();
+
+    await waitFor(() => expect(result.current).toBe(false));
+  });
+
+  it("clears an earlier yes when the client goes away", async () => {
+    let client: ApiClient | null = {
+      GET: vi.fn().mockResolvedValue({ data: { enabled: true, items: [] } }),
+    } as unknown as ApiClient;
+    const Wrapper = ({ children }: { children: ReactNode }) =>
+      client ? <ApiClientProvider client={client}>{children}</ApiClientProvider> : <>{children}</>;
+    const { result, rerender } = renderHook(() => useReviewEnabled(), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current).toBe(true));
+
+    client = null;
+    rerender();
+
+    await waitFor(() => expect(result.current).toBe(false));
+  });
+});
+
 describe("useReviewEnabled", () => {
   it("is on only when the list route says enabled", async () => {
     const { result } = gate(vi.fn().mockResolvedValue({ data: { enabled: true, items: [] } }));
