@@ -229,12 +229,18 @@ describe("M25 denial work", () => {
     fireEvent.change(screen.getByLabelText("Appeal tier"), {
       target: { value: "reconsideration" },
     });
-    fireEvent.click(screen.getAllByRole("button", { name: "Open appeal" }).pop() as HTMLElement);
+    // A later tier cannot be submitted until the printed notice date is supplied.
+    const submitBtn = screen.getAllByRole("button", { name: "Open appeal" }).pop() as HTMLElement;
+    expect((submitBtn as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Date on the prior decision notice"), {
+      target: { value: "2026-03-01" },
+    });
+    fireEvent.click(submitBtn);
     await waitFor(() => expect(calls).toHaveLength(1));
     expect(calls[0]).toMatchObject({
       method: "POST",
       path: `/api/v1/denials/${DENIAL}/appeals`,
-      body: { tier: "reconsideration" },
+      body: { tier: "reconsideration", noticeDate: "2026-03-01" },
     });
   });
 

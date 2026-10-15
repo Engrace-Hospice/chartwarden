@@ -19,8 +19,9 @@ import { createDbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { appealPacketViolations } from "@wardenx/types";
 import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { registerSeam } from "../src/bootstrap/index";
+import { buildFoundationSiteReader } from "../src/bootstrap/foundation-site-reader";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import {
   createDocumentReader,
@@ -77,6 +78,8 @@ describe.skipIf(!DB_URL)("GAP-036 - appeal packet render payload - LIVE Postgres
   const write = () =>
     buildDrizzleM25WriteService(handle.db, m25Outbox, {
       appealSources: buildSeamAppealSourcePorts(),
+      providerZones: (tx, providerEntityId) =>
+        buildFoundationSiteReader().providerEntityTimezones(tx, providerEntityId),
     });
 
   async function seedDocument(
@@ -514,5 +517,218 @@ describe.skipIf(!DB_URL)("GAP-036 - appeal packet render payload - LIVE Postgres
       );
     expect(err).toMatchObject({ code: "APPEAL_CLAIM_UNAVAILABLE", statusCode: 422 });
     expect(await outboxCount()).toBe(before);
+  });
+
+  // ---- CMS-correct appeal deadlines (hospice ADR/TPE/QIC PRD, milestone 1) ----
+  // The window runs from presumed receipt (notice date + 5 days) and the last filing day is usable to its end
+  // (America/New_York by default). Proven through the real service on the NOBYPASSRLS role.
+  describe("appeal deadlines run from the notice date", () => {
+    const seedDenial = async (withRemit: boolean): Promise<string> =>
+      (
+        await admin.query(
+          `INSERT INTO denial_case (organization_id, provider_entity_id, claim_id, remittance_line_id,
+             source_evv_aggregator_submission_id, carc_code, rarc_code, category, source, state, dollar_value,
+             taxonomy_status)
+           VALUES ($1,$2,$3,$4,$5,'50','N115','denial','evv_aggregator_rejection','in_progress',10,'mapped')
+           RETURNING id`,
+          [ORG, providerEntityId, claimId, withRemit ? remittanceLineId : null, randomUUID()],
+        )
+      ).rows[0].id as string;
+    const appealRow = async (id: string) =>
+      (
+        await admin.query(
+          `SELECT tier, to_char(notice_dated_on,'YYYY-MM-DD') AS notice, tier_deadline_at, version
+             FROM appeal_case WHERE id=$1`,
+          [id],
+        )
+      ).rows[0];
+
+    beforeEach(async () => {
+      await admin.query(
+        `UPDATE remittance_advice SET production_date = '2026-01-01T00:00:00Z'
+           WHERE id = (SELECT remittance_advice_id FROM remittance_line WHERE id = $1)`,
+        [remittanceLineId],
+      );
+    });
+
+    it("a redetermination anchors on the remittance advice date, not the day the file was ingested", async () => {
+      const denialId = await seedDenial(true);
+      const { id } = await write().createAppeal(actor, denialId, {});
+      const row = await appealRow(id);
+      expect(row.notice).toBe("2026-01-01");
+      // 2026-01-01 + 5 days receipt + 120 days = 2026-05-06, usable to 23:59:59.999 EDT.
+      expect(new Date(row.tier_deadline_at).toISOString()).toBe("2026-05-07T03:59:59.999Z");
+    });
+
+    const refused = (p: Promise<unknown>) =>
+      p.then(
+        () => null,
+        (e: unknown) => e as { code?: string; statusCode?: number },
+      );
+
+    it("an earlier explicit notice date is accepted (it only shortens the window)", async () => {
+      const { id } = await write().createAppeal(actor, await seedDenial(true), {
+        noticeDate: "2025-12-20",
+      });
+      expect((await appealRow(id)).notice).toBe("2025-12-20");
+    });
+
+    it("a notice date later than the remittance advice is refused: it cannot lengthen the window", async () => {
+      const err = await refused(
+        write().createAppeal(actor, await seedDenial(true), { noticeDate: "2026-03-10" }),
+      );
+      expect(err).toMatchObject({ code: "NOTICE_DATE_AFTER_REMITTANCE", statusCode: 422 });
+    });
+
+    it("a malformed or future notice date is refused (422)", async () => {
+      const bad = await refused(
+        write().createAppeal(actor, await seedDenial(true), { noticeDate: "2026-02-30" }),
+      );
+      expect(bad).toMatchObject({ code: "INVALID_NOTICE_DATE", statusCode: 422 });
+      const future = await refused(
+        write().createAppeal(actor, await seedDenial(false), { noticeDate: "2999-01-01" }),
+      );
+      expect(future).toMatchObject({ code: "NOTICE_DATE_IN_FUTURE", statusCode: 422 });
+    });
+
+    it("a redetermination with no remittance advice needs the printed notice date, not the denial open date", async () => {
+      const denialId = await seedDenial(false);
+      expect(await refused(write().createAppeal(actor, denialId, {}))).toMatchObject({
+        code: "NOTICE_DATE_REQUIRED",
+        statusCode: 422,
+      });
+      const { id } = await write().createAppeal(actor, denialId, { noticeDate: "2026-02-02" });
+      expect((await appealRow(id)).notice).toBe("2026-02-02");
+    });
+
+    it("a manual later tier needs the notice date (422), not a guess", async () => {
+      const err = await refused(
+        write().createAppeal(actor, await seedDenial(false), { tier: "reconsideration" }),
+      );
+      expect(err).toMatchObject({ code: "NOTICE_DATE_REQUIRED", statusCode: 422 });
+    });
+
+    it("the printed decision-letter date beats a UTC-shifted timestamp", async () => {
+      const { id } = await seedAppeal("redetermination", "2027-03-01T00:00:00Z");
+      await admin.query("UPDATE appeal_case SET state = 'under_review' WHERE id = $1", [id]);
+      // 8pm Eastern on 2026-03-01 is already 2026-03-02 in UTC; the letter says 2026-03-01.
+      await write().decideAppeal(
+        actor,
+        id,
+        {
+          outcome: "unfavorable",
+          decidedAt: "2026-03-02T01:00:00Z",
+          decisionNoticeDate: "2026-03-01",
+          reason: "The MAC upheld the denial; the medical record was found not to support prognosis.",
+        },
+        1,
+      );
+      const next = (
+        await admin.query(
+          `SELECT id FROM appeal_case WHERE prior_tier_appeal_case_id = $1 AND tier = 'reconsideration'`,
+          [id],
+        )
+      ).rows[0];
+      expect((await appealRow(next.id)).notice).toBe("2026-03-01");
+    });
+
+    it("a manual later tier cannot restart a window: a live same-tier appeal blocks it, and so does a later date", async () => {
+      const denialId = await seedDenial(true);
+      const first = await write().createAppeal(actor, denialId, {});
+      await admin.query("UPDATE appeal_case SET state = 'under_review' WHERE id = $1", [first.id]);
+      await write().decideAppeal(
+        actor,
+        first.id,
+        {
+          outcome: "unfavorable",
+          decidedAt: "2026-03-01T00:00:00Z",
+          decisionNoticeDate: "2026-03-01",
+          reason: "The MAC upheld the denial; the medical record was found not to support prognosis.",
+        },
+        1,
+      );
+      // The decision already spawned the reconsideration draft; a manual duplicate is refused.
+      expect(
+        await refused(write().createAppeal(actor, denialId, { tier: "reconsideration", noticeDate: "2026-03-01" })),
+      ).toMatchObject({ code: "APPEAL_TIER_EXISTS", statusCode: 409 });
+      // With the draft withdrawn, a date after the decision letter still cannot restart the clock.
+      await admin.query(
+        "UPDATE appeal_case SET state = 'withdrawn' WHERE denial_case_id = $1 AND tier = 'reconsideration'",
+        [denialId],
+      );
+      expect(
+        await refused(write().createAppeal(actor, denialId, { tier: "reconsideration", noticeDate: "2026-06-01" })),
+      ).toMatchObject({ code: "NOTICE_DATE_AFTER_DECISION", statusCode: 422 });
+    });
+
+    it("an unappealable denial (no claim) is a 409 before any date is judged", async () => {
+      const denialId = await seedDenial(false);
+      await admin.query("UPDATE denial_case SET claim_id = NULL WHERE id = $1", [denialId]);
+      expect(await refused(write().createAppeal(actor, denialId, { noticeDate: "2026-02-30" }))).toMatchObject({
+        code: "INVALID_STATE",
+        statusCode: 409,
+      });
+    });
+
+    it("the last filing day ends in the provider's own zone when its locations agree", async () => {
+      await admin.query(
+        `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone)
+         VALUES ($1,'West','1 Main','Reno','NV','89501','America/Los_Angeles')`,
+        [providerEntityId],
+      );
+      try {
+        const { id } = await write().createAppeal(actor, await seedDenial(true), {});
+        // Same last filing day as the Eastern case (2026-05-06), ending 3 hours later on the Pacific clock.
+        expect(new Date((await appealRow(id)).tier_deadline_at).toISOString()).toBe(
+          "2026-05-07T06:59:59.999Z",
+        );
+      } finally {
+        await admin.query("DELETE FROM location WHERE provider_entity_id = $1", [providerEntityId]);
+      }
+    });
+
+    it("a decision notice date later than the decided-at date is refused", async () => {
+      const { id } = await seedAppeal("redetermination", "2027-03-01T00:00:00Z");
+      await admin.query("UPDATE appeal_case SET state = 'under_review' WHERE id = $1", [id]);
+      const err = await refused(
+        write().decideAppeal(
+          actor,
+          id,
+          {
+            outcome: "favorable",
+            decidedAt: "2026-01-01T00:00:00Z",
+            decisionNoticeDate: "2026-02-01",
+            reason: "The MAC reversed the denial after reviewing the submitted certification.",
+          },
+          1,
+        ),
+      );
+      expect(err).toMatchObject({ code: "NOTICE_DATE_AFTER_DECISION", statusCode: 422 });
+    });
+
+    it("an unfavorable decision opens the QIC tier on the decision-letter date", async () => {
+      const { id } = await seedAppeal("redetermination", "2027-03-01T00:00:00Z");
+      await admin.query("UPDATE appeal_case SET state = 'under_review' WHERE id = $1", [id]);
+      await write().decideAppeal(
+        actor,
+        id,
+        {
+          outcome: "unfavorable",
+          decidedAt: "2026-01-01T00:00:00Z",
+          reason: "The MAC upheld the denial; the medical record was found not to support prognosis.",
+        },
+        1,
+      );
+      const next = (
+        await admin.query(
+          `SELECT id FROM appeal_case WHERE prior_tier_appeal_case_id = $1 AND tier = 'reconsideration'`,
+          [id],
+        )
+      ).rows[0];
+      const row = await appealRow(next.id);
+      expect(row.notice).toBe("2026-01-01");
+      // 2026-01-01 + 5 + 180 = 2026-07-05, usable to 23:59:59.999 EDT.
+      expect(new Date(row.tier_deadline_at).toISOString()).toBe("2026-07-06T03:59:59.999Z");
+    });
   });
 });

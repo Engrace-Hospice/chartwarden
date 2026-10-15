@@ -1,18 +1,25 @@
 // M25 — Medicare appeal-tier deadline computation (D6, M25-F04, §1.3). PURE.
 //
-// The regulatory clock, single-sourced (M25-F04 corrects the original spec's `created_at + 120`):
-//   - redetermination  : remittance_received_at + 120 days   (42 CFR §405.942(a))
-//   - reconsideration  : prior-tier decision date + 180 days  (42 CFR §405.962)
-//   - alj              : prior-tier decision date + 60 days   (42 CFR §405.1002)
-//   - council          : prior-tier decision date + 60 days   (42 CFR §405.1102)
-//   - federal_court    : prior-tier decision date + 60 days   (42 CFR §405.1136)
+// The regulatory clock. Every tier's window runs from the party's RECEIPT of the prior notice, and receipt
+// is presumed to be 5 calendar days after the date ON the notice unless there is evidence to the contrary:
+//   - redetermination  : 120 days from receipt of the initial determination (remittance advice)  §405.942(a)
+//   - reconsideration  : 180 days from receipt of the redetermination notice                      §405.962(a)
+//   - alj              :  60 days from receipt of the QIC reconsideration notice                  §405.1002
+//   - council          :  60 days from receipt of the ALJ decision                                §405.1102(a)
+//   - federal_court    :  60 days from receipt of the Council decision                            §405.1136
+// (Council → court: the presumption is stated in §405.1136; the 60 days are in §§405.1130-1134.)
 //
-// The anchor differs by tier: redetermination anchors on the REMITTANCE-received date; every later tier
-// anchors on the PRIOR tier's decision-letter date. The `appeal.submit` route hard-blocks past T-0 via the
-// `appeal_within_deadline` ABAC predicate; the deadline cron emits T-30/T-14/T-7/T-1 alerts.
+// The anchor is therefore the NOTICE DATE (the date printed on the remittance advice / decision letter),
+// not the day WardenX ingested the file. The last filing day is usable until it ends: the deadline is the
+// last millisecond of that calendar day in `zone`. The presumption is rebuttable by documented receipt;
+// that override is intentionally NOT built here (conservative: the presumed date always applies).
+// No weekend/holiday roll-forward: none was found in 42 CFR Part 405; a deadline on a Saturday stays there.
+//
+// Good cause for late filing is handled by the submit-late-good-cause route, not here. The `appeal.submit`
+// route hard-blocks past T-0 via the `appeal_within_deadline` ABAC predicate; the cron emits T-30/14/7/1.
 import type { AppealTier } from "./types";
 
-/** Filing windows (days) per tier from its anchor. */
+/** Filing windows (days) per tier, counted from presumed receipt of the prior notice. */
 export const TIER_WINDOW_DAYS: Record<AppealTier, number> = {
   redetermination: 120,
   reconsideration: 180,
@@ -21,20 +28,135 @@ export const TIER_WINDOW_DAYS: Record<AppealTier, number> = {
   federal_court: 60,
 };
 
+/** Receipt is presumed this many calendar days after the date on the notice (all five tiers). */
+export const RECEIPT_PRESUMPTION_DAYS = 5;
+
+/**
+ * Fallback zone in which the last filing day ends, used when a provider entity's locations do not agree on
+ * one zone. It is the earliest-ending US mainland zone, so it errs toward alerting early rather than letting
+ * a west-coast user believe they have hours they do not. Callers pass the provider's own zone when known.
+ */
+export const DEFAULT_DEADLINE_ZONE = "America/New_York";
+
+/** True when `zone` is an IANA zone this runtime knows (a bad stored value must not break appeal creation). */
+export function isKnownZone(zone: string): boolean {
+  try {
+    formatterFor(zone);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** The deadline-alert boundaries the cron fires at (days remaining), plus the hard T-0 block. */
 export const DEADLINE_ALERT_DAYS: readonly number[] = [30, 14, 7, 1];
 
-function addDays(d: Date, days: number): Date {
-  return new Date(d.getTime() + days * 86_400_000);
+const NOTICE_DAY_SHAPE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const MS_PER_DAY = 86_400_000;
+
+/** How a deadline was derived — shown to the user so a date is never an unexplained number. */
+export interface TierDeadlineDerivation {
+  readonly noticeDay: string; // YYYY-MM-DD printed on the notice
+  readonly presumedReceiptOn: string; // noticeDay + RECEIPT_PRESUMPTION_DAYS
+  readonly windowDays: number;
+  readonly lastFilingDay: string; // presumedReceiptOn + windowDays
+  readonly deadlineAt: Date; // end of lastFilingDay in `zone`
+  readonly zone: string;
+}
+
+function parseNoticeDay(noticeDay: string): number {
+  const m = NOTICE_DAY_SHAPE.exec(noticeDay);
+  if (!m) throw new RangeError(`notice day must be YYYY-MM-DD, got "${noticeDay}"`);
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const ms = Date.UTC(y, mo - 1, d);
+  const back = new Date(ms);
+  if (back.getUTCFullYear() !== y || back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d) {
+    throw new RangeError(`notice day is not a real calendar date: "${noticeDay}"`);
+  }
+  return ms;
+}
+
+function isoDay(utcMidnightMs: number): string {
+  return new Date(utcMidnightMs).toISOString().slice(0, 10);
+}
+
+const formatterByZone = new Map<string, Intl.DateTimeFormat>();
+
+function formatterFor(zone: string): Intl.DateTimeFormat {
+  const cached = formatterByZone.get(zone);
+  if (cached) return cached;
+  const made = new Intl.DateTimeFormat("en-US", {
+    timeZone: zone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    second: "numeric",
+  });
+  formatterByZone.set(zone, made);
+  return made;
+}
+
+/** Milliseconds `zone` is ahead of UTC at the instant `ts` (negative west of UTC). */
+function zoneOffsetMs(ts: number, zone: string): number {
+  const parts = formatterFor(zone).formatToParts(new Date(ts));
+  const get = (t: string): number => Number(parts.find((p) => p.type === t)?.value);
+  const wallAsUtc = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
+  return wallAsUtc - Math.floor(ts / 1000) * 1000;
+}
+
+/** The last millisecond (23:59:59.999) of calendar day `dayUtcMidnightMs` as seen in `zone`. */
+function endOfDayInZone(dayUtcMidnightMs: number, zone: string): Date {
+  const wallEnd = dayUtcMidnightMs + MS_PER_DAY - 1;
+  // Two passes settle the offset when the day contains a daylight-saving change.
+  let ts = wallEnd - zoneOffsetMs(wallEnd, zone);
+  ts = wallEnd - zoneOffsetMs(ts, zone);
+  return new Date(ts);
 }
 
 /**
- * Compute a tier's filing deadline.
- * - For `redetermination`, pass the remittance-received date as `anchor`.
- * - For every later tier, pass the prior-tier decision-letter date as `anchor`.
+ * Derive a tier's filing deadline from the date printed on the prior notice.
+ * - `redetermination`: the remittance advice date.
+ * - every later tier: the prior tier's decision-letter date.
  */
-export function computeTierDeadline(tier: AppealTier, anchor: Date): Date {
-  return addDays(anchor, TIER_WINDOW_DAYS[tier]);
+export function deriveTierDeadline(
+  tier: AppealTier,
+  noticeDay: string,
+  zone: string = DEFAULT_DEADLINE_ZONE,
+): TierDeadlineDerivation {
+  const noticeMs = parseNoticeDay(noticeDay);
+  const receiptMs = noticeMs + RECEIPT_PRESUMPTION_DAYS * MS_PER_DAY;
+  const windowDays = TIER_WINDOW_DAYS[tier];
+  const lastMs = receiptMs + windowDays * MS_PER_DAY;
+  return {
+    noticeDay,
+    presumedReceiptOn: isoDay(receiptMs),
+    windowDays,
+    lastFilingDay: isoDay(lastMs),
+    deadlineAt: endOfDayInZone(lastMs, zone),
+    zone,
+  };
+}
+
+/** Compute a tier's filing deadline instant (end of the last filing day). See `deriveTierDeadline`. */
+export function computeTierDeadline(
+  tier: AppealTier,
+  noticeDay: string,
+  zone: string = DEFAULT_DEADLINE_ZONE,
+): Date {
+  return deriveTierDeadline(tier, noticeDay, zone).deadlineAt;
+}
+
+/**
+ * The calendar day (YYYY-MM-DD) a timestamp carries when it stands for a date printed on a notice. Notice
+ * dates arrive as timestamps at UTC midnight (835 production date, decision-letter date), so the UTC date
+ * is the printed date. A timestamp with a real time of day can differ from the printed local date by a day;
+ * callers that hold a true date should pass it directly.
+ */
+export function noticeDayOf(stamp: Date): string {
+  return stamp.toISOString().slice(0, 10);
 }
 
 /** The tier that follows `tier` in the Medicare hierarchy, or null at the terminal (federal_court). */
@@ -66,8 +188,9 @@ export function isWithinDeadline(deadlineAt: Date, now: Date): boolean {
  * or null when more than 30 days remain (and 0 is represented by the hard T-0 block, not an alert here).
  */
 export function deadlineAlertBoundary(deadlineAt: Date, now: Date): number | null {
+  // End-of-day deadlines make the ceil'd day count 0 for up to a day after T-0; past is past.
+  if (now.getTime() > deadlineAt.getTime()) return null;
   const remaining = daysUntilDeadline(deadlineAt, now);
-  if (remaining < 0) return null;
   // The active boundary is the TIGHTEST threshold the remaining days still fall within (e.g. 7 days
   // remaining → T-7, not T-30). Iterate ascending and return the first threshold >= remaining.
   const ascending = [...DEADLINE_ALERT_DAYS].sort((a, b) => a - b);

@@ -163,6 +163,7 @@ export function registerAppealRoutes(app: FastifyInstance, deps: AppealRouteDeps
           {
             outcome: body.outcome,
             decidedAt: body.decidedAt,
+            decisionNoticeDate: body.decisionNoticeDate,
             macReferenceNumbers: body.macReferenceNumbers,
             reason: body.reason,
           },

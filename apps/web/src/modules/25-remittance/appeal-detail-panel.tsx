@@ -203,6 +203,8 @@ export function AppealDetailPanel({
               kind,
               outcome,
               decidedAt: decidedIso,
+              // The calendar date the user entered (the letter's printed date), not a UTC-shifted day.
+              decisionNoticeDate: decidedAt.slice(0, 10),
               reason: reason.trim(),
               ...(mac ? { macReferenceNumbers: mac } : {}),
             }
@@ -294,6 +296,12 @@ export function AppealDetailPanel({
                   new Date(appeal.tierDeadlineAt).toLocaleDateString()
                 ),
               ],
+              [
+                "Deadline basis",
+                appeal.noticeDatedOn
+                  ? `Notice dated ${appeal.noticeDatedOn}; receipt presumed ${appeal.presumedReceiptOn} (5 days later); ${appeal.windowDays}-day window; last filing day ${appeal.lastFilingDay}.`
+                  : "Set before notice dates were recorded. Confirm the deadline against the notice.",
+              ],
               ["Packet document", appeal.appealPacketDocumentId ?? "None attached"],
               ["Denial case", appeal.denialCaseId],
             ]}
@@ -361,7 +369,7 @@ export function AppealDetailPanel({
                     options={OUTCOMES.map((o) => ({ value: o, label: humanize(o) }))}
                   />
                   <TextField
-                    label="Decided at"
+                    label="Decided at (date on the decision letter)"
                     type="datetime-local"
                     value={decidedAt}
                     onChange={(e) => setDecidedAt(e.target.value)}
