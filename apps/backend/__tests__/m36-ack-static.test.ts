@@ -26,6 +26,9 @@ const ACK_FILES = [
   "packages/messaging/src/ack-requests/ack-rules.ts",
 ];
 
+/** WP 4.4: the two store implementations of the timer's single `escalated` write (`escalate`). */
+const ESCALATE_STORES = new Set([`${ACK_DIR}/ack-store-db.ts`, `${ACK_DIR}/ack-store-memory.ts`]);
+
 describe("the aggregate does not time, route, escalate or page (WP 4.3 - 4.5)", () => {
   it("scans the files it means to", () => {
     expect(ACK_FILES.length).toBeGreaterThan(12);
@@ -37,10 +40,14 @@ describe("the aggregate does not time, route, escalate or page (WP 4.3 - 4.5)", 
       /escalat(e|ion)Router|EscalationRouter|oncall|on_call|pager|bullmq|setTimeout|setInterval|cron/i,
     );
     expect(src).not.toMatch(/from "@wardenx\/(oncall|triage)|modules\/(19|11|12|13)-/);
-    // 4.2 never writes a state or an event type that belongs to a later package.
-    expect(src).not.toMatch(/status:\s*"(escalated|failed_unreachable)"/);
+    // 4.2 never writes a state or an event type that belongs to a later package. WP 4.4's one `escalated` write is the store's
+    // `escalate` (the timer lives in ack-escalation/, outside this directory); `failed_unreachable` stays 4.5's.
+    expect(src).not.toMatch(/status:\s*"failed_unreachable"/);
     expect(src).not.toMatch(/toStatus:\s*"(escalated|failed_unreachable)"/);
-    expect(src).not.toMatch(/eventType:\s*"(opened|delivered|overdue|escalated|delivery_failed)"/);
+    if (!ESCALATE_STORES.has(file)) expect(src).not.toMatch(/status:\s*"escalated"/);
+    expect(src).not.toMatch(
+      /eventType:\s*"(opened|delivered|overdue|escalated|delivery_failed|route_unavailable|ladder_exhausted)"/,
+    );
   });
 });
 
@@ -91,9 +98,14 @@ describe("only an explicit transition writes an acknowledgment", () => {
       .sort();
     expect(importers).toEqual(
       [
+        // WP 4.4 (ADR-0070): the escalation timers sit beside the aggregate and use its store port, events and row types.
+        "apps/backend/src/modules/36-messaging/ack-escalation/binding.ts",
+        "apps/backend/src/modules/36-messaging/ack-escalation/escalation-service.ts",
         "apps/backend/src/modules/36-messaging/index.ts",
         "apps/backend/src/modules/36-messaging/messaging-route-service-db.ts",
+        "apps/backend/src/modules/36-messaging/outbox-consumers/ack-escalation-notifications.ts",
         "apps/backend/src/modules/36-messaging/outbox-consumers/ack-notifications.ts",
+        "apps/backend/src/modules/36-messaging/outbox-consumers/ack-timer-arming.ts",
         "apps/backend/src/modules/36-messaging/routes/ack-routes.ts",
         "packages/messaging/src/index.ts",
       ].sort(),
@@ -107,6 +119,8 @@ describe("one writer of the aggregate's tables", () => {
       "packages/db/src/schema/messaging/message-acknowledgments.ts",
       // The audit resource kind of the read audit, a label and not a table access.
       "apps/backend/src/modules/36-messaging/routes/ack-routes.ts",
+      // WP 4.4: the audit resource kind of a dead timer job's `m36.dlq_job` row, again a label and not a table access.
+      "apps/backend/src/modules/36-messaging/ack-escalation/dlq-audit.ts",
     ]);
     const offenders = [
       ...walk(join(ROOT, "apps/backend/src")),

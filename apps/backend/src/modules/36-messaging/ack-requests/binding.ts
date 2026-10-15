@@ -35,6 +35,8 @@ export interface AckBindingInput {
 }
 
 export interface AckBinding {
+  /** WP 4.4: the same store the service uses, for the escalation timers. */
+  readonly store: AckStore;
   readonly isEnabled: (organizationId: string) => Promise<boolean>;
   readonly service: AckService;
   /** Consume-time: is the user active, keyed and Part 2 admitted for the channel's patient? A lookup error propagates. */
@@ -82,6 +84,7 @@ export function buildAckBinding(input: AckBindingInput): AckBinding {
     ...(input.now ? { now: input.now } : {}),
   });
   return {
+    store: input.store,
     isEnabled,
     service,
     stillQualified,

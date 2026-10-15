@@ -32,6 +32,7 @@ import {
 } from "@wardenx/types";
 import type { HintOutboxPort } from "../message-hint-events";
 import { toAckEventDto, toAckRequestDto } from "./ack-dto";
+import { escalationNotes } from "./ack-escalation-note";
 import {
   type AckEventFacts,
   M36_ACK_ACKNOWLEDGED,
@@ -420,18 +421,27 @@ export function createAckService(deps: AckServiceDeps): AckService {
 
     async get(actor, requestId) {
       const row = await visibleRequest(actor, requestId);
-      const events = await store.run(actor, (tx) => tx.listEvents(requestId));
-      return { request: toAckRequestDto(row, actor.userId), events: events.map(toAckEventDto) };
+      const { events, notes } = await store.run(actor, async (tx) => ({
+        events: await tx.listEvents(requestId),
+        notes: await escalationNotes(tx, [row], clock()),
+      }));
+      return {
+        request: toAckRequestDto(row, actor.userId, notes.get(row.id) ?? null),
+        events: events.map(toAckEventDto),
+      };
     },
 
     async listForChannel(actor, channelId) {
       if (!(await deps.canViewChannel(actor.orgId, actor.userId, channelId))) {
         throw new NotFoundError("channel");
       }
-      const rows = await store.run(actor, (tx) =>
-        tx.listForChannel(channelId, ACK_CHANNEL_LIST_CAP),
-      );
-      return { requests: rows.map((r) => toAckRequestDto(r, actor.userId)) };
+      const { rows, notes } = await store.run(actor, async (tx) => {
+        const listed = await tx.listForChannel(channelId, ACK_CHANNEL_LIST_CAP);
+        return { rows: listed, notes: await escalationNotes(tx, listed, clock()) };
+      });
+      return {
+        requests: rows.map((r) => toAckRequestDto(r, actor.userId, notes.get(r.id) ?? null)),
+      };
     },
 
     async acknowledge(actor, requestId) {

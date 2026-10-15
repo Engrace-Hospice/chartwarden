@@ -4,11 +4,13 @@
 // racing writers serialise and the loser sees the winner's state (a repeat or a conflict), never a lost update. The database
 // triggers (migration 1107) refuse any transition off the table, whatever this code does.
 import { type DbClient, schema } from "@wardenx/db";
+import { UNROUTED_MAX_RECORDS, UNROUTED_PROBE_WINDOW_MS } from "@wardenx/messaging";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { ACK_OPEN_STATUSES } from "@wardenx/types";
-import { and, asc, desc, eq, inArray, notInArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lte, notInArray, sql } from "drizzle-orm";
 import type { Tx } from "../messaging-write-core";
 import {
+  type AckEscalation,
   type AckEventRow,
   type AckMessageFacts,
   type AckPatch,
@@ -138,6 +140,97 @@ export function ackTxOver(tx: Tx, orgId: string): AckTx {
       });
     },
 
+    // WP 4.4: the window starts and ends on the DATABASE clock, because the update guard demands a window that starts now; the
+    // version in the WHERE is the exactly-once arbiter (a duplicate or racing escalation updates no row and is Stale).
+    async escalate(id, expectedVersion, e: AckEscalation) {
+      const [updated] = await tx
+        .update(R)
+        .set({
+          status: "escalated",
+          assignedUserId: e.assignedUserId,
+          currentTier: e.tier,
+          windowStartedAt: sql`now()`,
+          deadlineAt: sql`now() + make_interval(mins => ${e.windowMinutes})`,
+          updatedAt: e.updatedAt,
+          version: expectedVersion + 1,
+        })
+        .where(and(eq(R.organizationId, orgId), eq(R.id, id), eq(R.version, expectedVersion)))
+        .returning();
+      if (!updated) throw new AckStaleError();
+      return toRow(updated);
+    },
+
+    async unroutedSummary(requests) {
+      if (requests.length === 0) return new Map();
+      const rows = await tx
+        .select({
+          requestId: E.requestId,
+          count: sql<number>`count(*)::int`,
+          ladderCount: sql<number>`(count(*) filter (where ${E.eventType} = 'ladder_exhausted'))::int`,
+          lastAt: sql<Date>`max(${E.createdAt})`,
+          lastType: sql<
+            "route_unavailable" | "ladder_exhausted"
+          >`(array_agg(${E.eventType} order by ${E.createdAt} desc))[1]`,
+        })
+        .from(E)
+        .innerJoin(R, and(eq(R.organizationId, E.organizationId), eq(R.id, E.requestId)))
+        .where(
+          and(
+            eq(E.organizationId, orgId),
+            inArray(
+              E.requestId,
+              requests.map((r) => r.id),
+            ),
+            inArray(E.eventType, ["route_unavailable", "ladder_exhausted"]),
+            sql`${E.createdAt} >= ${R.windowStartedAt}`,
+          ),
+        )
+        .groupBy(E.requestId);
+      return new Map(
+        rows.map((r) => [
+          r.requestId,
+          {
+            count: r.count,
+            ladderCount: r.ladderCount,
+            lastAt: new Date(r.lastAt),
+            lastType: r.lastType,
+          },
+        ]),
+      );
+    },
+
+    async listDue(asOf, limit) {
+      const rows = await tx
+        .select()
+        .from(R)
+        .where(
+          and(
+            eq(R.organizationId, orgId),
+            inArray(R.status, ["pending", "escalated"]),
+            lte(R.deadlineAt, asOf),
+            // The mirror of unroutedRetryDue (ack-timer-rules.ts): a request with unroutable records in its current window is left out
+            // until its backoff has elapsed (1 h, 2 h ... 24 h), or, at the cap, until the daily probe window.
+            sql`NOT EXISTS (
+              SELECT 1 FROM (
+                SELECT count(*) AS n, max(e.created_at) AS last_at
+                  FROM message_acknowledgment_event e
+                 WHERE e.organization_id = ${R.organizationId} AND e.request_id = ${R.id}
+                   AND e.event_type IN ('route_unavailable', 'ladder_exhausted')
+                   AND e.created_at >= ${R.windowStartedAt}
+              ) s
+              WHERE s.n > 0 AND NOT (
+                CASE WHEN s.n >= ${UNROUTED_MAX_RECORDS}
+                  THEN extract(epoch FROM (${asOf.toISOString()}::timestamptz - s.last_at)) >= 86400
+                   AND mod(extract(epoch FROM (${asOf.toISOString()}::timestamptz - s.last_at))::numeric, 86400) < ${UNROUTED_PROBE_WINDOW_MS / 1000}
+                  ELSE ${asOf.toISOString()}::timestamptz >= s.last_at + least(interval '1 hour' * power(2, s.n - 1), interval '24 hours')
+                END))`,
+          ),
+        )
+        .orderBy(asc(R.deadlineAt), asc(R.id))
+        .limit(limit);
+      return rows.map(toRow);
+    },
+
     async listEvents(requestId) {
       const rows = await tx
         .select()
@@ -191,6 +284,10 @@ export function createDbAckStore(db: DbClient): AckStore {
     run: (actor, fn) =>
       withOrgContext(db, { organizationId: actor.orgId, userId: actor.userId }, (tx) =>
         fn(ackTxOver(tx as unknown as Tx, actor.orgId), tx),
+      ),
+    runAsSystem: (orgId, fn) =>
+      withOrgContext(db, systemOrgContext(orgId), (tx) =>
+        fn(ackTxOver(tx as unknown as Tx, orgId), tx),
       ),
     readAsSystem: (orgId, fn) =>
       withOrgContext(db, systemOrgContext(orgId), (tx) =>

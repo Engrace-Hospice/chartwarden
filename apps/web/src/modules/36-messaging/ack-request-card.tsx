@@ -19,6 +19,7 @@ import {
   ACK_CLOSE_LABEL,
   ACK_FORBIDDEN_LOAD_TEXT,
   ACK_LOAD_FAILED_TEXT,
+  ACK_NOTE_TEXT,
   ACK_NOTICE,
   ACK_RETRY_LABEL,
   ACK_SIGN_IN_LOAD_TEXT,
@@ -28,6 +29,7 @@ import {
   ACK_WAIT_LOAD_TEXT,
   ACK_WORKING_TEXT,
   closeName,
+  escalatedWaitingFor,
   takeName,
   waitingFor,
 } from "./ack-wording";
@@ -88,7 +90,7 @@ export function AckRequestCard({
 
   const actions = request.viewer_actions;
   const waiting = request.status === "pending" || request.status === "escalated";
-  const overdue = request.status === "pending" && new Date(request.deadline_at) < new Date();
+  const overdue = waiting && new Date(request.deadline_at) < new Date();
   const icon =
     request.status === "resolved" || request.status === "acknowledged" ? "check" : "clock";
   const sent = localTime(sentAt ?? request.requested_at);
@@ -117,11 +119,17 @@ export function AckRequestCard({
       </p>
       {waiting ? (
         <p className="wx-ack-detail">
-          {waitingFor(actions.can_acknowledge)}.{" "}
+          {(request.status === "escalated" ? escalatedWaitingFor : waitingFor)(
+            actions.can_acknowledge,
+          )}
+          .{" "}
           <time dateTime={request.deadline_at}>
             {overdue ? "Overdue: was due" : "Respond by"} {localTime(request.deadline_at)}
           </time>
         </p>
+      ) : null}
+      {waiting && request.escalation_note ? (
+        <p className="wx-ack-detail">{ACK_NOTE_TEXT[request.escalation_note]}</p>
       ) : null}
       {request.status === "acknowledged" && request.acknowledged_at ? (
         <p className="wx-ack-detail">

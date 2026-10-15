@@ -31,7 +31,7 @@ export interface QueueParameters {
   readonly idempotency: string;
 }
 
-/** The §4.4 queue names (WP 1.5 added `attachment_scan`, WP 2.6 `scheduled_send`, WP 3.5 `handoff_expiry`). */
+/** The §4.4 queue names (WP 1.5 added `attachment_scan`, WP 2.6 `scheduled_send`, WP 3.5 `handoff_expiry`, WP 4.4 the two ack-escalation queues). */
 export const MESSAGING_QUEUES = {
   fanOut: "messaging.fan_out",
   sendInApp: "messaging.send_in_app",
@@ -48,6 +48,8 @@ export const MESSAGING_QUEUES = {
   attachmentScan: "messaging.attachment_scan",
   scheduledSend: "messaging.scheduled_send",
   handoffExpiry: "messaging.handoff_expiry",
+  ackEscalationTimer: "messaging.ack_escalation_timer",
+  ackEscalationSweep: "messaging.ack_escalation_sweep",
 } as const;
 
 /** A queue name from the catalog. */
@@ -215,6 +217,33 @@ export const MESSAGING_QUEUE_PARAMETERS: { readonly [K in MessagingQueueName]: Q
     idempotency:
       "handoffId; row locked FOR UPDATE and re-checked (state='offered' and past the policy-capped deadline) in the close transaction",
   },
+  // WP 4.4 (ADR-0070): ONE delayed job per (request, tier, window deadline) with a deterministic job id, so a duplicate add is a
+  // no-op. The job only WAKES the escalation: the database decides what is due and the guarded write decides who escalates, so a
+  // retry, a duplicate or a second worker cannot escalate twice. Five attempts with exponential backoff; a payload that is not
+  // ids is unrecoverable and goes straight to the DLQ, where it is audited as `m36.dlq_job`. A job in the DLQ loses nothing: the
+  // sweeper below still finds the request.
+  "messaging.ack_escalation_timer": {
+    name: "messaging.ack_escalation_timer",
+    priority: 10,
+    attempts: 5,
+    backoff: { type: "exponential", baseMs: 2000, factor: 2, capMs: 60000 },
+    concurrency: 5,
+    dlq: "messaging.ack_escalation_timer.dlq",
+    idempotency:
+      "jobId = (requestId, tier, window deadline); the escalation is one write guarded by the row lock and its version",
+  },
+  // WP 4.4: a per-minute sweep over the database (open requests past their deadline), the safety net for a lost or flushed Redis
+  // and the retry loop while no router can answer. Same guarded write as the timer job, so the two can run together. Concurrency 1.
+  "messaging.ack_escalation_sweep": {
+    name: "messaging.ack_escalation_sweep",
+    priority: 9,
+    attempts: 2,
+    backoff: { type: "fixed", baseMs: 30000 },
+    concurrency: 1,
+    dlq: "messaging.ack_escalation_sweep.dlq",
+    idempotency:
+      "requestId; each due request is locked FOR UPDATE and re-checked (waiting, past its deadline, same version) in its own transaction",
+  },
 };
 
 /** The repeat cadences for the scheduled jobs (UTC cron). Event-triggered queues have no entry. */
@@ -237,4 +266,6 @@ export const MESSAGING_JOB_SCHEDULES = {
   scheduledSend: "* * * * *",
   /** handoff_expiry: every minute (closes the handoff offers that passed their deadline). */
   handoffExpiry: "* * * * *",
+  /** ack_escalation_sweep: every minute (escalates the requests that passed their deadline and re-asks the ones that could not be routed). */
+  ackEscalationSweep: "* * * * *",
 } as const;
