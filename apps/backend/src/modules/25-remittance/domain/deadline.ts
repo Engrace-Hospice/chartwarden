@@ -174,7 +174,8 @@ export function deriveTierDeadline(
   const calendarLastMs = receiptMs + windowDays * MS_PER_DAY;
   const lastMs = previousBusinessDay(calendarLastMs);
   // Several zones: the day ends earliest in the one whose end-of-day instant comes first.
-  const ends = (Array.isArray(zones) ? zones : [zones as string]).map((zone) => ({
+  const zoneList = Array.isArray(zones) ? zones : [zones as string];
+  const ends = (zoneList.length > 0 ? zoneList : [DEFAULT_DEADLINE_ZONE]).map((zone) => ({
     zone,
     at: endOfDayInZone(lastMs, zone),
   }));
