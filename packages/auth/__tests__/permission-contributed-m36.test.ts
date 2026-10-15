@@ -37,6 +37,7 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
         "messaging.template.manage",
         "messaging.global_search.manage",
         "messaging.promote",
+        "messaging.review",
         "alert.inbox.self",
       ].sort(),
     );
@@ -63,6 +64,7 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
       "messaging.template.manage",
       "messaging.global_search.manage",
       "messaging.promote",
+      "messaging.review",
       "alert.inbox.self",
     ] as const) {
       expect(M36_CONTRIBUTED_PERMISSIONS[key].abac).toBe("none");

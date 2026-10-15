@@ -478,3 +478,6 @@ export * from "./handoffs";
 
 // M36 WP 3.7 chart promotion - pure request/outcome rules
 export * from "./promotions";
+
+// M36 WP 3.8 lifecycle review queue - pure rules
+export * from "./review";

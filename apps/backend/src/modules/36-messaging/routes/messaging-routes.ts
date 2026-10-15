@@ -83,6 +83,7 @@ import {
   registerPromotionRoutes,
 } from "./promotion-routes";
 import { registerReactionPinRoutes } from "./reaction-pin-routes";
+import { DISABLED_REVIEW, type ReviewRouteDeps, registerReviewRoutes } from "./review-routes";
 import {
   DISABLED_SBAR,
   type SbarRouteDeps,
@@ -118,6 +119,8 @@ export interface MessagingRouteDeps {
   tasks?: TaskRouteDeps;
   /** WP 3.5: clinical handoffs (flag + service). Omitted => flag off: every handoff route 404s and the list answers disabled. */
   handoffs?: HandoffRouteDeps;
+  /** WP 3.8: lifecycle review queue (flag + service). Omitted => flag off: every review route 404s and the list answers disabled. */
+  review?: ReviewRouteDeps;
   /** WP 3.7: chart promotion (flag + service). Omitted => flag off: every promotion route 404s and the list answers disabled. */
   promotions?: PromotionRouteDeps;
   /** WP 3.6: IDG discussions (flag + read-only store). Omitted => flag off: the list answers disabled. */
@@ -388,6 +391,9 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
 
   // --- WP 3.5: clinical handoffs (a set of open-work pointers offered to a colleague who accepts per item; flag-gated) ---
   registerHandoffRoutes(app, deps.handoffs ?? DISABLED_HANDOFFS, { read: READ, send: SEND });
+
+  // --- WP 3.8: lifecycle review queue (a supervisor reassigns or closes the open tasks of a patient who left care; flag-gated) ---
+  registerReviewRoutes(app, deps.review ?? DISABLED_REVIEW, { read: READ, send: SEND });
 
   // --- WP 3.7: chart promotion (a message proposed for the chart; a reviewer decides in M8/M14, never here; flag-gated) ---
   registerPromotionRoutes(app, deps.promotions ?? DISABLED_PROMOTIONS, {

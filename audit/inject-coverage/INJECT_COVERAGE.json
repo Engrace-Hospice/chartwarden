@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1590,
-    "coveredRoutes": 1590,
-    "directRoutesReferenced": 1507
+    "routes": 1593,
+    "coveredRoutes": 1593,
+    "directRoutesReferenced": 1510
   },
   "modules": [
     {
@@ -493,7 +493,7 @@
     },
     {
       "module": "36-messaging",
-      "routes": 100,
+      "routes": 103,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
@@ -516,6 +516,7 @@
         "apps/backend/__tests__/m36-idempotent-send.live.test.ts",
         "apps/backend/__tests__/m36-idg-coordination.live.test.ts",
         "apps/backend/__tests__/m36-idg-discussion-routes.test.ts",
+        "apps/backend/__tests__/m36-lifecycle-review.live.test.ts",
         "apps/backend/__tests__/m36-message-search-routes.test.ts",
         "apps/backend/__tests__/m36-message-search.live.test.ts",
         "apps/backend/__tests__/m36-message-templates.live.test.ts",
@@ -527,6 +528,7 @@
         "apps/backend/__tests__/m36-promotion-routes.test.ts",
         "apps/backend/__tests__/m36-promotion-targets.live.test.ts",
         "apps/backend/__tests__/m36-promotions.live.test.ts",
+        "apps/backend/__tests__/m36-review-routes.test.ts",
         "apps/backend/__tests__/m36-rich-body.test.ts",
         "apps/backend/__tests__/m36-sbar-routes.test.ts",
         "apps/backend/__tests__/m36-sbar.live.test.ts",
@@ -541,7 +543,7 @@
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 100
+      "directRoutesReferenced": 103
     },
     {
       "module": "37-ipu",

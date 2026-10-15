@@ -9,6 +9,7 @@ import {
   isTenantRoleReserved,
   planRoleTemplateMaterialization,
 } from "../src";
+import { FULL_CATALOG_EXCLUDED_KEYS } from "../src/roles/template-materialization";
 
 const MIRROR = allPermissionMirrorRows().map((r) => ({ key: r.key, category: r.category }));
 const plan = (existing: string[] = [], mirror = MIRROR) =>
@@ -45,10 +46,24 @@ describe("planRoleTemplateMaterialization", () => {
     const orgAdmin = plan().find((r) => r.key === "org_admin");
     const platformKeys = MIRROR.filter((p) => p.category === "platform").map((p) => p.key);
     expect(platformKeys.length).toBeGreaterThan(0);
-    expect(orgAdmin?.permissionKeys.length).toBe(MIRROR.length - platformKeys.length);
+    expect(orgAdmin?.permissionKeys.length).toBe(
+      MIRROR.length - platformKeys.length - FULL_CATALOG_EXCLUDED_KEYS.size,
+    );
     for (const key of platformKeys) expect(orgAdmin?.permissionKeys).not.toContain(key);
     expect(plan().find((r) => r.key === "administrator")?.permissionKeys).toEqual(
       orgAdmin?.permissionKeys,
+    );
+  });
+
+  it("keeps messaging.review (the lifecycle review queue) off org_admin and administrator", () => {
+    expect(MIRROR.some((p) => p.key === "messaging.review")).toBe(true);
+    for (const key of ["org_admin", "administrator"])
+      expect(plan().find((r) => r.key === key)?.permissionKeys).not.toContain("messaging.review");
+  });
+
+  it("grants messaging.review to the director of nursing template only among the defaults", () => {
+    expect(plan().find((r) => r.key === "director_of_nursing")?.permissionKeys).toContain(
+      "messaging.review",
     );
   });
 

@@ -14,7 +14,9 @@
 //   - GRANTS ARE FILTERED TO THE MIRROR. `role_permission.permission_key` has a foreign key to `permission`, so a
 //     template key the mirror lacks is skipped (and reported) rather than failing the whole materialization.
 //   - THE TWO FULL-CATALOG ROLES (`administrator`, `org_admin` - the latter supersedes the former) receive every
-//     mirror key EXCEPT the `platform` category: cross-tenant authority is never a tenant admin's default.
+//     mirror key EXCEPT the `platform` category (cross-tenant authority is never a tenant admin's default) and the
+//     keys in FULL_CATALOG_EXCLUDED_KEYS (`messaging.review`: the lifecycle review queue is a supervisory decision,
+//     ADR-0065 D6 - a tenant may still grant it to any role it owns).
 import { isTenantRoleReserved } from "./platform-reserved";
 import type { RoleTemplate } from "./templates";
 
@@ -23,6 +25,9 @@ export const FULL_CATALOG_ROLE_KEYS: ReadonlySet<string> = new Set(["administrat
 
 /** The permission category that is cross-tenant authority and never a tenant default grant. */
 export const PLATFORM_PERMISSION_CATEGORY = "platform";
+
+/** Keys withheld from the full-catalog roles: granted deliberately to a supervisory role, never by default (ADR-0065 D6). */
+export const FULL_CATALOG_EXCLUDED_KEYS: ReadonlySet<string> = new Set(["messaging.review"]);
 
 /** One permission-mirror row the planner needs. */
 export interface MirrorPermission {
@@ -52,7 +57,9 @@ export function planRoleTemplateMaterialization(input: {
 }): readonly PlannedRole[] {
   const mirrorKeys = new Set(input.mirror.map((p) => p.key));
   const fullCatalog = input.mirror
-    .filter((p) => p.category !== PLATFORM_PERMISSION_CATEGORY)
+    .filter(
+      (p) => p.category !== PLATFORM_PERMISSION_CATEGORY && !FULL_CATALOG_EXCLUDED_KEYS.has(p.key),
+    )
     .map((p) => p.key)
     .sort();
   return input.templates

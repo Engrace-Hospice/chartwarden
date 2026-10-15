@@ -21,7 +21,9 @@ const fakeDb = {
   transaction: async (fn: (tx: unknown) => unknown) => fn({ execute: async () => undefined }),
 } as unknown as DbClient;
 
-function setup(over: { viewers?: string[]; kind?: string; live?: boolean } = {}) {
+function setup(
+  over: { viewers?: string[]; kind?: string; live?: boolean; archived?: boolean } = {},
+) {
   const store = createMemoryTaskStore();
   const published: Array<{ eventName: string; payload: Record<string, unknown> }> = [];
   const viewers = new Set(over.viewers ?? [ALICE, BOB, CAROL]);
@@ -39,6 +41,7 @@ function setup(over: { viewers?: string[]; kind?: string; live?: boolean } = {})
         ? null
         : {
             live: true,
+            archived: over.archived === true,
             channelKind: over.kind ?? "group",
             subjectId: over.kind === "care_team" ? PAT : null,
           },
@@ -301,5 +304,25 @@ describe("openTaskCount", () => {
     expect(await service.openTaskCount(ORG, PAT, CAROL)).toBe(0);
     viewers.delete(BOB);
     expect(await service.openTaskCount(ORG, PAT, BOB)).toBe(0);
+  });
+});
+
+describe("task create on an archived channel (WP 3.8, GAP-104 closed for tasks)", () => {
+  it("refuses with 410 CHANNEL_ARCHIVED and creates nothing", async () => {
+    const { service, store, published } = setup({ archived: true, kind: "care_team" });
+
+    const outcome = await code(convert(service));
+
+    expect(outcome).toBe("410:CHANNEL_ARCHIVED");
+    expect(store.tasks.size).toBe(0);
+    expect(published).toHaveLength(0);
+  });
+
+  it("still creates on a channel that is not archived", async () => {
+    const { service } = setup({ archived: false, kind: "care_team" });
+
+    const { created } = await convert(service);
+
+    expect(created).toBe(true);
   });
 });

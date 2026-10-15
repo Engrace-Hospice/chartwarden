@@ -164,7 +164,7 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m36.task.reassigned",
     moduleOwner: "m36",
     description:
-      "A communication task changed assignee (WP 3.4), by a person or by offboarding. PHI-free: ids, the source enum and one instant. M36 tells the new assignee with one generic in-app alert after re-checking channel access.",
+      "A communication task changed assignee (WP 3.4), by a person, by offboarding or by a supervisor review decision (WP 3.8). PHI-free: ids, the source enum and one instant. M36 tells the new assignee with one generic in-app alert after re-checking channel access.",
     payloadSchema: Type.Object(
       {
         organizationId: id,
@@ -172,7 +172,11 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
         channelId: id,
         fromUserId: id,
         toUserId: id,
-        source: Type.Union([Type.Literal("manual"), Type.Literal("offboarding")]),
+        source: Type.Union([
+          Type.Literal("manual"),
+          Type.Literal("offboarding"),
+          Type.Literal("review"),
+        ]),
         at: isoInstant,
       },
       { additionalProperties: false },

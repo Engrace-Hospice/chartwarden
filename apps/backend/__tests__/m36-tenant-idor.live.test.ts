@@ -70,6 +70,7 @@ import { createDbMessagingRouteService } from "../src/modules/36-messaging/messa
 import { createMessageBodyCipher } from "../src/modules/36-messaging/messaging-write-core";
 import { buildM36MessageHintConsumer } from "../src/modules/36-messaging/outbox-consumers/message-hints";
 import { buildPromotionDeps } from "../src/modules/36-messaging/promotions/deps";
+import { buildReviewDeps } from "../src/modules/36-messaging/review/deps";
 import { registerAdminAlertDeliveriesRoutes } from "../src/modules/36-messaging/routes/admin-alert-deliveries-routes";
 import { registerAttachmentRoutes } from "../src/modules/36-messaging/routes/attachment-routes";
 import { registerDraftRoutes } from "../src/modules/36-messaging/routes/draft-routes";
@@ -186,6 +187,12 @@ const ROUTES: Record<string, Verdict> = {
   "POST /api/v1/messaging/handoffs/:handoffId/cancel": { kind: "idor" },
   "PUT /api/v1/messaging/template-admin/handoff-policy": { kind: "scoped" },
   "DELETE /api/v1/messaging/template-admin/handoff-policy": { kind: "scoped" },
+  // WP 3.8 lifecycle review queue: a review item id from another org is the identical 404 a random id gets (asserted
+  // below); the list is the caller's own org only. The table's FORCE RLS, grants and finality are also attacked in
+  // m36-lifecycle-review.live.
+  "GET /api/v1/messaging/review-items": { kind: "scoped" },
+  "POST /api/v1/messaging/review-items/:reviewItemId/reassign": { kind: "idor" },
+  "POST /api/v1/messaging/review-items/:reviewItemId/close": { kind: "idor" },
   // WP 3.7 chart promotion: a promotion id (or the channel + message it proposes) from another org or a non-reader is the
   // identical refusal a random id gets (asserted below); the list is the caller's own rows only. The table's FORCE RLS,
   // grants and immutability are also attacked in m36-promotions.live.
@@ -291,6 +298,8 @@ const REGISTRAR_FILES = [
   "task-typebox.ts", // schemas only
   "handoff-routes.ts", // WP 3.5 clinical handoffs, mounted by registerMessagingRoutes
   "handoff-typebox.ts", // schemas only
+  "review-routes.ts", // WP 3.8 lifecycle review queue, mounted by registerMessagingRoutes
+  "review-typebox.ts", // schemas only
   "promotion-routes.ts", // WP 3.7 chart promotion, mounted by registerMessagingRoutes
   "promotion-typebox.ts", // schemas only
   "idg-discussion-routes.ts", // WP 3.6 IDG discussions, mounted by registerMessagingRoutes
@@ -378,6 +387,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
   let u1: Who;
   let promoterA: Who; // WP 3.7: an org-A proposer who is NOT a member of the channel
   let promoterB: Who; // WP 3.7: an org-B proposer
+  let reviewerB: Who; // WP 3.8: an org-B holder of messaging.review
   let u2: Who;
   let outsider: Who;
   let adminA: Who;
@@ -496,6 +506,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     "clinical_handoff_event",
     "tenant_handoff_policy",
     "chart_promotion_request",
+    "messaging_review_item",
     "message_reaction",
     "message_pin",
     "delivery_endpoint",
@@ -576,6 +587,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
     adminB = await seedUser("adminB", orgB, ["org_admin"], "WP17-ORG-B-PERSON");
     promoterA = await seedUser("promoterA", orgA, ["clinical_rn"], A_NAME_TOKEN);
     promoterB = await seedUser("promoterB", orgB, ["clinical_rn"], "WP17-ORG-B-PERSON");
+    reviewerB = await seedUser("reviewerB", orgB, ["clinical_rn"], "WP17-ORG-B-PERSON");
     patientA = (
       await admin.query(
         `INSERT INTO patient (organization_id,mrn,legal_first_name,legal_last_name,dob,sex_assigned_at_birth,status)
@@ -621,7 +633,7 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       "alert.rules.manage",
     ];
     const grants = createInMemoryEffectivePermissionStore(
-      [u1, u2, outsider, adminA, bUser, b2, adminB, promoterA, promoterB].map((w) => ({
+      [u1, u2, outsider, adminA, bUser, b2, adminB, promoterA, promoterB, reviewerB].map((w) => ({
         orgId: w.org,
         userId: w.userId,
         grants: [
@@ -639,6 +651,11 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
               ...(w === u1 || w === u2 || w === promoterA || w === promoterB
                 ? ["messaging.promote", "patient.read"]
                 : []),
+              // WP 3.8: the org-A reviewer u1 and the org-B reviewerB hold the queue permission (reviewerB also
+              // patient.read), so only tenancy - not a missing permission - stops reviewerB. The queue is org-wide for
+              // its permission holders by design, so no org-A attacker holds it.
+              ...(w === u1 ? ["messaging.review"] : []),
+              ...(w === reviewerB ? ["messaging.review", "patient.read"] : []),
               ...(w.roles.includes("org_admin") ? adminKeys : ["alert.rules.read"]),
             ],
           },
@@ -702,6 +719,15 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
           new Map(ids.map((id) => [id, { displayName: "Pat P.", mrnSuffix: "0001" }] as const)),
         part2Gate: { allowedUserIds: async ({ userIds }) => new Set(userIds) },
         permissionsFor: async () => new Set(["messaging.read", "messaging.send", "patient.read"]),
+      }),
+      review: buildReviewDeps({
+        db: handle.db,
+        flags: { forOrg: async () => ({ "messaging.tasks": true }) },
+        outbox: outbox as never,
+        messaging: service,
+        patientLabels: async (_org, ids) =>
+          new Map(ids.map((id) => [id, { displayName: "Pat P.", mrnSuffix: "0001" }] as const)),
+        part2Gate: { allowedUserIds: async ({ userIds }) => new Set(userIds) },
       }),
       promotions: buildPromotionDeps({
         db: handle.db,
@@ -1964,6 +1990,72 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         item_state: "pending",
         accountable_user_id: u1.userId,
       });
+    });
+    it("WP 3.8: org B and an in-org non-reviewer get a random id's answer for A's review item, and list none of it", async () => {
+      const R = "/api/v1/messaging/review-items";
+      const convertRoute = "POST /api/v1/messaging/channels/:id/messages/:messageId/tasks";
+      for (const w of [u1, u2]) {
+        await admin.query(
+          `INSERT INTO channel_member (organization_id, channel_id, user_id, role, source)
+           VALUES ($1,$2,$3,'member','manual') ON CONFLICT DO NOTHING`,
+          [orgA, careTeamA, w.userId],
+        );
+      }
+      const messageId = (
+        await service.sendMessage(orgA, {
+          channelId: careTeamA,
+          authorUserId: u1.userId,
+          body: `${SECRET_BODY} follow up`,
+        })
+      ).messageId;
+      const made = await call(
+        convertRoute,
+        u1,
+        { id: careTeamA, messageId },
+        { assignee_user_id: u2.userId },
+      );
+      expect(made.statusCode, made.body).toBe(201);
+      const taskId = made.json().task.id as string;
+      const reviewItemId = (
+        await admin.query(
+          `INSERT INTO messaging_review_item
+             (organization_id, source, cause, trigger_ref, patient_id, subject_user_id, item_kind, item_id)
+           VALUES ($1,'patient_lifecycle','death',$2,$2,$3,'task',$4) RETURNING id`,
+          [orgA, patientA, u2.userId, taskId],
+        )
+      ).rows[0].id as string;
+      // the legitimate reviewer lists it (the attacks are not vacuous).
+      const own = await call(`GET ${R}`, u1, {}, undefined, {}, "?state=all");
+      expect(own.statusCode).toBe(200);
+      expect(own.json().items.map((i: { id: string }) => i.id)).toContain(reviewItemId);
+      for (const attacker of [reviewerB, bUser, adminB, outsider]) {
+        await expectNoOracle(
+          `POST ${R}/:reviewItemId/reassign`,
+          attacker,
+          { reviewItemId },
+          { to_user_id: attacker.userId },
+        );
+        await expectNoOracle(
+          `POST ${R}/:reviewItemId/close`,
+          attacker,
+          { reviewItemId },
+          { reason: "duplicate" },
+        );
+        const list = await call(`GET ${R}`, attacker, {}, undefined, {}, "?state=all");
+        // reviewerB holds the permission and sees an empty org-B queue; the others lack it (403).
+        expect(list.statusCode).toBe(attacker === reviewerB ? 200 : 403);
+        if (attacker === reviewerB) expect(list.json().items).toEqual([]);
+        expectNoLeak(list.body, attacker, `${attacker.name} list review items`);
+      }
+      // the attacks changed nothing: still open, the task still the assignee's.
+      const row = (
+        await admin.query(
+          `SELECT r.state, t.status, t.assignee_id FROM messaging_review_item r
+             JOIN communication_task t ON t.id = r.item_id WHERE r.id=$1`,
+          [reviewItemId],
+        )
+      ).rows[0];
+      expect(row).toEqual({ state: "open", status: "open", assignee_id: u2.userId });
     });
     it("WP 3.7: org B and an in-org non-member get a random id's answer for A's promotion and A's message, and list none of it", async () => {
       const P = "/api/v1/messaging/chart-promotions";

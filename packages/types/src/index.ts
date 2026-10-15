@@ -54,5 +54,6 @@ export * from "./messaging-rich-body";
 export * from "./messaging-sbar";
 export * from "./messaging-task";
 export * from "./messaging-handoff";
+export * from "./messaging-review";
 export * from "./messaging-promotion";
 export * from "./messaging-xss-corpus";

@@ -50,6 +50,8 @@ export interface TaskActorRef {
 
 export interface MessageFacts {
   readonly live: boolean;
+  /** The channel is archived (discharge, death, transfer): no new task may point into it (WP 3.8). */
+  readonly archived?: boolean;
   readonly channelKind: string;
   readonly subjectId: string | null;
 }
@@ -279,6 +281,9 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
       if (!(await canView(actor.orgId, actor.userId, a.channelId))) throw notFound();
       const msg = await deps.messageLookup(actor.orgId, a.channelId, a.messageId);
       if (!msg || !msg.live) throw notFound();
+      if (msg.archived === true) {
+        throw new WardenXError("CHANNEL_ARCHIVED", "channel is archived", 410);
+      }
       if (!(await canView(actor.orgId, a.assigneeUserId, a.channelId))) throw assigneeInvalid();
       const patientId = derivePatient(msg.channelKind, msg.subjectId);
       const clinicalConcern = patientId !== null || a.clinicalConcern === true;

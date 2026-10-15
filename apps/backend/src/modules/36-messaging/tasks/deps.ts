@@ -19,7 +19,12 @@ export function createDbMessageFactsLookup(
   return (orgId, channelId, messageId) =>
     withOrgContext(db, systemOrgContext(orgId), async (tx) => {
       const [row] = await tx
-        .select({ status: MSG.status, channelKind: CH.channelKind, subjectId: CH.subjectId })
+        .select({
+          status: MSG.status,
+          channelKind: CH.channelKind,
+          subjectId: CH.subjectId,
+          isArchived: CH.isArchived,
+        })
         .from(MSG)
         .innerJoin(CH, and(eq(CH.organizationId, MSG.organizationId), eq(CH.id, MSG.channelId)))
         .where(
@@ -29,6 +34,7 @@ export function createDbMessageFactsLookup(
       if (!row) return null;
       return {
         live: row.status !== "deleted",
+        archived: row.isArchived,
         channelKind: row.channelKind,
         subjectId: row.subjectId,
       };

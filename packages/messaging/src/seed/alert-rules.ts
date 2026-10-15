@@ -121,6 +121,28 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     enabled: true,
   },
   {
+    eventType: "m36.review.queued",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    // WP 3.8: supervisors are told open messaging tasks wait for a decision after a patient left care. Org-wide by role; tenants re-aim it through the alert-rule admin.
+    resolverArgs: { roleKeys: ["clinical_supervisor", "don"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.review.task_needs_decision",
+    category: "clinical_routine",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    // WP 3.8: each affected assignee is told their task needs a decision (always-on fallback to the supervisor alert), in-app only.
+    resolverArgs: { roleKeys: [], userIdPaths: ["assigneeUserId"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
     eventType: "m36.promotion.decided",
     category: "clinical_routine",
     severityFloor: "info",

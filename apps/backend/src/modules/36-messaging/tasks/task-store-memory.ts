@@ -126,7 +126,7 @@ export function createMemoryTaskStore(): MemoryTaskStore {
       const cur = tasks.get(a.taskId);
       if (!cur || cur.organizationId !== a.orgId) throw new TaskNotFound();
       const role =
-        a.actor.kind === "system" || a.reassignReason === "handoff"
+        a.actor.kind === "system" || a.reassignReason === "handoff" || a.reviewOverride === true
           ? "both"
           : taskActorRole(cur, a.actor.userId);
       const d = decideTransition(

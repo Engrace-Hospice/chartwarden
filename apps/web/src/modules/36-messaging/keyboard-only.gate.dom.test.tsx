@@ -13,7 +13,10 @@ import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
 import axe from "axe-core";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { AlertInboxProvider } from "../../shell/alert-inbox";
 import { type Session, SessionProvider } from "../../shell/session";
+import { NotificationsInbox } from "./notifications-inbox";
+import { REVIEW_FIXTURE } from "./review-test-fixture";
 import { StaffMessaging } from "./staff-messaging";
 
 vi.mock("socket.io-client", () => ({
@@ -171,5 +174,39 @@ describe("Phase 2 gate: keyboard-only", () => {
     await userEvent.click(screen.getByRole("button", { name: "Nurse A" }));
     await screen.findByRole("textbox", { name: "Message" });
     expect(summarize(await run()), "open thread").toEqual([]);
+  });
+
+  it("K6 the Review tab is reached, a decision dialog opens and closes, and focus returns, with keys only", async () => {
+    const POST = vi
+      .fn()
+      .mockResolvedValue({ data: { item: REVIEW_FIXTURE }, response: { status: 200 } });
+    const GET = vi.fn((path: string) =>
+      Promise.resolve(
+        path === "/api/v1/messaging/review-items"
+          ? { data: { enabled: true, items: [REVIEW_FIXTURE] } }
+          : { data: { alerts: [] } },
+      ),
+    );
+    render(
+      <MemoryRouter initialEntries={["/notifications?tab=review"]}>
+        <ApiClientProvider client={{ GET, POST } as unknown as ApiClient}>
+          <SessionProvider session={SESSION}>
+            <AlertInboxProvider>
+              <NotificationsInbox />
+            </AlertInboxProvider>
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    const close = await screen.findByRole("button", { name: "Close task" });
+    await tabTo(close);
+    await userEvent.keyboard("{Enter}");
+    const dialog = await screen.findByRole("dialog", { name: "Close task" });
+    // Focus moves into the dialog; Esc closes it without sending anything.
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.activeElement).toBe(close);
+    expect(POST).not.toHaveBeenCalled();
   });
 });

@@ -522,6 +522,7 @@
     "test:m36:idg:live": "vitest run apps/backend/__tests__/m36-idg-coordination.live.test.ts",
     "test:m36:handoffs:live": "vitest run apps/backend/__tests__/m36-handoffs.live.test.ts",
     "test:m36:handoff-lifecycle:live": "vitest run apps/backend/__tests__/m36-handoff-lifecycle.live.test.ts",
+    "test:m36:lifecycle-review:live": "vitest run apps/backend/__tests__/m36-lifecycle-review.live.test.ts",
     "test:m36:promotions:live": "vitest run apps/backend/__tests__/m36-promotions.live.test.ts",
     "test:m36:promotion-targets:live": "vitest run apps/backend/__tests__/m36-promotion-targets.live.test.ts",
     "test:m36:search:live": "vitest run apps/backend/__tests__/m36-message-search.live.test.ts",
