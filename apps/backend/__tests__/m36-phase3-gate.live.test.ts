@@ -135,14 +135,24 @@ describe.skipIf(!DB_URL)("M36 Phase 3 gate - simulated hospice cases - LIVE Post
         ),
       ),
     );
-  const insertMessage = async (channelId: string) =>
-    (
+  // Through the real route, so the body is a sealed envelope the channel listing can open.
+  const insertMessage = async (channelId: string) => {
+    const sent = await call(
+      creator,
+      "POST",
+      `/api/v1/messaging/channels/${channelId}/messages`,
+      { bodyDoc: plainDoc("task source") },
+      ORG_A,
+      randomUUID(),
+    );
+    expect(sent.statusCode).toBe(201);
+    return (
       await kit.one<{ id: string }>(
-        `INSERT INTO message (channel_id, organization_id, author_user_id, author_kind, body_cipher, body_sha256)
-         VALUES ($1,$2,$3,'user','\\x00',repeat('d',64)) RETURNING id`,
-        [channelId, ORG_A, creator],
+        "SELECT id FROM message WHERE channel_id=$1 ORDER BY created_at DESC, id DESC LIMIT 1",
+        [channelId],
       )
     )[0]?.id as string;
+  };
   async function openTask(channelId: string, assigneeId: string): Promise<string> {
     const messageId = await insertMessage(channelId);
     const res = await call(
@@ -341,6 +351,12 @@ describe.skipIf(!DB_URL)("M36 Phase 3 gate - simulated hospice cases - LIVE Post
         )[0]?.is_archived,
       ).toBe(true);
       expect(await kit.service.canViewChannel(ORG_A, assignee, careChannel)).toBe(true);
+      const listed = await call(
+        assignee,
+        "GET",
+        `/api/v1/messaging/channels/${careChannel}/messages`,
+      );
+      expect(listed.statusCode).toBe(200);
       const late = await call(
         creator,
         "POST",
