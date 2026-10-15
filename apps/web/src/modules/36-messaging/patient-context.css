@@ -78,3 +78,34 @@
 .wx-messaging-context-tile small {
   color: var(--color-muted, #5b6472);
 }
+
+.wx-messaging-idg {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.wx-messaging-idg ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wx-messaging-idg li {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-low);
+  font-size: 0.8125rem;
+}
+
+.wx-messaging-idg li button {
+  min-height: 2.75rem;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary);
+  font-weight: 600;
+  cursor: pointer;
+}

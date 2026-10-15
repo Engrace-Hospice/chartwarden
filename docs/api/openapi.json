@@ -158541,6 +158541,473 @@
         }
       }
     },
+    "/api/v1/messaging/channels/{id}/idg-discussions": {
+      "get": {
+        "operationId": "getApiV1MessagingChannelsByIdIdgdiscussions",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The care-team channel's IDG discussions: root messages linked to an IDG meeting, newest first, hydrated like the pin list (WP 3.6; read-only, read-audited; enabled:false when the tenant flags messaging.idg + messaging.clinical_links are not both on; a non-care-team channel answers an empty list; the discussion never changes an IDG meeting or the plan of care)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "discussions",
+                    "patientId"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "discussions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "messageId",
+                          "channelId",
+                          "authorUserId",
+                          "authorDisplayName",
+                          "body",
+                          "bodyKind",
+                          "createdAt",
+                          "parentMessageId",
+                          "references"
+                        ],
+                        "properties": {
+                          "messageId": {
+                            "type": "string"
+                          },
+                          "channelId": {
+                            "type": "string"
+                          },
+                          "authorUserId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "authorDisplayName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "body": {
+                            "type": "string"
+                          },
+                          "bodyKind": {
+                            "anyOf": [
+                              {
+                                "const": "plain",
+                                "type": "string"
+                              },
+                              {
+                                "const": "markdown",
+                                "type": "string"
+                              },
+                              {
+                                "const": "system",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rich",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "bodyDoc": {
+                            "type": "object",
+                            "required": [
+                              "schemaVersion",
+                              "doc"
+                            ],
+                            "properties": {
+                              "schemaVersion": {
+                                "const": 1,
+                                "type": "number"
+                              },
+                              "doc": {
+                                "type": "object",
+                                "required": [
+                                  "type",
+                                  "content"
+                                ],
+                                "properties": {
+                                  "type": {
+                                    "const": "doc",
+                                    "type": "string"
+                                  },
+                                  "content": {
+                                    "maxItems": 500,
+                                    "type": "array",
+                                    "items": {}
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "bodyUnreadable": {
+                            "const": true,
+                            "type": "boolean"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "editedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "parentMessageId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "replyCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "lastReplyAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reactions": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "emoji",
+                                "count",
+                                "reactedByMe"
+                              ],
+                              "properties": {
+                                "emoji": {
+                                  "anyOf": [
+                                    {
+                                      "const": "heart",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "thanks",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "smile",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "celebrate",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "sad",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "hug",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "count": {
+                                  "minimum": 1,
+                                  "type": "integer"
+                                },
+                                "reactedByMe": {
+                                  "type": "boolean"
+                                }
+                              }
+                            }
+                          },
+                          "pinned": {
+                            "type": "boolean"
+                          },
+                          "poll": {
+                            "type": "object",
+                            "required": [
+                              "pollId",
+                              "closed",
+                              "closedAt",
+                              "totalVotes",
+                              "myOptionId",
+                              "canClose",
+                              "options"
+                            ],
+                            "properties": {
+                              "pollId": {
+                                "type": "string"
+                              },
+                              "closed": {
+                                "type": "boolean"
+                              },
+                              "closedAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "totalVotes": {
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "myOptionId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "canClose": {
+                                "type": "boolean"
+                              },
+                              "options": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "required": [
+                                    "optionId",
+                                    "label",
+                                    "voteCount"
+                                  ],
+                                  "properties": {
+                                    "optionId": {
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "type": "string"
+                                    },
+                                    "voteCount": {
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "clinicalLinks": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "link_id",
+                                "kind",
+                                "entity_id"
+                              ],
+                              "properties": {
+                                "link_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "anyOf": [
+                                    {
+                                      "const": "medication",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "order",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "care_plan",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "assessment",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "visit",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "document",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "idg_meeting",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "entity_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "references": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "kind",
+                                "entityId",
+                                "start",
+                                "end",
+                                "displayLabel",
+                                "navigable"
+                              ],
+                              "properties": {
+                                "kind": {
+                                  "anyOf": [
+                                    {
+                                      "const": "staff",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "patient",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "entityId": {
+                                  "type": "string"
+                                },
+                                "start": {
+                                  "type": "integer"
+                                },
+                                "end": {
+                                  "type": "integer"
+                                },
+                                "displayLabel": {
+                                  "type": "string"
+                                },
+                                "navigable": {
+                                  "type": "boolean"
+                                }
+                              }
+                            }
+                          },
+                          "attachments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "attachmentId",
+                                "fileName",
+                                "mimeType",
+                                "byteSize",
+                                "availability"
+                              ],
+                              "properties": {
+                                "attachmentId": {
+                                  "type": "string"
+                                },
+                                "fileName": {
+                                  "type": "string"
+                                },
+                                "mimeType": {
+                                  "type": "string"
+                                },
+                                "byteSize": {
+                                  "type": "integer"
+                                },
+                                "availability": {
+                                  "anyOf": [
+                                    {
+                                      "const": "available",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "scanning",
+                                      "type": "string"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          "hiddenAttachmentCount": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/channels/{id}/members": {
       "get": {
         "operationId": "getApiV1MessagingChannelsByIdMembers",

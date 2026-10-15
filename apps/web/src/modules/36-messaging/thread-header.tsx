@@ -3,6 +3,7 @@
 import { Glyph } from "@wardenx/ui";
 import { type JSX, type RefObject, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
+import { IdgDiscussionsSection } from "./idg-discussions-section";
 import type { ChannelSummary, PatientHeaderInfo } from "./messaging-types";
 import { initialsOf } from "./messaging-utils";
 import { PatientContextTiles } from "./patient-context-tiles";
@@ -84,9 +85,14 @@ const OVERLAY_CONTEXT_QUERY = "(max-width: 1279px)";
 export function PatientContextAside({
   patient,
   onClose,
+  idgChannelId,
+  onOpenThread,
 }: {
   patient: PatientHeaderInfo;
   onClose: () => void;
+  /** WP 3.6: the care-team channel whose IDG discussions are listed; the section shows only with onOpenThread. */
+  idgChannelId?: string;
+  onOpenThread?: (rootId: string, opener: HTMLElement) => void;
 }): JSX.Element {
   const closeRef = useRef<HTMLButtonElement>(null);
   // WP 2.11: opened by the user, so it takes focus (it is a slide-over / sheet below 1280 px) and hands it back on close.
@@ -127,6 +133,9 @@ export function PatientContextAside({
         </div>
       </div>
       <PatientContextTiles patientId={patient.id} />
+      {idgChannelId && onOpenThread ? (
+        <IdgDiscussionsSection channelId={idgChannelId} onOpenThread={onOpenThread} />
+      ) : null}
       <Link to={`/patients/${patient.id}`}>
         Open patient chart <Glyph name="arrow-right" size={14} />
       </Link>
