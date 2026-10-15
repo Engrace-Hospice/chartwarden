@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1604,
-    "enriched": 1604,
+    "routes": 1606,
+    "enriched": 1606,
     "deficit": 0,
-    "mutating": 909,
+    "mutating": 910,
     "mutatingNoBody": 1,
-    "gets": 651,
+    "gets": 652,
     "getsNoResponse": 8
   },
   "modules": [
@@ -351,12 +351,12 @@
     },
     {
       "module": "36-messaging",
-      "routes": 103,
-      "enriched": 103,
+      "routes": 105,
+      "enriched": 105,
       "deficit": 0,
-      "mutating": 51,
+      "mutating": 52,
       "mutatingNoBody": 0,
-      "gets": 40,
+      "gets": 41,
       "getsNoResponse": 0
     },
     {
