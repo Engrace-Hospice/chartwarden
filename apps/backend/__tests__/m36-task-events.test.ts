@@ -54,6 +54,13 @@ describe("m36.task.* outbox catalog", () => {
     },
   );
 
+  it("accepts the review source on a reassignment and rejects an unknown one", () => {
+    const schema = entry("m36.task.reassigned")?.payloadSchema as never;
+    const review = taskEventPayload({ ...FACTS.reassigned, source: "review" } as TaskEventFacts);
+    expect(Value.Check(schema, review)).toBe(true);
+    expect(Value.Check(schema, { ...review, source: "handoff" })).toBe(false);
+  });
+
   it.each(Object.values(M36_TASK_EVENTS))(
     "%s schema carries no patient or reason key",
     (eventName) => {

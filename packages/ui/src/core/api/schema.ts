@@ -14110,6 +14110,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/review-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The lifecycle review queue (WP 3.8; messaging.read + messaging.review + patient.read): open messaging tasks of a patient who was discharged, died or transferred out, waiting for a supervisor. state open|resolved|all (default open), limit up to 100 (default 50); open first, oldest first. Org-wide for the permission holder. A patient the caller may not see under Part 2 is a `restricted` row (no patient fields, no actions) that is still listed. No message text. 200 {enabled:false,items:[]} while the tenant flag `messaging.tasks` is off. Read-audited against EVERY patient it discloses (one event per patient) */
+        get: operations["getApiV1MessagingReviewitems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/review-items/{reviewItemId}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close the item's task with a reason code (WP 3.8; messaging.read + messaging.review + patient.read; 404 while the flag is off). action_taken and handled_elsewhere complete the task; no_action_needed, unable_to_complete and duplicate cancel it. There is no free-text justification: the code is the justification. Repeating the same call returns the item unchanged; any other state is 409 REVIEW_ITEM_STATE_CONFLICT. A missing, foreign, restricted and flag-off item is ONE 404. Nothing is deleted */
+        post: operations["postApiV1MessagingReviewitemsByReviewItemIdClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/review-items/{reviewItemId}/reassign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reassign the item's task to an eligible colleague (WP 3.8; messaging.read + messaging.review + patient.read; 404 while the flag is off). The target must be an active user who can read the task's channel (Part 2 included), differ from the current assignee and hold no other active task on the message (422 REVIEW_ASSIGNEE_INVALID). Resolves the item as reassigned and tells the new assignee. Repeating the same call returns the item unchanged; any other state is 409 REVIEW_ITEM_STATE_CONFLICT. A missing, foreign, restricted and flag-off item is ONE 404. Nothing is deleted */
+        post: operations["postApiV1MessagingReviewitemsByReviewItemIdReassign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/sbar/policy": {
         parameters: {
             query?: never;
@@ -65651,6 +65702,218 @@ export interface operations {
                                 state: "unavailable";
                                 link: string;
                             };
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingReviewitems: {
+        parameters: {
+            query?: {
+                state?: "open" | "resolved" | "all";
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            source: "patient_lifecycle" | "care_team_change";
+                            cause: "death" | "discharge" | "transfer" | "care_team_removed";
+                            state: "open" | "resolved";
+                            resolution: ("reassigned" | "closed" | "closed_elsewhere") | null;
+                            resolution_reason: ("action_taken" | "handled_elsewhere" | "no_action_needed" | "unable_to_complete" | "duplicate") | null;
+                            restricted: boolean;
+                            patient_id: string | null;
+                            patient_display_name: string | null;
+                            mrn_suffix: string | null;
+                            /** @constant */
+                            item_kind: "task";
+                            /** Format: uuid */
+                            item_id: string;
+                            task: {
+                                status: string;
+                                clinical_concern: boolean;
+                                needs_owner: boolean;
+                                due_at: string | null;
+                                /** Format: uuid */
+                                assignee_user_id: string;
+                                assignee_display_name: string | null;
+                                /** Format: uuid */
+                                created_by_user_id: string;
+                                created_by_display_name: string | null;
+                                /** Format: uuid */
+                                message_id: string;
+                                /** Format: uuid */
+                                channel_id: string;
+                            } | null;
+                            reassigned_to_user_id: string | null;
+                            reassigned_to_display_name: string | null;
+                            resolved_by_user_id: string | null;
+                            resolved_by_display_name: string | null;
+                            resolved_at: string | null;
+                            /** Format: date-time */
+                            created_at: string;
+                            allowed_actions: ("reassign" | "close")[];
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingReviewitemsByReviewItemIdClose: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reviewItemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: "action_taken" | "handled_elsewhere" | "no_action_needed" | "unable_to_complete" | "duplicate";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        item: {
+                            /** Format: uuid */
+                            id: string;
+                            source: "patient_lifecycle" | "care_team_change";
+                            cause: "death" | "discharge" | "transfer" | "care_team_removed";
+                            state: "open" | "resolved";
+                            resolution: ("reassigned" | "closed" | "closed_elsewhere") | null;
+                            resolution_reason: ("action_taken" | "handled_elsewhere" | "no_action_needed" | "unable_to_complete" | "duplicate") | null;
+                            restricted: boolean;
+                            patient_id: string | null;
+                            patient_display_name: string | null;
+                            mrn_suffix: string | null;
+                            /** @constant */
+                            item_kind: "task";
+                            /** Format: uuid */
+                            item_id: string;
+                            task: {
+                                status: string;
+                                clinical_concern: boolean;
+                                needs_owner: boolean;
+                                due_at: string | null;
+                                /** Format: uuid */
+                                assignee_user_id: string;
+                                assignee_display_name: string | null;
+                                /** Format: uuid */
+                                created_by_user_id: string;
+                                created_by_display_name: string | null;
+                                /** Format: uuid */
+                                message_id: string;
+                                /** Format: uuid */
+                                channel_id: string;
+                            } | null;
+                            reassigned_to_user_id: string | null;
+                            reassigned_to_display_name: string | null;
+                            resolved_by_user_id: string | null;
+                            resolved_by_display_name: string | null;
+                            resolved_at: string | null;
+                            /** Format: date-time */
+                            created_at: string;
+                            allowed_actions: ("reassign" | "close")[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingReviewitemsByReviewItemIdReassign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reviewItemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    to_user_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        item: {
+                            /** Format: uuid */
+                            id: string;
+                            source: "patient_lifecycle" | "care_team_change";
+                            cause: "death" | "discharge" | "transfer" | "care_team_removed";
+                            state: "open" | "resolved";
+                            resolution: ("reassigned" | "closed" | "closed_elsewhere") | null;
+                            resolution_reason: ("action_taken" | "handled_elsewhere" | "no_action_needed" | "unable_to_complete" | "duplicate") | null;
+                            restricted: boolean;
+                            patient_id: string | null;
+                            patient_display_name: string | null;
+                            mrn_suffix: string | null;
+                            /** @constant */
+                            item_kind: "task";
+                            /** Format: uuid */
+                            item_id: string;
+                            task: {
+                                status: string;
+                                clinical_concern: boolean;
+                                needs_owner: boolean;
+                                due_at: string | null;
+                                /** Format: uuid */
+                                assignee_user_id: string;
+                                assignee_display_name: string | null;
+                                /** Format: uuid */
+                                created_by_user_id: string;
+                                created_by_display_name: string | null;
+                                /** Format: uuid */
+                                message_id: string;
+                                /** Format: uuid */
+                                channel_id: string;
+                            } | null;
+                            reassigned_to_user_id: string | null;
+                            reassigned_to_display_name: string | null;
+                            resolved_by_user_id: string | null;
+                            resolved_by_display_name: string | null;
+                            resolved_at: string | null;
+                            /** Format: date-time */
+                            created_at: string;
+                            allowed_actions: ("reassign" | "close")[];
                         };
                     };
                 };

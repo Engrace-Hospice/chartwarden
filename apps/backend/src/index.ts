@@ -1425,6 +1425,7 @@ import {
   buildM36ClinicalAlertConsumer,
   buildPresenceDeps,
   buildPromotionDeps,
+  buildReviewDeps,
   buildSbarDeps,
   buildTaskDeps,
   createAttachmentService,
@@ -1482,6 +1483,7 @@ import { buildM36ConsentRevokedConsumer } from "./modules/36-messaging/outbox-co
 import { buildM36MessageHintConsumer } from "./modules/36-messaging/outbox-consumers/message-hints";
 import { buildM36MessageMentionConsumer } from "./modules/36-messaging/outbox-consumers/message-mentions";
 import { buildM36OncallAlertConsumer } from "./modules/36-messaging/outbox-consumers/oncall-alerts";
+import { buildM36PatientLifecycleReviewConsumer } from "./modules/36-messaging/outbox-consumers/patient-lifecycle-review";
 import { buildM36PromotionNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/promotion-notifications";
 import { buildM36PromotionOutcomesConsumer } from "./modules/36-messaging/outbox-consumers/promotion-outcomes";
 import { buildM36QualityAlertConsumer } from "./modules/36-messaging/outbox-consumers/quality-alerts";
@@ -4196,6 +4198,23 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           resolveActorPermissions({ organizationId, userId }),
       })
     : undefined;
+  // WP 3.8 - lifecycle review queue. ONE binding for the routes (flag `messaging.tasks` + service) and the lifecycle consumer's
+  // queue port, so they share a store. The consumer queues regardless of the flag (a safety record); the routes and the alerts
+  // honour it. The Part 2 gate, active-user check and display-name resolver default to the platform's own.
+  let m36ReviewWarn: (message: string, context: Record<string, string>) => void = (
+    message,
+    context,
+  ) => console.warn(message, context);
+  const m36Review = dbHandle
+    ? buildReviewDeps({
+        db: dbHandle.db,
+        flags: featureFlagReader,
+        outbox: m36OutboxPublisher,
+        messaging: createDbMessagingRouteService(dbHandle.db),
+        patientLabels: (organizationId, patientIds) =>
+          patientDisplayLabelsForOrg(dbHandle.db, organizationId, patientIds),
+      })
+    : undefined;
   // WP 3.7 - chart promotion. ONE binding for the routes (flag + service), the ChartPromotionSourceReader seam M8 and M14
   // read, and the two outbox consumers' ports; off unless the tenant flag `messaging.promotions` is on (the outcome
   // consumer records an owner's decision regardless of the flag). The snapshot reader opens message bodies with the SAME
@@ -4723,6 +4742,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             ...(m36Tasks ? { tasks: m36Tasks } : {}),
             // WP 3.5 - clinical handoffs; off unless the tenant flag `messaging.handoffs` is on.
             ...(m36Handoffs ? { handoffs: m36Handoffs } : {}),
+            // WP 3.8 - lifecycle review queue; off unless the tenant flag `messaging.tasks` is on.
+            ...(m36Review ? { review: m36Review } : {}),
             // WP 3.7 - chart promotion; off unless the tenant flag `messaging.promotions` is on.
             ...(m36Promotions ? { promotions: m36Promotions } : {}),
             // WP 3.6 - IDG discussions (read-only); off unless tenant flags `messaging.idg` AND `messaging.clinical_links` are on.
@@ -5772,6 +5793,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   m31Warn = (message, context) => app.log.warn(context, message);
   m36TaskWarn = (message, context) => app.log.warn(context, message);
   m36HandoffWarn = (message, context) => app.log.warn(context, message);
+  m36ReviewWarn = (message, context) => app.log.warn(context, message);
   m36PromotionWarn = (message, context) => app.log.warn(context, message);
   if (m23SubmissionQueues) {
     app.addHook("onClose", async () => {
@@ -9856,6 +9878,23 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                 ).getAdmissionSummary(orgId, admissionId)
               ).patientId,
           }),
+          // WP 3.8 - a patient who is discharged, dies or transfers out: their open care-team tasks are queued for a
+          // supervisor's decision (never deleted, never auto-closed) and the people affected are told. Bound only with
+          // the review binding; the care_team archive above is the posting restriction, this is the follow-up check.
+          ...(m36Review
+            ? [
+                buildM36PatientLifecycleReviewConsumer({
+                  alerts: getSeam("AlertEmitter") as AlertEmitter,
+                  admissionCare: (orgId, admissionId) =>
+                    (
+                      getSeam("AdmissionStatusReader") as AdmissionStatusReader
+                    ).getAdmissionPatientCare(orgId, admissionId),
+                  queueForPatient: m36Review.queueForPatient,
+                  isFlagOn: m36Review.isEnabled,
+                  warn: (message, context) => m36ReviewWarn(message, context),
+                }),
+              ]
+            : []),
           // WP 1.1 / audit F3 — a revoked membership or offboarded user loses channel access immediately (the
           // sockets half is added with bootstrap/realtime; `disconnectUser` is absent until then).
           buildM36AccessRevocationConsumer({

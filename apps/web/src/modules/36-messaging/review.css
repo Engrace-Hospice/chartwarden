@@ -1,0 +1,44 @@
+/* M36 WP 3.8 - lifecycle review queue. Reuses the shared tasks.css list/dialog chrome; only what is new lives here. */
+.wx-review-status {
+  display: block;
+  min-height: 1.25rem;
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}
+
+.wx-review-status:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.wx-review-reasons {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.wx-review-reasons legend {
+  padding: 0;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.wx-review-reason {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.5rem;
+  align-items: center;
+  font-size: 0.875rem;
+}
+
+.wx-review-reason .wx-task-hint {
+  grid-column: 2;
+}
+
+.wx-review-reason input:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}

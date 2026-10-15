@@ -30,14 +30,18 @@ import {
 import { useSession } from "../../shell/session";
 import { HandoffsList } from "./handoffs-list";
 import { PromotionsList } from "./promotions-list";
+import { ReviewQueueList } from "./review-queue-list";
+import { REVIEW_TAB_LABEL } from "./review-wording";
 import { TasksList } from "./tasks-list";
 import { useHandoffs } from "./use-handoffs";
 import { useHandoffsEnabled } from "./use-handoffs-enabled";
 import { PROMOTE_PERMISSION, usePromotionsEnabled } from "./use-promotions-enabled";
+import { useReviewEnabled } from "./use-review-enabled";
+import { useReviewItems } from "./use-review-items";
 import { useTasks } from "./use-tasks";
 import "./notifications-inbox.css";
 
-type Tab = "notifications" | "tasks" | "handoffs" | "promotions" | "mentions";
+type Tab = "notifications" | "tasks" | "handoffs" | "promotions" | "review" | "mentions";
 
 const NOTIFICATION_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
 
@@ -85,7 +89,9 @@ export function NotificationsInbox(): JSX.Element {
         ? "handoffs"
         : searchParams.get("tab") === "promotions"
           ? "promotions"
-          : "notifications",
+          : searchParams.get("tab") === "review"
+            ? "review"
+            : "notifications",
   );
   // The Handoffs tab exists only while the tenant has handoffs on (the list route's `enabled`; a failed read is off), so
   // a ?tab=handoffs link shows Notifications until that is known. Its incoming-active read feeds the badge and is lent
@@ -100,9 +106,17 @@ export function NotificationsInbox(): JSX.Element {
   const promotionsEnabled = usePromotionsEnabled(
     !(session?.permissions?.includes(PROMOTE_PERMISSION) ?? false),
   );
+  // And the Review tab (WP 3.8): only while the review list answers `enabled:true`; any refusal or failure hides it (fail
+  // closed). Its open-items read feeds the badge and is lent to the tab.
+  const reviewEnabled = useReviewEnabled();
+  const myReview = useReviewItems("open", !reviewEnabled);
+  const reviewVisible = reviewEnabled && myReview.view.status !== "denied";
+  const reviewCount =
+    myReview.view.status === "ready" && myReview.view.enabled ? myReview.view.items.length : 0;
   const tab: Tab =
     (requestedTab === "handoffs" && !handoffsEnabled) ||
-    (requestedTab === "promotions" && !promotionsEnabled)
+    (requestedTab === "promotions" && !promotionsEnabled) ||
+    (requestedTab === "review" && !reviewVisible)
       ? "notifications"
       : requestedTab;
   // The one read of "my active tasks": it feeds the tab badge and is lent to the Tasks tab, so opening the tab (or
@@ -221,6 +235,13 @@ export function NotificationsInbox(): JSX.Element {
                   onClick={() => selectTab("promotions")}
                 />
               ) : null}
+              {reviewVisible ? (
+                <TabButton
+                  label={`${REVIEW_TAB_LABEL} (${reviewCount})`}
+                  active={tab === "review"}
+                  onClick={() => selectTab("review")}
+                />
+              ) : null}
               <TabButton
                 label="Mentions"
                 active={tab === "mentions"}
@@ -228,7 +249,7 @@ export function NotificationsInbox(): JSX.Element {
               />
             </div>
 
-            {tab !== "tasks" && tab !== "handoffs" && tab !== "promotions" ? (
+            {tab !== "tasks" && tab !== "handoffs" && tab !== "promotions" && tab !== "review" ? (
               <div className="wx-notif-controls">
                 <label className="wx-search-field">
                   <Glyph name="search" size={16} />
@@ -312,6 +333,8 @@ export function NotificationsInbox(): JSX.Element {
           <HandoffsList meId={session?.userId ?? ""} shared={myHandoffs} />
         ) : tab === "promotions" ? (
           <PromotionsList />
+        ) : tab === "review" ? (
+          <ReviewQueueList meId={session?.userId ?? ""} shared={myReview} />
         ) : alerts === null && !loadFailed ? (
           <div className="wx-notif-state wx-notif-state-loading">
             <LoadingSpinner />

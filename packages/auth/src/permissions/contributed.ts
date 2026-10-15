@@ -304,6 +304,14 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "none",
   },
+  // --- WP 3.8: decide the lifecycle review queue (ADR-0065): reassign or close the open tasks of a patient who was
+  //     discharged, died or transferred. Granted to supervisory role keys by migration 1103, never to org_admin. ---
+  "messaging.review": {
+    resource: "review_item",
+    action: "manage",
+    category: "clinical",
+    abac: "none",
+  },
   // --- WP 2.7b C4: switch tenant global search on/off (ADR-0058 decision 2; the route also demands a fresh step-up) ---
   "messaging.global_search.manage": {
     resource: "global_search",

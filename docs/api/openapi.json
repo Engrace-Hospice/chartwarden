@@ -169001,6 +169001,1191 @@
         }
       }
     },
+    "/api/v1/messaging/review-items": {
+      "get": {
+        "operationId": "getApiV1MessagingReviewitems",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The lifecycle review queue (WP 3.8; messaging.read + messaging.review + patient.read): open messaging tasks of a patient who was discharged, died or transferred out, waiting for a supervisor. state open|resolved|all (default open), limit up to 100 (default 50); open first, oldest first. Org-wide for the permission holder. A patient the caller may not see under Part 2 is a `restricted` row (no patient fields, no actions) that is still listed. No message text. 200 {enabled:false,items:[]} while the tenant flag `messaging.tasks` is off. Read-audited against EVERY patient it discloses (one event per patient)",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "open",
+                  "type": "string"
+                },
+                {
+                  "const": "resolved",
+                  "type": "string"
+                },
+                {
+                  "const": "all",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "items"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "source",
+                          "cause",
+                          "state",
+                          "resolution",
+                          "resolution_reason",
+                          "restricted",
+                          "patient_id",
+                          "patient_display_name",
+                          "mrn_suffix",
+                          "item_kind",
+                          "item_id",
+                          "task",
+                          "reassigned_to_user_id",
+                          "reassigned_to_display_name",
+                          "resolved_by_user_id",
+                          "resolved_by_display_name",
+                          "resolved_at",
+                          "created_at",
+                          "allowed_actions"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "source": {
+                            "anyOf": [
+                              {
+                                "const": "patient_lifecycle",
+                                "type": "string"
+                              },
+                              {
+                                "const": "care_team_change",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "cause": {
+                            "anyOf": [
+                              {
+                                "const": "death",
+                                "type": "string"
+                              },
+                              {
+                                "const": "discharge",
+                                "type": "string"
+                              },
+                              {
+                                "const": "transfer",
+                                "type": "string"
+                              },
+                              {
+                                "const": "care_team_removed",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "state": {
+                            "anyOf": [
+                              {
+                                "const": "open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "resolved",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "resolution": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "reassigned",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "closed",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "closed_elsewhere",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "resolution_reason": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "action_taken",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "handled_elsewhere",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "no_action_needed",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "unable_to_complete",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "duplicate",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "restricted": {
+                            "type": "boolean"
+                          },
+                          "patient_id": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "patient_display_name": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "mrn_suffix": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "item_kind": {
+                            "const": "task",
+                            "type": "string"
+                          },
+                          "item_id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "task": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "status",
+                                  "clinical_concern",
+                                  "needs_owner",
+                                  "due_at",
+                                  "assignee_user_id",
+                                  "assignee_display_name",
+                                  "created_by_user_id",
+                                  "created_by_display_name",
+                                  "message_id",
+                                  "channel_id"
+                                ],
+                                "properties": {
+                                  "status": {
+                                    "type": "string"
+                                  },
+                                  "clinical_concern": {
+                                    "type": "boolean"
+                                  },
+                                  "needs_owner": {
+                                    "type": "boolean"
+                                  },
+                                  "due_at": {
+                                    "anyOf": [
+                                      {
+                                        "format": "date-time",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "assignee_user_id": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "assignee_display_name": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "created_by_user_id": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "created_by_display_name": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "message_id": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  },
+                                  "channel_id": {
+                                    "format": "uuid",
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reassigned_to_user_id": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reassigned_to_display_name": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "resolved_by_user_id": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "resolved_by_display_name": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "resolved_at": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "created_at": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "allowed_actions": {
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "const": "reassign",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "close",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/review-items/{reviewItemId}/close": {
+      "post": {
+        "operationId": "postApiV1MessagingReviewitemsByReviewItemIdClose",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Close the item's task with a reason code (WP 3.8; messaging.read + messaging.review + patient.read; 404 while the flag is off). action_taken and handled_elsewhere complete the task; no_action_needed, unable_to_complete and duplicate cancel it. There is no free-text justification: the code is the justification. Repeating the same call returns the item unchanged; any other state is 409 REVIEW_ITEM_STATE_CONFLICT. A missing, foreign, restricted and flag-off item is ONE 404. Nothing is deleted",
+        "parameters": [
+          {
+            "name": "reviewItemId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "item"
+                  ],
+                  "properties": {
+                    "item": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "source",
+                        "cause",
+                        "state",
+                        "resolution",
+                        "resolution_reason",
+                        "restricted",
+                        "patient_id",
+                        "patient_display_name",
+                        "mrn_suffix",
+                        "item_kind",
+                        "item_id",
+                        "task",
+                        "reassigned_to_user_id",
+                        "reassigned_to_display_name",
+                        "resolved_by_user_id",
+                        "resolved_by_display_name",
+                        "resolved_at",
+                        "created_at",
+                        "allowed_actions"
+                      ],
+                      "properties": {
+                        "id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "source": {
+                          "anyOf": [
+                            {
+                              "const": "patient_lifecycle",
+                              "type": "string"
+                            },
+                            {
+                              "const": "care_team_change",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "cause": {
+                          "anyOf": [
+                            {
+                              "const": "death",
+                              "type": "string"
+                            },
+                            {
+                              "const": "discharge",
+                              "type": "string"
+                            },
+                            {
+                              "const": "transfer",
+                              "type": "string"
+                            },
+                            {
+                              "const": "care_team_removed",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "state": {
+                          "anyOf": [
+                            {
+                              "const": "open",
+                              "type": "string"
+                            },
+                            {
+                              "const": "resolved",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "resolution": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "reassigned",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "closed",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "closed_elsewhere",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "resolution_reason": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "action_taken",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "handled_elsewhere",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "no_action_needed",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unable_to_complete",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "duplicate",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "restricted": {
+                          "type": "boolean"
+                        },
+                        "patient_id": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "patient_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "mrn_suffix": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "item_kind": {
+                          "const": "task",
+                          "type": "string"
+                        },
+                        "item_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "task": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "status",
+                                "clinical_concern",
+                                "needs_owner",
+                                "due_at",
+                                "assignee_user_id",
+                                "assignee_display_name",
+                                "created_by_user_id",
+                                "created_by_display_name",
+                                "message_id",
+                                "channel_id"
+                              ],
+                              "properties": {
+                                "status": {
+                                  "type": "string"
+                                },
+                                "clinical_concern": {
+                                  "type": "boolean"
+                                },
+                                "needs_owner": {
+                                  "type": "boolean"
+                                },
+                                "due_at": {
+                                  "anyOf": [
+                                    {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "assignee_user_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "assignee_display_name": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "created_by_user_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "created_by_display_name": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "message_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "channel_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "reassigned_to_user_id": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "reassigned_to_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "resolved_by_user_id": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "resolved_by_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "resolved_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "created_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "allowed_actions": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "const": "reassign",
+                                "type": "string"
+                              },
+                              {
+                                "const": "close",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "const": "action_taken",
+                        "type": "string"
+                      },
+                      {
+                        "const": "handled_elsewhere",
+                        "type": "string"
+                      },
+                      {
+                        "const": "no_action_needed",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unable_to_complete",
+                        "type": "string"
+                      },
+                      {
+                        "const": "duplicate",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/review-items/{reviewItemId}/reassign": {
+      "post": {
+        "operationId": "postApiV1MessagingReviewitemsByReviewItemIdReassign",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Reassign the item's task to an eligible colleague (WP 3.8; messaging.read + messaging.review + patient.read; 404 while the flag is off). The target must be an active user who can read the task's channel (Part 2 included), differ from the current assignee and hold no other active task on the message (422 REVIEW_ASSIGNEE_INVALID). Resolves the item as reassigned and tells the new assignee. Repeating the same call returns the item unchanged; any other state is 409 REVIEW_ITEM_STATE_CONFLICT. A missing, foreign, restricted and flag-off item is ONE 404. Nothing is deleted",
+        "parameters": [
+          {
+            "name": "reviewItemId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "item"
+                  ],
+                  "properties": {
+                    "item": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "source",
+                        "cause",
+                        "state",
+                        "resolution",
+                        "resolution_reason",
+                        "restricted",
+                        "patient_id",
+                        "patient_display_name",
+                        "mrn_suffix",
+                        "item_kind",
+                        "item_id",
+                        "task",
+                        "reassigned_to_user_id",
+                        "reassigned_to_display_name",
+                        "resolved_by_user_id",
+                        "resolved_by_display_name",
+                        "resolved_at",
+                        "created_at",
+                        "allowed_actions"
+                      ],
+                      "properties": {
+                        "id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "source": {
+                          "anyOf": [
+                            {
+                              "const": "patient_lifecycle",
+                              "type": "string"
+                            },
+                            {
+                              "const": "care_team_change",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "cause": {
+                          "anyOf": [
+                            {
+                              "const": "death",
+                              "type": "string"
+                            },
+                            {
+                              "const": "discharge",
+                              "type": "string"
+                            },
+                            {
+                              "const": "transfer",
+                              "type": "string"
+                            },
+                            {
+                              "const": "care_team_removed",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "state": {
+                          "anyOf": [
+                            {
+                              "const": "open",
+                              "type": "string"
+                            },
+                            {
+                              "const": "resolved",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "resolution": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "reassigned",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "closed",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "closed_elsewhere",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "resolution_reason": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "action_taken",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "handled_elsewhere",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "no_action_needed",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unable_to_complete",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "duplicate",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "restricted": {
+                          "type": "boolean"
+                        },
+                        "patient_id": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "patient_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "mrn_suffix": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "item_kind": {
+                          "const": "task",
+                          "type": "string"
+                        },
+                        "item_id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "task": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "status",
+                                "clinical_concern",
+                                "needs_owner",
+                                "due_at",
+                                "assignee_user_id",
+                                "assignee_display_name",
+                                "created_by_user_id",
+                                "created_by_display_name",
+                                "message_id",
+                                "channel_id"
+                              ],
+                              "properties": {
+                                "status": {
+                                  "type": "string"
+                                },
+                                "clinical_concern": {
+                                  "type": "boolean"
+                                },
+                                "needs_owner": {
+                                  "type": "boolean"
+                                },
+                                "due_at": {
+                                  "anyOf": [
+                                    {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "assignee_user_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "assignee_display_name": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "created_by_user_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "created_by_display_name": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "message_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "channel_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "reassigned_to_user_id": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "reassigned_to_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "resolved_by_user_id": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "resolved_by_display_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "resolved_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "created_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "allowed_actions": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "const": "reassign",
+                                "type": "string"
+                              },
+                              {
+                                "const": "close",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "to_user_id"
+                ],
+                "properties": {
+                  "to_user_id": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/messaging/sbar/policy": {
       "get": {
         "operationId": "getApiV1MessagingSbarPolicy",

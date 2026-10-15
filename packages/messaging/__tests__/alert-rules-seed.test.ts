@@ -32,6 +32,8 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m36.handoff.unaccepted",
       "m36.handoff.no_supervisor",
       "m36.handoff.supervisor_review",
+      "m36.review.queued",
+      "m36.review.task_needs_decision",
       "m36.promotion.decided",
       "m36.promotion.review_requested",
       "m36.promotion.idg_review_requested",

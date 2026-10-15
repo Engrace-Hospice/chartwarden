@@ -358,6 +358,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       // carries the `discharge_event` id the NOTR draft back-refs; this broader admission-lifecycle
       // event carries no fact M23 needs beyond what discharge.created already delivers.
       "m37",
+      // WP 3.8 - m36 has TWO consumers here: `m36.channel-membership-sync` (archive) and `m36.patient-lifecycle-review`
+      // (queues the patient's open care-team tasks for a supervisor). declaredConsumers is unchanged.
       "m36",
       // GAP-071 — m24 ADDED: voids the patient's not-yet-billed `rb_day` rows from the discharge date
       // (M24 §2.2: "voided ... when the underlying patient day is voided in M5 deceased / discharge correction").

@@ -80,6 +80,11 @@ export interface TransitionArgs {
    * Omitted = "manual" for a user, "offboarding" for the system.
    */
   readonly reassignReason?: TaskReassignSource;
+  /**
+   * WP 3.8: a supervisor decided this task in the review queue (already authorised by the review service), so the
+   * participant rule is waived for the acting user. Any action; the actor stays the supervisor and is logged as such.
+   */
+  readonly reviewOverride?: true;
 }
 
 export interface TaskListQuery {
@@ -178,7 +183,9 @@ async function selectForUpdate(tx: Tx, orgId: string, taskId: string): Promise<T
 
 /** The actor's role on a row. The system actor (offboarding) may do what any participant may. */
 function roleOf(task: TaskRow, actor: TaskActor, a: TransitionArgs): TaskActorRole {
-  if (actor.kind === "system" || a.reassignReason === "handoff") return "both";
+  if (actor.kind === "system" || a.reassignReason === "handoff" || a.reviewOverride === true) {
+    return "both";
+  }
   return taskActorRole(task, actor.userId);
 }
 

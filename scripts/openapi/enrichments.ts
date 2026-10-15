@@ -1353,6 +1353,14 @@ import {
   PinResponseSchema as M36PinResponseSchema,
   SetReactionResponseSchema as M36SetReactionResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/reaction-pin-typebox";
+// M36 WP 3.8 lifecycle review queue.
+import {
+  CloseReviewBodySchema as M36CloseReviewBodySchema,
+  ListReviewItemsQuerySchema as M36ListReviewItemsQuerySchema,
+  ReassignReviewBodySchema as M36ReassignReviewBodySchema,
+  ReviewItemResponseSchema as M36ReviewItemResponseSchema,
+  ReviewListResponseSchema as M36ReviewListResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/review-typebox";
 // M36 WP 3.3 SBAR policy.
 import {
   PutSbarPolicyBodySchema as M36PutSbarPolicyBodySchema,
@@ -9422,6 +9430,24 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Remove this organization's handoff expiry override, restoring the platform default of 240 minutes (WP 3.5; messaging.template.manage). Returns the effective policy (200)",
     response: M36HandoffPolicyViewSchema,
+  },
+  "GET /api/v1/messaging/review-items": {
+    summary:
+      "The lifecycle review queue (WP 3.8; messaging.read + messaging.review + patient.read): open messaging tasks of a patient who was discharged, died or transferred out, waiting for a supervisor. state open|resolved|all (default open), limit up to 100 (default 50); open first, oldest first. Org-wide for the permission holder. A patient the caller may not see under Part 2 is a `restricted` row (no patient fields, no actions) that is still listed. No message text. 200 {enabled:false,items:[]} while the tenant flag `messaging.tasks` is off. Read-audited against EVERY patient it discloses (one event per patient)",
+    query: M36ListReviewItemsQuerySchema,
+    response: M36ReviewListResponseSchema,
+  },
+  "POST /api/v1/messaging/review-items/:reviewItemId/reassign": {
+    summary:
+      "Reassign the item's task to an eligible colleague (WP 3.8; messaging.read + messaging.review + patient.read; 404 while the flag is off). The target must be an active user who can read the task's channel (Part 2 included), differ from the current assignee and hold no other active task on the message (422 REVIEW_ASSIGNEE_INVALID). Resolves the item as reassigned and tells the new assignee. Repeating the same call returns the item unchanged; any other state is 409 REVIEW_ITEM_STATE_CONFLICT. A missing, foreign, restricted and flag-off item is ONE 404. Nothing is deleted",
+    body: M36ReassignReviewBodySchema,
+    response: M36ReviewItemResponseSchema,
+  },
+  "POST /api/v1/messaging/review-items/:reviewItemId/close": {
+    summary:
+      "Close the item's task with a reason code (WP 3.8; messaging.read + messaging.review + patient.read; 404 while the flag is off). action_taken and handled_elsewhere complete the task; no_action_needed, unable_to_complete and duplicate cancel it. There is no free-text justification: the code is the justification. Repeating the same call returns the item unchanged; any other state is 409 REVIEW_ITEM_STATE_CONFLICT. A missing, foreign, restricted and flag-off item is ONE 404. Nothing is deleted",
+    body: M36CloseReviewBodySchema,
+    response: M36ReviewItemResponseSchema,
   },
   "POST /api/v1/messaging/channels/:id/messages/:messageId/chart-promotions": {
     summary:

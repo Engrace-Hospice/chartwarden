@@ -39,7 +39,7 @@ export type TaskActorKind = (typeof TASK_ACTOR_KINDS)[number];
  * Why an assignee changed: a person did it, offboarding did, or the task moved with an accepted handoff item (WP 3.5).
  * Stored as the `reassigned` event's reason code.
  */
-export const TASK_REASSIGN_SOURCES = ["manual", "offboarding", "handoff"] as const;
+export const TASK_REASSIGN_SOURCES = ["manual", "offboarding", "handoff", "review"] as const;
 export type TaskReassignSource = (typeof TASK_REASSIGN_SOURCES)[number];
 
 /** The window a due instant may fall in, relative to now (a short grace for clock skew, then a year). */
