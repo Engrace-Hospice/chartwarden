@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createApiClient } from "@wardenx/ui";
 import { describe, expect, it } from "vitest";
 import { PortalApp } from "../src/app";
@@ -55,10 +55,12 @@ describe("patient messaging redesign", () => {
       timeline.textContent?.indexOf(outgoing.body) ?? 0,
     );
     expect(
-      screen.getByText("<script>not markup</script>", { exact: false }).querySelector("script"),
+      within(timeline)
+        .getByText("<script>not markup</script>", { exact: false, selector: "p" })
+        .querySelector("script"),
     ).toBeNull();
-    expect(screen.getByText("Care team")).toBeTruthy();
-    expect(screen.getByText("You")).toBeTruthy();
+    expect(within(timeline).getByText("Care team")).toBeTruthy();
+    expect(within(timeline).getByText("You", { selector: "strong" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
   });
 
@@ -91,7 +93,10 @@ describe("patient messaging redesign", () => {
       return json({}, 404);
     });
     fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
-    expect(await screen.findByText(/Hello <script>not markup<\/script>/)).toBeTruthy();
+    const timeline = await screen.findByRole("list", {
+      name: "Conversation with your care team",
+    });
+    expect(within(timeline).getByText(/Hello <script>not markup<\/script>/)).toBeTruthy();
     expect(attempts).toBe(2);
   });
 
@@ -139,7 +144,10 @@ describe("patient messaging redesign", () => {
     await waitFor(() => expect(historyCalls).toBe(1));
     window.history.pushState({}, "", `/p/${PATIENT_B}/messages`);
     window.dispatchEvent(new PopStateEvent("popstate"));
-    expect(await screen.findByText("New patient conversation")).toBeTruthy();
+    const timeline = await screen.findByRole("list", {
+      name: "Conversation with your care team",
+    });
+    expect(within(timeline).getByText("New patient conversation")).toBeTruthy();
     await act(async () =>
       resolveOld?.(json({ messages: [{ ...incoming, body: "Old patient conversation" }] })),
     );

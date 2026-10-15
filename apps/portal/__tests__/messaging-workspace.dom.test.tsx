@@ -13,7 +13,7 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-function renderPortal(historyStatus: number = 200) {
+function renderPortal(historyStatus = 200) {
   window.history.replaceState({}, "", `/p/${PATIENT_ID}/messages`);
   const client = createApiClient({
     baseUrl: "http://localhost",

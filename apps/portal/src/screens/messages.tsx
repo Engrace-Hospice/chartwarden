@@ -317,7 +317,10 @@ function PortalMessagesForPatient({
     // Open a conversation at the latest message, not at the oldest message.
     // Do not repeat this after a manual refresh while someone reads history.
     if (!initialScrollDoneRef.current && history.status === "ready") {
+      const scrollBehavior = viewport.style.scrollBehavior;
+      viewport.style.scrollBehavior = "auto";
       viewport.scrollTop = viewport.scrollHeight;
+      viewport.style.scrollBehavior = scrollBehavior;
       initialScrollDoneRef.current = true;
     }
   }, [history]);
