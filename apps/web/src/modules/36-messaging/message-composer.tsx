@@ -15,6 +15,7 @@ import {
 } from "./clinical-link-picker";
 import { ComposerFooter } from "./composer-footer";
 import { DraftSyncNotice } from "./draft-conflict-prompt";
+import { MedicationQuestionButton } from "./medication-question-button";
 import { MentionMenu, mentionOptionId } from "./mention-menu";
 import { activeMentionQuery, reconcileReferences } from "./mention-utils";
 import type { ChannelSummary, MessageReferenceInput } from "./messaging-types";
@@ -309,6 +310,12 @@ export function ThreadComposer({
           kind={channel.kind}
           disabled={sending}
           onCreated={onPollCreated}
+        />
+        <MedicationQuestionButton
+          channelId={channel.channelId}
+          kind={channel.kind}
+          disabled={sending}
+          onSent={onPollCreated}
         />
         <NonMemberMentionPrompt
           person={pendingAdd?.person ?? null}

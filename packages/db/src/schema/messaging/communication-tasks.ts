@@ -36,6 +36,8 @@ export const communicationTasks = pgTable(
     clinicalConcern: boolean("clinical_concern").notNull().default(false),
     closedReason: text("closed_reason"),
     needsOwner: boolean("needs_owner").notNull().default(false),
+    /** WP 3.10 (migration 1104): how the task came to be. Fixed at birth (not in the column-level UPDATE grant). */
+    sourceKind: text("source_kind").notNull().default("message"),
     acceptedAt: timestamp("accepted_at", { withTimezone: true }),
     closedAt: timestamp("closed_at", { withTimezone: true }),
     version: integer("version").notNull().default(0),
@@ -83,6 +85,17 @@ export const communicationTasks = pgTable(
       "communication_task_patient_is_clinical",
       sql`${t.patientId} IS NULL OR ${t.clinicalConcern}`,
     ),
+    sourceKindShape: check(
+      "communication_task_source_kind_shape",
+      sql`${t.sourceKind} IN ('message', 'medication_question')`,
+    ),
+    medQuestionNotCreator: check(
+      "communication_task_medq_not_creator",
+      sql`${t.sourceKind} <> 'medication_question' OR ${t.assigneeId} <> ${t.createdBy}`,
+    ),
+    medQuestionIdx: index("communication_task_medq_idx")
+      .on(t.organizationId, t.messageId, t.createdBy)
+      .where(sql`${t.sourceKind} = 'medication_question'`),
     closedAtShape: check(
       "communication_task_closed_at_shape",
       sql`(${t.status} IN ('done', 'cancelled')) = (${t.closedAt} IS NOT NULL)`,

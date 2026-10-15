@@ -13438,6 +13438,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/medication-questions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask a nurse about a medication (WP 3.10; messaging.send + channel visibility + a required Idempotency-Key; 404 while the tenant flags `messaging.medication_questions` AND `messaging.tasks` are not both on). The server builds the message from `text` (never parsed) and an optional read-only medication link, and creates a task for the patient's primary RN (or the chosen colleague) in ONE transaction. Only a care-team channel of a patient qualifies (422 MEDICATION_QUESTION_NOT_PATIENT_CHANNEL); the patient comes from the channel. 422 MEDICATION_QUESTION_ASSIGNEE_INVALID (chosen colleague not on the care team or not eligible), MEDICATION_QUESTION_NO_NURSE (nobody to route to and `allow_unrouted` is not true), CLINICAL_LINK_NOT_AVAILABLE (the caller may not link that medication; nothing is written). With allow_unrouted:true and no nurse the message is sent with no task and the supervisor audience is alerted (routed:false). 201 created; 200 created:false replays the same client_message_id. A message never creates or changes an order: orders are entered and signed in Orders. Not the emergency path. Read-audited against the message and patient */
+        post: operations["postApiV1MessagingChannelsByIdMedicationquestions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/channels/{id}/medication-questions/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who a medication question in this channel would go to (WP 3.10; messaging.read + channel visibility): the patient's primary RN when eligible, up to 20 eligible care-team colleagues (names only), and whether medication links are on. 200 {enabled:false} while the feature flags are off; a hidden channel is the uniform 404. Read-audited (it discloses care-team names) */
+        get: operations["getApiV1MessagingChannelsByIdMedicationquestionsOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/channels/{id}/members": {
         parameters: {
             query?: never;
@@ -63254,6 +63288,122 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1MessagingChannelsByIdMedicationquestions: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    text: string;
+                    medication_id?: string;
+                    assignee_user_id?: string;
+                    allow_unrouted?: boolean;
+                    client_message_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        message_id: string;
+                        /** Format: uuid */
+                        channel_id: string;
+                        /** Format: uuid */
+                        patient_id: string;
+                        routed: boolean;
+                        task: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            message_id: string;
+                            /** Format: uuid */
+                            channel_id: string;
+                            patient_id: string | null;
+                            /** Format: uuid */
+                            created_by: string;
+                            /** Format: uuid */
+                            assignee_id: string;
+                            assignee_display_name: string | null;
+                            created_by_display_name: string | null;
+                            due_at: string | null;
+                            status: "open" | "accepted" | "done" | "cancelled";
+                            clinical_concern: boolean;
+                            source_kind: "message" | "medication_question";
+                            closed_reason: ("action_taken" | "handled_elsewhere" | "no_action_needed" | "unable_to_complete" | "duplicate") | null;
+                            needs_owner: boolean;
+                            overdue: boolean;
+                            /** Format: date-time */
+                            created_at: string;
+                            /** Format: date-time */
+                            updated_at: string;
+                            allowed_actions: ("accept" | "complete" | "cancel" | "reassign")[];
+                        } | null;
+                        created: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingChannelsByIdMedicationquestionsOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        enabled: false;
+                    } | {
+                        /** @constant */
+                        enabled: true;
+                        patient_linked: boolean;
+                        patient_id: string | null;
+                        nurse: {
+                            /** Format: uuid */
+                            user_id: string;
+                            display_name: string | null;
+                        } | null;
+                        colleagues: {
+                            /** Format: uuid */
+                            user_id: string;
+                            display_name: string | null;
+                        }[];
+                        links_enabled: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1MessagingChannelsByIdMembers: {
         parameters: {
             query?: never;
@@ -63964,6 +64114,7 @@ export interface operations {
                             due_at: string | null;
                             status: "open" | "accepted" | "done" | "cancelled";
                             clinical_concern: boolean;
+                            source_kind: "message" | "medication_question";
                             closed_reason: ("action_taken" | "handled_elsewhere" | "no_action_needed" | "unable_to_complete" | "duplicate") | null;
                             needs_owner: boolean;
                             overdue: boolean;
@@ -66198,6 +66349,7 @@ export interface operations {
                             due_at: string | null;
                             status: "open" | "accepted" | "done" | "cancelled";
                             clinical_concern: boolean;
+                            source_kind: "message" | "medication_question";
                             closed_reason: ("action_taken" | "handled_elsewhere" | "no_action_needed" | "unable_to_complete" | "duplicate") | null;
                             needs_owner: boolean;
                             overdue: boolean;
@@ -66249,6 +66401,7 @@ export interface operations {
                             due_at: string | null;
                             status: "open" | "accepted" | "done" | "cancelled";
                             clinical_concern: boolean;
+                            source_kind: "message" | "medication_question";
                             closed_reason: ("action_taken" | "handled_elsewhere" | "no_action_needed" | "unable_to_complete" | "duplicate") | null;
                             needs_owner: boolean;
                             overdue: boolean;
@@ -66316,6 +66469,7 @@ export interface operations {
                             due_at: string | null;
                             status: "open" | "accepted" | "done" | "cancelled";
                             clinical_concern: boolean;
+                            source_kind: "message" | "medication_question";
                             closed_reason: ("action_taken" | "handled_elsewhere" | "no_action_needed" | "unable_to_complete" | "duplicate") | null;
                             needs_owner: boolean;
                             overdue: boolean;
@@ -66373,6 +66527,7 @@ export interface operations {
                             due_at: string | null;
                             status: "open" | "accepted" | "done" | "cancelled";
                             clinical_concern: boolean;
+                            source_kind: "message" | "medication_question";
                             closed_reason: ("action_taken" | "handled_elsewhere" | "no_action_needed" | "unable_to_complete" | "duplicate") | null;
                             needs_owner: boolean;
                             overdue: boolean;
@@ -66430,6 +66585,7 @@ export interface operations {
                             due_at: string | null;
                             status: "open" | "accepted" | "done" | "cancelled";
                             clinical_concern: boolean;
+                            source_kind: "message" | "medication_question";
                             closed_reason: ("action_taken" | "handled_elsewhere" | "no_action_needed" | "unable_to_complete" | "duplicate") | null;
                             needs_owner: boolean;
                             overdue: boolean;
@@ -66487,6 +66643,7 @@ export interface operations {
                             due_at: string | null;
                             status: "open" | "accepted" | "done" | "cancelled";
                             clinical_concern: boolean;
+                            source_kind: "message" | "medication_question";
                             closed_reason: ("action_taken" | "handled_elsewhere" | "no_action_needed" | "unable_to_complete" | "duplicate") | null;
                             needs_owner: boolean;
                             overdue: boolean;

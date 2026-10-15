@@ -10,7 +10,9 @@ import { createContext, useContext, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { CLINICAL_LINK_KIND_LABEL } from "./clinical-link-kinds";
+import { MEDICATION_LINK_NOTICE } from "./medication-question-wording";
 import "./clinical-links.css";
+import "./medication-question.css";
 
 /** `${kind}:${entityId}` -> link_id, from the message's `clinicalLinks`. Provided by the message renderer. */
 export const ClinicalLinkIdsContext = createContext<ReadonlyMap<string, string>>(new Map());
@@ -100,10 +102,20 @@ export function ClinicalLinkChip({
   const seen = useSeen(root);
   const { state, retry } = useResolvedLink(linkId, seen);
   const kindLabel = CLINICAL_LINK_KIND_LABEL[kind];
+  // H-04: a medication link always carries the fixed line, whatever state the chip is in. A link is never an order action.
+  const notice =
+    kind === "medication" ? (
+      <small className="wx-clinical-link-banner">{MEDICATION_LINK_NOTICE}</small>
+    ) : null;
 
   // No link id yet (an optimistic row before the server's copy arrives) or the feature is off: the plain placeholder.
   if (!linkId || state.kind === "off") {
-    return <span className="wx-message-reference">{CLINICAL_LINK_PLAIN_TEXT}</span>;
+    return (
+      <span className="wx-clinical-link-wrap">
+        <span className="wx-message-reference">{CLINICAL_LINK_PLAIN_TEXT}</span>
+        {notice}
+      </span>
+    );
   }
   return (
     <span ref={setRoot} className="wx-clinical-link-wrap">
@@ -126,6 +138,7 @@ export function ClinicalLinkChip({
       ) : (
         <ResolvedChip kindLabel={kindLabel} value={state.value} />
       )}
+      {notice}
     </span>
   );
 }

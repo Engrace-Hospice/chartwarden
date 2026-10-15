@@ -56,6 +56,18 @@ const ok = (link: string) =>
   });
 
 describe("ClinicalLinkChip", () => {
+  it("H-04: a medication link carries the fixed no-order line in every state", async () => {
+    const line = "Messages can't change medications. Orders are entered in Orders.";
+    mount(ok("/patients/p-1/medications"));
+    expect(await screen.findByText(line)).toBeTruthy();
+    cleanup();
+    mount(vi.fn(), null);
+    expect(screen.getByText(line)).toBeTruthy();
+    cleanup();
+    mount(vi.fn().mockResolvedValue({ error: {}, response: { status: 404 } }));
+    await waitFor(() => expect(screen.getByText(line)).toBeTruthy());
+  });
+
   it("shows kind, status and as-of, and links to the owning screen", async () => {
     const get = ok("/patients/p-1/medications");
     mount(get);

@@ -8,6 +8,7 @@ import { Link } from "react-router-dom";
 import { TaskCloseDialog } from "./task-close-dialog";
 import { TaskReassignDialog } from "./task-reassign-dialog";
 import {
+  MEDICATION_QUESTION_LABEL,
   NEEDS_OWNER_LABEL,
   OVERDUE_LABEL,
   PATIENT_TASK_LABEL,
@@ -101,6 +102,9 @@ function TaskRow({
                 : "progress"
           }
         />
+        {task.source_kind === "medication_question" ? (
+          <span className="wx-task-tag">{MEDICATION_QUESTION_LABEL}</span>
+        ) : null}
         {task.patient_id ? <span className="wx-task-tag">{PATIENT_TASK_LABEL}</span> : null}
         {task.needs_owner ? (
           <StatusPill label={NEEDS_OWNER_LABEL} tone="warning" glyph="alert" />

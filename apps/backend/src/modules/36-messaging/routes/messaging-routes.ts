@@ -50,6 +50,11 @@ import {
   registerIdgDiscussionRoutes,
 } from "./idg-discussion-routes";
 import {
+  DISABLED_MEDICATION_QUESTIONS,
+  type MedicationQuestionRouteDeps,
+  registerMedicationQuestionRoutes,
+} from "./medication-question-routes";
+import {
   AddMemberBodySchema,
   AlertParamsSchema,
   AlertRuleParamsSchema,
@@ -123,6 +128,8 @@ export interface MessagingRouteDeps {
   review?: ReviewRouteDeps;
   /** WP 3.7: chart promotion (flag + service). Omitted => flag off: every promotion route 404s and the list answers disabled. */
   promotions?: PromotionRouteDeps;
+  /** WP 3.10: medication questions (service). Omitted => flag off: the ask route 404s and the options read answers disabled. */
+  medicationQuestions?: MedicationQuestionRouteDeps;
   /** WP 3.6: IDG discussions (flag + read-only store). Omitted => flag off: the list answers disabled. */
   idgDiscussions?: Omit<IdgDiscussionRouteDeps, "canViewChannel">;
 }
@@ -394,6 +401,16 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
 
   // --- WP 3.8: lifecycle review queue (a supervisor reassigns or closes the open tasks of a patient who left care; flag-gated) ---
   registerReviewRoutes(app, deps.review ?? DISABLED_REVIEW, { read: READ, send: SEND });
+  // --- WP 3.10: "ask a nurse about a medication" (message + optional read-only link + the nurse's task; never an order) ---
+  registerMedicationQuestionRoutes(app, deps.medicationQuestions ?? DISABLED_MEDICATION_QUESTIONS, {
+    read: READ,
+    viewChannel: VIEW_CHANNEL,
+    send: SEND,
+    sendToChannel: SEND_TO_CHANNEL,
+    requireIdempotencyKey: REQUIRE_IDEMPOTENCY_KEY,
+    validateLinks: (request, richBody) =>
+      validateRichBodyLinks(request, clinicalLinkDeps, richBody),
+  });
 
   // --- WP 3.7: chart promotion (a message proposed for the chart; a reviewer decides in M8/M14, never here; flag-gated) ---
   registerPromotionRoutes(app, deps.promotions ?? DISABLED_PROMOTIONS, {

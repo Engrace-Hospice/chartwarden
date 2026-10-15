@@ -42,6 +42,10 @@ export type TaskActorKind = (typeof TASK_ACTOR_KINDS)[number];
 export const TASK_REASSIGN_SOURCES = ["manual", "offboarding", "handoff", "review"] as const;
 export type TaskReassignSource = (typeof TASK_REASSIGN_SOURCES)[number];
 
+/** WP 3.10: how a task came to be. 'medication_question' is made by "Ask a nurse about a medication"; fixed at birth. */
+export const TASK_SOURCE_KINDS = ["message", "medication_question"] as const;
+export type TaskSourceKind = (typeof TASK_SOURCE_KINDS)[number];
+
 /** The window a due instant may fall in, relative to now (a short grace for clock skew, then a year). */
 export const TASK_DUE_PAST_GRACE_MINUTES = 5;
 export const TASK_DUE_MAX_DAYS = 366;
@@ -60,6 +64,7 @@ export interface TaskDto {
   readonly clinical_concern: boolean;
   readonly closed_reason: TaskCloseReason | null;
   readonly needs_owner: boolean;
+  readonly source_kind: TaskSourceKind;
   /** Display state only: past due and still active. Nothing escalates on it. */
   readonly overdue: boolean;
   readonly created_at: string;

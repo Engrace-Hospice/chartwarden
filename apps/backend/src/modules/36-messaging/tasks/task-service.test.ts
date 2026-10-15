@@ -326,3 +326,55 @@ describe("task create on an archived channel (WP 3.8, GAP-104 closed for tasks)"
     expect(created).toBe(true);
   });
 });
+
+describe("medication-question tasks (WP 3.10)", () => {
+  async function question() {
+    const ctx = setup({ kind: "care_team" });
+    const { task } = await ctx.store.createOrGetActive(null as never, {
+      orgId: ORG,
+      messageId: MSG,
+      channelId: CH,
+      patientId: PAT,
+      createdBy: ALICE,
+      assigneeId: BOB,
+      dueAt: null,
+      clinicalConcern: true,
+      sourceKind: "medication_question",
+    });
+    return { ...ctx, task };
+  }
+
+  it("reports source_kind on the DTO, 'message' for an ordinary conversion", async () => {
+    const { service, task } = await question();
+    expect((await service.get(actor(BOB), task.id)).task.source_kind).toBe("medication_question");
+    const other = setup();
+    expect((await convert(other.service)).task.source_kind).toBe("message");
+  });
+
+  it("refuses a manual reassignment back to the person who asked", async () => {
+    const { service, task, store } = await question();
+    expect(await code(service.reassign(actor(BOB), task.id, ALICE))).toBe(
+      "422:TASK_ASSIGNEE_INVALID",
+    );
+    expect(store.tasks.get(task.id)?.assigneeId).toBe(BOB);
+  });
+
+  it("allows a reassignment to another colleague", async () => {
+    const { service, task } = await question();
+    expect((await service.reassign(actor(BOB), task.id, CAROL)).assignee_id).toBe(CAROL);
+  });
+
+  it("the store refuses a handoff-style reassignment to the asker as a state conflict", async () => {
+    const { store, task } = await question();
+    await expect(
+      store.transition(null as never, {
+        orgId: ORG,
+        taskId: task.id,
+        actor: { kind: "user", userId: ALICE },
+        action: "reassign",
+        toAssigneeId: ALICE,
+        reassignReason: "handoff",
+      }),
+    ).rejects.toMatchObject({ name: "TaskStateConflict" });
+  });
+});

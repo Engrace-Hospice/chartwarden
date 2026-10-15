@@ -13,6 +13,7 @@ export const TASK_FIXTURE: TaskDto = {
   due_at: null,
   status: "open",
   clinical_concern: false,
+  source_kind: "message",
   closed_reason: null,
   needs_owner: false,
   overdue: false,

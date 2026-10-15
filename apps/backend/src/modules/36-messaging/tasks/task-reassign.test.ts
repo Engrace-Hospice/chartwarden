@@ -215,3 +215,88 @@ describe("reassignTasksForLeaver", () => {
     expect(store.tasks.get(bad.task.id)?.assigneeId).toBe(LEAVER);
   });
 });
+
+describe("medication-question tasks (WP 3.10)", () => {
+  const ASKER = "00000000-0000-4000-8000-00000000a5c1";
+  const PRIMARY_RN = "00000000-0000-4000-8000-00000000f001";
+
+  async function seedQuestion() {
+    const store = createMemoryTaskStore();
+    const r = await store.createOrGetActive(null as never, {
+      orgId: ORG,
+      messageId: msg(7),
+      channelId: CH,
+      patientId: PAT,
+      createdBy: ASKER,
+      assigneeId: LEAVER,
+      dueAt: null,
+      clinicalConcern: true,
+      sourceKind: "medication_question",
+    });
+    return { store, task: r.task };
+  }
+
+  it("goes to the primary RN, never back to the aide who asked", async () => {
+    const { store, task } = await seedQuestion();
+    const { d, published } = deps(store, {
+      eligible: [ASKER, PRIMARY_RN, TEAM_A],
+      careTeamMembers: async () => [ASKER, TEAM_A],
+    });
+    await reassignTasksForLeaver({ ...d, primaryRn: async () => PRIMARY_RN }, ORG, LEAVER);
+    expect(store.tasks.get(task.id)?.assigneeId).toBe(PRIMARY_RN);
+    expect(published.map((e) => e.eventName)).toEqual(["m36.task.reassigned"]);
+  });
+
+  it("falls back to the care team minus the asker when the primary RN is unavailable", async () => {
+    const { store, task } = await seedQuestion();
+    const { d } = deps(store, {
+      eligible: [ASKER, TEAM_B, TEAM_A],
+      careTeamMembers: async () => [ASKER, TEAM_B, TEAM_A],
+    });
+    await reassignTasksForLeaver(
+      {
+        ...d,
+        primaryRn: async () => {
+          throw new Error("seam down");
+        },
+      },
+      ORG,
+      LEAVER,
+    );
+    expect(store.tasks.get(task.id)?.assigneeId).toBe(TEAM_A);
+  });
+
+  it("flags needs_owner and publishes one PHI-free unrouted event when only the asker is left", async () => {
+    const { store, task } = await seedQuestion();
+    const { d, published } = deps(store, {
+      eligible: [ASKER],
+      careTeamMembers: async () => [ASKER],
+    });
+    const summary = await reassignTasksForLeaver(
+      { ...d, primaryRn: async () => null },
+      ORG,
+      LEAVER,
+    );
+    expect(summary).toEqual({ reassigned: 0, flaggedNeedsOwner: 1, failed: 0 });
+    expect(store.tasks.get(task.id)).toMatchObject({ assigneeId: LEAVER, needsOwner: true });
+    expect(published.map((e) => e.eventName)).toEqual([
+      "m36.task.needs_owner",
+      "m36.medication_question.unrouted",
+    ]);
+    const unrouted = published[1]?.payload ?? {};
+    expect(unrouted).toMatchObject({
+      reason: "owner_left",
+      askedByUserId: ASKER,
+      messageId: msg(7),
+    });
+    expect(Object.keys(unrouted)).not.toContain("patientId");
+  });
+
+  it("leaves ordinary tasks on the creator-first path and publishes no unrouted event", async () => {
+    const { store, task } = await seed({ patient: true });
+    const { d, published } = deps(store);
+    await reassignTasksForLeaver({ ...d, primaryRn: async () => TEAM_B }, ORG, LEAVER);
+    expect(store.tasks.get(task.id)?.assigneeId).toBe(CREATOR);
+    expect(published.map((e) => e.eventName)).toEqual(["m36.task.reassigned"]);
+  });
+});
