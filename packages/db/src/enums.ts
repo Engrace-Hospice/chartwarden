@@ -349,7 +349,7 @@ export const messageAckClass = pgEnum("message_ack_class", [
   "urgent",
   "critical_symptom",
 ]);
-// `route_unavailable` and `ladder_exhausted` were added by migration 1108 (WP 4.4, ADR-0070).
+// `route_unavailable` and `ladder_exhausted` were added by migration 1112 (WP 4.4, ADR-0070).
 export const messageAckEventType = pgEnum("message_ack_event_type", [
   "requested",
   "delivered",
