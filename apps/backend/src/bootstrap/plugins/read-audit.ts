@@ -256,7 +256,11 @@ export function applyReadAuditCoverage(
               patientId ??
               "";
             // A read that disclosed several patients is accounted against EACH of them (one event per patient).
+            // Nothing to account against (an empty result that names no resource and no patient): an insert with an empty
+            // resource id fails on the uuid cast and was only logged. There is no disclosure, so emit nothing.
+            if (!resourceId && !patientId && !cfg.patientIdsPayload) return;
             const disclosed = binary ? [] : disclosedPatientIds(cfg, payload);
+            if (!resourceId && disclosed.length === 0) return;
             const attributed = disclosed.length > 0 ? disclosed : [patientId];
             for (const attributedPatientId of attributed) {
               await auditPhiRead(tx, auditCtx, {
