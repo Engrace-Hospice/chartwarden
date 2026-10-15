@@ -93,7 +93,11 @@ export function createMemoryPromotionStore(): MemoryPromotionStore {
     async supersedeSiblings(_tx, orgId, accepted) {
       const now = new Date();
       const siblings = all().filter(
-        (r) => sameKey(r, orgId, accepted) && r.id !== accepted.id && r.status === "proposed",
+        (r) =>
+          sameKey(r, orgId, accepted) &&
+          r.id !== accepted.id &&
+          r.status === "proposed" &&
+          r.sourceBodySha256 === accepted.sourceBodySha256,
       );
       for (const r of siblings) {
         patch(r, { status: "superseded", reasonCode: "superseded", closedAt: now, updatedAt: now });

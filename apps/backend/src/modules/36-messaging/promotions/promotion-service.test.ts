@@ -238,20 +238,28 @@ describe("promotion service - outcomes from the owning module", () => {
     });
   });
 
-  it("closes the newer proposed sibling when a superseded request is accepted (one signed record per message)", async () => {
+  it("closes a same-text proposed sibling when a withdrawn request is accepted (one signed record per message)", async () => {
     const kit = buildKit();
     const { promotion: r1 } = await kit.service.request(actor(ALICE), standardRequest);
-    kit.editMessage("The edited text");
+    await kit.service.withdraw(actor(ALICE), r1.id);
     const { promotion: r2 } = await kit.service.request(actor(ALICE), standardRequest);
-    expect(kit.store.rows.get(r1.id)?.status).toBe("superseded");
     expect(kit.store.rows.get(r2.id)?.status).toBe("proposed");
     const r = await kit.service.applyOutcome(actor(ALICE).orgId, event(r1.id));
     expect(r.applied).toBe("accepted");
-    expect(kit.store.rows.get(r1.id)?.status).toBe("accepted");
     expect(kit.store.rows.get(r2.id)).toMatchObject({
       status: "superseded",
       reasonCode: "superseded",
     });
+  });
+
+  it("keeps a proposal for edited text open when a stale superseded request is accepted", async () => {
+    const kit = buildKit();
+    const { promotion: r1 } = await kit.service.request(actor(ALICE), standardRequest);
+    kit.editMessage("The edited text");
+    const { promotion: r2 } = await kit.service.request(actor(ALICE), standardRequest);
+    const r = await kit.service.applyOutcome(actor(ALICE).orgId, event(r1.id));
+    expect(r.applied).toBe("accepted");
+    expect(kit.store.rows.get(r2.id)?.status).toBe("proposed");
   });
 
   it("leaves a newer sibling alone when the accepted request was itself proposed", async () => {

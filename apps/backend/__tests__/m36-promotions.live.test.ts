@@ -609,9 +609,16 @@ describe.skipIf(!DB_URL)("M36 WP 3.7 chart promotion - LIVE Postgres", () => {
       const w = await scene();
       const withdrawn = (await propose(requester, w.ch, w.msg)).json().promotion.id as string;
       await call(app, requester, "POST", `${BASE}/${withdrawn}/withdraw`);
+      const sibling = (await propose(requester, w.ch, w.msg)).json().promotion.id as string;
       await decide("m8.chart_promotion.decided", withdrawn);
       expect(await row(withdrawn)).toMatchObject({ status: "accepted" });
       expect((await row(withdrawn))?.result_ref).not.toBeNull();
+      // A same-text replacement is closed in the same flow (one signed record per message).
+      expect(await row(sibling)).toMatchObject({
+        status: "superseded",
+        reason_code: "superseded",
+        result_ref: null,
+      });
 
       const s = await scene();
       const old = (await propose(requester, s.ch, s.msg)).json().promotion.id as string;
@@ -623,12 +630,8 @@ describe.skipIf(!DB_URL)("M36 WP 3.7 chart promotion - LIVE Postgres", () => {
       expect((await row(newer))?.status).toBe("proposed");
       await decide("m8.chart_promotion.decided", old);
       expect((await row(old))?.status).toBe("accepted");
-      // The replacement for the same message and target is closed in the same flow (one signed record per message).
-      expect(await row(newer)).toMatchObject({
-        status: "superseded",
-        reason_code: "superseded",
-        result_ref: null,
-      });
+      // The proposal for the edited text is a different text: the stale signed record does not close it.
+      expect((await row(newer))?.status).toBe("proposed");
     });
 
     it("an acceptance that arrives for a REJECTED request changes nothing (rejected is final) and is reported, not applied", async () => {

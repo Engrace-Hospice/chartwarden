@@ -167,7 +167,12 @@ export function createDbPromotionStore(db: DbClient): PromotionStore {
           ...bump,
         })
         .where(
-          and(keyWhere(orgId, accepted), eq(T.status, "proposed"), sql`${T.id} <> ${accepted.id}`),
+          and(
+            keyWhere(orgId, accepted),
+            eq(T.status, "proposed"),
+            eq(T.sourceBodySha256, accepted.sourceBodySha256),
+            sql`${T.id} <> ${accepted.id}`,
+          ),
         )
         .returning({ id: T.id });
       return closed.length;
