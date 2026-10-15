@@ -108,6 +108,15 @@ export function useAckRequests(channelId: string, enabled: boolean, refreshKey?:
   const busyRef = useRef<Busy | null>(null);
   const channelRef = useRef(channelId);
   channelRef.current = channelId;
+  const aliveRef = useRef(false);
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
 
   /** `background`: a read the person did not cause (timer, new message). It must not count as activity for the idle logoff. */
   const load = useCallback(
@@ -116,6 +125,10 @@ export function useAckRequests(channelId: string, enabled: boolean, refreshKey?:
       const token = latest.current;
       const settle = (status: AckListStatus, requests: readonly AckRequestDto[] = []): void => {
         if (token !== latest.current) return;
+        // A focus request for a request this read no longer shows can never be honoured: drop it.
+        if (status === "ready") {
+          setFocusRequestId((prev) => (prev && requests.some((r) => r.id === prev) ? prev : null));
+        }
         setLoaded((prev) => {
           const keep = KEEPS_LAST_GOOD.has(status) && prev.channelId === channelId;
           return { channelId, status, requests: keep ? prev.requests : requests };
@@ -136,6 +149,21 @@ export function useAckRequests(channelId: string, enabled: boolean, refreshKey?:
     [client, channelId],
   );
 
+  /** A reload that may not hold the caller (busy) longer than ACK_RELOAD_TIMEOUT_MS. */
+  const boundedLoad = useCallback(async (): Promise<void> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        load(),
+        new Promise<void>((resolveTimeout) => {
+          timer = setTimeout(resolveTimeout, ACK_RELOAD_TIMEOUT_MS);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }, [load]);
+
   useEffect(() => {
     if (!enabled) return;
     setNotice(null);
@@ -147,13 +175,16 @@ export function useAckRequests(channelId: string, enabled: boolean, refreshKey?:
     };
   }, [enabled, load]);
 
-  // Re-read when the channel's message list changes (a new message id), but not on the first render or a channel switch.
+  // Re-read when the channel's newest message id changes, but not on the first render, a channel switch or the list
+  // finishing its first load (`refreshKey` null -> anything).
   const lastRefresh = useRef({ channelId, refreshKey });
   useEffect(() => {
     const previous = lastRefresh.current;
     lastRefresh.current = { channelId, refreshKey };
     // The first id after the thread opened is the initial read of the message list, not news: the open already loaded.
     if (!enabled || previous.channelId !== channelId || previous.refreshKey === refreshKey) return;
+    // `null` = the message list has not loaded yet (the open-time read covers it); "" = loaded and empty, so a first message
+    // IS news and must refresh.
     if (previous.refreshKey == null) return;
     void load({ background: true });
   }, [enabled, channelId, refreshKey, load]);
@@ -207,27 +238,20 @@ export function useAckRequests(channelId: string, enabled: boolean, refreshKey?:
         // Left and came back: no notice (it belongs to the old visit), but the list this person is looking at may now be stale.
         const backHere = mine.channelId === channelRef.current;
         release();
-        if (backHere) await load();
+        if (backHere && aliveRef.current && enabledRef.current) await boundedLoad();
         return;
       }
       const saved = action === "acknowledge" ? ACK_SAVED_TAKEN_TEXT : ACK_SAVED_CLOSED_TEXT;
       setNotice(outcome ?? saved);
       setNoticeIsFailure(outcome !== null);
-      let timer: ReturnType<typeof setTimeout> | undefined;
       try {
-        await Promise.race([
-          load(),
-          new Promise<void>((resolveTimeout) => {
-            timer = setTimeout(resolveTimeout, ACK_RELOAD_TIMEOUT_MS);
-          }),
-        ]);
+        await boundedLoad();
       } finally {
-        clearTimeout(timer);
         if (epoch.current === startedEpoch && !outcome) setFocusRequestId(requestId);
         release();
       }
     },
-    [client, load],
+    [client, boundedLoad],
   );
 
   const clearFocus = useCallback(() => setFocusRequestId(null), []);

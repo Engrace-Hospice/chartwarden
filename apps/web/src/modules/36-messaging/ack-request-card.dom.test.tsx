@@ -618,6 +618,48 @@ describe("ack hook - background reads, focus, timeouts", () => {
     expect(headersOf(GET, 1)).toEqual(BG);
   });
 
+  it("an empty LOADED thread whose first message arrives refreshes once in the background; a still-loading list does not", async () => {
+    const { GET, client } = hookClient(() => ok([]));
+    const { rerender } = renderHook(
+      ({ key }: { key: string | null }) => useAckRequests("c-1", true, key),
+      { wrapper: wrap(client), initialProps: { key: null as string | null } },
+    );
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(1));
+
+    rerender({ key: "" });
+    await act(async () => undefined);
+    expect(GET).toHaveBeenCalledTimes(1);
+
+    rerender({ key: "m-1" });
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(2));
+    expect(headersOf(GET, 1)).toEqual(BG);
+  });
+
+  it("the post-action reload is a foreground read and its 15 s timer is cleared", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
+    try {
+      const done = {
+        status: "resolved" as const,
+        viewer_actions: { can_acknowledge: false, can_reassign: false, can_resolve: false },
+      };
+      const { GET, client } = hookClient(() => ok([request(done)]));
+      const { result } = renderHook(() => useAckRequests("c-1", true), { wrapper: wrap(client) });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      await act(async () => {
+        await result.current.act("r-1", "acknowledge");
+      });
+
+      expect(GET).toHaveBeenCalledTimes(2);
+      expect(headersOf(GET, 1)).toBeUndefined();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("a hung reload cannot hold the busy state forever", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
     try {
