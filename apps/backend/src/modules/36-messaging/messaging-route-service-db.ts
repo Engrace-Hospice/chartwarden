@@ -74,6 +74,8 @@ import {
 } from "@wardenx/types";
 import { type SQL, and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
+import { cancelOpenRequestForMessage } from "./ack-requests/ack-cancel";
+import { assertMessageEditable } from "./ack-requests/ack-edit-lock";
 import { projectAlertInboxPresentation } from "./alert-inbox-presentation";
 import { attachmentPreviewLabel } from "./attachment-preview-label";
 import { bindAttachmentsInTx, loadAttachmentViews } from "./attachments/attachment-service-db";
@@ -93,8 +95,6 @@ import { createDbMentionNonMemberSearch } from "./mention-non-member-service-db"
 import { decodeCursor, encodeCursor } from "./message-cursor";
 import { publishMessageHint } from "./message-hint-events";
 import { createDbMessageSearchService } from "./message-search-service-db";
-import { cancelOpenRequestForMessage } from "./ack-requests/ack-cancel";
-import { assertMessageEditable } from "./ack-requests/ack-edit-lock";
 import { MESSAGE_ROW_COLUMNS, hydrateMessages } from "./messaging-message-hydration";
 import {
   type MessageBodyCipher,

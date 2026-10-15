@@ -36,6 +36,7 @@ import type {
 import { ForbiddenError, UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveRichWrite } from "../rich-body-codec";
+import { type AckRouteDeps, DISABLED_ACK, registerAckRoutes } from "./ack-routes";
 import { announcementSendGuard, registerAnnouncementRoutes } from "./announcement-routes";
 import {
   type ClinicalLinkRouteDeps,
@@ -98,7 +99,6 @@ import {
 import { registerMessageSearchRoutes } from "./search-routes";
 import { DISABLED_TASKS, type TaskRouteDeps, registerTaskRoutes } from "./task-routes";
 import { DISABLED_URGENT, type UrgentRouteDeps, registerUrgentRoutes } from "./urgent-routes";
-import { type AckRouteDeps, DISABLED_ACK, registerAckRoutes } from "./ack-routes";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
