@@ -207,7 +207,7 @@ export const M8_AUDIT_DENYLIST: { readonly [K in M8TableName]: readonly string[]
     "administrative_override_reason",
     "voided_reason",
   ],
-  encounter_addendum: ["reason"],
+  encounter_addendum: ["reason", "source_body_sha256"],
   encounter_signature: [],
   encounter_care_plan_link: [],
   cosignature_request: ["supervisor_released_reason"],
@@ -240,6 +240,7 @@ export const M8_EVENT_NAMES = [
   "m8.hearthnote.layer2_enhanced",
   "m8.vitals.captured",
   "m8.mileage.captured",
+  "m8.chart_promotion.decided",
 ] as const;
 
 /** An M8 outbox event name (§4.4). */

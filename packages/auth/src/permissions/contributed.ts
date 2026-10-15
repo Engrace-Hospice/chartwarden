@@ -296,6 +296,14 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "admin",
     abac: "none",
   },
+  // --- WP 3.7: propose a secure message for the chart (ADR-0063). A request only; the reviewer accepts it in the owning
+  //     module with that module's own permission. Granted to clinical roles by migration 1102, never to aides. ---
+  "messaging.promote": {
+    resource: "chart_promotion",
+    action: "request",
+    category: "clinical",
+    abac: "none",
+  },
   // --- WP 2.7b C4: switch tenant global search on/off (ADR-0058 decision 2; the route also demands a fresh step-up) ---
   "messaging.global_search.manage": {
     resource: "global_search",

@@ -521,6 +521,8 @@
     "test:m36:tasks:live": "vitest run apps/backend/__tests__/m36-tasks.live.test.ts",
     "test:m36:handoffs:live": "vitest run apps/backend/__tests__/m36-handoffs.live.test.ts",
     "test:m36:handoff-lifecycle:live": "vitest run apps/backend/__tests__/m36-handoff-lifecycle.live.test.ts",
+    "test:m36:promotions:live": "vitest run apps/backend/__tests__/m36-promotions.live.test.ts",
+    "test:m36:promotion-targets:live": "vitest run apps/backend/__tests__/m36-promotion-targets.live.test.ts",
     "test:m36:search:live": "vitest run apps/backend/__tests__/m36-message-search.live.test.ts",
     "test:m36:search-index:live": "vitest run apps/backend/__tests__/m36-message-search-index.live.test.ts",
     "test:m36:global-search-writer:live": "vitest run apps/backend/__tests__/m36-global-search-writer.live.test.ts",

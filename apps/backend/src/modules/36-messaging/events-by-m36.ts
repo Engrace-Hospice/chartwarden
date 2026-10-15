@@ -30,6 +30,8 @@
 // `alert.payload` when the emitting module put them there, else null.
 import { Type } from "@sinclair/typebox";
 import {
+  CHART_PROMOTION_TARGET_KINDS,
+  CHART_PROMOTION_TARGET_MODULES,
   HANDOFF_UNACCEPTED_CAUSES,
   type ModuleEventContribution,
   TASK_STATUSES,
@@ -39,6 +41,12 @@ const id = Type.String({ minLength: 1 });
 const nullableId = Type.Union([id, Type.Null()]);
 const isoInstant = Type.String({ minLength: 1 });
 const handoffCause = Type.Union(HANDOFF_UNACCEPTED_CAUSES.map((cause) => Type.Literal(cause)));
+const promotionTargetModule = Type.Union(
+  CHART_PROMOTION_TARGET_MODULES.map((module) => Type.Literal(module)),
+);
+const promotionTargetKind = Type.Union(
+  CHART_PROMOTION_TARGET_KINDS.map((kind) => Type.Literal(kind)),
+);
 const count = Type.Integer({ minimum: 0 });
 const taskStatus = Type.Union(TASK_STATUSES.map((status) => Type.Literal(status)));
 const recipientKind = Type.Union([
@@ -263,6 +271,25 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
         cause: handoffCause,
         unacceptedItemCount: count,
         acceptedItemCount: count,
+        at: isoInstant,
+      },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.promotion.requested",
+    moduleOwner: "m36",
+    description:
+      "A clinician proposed that a secure message belong in the chart (WP 3.7, ADR-0063). PHI-free: ids, the closed target pair and one instant - no patient id, no message id, no body hash, no text. Published in the same transaction as the insert; a replayed request publishes nothing. M36 tells the people who can review it with one generic in-app alert per reviewer (or the IDG coordinators), only if the request is still proposed, and tells the requester when nobody can be reached.",
+    payloadSchema: Type.Object(
+      {
+        organizationId: id,
+        promotionRequestId: id,
+        targetModule: promotionTargetModule,
+        targetKind: promotionTargetKind,
+        requestedByUserId: id,
         at: isoInstant,
       },
       { additionalProperties: false },

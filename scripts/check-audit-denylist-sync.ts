@@ -91,7 +91,11 @@ const MODULES: ReadonlyArray<{
   {
     mod: "M8",
     denylist: M8_AUDIT_DENYLIST,
-    migrations: ["packages/db/migrations/0031_encounters_m8_rls_audit_triggers.sql"],
+    migrations: [
+      "packages/db/migrations/0031_encounters_m8_rls_audit_triggers.sql",
+      // WP 3.7: the addendum trigger also scrubs the promotion body hash.
+      "packages/db/migrations/1102_m36_m8_m14_chart_promotion.sql",
+    ],
   },
   {
     mod: "M9",
@@ -131,7 +135,11 @@ const MODULES: ReadonlyArray<{
   {
     mod: "M14",
     denylist: M14_AUDIT_DENYLIST,
-    migrations: ["packages/db/migrations/0043_idg_m14_rls_audit_triggers.sql"],
+    migrations: [
+      "packages/db/migrations/0043_idg_m14_rls_audit_triggers.sql",
+      // WP 3.7: the agenda-item trigger also scrubs the promotion body hash.
+      "packages/db/migrations/1102_m36_m8_m14_chart_promotion.sql",
+    ],
   },
   {
     mod: "M15",

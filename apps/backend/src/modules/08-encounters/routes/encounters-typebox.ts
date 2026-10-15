@@ -7,7 +7,7 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
+import { CHART_PROMOTION_REJECT_REASONS, ValidationError } from "@wardenx/types";
 import type {
   CreatedEncounter as ServiceCreatedEncounter,
   EncounterView as ServiceEncounterView,
@@ -240,7 +240,32 @@ export const SupervisorReleaseSchema = Type.Object({
 
 export const CreateAddendumSchema = Type.Object({
   reason: Type.String({ minLength: 20, maxLength: 4000 }),
+  /**
+   * WP 3.7 (ADR-0063): author this addendum from a secure-message proposal. The reviewer still writes their OWN reason and
+   * text; the quoted message is shown beside the editor, never inserted for them. Refused 422 PROMOTION_NOT_AVAILABLE
+   * unless the proposal is open, for this encounter's patient, and visible to the caller.
+   */
+  promotionRequestId: Type.Optional(Type.String({ format: "uuid" })),
 });
+
+/** WP 3.7 - params of the reviewer routes on an encounter's chart promotions. */
+export const ChartPromotionParamsSchema = Type.Object({
+  encounterId: Type.String({ format: "uuid" }),
+  requestId: Type.String({ format: "uuid" }),
+});
+
+/** WP 3.7 - params of the list route (the encounter id is a uuid: a malformed one is 422, never a database cast error). */
+export const ChartPromotionListParamsSchema = Type.Object({
+  encounterId: Type.String({ format: "uuid" }),
+});
+
+/** WP 3.7 - decline a proposal (the system-set reasons `requester` / `superseded` are not selectable here). */
+export const RejectChartPromotionSchema = Type.Object(
+  {
+    reasonCode: Type.Union(CHART_PROMOTION_REJECT_REASONS.map((r) => Type.Literal(r))),
+  },
+  { additionalProperties: false },
+);
 
 // ── Queries ───────────────────────────────────────────────────────────────────────────────────────
 export const EncounterListQuerySchema = Type.Object({
@@ -580,6 +605,29 @@ export const CreateAddendumResponseSchema = Type.Object({
   status: Type.Literal("draft"),
 });
 
+/** WP 3.7 - one proposal waiting on the reviewer (snake_case, mirroring the M36 DTO). */
+export const ChartPromotionViewSchema = Type.Object({
+  request_id: Type.String({ format: "uuid" }),
+  requested_by: Type.String({ format: "uuid" }),
+  requested_at: Type.String({ format: "date-time" }),
+  source_author_user_id: Type.String({ format: "uuid" }),
+  source_sent_at: Type.String({ format: "date-time" }),
+  snapshot_text: Type.Union([Type.String(), Type.Null()]),
+  source_state: Type.Union([Type.Literal("current"), Type.Literal("edited_since")]),
+});
+
+/** WP 3.7 - GET /encounters/:encounterId/chart-promotions. */
+export const ChartPromotionListResponseSchema = Type.Object({
+  enabled: Type.Boolean(),
+  promotions: Type.Array(ChartPromotionViewSchema),
+});
+
+/** WP 3.7 - POST /encounters/:encounterId/chart-promotions/:requestId/reject. */
+export const RejectChartPromotionResponseSchema = Type.Object({
+  promotionRequestId: Type.String({ format: "uuid" }),
+  outcome: Type.Literal("rejected"),
+});
+
 /** Route 23 — addendum selections update (version bump + Layer-1 preview). */
 export const AddendumSelectionsResponseSchema = Type.Object({
   version: Type.Integer(),
@@ -621,6 +669,14 @@ type _MileageView = Conforms<Static<typeof MileageViewResponseSchema>, Ret<"getM
 type _VitalsList = Conforms<Static<typeof VitalsListResponseSchema>, Ret<"listVitals">>;
 type _Mileage = Conforms<Static<typeof MileageResultResponseSchema>, ServiceMileageResult>;
 type _Selections = Conforms<Static<typeof SelectionsUpdateResponseSchema>, Ret<"updateSelections">>;
+type _ChartPromotions = Conforms<
+  Static<typeof ChartPromotionListResponseSchema>,
+  Ret<"listChartPromotions">
+>;
+type _ChartPromotionReject = Conforms<
+  Static<typeof RejectChartPromotionResponseSchema>,
+  Ret<"rejectChartPromotion">
+>;
 type _CarePlanLink = Conforms<Static<typeof CarePlanLinkResponseSchema>, Ret<"addCarePlanLink">>;
 type _CarePlanLinks = Conforms<
   Static<typeof CarePlanLinkListResponseSchema>,

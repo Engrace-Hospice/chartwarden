@@ -449,6 +449,23 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
+  {
+    eventName: "m14.chart_promotion.decided",
+    moduleOwner: "m14",
+    description:
+      "A coordinator decided a secure-message proposal for the chart: they added an agenda item from it (accepted, resultRef = the agenda item id), or they declined it (rejected). No IDG decision is recorded and the care record is not changed. PHI-free: ids, an outcome enum, a reason code and an instant; no patient id, no message text, no hash. Published in the same transaction as the record (WP 3.7, ADR-0063); M36 records the outcome on the proposal.",
+    payloadSchema: Type.Object({
+      organizationId: Type.String({ minLength: 1 }),
+      promotionRequestId: Type.String({ minLength: 1 }),
+      outcome: Type.Union([Type.Literal("accepted"), Type.Literal("rejected")]),
+      resultRef: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+      decidedByUserId: Type.String({ minLength: 1 }),
+      reasonCode: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+      at: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
 ];
 
 /** Module 14's §4.4 outbox-event catalog contribution (the boot UPSERTs each into `outbox_event_catalog`). */

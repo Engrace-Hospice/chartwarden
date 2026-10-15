@@ -21,7 +21,7 @@ import {
 } from "../src/permissions";
 
 describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
-  it("registers exactly the ten §4.5 keys plus the WP 2.8 template manager and the WP 2.7b global search manager", () => {
+  it("registers exactly the ten §4.5 keys plus the WP 2.8 template manager, the WP 2.7b global search manager and the WP 3.7 chart-promotion request key", () => {
     expect(Object.keys(M36_CONTRIBUTED_PERMISSIONS).sort()).toEqual(
       [
         "messaging.read",
@@ -36,6 +36,7 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
         "messaging.admin.read",
         "messaging.template.manage",
         "messaging.global_search.manage",
+        "messaging.promote",
         "alert.inbox.self",
       ].sort(),
     );
@@ -61,6 +62,7 @@ describe("M36-T07 messaging permission keys (§4.5 handshake)", () => {
       "messaging.admin.read",
       "messaging.template.manage",
       "messaging.global_search.manage",
+      "messaging.promote",
       "alert.inbox.self",
     ] as const) {
       expect(M36_CONTRIBUTED_PERMISSIONS[key].abac).toBe("none");

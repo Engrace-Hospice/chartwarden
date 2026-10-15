@@ -19,6 +19,8 @@ export interface MessageTimelineProps {
   authorById: ReadonlyMap<string, string | null>;
   canReply: boolean;
   canAnnotate: boolean;
+  /** WP 3.7: a patient's care-team conversation (messages can be proposed for the chart). */
+  patientLinked?: boolean;
   onShowReceipts: ReturnType<typeof useAnnouncementTools>["onShowReceipts"];
   onScroll: (event: UIEvent<HTMLDivElement>) => void;
   onRetry: () => void;
@@ -41,6 +43,7 @@ export function MessageTimeline({
   authorById,
   canReply,
   canAnnotate,
+  patientLinked = false,
   onShowReceipts,
   onScroll,
   onRetry,
@@ -95,6 +98,7 @@ export function MessageTimeline({
               canReply={canReply}
               canAnnotate={canAnnotate}
               canPin
+              patientLinked={patientLinked}
               onShowReceipts={onShowReceipts}
             />
           ))}

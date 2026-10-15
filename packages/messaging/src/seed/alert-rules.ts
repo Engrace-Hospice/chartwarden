@@ -121,6 +121,50 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     enabled: true,
   },
   {
+    eventType: "m36.promotion.decided",
+    category: "clinical_routine",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    // WP 3.7: the requester is told a chart promotion was accepted or not accepted, in-app only, generic text.
+    resolverArgs: { roleKeys: [], userIdPaths: ["requestedByUserId"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.promotion.review_requested",
+    category: "clinical_routine",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    // WP 3.7: one care-team clinician who can sign an addendum is told a proposal is waiting (the consumer picks them), in-app only.
+    resolverArgs: { roleKeys: [], userIdPaths: ["reviewerUserId"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.promotion.idg_review_requested",
+    category: "clinical_routine",
+    severityFloor: "info",
+    recipientResolver: "permission_holders",
+    // WP 3.7: IDG coordinators are told a proposal is waiting. Org-wide by permission, with NO tenant-admin fallback so an empty audience reaches the requester (no_reviewer).
+    resolverArgs: { permissionKeys: ["idg.coordinate"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.promotion.no_reviewer",
+    category: "clinical_routine",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    // WP 3.7: the requester is told no reviewer could be reached (loud fallback), in-app only.
+    resolverArgs: { roleKeys: [], userIdPaths: ["requestedByUserId"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
     eventType: "m36.message.schedule_blocked",
     category: "clinical_routine",
     severityFloor: "info",

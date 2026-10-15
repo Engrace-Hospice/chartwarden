@@ -1,3 +1,8 @@
+import {
+  type AlertEmitter,
+  type MessagingProvider,
+  createInMemoryAlertEmitter,
+} from "@wardenx/messaging";
 // apps/backend/src/modules/36-messaging/seams.ts — M36-T06 seam registration (spec §4.6).
 //
 // M36 publishes the platform's alert/messaging surfaces. This module-owned init registers M36's
@@ -22,11 +27,7 @@
 // seams) by default — the M36-T04 resolution/fan-out engine over empty recipient ports + the
 // platform-default rule seed. Production injects the Drizzle/seam-backed ports (T07/T08) via
 // `deps.emitter`.
-import {
-  type AlertEmitter,
-  type MessagingProvider,
-  createInMemoryAlertEmitter,
-} from "@wardenx/messaging";
+import type { ChartPromotionSourceReader } from "@wardenx/types";
 import { getSeam, registerSeam } from "../../bootstrap/index";
 
 /** Injected production wiring for M36's published seams (the slice defaults to in-memory). */
@@ -35,6 +36,8 @@ export interface MessagingSeamDeps {
   emitter?: AlertEmitter;
   /** The DB-backed `MessagingProvider` to publish over the deny-stub (FB-T05; production only). */
   provider?: MessagingProvider;
+  /** The chart-promotion reader M8 and M14 show their reviewer (WP 3.7); absent = the fail-closed deny-stub stays. */
+  promotionSource?: ChartPromotionSourceReader;
 }
 
 /**
@@ -46,6 +49,7 @@ export function registerMessagingSeams(deps: MessagingSeamDeps = {}): void {
   const emitter = deps.emitter ?? createInMemoryAlertEmitter().emitter;
   registerSeam("AlertEmitter", emitter);
   if (deps.provider) registerSeam("MessagingProvider", deps.provider);
+  if (deps.promotionSource) registerSeam("ChartPromotionSourceReader", deps.promotionSource);
 }
 
 /**

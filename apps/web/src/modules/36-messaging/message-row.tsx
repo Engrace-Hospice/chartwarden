@@ -4,6 +4,7 @@ import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { MessageAnnotations } from "./message-annotations";
 import { MessageAttachments } from "./message-attachments";
+import { MessagePromotionButton } from "./message-promotion-button";
 import { MessageTaskButton } from "./message-task-button";
 import type { Message } from "./messaging-types";
 import { absoluteTime, dayLabel, initialsOf } from "./messaging-utils";
@@ -122,6 +123,8 @@ interface MessageRowProps {
   canPin?: boolean;
   /** WP 2.9: open who has read this announcement (only passed for a sender of announcements). */
   onShowReceipts?: (messageId: string) => void;
+  /** WP 3.7: the channel is a patient's care-team conversation, so a message can be proposed for the chart. */
+  patientLinked?: boolean;
 }
 
 function pluralReplies(count: number): string {
@@ -141,6 +144,7 @@ function MessageRowImpl({
   canAnnotate = canReply,
   canPin = false,
   onShowReceipts,
+  patientLinked = false,
 }: MessageRowProps): JSX.Element {
   const showDay = !previous || dayLabel(previous.createdAt) !== dayLabel(message.createdAt);
   const mine = message.authorUserId === meId;
@@ -244,6 +248,14 @@ function MessageRowImpl({
                 channelId={message.channelId}
                 messageId={message.messageId}
                 meId={meId}
+              />
+            ) : null}
+            {!deleted && canAnnotate && patientLinked ? (
+              <MessagePromotionButton
+                channelId={message.channelId}
+                messageId={message.messageId}
+                authorName={message.authorDisplayName}
+                patientLinked={patientLinked}
               />
             ) : null}
             {onShowReceipts && !deleted ? (

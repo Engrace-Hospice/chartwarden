@@ -72,6 +72,11 @@ import {
 } from "./messaging-typebox";
 import { registerPatientContextRoutes, seamPatientContextPorts } from "./patient-context-routes";
 import { type PresenceRouteDeps, registerPresenceRoutes } from "./presence-routes";
+import {
+  DISABLED_PROMOTIONS,
+  type PromotionRouteDeps,
+  registerPromotionRoutes,
+} from "./promotion-routes";
 import { registerReactionPinRoutes } from "./reaction-pin-routes";
 import {
   DISABLED_SBAR,
@@ -108,6 +113,8 @@ export interface MessagingRouteDeps {
   tasks?: TaskRouteDeps;
   /** WP 3.5: clinical handoffs (flag + service). Omitted => flag off: every handoff route 404s and the list answers disabled. */
   handoffs?: HandoffRouteDeps;
+  /** WP 3.7: chart promotion (flag + service). Omitted => flag off: every promotion route 404s and the list answers disabled. */
+  promotions?: PromotionRouteDeps;
 }
 
 /**
@@ -374,6 +381,13 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
 
   // --- WP 3.5: clinical handoffs (a set of open-work pointers offered to a colleague who accepts per item; flag-gated) ---
   registerHandoffRoutes(app, deps.handoffs ?? DISABLED_HANDOFFS, { read: READ, send: SEND });
+
+  // --- WP 3.7: chart promotion (a message proposed for the chart; a reviewer decides in M8/M14, never here; flag-gated) ---
+  registerPromotionRoutes(app, deps.promotions ?? DISABLED_PROMOTIONS, {
+    read: READ,
+    send: SEND,
+    sendToChannel: SEND_TO_CHANNEL,
+  });
 
   // Structured autocomplete is scoped to a channel whose effective visibility has already been
   // revalidated. Patient results are intentionally limited by the service to the linked care-team

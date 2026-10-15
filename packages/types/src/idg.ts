@@ -19,7 +19,6 @@
 // ── Leaf-safe shared id aliases (single definition site elsewhere; imported for internal use only so the
 // package surface stays unambiguous under `export *` — re-exporting would be a TS2308 collision) ───────
 import type { AdmissionId, PatientId } from "./admission";
-import type { ClinicalLinkSource } from "./clinical-link";
 import type {
   CarePlanId,
   IdgDecisionId,
@@ -28,6 +27,7 @@ import type {
   LocationId,
   MembershipId,
 } from "./care-plan";
+import type { ClinicalLinkSource } from "./clinical-link";
 
 // ── M14-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ──────────
 export type IdgRecurringPolicyId = string;
@@ -120,7 +120,7 @@ export const M14_AUDIT_DENYLIST: { readonly [K in M14TableName]: readonly string
   idg_attendance: ["absence_note"],
   // "note_text" was never a real column here (§3.6/§7.6 correction, TASK-063/ARCH-020) — the real
   // free-text column is `body_text` (same name idg_action_item already carries).
-  idg_agenda_item: ["body_text"],
+  idg_agenda_item: ["body_text", "source_body_sha256"],
   idg_decision: [
     "payload->>rationaleText",
     "payload->>noteText",
@@ -175,6 +175,7 @@ export const M14_EVENT_NAMES = [
   "m14.minutes.amended",
   "m14.discipline_note.addendum_recorded",
   "m14.packet.frozen",
+  "m14.chart_promotion.decided",
 ] as const;
 
 /** An M14 outbox event name (§4.4). */

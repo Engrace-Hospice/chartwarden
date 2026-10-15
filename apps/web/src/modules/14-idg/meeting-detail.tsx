@@ -50,6 +50,7 @@ import { type LifecycleAction, LifecycleModal } from "./idg-meeting-modals";
 import { IdgStat, MeetingProgress } from "./idg-page-kit";
 import { PatientLabel, type PatientRef, patientText, shortId, useMemberNames } from "./idg-people";
 import { MEETING_TONE, stateLabel } from "./idg-status";
+import { MeetingPromotions } from "./meeting-promotions";
 
 interface MeetingView {
   id: string;
@@ -550,6 +551,10 @@ export function MeetingDetail(): JSX.Element {
             }
           />
         </Panel>
+
+        {canCoordinate && id ? (
+          <MeetingPromotions meetingId={id} onAgendaChanged={() => void load()} />
+        ) : null}
 
         <Panel
           title="Patient packets"
