@@ -314,6 +314,27 @@ describe("read-audit emission for a multi-patient read (patientIdsPayload)", () 
   });
 });
 
+describe("read-audit emission for a read that discloses nothing", () => {
+  it("emits no event (and no failing insert) when the result names no resource and no patient", async () => {
+    const app = makeApp();
+    app.get(
+      "/api/v1/patients/review-items",
+      {
+        config: {
+          auditRead: {
+            resourceKind: "messaging_review_item",
+            resourceIdPayloadPath: "items.0.id",
+            patientIdsPayload: { path: "items", key: "patient_id" },
+          },
+        },
+      },
+      async () => ({ items: [] }),
+    );
+    await app.inject({ method: "GET", url: "/api/v1/patients/review-items" });
+    expect(captured).toHaveLength(0);
+  });
+});
+
 describe("read-audit emission for a PHI-bearing POST (resourceIdPayloadPath)", () => {
   it("accounts a created resource against its payload id, one event per distinct patient", async () => {
     const app = makeApp();

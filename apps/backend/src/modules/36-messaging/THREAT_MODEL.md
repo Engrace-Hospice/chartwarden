@@ -117,6 +117,18 @@ The lifecycle threats below are scoped to the review queue (`messaging_review_it
 (T-1, T-2, R-1); Platform team (D-1, D-2) — a PR-merge gate on changes to `packages/messaging/`,
 `packages/messaging/notification/`, or the M36 migrations.
 
+### Care-team sync (WP 3.9, ADR-0066)
+
+The threats below cover the routing step added to `channel-membership-sync` (`care-team-sync/care-team-review.ts`) and its reuse of the WP 3.8 review table. The live suite is `m36-care-team-review.live.test.ts`. IDs continue after the WP 3.8 block and above those WP 3.10 claims on another branch. All wording is provisional pending clinical-lead sign-off.
+
+| # | Class | Threat | Control (where it lives) |
+|---|---|---|---|
+| I-18 | Info disclosure | A removed clinician keeps seeing the patient: a `manual` member row, or an id-only realtime hint during relay lag | Accepted limits (D7, D8). Access for `auto` members is cut at once by the live roster check, before any consumer runs; a seam error is a denial. A `manual` member (audited override) is never touched by the sync; the reviewer removes it through the member route. Hints go to per-user rooms resolved from live member rows and carry ids only; a static test fails if any backend source emits to a `careteam:` room. |
+| D-9 | DoS / safety | A removed clinician's open task is orphaned and nobody notices (it drops from their list when channel access ends) | The consumer queues each open care-team task of that clinician for that patient in the review queue and alerts supervisors (`m36.review.queued`, flag permitting). Nothing is auto-reassigned or closed (D3). Offered handoffs are not queued (ADR-0062 sender accountability and 240-minute expiry alert remain). A roster seam failure is rethrown so the relay retries rather than reading as "removed". |
+| T-12 | Tampering | Routing alters or deletes the clinician's work, or queues the same task twice | The router has no insert, update or delete of its own and calls no mutating task method (static test); the live suite byte-compares the task row before and after. Rows are written only through 3.8's `queueReviewItems`; the unique trigger index and the one-open-per-item index make a redelivered event or a lifecycle-reviewed task a no-op. |
+| E-14 | EoP | A clinician still on the team is treated as removed and their work is moved, or a cross-tenant event queues another tenant's task | The roster is re-read (`shouldRoute`) and a clinician with another open role routes nothing. The tenant is the outbox envelope, never the payload; every read and write runs under the system context of that organisation (live case: a tenant B event queues nothing for tenant A). A quick re-assignment race can queue a task for a clinician back on the team; the reviewer closes it as an accepted limit. |
+| R-6 | Repudiation | The removal leaves no trail of who must decide | The review row (subject, cause, trigger) is audited by the 3.8 trigger with `patient_id` and `trigger_ref` scrubbed; reads and decisions are audited by 3.8. The alert carries no patient, name or cause. |
+
 ## Disaster-recovery tier
 
 **SOS field-safety voice escalation is the platform's single Tier-1 dependency** (architecture /

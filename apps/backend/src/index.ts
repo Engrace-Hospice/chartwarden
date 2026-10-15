@@ -1407,6 +1407,7 @@ import {
   countLegacyBodiesAllTenants,
   runLegacyBodyBootCheck,
 } from "./modules/36-messaging/body-legacy-key-check";
+import { buildCareTeamReviewRouter } from "./modules/36-messaging/care-team-sync/binding";
 import { cronAlertCorrelationId } from "./modules/36-messaging/cron-alert-correlation";
 import { createNameExclusions } from "./modules/36-messaging/global-search/name-exclusion";
 import { registerM36GlobalSearch } from "./modules/36-messaging/global-search/register";
@@ -9877,6 +9878,20 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                   getSeam("AdmissionStatusReader") as AdmissionStatusReader
                 ).getAdmissionSummary(orgId, admissionId)
               ).patientId,
+            // WP 3.9 - a clinician taken off the team: their open care-team tasks for that patient are queued for a
+            // supervisor (tasks only; handoffs keep ADR-0062's guarantees). Bound only with the review binding.
+            ...(m36Review
+              ? {
+                  routeForReview: buildCareTeamReviewRouter({
+                    db: dbHandle.db,
+                    careTeamMembers: async (organizationId, patientId) =>
+                      getSeam("CareTeamProvider").careTeamMembers({ organizationId, patientId }),
+                    alerts: getSeam("AlertEmitter") as AlertEmitter,
+                    isFlagOn: m36Review.isEnabled,
+                    warn: (message, context) => m36ReviewWarn(message, context),
+                  }),
+                }
+              : {}),
           }),
           // WP 3.8 - a patient who is discharged, dies or transfers out: their open care-team tasks are queued for a
           // supervisor's decision (never deleted, never auto-closed) and the people affected are told. Bound only with

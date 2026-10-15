@@ -186,6 +186,18 @@ export function createMemoryTaskStore(): MemoryTaskStore {
         .slice(0, limit)
         .map((t) => t.id);
     },
+    async activeTaskIdsForAssigneeAndPatient(orgId, userId, patientId) {
+      return [...tasks.values()]
+        .filter(
+          (t) =>
+            t.organizationId === orgId &&
+            t.assigneeId === userId &&
+            t.patientId === patientId &&
+            isActive(t.status),
+        )
+        .map((t) => t.id)
+        .sort();
+    },
     async getForUpdate(_tx, orgId, taskId) {
       const t = tasks.get(taskId);
       return t && t.organizationId === orgId ? t : null;

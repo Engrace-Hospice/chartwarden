@@ -6,7 +6,8 @@
 //
 //   event (outbox)                  -> action
 //   m5.patient.assignment_created   -> reopen an archived channel (readmission), then reconcile membership
-//   m5.patient.assignment_ended     -> reconcile membership (the unassigned clinician's row is soft-removed)
+//   m5.patient.assignment_ended     -> reconcile membership (the unassigned clinician's row is soft-removed), then
+//                                      queue their open tasks for review (WP 3.9, ADR-0066)
 //   m5.patient.deceased             -> reconcile, then archive
 //   m6.admission.discharged         -> archive (patient resolved through M6's AdmissionStatusReader seam)
 //
@@ -40,6 +41,16 @@ export interface ChannelMembershipSyncDeps {
   readonly reopenCareTeam: (orgId: string, patientId: string) => Promise<boolean>;
   /** Resolve an admission to its patient id (M6 AdmissionStatusReader), or null when unknown. */
   readonly patientIdForAdmission: (orgId: string, admissionId: string) => Promise<string | null>;
+  /**
+   * WP 3.9: after the roster sync, queue the removed clinician's open tasks for a supervisor (care-team-review.ts). A throw
+   * propagates so the relay retries; the sync above is idempotent. `eventId` is the outbox event id (the trigger reference).
+   */
+  readonly routeForReview?: (
+    orgId: string,
+    patientId: string,
+    clinicianUserId: string,
+    eventId: string,
+  ) => Promise<unknown>;
 }
 
 function requireString(p: Record<string, unknown>, key: string, eventName: string): string {
@@ -64,7 +75,10 @@ async function handleEvent(
       return;
     }
     case "m5.patient.assignment_ended": {
-      await deps.syncCareTeam(orgId, requireString(p, "patientId", event.eventType));
+      const patientId = requireString(p, "patientId", event.eventType);
+      const clinicianUserId = requireString(p, "clinicianUserId", event.eventType);
+      await deps.syncCareTeam(orgId, patientId);
+      await deps.routeForReview?.(orgId, patientId, clinicianUserId, event.id);
       return;
     }
     case "m5.patient.deceased": {

@@ -481,3 +481,6 @@ export * from "./promotions";
 
 // M36 WP 3.8 lifecycle review queue - pure rules
 export * from "./review";
+
+// M36 WP 3.9 care-team sync - pure rules
+export * from "./care-team";
