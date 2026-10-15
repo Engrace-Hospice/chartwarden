@@ -97,6 +97,18 @@ describe("resolveRoute", () => {
     });
   });
 
+  it("lets the MAC reason code outrank a MAC-specific CARC rule, so a 56900 stays protected", () => {
+    const carcForCgs = rule({
+      id: "c",
+      macName: "CGS",
+      codeKind: "carc",
+      code: "50",
+      route: "appeal",
+    });
+    const reason56900 = rule({ id: "m", macName: null, route: "reopening" });
+    expect(resolveRoute(denial(), [carcForCgs, reason56900]).rule?.id).toBe("m");
+  });
+
   it("takes the latest effective rule when two tie, deterministically", () => {
     const older = rule({ id: "o", effectiveFrom: "2026-01-01", route: "appeal" });
     const newer = rule({ id: "n", effectiveFrom: "2026-03-01", route: "reopening" });

@@ -9,7 +9,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import {
   type AdrState,
   type ReopeningFilingRefusal,
@@ -21,7 +21,7 @@ import {
 } from "../domain";
 import type { M25ReadActor, M25WriteActor } from "./actor";
 import { VersionConflictError } from "./concurrency";
-import { resolveDenialRoute } from "./denial-route-service";
+import { isUniqueViolation, resolveDenialRoute } from "./denial-route-service";
 import { providerEntityScopeCondition } from "./scope";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
@@ -166,10 +166,12 @@ export function buildDrizzleReopeningService(db: DbClient): ReopeningService {
         409,
       );
     }
+    // The legal edge was checked against the row read above, so the update also pins that state and the caller's
+    // version: a concurrent writer makes it match nothing (a 409), never apply to a state it was not checked for.
     const updated = await tx
       .update(RC)
-      .set({ state: to, version: cur.version + 1, ...fields })
-      .where(and(eq(RC.id, cur.id), eq(RC.version, ifMatch)))
+      .set({ state: to, version: sql`${RC.version} + 1`, ...fields })
+      .where(and(eq(RC.id, cur.id), eq(RC.version, ifMatch), eq(RC.state, cur.state)))
       .returning({ id: RC.id, version: RC.version });
     if (!updated[0]) throw new VersionConflictError(cur.version);
     await tx.insert(EV).values({
@@ -212,17 +214,27 @@ export function buildDrizzleReopeningService(db: DbClient): ReopeningService {
             )
             .limit(1);
           adr = rows[0];
-          if (!adr || adr.claimId !== denial.claimId) throw new NotFoundError("ADR case");
+          // The ADR must be on this claim and not tied to another denial: an ADR answering a sibling denial must
+          // not be consumed (and closed as a non-response) by this one.
+          if (
+            !adr ||
+            adr.claimId !== denial.claimId ||
+            (adr.denialCaseId !== null && adr.denialCaseId !== input.denialCaseId)
+          ) {
+            throw new NotFoundError("ADR case");
+          }
         }
         const macName = (adr?.macName ?? input.macName ?? "").trim();
         if (!macName) throw new WardenXError("INVALID_MAC", "the MAC name is required", 422);
         // Only a denial the routing rules send to a reopening may open one: an appealable denial belongs in the
         // appeal chain, and a second path for it would let the wrong clock run.
+        // The MAC that picks a MAC-specific rule comes only from an ADR (the chosen one, else the denial's own
+        // lookup), never from the typed name: a typed name could select the rule the opener prefers.
         const route = await resolveDenialRoute(
           tx,
           input.denialCaseId,
           actor.providerEntityScope,
-          macName,
+          adr?.macName ?? null,
         );
         if (route.route !== "reopening") {
           throw new WardenXError(
@@ -242,17 +254,43 @@ export function buildDrizzleReopeningService(db: DbClient): ReopeningService {
             409,
           );
         }
-        const inserted = await tx
-          .insert(RC)
-          .values({
-            organizationId: actor.organizationId,
-            providerEntityId: denial.providerEntityId,
-            claimId: denial.claimId,
-            denialCaseId: input.denialCaseId,
-            adrCaseId: adr?.id ?? null,
-            macName,
-          })
-          .returning({ id: RC.id, version: RC.version });
+        // One path at a time: an appeal still being worked on this denial would run a second clock beside it.
+        const AP = schema.appealCase;
+        const appeals = await tx
+          .select({ state: AP.state })
+          .from(AP)
+          .where(eq(AP.denialCaseId, input.denialCaseId));
+        if (appeals.some((a) => ["draft", "submitted", "under_review"].includes(a.state))) {
+          throw new WardenXError(
+            "APPEAL_IN_PROGRESS",
+            "this denial already has an appeal in progress; withdraw or finish it before opening a reopening",
+            409,
+          );
+        }
+        let inserted: { id: string; version: number }[];
+        try {
+          inserted = await tx
+            .insert(RC)
+            .values({
+              organizationId: actor.organizationId,
+              providerEntityId: denial.providerEntityId,
+              claimId: denial.claimId,
+              denialCaseId: input.denialCaseId,
+              adrCaseId: adr?.id ?? null,
+              macName,
+            })
+            .returning({ id: RC.id, version: RC.version });
+        } catch (e) {
+          // Two creates raced past the check above; the live-per-denial index is the backstop.
+          if (isUniqueViolation(e)) {
+            throw new WardenXError(
+              "REOPENING_EXISTS",
+              "this denial already has a reopening in progress",
+              409,
+            );
+          }
+          throw e;
+        }
         await tx.insert(EV).values({
           organizationId: actor.organizationId,
           reopeningCaseId: inserted[0]!.id,
@@ -262,15 +300,18 @@ export function buildDrizzleReopeningService(db: DbClient): ReopeningService {
         // The MAC never got a response, so an ADR still being worked is over: record it as the non-response it
         // became, in this transaction. A submitted or closed ADR is only linked (nothing to move).
         if (adr && canTransitionAdr(adr.state as AdrState, "denied_no_response")) {
-          await tx
+          const moved = await tx
             .update(ADR)
             .set({
               state: "denied_no_response",
-              version: adr.version + 1,
+              version: sql`${ADR.version} + 1`,
               reviewedByMembershipId: null,
               reviewedAt: null,
             })
-            .where(and(eq(ADR.id, adr.id), eq(ADR.version, adr.version)));
+            .where(and(eq(ADR.id, adr.id), eq(ADR.version, adr.version)))
+            .returning({ id: ADR.id });
+          // Someone changed the ADR after it was read (for example filed it): nothing is half-recorded.
+          if (!moved[0]) throw new VersionConflictError(adr.version);
           await tx.insert(ADR_EV).values({
             organizationId: actor.organizationId,
             adrCaseId: adr.id,
@@ -338,8 +379,8 @@ export function buildDrizzleReopeningService(db: DbClient): ReopeningService {
         }
         const updated = await tx
           .update(RC)
-          .set({ dueAt: due, version: cur.version + 1 })
-          .where(and(eq(RC.id, id), eq(RC.version, ifMatch)))
+          .set({ dueAt: due, version: sql`${RC.version} + 1` })
+          .where(and(eq(RC.id, id), eq(RC.version, ifMatch), eq(RC.state, cur.state)))
           .returning({ id: RC.id, version: RC.version });
         if (!updated[0]) throw new VersionConflictError(cur.version);
         await tx.insert(EV).values({

@@ -221,9 +221,9 @@ describe.skipIf(!DB_URL)("M25 denial routing and reopenings - LIVE Postgres", ()
     expect(await refused(routeSvc().setMacReasonCode(A(), id, "56900", v))).toMatchObject({
       statusCode: 409,
     });
-    expect(
-      await refused(routeSvc().setMacReasonCode(A(), randomUUID(), "56900", 1)),
-    ).toMatchObject({ statusCode: 404 });
+    expect(await refused(routeSvc().setMacReasonCode(A(), randomUUID(), "56900", 1))).toMatchObject(
+      { statusCode: 404 },
+    );
   });
 
   it("refuses an appeal on a reopening-route denial without an override, and records the override reason", async () => {
@@ -423,13 +423,183 @@ describe.skipIf(!DB_URL)("M25 denial routing and reopenings - LIVE Postgres", ()
     await expect(
       admin.query("UPDATE reopening_case SET state='submitted' WHERE id=$1", [rid]),
     ).rejects.toThrow(/reopening_case_filed_has_proof/);
+    // a draft cannot skip filing and the decision
+    await expect(
+      admin.query("UPDATE reopening_case SET state='decided' WHERE id=$1", [rid]),
+    ).rejects.toThrow(/M25_REOPENING_ILLEGAL_TRANSITION/);
+    // a draft carrying filing facts is refused
+    await expect(
+      admin.query("UPDATE reopening_case SET filed_at=now() WHERE id=$1", [rid]),
+    ).rejects.toThrow(/reopening_case_draft_not_filed/);
+    // once filed: a decision needs its outcome, state cannot go backwards, a recorded decision cannot change
+    await reopenSvc().submitReopening(A(), rid, filing(), await rver(rid));
+    await expect(
+      admin.query("UPDATE reopening_case SET state='decided' WHERE id=$1", [rid]),
+    ).rejects.toThrow(/reopening_case_decided_has_outcome/);
+    await expect(
+      admin.query("UPDATE reopening_case SET state='draft' WHERE id=$1", [rid]),
+    ).rejects.toThrow(/M25_REOPENING_ILLEGAL_TRANSITION/);
+    await reopenSvc().decideReopening(A(), rid, "granted", await rver(rid));
+    await expect(
+      admin.query("UPDATE reopening_case SET outcome='denied' WHERE id=$1", [rid]),
+    ).rejects.toThrow(/M25_REOPENING_DECISION_IMMUTABLE/);
+    await expect(
+      admin.query("UPDATE reopening_case SET state='submitted' WHERE id=$1", [rid]),
+    ).rejects.toThrow(/M25_REOPENING_ILLEGAL_TRANSITION/);
+    await expect(
+      admin.query("UPDATE reopening_case SET state='closed' WHERE id=$1", [rid]),
+    ).rejects.toThrow(/reopening_case_closed_has_time/);
+  });
+
+  it("refuses a blank MAC name in the database", async () => {
     await expect(
       admin.query(
-        `UPDATE reopening_case SET state='decided', form_name='f', filing_channel='fax',
-           filing_confirmation_ref='r', filed_at=now() WHERE id=$1`,
-        [rid],
+        `INSERT INTO denial_route_rule (organization_id, mac_name, code_kind, code, route)
+         VALUES ($1,'  ','carc','50','appeal')`,
+        [ORG],
       ),
-    ).rejects.toThrow(/reopening_case_decided_has_outcome/);
+    ).rejects.toThrow(/denial_route_rule_mac_name_check/);
+  });
+
+  it("locks the MAC reason code once the denial is on a reopening route, so the override cannot be dodged", async () => {
+    const id = await reopeningDenial();
+    for (const code of [null, "X1"]) {
+      expect(
+        await refused(routeSvc().setMacReasonCode(A(), id, code, await dver(id))),
+      ).toMatchObject({ code: "ROUTE_LOCKED", statusCode: 409 });
+    }
+    // re-saving the same code is not a change
+    await routeSvc().setMacReasonCode(A(), id, "56900", await dver(id));
+    // and the plain appeal route is still closed
+    expect(
+      await refused(writeSvc().createAppeal(A(), id, { noticeDate: daysAgo(3) })),
+    ).toMatchObject({ code: "ROUTE_IS_REOPENING" });
+  });
+
+  it("keeps a denial on the reopening path while a reopening is live, even if the rules flip later", async () => {
+    const id = await reopeningDenial();
+    const { id: rid } = await reopenSvc().createReopening(A(), {
+      denialCaseId: id,
+      macName: "CGS",
+    });
+    await routeSvc().upsertRule(A(), {
+      codeKind: "mac_reason",
+      code: "56900",
+      route: "appeal",
+      verifiedOn: daysAgo(1),
+    });
+    expect(
+      await refused(writeSvc().createAppeal(A(), id, { noticeDate: daysAgo(3) })),
+    ).toMatchObject({ code: "ROUTE_IS_REOPENING", statusCode: 409 });
+    await reopenSvc().withdrawReopening(A(), rid, await rver(rid));
+    await admin.query("DELETE FROM denial_route_rule WHERE organization_id=$1", [ORG]);
+  });
+
+  it("refuses a reopening while an appeal is in progress on the denial", async () => {
+    const id = await reopeningDenial();
+    await writeSvc().createAppeal(A(), id, {
+      noticeDate: daysAgo(3),
+      routeOverrideReason: "The MAC said this is appealable",
+    });
+    expect(
+      await refused(reopenSvc().createReopening(A(), { denialCaseId: id, macName: "CGS" })),
+    ).toMatchObject({ code: "APPEAL_IN_PROGRESS", statusCode: 409 });
+  });
+
+  it("does not consume an ADR tied to another denial, and takes the MAC from the denial's own ADR", async () => {
+    const mine = await reopeningDenial();
+    const sibling = await mkDenial();
+    const siblingAdr = await adrSvc().createAdr(A(), {
+      claimId,
+      macName: "Palmetto",
+      reviewType: "adr",
+      requestedOn: daysAgo(5),
+      denialCaseId: sibling,
+    });
+    expect(
+      await refused(
+        reopenSvc().createReopening(A(), { denialCaseId: mine, adrCaseId: siblingAdr.id }),
+      ),
+    ).toMatchObject({ statusCode: 404 });
+    expect(await arow(siblingAdr.id)).toMatchObject({ state: "received" });
+    // the sibling's newer ADR does not steer this denial's MAC, so a CGS-only rule still applies to it
+    await adrSvc().createAdr(A(), {
+      claimId,
+      macName: "CGS",
+      reviewType: "adr",
+      requestedOn: daysAgo(6),
+      denialCaseId: mine,
+    });
+    await adrSvc().createAdr(A(), {
+      claimId,
+      macName: "Palmetto",
+      reviewType: "adr",
+      requestedOn: daysAgo(4),
+      denialCaseId: sibling,
+    });
+    expect((await routeSvc().getRoute(A(), mine)).macName).toBe("CGS");
+  });
+
+  it("makes exactly one of two racing creates win, the other a clean 409", async () => {
+    const id = await reopeningDenial();
+    const results = await Promise.all(
+      [1, 2].map(() =>
+        refused(reopenSvc().createReopening(A(), { denialCaseId: id, macName: "CGS" })),
+      ),
+    );
+    const losers = results.filter((r) => r !== null);
+    expect(losers).toHaveLength(1);
+    expect(losers[0]).toMatchObject({ code: "REOPENING_EXISTS", statusCode: 409 });
+  });
+
+  it("moves an ADR whose version had already advanced, with exactly one event (the zero-row race itself is guarded in code, not injectable here)", async () => {
+    const denial = await reopeningDenial();
+    const adr = await adrSvc().createAdr(A(), {
+      claimId,
+      macName: "CGS",
+      reviewType: "adr",
+      requestedOn: daysAgo(40),
+      denialCaseId: denial,
+    });
+    // another writer bumps the ADR version first (the service reads it, then updates where version matches)
+    await admin.query("UPDATE adr_case SET version = version + 1 WHERE id=$1", [adr.id]);
+    const created = await reopenSvc().createReopening(A(), {
+      denialCaseId: denial,
+      adrCaseId: adr.id,
+    });
+    // a fresh read sees the bumped version, so the move still applies once, with exactly one event
+    expect(await arow(adr.id)).toMatchObject({ state: "denied_no_response", version: 3 });
+    expect(
+      Number(
+        (
+          await admin.query(
+            "SELECT count(*) FROM adr_case_event WHERE adr_case_id=$1 AND event_kind='denied_no_response'",
+            [adr.id],
+          )
+        ).rows[0].count,
+      ),
+    ).toBe(1);
+    expect(created.id).toBeTruthy();
+  });
+
+  it("ranks a MAC reason code above a MAC-specific CARC rule, live", async () => {
+    const id = await reopeningDenial();
+    await routeSvc().upsertRule(A(), {
+      macName: "CGS",
+      codeKind: "carc",
+      code: "50",
+      route: "appeal",
+      verifiedOn: daysAgo(1),
+    });
+    await adrSvc().createAdr(A(), {
+      claimId,
+      macName: "CGS",
+      reviewType: "adr",
+      requestedOn: daysAgo(2),
+      denialCaseId: id,
+    });
+    expect((await routeSvc().getRoute(A(), id)).route).toBe("reopening");
+    await admin.query("DELETE FROM denial_route_rule WHERE organization_id=$1", [ORG]);
   });
 
   it("keeps an append-only history and writes an audit row without the confirmation reference", async () => {
@@ -463,16 +633,27 @@ describe.skipIf(!DB_URL)("M25 denial routing and reopenings - LIVE Postgres", ()
       denialCaseId: id,
       macName: "CGS",
     });
-    await expect(
-      withOrgContext(handle.db, { organizationId: ORG, userId: "" }, (tx) =>
-        tx.execute(sql`DELETE FROM reopening_case WHERE id = ${rid}`),
+    // drizzle wraps the driver error, so the database's own message is on the cause
+    const dbMessage = async (p: Promise<unknown>): Promise<string> =>
+      p.then(
+        () => "",
+        (e: { cause?: { message?: string }; message?: string }) =>
+          e.cause?.message ?? e.message ?? "",
+      );
+    expect(
+      await dbMessage(
+        withOrgContext(handle.db, { organizationId: ORG, userId: "" }, (tx) =>
+          tx.execute(sql`DELETE FROM reopening_case WHERE id = ${rid}`),
+        ),
       ),
-    ).rejects.toThrow();
-    await expect(
-      withOrgContext(handle.db, { organizationId: ORG, userId: "" }, (tx) =>
-        tx.execute(sql`DELETE FROM reopening_case_event`),
+    ).toMatch(/permission denied/);
+    expect(
+      await dbMessage(
+        withOrgContext(handle.db, { organizationId: ORG, userId: "" }, (tx) =>
+          tx.execute(sql`DELETE FROM reopening_case_event`),
+        ),
       ),
-    ).rejects.toThrow();
+    ).toMatch(/permission denied/);
     const other = actorOf(memberB, ORG_B);
     expect(await reopenSvc().getReopening(other, rid)).toBeNull();
     expect((await reopenSvc().listReopenings(other, {}, 50)).items).toEqual([]);

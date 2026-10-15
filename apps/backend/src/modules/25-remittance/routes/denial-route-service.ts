@@ -8,7 +8,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
-import { and, asc, desc, eq, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, lte, sql } from "drizzle-orm";
 import {
   PLATFORM_ROUTE_RULES,
   type ResolvedRoute,
@@ -76,10 +76,7 @@ export interface DenialRouteService {
     ifMatch: number,
   ): Promise<{ id: string; version: number }>;
   listRules(actor: M25ReadActor): Promise<{ items: RouteRuleView[] }>;
-  upsertRule(
-    actor: M25WriteActor,
-    input: RouteRuleInput,
-  ): Promise<{ id: string; version: number }>;
+  upsertRule(actor: M25WriteActor, input: RouteRuleInput): Promise<{ id: string; version: number }>;
 }
 
 /** Rules in force today: the organization's (newest first) plus the built-in default, which a tenant rule outranks. */
@@ -132,17 +129,24 @@ export async function resolveDenialRoute(
   if (!denial) throw new NotFoundError("denial case");
   let macName = macNameHint?.trim() || null;
   if (!macName) {
-    const adr = await tx
+    // The MAC comes from an ADR: the one logged against THIS denial first; only when there is none, the newest ADR
+    // on the claim that is not tied to another denial (an ADR of a sibling denial must not steer this route).
+    const linked = await tx
       .select({ macName: ADR.macName })
       .from(ADR)
-      .where(
-        denial.claimId
-          ? sql`${ADR.denialCaseId} = ${denialCaseId} OR ${ADR.claimId} = ${denial.claimId}`
-          : eq(ADR.denialCaseId, denialCaseId),
-      )
+      .where(eq(ADR.denialCaseId, denialCaseId))
       .orderBy(desc(ADR.createdAt))
       .limit(1);
-    macName = adr[0]?.macName ?? null;
+    macName = linked[0]?.macName ?? null;
+    if (!macName && denial.claimId) {
+      const byClaim = await tx
+        .select({ macName: ADR.macName })
+        .from(ADR)
+        .where(and(eq(ADR.claimId, denial.claimId), isNull(ADR.denialCaseId)))
+        .orderBy(desc(ADR.createdAt))
+        .limit(1);
+      macName = byClaim[0]?.macName ?? null;
+    }
   }
   const resolved = resolveRoute(
     {
@@ -172,6 +176,12 @@ export async function resolveDenialRoute(
     macName,
   };
 }
+
+/** A Postgres unique violation (23505), whether the driver or drizzle wrapped it. */
+export const isUniqueViolation = (e: unknown): boolean => {
+  const code = (x: unknown): unknown => (x as { code?: unknown } | null | undefined)?.code;
+  return code(e) === "23505" || code((e as { cause?: unknown } | null)?.cause) === "23505";
+};
 
 /** True when `day` is a real YYYY-MM-DD calendar date (the schema only checks the shape). */
 const isRealDay = (day: string): boolean => {
@@ -208,9 +218,20 @@ export function buildDrizzleDenialRouteService(db: DbClient): DenialRouteService
           .limit(1);
         const cur = rows[0];
         if (!cur) throw new NotFoundError("denial case");
+        // Once the rules send a denial to a reopening, its reason code cannot be edited: clearing or changing it
+        // would turn the route into an appeal without the override permission and the audited reason. A wrong
+        // code is corrected with a routing rule (`denial_route.manage`), which is itself audited.
+        const before = await resolveDenialRoute(tx, denialId, actor.providerEntityScope);
+        if (before.route === "reopening" && normalized !== before.macReasonCode) {
+          throw new WardenXError(
+            "ROUTE_LOCKED",
+            "this denial is routed to a MAC reopening, so its reason code cannot be changed; add a routing rule to correct the path",
+            409,
+          );
+        }
         const updated = await tx
           .update(DC)
-          .set({ macReasonCode: normalized, version: cur.version + 1 })
+          .set({ macReasonCode: normalized, version: sql`${DC.version} + 1` })
           .where(and(eq(DC.id, denialId), eq(DC.version, ifMatch)))
           .returning({ id: DC.id, version: DC.version });
         if (!updated[0]) throw new VersionConflictError(cur.version);
@@ -243,7 +264,11 @@ export function buildDrizzleDenialRouteService(db: DbClient): DenialRouteService
     async upsertRule(actor, input) {
       const code = input.code.trim().toUpperCase();
       if (!CODE_KINDS.includes(input.codeKind) || !MAC_REASON_CODE.test(code)) {
-        throw new WardenXError("INVALID_ROUTE_CODE", "the rule code is 1 to 16 letters or digits", 422);
+        throw new WardenXError(
+          "INVALID_ROUTE_CODE",
+          "the rule code is 1 to 16 letters or digits",
+          422,
+        );
       }
       for (const day of [input.verifiedOn, input.effectiveFrom]) {
         if (day !== undefined && !isRealDay(day)) {
@@ -279,18 +304,30 @@ export function buildDrizzleDenialRouteService(db: DbClient): DenialRouteService
             .returning({ id: RR.id, version: RR.version });
           return updated[0]!;
         }
-        const inserted = await tx
-          .insert(RR)
-          .values({
-            organizationId: actor.organizationId,
-            macName,
-            codeKind: input.codeKind,
-            code,
-            effectiveFrom,
-            ...fields,
-          })
-          .returning({ id: RR.id, version: RR.version });
-        return inserted[0]!;
+        try {
+          const inserted = await tx
+            .insert(RR)
+            .values({
+              organizationId: actor.organizationId,
+              macName,
+              codeKind: input.codeKind,
+              code,
+              effectiveFrom,
+              ...fields,
+            })
+            .returning({ id: RR.id, version: RR.version });
+          return inserted[0]!;
+        } catch (e) {
+          // Two first upserts of the same rule raced: the second is a conflict to retry, not a server error.
+          if (isUniqueViolation(e)) {
+            throw new WardenXError(
+              "RULE_CONFLICT",
+              "that rule was just created; reload and retry",
+              409,
+            );
+          }
+          throw e;
+        }
       });
     },
   };

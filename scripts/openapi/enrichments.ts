@@ -563,6 +563,7 @@ import {
   MacRulePageSchema as M25MacRulePageSchema,
   MacRuleRequestSchema as M25MacRuleRequestSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/adr.routes";
+import { M25ListQuerySchema } from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
 import {
   DenialRouteSchema as M25DenialRouteSchema,
   MacReasonCodeRequestSchema as M25MacReasonCodeRequestSchema,
@@ -577,7 +578,6 @@ import {
   RouteRulePageSchema as M25RouteRulePageSchema,
   RouteRuleRequestSchema as M25RouteRuleRequestSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/reopening.routes";
-import { M25ListQuerySchema } from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
 // M28 FHIR Gateway — the §4.2 request bodies + list queries the §4.1 route handlers validate against.
 import {
   AcceptProposalBody as M28AcceptProposalBody,
@@ -992,9 +992,9 @@ import {
   AppealAttachRequestSchema as M25AppealAttachRequestSchema,
   AppealCreateRequestSchema as M25AppealCreateRequestSchema,
   AppealDecideRequestSchema as M25AppealDecideRequestSchema,
-  AppealOverrideRequestSchema as M25AppealOverrideRequestSchema,
   // detail responses
   AppealDetailSchema as M25AppealDetailSchema,
+  AppealOverrideRequestSchema as M25AppealOverrideRequestSchema,
   AppealSubmitLateGoodCauseRequestSchema as M25AppealSubmitLateGoodCauseRequestSchema,
   AppealSubmitRequestSchema as M25AppealSubmitRequestSchema,
   // list/page responses

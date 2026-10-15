@@ -13,8 +13,8 @@ import { registerAppealRoutes } from "./appeals.routes";
 import { registerDenialRoutes } from "./denials.routes";
 import type { M25RouteServices } from "./index";
 import { registerInternalRoutes } from "./internal.routes";
-import { registerReopeningRoutes } from "./reopening.routes";
 import { registerRemittanceRoutes } from "./remittance.routes";
+import { registerReopeningRoutes } from "./reopening.routes";
 import { registerTaxonomyRoutes } from "./taxonomy.routes";
 
 export { registerAdrRoutes, type AdrRouteDeps } from "./adr.routes";

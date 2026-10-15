@@ -15,7 +15,7 @@ ALTER TABLE "denial_case" ADD COLUMN "mac_reason_code" varchar(16);--> statement
 CREATE TABLE "denial_route_rule" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "organization_id" uuid NOT NULL REFERENCES "organization"("id") ON DELETE RESTRICT,
-  "mac_name" text,
+  "mac_name" text CHECK ("mac_name" IS NULL OR btrim("mac_name") <> ''),
   "code_kind" text NOT NULL CHECK ("code_kind" IN ('mac_reason','rarc','carc')),
   "code" varchar(16) NOT NULL CHECK (btrim("code") <> ''),
   "route" text NOT NULL CHECK ("route" IN ('appeal','reopening')),
@@ -37,7 +37,7 @@ CREATE TABLE "reopening_case" (
   "claim_id" uuid NOT NULL,
   "denial_case_id" uuid NOT NULL REFERENCES "denial_case"("id") ON DELETE RESTRICT,
   "adr_case_id" uuid REFERENCES "adr_case"("id") ON DELETE RESTRICT,
-  "mac_name" text NOT NULL,
+  "mac_name" text NOT NULL CHECK (btrim("mac_name") <> ''),
   "state" text NOT NULL DEFAULT 'draft' CHECK ("state" IN ('draft','submitted','decided','withdrawn','closed')),
   -- The filing facts: what was used and what the MAC gave back. Recorded together, frozen once recorded.
   "form_name" text,
@@ -56,11 +56,17 @@ CREATE TABLE "reopening_case" (
   CONSTRAINT "reopening_case_filed_has_proof" CHECK ("state" NOT IN ('submitted','decided','closed')
     OR ("form_name" IS NOT NULL AND "filing_channel" IS NOT NULL AND "filing_confirmation_ref" IS NOT NULL AND "filed_at" IS NOT NULL)),
   CONSTRAINT "reopening_case_decided_has_outcome" CHECK ("state" NOT IN ('decided','closed')
-    OR ("outcome" IS NOT NULL AND "decided_at" IS NOT NULL))
+    OR ("outcome" IS NOT NULL AND "decided_at" IS NOT NULL)),
+  CONSTRAINT "reopening_case_closed_has_time" CHECK ("state" <> 'closed' OR "closed_at" IS NOT NULL),
+  -- A draft has not been filed: the filing facts arrive together with the move to submitted.
+  CONSTRAINT "reopening_case_draft_not_filed" CHECK ("state" <> 'draft' OR "filed_at" IS NULL)
 );--> statement-breakpoint
 -- One live reopening per denial: a second request would be a duplicate the MAC has to reconcile.
 CREATE UNIQUE INDEX "reopening_case_live_per_denial" ON "reopening_case" ("denial_case_id")
   WHERE "state" IN ('draft','submitted','decided');--> statement-breakpoint
+-- The partial unique index above cannot serve the denial_case_id FK's lookup (a partial index is unusable for an
+-- unqualified equality), so the foreign key has its own full index.
+CREATE INDEX "ix_reopening_denial" ON "reopening_case" ("denial_case_id");--> statement-breakpoint
 CREATE INDEX "ix_reopening_claim" ON "reopening_case" ("claim_id");--> statement-breakpoint
 CREATE INDEX "ix_reopening_adr" ON "reopening_case" ("adr_case_id") WHERE "adr_case_id" IS NOT NULL;--> statement-breakpoint
 CREATE INDEX "ix_reopening_due" ON "reopening_case" ("due_at") WHERE "due_at" IS NOT NULL AND "state" IN ('draft','submitted');--> statement-breakpoint
@@ -146,12 +152,23 @@ ALTER FUNCTION audit_phi_write_reopening_case_event() OWNER TO wardenx_audit_wri
 CREATE TRIGGER "trg_audit_reopening_case_event" AFTER INSERT OR UPDATE OR DELETE ON reopening_case_event FOR EACH ROW EXECUTE FUNCTION audit_phi_write_reopening_case_event();--> statement-breakpoint
 
 -- What was filed is frozen: once the filing facts are recorded, none of them may change (a correction is a new
--- request, not an edit of the proof). A terminal reopening is frozen entirely.
+-- request, not an edit of the proof). A recorded decision is frozen too, only legal state edges are accepted (the
+-- same table as domain/reopening-machine.ts), and a terminal reopening is frozen entirely, so SQL that bypasses
+-- the service cannot move a case backwards or rewrite what the MAC decided.
 CREATE OR REPLACE FUNCTION m25_reopening_case_guard() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
   IF OLD.state IN ('closed','withdrawn') THEN
     RAISE EXCEPTION 'M25_REOPENING_TERMINAL_IMMUTABLE: reopening_case % is % and cannot be modified', OLD.id, OLD.state;
+  END IF;
+  IF NEW.state <> OLD.state AND NOT (
+       (OLD.state = 'draft' AND NEW.state IN ('submitted','withdrawn'))
+    OR (OLD.state = 'submitted' AND NEW.state IN ('decided','withdrawn'))
+    OR (OLD.state = 'decided' AND NEW.state = 'closed')) THEN
+    RAISE EXCEPTION 'M25_REOPENING_ILLEGAL_TRANSITION: reopening_case % cannot move from % to %', OLD.id, OLD.state, NEW.state;
+  END IF;
+  IF OLD.state = 'decided' AND (NEW.outcome IS DISTINCT FROM OLD.outcome OR NEW.decided_at IS DISTINCT FROM OLD.decided_at) THEN
+    RAISE EXCEPTION 'M25_REOPENING_DECISION_IMMUTABLE: reopening_case % has a recorded decision that cannot change', OLD.id;
   END IF;
   IF OLD.filed_at IS NOT NULL AND (
        NEW.form_name IS DISTINCT FROM OLD.form_name

@@ -94,6 +94,8 @@ export function ReopeningPanel({
   const [filedAt, setFiledAt] = useState(restored?.filedAt ?? toLocalInput(new Date()));
   const [dueAt, setDueAt] = useState("");
   const [outcome, setOutcome] = useState<ReopeningOutcome>("granted");
+  // Withdrawing is final, so it takes a second click that names what it does.
+  const [confirmWithdraw, setConfirmWithdraw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -142,7 +144,8 @@ export function ReopeningPanel({
   }
 
   const filedIso = isoOrNull(filedAt);
-  const filingBlocked = formName.trim() === "" || confirmationRef.trim() === "" || filedIso === null;
+  const filingBlocked =
+    formName.trim() === "" || confirmationRef.trim() === "" || filedIso === null;
 
   async function file(): Promise<void> {
     if (!detail || filedIso === null) return;
@@ -235,14 +238,22 @@ export function ReopeningPanel({
             <Button
               tone="tertiary"
               size="sm"
-              disabled={
-                busy || (dueAt !== "" && dueIso === null) || (dueAt === "" && !detail.dueAt)
+              disabled={busy || !detail.dueAt}
+              onClick={() =>
+                void run("Clear deadline", (v) => setReopeningDue(client, reopeningId, v, null))
               }
+            >
+              Clear deadline
+            </Button>
+            <Button
+              tone="tertiary"
+              size="sm"
+              disabled={busy || dueIso === null}
               onClick={() =>
                 void run("Deadline", (v) => setReopeningDue(client, reopeningId, v, dueIso))
               }
             >
-              {dueAt === "" ? "Clear deadline" : "Save deadline"}
+              Save deadline
             </Button>
           </ButtonRow>
         </>
@@ -322,14 +333,40 @@ export function ReopeningPanel({
 
       {live ? (
         <ButtonRow>
-          <Button
-            tone="tertiary"
-            size="sm"
-            disabled={busy}
-            onClick={() => void run("Withdraw", (v) => withdrawReopening(client, reopeningId, v))}
-          >
-            Withdraw reopening
-          </Button>
+          {confirmWithdraw ? (
+            <>
+              <Hint>Withdrawing ends this reopening and cannot be undone.</Hint>
+              <Button
+                tone="danger"
+                size="sm"
+                disabled={busy}
+                onClick={() =>
+                  void run("Withdraw", (v) => withdrawReopening(client, reopeningId, v)).then(
+                    () => mounted.current && setConfirmWithdraw(false),
+                  )
+                }
+              >
+                Confirm withdraw
+              </Button>
+              <Button
+                tone="tertiary"
+                size="sm"
+                disabled={busy}
+                onClick={() => setConfirmWithdraw(false)}
+              >
+                Keep reopening
+              </Button>
+            </>
+          ) : (
+            <Button
+              tone="tertiary"
+              size="sm"
+              disabled={busy}
+              onClick={() => setConfirmWithdraw(true)}
+            >
+              Withdraw reopening
+            </Button>
+          )}
         </ButtonRow>
       ) : null}
     </>

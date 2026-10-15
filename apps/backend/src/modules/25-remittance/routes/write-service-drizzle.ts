@@ -12,11 +12,11 @@ import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, eq, sql } from "drizzle-orm";
 import {
   type AppealTier,
+  DEFAULT_DEADLINE_ZONE,
   type DenialState,
   canTransitionAppeal,
   canTransitionDenial,
   computeTierDeadline,
-  DEFAULT_DEADLINE_ZONE,
   deriveTierDeadline,
   isKnownZone,
   nextTier,
@@ -96,7 +96,9 @@ export function buildDrizzleM25WriteService(
    */
   async function providerZone(tx: M25Tx, providerEntityId: string): Promise<readonly string[]> {
     const zones = (
-      ports.providerZones ? await ports.providerZones(tx as unknown as DbClient, providerEntityId) : []
+      ports.providerZones
+        ? await ports.providerZones(tx as unknown as DbClient, providerEntityId)
+        : []
     ).filter(isKnownZone);
     return zones.length > 0 ? zones : [DEFAULT_DEADLINE_ZONE];
   }
@@ -186,7 +188,11 @@ export function buildDrizzleM25WriteService(
       .from(AC)
       .where(eq(AC.denialCaseId, denialCaseId));
     if (rows.some((r) => r.tier === tier && r.state !== "withdrawn" && r.state !== "closed")) {
-      throw new WardenXError("APPEAL_TIER_EXISTS", `a ${tier} appeal is already open on this denial`, 409);
+      throw new WardenXError(
+        "APPEAL_TIER_EXISTS",
+        `a ${tier} appeal is already open on this denial`,
+        409,
+      );
     }
     // Only a recorded, not-fully-favorable decision of the previous tier opens the next one; without it
     // nothing bounds the supplied date and a lapsed window could be reopened.
@@ -389,7 +395,16 @@ export function buildDrizzleM25WriteService(
         let routeOverride: { reason: string; ruleId: string | null } | null = null;
         if (tier === "redetermination") {
           const routed = await resolveDenialRoute(tx, denialCaseId, actor.providerEntityScope);
-          if (routed.route === "reopening") {
+          // A reopening already being worked on this denial means it is on the reopening path whatever the rules
+          // say now, so a later rule or reason-code change cannot make the plain appeal route open again.
+          const reopenings = await tx
+            .select({ state: schema.reopeningCase.state })
+            .from(schema.reopeningCase)
+            .where(eq(schema.reopeningCase.denialCaseId, denialCaseId));
+          const reopeningLive = reopenings.some((r) =>
+            ["draft", "submitted", "decided"].includes(r.state),
+          );
+          if (routed.route === "reopening" || reopeningLive) {
             const reason = input.routeOverrideReason?.trim() ?? "";
             if (reason.length < 10) {
               throw new WardenXError(

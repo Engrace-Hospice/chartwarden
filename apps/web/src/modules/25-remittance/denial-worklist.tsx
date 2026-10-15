@@ -21,7 +21,6 @@ import { BillingTabs } from "../../shell/billing-tabs";
 import { useSession } from "../../shell/session";
 import { findStepUpDraftResourceId } from "../../shell/step-up-redirect";
 import { DENIAL_DRAFT_ACTION, DenialDetailPanel } from "./denial-detail-panel";
-import { REOPENING_DRAFT_ACTION } from "./reopening-panel";
 import {
   AGING_BUCKET_TONE,
   DENIAL_CATEGORY_TONE,
@@ -30,6 +29,7 @@ import {
   money,
   toneOf,
 } from "./remittance-status";
+import { REOPENING_DRAFT_ACTION } from "./reopening-panel";
 
 interface DenialRow {
   id: string;
@@ -341,6 +341,7 @@ export function DenialWorklist(): JSX.Element {
       detail={
         workingId ? (
           <DenialDetailPanel
+            key={workingId}
             denialId={workingId}
             onClose={() => setWorkingId(null)}
             onChanged={() => void load()}

@@ -140,6 +140,7 @@ export const RouteRulePageSchema = Type.Object({
 
 const READ = P("reopening.read");
 const MANAGE = P("reopening.manage");
+const ADR_MANAGE = P("adr.manage");
 const SUBMIT = P("reopening.submit");
 const SUBMIT_STEPUP = STEP_UP("reopening.submit");
 const RULES = P("denial_route.manage");
@@ -166,7 +167,9 @@ export function registerReopeningRoutes(app: FastifyInstance, deps: ReopeningRou
       const q = request.query as Record<string, unknown>;
       const state = typeof q.state === "string" && q.state.length > 0 ? q.state : undefined;
       const denialCaseId =
-        typeof q.denialCaseId === "string" && q.denialCaseId.length > 0 ? q.denialCaseId : undefined;
+        typeof q.denialCaseId === "string" && q.denialCaseId.length > 0
+          ? q.denialCaseId
+          : undefined;
       // A non-uuid can never match a row, so it is an empty list rather than a database cast error.
       if (denialCaseId !== undefined && !UUID.test(denialCaseId)) return reply.send({ items: [] });
       return reply.send(
@@ -192,12 +195,17 @@ export function registerReopeningRoutes(app: FastifyInstance, deps: ReopeningRou
     },
   );
 
-  app.post("/api/v1/reopenings", { preHandler: [MANAGE, IDEMPOTENT] }, async (request, reply) => {
-    const body = parse(ReopeningCreateRequestSchema, request.body);
-    return reply
-      .code(201)
-      .send(await reopeningService.createReopening(writeActorOf(request), body));
-  });
+  // Opening a reopening against an ADR closes that ADR as a non-response, so it also needs the ADR key.
+  app.post(
+    "/api/v1/reopenings",
+    { preHandler: [MANAGE, ADR_MANAGE, IDEMPOTENT] },
+    async (request, reply) => {
+      const body = parse(ReopeningCreateRequestSchema, request.body);
+      return reply
+        .code(201)
+        .send(await reopeningService.createReopening(writeActorOf(request), body));
+    },
+  );
 
   app.put(
     "/api/v1/reopenings/:id/due",

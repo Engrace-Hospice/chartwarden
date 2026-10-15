@@ -19,8 +19,8 @@ export { buildDrizzleReopeningService, type ReopeningService } from "./reopening
 import type { M25IngestService } from "../ingest/service";
 import type { AdrService } from "./adr-service";
 import type { DenialRouteService } from "./denial-route-service";
-import type { ReopeningService } from "./reopening-service";
 import type { M25ReadService } from "./read-service";
+import type { ReopeningService } from "./reopening-service";
 import type { M25WriteService } from "./write-service";
 
 /**

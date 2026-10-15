@@ -51,12 +51,14 @@ function matches(rule: RouteRule, input: DenialRouteInput): boolean {
   return have !== "" && have === norm(rule.code);
 }
 
-/** Sort order, first wins: MAC-specific, the more specific code kind, the tenant's own rule, the latest effective date, then id (stable). */
+/** Sort order, first wins: the code kind (MAC reason > RARC > CARC), MAC-specific, the tenant's own rule, the latest effective date, then id (stable). */
 function precedence(a: RouteRule, b: RouteRule): number {
-  const specific = Number(b.macName !== null) - Number(a.macName !== null);
-  if (specific !== 0) return specific;
+  // The code kind comes first: the MAC's own reason code is the strongest signal, so a MAC-specific CARC rule can
+  // never silently switch off the protection a 56900 rule gives.
   const kind = KIND_RANK[b.codeKind] - KIND_RANK[a.codeKind];
   if (kind !== 0) return kind;
+  const specific = Number(b.macName !== null) - Number(a.macName !== null);
+  if (specific !== 0) return specific;
   const origin = Number(b.origin !== "platform") - Number(a.origin !== "platform");
   if (origin !== 0) return origin;
   if (a.effectiveFrom !== b.effectiveFrom) return a.effectiveFrom < b.effectiveFrom ? 1 : -1;

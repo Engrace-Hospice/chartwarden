@@ -8,7 +8,6 @@ import { Button, LoadingSpinner, StatusPill, TextField, useApiClient } from "@wa
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { ButtonRow, ErrorAlert, Facts, Hint, NoticeAlert } from "./action-ui";
-import { ReopeningPanel } from "./reopening-panel";
 import {
   type DenialRouteView,
   type ReopeningSummary,
@@ -18,6 +17,7 @@ import {
   setMacReasonCode,
 } from "./remittance-api";
 import { DENIAL_ROUTE_TONE, humanize, toneOf } from "./remittance-status";
+import { ReopeningPanel } from "./reopening-panel";
 
 const ROUTE_LABEL: Record<DenialRouteView["route"], string> = {
   appeal: "Appeal",
@@ -39,6 +39,12 @@ export interface DenialRoutePanelProps {
   readonly onChanged: () => void;
   /** Tells the parent which path the denial takes, so its appeal action can ask for an override reason. */
   readonly onRoute: (route: DenialRouteView["route"] | null) => void;
+  /** The parent is mid-action: both mutate the denial on the same If-Match version, so this panel waits. */
+  readonly locked?: boolean;
+  /** Tells the parent a command here is in flight, so its own actions wait too. */
+  readonly onBusyChange?: (busy: boolean) => void;
+  /** Bumped by the parent after one of its actions succeeded, so the path is read again. */
+  readonly refreshToken?: number;
 }
 
 export function DenialRoutePanel({
@@ -47,17 +53,31 @@ export function DenialRoutePanel({
   onDenialChanged,
   onChanged,
   onRoute,
+  locked = false,
+  onBusyChange,
+  refreshToken = 0,
 }: DenialRoutePanelProps): JSX.Element {
   const client = useApiClient();
   const [route, setRoute] = useState<DenialRouteView | null>(null);
   const [live, setLive] = useState<ReopeningSummary | null>(null);
+  /** False when the reopenings list could not be read: then "Open reopening" must not be offered (a live one may exist). */
+  const [listOk, setListOk] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [macName, setMacName] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [ownBusy, setOwnBusy] = useState(false);
+  const busy = ownBusy || locked;
+  const setBusy = (next: boolean): void => {
+    setOwnBusy(next);
+    onBusyChange?.(next);
+  };
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const mounted = useRef(true);
+  /** True once the person has typed in the reason code field: a reload must not overwrite their text. */
+  const codeTouched = useRef(false);
+  const onRouteRef = useRef(onRoute);
+  onRouteRef.current = onRoute;
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -72,21 +92,24 @@ export function DenialRoutePanel({
     ]);
     if (!mounted.current) return;
     if (!routeRes.ok) {
+      // Keep the last good path and any open form; the error is shown inline with a retry.
       setLoadError(routeRes.message);
-      onRoute(null);
       return;
     }
     setLoadError(null);
     setRoute(routeRes.value);
-    onRoute(routeRes.value.route);
-    setCode(routeRes.value.macReasonCode ?? "");
+    onRouteRef.current(routeRes.value.route);
+    if (!codeTouched.current) setCode(routeRes.value.macReasonCode ?? "");
     setMacName((cur) => cur || (routeRes.value.macName ?? ""));
-    setLive(reopenings.ok ? (reopenings.value.find(isLive) ?? null) : null);
-  }, [client, denialId, onRoute]);
+    setListOk(reopenings.ok);
+    if (reopenings.ok) setLive(reopenings.value.find(isLive) ?? null);
+  }, [client, denialId]);
 
+  // refreshToken is a trigger, not a value the effect reads: the parent bumps it after its own action succeeded.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-run on refreshToken by design
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, refreshToken]);
 
   async function saveCode(): Promise<void> {
     if (denialVersion === null) return;
@@ -96,8 +119,12 @@ export function DenialRoutePanel({
     const res = await setMacReasonCode(client, denialId, denialVersion, code.trim() || null);
     if (!mounted.current) return;
     if (!res.ok) setError(res.message);
-    else setNotice("MAC reason code saved.");
-    // The denial's version moved (or is stale after a refusal): reload both before the next action.
+    else {
+      setNotice("MAC reason code saved.");
+      codeTouched.current = false;
+    }
+    // The denial's version moved (or is stale after a refusal): reload both before the next action. A refused
+    // value stays in the field so the person can correct it.
     await onDenialChanged();
     await load();
     if (res.ok) onChanged();
@@ -117,8 +144,20 @@ export function DenialRoutePanel({
     if (mounted.current) setBusy(false);
   }
 
-  if (loadError) return <ErrorAlert message={loadError} />;
-  if (!route) return <LoadingSpinner />;
+  if (!route) {
+    return loadError ? (
+      <>
+        <ErrorAlert message={loadError} />
+        <ButtonRow>
+          <Button tone="tertiary" size="sm" onClick={() => void load()}>
+            Retry
+          </Button>
+        </ButtonRow>
+      </>
+    ) : (
+      <LoadingSpinner />
+    );
+  }
 
   const codeChanged = code.trim().toUpperCase() !== (route.macReasonCode ?? "");
 
@@ -127,6 +166,22 @@ export function DenialRoutePanel({
       <h3 className="wx-action-title">Path</h3>
       <NoticeAlert message={notice} />
       <ErrorAlert message={error} />
+      {loadError ? (
+        <>
+          <ErrorAlert message={loadError} />
+          <ButtonRow>
+            <Button tone="tertiary" size="sm" onClick={() => void load()}>
+              Retry
+            </Button>
+          </ButtonRow>
+        </>
+      ) : null}
+      {listOk ? null : (
+        <Hint>
+          The reopenings for this denial could not be read, so a new one cannot be opened until they
+          can.
+        </Hint>
+      )}
       <Facts
         items={[
           [
@@ -161,7 +216,10 @@ export function DenialRoutePanel({
       <TextField
         label="MAC reason code (for example 56900)"
         value={code}
-        onChange={(e) => setCode(e.target.value)}
+        onChange={(e) => {
+          codeTouched.current = true;
+          setCode(e.target.value);
+        }}
         maxLength={16}
       />
       <ButtonRow end>
@@ -177,6 +235,7 @@ export function DenialRoutePanel({
 
       {live ? (
         <ReopeningPanel
+          key={live.id}
           denialId={denialId}
           reopeningId={live.id}
           onChanged={() => {
@@ -184,7 +243,7 @@ export function DenialRoutePanel({
             onChanged();
           }}
         />
-      ) : route.route === "reopening" ? (
+      ) : route.route === "reopening" && listOk ? (
         <>
           <TextField
             label="MAC that is reopening this claim"

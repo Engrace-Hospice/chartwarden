@@ -20,6 +20,9 @@ let route: "appeal" | "reopening" | "undetermined" = "reopening";
 let unverified = true;
 let reopeningState: string | null = null;
 let dueAt: string | null = null;
+let routeFails = false;
+let listFails = false;
+let gets: string[] = [];
 
 const denialBody = () => ({
   id: DENIAL,
@@ -92,10 +95,16 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
     if (refusal) return json(refusal.status, refusal.body);
     return json(200, { id: REOPENING, version: 5 });
   }
+  gets.push(path);
   if (path === `/api/v1/denials/${DENIAL}`) return json(200, denialBody());
-  if (path === `/api/v1/denials/${DENIAL}/route`) return json(200, routeBody());
+  if (path === `/api/v1/denials/${DENIAL}/route`)
+    return routeFails
+      ? json(500, { error: { code: "INTERNAL", message: "route read failed" } })
+      : json(200, routeBody());
   if (path === "/api/v1/reopenings")
-    return json(200, { items: reopeningState ? [reopeningSummary()] : [] });
+    return listFails
+      ? json(500, { error: { code: "INTERNAL", message: "list read failed" } })
+      : json(200, { items: reopeningState ? [reopeningSummary()] : [] });
   if (path === `/api/v1/reopenings/${REOPENING}`)
     return json(200, {
       ...reopeningSummary(),
@@ -152,6 +161,9 @@ beforeEach(() => {
   unverified = true;
   reopeningState = null;
   dueAt = null;
+  routeFails = false;
+  listFails = false;
+  gets = [];
   window.sessionStorage.clear();
 });
 afterEach(() => cleanup());
@@ -227,6 +239,35 @@ describe("M25 denial path", () => {
     expect(
       await screen.findByText("the MAC reason code is 1 to 16 letters or digits"),
     ).toBeTruthy();
+    // the refused value stays in the field after the reload, so the person can correct it
+    await waitFor(() =>
+      expect((screen.getByLabelText(/MAC reason code/i) as HTMLInputElement).value).toBe(
+        "bad code",
+      ),
+    );
+  });
+
+  it("offers Retry, keeps the form and disables the appeal when the path cannot be read", async () => {
+    routeFails = true;
+    mount();
+    expect(await screen.findByText("route read failed")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "Open appeal" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    routeFails = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("MAC reopening")).toBeTruthy();
+  });
+
+  it("does not offer Open reopening when the reopenings could not be read", async () => {
+    listFails = true;
+    mount();
+    await screen.findByText("MAC reopening");
+    expect(
+      await screen.findByText(/could not be read, so a new one cannot be opened/),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Open reopening" })).toBeNull();
   });
 });
 
@@ -361,10 +402,17 @@ describe("M25 reopening lifecycle", () => {
     fireEvent.change(screen.getByLabelText("Confirmation or tracking reference"), {
       target: { value: "PRT-90210" },
     });
+    const readsBefore = gets.filter((p) => p === `/api/v1/reopenings/${REOPENING}`).length;
     fireEvent.click(screen.getByRole("button", { name: "Record filing" }));
     expect(
       await screen.findByText("This record changed before your action was applied."),
     ).toBeTruthy();
+    // the case was read again after the refusal, so the retry carries the version the server holds now
+    await waitFor(() =>
+      expect(gets.filter((p) => p === `/api/v1/reopenings/${REOPENING}`).length).toBeGreaterThan(
+        readsBefore,
+      ),
+    );
     // the button comes back after the reload, so the person can retry on the fresh version
     await waitFor(() =>
       expect(
@@ -395,10 +443,15 @@ describe("M25 reopening lifecycle", () => {
     expect(calls[0]).toMatchObject({ path: `/api/v1/reopenings/${REOPENING}/close`, ifMatch: "4" });
   });
 
-  it("lets a live reopening be withdrawn", async () => {
+  it("withdraws a live reopening only after a second, confirming click", async () => {
     reopeningState = "submitted";
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "Withdraw reopening" }));
+    expect(calls).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Keep reopening" }));
+    expect(calls).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Withdraw reopening" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm withdraw" }));
     await waitFor(() => expect(calls).toHaveLength(1));
     expect(calls[0]).toMatchObject({
       path: `/api/v1/reopenings/${REOPENING}/withdraw`,
