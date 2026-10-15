@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { createInMemoryEscalationRouter } from "@wardenx/messaging";
+import { createInMemoryEscalationRouter } from "@wardenx/messaging/testing/in-memory-escalation-router";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam, validateSeams } from "../../../bootstrap/index";
 import { getEscalationRouter } from "../seams";
@@ -13,15 +13,29 @@ const REQUEST = {
   asOf: "2026-06-01T16:00:00Z",
 };
 
-const SRC_ROOT = join(__dirname, "..", "..", "..");
+const REPO_ROOT = join(__dirname, "..", "..", "..", "..", "..", "..");
+const SCAN_DIRS = [join(REPO_ROOT, "apps"), join(REPO_ROOT, "packages")];
+const SKIPPED_DIRS = new Set(["node_modules", "dist", "build", ".vite", "coverage"]);
+const SOURCE_FILE = /\.(?:[cm]?[jt]sx?)$/;
+const TEST_FILE = /(?:\.test\.|\.spec\.|__tests__)/;
+/** The fake's own files and this guard are the only places allowed to name the fake. */
+const FAKE_FILES = ["in-memory-escalation-router", "escalation-router-seam.test"];
 
 function productionSourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
+    if (SKIPPED_DIRS.has(name)) return [];
     const full = join(dir, name);
     if (statSync(full).isDirectory()) return productionSourceFiles(full);
-    return /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) ? [full] : [];
+    const isProduction = SOURCE_FILE.test(name) && !TEST_FILE.test(full);
+    return isProduction && !FAKE_FILES.some((f) => full.includes(f)) ? [full] : [];
   });
 }
+
+const allProduction = () =>
+  SCAN_DIRS.flatMap(productionSourceFiles).map((file) => ({
+    file: relative(REPO_ROOT, file),
+    text: readFileSync(file, "utf8"),
+  }));
 
 describe("EscalationRouter seam (M36 -> M19)", () => {
   beforeEach(() => __resetSeamsForTest());
@@ -84,9 +98,8 @@ describe("EscalationRouter seam (M36 -> M19)", () => {
     expect(answer).toMatchObject({ kind: "resolved", userIds: ["u1"], source: "in_memory_fake" });
   });
 
-  it("is wired only through the seam registry: no production file imports the fake or registers a router from M36", () => {
-    const offenders = productionSourceFiles(SRC_ROOT)
-      .map((file) => ({ file: relative(SRC_ROOT, file), text: readFileSync(file, "utf8") }))
+  it("is wired only through the seam registry: no production file in apps/ or packages/ names the fake", () => {
+    const offenders = allProduction()
       .filter(
         ({ text }) =>
           text.includes("in-memory-escalation-router") ||
@@ -94,19 +107,34 @@ describe("EscalationRouter seam (M36 -> M19)", () => {
       )
       .map(({ file }) => file);
     expect(offenders).toEqual([]);
+  });
 
-    const registrars = productionSourceFiles(SRC_ROOT)
-      .map((file) => ({ file: relative(SRC_ROOT, file), text: readFileSync(file, "utf8") }))
-      .filter(({ text }) => /registerSeam\(\s*"EscalationRouter"/.test(text))
-      .map(({ file }) => file);
-    expect(registrars).toEqual([]);
+  it("M36 never registers the router: inside modules/36-messaging every registerSeam names another seam by literal", () => {
+    const REGISTER = /registerSeam\s*(?:<[^>]*>)?\s*\(\s*([^,)]*)/g;
+    const offenders: string[] = [];
+    for (const { file, text } of allProduction()) {
+      if (!file.includes("modules/36-messaging/")) continue;
+      for (const match of text.matchAll(REGISTER)) {
+        const arg = (match[1] ?? "").trim();
+        const literal = /^["']([A-Za-z]+)["']$/.exec(arg)?.[1];
+        if (literal === undefined || literal === "EscalationRouter")
+          offenders.push(`${file}: registerSeam(${arg})`);
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 
   it("resolves the router only through getEscalationRouter, never an ad hoc getSeam in another file", () => {
-    const callers = productionSourceFiles(SRC_ROOT)
-      .map((file) => ({ file: relative(SRC_ROOT, file), text: readFileSync(file, "utf8") }))
-      .filter(({ text }) => /getSeam\(\s*"EscalationRouter"/.test(text))
+    const callers = allProduction()
+      .filter(({ text }) => /getSeam\s*(?:<[^>]*>)?\s*\(\s*["']EscalationRouter["']/.test(text))
       .map(({ file }) => file);
-    expect(callers).toEqual(["modules/36-messaging/seams.ts"]);
+    expect(callers).toEqual(["apps/backend/src/modules/36-messaging/seams.ts"]);
+  });
+
+  it("keeps the raw seam unwrapped for now: getEscalationRouter is the registry entry itself (WP 4.4 adds the org-checking wrapper)", () => {
+    const fake = createInMemoryEscalationRouter({ orgId: ORG, ladders: [] });
+    registerSeam("EscalationRouter", fake);
+    validateSeams();
+    expect(getEscalationRouter()).toBe(fake);
   });
 });

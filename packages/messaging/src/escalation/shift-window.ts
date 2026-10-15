@@ -10,6 +10,12 @@
 //  - Comparison is on local wall-clock minutes. Spring-forward: a start inside the skipped hour begins at the first instant after
 //    the gap. Fall-back: a repeated hour is inside a window that spans it on both passes. Adjacent windows therefore stay
 //    gapless and non-overlapping through both transitions.
+//  - KNOWN CONSEQUENCE of the wall-clock rule: in the repeated fall-back hour a handoff at a wall-clock time inside that hour happens
+//    TWICE as elapsed time runs (A, B, A, B on 2026-11-01 in New York for a 01:30 handoff). A caller must therefore never re-evaluate
+//    the router at a later instant to decide who "owns" a request that was already routed: WP 4.4 records the resolved tier and
+//    assignee on the request and keys idempotency on the request, not on the clock.
+//  - Every instant is a full ISO-8601 date-time with an explicit offset (Z or +hh:mm); offset-less or non-ISO strings are refused
+//    rather than read in the server's zone.
 import { WardenXError } from "@wardenx/types";
 
 export interface ShiftWindow {
@@ -77,14 +83,52 @@ export function isKnownTimeZone(timeZone: string): boolean {
   }
 }
 
-function localClock(instantIso: string, timeZone: string): { weekday: number; minutes: number } {
+const INSTANT_MAX_LENGTH = 40;
+const INSTANT_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+/**
+ * The one instant validator: a full ISO-8601 date-time WITH an explicit offset (`Z` or `+hh:mm`), at most 40 characters, that the
+ * runtime can parse. An offset-less string ("2026-06-01T16:00:00") or a loose one ("June 1 2026", a bare date) is refused because
+ * the runtime would read it in the server's zone. Returns epoch milliseconds.
+ */
+export function parseStrictInstant(instantIso: string): number {
+  if (
+    typeof instantIso !== "string" ||
+    instantIso.length > INSTANT_MAX_LENGTH ||
+    !INSTANT_PATTERN.test(instantIso)
+  ) {
+    throw invalid("instant must be an ISO-8601 date-time with an explicit offset (Z or +hh:mm)");
+  }
   const ms = Date.parse(instantIso);
-  if (Number.isNaN(ms)) throw invalid(`instant "${instantIso}" is not a valid ISO-8601 instant`);
+  if (Number.isNaN(ms)) throw invalid("instant is not a valid ISO-8601 date-time");
+  return ms;
+}
+
+function localClock(instantIso: string, timeZone: string): { weekday: number; minutes: number } {
+  const ms = parseStrictInstant(instantIso);
   const parts = formatterFor(timeZone).formatToParts(new Date(ms));
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
   const weekday = WEEKDAYS[get("weekday")];
   if (weekday === undefined) throw invalid(`could not read the weekday in "${timeZone}"`);
   return { weekday, minutes: Number(get("hour")) * 60 + Number(get("minute")) };
+}
+
+/** Throws unless the window has HH:MM times, a start different from its end, and weekdays 0-6. */
+export function validateShiftWindow(window: ShiftWindow): void {
+  if (minutesOf(window.startTime) === minutesOf(window.endTime)) {
+    throw invalid("a shift window cannot start and end at the same time");
+  }
+  for (const d of window.days ?? []) {
+    if (!Number.isInteger(d) || d < 0 || d > 6)
+      throw invalid(`weekday ${d} must be an integer 0-6`);
+  }
+}
+
+/** Throws unless the zone is known and EVERY window is valid, so a malformed later window cannot hide behind an earlier match. */
+export function validateShiftSchedule(schedule: ShiftSchedule): void {
+  formatterFor(schedule.timeZone);
+  for (const w of schedule.windows) validateShiftWindow(w);
 }
 
 /** Is `instantIso` inside `window`, read in `timeZone`? Start inclusive, end exclusive. */
@@ -93,13 +137,9 @@ export function shiftWindowContains(
   window: ShiftWindow,
   instantIso: string,
 ): boolean {
+  validateShiftWindow(window);
   const start = minutesOf(window.startTime);
   const end = minutesOf(window.endTime);
-  if (start === end) throw invalid("a shift window cannot start and end at the same time");
-  for (const d of window.days ?? []) {
-    if (!Number.isInteger(d) || d < 0 || d > 6)
-      throw invalid(`weekday ${d} must be an integer 0-6`);
-  }
   const { weekday, minutes } = localClock(instantIso, timeZone);
   const startsOn = (day: number) => window.days === undefined || window.days.includes(day);
   if (start < end) return startsOn(weekday) && minutes >= start && minutes < end;
@@ -109,5 +149,6 @@ export function shiftWindowContains(
 
 /** Is `instantIso` inside any window of the schedule, read in the schedule's own zone? */
 export function scheduleContains(schedule: ShiftSchedule, instantIso: string): boolean {
+  validateShiftSchedule(schedule);
   return schedule.windows.some((w) => shiftWindowContains(schedule.timeZone, w, instantIso));
 }

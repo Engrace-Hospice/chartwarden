@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { scheduleContains, shiftWindowContains } from "../src/escalation/shift-window";
+import {
+  parseStrictInstant,
+  scheduleContains,
+  shiftWindowContains,
+  validateShiftSchedule,
+} from "../src/escalation/shift-window";
 
 const NIGHT = { startTime: "19:00", endTime: "07:00" } as const;
 const DAY = { startTime: "07:00", endTime: "19:00" } as const;
@@ -114,5 +119,64 @@ describe("scheduleContains", () => {
     const schedule = { timeZone: NY, windows: [DAY, { startTime: "21:00", endTime: "22:00" }] };
     expect(scheduleContains(schedule, "2026-06-02T01:30:00Z")).toBe(true); // 21:30 EDT
     expect(scheduleContains(schedule, "2026-06-02T03:00:00Z")).toBe(false); // 23:00 EDT
+  });
+});
+
+describe("parseStrictInstant", () => {
+  it("accepts Z and offset instants with optional seconds and fractions", () => {
+    expect(parseStrictInstant("2026-06-01T16:00:00Z")).toBe(Date.parse("2026-06-01T16:00:00Z"));
+    expect(parseStrictInstant("2026-06-01T12:00-04:00")).toBe(Date.parse("2026-06-01T16:00:00Z"));
+    expect(parseStrictInstant("2026-06-01T16:00:00.250+00:00")).toBe(
+      Date.parse("2026-06-01T16:00:00.250Z"),
+    );
+  });
+
+  it("refuses offset-less, loose, bare-date and over-long strings, whatever the process zone", () => {
+    const before = process.env.TZ;
+    try {
+      process.env.TZ = "Pacific/Auckland";
+      for (const bad of [
+        "2026-06-01T16:00:00",
+        "June 1 2026",
+        "2026-06-01",
+        "2026-06-01 16:00:00Z",
+        "2026-13-45T99:99:99Z",
+        `2026-06-01T16:00:00Z${" ".repeat(40)}`,
+        "",
+      ]) {
+        expect(() => parseStrictInstant(bad), bad).toThrow(/instant/i);
+      }
+    } finally {
+      if (before === undefined) Reflect.deleteProperty(process.env, "TZ");
+      else process.env.TZ = before;
+    }
+  });
+
+  it("is what shiftWindowContains uses, so an offset-less string is refused there too", () => {
+    expect(() => shiftWindowContains(NY, DAY, "2026-06-01T16:00:00")).toThrow(/instant/i);
+  });
+});
+
+describe("validateShiftSchedule", () => {
+  it("rejects a malformed later window even when an earlier window matches", () => {
+    const schedule = { timeZone: NY, windows: [DAY, { startTime: "25:00", endTime: "26:00" }] };
+    expect(() => validateShiftSchedule(schedule)).toThrow();
+    expect(() => scheduleContains(schedule, "2026-06-01T16:00:00Z")).toThrow();
+  });
+
+  it("rejects a bad zone, an empty window and a bad weekday", () => {
+    expect(() => validateShiftSchedule({ timeZone: "Nowhere/Land", windows: [DAY] })).toThrow(
+      /time zone/i,
+    );
+    expect(() =>
+      validateShiftSchedule({ timeZone: NY, windows: [{ startTime: "07:00", endTime: "07:00" }] }),
+    ).toThrow();
+    expect(() =>
+      validateShiftSchedule({ timeZone: NY, windows: [{ ...DAY, days: [9] }] }),
+    ).toThrow();
+  });
+
+  it("accepts a valid schedule", () => {
+    expect(() => validateShiftSchedule({ timeZone: NY, windows: [DAY, NIGHT] })).not.toThrow();
   });
 });

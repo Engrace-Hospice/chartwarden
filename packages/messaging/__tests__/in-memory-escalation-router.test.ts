@@ -102,9 +102,17 @@ describe("in-memory EscalationRouter", () => {
     expect(answer).toMatchObject({ kind: "coverage_gap", tier: 1, nextTier: null, timeZone: NY });
   });
 
-  it("reports a coverage gap with no next tier when the ladder is exhausted", async () => {
-    const answer = await ask(routerA(), 3, "2026-06-01T16:00:00Z");
-    expect(answer).toMatchObject({ kind: "coverage_gap", tier: 3, nextTier: null });
+  it("says unavailable (tier_not_configured), not a coverage gap, for a tier the ladder does not have", async () => {
+    for (const tier of [3, 9]) {
+      const answer = await ask(routerA(), tier, "2026-06-01T16:00:00Z");
+      expect(answer).toMatchObject({ kind: "unavailable", reason: "tier_not_configured", tier });
+    }
+  });
+
+  it("gives nextTier = tier + 1 only when that tier exists", async () => {
+    const r = routerA();
+    expect(await ask(r, 1, "2026-06-01T16:00:00Z")).toMatchObject({ nextTier: 2 });
+    expect(await ask(r, 2, "2026-06-01T03:00:00Z")).toMatchObject({ nextTier: null });
   });
 
   it("says unavailable (no_route_configured) for a role with no ladder", async () => {
@@ -143,10 +151,138 @@ describe("in-memory EscalationRouter", () => {
 
   it("throws on an invalid request instead of guessing", async () => {
     const r = routerA();
-    await expect(ask(r, 0, "2026-06-01T16:00:00Z")).rejects.toMatchObject({
-      code: "ESCALATION_REQUEST_INVALID",
-    });
+    for (const tier of [0, -1, 1.5, 100, Number.MAX_SAFE_INTEGER + 1, Number.NaN]) {
+      await expect(ask(r, tier, "2026-06-01T16:00:00Z")).rejects.toMatchObject({
+        code: "ESCALATION_REQUEST_INVALID",
+      });
+    }
     await expect(ask(r, 1, "yesterday")).rejects.toBeInstanceOf(WardenXError);
+  });
+
+  it("refuses offset-less and loose asOf strings even when the process zone differs", async () => {
+    const before = process.env.TZ;
+    try {
+      process.env.TZ = "Asia/Kolkata";
+      for (const asOf of ["2026-06-01T16:00:00", "June 1 2026", "2026-06-01"]) {
+        await expect(ask(routerA(), 1, asOf), asOf).rejects.toMatchObject({
+          code: "ESCALATION_REQUEST_INVALID",
+        });
+      }
+    } finally {
+      if (before === undefined) Reflect.deleteProperty(process.env, "TZ");
+      else process.env.TZ = before;
+    }
+  });
+
+  it("answers with the zone of the rotation that produced the answer, and the tier's first zone for a gap", async () => {
+    const r = createInMemoryEscalationRouter({
+      orgId: ORG_A,
+      ladders: [
+        {
+          role: RN,
+          tiers: [
+            {
+              tier: 1,
+              rotations: [
+                { timeZone: NY, windows: [night], userIds: ["ny"] }, // 23:00Z - 11:00Z in June
+                {
+                  timeZone: "Asia/Tokyo",
+                  windows: [{ startTime: "21:00", endTime: "22:00" }],
+                  userIds: ["tokyo"],
+                }, // 12:00Z - 13:00Z
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(await ask(r, 1, "2026-06-02T02:00:00Z")).toMatchObject({
+      kind: "resolved",
+      userIds: ["ny"],
+      timeZone: NY,
+    });
+    expect(await ask(r, 1, "2026-06-01T12:30:00Z")).toMatchObject({
+      kind: "resolved",
+      userIds: ["tokyo"],
+      timeZone: "Asia/Tokyo",
+    });
+    expect(await ask(r, 1, "2026-06-01T11:30:00Z")).toMatchObject({
+      kind: "coverage_gap",
+      timeZone: NY,
+    });
+  });
+
+  it("documents the fall-back double handoff: A, B, A, B across 2026-11-01 01:30 in New York", async () => {
+    const r = createInMemoryEscalationRouter({
+      orgId: ORG_A,
+      ladders: [
+        {
+          role: RN,
+          tiers: [
+            {
+              tier: 1,
+              rotations: [
+                {
+                  timeZone: NY,
+                  windows: [{ startTime: "20:00", endTime: "01:30" }],
+                  userIds: ["A"],
+                },
+                {
+                  timeZone: NY,
+                  windows: [{ startTime: "01:30", endTime: "08:00" }],
+                  userIds: ["B"],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const who = async (asOf: string) => {
+      const a = await ask(r, 1, asOf);
+      return a.kind === "resolved" ? a.userIds.join() : a.kind;
+    };
+    // 01:00 EDT, 01:30 EDT, 01:00 EST, 01:30 EST. WP 4.4 must store the routed assignee, never re-ask the clock.
+    expect([
+      await who("2026-11-01T05:00:00Z"),
+      await who("2026-11-01T05:30:00Z"),
+      await who("2026-11-01T06:00:00Z"),
+      await who("2026-11-01T06:30:00Z"),
+    ]).toEqual(["A", "B", "A", "B"]);
+  });
+
+  it("rejects a malformed ladder when the router is built", () => {
+    const rot = { timeZone: NY, windows: [day], userIds: ["u"] };
+    const build =
+      (
+        tiers: {
+          tier: number;
+          rotations: (typeof rot | { timeZone: string; windows: unknown[]; userIds: string[] })[];
+        }[],
+      ) =>
+      () =>
+        createInMemoryEscalationRouter({
+          orgId: ORG_A,
+          ladders: [{ role: RN, tiers: tiers as never }],
+        });
+    expect(build([{ tier: 1, rotations: [{ ...rot, userIds: [] }] }])).toThrow(/no users/);
+    expect(build([{ tier: 1, rotations: [] }])).toThrow(/no rotation/);
+    expect(
+      build([
+        { tier: 1, rotations: [rot] },
+        { tier: 3, rotations: [rot] },
+      ]),
+    ).toThrow(/no gap/);
+    expect(build([{ tier: 2, rotations: [rot] }])).toThrow(/no gap/);
+    expect(build([])).toThrow(/no gap/);
+    expect(
+      build([
+        {
+          tier: 1,
+          rotations: [{ ...rot, windows: [day, { startTime: "99:00", endTime: "01:00" }] }],
+        },
+      ]),
+    ).toThrow();
   });
 
   it("rejects an unknown schedule zone when the router is built", () => {

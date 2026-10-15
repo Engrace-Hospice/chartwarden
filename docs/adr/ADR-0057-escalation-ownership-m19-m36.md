@@ -113,6 +113,21 @@ proposal; the M19 owner confirms or amends it.
       inside a window spanning it on both passes. Adjacent windows never gap or overlap. An unknown zone throws; there is no server-zone
       fallback. A test-only in-memory router (`source: "in_memory_fake"`) runs the contract over these rules to prove the shift-boundary
       and time-zone acceptance.
+    - **Request validation (review fixes).** `asOf` must be a full ISO-8601 date-time with an explicit offset (`Z` or `+hh:mm`), at most
+      40 characters; an offset-less or loose string is refused (never read in the server's zone). `tier` is a safe integer 1..99. A
+      resolved answer's `userIds` is a non-empty tuple. A tier the role's ladder does not have is `unavailable` / `tier_not_configured`,
+      never `coverage_gap` (a gap strictly means "the tier exists, nobody covers `asOf`"); `nextTier` is `tier + 1` when that tier exists,
+      else null; the fake requires contiguous tiers from 1. The answer's `timeZone` is the covering rotation's zone (the tier's first
+      rotation's zone for a gap). The whole schedule is validated up front (`validateShiftSchedule`).
+    - **Fall-back double handoff.** Because the rule is wall-clock, a handoff at a time inside the repeated fall-back hour happens twice
+      as elapsed time runs (A, B, A, B for a 01:30 handoff on 2026-11-01 in New York; a test documents it). WP 4.4 must not re-evaluate
+      the router at later instants to decide who owns a request already routed: it records the resolved tier and assignee on the request
+      and keys idempotency on the request, not on the clock.
+    - **Org and patient checks are M19's.** The implementation MUST enforce `orgId` against the request context and MUST verify
+      `patientId` belongs to `orgId`; the in-memory fake enforces only the org it was built for. `getEscalationRouter()` is the raw seam
+      with no wrapper; WP 4.4 adds an org-checking wrapper (and a boot report that the router is still the stub; no such warning pattern
+      exists for other stubs today) before any worker passes an org read from an event payload.
+    - **Fake not on the barrel.** The in-memory router is reachable only at `@wardenx/messaging/testing/in-memory-escalation-router`.
     - **No M36 timer, caller, table, route, event or flag change.** Wiring the router into timers is WP 4.4.
 
 ## What M19 must provide (when an owner is named)
@@ -133,8 +148,9 @@ proposal; the M19 owner confirms or amends it.
 - The shift rule is wall-clock based: in a fall-back hour a window ending inside the repeated hour covers both passes, and a window
   starting in the spring-forward gap starts after it. M19 may differ only by agreeing a documented alternative here.
 - Patient-level overrides of the ladder are not modelled in the contract beyond carrying `patientId`; M19 decides what it does with it.
-- The in-memory router is a test fixture, not a roster; it is exported from the package barrel only so tests can import it, and a
-  test guards production against using it.
+- The in-memory router is a test fixture, not a roster; it has its own subpath export (not the barrel) and a test scanning `apps/` and
+  `packages/` guards production against using it.
+- The deny-stub does not validate: a malformed request also gets `unavailable` from it.
 
 ## Alternatives considered
 
