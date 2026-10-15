@@ -107,6 +107,15 @@ export const AppealCreateRequestSchema = Type.Object({
   noticeDate: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
 });
 
+/** POST /denials/:id/appeals/override — appeal a denial the routing rules send to a MAC reopening (milestone 3). */
+export const AppealOverrideRequestSchema = Type.Composite([
+  AppealCreateRequestSchema,
+  Type.Object({
+    /** Why this denial is appealed although the rules route it to a reopening (audited; at least 10 characters). */
+    overrideReason: Type.String({ minLength: 10, maxLength: 1000 }),
+  }),
+]);
+
 /** PATCH /appeals/:id/attach — attach an M22 document id. */
 export const AppealAttachRequestSchema = Type.Object({
   documentId: Type.String({ format: "uuid" }),

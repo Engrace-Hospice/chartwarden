@@ -57,6 +57,8 @@ export const denialCase = pgTable(
     sourceEvvAggregatorSubmissionId: uuid("source_evv_aggregator_submission_id"), // M18 logical FK
     carcCode: varchar("carc_code", { length: 8 }).notNull(),
     rarcCode: varchar("rarc_code", { length: 8 }),
+    // The MAC's own reason code (FISS 56900 etc.), not a CARC; entered by the user (milestone 3, mig 1112).
+    macReasonCode: varchar("mac_reason_code", { length: 16 }),
     category: m25DenialCategory("category").notNull(),
     source: m25DenialSource("source").notNull(),
     state: m25DenialState("state").notNull().default("open"),

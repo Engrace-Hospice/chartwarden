@@ -29,6 +29,7 @@ import {
   money,
   toneOf,
 } from "./remittance-status";
+import { REOPENING_DRAFT_ACTION } from "./reopening-panel";
 
 interface DenialRow {
   id: string;
@@ -56,9 +57,11 @@ export function DenialWorklist(): JSX.Element {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const session = useSession();
-  // Coming back from /step-up: reopen the case whose typed reason was stashed.
-  const [workingId, setWorkingId] = useState<string | null>(() =>
-    findStepUpDraftResourceId(session, DENIAL_DRAFT_ACTION),
+  // Coming back from /step-up: reopen the case whose typed reason (or reopening filing) was stashed.
+  const [workingId, setWorkingId] = useState<string | null>(
+    () =>
+      findStepUpDraftResourceId(session, DENIAL_DRAFT_ACTION) ??
+      findStepUpDraftResourceId(session, REOPENING_DRAFT_ACTION),
   );
 
   const load = useCallback(async () => {
@@ -338,6 +341,7 @@ export function DenialWorklist(): JSX.Element {
       detail={
         workingId ? (
           <DenialDetailPanel
+            key={workingId}
             denialId={workingId}
             onClose={() => setWorkingId(null)}
             onChanged={() => void load()}

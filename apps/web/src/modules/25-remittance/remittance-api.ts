@@ -111,7 +111,7 @@ export type DenialAction =
   | { kind: "close" }
   | { kind: "close-write-off"; reason: string }
   | { kind: "reopen"; reason: string }
-  | { kind: "appeal"; tier?: AppealTier; noticeDate?: string };
+  | { kind: "appeal"; tier?: AppealTier; noticeDate?: string; overrideReason?: string };
 
 /** Run one denial action. `version` is the row version the panel read (sent as If-Match where required). */
 export async function runDenialAction(
@@ -181,6 +181,21 @@ export async function runDenialAction(
       return error || !data ? failure(response?.status, error) : ok(data);
     }
     case "appeal": {
+      // A denial the routing rules send to a MAC reopening is appealed only with an audited reason (milestone 3).
+      if (action.overrideReason) {
+        const { data, error, response } = await client.POST(
+          "/api/v1/denials/{id}/appeals/override",
+          {
+            params,
+            body: {
+              ...(action.tier ? { tier: action.tier } : {}),
+              ...(action.noticeDate ? { noticeDate: action.noticeDate } : {}),
+              overrideReason: action.overrideReason,
+            },
+          },
+        );
+        return error || !data ? failure(response?.status, error) : ok(data);
+      }
       const { data, error, response } = await client.POST("/api/v1/denials/{id}/appeals", {
         params,
         body: {
@@ -449,6 +464,155 @@ export async function saveMacRule(
 ): Promise<WriteResult<VersionedResult>> {
   return guarded(async () => {
     const { data, error, response } = await client.PUT("/api/v1/mac-rules", { body });
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
+}
+
+// ── denial routing and MAC reopenings (hospice ADR/TPE/QIC PRD, milestone 3) ───────────────────────────
+
+export type DenialRouteView = Ok<operations["getApiV1DenialsByIdRoute"]>;
+export type ReopeningSummary = Ok<operations["getApiV1Reopenings"]>["items"][number];
+export type ReopeningDetail = Ok<operations["getApiV1ReopeningsById"]>;
+export type ReopeningFilingInput = ReqBody<operations["postApiV1ReopeningsByIdSubmit"]>;
+export type ReopeningOutcome = ReqBody<operations["postApiV1ReopeningsByIdDecide"]>["outcome"];
+/** The server's floor for an appeal override reason (m25-typebox.ts), mirrored so the button says why it is off. */
+export const MIN_ROUTE_OVERRIDE_REASON = 10;
+
+export async function loadDenialRoute(
+  client: ApiClient,
+  id: string,
+): Promise<WriteResult<DenialRouteView>> {
+  return guarded(async () => {
+    const { data, error, response } = await client.GET("/api/v1/denials/{id}/route", {
+      params: { path: { id } },
+    });
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
+}
+
+export async function setMacReasonCode(
+  client: ApiClient,
+  id: string,
+  version: number,
+  code: string | null,
+): Promise<WriteResult<VersionedResult>> {
+  return guarded(async () => {
+    const { data, error, response } = await client.PUT("/api/v1/denials/{id}/mac-reason-code", {
+      params: { path: { id } },
+      headers: ifMatch(version),
+      body: { code },
+    });
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
+}
+
+/** The reopenings of one denial, newest first (the panel shows the live one). */
+export async function loadReopeningsForDenial(
+  client: ApiClient,
+  denialCaseId: string,
+): Promise<WriteResult<readonly ReopeningSummary[]>> {
+  return guarded(async () => {
+    const { data, error, response } = await client.GET("/api/v1/reopenings", {
+      params: { query: { denialCaseId } },
+    });
+    return error || !data ? failure(response?.status, error) : ok(data.items);
+  });
+}
+
+export async function loadReopening(
+  client: ApiClient,
+  id: string,
+): Promise<WriteResult<ReopeningDetail>> {
+  return guarded(async () => {
+    const { data, error, response } = await client.GET("/api/v1/reopenings/{id}", {
+      params: { path: { id } },
+    });
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
+}
+
+export async function createReopening(
+  client: ApiClient,
+  body: { denialCaseId: string; macName: string },
+): Promise<WriteResult<VersionedResult>> {
+  return guarded(async () => {
+    const { data, error, response } = await client.POST("/api/v1/reopenings", { body });
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
+}
+
+export async function setReopeningDue(
+  client: ApiClient,
+  id: string,
+  version: number,
+  dueAt: string | null,
+): Promise<WriteResult<VersionedResult>> {
+  return guarded(async () => {
+    const { data, error, response } = await client.PUT("/api/v1/reopenings/{id}/due", {
+      params: { path: { id } },
+      headers: ifMatch(version),
+      body: { dueAt },
+    });
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
+}
+
+export async function submitReopening(
+  client: ApiClient,
+  id: string,
+  version: number,
+  body: ReopeningFilingInput,
+): Promise<WriteResult<VersionedResult>> {
+  return guarded(async () => {
+    const { data, error, response } = await client.POST("/api/v1/reopenings/{id}/submit", {
+      params: { path: { id } },
+      headers: ifMatch(version),
+      body,
+    });
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
+}
+
+export async function decideReopening(
+  client: ApiClient,
+  id: string,
+  version: number,
+  outcome: ReopeningOutcome,
+): Promise<WriteResult<VersionedResult>> {
+  return guarded(async () => {
+    const { data, error, response } = await client.POST("/api/v1/reopenings/{id}/decide", {
+      params: { path: { id } },
+      headers: ifMatch(version),
+      body: { outcome },
+    });
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
+}
+
+export async function withdrawReopening(
+  client: ApiClient,
+  id: string,
+  version: number,
+): Promise<WriteResult<VersionedResult>> {
+  return guarded(async () => {
+    const { data, error, response } = await client.POST("/api/v1/reopenings/{id}/withdraw", {
+      params: { path: { id } },
+      headers: ifMatch(version),
+    });
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
+}
+
+export async function closeReopening(
+  client: ApiClient,
+  id: string,
+  version: number,
+): Promise<WriteResult<VersionedResult>> {
+  return guarded(async () => {
+    const { data, error, response } = await client.POST("/api/v1/reopenings/{id}/close", {
+      params: { path: { id } },
+      headers: ifMatch(version),
+    });
     return error || !data ? failure(response?.status, error) : ok(data);
   });
 }

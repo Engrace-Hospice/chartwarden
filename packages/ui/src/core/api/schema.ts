@@ -7504,6 +7504,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/denial-route-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's denial routing rules */
+        get: operations["getApiV1Denialrouterules"];
+        /** Create or update a denial routing rule */
+        put: operations["putApiV1Denialrouterules"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/denials": {
         parameters: {
             query?: never;
@@ -7547,8 +7565,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Open an appeal against a denial case (§4.1) */
+        /** Open an appeal against a denial case (§4.1); refused with 409 ROUTE_IS_REOPENING when the routing rules send the denial to a MAC reopening */
         post: operations["postApiV1DenialsByIdAppeals"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/denials/{id}/appeals/override": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Appeal a denial the routing rules send to a MAC reopening, with an audited reason (milestone 3) */
+        post: operations["postApiV1DenialsByIdAppealsOverride"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7623,6 +7658,23 @@ export interface paths {
         patch: operations["patchApiV1DenialsByIdEscalate"];
         trace?: never;
     };
+    "/api/v1/denials/{id}/mac-reason-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Record the MAC's own reason code on a denial, for example 56900 (If-Match) */
+        put: operations["putApiV1DenialsByIdMacreasoncode"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/denials/{id}/reopen": {
         parameters: {
             query?: never;
@@ -7655,6 +7707,23 @@ export interface paths {
         head?: never;
         /** Resolve a denial case (§4.1) */
         patch: operations["patchApiV1DenialsByIdResolve"];
+        trace?: never;
+    };
+    "/api/v1/denials/{id}/route": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Which path a denial takes (appeal, reopening or undetermined) and the routing rule that decided */
+        get: operations["getApiV1DenialsByIdRoute"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/denials/{id}/start": {
@@ -20181,6 +20250,126 @@ export interface paths {
         get: operations["getApiV1RemittanceUnmatched"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reopenings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** MAC reopening worklist, newest first */
+        get: operations["getApiV1Reopenings"];
+        put?: never;
+        /** Open a MAC reopening for a denial the routing rules send to one; an ADR it links to becomes a non-response */
+        post: operations["postApiV1Reopenings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reopenings/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** MAC reopening detail with its filing proof and event timeline */
+        get: operations["getApiV1ReopeningsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reopenings/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close a decided reopening (If-Match) */
+        post: operations["postApiV1ReopeningsByIdClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reopenings/{id}/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the MAC's decision on a filed reopening (If-Match) */
+        post: operations["postApiV1ReopeningsByIdDecide"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reopenings/{id}/due": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Record (or clear) the deadline the MAC gave for the reopening (If-Match) */
+        put: operations["putApiV1ReopeningsByIdDue"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reopenings/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the reopening request filed with the MAC and its proof: step-up, frozen once recorded (If-Match) */
+        post: operations["postApiV1ReopeningsByIdSubmit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reopenings/{id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw a reopening that has not been decided (If-Match) */
+        post: operations["postApiV1ReopeningsByIdWithdraw"];
         delete?: never;
         options?: never;
         head?: never;
@@ -46566,6 +46755,77 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1Denialrouterules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            macName: string | null;
+                            codeKind: string;
+                            code: string;
+                            route: string;
+                            sourceNote: string | null;
+                            verifiedOn: string | null;
+                            effectiveFrom: string;
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1Denialrouterules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    macName?: string;
+                    codeKind: "mac_reason" | "rarc" | "carc";
+                    code: string;
+                    route: "appeal" | "reopening";
+                    sourceNote?: string;
+                    verifiedOn?: string;
+                    effectiveFrom?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1Denials: {
         parameters: {
             query?: {
@@ -46680,6 +46940,42 @@ export interface operations {
         responses: {
             /** @description OK */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1DenialsByIdAppealsOverride: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    tier?: "redetermination" | "reconsideration" | "alj" | "council" | "federal_court";
+                    noticeDate?: string;
+                    overrideReason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -46827,6 +47123,39 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    putApiV1DenialsByIdMacreasoncode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    code: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1DenialsByIdReopen: {
         parameters: {
             query?: never;
@@ -46888,6 +47217,45 @@ export interface operations {
                         /** Format: uuid */
                         id: string;
                         version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1DenialsByIdRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        route: "appeal" | "reopening" | "undetermined";
+                        unverified: boolean;
+                        rule: {
+                            id: string;
+                            origin: "org" | "platform";
+                            macName: string | null;
+                            codeKind: string;
+                            code: string;
+                            route: string;
+                            verifiedOn: string | null;
+                            sourceNote: string | null;
+                        } | null;
+                        macReasonCode: string | null;
+                        macName: string | null;
                     };
                 };
             };
@@ -83067,6 +83435,284 @@ export interface operations {
                             receivedAt: string;
                         }[];
                         nextCursor: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Reopenings: {
+        parameters: {
+            query?: {
+                state?: string;
+                denialCaseId?: string;
+                limit?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            claimId: string;
+                            denialCaseId: string;
+                            adrCaseId: string | null;
+                            macName: string;
+                            state: string;
+                            formName: string | null;
+                            filingChannel: string | null;
+                            filedAt: string | null;
+                            dueAt: string | null;
+                            outcome: string | null;
+                            decidedAt: string | null;
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Reopenings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    denialCaseId: string;
+                    /** Format: uuid */
+                    adrCaseId?: string;
+                    macName?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1ReopeningsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        claimId: string;
+                        denialCaseId: string;
+                        adrCaseId: string | null;
+                        macName: string;
+                        state: string;
+                        formName: string | null;
+                        filingChannel: string | null;
+                        filedAt: string | null;
+                        dueAt: string | null;
+                        outcome: string | null;
+                        decidedAt: string | null;
+                        version: number;
+                        filingConfirmationRef: string | null;
+                        events: {
+                            id: string;
+                            eventKind: string;
+                            occurredAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReopeningsByIdClose: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReopeningsByIdDecide: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    outcome: "granted" | "partial" | "denied";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1ReopeningsByIdDue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    dueAt: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReopeningsByIdSubmit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    formName: string;
+                    channel: "mac_portal" | "fax" | "mail" | "other";
+                    confirmationRef: string;
+                    /** Format: date-time */
+                    filedAt: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ReopeningsByIdWithdraw: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
                     };
                 };
             };

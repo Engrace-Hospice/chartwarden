@@ -66,6 +66,22 @@ export const ADR_STATE_TONE: Record<string, StatusTone> = {
   closed: "neutral",
 };
 
+/** reopening_case state → tone (milestone 3). */
+export const REOPENING_STATE_TONE: Record<string, StatusTone> = {
+  draft: "warning",
+  submitted: "progress",
+  decided: "success",
+  withdrawn: "neutral",
+  closed: "neutral",
+};
+
+/** The path a denial takes → tone. Undetermined is inert: the denial stays appealable exactly as before. */
+export const DENIAL_ROUTE_TONE: Record<string, StatusTone> = {
+  appeal: "progress",
+  reopening: "warning",
+  undetermined: "neutral",
+};
+
 /** appeal decision_outcome → tone. */
 export const APPEAL_OUTCOME_TONE: Record<string, StatusTone> = {
   favorable: "success",
