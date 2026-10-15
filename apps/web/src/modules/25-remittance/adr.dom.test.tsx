@@ -33,6 +33,14 @@ const summary = () => ({
 });
 const detail = () => ({
   ...summary(),
+  packet: {
+    documents: [],
+    checklist: [],
+    sentToReviewByMembershipId: null,
+    reviewedByMembershipId: null,
+    reviewedAt: null,
+    filing: null,
+  },
   calendarDueDay: "2026-03-14",
   dueDay: "2026-03-13",
   events: [{ id: "e1", eventKind: "received", occurredAt: "2026-02-01T00:00:00.000Z" }],
@@ -121,7 +129,7 @@ describe("M25 ADR worklist", () => {
     });
   });
 
-  it("offers no submit to the MAC yet", async () => {
+  it("offers no move that files to the MAC; filing is recorded from the packet section", async () => {
     adrState = "in_review";
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "Open ADR from CGS" }));

@@ -1042,10 +1042,10 @@ import {
   M25_OUTBOX_EVENTS,
   M25_PLATFORM_JOB_ID,
   type TerminologyLookupPort,
+  buildDrizzleAdrService,
   buildDrizzleDenialSeedStore,
   buildDrizzleM25IngestService,
   buildDrizzleM25ReadService,
-  buildDrizzleAdrService,
   buildDrizzleM25WriteService,
   buildM18EvvAggregatorRejectedConsumer,
   buildM23BackedClaimMatchCandidateProvider,
@@ -5286,6 +5286,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             }),
             ingestService: m25IngestService,
             adrService: buildDrizzleAdrService(dbHandle.db, {
+              // Milestone 2b: attachments are validated through M22/M23's seams and a filing emits the render
+              // request on the same transaction (no outbox bound -> the filing is refused, never half-recorded).
+              outbox: m25OutboxPublisher,
+              sources: buildSeamAppealSourcePorts(),
               providerZones: (tx, providerEntityId) =>
                 buildFoundationSiteReader().providerEntityTimezones(tx, providerEntityId),
             }),

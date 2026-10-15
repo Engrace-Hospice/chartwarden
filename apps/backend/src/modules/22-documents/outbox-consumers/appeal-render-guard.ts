@@ -25,6 +25,17 @@ export interface RenderGuardRefusal {
 }
 
 const APPEAL_PACKET_TEMPLATE_KEY = "appeal_packet";
+const ADR_PACKET_TEMPLATE_KEY = "adr_response_packet";
+
+/** The document ids an ADR response payload names (its enclosures), tolerant of shape. */
+export function adrEnclosureIds(content: Record<string, unknown>): string[] {
+  const list = Array.isArray(content.enclosures) ? content.enclosures : [];
+  return list
+    .map((e) =>
+      typeof e === "object" && e !== null ? (e as Record<string, unknown>).documentId : null,
+    )
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+}
 
 /** The document ids an appeal packet payload names (supporting documents, then the bundle), tolerant of shape. */
 export function appealEnclosureIds(content: Record<string, unknown>): string[] {
@@ -41,8 +52,10 @@ export function appealEnclosureIds(content: Record<string, unknown>): string[] {
 
 export function buildAppealPacketRenderGuard(documents: () => AppealRenderGuardDocuments) {
   return async (request: RenderGuardRequest): Promise<RenderGuardRefusal | null> => {
-    if (request.templateKey !== APPEAL_PACKET_TEMPLATE_KEY) return null;
-    for (const documentId of appealEnclosureIds(request.content)) {
+    const isAdr = request.templateKey === ADR_PACKET_TEMPLATE_KEY;
+    if (request.templateKey !== APPEAL_PACKET_TEMPLATE_KEY && !isAdr) return null;
+    const ids = isAdr ? adrEnclosureIds(request.content) : appealEnclosureIds(request.content);
+    for (const documentId of ids) {
       // The reader opens the AMBIENT request context's tenant, and the outbox dispatcher runs a consumer outside
       // any request: give the read an explicit context for the row's org (never a payload-carried one).
       const digest = await runWithRequestContext(
@@ -54,7 +67,11 @@ export function buildAppealPacketRenderGuard(documents: () => AppealRenderGuardD
           }),
       ).catch(() => null);
       const reason = appealEnclosureRefusal(digest, null);
-      if (reason !== null) return { detail: `${documentId}:${reason}` };
+      // An ADR response is the record of what WAS filed: a document superseded since is still what was sent, so
+      // only a Part 2 reclassification (or an unreadable document) stops the retained copy from naming it.
+      if (reason !== null && (!isAdr || reason === "part2_restricted" || reason === "not_found")) {
+        return { detail: `${documentId}:${reason}` };
+      }
     }
     return null;
   };

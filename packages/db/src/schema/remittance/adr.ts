@@ -5,7 +5,17 @@
 // new pgEnum to mirror. claim_id (M23) and provider_entity_id are LOGICAL uuid FKs; denial_case_id is an
 // intra-M25 real FK. event_payload is audit-denylisted (§3.6).
 import { sql } from "drizzle-orm";
-import { boolean, date, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  date,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { denialCase } from "./denial";
 
@@ -51,6 +61,18 @@ export const adrCase = pgTable(
     responseDueAt: timestamp("response_due_at", { withTimezone: true }).notNull(),
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
     closedAt: timestamp("closed_at", { withTimezone: true }),
+    // Milestone 2b — packet review and filing (mig 1109). membership ids are logical; the manifest is frozen
+    // at filing by trigger. filing_confirmation_ref is free text (audit-scrubbed).
+    checklist: jsonb("checklist").notNull().default(sql`'{}'::jsonb`),
+    sentToReviewByMembershipId: uuid("sent_to_review_by_membership_id"),
+    reviewedByMembershipId: uuid("reviewed_by_membership_id"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    filingChannel: text("filing_channel"),
+    filingConfirmationRef: text("filing_confirmation_ref"),
+    filedAt: timestamp("filed_at", { withTimezone: true }),
+    filedLate: boolean("filed_late").notNull().default(false),
+    receiptDocumentId: uuid("receipt_document_id"), // M22 logical FK
+    packetManifest: jsonb("packet_manifest"),
     version: integer("version").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -79,5 +101,28 @@ export const adrCaseEvent = pgTable(
   },
   (t) => ({
     byCase: index("ix_adr_event_case").on(t.adrCaseId, t.occurredAt),
+  }),
+);
+
+// Milestone 2b (mig 1109): the M22 documents attached to an ADR response. document_id is a LOGICAL M22 id; a
+// detach stamps removed_at (rows are never deleted, and none changes once the case has been filed).
+export const adrCaseDocument = pgTable(
+  "adr_case_document",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    adrCaseId: uuid("adr_case_id")
+      .notNull()
+      .references(() => adrCase.id, { onDelete: "restrict" }),
+    documentId: uuid("document_id").notNull(),
+    checklistKey: text("checklist_key"),
+    attachedByMembershipId: uuid("attached_by_membership_id"),
+    attachedAt: timestamp("attached_at", { withTimezone: true }).notNull().defaultNow(),
+    removedAt: timestamp("removed_at", { withTimezone: true }),
+  },
+  (t) => ({
+    byOrg: index("adr_case_document_org_ix").on(t.organizationId, t.attachedAt),
   }),
 );

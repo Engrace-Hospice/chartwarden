@@ -2192,6 +2192,8 @@ export const documentAggregateType = pgEnum("document_aggregate_type", [
   "denial_appeal_cover_letter",
   "medicaid_claim_acknowledgment_letter",
   "denial_resolution_letter",
+  // M25 ADR response packet (mig 1108) — the cover sheet and enclosure index for a filed ADR response.
+  "adr_response_packet",
   // F-161 (#248, mig 0252) — the M7 care-plan PDF. `m7.care_plan.version_signed`'s own catalog comment
   // ("drives the M8 encounter gate + M22 PDF") was decisive and no template existed for it at all.
   "care_plan",

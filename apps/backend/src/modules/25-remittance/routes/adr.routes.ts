@@ -3,14 +3,17 @@
 // organization's MAC response-window rules. Reads gate on `adr.read`, case writes on `adr.manage`, rule edits
 // on `mac_rule.manage`. PATCH-style transitions are optimistic-concurrency (If-Match -> 409 when stale); every
 // mutation requires an Idempotency-Key. Org, actor and provider-entity scope are server-derived (actor.ts).
-// There is no submit route in 2a: filing waits for the reviewed packet and proof of submission (2b).
+// Milestone 2b adds the response packet: attach / detach documents and tick the checklist (`adr.manage`), sign off
+// (`adr.review`, a different person from whoever sent it to review) and record the filing (`adr.submit` + step-up).
+// Each packet change is If-Match so a sign-off is always on the version the reviewer saw.
 import { Type } from "@sinclair/typebox";
 import { NotFoundError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
+import { ADR_CHECKLIST_KEYS, ADR_FILING_CHANNELS } from "../domain";
 import { actorOf, writeActorOf } from "./actor";
 import type { AdrManualTarget, AdrService } from "./adr-service";
 import { clampLimit, ifMatchVersion, requireIdempotencyKey } from "./concurrency";
-import { P } from "./guards";
+import { P, STEP_UP } from "./guards";
 import { parse } from "./m25-typebox";
 
 export interface AdrRouteDeps {
@@ -39,6 +42,31 @@ export const AdrTransitionRequestSchema = Type.Object({
   ]),
 });
 
+const CHECKLIST_KEY = Type.Union(ADR_CHECKLIST_KEYS.map((k) => Type.Literal(k)));
+
+export const AdrAttachDocumentRequestSchema = Type.Object({
+  documentId: Type.String({ format: "uuid" }),
+  checklistKey: Type.Optional(CHECKLIST_KEY),
+});
+
+export const AdrChecklistRequestSchema = Type.Object({
+  state: Type.Union([
+    Type.Literal("pending"),
+    Type.Literal("ready"),
+    Type.Literal("not_applicable"),
+  ]),
+});
+
+export const AdrSubmitRequestSchema = Type.Object({
+  channel: Type.Union(ADR_FILING_CHANNELS.map((c) => Type.Literal(c))),
+  /** The confirmation or tracking reference the MAC (or carrier) gave for the response. */
+  confirmationRef: Type.String({ minLength: 1, maxLength: 200 }),
+  /** When the response was actually sent (ISO date-time). */
+  filedAt: Type.String({ format: "date-time" }),
+  lateAcknowledged: Type.Optional(Type.Boolean()),
+  receiptDocumentId: Type.Optional(Type.String({ format: "uuid" })),
+});
+
 export const MacRuleRequestSchema = Type.Object({
   macName: Type.String({ minLength: 1, maxLength: 120 }),
   reviewType: REVIEW_TYPE,
@@ -46,6 +74,31 @@ export const MacRuleRequestSchema = Type.Object({
   sourceNote: Type.Optional(Type.String({ maxLength: 500 })),
   verifiedOn: Type.Optional(DAY),
   effectiveFrom: Type.Optional(DAY),
+});
+
+const AdrPacketSchema = Type.Object({
+  documents: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      documentId: Type.String(),
+      checklistKey: Type.Union([Type.String(), Type.Null()]),
+      attachedAt: Type.String(),
+    }),
+  ),
+  checklist: Type.Array(Type.Object({ key: Type.String(), state: Type.String() })),
+  sentToReviewByMembershipId: Type.Union([Type.String(), Type.Null()]),
+  reviewedByMembershipId: Type.Union([Type.String(), Type.Null()]),
+  reviewedAt: Type.Union([Type.String(), Type.Null()]),
+  filing: Type.Union([
+    Type.Object({
+      channel: Type.String(),
+      confirmationRef: Type.String(),
+      filedAt: Type.String(),
+      filedLate: Type.Boolean(),
+      receiptDocumentId: Type.Union([Type.String(), Type.Null()]),
+    }),
+    Type.Null(),
+  ]),
 });
 
 const AdrSummarySchema = Type.Object({
@@ -68,6 +121,7 @@ export const AdrPageSchema = Type.Object({ items: Type.Array(AdrSummarySchema) }
 export const AdrDetailSchema = Type.Composite([
   AdrSummarySchema,
   Type.Object({
+    packet: AdrPacketSchema,
     calendarDueDay: Type.String(),
     events: Type.Array(
       Type.Object({ id: Type.String(), eventKind: Type.String(), occurredAt: Type.String() }),
@@ -93,6 +147,9 @@ export const MacRulePageSchema = Type.Object({
 const READ = P("adr.read");
 const MANAGE = P("adr.manage");
 const RULES = P("mac_rule.manage");
+const REVIEW = P("adr.review");
+const SUBMIT = P("adr.submit");
+const SUBMIT_STEPUP = STEP_UP("adr.submit");
 const IDEMPOTENT = requireIdempotencyKey();
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** The `:id` path param; a non-uuid can never match a row, so it is a 404 rather than a database cast error. */
@@ -150,6 +207,82 @@ export function registerAdrRoutes(app: FastifyInstance, deps: AdrRouteDeps): voi
           writeActorOf(request),
           idOf(request),
           body.to as AdrManualTarget,
+          ifMatchVersion(request),
+        ),
+      );
+    },
+  );
+
+  app.post(
+    "/api/v1/adrs/:id/documents",
+    { preHandler: [MANAGE, IDEMPOTENT] },
+    async (request, reply) => {
+      const body = parse(AdrAttachDocumentRequestSchema, request.body);
+      return reply.send(
+        await adrService.attachAdrDocument(
+          writeActorOf(request),
+          idOf(request),
+          body,
+          ifMatchVersion(request),
+        ),
+      );
+    },
+  );
+
+  app.delete(
+    "/api/v1/adrs/:id/documents/:documentId",
+    { preHandler: [MANAGE, IDEMPOTENT] },
+    async (request, reply) => {
+      const documentId = (request.params as { documentId: string }).documentId;
+      if (!UUID.test(documentId)) throw new NotFoundError("that document is not attached");
+      return reply.send(
+        await adrService.detachAdrDocument(
+          writeActorOf(request),
+          idOf(request),
+          documentId,
+          ifMatchVersion(request),
+        ),
+      );
+    },
+  );
+
+  app.put(
+    "/api/v1/adrs/:id/checklist/:key",
+    { preHandler: [MANAGE, IDEMPOTENT] },
+    async (request, reply) => {
+      const body = parse(AdrChecklistRequestSchema, request.body);
+      return reply.send(
+        await adrService.setAdrChecklistItem(
+          writeActorOf(request),
+          idOf(request),
+          (request.params as { key: string }).key,
+          body.state,
+          ifMatchVersion(request),
+        ),
+      );
+    },
+  );
+
+  app.post(
+    "/api/v1/adrs/:id/sign-off",
+    { preHandler: [REVIEW, IDEMPOTENT] },
+    async (request, reply) =>
+      reply.send(
+        await adrService.signOffAdr(writeActorOf(request), idOf(request), ifMatchVersion(request)),
+      ),
+  );
+
+  // Records a response filed outside WardenX: RBAC + step-up (D15), proof required, frozen manifest, retained PDF.
+  app.post(
+    "/api/v1/adrs/:id/submit",
+    { preHandler: [SUBMIT, SUBMIT_STEPUP, IDEMPOTENT] },
+    async (request, reply) => {
+      const body = parse(AdrSubmitRequestSchema, request.body);
+      return reply.send(
+        await adrService.submitAdr(
+          writeActorOf(request),
+          idOf(request),
+          body,
           ifMatchVersion(request),
         ),
       );

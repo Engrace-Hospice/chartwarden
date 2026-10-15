@@ -58,6 +58,7 @@ describe("every platform template renders a real PDF (GAP-033)", () => {
    *  forms: m22-forms-wave1.test.ts). An id-only payload for them is a malformed request, never a generic dump. */
   const strictKeys = new Set([
     "appeal_packet",
+    "adr_response_packet",
     "cti",
     "f2f",
     "nor",
@@ -123,7 +124,7 @@ describe("every platform template renders a real PDF (GAP-033)", () => {
     }
   });
 
-  it.each([...strictKeys].filter((k) => k !== "appeal_packet"))(
+  it.each([...strictKeys].filter((k) => k !== "appeal_packet" && k !== "adr_response_packet"))(
     "%s: a hostile or id-only payload fails closed with a typed error (retry -> DLQ), never a blank form",
     (key) => {
       for (const payload of [

@@ -22,6 +22,13 @@ import {
   resolveAdrWindow,
 } from "../domain";
 import type { M25ReadActor, M25WriteActor } from "./actor";
+import {
+  type AdrPacketOps,
+  type AdrPacketPorts,
+  type AdrPacketView,
+  buildAdrPacketOps,
+  loadAdrPacketView,
+} from "./adr-packet-service";
 import { VersionConflictError } from "./concurrency";
 import { type ClaimFactsPort, m23ClaimFactsPort } from "./remittance-ports";
 import { providerEntityScopeCondition } from "./scope";
@@ -69,6 +76,7 @@ export interface AdrSummary {
 }
 
 export interface AdrDetail extends AdrSummary {
+  readonly packet: AdrPacketView;
   readonly calendarDueDay: string;
   readonly events: { id: string; eventKind: string; occurredAt: string }[];
 }
@@ -84,7 +92,7 @@ export interface MacRuleView {
   readonly version: number;
 }
 
-export interface AdrService {
+export interface AdrService extends AdrPacketOps {
   createAdr(actor: M25WriteActor, input: AdrCreateInput): Promise<{ id: string; version: number }>;
   listAdrs(
     actor: M25ReadActor,
@@ -105,7 +113,7 @@ export interface AdrService {
   ): Promise<{ id: string; version: number }>;
 }
 
-export interface AdrServicePorts {
+export interface AdrServicePorts extends AdrPacketPorts {
   readonly claims?: ClaimFactsPort;
   /** The timezones of a provider entity's locations (M1's published reader); absent -> the default zone. */
   readonly providerZones?: (tx: DbClient, providerEntityId: string) => Promise<readonly string[]>;
@@ -169,6 +177,7 @@ export function buildDrizzleAdrService(db: DbClient, ports: AdrServicePorts = {}
   }
 
   return {
+    ...buildAdrPacketOps(db, ports),
     async createAdr(actor, input) {
       const macName = input.macName.trim();
       if (!macName) throw new WardenXError("INVALID_MAC", "the MAC name is required", 422);
@@ -277,6 +286,7 @@ export function buildDrizzleAdrService(db: DbClient, ports: AdrServicePorts = {}
         const derived = deriveAdrDeadline(row.requestedOn, row.windowDays);
         return {
           ...summary(row),
+          packet: await loadAdrPacketView(tx, row),
           calendarDueDay: derived.calendarDueDay,
           events: events.map((e) => ({ ...e, occurredAt: iso(e.occurredAt) })),
         };
@@ -300,9 +310,19 @@ export function buildDrizzleAdrService(db: DbClient, ports: AdrServicePorts = {}
             409,
           );
         }
+        // Who sends a packet to review is the assembler the reviewer must differ from; any move out of review
+        // (back to assembly, or away) voids a sign-off, so a returned packet is reviewed afresh.
+        const reviewBookkeeping =
+          to === "in_review"
+            ? {
+                sentToReviewByMembershipId: actor.membershipId,
+                reviewedByMembershipId: null,
+                reviewedAt: null,
+              }
+            : { reviewedByMembershipId: null, reviewedAt: null };
         const updated = await tx
           .update(ADR)
-          .set({ state: to, version: cur.version + 1 })
+          .set({ state: to, version: cur.version + 1, ...reviewBookkeeping })
           .where(and(eq(ADR.id, id), eq(ADR.version, ifMatch)))
           .returning({ id: ADR.id, version: ADR.version });
         if (!updated[0]) throw new VersionConflictError(cur.version);

@@ -91,10 +91,10 @@ export interface DescribedEnclosure {
   readonly documentKind: string;
 }
 
-function refuse(documentId: string, reason: EnclosureRefusal): never {
+function refuse(documentId: string, reason: EnclosureRefusal, subject: string): never {
   throw new WardenXError(
     "APPEAL_DOCUMENT_NOT_ATTACHABLE",
-    `document ${documentId} cannot be enclosed in this appeal (${reason})`,
+    `document ${documentId} cannot be enclosed in this ${subject} (${reason})`,
     422,
   );
 }
@@ -109,6 +109,8 @@ export async function describeEnclosures(
   claimPatientId: string,
   attachedDocumentIds: readonly string[],
   bundleDocumentId?: string,
+  /** What the filing is called in a refusal message: the ADR response packet reuses these rules. */
+  subject = "appeal",
 ): Promise<{
   readonly attached: readonly DescribedEnclosure[];
   readonly bundle?: DescribedEnclosure;
@@ -135,7 +137,8 @@ export async function describeEnclosures(
       organizationId: organizationId as never,
     });
     const reason = enclosureRefusal(digest, claimPatientId);
-    if (reason !== null || digest === null) return refuse(documentId, reason ?? "not_found");
+    if (reason !== null || digest === null)
+      return refuse(documentId, reason ?? "not_found", subject);
     return {
       documentId,
       title: digest.title,
