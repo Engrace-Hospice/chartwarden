@@ -93,6 +93,8 @@ import { createDbMentionNonMemberSearch } from "./mention-non-member-service-db"
 import { decodeCursor, encodeCursor } from "./message-cursor";
 import { publishMessageHint } from "./message-hint-events";
 import { createDbMessageSearchService } from "./message-search-service-db";
+import { cancelOpenRequestForMessage } from "./ack-requests/ack-cancel";
+import { assertMessageEditable } from "./ack-requests/ack-edit-lock";
 import { MESSAGE_ROW_COLUMNS, hydrateMessages } from "./messaging-message-hydration";
 import {
   type MessageBodyCipher,
@@ -1560,6 +1562,8 @@ export function createDbMessagingRouteService(
         }
         // WP 4.1: an urgent clinical message is final once sent (before the window check: never a window answer).
         assertUrgencyEditable(m.urgency);
+        // WP 4.2: a message that asks for a response is final too (ADR-0056 D8); a correction is a new message.
+        await assertMessageEditable(tx, orgId, input.messageId);
         // WP 1.5: text may be cleared only while the message still shows an attachment.
         if (!input.body.trim()) {
           const kept = await loadAttachmentViews(tx, {
@@ -1693,6 +1697,14 @@ export function createDbMessagingRouteService(
         // The body_cipher is retained through the retention window; only status/deleted_at change.
         // edited_at is cleared so the mutually-exclusive `message_status_shape` CHECK holds.
         const deletedAt = new Date();
+        // WP 4.2: the message's open response request ends with it, in this transaction (the database refuses the tombstone otherwise).
+        await cancelOpenRequestForMessage(tx, {
+          orgId,
+          messageId: input.messageId,
+          actorUserId: input.userId,
+          outbox: opts.outbox,
+          at: deletedAt,
+        });
         await tx
           .update(MSG)
           .set({ status: "deleted", deletedAt: deletedAt, editedAt: null })

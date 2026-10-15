@@ -2,6 +2,7 @@ import { Glyph } from "@wardenx/ui";
 import { memo } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { AckForMessage } from "./ack-request-card";
 import { MessageAnnotations } from "./message-annotations";
 import { MessageAttachments } from "./message-attachments";
 import { MessagePromotionButton } from "./message-promotion-button";
@@ -239,6 +240,7 @@ function MessageRowImpl({
                 {deleted ? null : <EditedIndicator editedAt={message.editedAt} />}
               </div>
             </div>
+            {!deleted && patientLinked ? <AckForMessage messageId={message.messageId} /> : null}
             {!deleted ? (
               <MessageAnnotations message={message} canAnnotate={canAnnotate} canPin={canPin} />
             ) : null}

@@ -98,6 +98,7 @@ import {
 import { registerMessageSearchRoutes } from "./search-routes";
 import { DISABLED_TASKS, type TaskRouteDeps, registerTaskRoutes } from "./task-routes";
 import { DISABLED_URGENT, type UrgentRouteDeps, registerUrgentRoutes } from "./urgent-routes";
+import { type AckRouteDeps, DISABLED_ACK, registerAckRoutes } from "./ack-routes";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -133,6 +134,8 @@ export interface MessagingRouteDeps {
   medicationQuestions?: MedicationQuestionRouteDeps;
   /** WP 4.1: the "Urgent clinical" entry (flag + service). Omitted => flag off: POST is the uniform 404. */
   urgent?: UrgentRouteDeps;
+  /** WP 4.2: the acknowledgment-request aggregate (service + limiter). Omitted => every route is the uniform 404. */
+  ackRequests?: AckRouteDeps;
   /** WP 3.6: IDG discussions (flag + read-only store). Omitted => flag off: the list answers disabled. */
   idgDiscussions?: Omit<IdgDiscussionRouteDeps, "canViewChannel">;
 }
@@ -424,6 +427,14 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     requireIdempotencyKey: REQUIRE_IDEMPOTENCY_KEY,
     validateLinks: (request, richBody) =>
       validateRichBodyLinks(request, clinicalLinkDeps, richBody),
+  });
+
+  // --- WP 4.2: acknowledgment requests (one qualified colleague takes responsibility by an explicit action; no timers or paging) ---
+  registerAckRoutes(app, deps.ackRequests ?? DISABLED_ACK, {
+    read: READ,
+    viewChannel: VIEW_CHANNEL,
+    send: SEND,
+    requireIdempotencyKey: REQUIRE_IDEMPOTENCY_KEY,
   });
 
   // --- WP 3.7: chart promotion (a message proposed for the chart; a reviewer decides in M8/M14, never here; flag-gated) ---

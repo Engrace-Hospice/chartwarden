@@ -1250,6 +1250,16 @@ import {
   VerifyEmailAckSchema as M34VerifyEmailAckSchema,
 } from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/typebox";
 
+// M36 WP 4.2 acknowledgment requests.
+import {
+  AckChannelListResponseSchema as M36AckChannelListResponseSchema,
+  AckCreateResponseSchema as M36AckCreateResponseSchema,
+  AckDetailResponseSchema as M36AckDetailResponseSchema,
+  AckRequestResponseSchema as M36AckRequestResponseSchema,
+  CreateAckBodySchema as M36CreateAckBodySchema,
+  EmptyAckBodySchema as M36EmptyAckBodySchema,
+  ReassignAckBodySchema as M36ReassignAckBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/ack-typebox";
 import {
   AlertDeliveriesQuerySchema as M36AlertDeliveriesQuerySchema,
   AlertDeliveriesResponseSchema as M36AlertDeliveriesResponseSchema,
@@ -9372,6 +9382,42 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Who can receive an urgent clinical message in this channel (WP 4.1; messaging.read + channel visibility): up to 30 qualified care-team colleagues who can see the channel (names only), never the caller. 200 {enabled:false} while the feature flags are off; a hidden channel is the uniform 404. Read-audited (it discloses care-team names)",
     response: M36UrgentMessageOptionsResponseSchema,
+  },
+  "POST /api/v1/messaging/escalations": {
+    summary:
+      "Ask ONE named, qualified colleague to take clinical responsibility for a message the caller wrote (WP 4.2, ADR-0069; messaging.send + messaging.urgent.send + a required Idempotency-Key; rate limited per user, organisation and caller-colleague pair; 404 while the tenant flag `messaging.ack_requests` is off). The message must be in a patient care-team channel; the class is derived from the message (an urgent message needs its named recipient, any other is `important`) and the deadline is the platform default (important 60 min, urgent 15 min; provisional), so the body has only `message_id` and `assigned_user_id`. The assignee must be a care-team member of the channel who holds messaging.urgent.receive (never an aide), is admitted by the Part 2 gate and is not the caller: any failure is one uniform 422 ACK_ASSIGNEE_INVALID. 403 ACK_NOT_REQUESTER (not the author), 422 ACK_NOT_PATIENT_CHANNEL, 409 ACK_ALREADY_REQUESTED (another assignee). 201 created; 200 created:false replays the same request. An urgent message sent while the flag is on already has its request. NOT a page and NOT the emergency path. Read-audited against the request and patient",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    body: M36CreateAckBodySchema,
+    response: M36AckCreateResponseSchema,
+    status: 201,
+  },
+  "GET /api/v1/messaging/escalations/:id": {
+    summary:
+      "One acknowledgment request with its append-only history (WP 4.2; messaging.read + the caller can see the request's channel). A missing, malformed, other-tenant or hidden-channel id is the same 404. Never writes anything: opening or reading a request does not acknowledge it. Read-audited against the request and patient",
+    response: M36AckDetailResponseSchema,
+  },
+  "GET /api/v1/messaging/channels/:id/escalations": {
+    summary:
+      "The acknowledgment requests of one channel, newest first, at most 100 (WP 4.2; messaging.read + channel visibility), for the thread card. Each carries `viewer_actions`, a hint from identity and state only (the server decides every action). Never writes anything. Read-audited against the channel",
+    response: M36AckChannelListResponseSchema,
+  },
+  "POST /api/v1/messaging/escalations/:id/acknowledge": {
+    summary:
+      "The assigned clinician takes clinical responsibility (WP 4.2; messaging.read + messaging.urgent.receive; an aide cannot). An explicit authenticated action by the ASSIGNED user only, who must still be qualified now (active, keys, Part 2 gate): 403 ACK_NOT_ASSIGNEE for anyone else including the author and a supervisor, 403 ACK_NOT_QUALIFIED, 409 ACK_STATE_INVALID once resolved or cancelled. A repeat by the same user is 200 changed:false with no new event. Opening or reading never does this. Audited with the actor; the request must be settleable even while the creation flag is off. Read-audited",
+    body: M36EmptyAckBodySchema,
+    response: M36AckRequestResponseSchema,
+  },
+  "POST /api/v1/messaging/escalations/:id/reassign": {
+    summary:
+      "Move a request to another qualified colleague (WP 4.2; messaging.read, rate limited like create). Only the requester or the current assignee may; the new assignee passes the same checks as at create and differs from the current one and the requester (422 ACK_ASSIGNEE_INVALID otherwise, 403 ACK_NOT_PARTY for anyone else). The window restarts for the new assignee (status back to pending, new default deadline) and `requested_at` is kept. A repeat by the same actor is 200 changed:false. 409 once resolved or cancelled. Read-audited",
+    body: M36ReassignAckBodySchema,
+    response: M36AckRequestResponseSchema,
+  },
+  "POST /api/v1/messaging/escalations/:id/resolve": {
+    summary:
+      "Close an acknowledged request (WP 4.2; messaging.read + messaging.urgent.receive). The assigned user only; 409 ACK_NOT_ACKNOWLEDGED before the request has been acknowledged. A repeat is 200 changed:false. Resolving never writes an order or a chart note (those go through their owning modules). Read-audited",
+    body: M36EmptyAckBodySchema,
+    response: M36AckRequestResponseSchema,
   },
   "GET /api/v1/messaging/tasks": {
     summary:

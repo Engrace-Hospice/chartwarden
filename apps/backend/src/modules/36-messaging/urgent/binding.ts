@@ -30,6 +30,8 @@ export interface UrgentBindingInput {
   /** Defaults to the CareTeamProvider seam. */
   readonly careTeamMembers?: (orgId: string, patientId: string) => Promise<readonly string[]>;
   readonly findReplayRecipient?: UrgentServiceDeps["findReplayRecipient"];
+  /** WP 4.2: creates the response request in the send transaction when its own flag is on. */
+  readonly responseTracker?: UrgentServiceDeps["responseTracker"];
   readonly now?: () => Date;
 }
 
@@ -52,27 +54,39 @@ export interface UrgentBinding {
   readonly service: UrgentService;
 }
 
-export function buildUrgentBinding(input: UrgentBindingInput): UrgentBinding {
-  const isEnabled = cacheFlagRead(async (organizationId) => {
-    const flags = input.flags ? await input.flags.forOrg(organizationId) : {};
-    return flags[URGENT_CLINICAL_FLAG_KEY] === true && flags[SBAR_FLAG_KEY] === true;
-  });
-  const stillQualified: UrgentBinding["stillQualified"] = async (orgId, userId, channelId) => {
-    if (!(await input.eligibility.isActiveUser(orgId, userId))) return false;
-    const permissions = await input.eligibility.permissionsFor(orgId, userId);
+/**
+ * Is this user, right now, active, holding the messaging keys and `messaging.urgent.receive`, and admitted by the Part 2 gate
+ * for the channel's patient? A lookup ERROR propagates (callers retry); only a clean "no" returns false. Shared by the urgent
+ * notification consumer and the WP 4.2 response-request transitions.
+ */
+export function makeStillQualified(
+  eligibility: EligibilityPorts,
+  channelFacts: UrgentBindingInput["channelFacts"],
+): UrgentBinding["stillQualified"] {
+  return async (orgId, userId, channelId) => {
+    if (!(await eligibility.isActiveUser(orgId, userId))) return false;
+    const permissions = await eligibility.permissionsFor(orgId, userId);
     const required = [...HANDOFF_RECIPIENT_PERMISSIONS, URGENT_RECEIVE_PERMISSION];
     if (!required.every((key) => permissions.has(key))) return false;
-    const facts = await input.channelFacts(orgId, channelId);
+    const facts = await channelFacts(orgId, channelId);
     const patientId =
       facts?.kind === "care_team" ? derivePatient(facts.kind, facts.subjectId) : null;
     if (!patientId) return false;
-    const allowed = await input.eligibility.part2Gate.allowedUserIds({
+    const allowed = await eligibility.part2Gate.allowedUserIds({
       organizationId: orgId,
       patientId,
       userIds: [userId],
     });
     return allowed.has(userId);
   };
+}
+
+export function buildUrgentBinding(input: UrgentBindingInput): UrgentBinding {
+  const isEnabled = cacheFlagRead(async (organizationId) => {
+    const flags = input.flags ? await input.flags.forOrg(organizationId) : {};
+    return flags[URGENT_CLINICAL_FLAG_KEY] === true && flags[SBAR_FLAG_KEY] === true;
+  });
+  const stillQualified = makeStillQualified(input.eligibility, input.channelFacts);
   return {
     isEnabled,
     stillQualified,
@@ -101,6 +115,7 @@ export function buildUrgentBinding(input: UrgentBindingInput): UrgentBinding {
         ),
       displayName: input.displayName,
       ...(input.findReplayRecipient ? { findReplayRecipient: input.findReplayRecipient } : {}),
+      ...(input.responseTracker ? { responseTracker: input.responseTracker } : {}),
       ...(input.now ? { now: input.now } : {}),
     }),
   };

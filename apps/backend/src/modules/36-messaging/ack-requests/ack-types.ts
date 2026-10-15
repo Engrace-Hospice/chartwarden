@@ -1,0 +1,123 @@
+// apps/backend/src/modules/36-messaging/ack-requests/ack-types.ts - WP 4.2 (ADR-0069): the row shapes and the storage port of the
+// acknowledgment-request aggregate. The service owns the rules; a store only reads and writes rows inside one transaction
+// (the DB trigger is the backstop for the state machine). Ids, enums and instants only.
+import type { AckClass, AckEventType, AckStatus } from "@wardenx/types";
+
+export interface AckRow {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly messageId: string;
+  readonly channelId: string;
+  readonly patientId: string;
+  readonly ackClass: AckClass;
+  readonly status: AckStatus;
+  readonly requesterUserId: string;
+  readonly assignedUserId: string;
+  readonly requestedAt: Date;
+  readonly windowStartedAt: Date;
+  readonly deadlineAt: Date;
+  readonly currentTier: number;
+  readonly acknowledgedAt: Date | null;
+  readonly acknowledgedByUserId: string | null;
+  readonly resolvedAt: Date | null;
+  readonly resolvedByUserId: string | null;
+  readonly cancelledAt: Date | null;
+  readonly version: number;
+}
+
+export interface NewAckRequest {
+  readonly organizationId: string;
+  readonly messageId: string;
+  readonly channelId: string;
+  readonly patientId: string;
+  readonly ackClass: AckClass;
+  readonly requesterUserId: string;
+  readonly assignedUserId: string;
+  readonly requestedAt: Date;
+  readonly deadlineAt: Date;
+}
+
+/** The columns a transition may change (everything else is immutable; the DB trigger refuses the rest). */
+export interface AckPatch {
+  readonly status: AckStatus;
+  readonly assignedUserId?: string;
+  readonly windowStartedAt?: Date;
+  readonly deadlineAt?: Date;
+  readonly currentTier?: number;
+  readonly acknowledgedAt?: Date | null;
+  readonly acknowledgedByUserId?: string | null;
+  readonly resolvedAt?: Date | null;
+  readonly resolvedByUserId?: string | null;
+  readonly cancelledAt?: Date | null;
+  readonly updatedAt: Date;
+}
+
+export interface NewAckEvent {
+  readonly organizationId: string;
+  readonly requestId: string;
+  readonly eventType: AckEventType;
+  readonly actorUserId: string | null;
+  readonly fromStatus: AckStatus | null;
+  readonly toStatus: AckStatus | null;
+  readonly assignedUserId: string | null;
+  readonly previousAssignedUserId: string | null;
+  readonly tier: number;
+  readonly at: Date;
+}
+
+export interface AckEventRow {
+  readonly id: string;
+  readonly eventType: AckEventType;
+  readonly actorUserId: string | null;
+  readonly actorKind: "user" | "system";
+  readonly fromStatus: AckStatus | null;
+  readonly toStatus: AckStatus | null;
+  readonly assignedUserId: string | null;
+  readonly previousAssignedUserId: string | null;
+  readonly tier: number;
+  readonly createdAt: Date;
+}
+
+/** What the service needs to know about the message a request is about. */
+export interface AckMessageFacts {
+  readonly channelId: string;
+  readonly authorUserId: string | null;
+  readonly status: string;
+  readonly urgency: string;
+  readonly urgentRecipientUserId: string | null;
+}
+
+/** Another writer got there first (the optimistic version no longer matches). The service answers 409. */
+export class AckStaleError extends Error {
+  constructor() {
+    super("ack request changed concurrently");
+    this.name = "AckStaleError";
+  }
+}
+
+/** One transaction's view of the aggregate. Every call is scoped to the organization the transaction was opened for. */
+export interface AckTx {
+  findById(id: string, lock: boolean): Promise<AckRow | null>;
+  findByMessage(messageId: string, lock: boolean): Promise<AckRow | null>;
+  /** Insert, or return the existing row for the message (`inserted: false`) - the unique index is the replay arbiter. */
+  insert(row: NewAckRequest): Promise<{ readonly row: AckRow; readonly inserted: boolean }>;
+  /** Applies the patch only if the stored version is `expectedVersion` (then bumps it); else throws AckStaleError. */
+  update(id: string, expectedVersion: number, patch: AckPatch): Promise<AckRow>;
+  insertEvent(event: NewAckEvent): Promise<void>;
+  listEvents(requestId: string): Promise<readonly AckEventRow[]>;
+  /** Newest first. */
+  listForChannel(channelId: string, limit: number): Promise<readonly AckRow[]>;
+  messageFacts(messageId: string): Promise<AckMessageFacts | null>;
+}
+
+export interface AckStore {
+  /** Runs `fn` in one transaction as `actor` (the audit trigger attributes the writes to `actor.userId`). */
+  run<T>(
+    actor: { readonly orgId: string; readonly userId: string },
+    fn: (tx: AckTx, rawTx: unknown) => Promise<T>,
+  ): Promise<T>;
+  /** A tenant-scoped read with no acting user (outbox consumers are not requests). Never writes. */
+  readAsSystem<T>(orgId: string, fn: (tx: AckTx) => Promise<T>): Promise<T>;
+  /** A view over a transaction somebody else owns (the send core's hook, the delete path). */
+  bind(rawTx: unknown, orgId: string): AckTx;
+}

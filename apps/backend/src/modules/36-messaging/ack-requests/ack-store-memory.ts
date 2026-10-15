@@ -1,0 +1,124 @@
+// apps/backend/src/modules/36-messaging/ack-requests/ack-store-memory.ts - WP 4.2: an in-memory twin of the store for the service's
+// unit tests. It mirrors the unique-per-message arbiter and the optimistic version; the state machine itself is the service's
+// (and, in production, the database trigger's) - the live suite proves that one.
+import {
+  type AckEventRow,
+  type AckMessageFacts,
+  type AckPatch,
+  type AckRow,
+  AckStaleError,
+  type AckStore,
+  type AckTx,
+  type NewAckEvent,
+  type NewAckRequest,
+} from "./ack-types";
+
+export interface MemoryAckStore extends AckStore {
+  /** Test seam: the messages the service can see. */
+  readonly messages: Map<string, AckMessageFacts>;
+  readonly requests: Map<string, AckRow>;
+  readonly events: Array<NewAckEvent & { readonly id: string }>;
+}
+
+export function createMemoryAckStore(): MemoryAckStore {
+  const messages = new Map<string, AckMessageFacts>();
+  const requests = new Map<string, AckRow>();
+  const events: Array<NewAckEvent & { readonly id: string }> = [];
+  let seq = 0;
+  const nextId = (): string => {
+    seq += 1;
+    return `00000000-0000-4000-8000-${String(seq).padStart(12, "0")}`;
+  };
+
+  const txFor = (orgId: string): AckTx => ({
+    async findById(id) {
+      const r = requests.get(id);
+      return r && r.organizationId === orgId ? r : null;
+    },
+    async findByMessage(messageId) {
+      for (const r of requests.values()) {
+        if (r.organizationId === orgId && r.messageId === messageId) return r;
+      }
+      return null;
+    },
+    async insert(n: NewAckRequest) {
+      for (const r of requests.values()) {
+        if (r.organizationId === orgId && r.messageId === n.messageId) {
+          return { row: r, inserted: false };
+        }
+      }
+      const row: AckRow = {
+        id: nextId(),
+        organizationId: orgId,
+        messageId: n.messageId,
+        channelId: n.channelId,
+        patientId: n.patientId,
+        ackClass: n.ackClass,
+        status: "pending",
+        requesterUserId: n.requesterUserId,
+        assignedUserId: n.assignedUserId,
+        requestedAt: n.requestedAt,
+        windowStartedAt: n.requestedAt,
+        deadlineAt: n.deadlineAt,
+        currentTier: 0,
+        acknowledgedAt: null,
+        acknowledgedByUserId: null,
+        resolvedAt: null,
+        resolvedByUserId: null,
+        cancelledAt: null,
+        version: 0,
+      };
+      requests.set(row.id, row);
+      return { row, inserted: true };
+    },
+    async update(id, expectedVersion, patch: AckPatch) {
+      const cur = requests.get(id);
+      if (!cur || cur.organizationId !== orgId || cur.version !== expectedVersion) {
+        throw new AckStaleError();
+      }
+      const { updatedAt: _updatedAt, ...columns } = patch;
+      const next: AckRow = { ...cur, ...columns, version: expectedVersion + 1 };
+      requests.set(id, next);
+      return next;
+    },
+    async insertEvent(e) {
+      events.push({ ...e, id: nextId() });
+    },
+    async listEvents(requestId) {
+      return events
+        .filter((e) => e.requestId === requestId && e.organizationId === orgId)
+        .map(
+          (e): AckEventRow => ({
+            id: e.id,
+            eventType: e.eventType,
+            actorUserId: e.actorUserId,
+            actorKind: e.actorUserId ? "user" : "system",
+            fromStatus: e.fromStatus,
+            toStatus: e.toStatus,
+            assignedUserId: e.assignedUserId,
+            previousAssignedUserId: e.previousAssignedUserId,
+            tier: e.tier,
+            createdAt: e.at,
+          }),
+        );
+    },
+    async listForChannel(channelId, limit) {
+      return [...requests.values()]
+        .filter((r) => r.organizationId === orgId && r.channelId === channelId)
+        .sort((a, b) => b.requestedAt.getTime() - a.requestedAt.getTime())
+        .slice(0, limit);
+    },
+    async messageFacts(messageId) {
+      return messages.get(messageId) ?? null;
+    },
+  });
+
+  return {
+    messages,
+    requests,
+    events,
+    run: (actor, fn) => fn(txFor(actor.orgId), {}),
+    readAsSystem: (orgId, fn) => fn(txFor(orgId)),
+    bind: (_raw, orgId) => txFor(orgId),
+  };
+}

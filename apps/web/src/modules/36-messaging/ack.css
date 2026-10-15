@@ -1,0 +1,36 @@
+/* M36 WP 4.2 - acknowledgment-request card. Tokens from the shared kit only. */
+.wx-ack-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  font-size: 0.8125rem;
+}
+
+.wx-ack-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0;
+  font-weight: 600;
+}
+
+.wx-ack-detail,
+.wx-ack-notice {
+  margin: 0;
+  color: var(--color-on-surface);
+}
+
+.wx-ack-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.wx-ack-banner {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
+}

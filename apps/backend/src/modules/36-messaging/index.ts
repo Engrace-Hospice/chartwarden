@@ -178,6 +178,7 @@ import type { ReviewRouteDeps as _ReviewRouteDeps } from "./routes/review-routes
 import { registerScheduledSendRoutes as _registerScheduledSendRoutes } from "./routes/scheduled-send-routes";
 import type { TaskRouteDeps as _TaskRouteDeps } from "./routes/task-routes";
 import { registerTemplateRoutes as _registerTemplateRoutes } from "./routes/template-routes";
+import type { AckRouteDeps as _AckRouteDeps } from "./routes/ack-routes";
 import type { UrgentRouteDeps as _UrgentRouteDeps } from "./routes/urgent-routes";
 import type { buildSbarDeps as _buildSbarDeps } from "./sbar/binding";
 import { createDbScheduledSendService as _createDbScheduledSendService } from "./scheduled/scheduled-send-service-db";
@@ -219,6 +220,8 @@ export function mountMessagingRoutes(
     medicationQuestions?: _MedicationQuestionRouteDeps;
     /** WP 4.1: urgent clinical message (service). Omitted => flag off. */
     urgent?: _UrgentRouteDeps;
+    /** WP 4.2: acknowledgment requests (service + limiter). Omitted => every route is the uniform 404. */
+    ackRequests?: _AckRouteDeps;
     /** WP 3.7: chart promotion (tenant flag + service). Omitted => flag off. */
     promotions?: _PromotionRouteDeps;
     /** WP 3.6: IDG discussions (tenant flags + read-only store). Omitted => flag off. */
@@ -245,6 +248,7 @@ export function mountMessagingRoutes(
     ...(opts.review ? { review: opts.review } : {}),
     ...(opts.medicationQuestions ? { medicationQuestions: opts.medicationQuestions } : {}),
     ...(opts.urgent ? { urgent: opts.urgent } : {}),
+    ...(opts.ackRequests ? { ackRequests: opts.ackRequests } : {}),
     ...(opts.promotions ? { promotions: opts.promotions } : {}),
     ...(opts.idgDiscussions ? { idgDiscussions: opts.idgDiscussions } : {}),
   }); // WP 2.9, 2.12, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8
@@ -307,6 +311,7 @@ export { buildHandoffDeps } from "./handoffs/deps";
 export { buildReviewDeps } from "./review/deps";
 export { buildMedicationQuestionDeps } from "./medication-questions/deps";
 export { buildUrgentDeps } from "./urgent/deps";
+export { buildAckDeps } from "./ack-requests/deps";
 export { buildPromotionDeps } from "./promotions/deps";
 export { buildIdgDiscussionDeps } from "./idg/deps";
 export {

@@ -76,6 +76,11 @@ const KEY_RING_CONTEXT_VARS = new Set<string>([
   "app.dek_kek_id",
   "app.destroyed_by_membership_id",
 ]);
+// WP 4.2 (ADR-0069): the acknowledgment-request UPDATE guard binds WHO acts (acknowledge / resolve only as the assigned user,
+// reassign as a party, cancel as the sender) to the session's `app.user_id`. That is an authorization backstop on a transition, NOT
+// an RLS predicate: row visibility still keys only on app.org_id. Permitted only inside that one trigger function, in the same
+// statement, and never inside a policy.
+const ACK_ACTOR_VARS = new Set<string>(["app.user_id"]);
 // Tables that are NOT tenant-scoped by org_id (user-owned cross-org, or pure platform reference).
 // A spec opts a table out by adding it here with a justification (reviewed change).
 const NON_ORG_SCOPED = new Set<string>([
@@ -761,6 +766,7 @@ for (const base of allPaths) {
       // TRACKED; it must not also become the one place the exemptions can still hide inside.
       // SQL only: for TypeScript `text` is the whole file, where this would mean nothing — the
       // tsPolicies windows below are what keeps the exemption out of a policy there.
+      const isAckActorGuard = /message_ack_request_update_guard/.test(text);
       const buildsPolicy = isSql && /\b(?:CREATE|ALTER)\s+POLICY\b/i.test(text);
       let m: RegExpExecArray | null;
       SESSION_VAR_RE.lastIndex = 0;
@@ -771,6 +777,7 @@ for (const base of allPaths) {
         if (tsPolicies.some((w) => at >= w.start && at < w.end)) continue; // Rule 2a's business
         if (!buildsPolicy && AUDIT_CONTEXT_VARS.has(m[1]!) && isAuditCapture) continue;
         if (!buildsPolicy && KEY_RING_CONTEXT_VARS.has(m[1]!) && isKeyRingDefiner) continue;
+        if (!buildsPolicy && ACK_ACTOR_VARS.has(m[1]!) && isAckActorGuard) continue;
         violations.push({
           file,
           rule: "rls-session-variable",
