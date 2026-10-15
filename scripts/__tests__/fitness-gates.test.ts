@@ -140,6 +140,16 @@ describe("each gate goes RED on its planted violation", () => {
     expect(r.out).toMatch(/app\.user_id/);
   });
 
+  // WP 4.2 (ADR-0069): the ack actor guards may read app.user_id, but the exemption is scoped to a statement that STARTS with
+  // CREATE [OR REPLACE] FUNCTION of those two functions. A bare mention of the name elsewhere (a comment inside another function,
+  // a policy string) must not exempt anything.
+  it("tenancy — the ack actor-guard exemption needs the statement HEAD, not a mention of its name", async () => {
+    const r = await gate("check-tenancy.ts", join(FIX, "tenancy-ack-actor-guard"));
+    expect(r.status).not.toBe(0);
+    // Exactly the function that only mentions the name and the policy string: the genuine guard stays silent.
+    expect(r.out.match(/rls-session-variable/g) ?? []).toHaveLength(2);
+  });
+
   it("table-ownership — cross-module schema access", async () => {
     const r = await gate("check-table-ownership.ts", join(FIX, "table-ownership"));
     expect(r.status).not.toBe(0);

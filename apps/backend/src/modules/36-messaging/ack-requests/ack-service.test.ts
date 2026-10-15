@@ -2,7 +2,12 @@
 // reassign, and the rule that nothing but an explicit transition by the assignee writes an acknowledgment.
 import { ACK_DEADLINE_POLICY } from "@wardenx/types";
 import { beforeEach, describe, expect, it } from "vitest";
-import { type AckService, type AckServiceDeps, createAckService } from "./ack-service";
+import {
+  type AckService,
+  type AckServiceDeps,
+  ackGuardName,
+  createAckService,
+} from "./ack-service";
 import { type MemoryAckStore, createMemoryAckStore } from "./ack-store-memory";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
@@ -22,10 +27,14 @@ interface Kit {
   store: MemoryAckStore;
   published: Array<{ eventName: string; payload: Record<string, unknown> }>;
   setNow: (d: Date) => void;
+  logged: Array<{ message: string; context: Record<string, string> }>;
   knobs: {
     enabled: boolean;
     qualified: Set<string>;
     stillQualifiedError: boolean;
+    flagError: boolean;
+    canRaise: Set<string>;
+    canRaiseError: boolean;
     viewers: Set<string>;
     team: string[];
   };
@@ -41,16 +50,23 @@ function kit(): Kit {
     urgentRecipientUserId: null,
   });
   const published: Kit["published"] = [];
+  const logged: Kit["logged"] = [];
   let now = T0;
   const knobs: Kit["knobs"] = {
     enabled: true,
     qualified: new Set([NURSE, NURSE2]),
     stillQualifiedError: false,
+    flagError: false,
+    canRaise: new Set([AUTHOR]),
+    canRaiseError: false,
     viewers: new Set([AUTHOR, NURSE, NURSE2, AIDE]),
     team: [AUTHOR, NURSE, NURSE2, AIDE],
   };
   const deps: AckServiceDeps = {
-    isEnabled: async () => knobs.enabled,
+    isEnabled: async () => {
+      if (knobs.flagError) throw new Error("flag store down");
+      return knobs.enabled;
+    },
     store,
     outbox: {
       publish: async (_tx, e) => {
@@ -68,9 +84,15 @@ function kit(): Kit {
       if (knobs.stillQualifiedError) throw new Error("db down");
       return knobs.qualified.has(userId);
     },
+    canRaise: async (_o, userId) => {
+      if (knobs.canRaiseError) throw new Error("permission store down");
+      return knobs.canRaise.has(userId);
+    },
+    log: (message, context) => logged.push({ message, context }),
     now: () => now,
   };
   return {
+    logged,
     service: createAckService(deps),
     store,
     published,
@@ -132,6 +154,16 @@ describe("create (important)", () => {
     await expect(
       k.service.create(actor(AUTHOR), { messageId: MSG, assigneeUserId: NURSE }),
     ).rejects.toMatchObject({ statusCode: 404 });
+    expect(k.store.requests.size).toBe(0);
+    expect(k.published).toEqual([]);
+  });
+
+  it("is 503 (never a fake 404) when the flag cannot be read, and writes nothing", async () => {
+    k.knobs.flagError = true;
+
+    await expect(
+      k.service.create(actor(AUTHOR), { messageId: MSG, assigneeUserId: NURSE }),
+    ).rejects.toMatchObject({ statusCode: 503, code: "ACK_UNAVAILABLE" });
     expect(k.store.requests.size).toBe(0);
     expect(k.published).toEqual([]);
   });
@@ -481,6 +513,148 @@ describe("reassign", () => {
 
     await expect(k.service.reassign(actor(AUTHOR), id, NURSE2)).rejects.toMatchObject({
       statusCode: 409,
+    });
+  });
+});
+
+describe("reassign - who may hand an acknowledged request on", () => {
+  let k: Kit;
+  let id: string;
+  beforeEach(async () => {
+    k = kit();
+    id = await pending(k);
+    await k.service.acknowledge(actor(NURSE), id);
+    k.store.events.length = 0;
+    k.published.length = 0;
+  });
+
+  it("refuses the requester once the request is taken: nothing changes and no event is written", async () => {
+    await expect(k.service.reassign(actor(AUTHOR), id, NURSE2)).rejects.toMatchObject({
+      statusCode: 403,
+      code: "ACK_NOT_ASSIGNEE",
+    });
+    expect(k.store.requests.get(id)?.status).toBe("acknowledged");
+    expect(k.store.events).toEqual([]);
+    expect(k.published).toEqual([]);
+  });
+
+  it("lets the assignee hand it on even when her own role lapsed and she cannot raise requests (it must not strand)", async () => {
+    k.knobs.qualified.delete(NURSE);
+    k.knobs.canRaise.clear();
+
+    const res = await k.service.reassign(actor(NURSE), id, NURSE2);
+
+    expect(res.request).toMatchObject({ status: "pending", assigned_user_id: NURSE2 });
+  });
+
+  it("keeps the earlier acknowledgment in the history when the assignee hands it on", async () => {
+    await k.service.reassign(actor(NURSE), id, NURSE2);
+
+    const types = k.store.events.map((e) => e.eventType);
+    expect(types).toEqual(["reassigned"]);
+    expect(k.store.events[0]).toMatchObject({
+      fromStatus: "acknowledged",
+      toStatus: "pending",
+      previousAssignedUserId: NURSE,
+    });
+  });
+
+  it("makes the requester pass a LIVE urgent.send check while the request is still waiting", async () => {
+    const waiting = kit();
+    const waitingId = await pending(waiting);
+    waiting.knobs.canRaise.clear();
+
+    await expect(waiting.service.reassign(actor(AUTHOR), waitingId, NURSE2)).rejects.toMatchObject({
+      statusCode: 403,
+    });
+    expect(waiting.store.requests.get(waitingId)?.assignedUserId).toBe(NURSE);
+  });
+
+  it("propagates a failed permission lookup for the requester (a failure is not a 'no')", async () => {
+    const waiting = kit();
+    const waitingId = await pending(waiting);
+    waiting.knobs.canRaiseError = true;
+
+    await expect(waiting.service.reassign(actor(AUTHOR), waitingId, NURSE2)).rejects.toThrow(
+      "permission store down",
+    );
+  });
+});
+
+describe("database guards on a race", () => {
+  const pgError = (code: string, extra: Record<string, string> = {}) =>
+    Object.assign(new Error("Failed query"), {
+      cause: Object.assign(new Error("x"), { code, ...extra }),
+    });
+
+  it.each([
+    [
+      "a CHECK constraint",
+      { constraint: "message_ack_request_window" },
+      "message_ack_request_window",
+    ],
+    [
+      "a transition trigger",
+      { message: "message_ack_request_transition: a -> b" },
+      "message_ack_request_transition",
+    ],
+    [
+      "the insert guard",
+      { message: "message_ack_request: the message is missing" },
+      "message_ack_request",
+    ],
+    ["the history guard", { message: "message_ack_event_status: x" }, "message_ack_event_status"],
+  ])("names %s", (_label, extra, expected) => {
+    expect(ackGuardName(pgError("23514", extra))).toBe(expected);
+  });
+
+  it("does not treat any other 23514, or another SQLSTATE, as an ack guard", () => {
+    expect(ackGuardName(pgError("23514", { constraint: "outbox_event_payload_check" }))).toBeNull();
+    expect(
+      ackGuardName(pgError("23505", { constraint: "message_ack_request_one_per_message" })),
+    ).toBeNull();
+    expect(ackGuardName(new Error("plain"))).toBeNull();
+  });
+
+  /** The first store call (the visibility read) is real; the write that follows fails with `error`. */
+  const failWrite = (k: Kit, error: unknown): void => {
+    const real = k.store.run.bind(k.store);
+    let calls = 0;
+    k.store.run = ((actorRef: never, fn: never) => {
+      calls += 1;
+      if (calls === 1) return real(actorRef, fn);
+      return Promise.reject(error);
+    }) as typeof k.store.run;
+  };
+
+  it("a known guard that fires on a race is a 409 and is logged by name with ids only", async () => {
+    const k = kit();
+    const id = await pending(k);
+    failWrite(
+      k,
+      pgError("23514", { message: "message_ack_request_actor: only the assigned user" }),
+    );
+
+    await expect(k.service.acknowledge(actor(NURSE), id)).rejects.toMatchObject({
+      statusCode: 409,
+    });
+    expect(k.logged).toContainEqual({
+      message: "database guard refused a transition",
+      context: { organizationId: ORG, requestId: id, guard: "message_ack_request_actor" },
+    });
+  });
+
+  it("an unknown 23514 stays a server fault (rethrown, logged by constraint name only)", async () => {
+    const k = kit();
+    const id = await pending(k);
+    failWrite(k, pgError("23514", { constraint: "some_other_check" }));
+
+    await expect(k.service.acknowledge(actor(NURSE), id)).rejects.toMatchObject({
+      message: "Failed query",
+    });
+    expect(k.logged).toContainEqual({
+      message: "unmapped check violation",
+      context: { organizationId: ORG, requestId: id, constraint: "some_other_check" },
     });
   });
 });

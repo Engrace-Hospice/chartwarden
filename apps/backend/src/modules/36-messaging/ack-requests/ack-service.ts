@@ -9,7 +9,9 @@
 // Authorization is decided here on every call, from the stored request and the caller's live qualification:
 //   - acknowledge / resolve: ONLY the assigned user, who must still be qualified right now. A lookup ERROR propagates (the
 //     caller sees a failure and retries); only a clean "no" is a refusal. Nobody acknowledges on another person's behalf.
-//   - reassign: the requester or the current assignee; the new assignee must pass the same checks as at create.
+//   - reassign: the CURRENT ASSIGNEE at any open state (a hand-off needs no qualification check: it must never strand the item);
+//     the requester only until the request is taken, and then only while they still hold `messaging.urgent.send` (a lookup
+//     ERROR propagates). The new assignee must pass the same checks as at create. The prior acknowledgment stays in the history.
 //   - create: the message's author, on a patient care-team channel, naming a qualified care-team member of the channel.
 // A repeat of a transition by the same actor is an idempotent success (`changed: false`: no write, no event, no outbox row).
 import {
@@ -46,7 +48,7 @@ export interface AckActorRef {
 }
 
 export interface AckServiceDeps {
-  /** The flag `messaging.ack_requests`. Gates CREATION only. A throw reads as off. */
+  /** The flag `messaging.ack_requests`. Gates CREATION only. A clean false is "not found"; a THROW is 503 (never a fake 404). */
   readonly isEnabled: (orgId: string) => Promise<boolean>;
   readonly store: AckStore;
   readonly outbox: HintOutboxPort | undefined;
@@ -63,6 +65,10 @@ export interface AckServiceDeps {
    * THROW propagates - an acknowledgment is never refused because a lookup failed.
    */
   readonly stillQualified: (orgId: string, userId: string, channelId: string) => Promise<boolean>;
+  /** Does the user hold the keys to raise a request (`messaging.send` + `messaging.urgent.send`) right now? A throw propagates. */
+  readonly canRaise: (orgId: string, userId: string) => Promise<boolean>;
+  /** Warn-level, ids and a constraint name only (never a name, patient or text). Defaults to console.warn. */
+  readonly log?: (message: string, context: Record<string, string>) => void;
   readonly now?: () => Date;
 }
 
@@ -102,6 +108,12 @@ export interface AckService {
 
 const requestNotFound = (): NotFoundError => new NotFoundError("escalation");
 const messageNotFound = (): NotFoundError => new NotFoundError("message");
+const unavailable = (): WardenXError =>
+  new WardenXError(
+    "ACK_UNAVAILABLE",
+    "Response requests are unavailable right now. Try again.",
+    503,
+  );
 const assigneeInvalid = (): WardenXError =>
   new WardenXError("ACK_ASSIGNEE_INVALID", "Choose a colleague who can take this message.", 422);
 
@@ -114,9 +126,58 @@ async function orElse<T>(read: () => Promise<T>, fallback: T): Promise<T> {
   }
 }
 
+interface PgErrorLike {
+  readonly code?: string;
+  readonly constraint?: string;
+  readonly message?: string;
+}
+
+/** The driver error behind a (possibly wrapped) failure: the first error in the cause chain that carries a SQLSTATE. */
+function pgErrorOf(err: unknown): PgErrorLike | undefined {
+  let current: unknown = err;
+  for (let depth = 0; depth < 4 && current && typeof current === "object"; depth += 1) {
+    if (typeof (current as PgErrorLike).code === "string") return current as PgErrorLike;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return undefined;
+}
+
+/** The migration-1106 guards (CHECK constraint or trigger) all carry this prefix in `constraint` or the message. */
+const ACK_GUARD_NAME = /^message_ack_(?:request|event)[a-z_]*/;
+
+/** The name of the ack guard that fired (SQLSTATE 23514), or null for any other failure (including other 23514s). */
+export function ackGuardName(err: unknown): string | null {
+  const pg = pgErrorOf(err);
+  if (pg?.code !== "23514") return null;
+  const hit = ACK_GUARD_NAME.exec(pg.constraint ?? "") ?? ACK_GUARD_NAME.exec(pg.message ?? "");
+  return hit ? hit[0] : null;
+}
+
+const errorName = (err: unknown): string => (err instanceof Error ? err.name : "unknown");
+
 const WAITING = ["pending", "escalated", "failed_unreachable"] as const;
 const isWaiting = (s: AckRow["status"]): boolean => (WAITING as readonly string[]).includes(s);
 const isOpen = (s: AckRow["status"]): boolean => isWaiting(s) || s === "acknowledged";
+
+/** Who may reassign: the current assignee; the requester only until the request is taken. Null when allowed. */
+function reassignDenied(actorId: string, row: AckRow): WardenXError | null {
+  if (actorId === row.assignedUserId) return null;
+  if (actorId !== row.requesterUserId) {
+    return new WardenXError(
+      "ACK_NOT_PARTY",
+      "Only the sender or the current assignee can reassign.",
+      403,
+    );
+  }
+  if (row.status === "acknowledged") {
+    return new WardenXError(
+      "ACK_NOT_ASSIGNEE",
+      "Only the person who took responsibility can hand it on.",
+      403,
+    );
+  }
+  return null;
+}
 
 export function createAckService(deps: AckServiceDeps): AckService {
   const clock = deps.now ?? (() => new Date());
@@ -216,17 +277,26 @@ export function createAckService(deps: AckServiceDeps): AckService {
     return { row, inserted };
   }
 
-  /** Maps a lost optimistic race to the conflict answer. */
-  async function guarded<T>(work: () => Promise<T>): Promise<T> {
+  const log =
+    deps.log ??
+    ((message, context) => console.warn(`[m36:ack] ${message}`, JSON.stringify(context)));
+
+  /** Maps a lost optimistic race, or a KNOWN database guard that fired on a race, to the conflict answer. */
+  async function guarded<T>(work: () => Promise<T>, ids: Record<string, string>): Promise<T> {
     try {
       return await work();
     } catch (err) {
       if (err instanceof AckStaleError) throw ackStateInvalid();
-      // A database guard (SQLSTATE 23514) that fires on a race (a delete, a deactivation, a newer reassign) is a conflict, not a 500.
-      const code =
-        (err as { code?: string; cause?: { code?: string } }).code ??
-        (err as { cause?: { code?: string } }).cause?.code;
-      if (code === "23514") throw ackStateInvalid();
+      const guard = ackGuardName(err);
+      if (guard) {
+        // A delete, a deactivation or a newer reassign that won the race: a conflict, not a fault. The name says which guard.
+        log("database guard refused a transition", { ...ids, guard });
+        throw ackStateInvalid();
+      }
+      const pg = pgErrorOf(err);
+      if (pg?.code === "23514") {
+        log("unmapped check violation", { ...ids, constraint: pg.constraint ?? "unknown" });
+      }
       throw err;
     }
   }
@@ -238,7 +308,12 @@ export function createAckService(deps: AckServiceDeps): AckService {
 
   return {
     async create(actor, input) {
-      if (!(await deps.isEnabled(actor.orgId).catch(() => false))) throw messageNotFound();
+      // A clean "off" hides the feature (404); a failed flag read is not "off" and not "no such message": 503, retry.
+      const enabled = await deps.isEnabled(actor.orgId).catch((err: unknown) => {
+        log("flag read failed on create", { organizationId: actor.orgId, reason: errorName(err) });
+        throw unavailable();
+      });
+      if (!enabled) throw messageNotFound();
       const message = await store.run(actor, (tx) => tx.messageFacts(input.messageId));
       if (!message || message.status === "deleted") throw messageNotFound();
       if (!(await deps.canViewChannel(actor.orgId, actor.userId, message.channelId))) {
@@ -281,52 +356,66 @@ export function createAckService(deps: AckServiceDeps): AckService {
       }
 
       const at = clock();
-      return guarded(() =>
-        store.run(actor, async (tx, rawTx) => {
-          const made = await insertRequest(
-            tx,
-            rawTx,
-            {
-              orgId: actor.orgId,
-              messageId: input.messageId,
-              channelId: message.channelId,
-              patientId,
-              requesterUserId: actor.userId,
-              assigneeUserId: input.assigneeUserId,
-              ackClass,
-            },
-            at,
-          );
-          if (!made.inserted) {
-            // Lost a race with an identical request: that one is the answer.
-            const same =
-              made.row.assignedUserId === input.assigneeUserId &&
-              made.row.requesterUserId === actor.userId;
-            if (!same) {
-              throw new WardenXError(
-                "ACK_ALREADY_REQUESTED",
-                "A response has already been requested for this message.",
-                409,
-              );
+      return guarded(
+        () =>
+          store.run(actor, async (tx, rawTx) => {
+            const made = await insertRequest(
+              tx,
+              rawTx,
+              {
+                orgId: actor.orgId,
+                messageId: input.messageId,
+                channelId: message.channelId,
+                patientId,
+                requesterUserId: actor.userId,
+                assigneeUserId: input.assigneeUserId,
+                ackClass,
+              },
+              at,
+            );
+            if (!made.inserted) {
+              // Lost a race with an identical request: that one is the answer.
+              const same =
+                made.row.assignedUserId === input.assigneeUserId &&
+                made.row.requesterUserId === actor.userId;
+              if (!same) {
+                throw new WardenXError(
+                  "ACK_ALREADY_REQUESTED",
+                  "A response has already been requested for this message.",
+                  409,
+                );
+              }
             }
-          }
-          return {
-            request: toAckRequestDto(made.row, actor.userId),
-            changed: made.inserted,
-            created: made.inserted,
-          };
-        }),
+            return {
+              request: toAckRequestDto(made.row, actor.userId),
+              changed: made.inserted,
+              created: made.inserted,
+            };
+          }),
+        { organizationId: actor.orgId, messageId: input.messageId },
       );
     },
 
     async createForUrgentSend(rawTx, facts) {
       const at = clock();
-      await insertRequest(
-        store.bind(rawTx, facts.orgId),
-        rawTx,
-        { ...facts, ackClass: "urgent" },
-        at,
-      );
+      try {
+        await insertRequest(
+          store.bind(rawTx, facts.orgId),
+          rawTx,
+          { ...facts, ackClass: "urgent" },
+          at,
+        );
+      } catch (err) {
+        // The send fails whole (message and request roll back together); the log names the guard and ids only.
+        const pg = pgErrorOf(err);
+        log("urgent send could not create its request", {
+          organizationId: facts.orgId,
+          messageId: facts.messageId,
+          channelId: facts.channelId,
+          guard: ackGuardName(err) ?? pg?.constraint ?? pg?.code ?? errorName(err),
+        });
+        throw err;
+      }
     },
 
     async get(actor, requestId) {
@@ -358,41 +447,43 @@ export function createAckService(deps: AckServiceDeps): AckService {
         throw new WardenXError("ACK_NOT_QUALIFIED", "Your role cannot take this message.", 403);
       }
       const at = clock();
-      return guarded(() =>
-        store.run(actor, async (tx, rawTx) => {
-          const row = await tx.findById(requestId, true);
-          if (!row) throw requestNotFound();
-          if (row.assignedUserId !== actor.userId) throw ackStateInvalid();
-          if (row.status === "acknowledged" && row.acknowledgedByUserId === actor.userId) {
-            return unchanged(row, actor.userId);
-          }
-          if (!isWaiting(row.status)) throw ackStateInvalid();
-          const next = await tx.update(row.id, row.version, {
-            status: "acknowledged",
-            acknowledgedAt: at,
-            acknowledgedByUserId: actor.userId,
-            updatedAt: at,
-          });
-          await tx.insertEvent({
-            organizationId: next.organizationId,
-            requestId: next.id,
-            eventType: "acknowledged",
-            actorUserId: actor.userId,
-            fromStatus: row.status,
-            toStatus: "acknowledged",
-            assignedUserId: next.assignedUserId,
-            previousAssignedUserId: null,
-            tier: next.currentTier,
-            at,
-          });
-          await publishAckEvent(
-            deps.outbox,
-            rawTx,
-            M36_ACK_ACKNOWLEDGED,
-            factsOf(next, actor.userId, at),
-          );
-          return { request: toAckRequestDto(next, actor.userId), changed: true };
-        }),
+      return guarded(
+        () =>
+          store.run(actor, async (tx, rawTx) => {
+            const row = await tx.findById(requestId, true);
+            if (!row) throw requestNotFound();
+            if (row.assignedUserId !== actor.userId) throw ackStateInvalid();
+            if (row.status === "acknowledged" && row.acknowledgedByUserId === actor.userId) {
+              return unchanged(row, actor.userId);
+            }
+            if (!isWaiting(row.status)) throw ackStateInvalid();
+            const next = await tx.update(row.id, row.version, {
+              status: "acknowledged",
+              acknowledgedAt: at,
+              acknowledgedByUserId: actor.userId,
+              updatedAt: at,
+            });
+            await tx.insertEvent({
+              organizationId: next.organizationId,
+              requestId: next.id,
+              eventType: "acknowledged",
+              actorUserId: actor.userId,
+              fromStatus: row.status,
+              toStatus: "acknowledged",
+              assignedUserId: next.assignedUserId,
+              previousAssignedUserId: null,
+              tier: next.currentTier,
+              at,
+            });
+            await publishAckEvent(
+              deps.outbox,
+              rawTx,
+              M36_ACK_ACKNOWLEDGED,
+              factsOf(next, actor.userId, at),
+            );
+            return { request: toAckRequestDto(next, actor.userId), changed: true };
+          }),
+        { organizationId: actor.orgId, requestId },
       );
     },
 
@@ -411,55 +502,60 @@ export function createAckService(deps: AckServiceDeps): AckService {
         throw new WardenXError("ACK_NOT_QUALIFIED", "Your role cannot close this message.", 403);
       }
       const at = clock();
-      return guarded(() =>
-        store.run(actor, async (tx, rawTx) => {
-          const row = await tx.findById(requestId, true);
-          if (!row) throw requestNotFound();
-          if (row.assignedUserId !== actor.userId) throw ackStateInvalid();
-          if (row.status === "resolved" && row.resolvedByUserId === actor.userId) {
-            return unchanged(row, actor.userId);
-          }
-          if (row.status !== "acknowledged") {
-            throw isWaiting(row.status) ? ackNotAcknowledged() : ackStateInvalid();
-          }
-          const next = await tx.update(row.id, row.version, {
-            status: "resolved",
-            resolvedAt: at,
-            resolvedByUserId: actor.userId,
-            updatedAt: at,
-          });
-          await tx.insertEvent({
-            organizationId: next.organizationId,
-            requestId: next.id,
-            eventType: "resolved",
-            actorUserId: actor.userId,
-            fromStatus: "acknowledged",
-            toStatus: "resolved",
-            assignedUserId: next.assignedUserId,
-            previousAssignedUserId: null,
-            tier: next.currentTier,
-            at,
-          });
-          await publishAckEvent(
-            deps.outbox,
-            rawTx,
-            M36_ACK_RESOLVED,
-            factsOf(next, actor.userId, at),
-          );
-          return { request: toAckRequestDto(next, actor.userId), changed: true };
-        }),
+      return guarded(
+        () =>
+          store.run(actor, async (tx, rawTx) => {
+            const row = await tx.findById(requestId, true);
+            if (!row) throw requestNotFound();
+            if (row.assignedUserId !== actor.userId) throw ackStateInvalid();
+            if (row.status === "resolved" && row.resolvedByUserId === actor.userId) {
+              return unchanged(row, actor.userId);
+            }
+            if (row.status !== "acknowledged") {
+              throw isWaiting(row.status) ? ackNotAcknowledged() : ackStateInvalid();
+            }
+            const next = await tx.update(row.id, row.version, {
+              status: "resolved",
+              resolvedAt: at,
+              resolvedByUserId: actor.userId,
+              updatedAt: at,
+            });
+            await tx.insertEvent({
+              organizationId: next.organizationId,
+              requestId: next.id,
+              eventType: "resolved",
+              actorUserId: actor.userId,
+              fromStatus: "acknowledged",
+              toStatus: "resolved",
+              assignedUserId: next.assignedUserId,
+              previousAssignedUserId: null,
+              tier: next.currentTier,
+              at,
+            });
+            await publishAckEvent(
+              deps.outbox,
+              rawTx,
+              M36_ACK_RESOLVED,
+              factsOf(next, actor.userId, at),
+            );
+            return { request: toAckRequestDto(next, actor.userId), changed: true };
+          }),
+        { organizationId: actor.orgId, requestId },
       );
     },
 
     async reassign(actor, requestId, newAssigneeUserId) {
       const seen = await visibleRequest(actor, requestId);
-      const isParty = actor.userId === seen.requesterUserId || actor.userId === seen.assignedUserId;
-      if (!isParty) {
-        throw new WardenXError(
-          "ACK_NOT_PARTY",
-          "Only the sender or the current assignee can reassign.",
-          403,
-        );
+      const denied = reassignDenied(actor.userId, seen);
+      if (denied) throw denied;
+      // The sender hands on only while they still hold the right to raise a request. The assignee needs no such check: a
+      // hand-off must work even when their own role lapsed, or the item would strand with them. A lookup ERROR propagates.
+      if (
+        actor.userId === seen.requesterUserId &&
+        isOpen(seen.status) &&
+        !(await deps.canRaise(actor.orgId, actor.userId))
+      ) {
+        throw new ForbiddenError("You can no longer send response requests.");
       }
       if (!isOpen(seen.status)) throw ackStateInvalid();
       if (seen.assignedUserId === newAssigneeUserId) {
@@ -479,46 +575,51 @@ export function createAckService(deps: AckServiceDeps): AckService {
       ) {
         throw assigneeInvalid();
       }
-      return guarded(() =>
-        store.run(actor, async (tx, rawTx) => {
-          const row = await tx.findById(requestId, true);
-          if (!row) throw requestNotFound();
-          const stillParty =
-            actor.userId === row.requesterUserId || actor.userId === row.assignedUserId;
-          if (!stillParty || !isOpen(row.status) || row.assignedUserId === newAssigneeUserId) {
-            throw ackStateInvalid();
-          }
-          // Taken after the lock and never before the stored window: a reassign that waited behind a newer one cannot move it back.
-          const at = new Date(Math.max(clock().getTime(), row.windowStartedAt.getTime()));
-          // The window restarts for the new assignee; requested_at never moves.
-          const next = await tx.update(row.id, row.version, {
-            status: "pending",
-            assignedUserId: newAssigneeUserId,
-            windowStartedAt: at,
-            deadlineAt: defaultDeadline(row.ackClass, at),
-            currentTier: 0,
-            acknowledgedAt: null,
-            acknowledgedByUserId: null,
-            updatedAt: at,
-          });
-          await tx.insertEvent({
-            organizationId: next.organizationId,
-            requestId: next.id,
-            eventType: "reassigned",
-            actorUserId: actor.userId,
-            fromStatus: row.status,
-            toStatus: "pending",
-            assignedUserId: next.assignedUserId,
-            previousAssignedUserId: row.assignedUserId,
-            tier: 0,
-            at,
-          });
-          await publishAckEvent(deps.outbox, rawTx, M36_ACK_REASSIGNED, {
-            ...factsOf(next, actor.userId, at),
-            previousAssignedUserId: row.assignedUserId,
-          });
-          return { request: toAckRequestDto(next, actor.userId), changed: true };
-        }),
+      return guarded(
+        () =>
+          store.run(actor, async (tx, rawTx) => {
+            const row = await tx.findById(requestId, true);
+            if (!row) throw requestNotFound();
+            // Re-decided on the locked row: a request taken or handed on since the first read changes who may reassign.
+            if (
+              reassignDenied(actor.userId, row) ||
+              !isOpen(row.status) ||
+              row.assignedUserId === newAssigneeUserId
+            ) {
+              throw ackStateInvalid();
+            }
+            // Taken after the lock and never before the stored window: a reassign that waited behind a newer one cannot move it back.
+            const at = new Date(Math.max(clock().getTime(), row.windowStartedAt.getTime()));
+            // The window restarts for the new assignee; requested_at never moves.
+            const next = await tx.update(row.id, row.version, {
+              status: "pending",
+              assignedUserId: newAssigneeUserId,
+              windowStartedAt: at,
+              deadlineAt: defaultDeadline(row.ackClass, at),
+              currentTier: 0,
+              acknowledgedAt: null,
+              acknowledgedByUserId: null,
+              updatedAt: at,
+            });
+            await tx.insertEvent({
+              organizationId: next.organizationId,
+              requestId: next.id,
+              eventType: "reassigned",
+              actorUserId: actor.userId,
+              fromStatus: row.status,
+              toStatus: "pending",
+              assignedUserId: next.assignedUserId,
+              previousAssignedUserId: row.assignedUserId,
+              tier: 0,
+              at,
+            });
+            await publishAckEvent(deps.outbox, rawTx, M36_ACK_REASSIGNED, {
+              ...factsOf(next, actor.userId, at),
+              previousAssignedUserId: row.assignedUserId,
+            });
+            return { request: toAckRequestDto(next, actor.userId), changed: true };
+          }),
+        { organizationId: actor.orgId, requestId },
       );
     },
   };

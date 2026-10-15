@@ -91,6 +91,8 @@ export const ACK_ERROR_CODES = [
   "ACK_STATE_INVALID",
   "ACK_NOT_ACKNOWLEDGED",
   "ACK_MESSAGE_NOT_EDITABLE",
+  "ACK_MESSAGE_HAS_OPEN_REQUEST",
+  "ACK_UNAVAILABLE",
 ] as const;
 export type AckErrorCode = (typeof ACK_ERROR_CODES)[number];
 

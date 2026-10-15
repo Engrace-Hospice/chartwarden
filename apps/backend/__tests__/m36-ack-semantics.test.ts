@@ -43,6 +43,10 @@ const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
     "WP 4.2 mounts the acknowledgment-request card under a message of a patient conversation (one import and one element)",
   "apps/web/src/modules/36-messaging/conversation-thread.tsx":
     "WP 4.2 wraps the timeline in the acknowledgment-request loader for a patient care-team conversation (one import and one element)",
+  "apps/web/src/modules/36-messaging/ack-request-card.tsx":
+    "WP 4.2 web: the acknowledgment-request card (taking responsibility is an explicit button; opening or reading sends nothing)",
+  "apps/web/src/modules/36-messaging/ack-wording.ts":
+    "WP 4.2 web: every word the acknowledgment-request card shows (provisional, pending clinical-lead review)",
   "apps/web/src/modules/36-messaging/use-ack-requests.ts":
     "WP 4.2 web hook for the acknowledgment requests of a channel and the explicit acknowledge / resolve calls",
   "apps/backend/src/modules/36-messaging/routes/ack-routes.ts":
@@ -73,8 +77,6 @@ const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
 const WORDING_ALLOWLIST_PREFIXES: Readonly<Record<string, string>> = {
   "apps/backend/src/modules/36-messaging/ack-requests/":
     "WP 4.2 the acknowledgment-request aggregate itself (service, store, events, binding): an explicit action by the assigned clinician, never a receipt",
-  "apps/web/src/modules/36-messaging/ack-":
-    "WP 4.2 web: the acknowledgment-request card, its wording and tests (taking responsibility is an explicit button; opening or reading sends nothing)",
   "packages/messaging/src/ack-requests/":
     "WP 4.2 the pure state machine and deadline rules of the acknowledgment-request aggregate",
 };

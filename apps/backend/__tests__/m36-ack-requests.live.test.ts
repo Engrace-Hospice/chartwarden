@@ -33,11 +33,13 @@ import {
 import type { AlertEmitter } from "@wardenx/messaging";
 import { ACK_DEADLINE_POLICY } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
+import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { buildAckRateLimit } from "../src/bootstrap/plugins/ack-rate-limit";
 import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-store-db";
 import { createInMemoryRateLimitStore } from "../src/bootstrap/plugins/rate-limit-store";
+import { createDbAckStore } from "../src/modules/36-messaging/ack-requests/ack-store-db";
 import { buildAckDeps } from "../src/modules/36-messaging/ack-requests/deps";
 import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import { CHANNEL_VISIBILITY_PREDICATE } from "../src/modules/36-messaging/index";
@@ -827,6 +829,53 @@ describe.skipIf(!DB_URL)("M36 WP 4.2 acknowledgment requests - LIVE Postgres", (
       });
     });
 
+    it("refuses the SENDER once the request is taken (403 ACK_NOT_ASSIGNEE, nothing written); the assignee's hand-off keeps the acknowledgment in the history", async () => {
+      const { id } = await freshRequest();
+      await acknowledge(rn, id);
+      const before = await totals();
+
+      const refused = await reassign(nurse, id, rn2);
+
+      expect(refused.statusCode, refused.body).toBe(403);
+      expect(errorCode(refused)).toBe("ACK_NOT_ASSIGNEE");
+      expect(await totals()).toEqual(before);
+      expect((await row(id))?.status).toBe("acknowledged");
+
+      const handed = await reassign(rn, id, rn2);
+
+      expect(handed.statusCode, handed.body).toBe(200);
+      expect((await events(id)).map((e) => [e.event_type, e.from_status, e.to_status])).toEqual([
+        ["requested", null, "pending"],
+        ["acknowledged", "pending", "acknowledged"],
+        ["reassigned", "acknowledged", "pending"],
+      ]);
+    });
+
+    it("makes the sender re-pass a live urgent.send check; a failing lookup is a failure, and the assignee needs no such check", async () => {
+      const { id } = await freshRequest();
+      const keys = keysOf.get(nurse) ?? [];
+      keysOf.set(
+        nurse,
+        keys.filter((k) => k !== "messaging.urgent.send"),
+      );
+      try {
+        const refused = await reassign(nurse, id, rn2);
+        expect(refused.statusCode, refused.body).toBe(403);
+        expect((await row(id))?.assigned_user_id).toBe(rn);
+      } finally {
+        keysOf.set(nurse, keys);
+      }
+      // The assignee's own role lapsing must not strand the item: she can still hand it on.
+      const rnKeys = keysOf.get(rn) ?? [];
+      keysOf.set(rn, STAFF_KEYS);
+      try {
+        const handed = await reassign(rn, id, rn2);
+        expect(handed.statusCode, handed.body).toBe(200);
+      } finally {
+        keysOf.set(rn, rnKeys);
+      }
+    });
+
     it("refuses a non-party, an ineligible target, the requester, the current assignee, and a closed request", async () => {
       const { id } = await freshRequest();
       const before = await totals();
@@ -1008,6 +1057,45 @@ describe.skipIf(!DB_URL)("M36 WP 4.2 acknowledgment requests - LIVE Postgres", (
       expect((await as(cancel, nurse)).error).toBeNull();
     });
 
+    it("once taken, only the assignee can return the request to pending (the sender cannot, whatever the service does)", async () => {
+      const { id } = await freshRequest();
+      await acknowledge(rn, id);
+      const back = (to: string) =>
+        `status='pending', assigned_user_id='${to}', window_started_at=now(), deadline_at=now() + interval '60 minutes', acknowledged_at=NULL, acknowledged_by_user_id=NULL, version=version+1`;
+      const attempt = (user: string) =>
+        asApp(`UPDATE message_acknowledgment_request SET ${back(rn2)} WHERE id=$1`, [id], { user });
+
+      expect((await attempt(nurse)).error).toMatch(/only the person who took responsibility/);
+      expect((await attempt(rn)).error).toBeNull();
+    });
+
+    it("refuses a forged history event: another person's name, a status the request is not in, a system event from a user session", async () => {
+      const { id } = await freshRequest();
+      const insert = (actor: string | null, kind: string, toStatus: string, user: string | null) =>
+        asApp(
+          `INSERT INTO message_acknowledgment_event
+             (organization_id, request_id, event_type, actor_user_id, actor_kind, from_status, to_status, assigned_user_id, tier)
+           VALUES ($1, $2, 'acknowledged', $3, $4, 'pending', $5, $6, 0)`,
+          [ORG_A, id, actor, kind, toStatus, rn],
+          { user },
+        );
+
+      expect((await insert(rn, "user", "pending", nurse)).error).toMatch(/message_ack_event_actor/);
+      expect((await insert(nurse, "user", "resolved", nurse)).error).toMatch(
+        /message_ack_event_status/,
+      );
+      expect((await insert(null, "system", "pending", nurse)).error).toMatch(
+        /message_ack_event_actor/,
+      );
+      expect((await insert(nurse, "user", "pending", null)).error).toMatch(
+        /message_ack_event_actor/,
+      );
+      // The honest shapes pass: the session's own user with the request's own status, and a system event with no user session.
+      expect((await insert(nurse, "user", "pending", nurse)).error).toBeNull();
+      expect((await insert(null, "system", "pending", null)).error).toBeNull();
+      expect(await events(id)).toHaveLength(1);
+    });
+
     it("the patient is the care-team channel's, and a request cannot start in the past or the future", async () => {
       const messageId = await routineMessage(nurse);
       const insert = (patient: string, startOffset = "0 minutes") =>
@@ -1164,6 +1252,60 @@ describe.skipIf(!DB_URL)("M36 WP 4.2 acknowledgment requests - LIVE Postgres", (
       }
     });
 
+    it("erasing a request or its message as a wardenx_destruction login cascades through the append-only history", async () => {
+      await kit.admin.query(
+        `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='wp42_destroyer') THEN
+           CREATE ROLE wp42_destroyer LOGIN PASSWORD 'wp42_destroyer_pw'; END IF; END $$;`,
+      );
+      // Membership is re-granted every run: the live kit drops and recreates wardenx_destruction, which silently ends it.
+      await kit.admin.query("GRANT wardenx_destruction TO wp42_destroyer");
+      const url = new URL(DB_URL as string);
+      url.username = "wp42_destroyer";
+      url.password = "wp42_destroyer_pw";
+      const destroyer = new Client({ connectionString: url.toString() });
+      await destroyer.connect();
+      try {
+        for (const target of ["request", "message"] as const) {
+          const { id, messageId } = await freshRequest();
+          await acknowledge(rn, id);
+          expect((await events(id)).length).toBeGreaterThan(1);
+          await destroyer.query("BEGIN");
+          try {
+            await destroyer.query("SELECT set_config('app.org_id', $1, true)", [ORG_A]);
+            const res =
+              target === "request"
+                ? await destroyer.query("DELETE FROM message_acknowledgment_request WHERE id=$1", [
+                    id,
+                  ])
+                : await destroyer.query("DELETE FROM message WHERE id=$1", [messageId]);
+            expect(res.rowCount).toBe(1);
+            const left = await destroyer.query(
+              "SELECT count(*)::int AS n FROM message_acknowledgment_event WHERE request_id=$1",
+              [id],
+            );
+            expect(left.rows[0].n).toBe(0);
+          } finally {
+            await destroyer.query("ROLLBACK");
+          }
+        }
+      } finally {
+        await destroyer.end();
+      }
+    });
+
+    it("the same cascade is refused for the app role and the table owner without the destruction role", async () => {
+      const { id } = await freshRequest();
+      // The app role has no DELETE on the request, so it cannot start the cascade at all.
+      expect(
+        (await asApp("DELETE FROM message_acknowledgment_request WHERE id=$1", [id])).error,
+      ).toMatch(/permission denied/);
+      // A superuser (the owner) deleting the parent is not the erasure path either: the history survives.
+      expect(await asAdmin("DELETE FROM message_acknowledgment_request WHERE id=$1", [id])).toMatch(
+        /append_only/,
+      );
+      expect((await events(id)).length).toBeGreaterThan(0);
+    });
+
     it("wardenx_app has no DELETE on either table and no UPDATE on the history", async () => {
       const priv = async (table: string, p: string) =>
         (
@@ -1199,6 +1341,46 @@ describe.skipIf(!DB_URL)("M36 WP 4.2 acknowledgment requests - LIVE Postgres", (
       });
       expect((await outboxNames(id)).at(-1)).toBe("m36.ack.cancelled");
       expect((await acknowledge(rn, id)).statusCode).toBe(409);
+    });
+
+    it("a request raised between the cancel and the tombstone (a race) makes the delete a 409 with a clear code, not a 500", async () => {
+      const messageId = await routineMessage(nurse);
+      await kit.admin.query(
+        `CREATE OR REPLACE FUNCTION wp42_race() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+           INSERT INTO message_acknowledgment_request
+             (organization_id, message_id, channel_id, patient_id, ack_class, requester_user_id, assigned_user_id, deadline_at)
+           SELECT NEW.organization_id, NEW.id, NEW.channel_id, c.subject_id, 'important', NEW.author_user_id, '${rn}',
+                  now() + interval '60 minutes'
+             FROM channel c WHERE c.organization_id = NEW.organization_id AND c.id = NEW.channel_id;
+           RETURN NEW; END $$`,
+      );
+      await kit.admin.query(
+        `CREATE TRIGGER a_wp42_race BEFORE UPDATE ON message FOR EACH ROW
+           WHEN (NEW.status = 'deleted' AND OLD.status <> 'deleted') EXECUTE FUNCTION wp42_race()`,
+      );
+      try {
+        const del = await app.inject({
+          method: "DELETE",
+          url: `/api/v1/messaging/messages/${messageId}`,
+          headers: as(nurse, ORG_A),
+        });
+
+        expect(del.statusCode, del.body).toBe(409);
+        expect(errorCode(del)).toBe("ACK_MESSAGE_HAS_OPEN_REQUEST");
+      } finally {
+        await kit.admin.query("DROP TRIGGER a_wp42_race ON message");
+        await kit.admin.query("DROP FUNCTION wp42_race()");
+      }
+      const left = await kit.one<{ status: string }>("SELECT status FROM message WHERE id=$1", [
+        messageId,
+      ]);
+      expect(left[0]?.status).not.toBe("deleted");
+      expect(
+        await kit.count(
+          "SELECT count(*)::int AS n FROM message_acknowledgment_request WHERE message_id=$1",
+          [messageId],
+        ),
+      ).toBe(0);
     });
 
     it("deleting a message whose request is already resolved cancels nothing", async () => {
@@ -1259,6 +1441,48 @@ describe.skipIf(!DB_URL)("M36 WP 4.2 acknowledgment requests - LIVE Postgres", (
     });
   });
 
+  describe("the channel list", () => {
+    it("returns every OPEN request even when more recent closed ones exceed the cap, open first", async () => {
+      const listCh = await mkChannel(kit, "care_team", "bbbbbbbb-bbbb-4bbb-8bbb-0000000a42b2", [
+        nurse,
+        rn,
+        rn2,
+      ]);
+      const raise = async (assignee: string) => {
+        const messageId = await routineMessage(nurse, listCh);
+        const res = await create(nurse, messageId, assignee);
+        expect(res.statusCode, res.body).toBe(201);
+        return res.json().request.id as string;
+      };
+      const oldOpen = await raise(rn);
+      const secondOpen = await raise(rn2);
+      const closed: string[] = [];
+      for (let i = 0; i < 4; i += 1) {
+        const id = await raise(rn);
+        await acknowledge(rn, id);
+        await resolve(rn, id);
+        closed.push(id);
+      }
+      const store = createDbAckStore(kit.handle.db);
+      const list = (limit: number) =>
+        store.run({ orgId: ORG_A, userId: nurse }, (tx) => tx.listForChannel(listCh, limit));
+
+      const capped = await list(3);
+      expect(capped.map((r) => r.id)).toEqual([secondOpen, oldOpen, closed[3]]);
+
+      // The cap never drops an open request: two open rows and a cap of one still return both.
+      expect((await list(1)).map((r) => r.id)).toEqual([secondOpen, oldOpen]);
+      expect((await list(100)).map((r) => r.id)).toEqual([
+        secondOpen,
+        oldOpen,
+        closed[3],
+        closed[2],
+        closed[1],
+        closed[0],
+      ]);
+    });
+  });
+
   describe("audit", () => {
     it("every transition has an audit row naming the actor, and the patient id is not copied into it", async () => {
       const { id } = await freshRequest();
@@ -1307,7 +1531,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.2 acknowledgment requests - LIVE Postgres", (
       buildM36AckNotificationsConsumer({
         alerts,
         messaging: kit.service,
-        isOpenAndAssignedTo: ack.isOpenAndAssignedTo,
+        isWaitingForAssignee: ack.isWaitingForAssignee,
         stillQualified: ack.stillQualified,
       });
     const stored = async (id: string, type: string) => {
@@ -1360,6 +1584,17 @@ describe.skipIf(!DB_URL)("M36 WP 4.2 acknowledgment requests - LIVE Postgres", (
       await reassign(nurse, id, rn);
       emitted.length = 0;
       await consumer().handle(toRn2);
+      expect(emitted).toHaveLength(0);
+    });
+
+    it("a stale event alerts nobody once the request was taken, even though it is still open and still hers", async () => {
+      const { id } = await freshRequest();
+      const requested = await stored(id, "m36.ack.requested");
+      await acknowledge(rn, id);
+      emitted.length = 0;
+
+      await consumer().handle(requested);
+
       expect(emitted).toHaveLength(0);
     });
   });

@@ -5,7 +5,8 @@
 // triggers (migration 1106) refuse any transition off the table, whatever this code does.
 import { type DbClient, schema } from "@wardenx/db";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { ACK_OPEN_STATUSES } from "@wardenx/types";
+import { and, asc, desc, eq, inArray, notInArray } from "drizzle-orm";
 import type { Tx } from "../messaging-write-core";
 import {
   type AckEventRow,
@@ -146,14 +147,26 @@ export function ackTxOver(tx: Tx, orgId: string): AckTx {
       return rows.map(toEvent);
     },
 
+    // Every OPEN request first (an old unanswered one is the most important row and must never fall off the cap), then the
+    // most recent closed ones up to what is left of the cap.
     async listForChannel(channelId, limit) {
-      const rows = await tx
+      const open = [...ACK_OPEN_STATUSES];
+      const inChannel = and(eq(R.organizationId, orgId), eq(R.channelId, channelId));
+      const openRows = await tx
         .select()
         .from(R)
-        .where(and(eq(R.organizationId, orgId), eq(R.channelId, channelId)))
-        .orderBy(desc(R.requestedAt), desc(R.id))
-        .limit(limit);
-      return rows.map(toRow);
+        .where(and(inChannel, inArray(R.status, open)))
+        .orderBy(desc(R.requestedAt), desc(R.id));
+      const closedRows =
+        limit > openRows.length
+          ? await tx
+              .select()
+              .from(R)
+              .where(and(inChannel, notInArray(R.status, open)))
+              .orderBy(desc(R.requestedAt), desc(R.id))
+              .limit(limit - openRows.length)
+          : [];
+      return [...openRows, ...closedRows].map(toRow);
     },
 
     async messageFacts(messageId): Promise<AckMessageFacts | null> {

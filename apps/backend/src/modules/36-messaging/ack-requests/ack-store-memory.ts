@@ -1,6 +1,7 @@
 // apps/backend/src/modules/36-messaging/ack-requests/ack-store-memory.ts - WP 4.2: an in-memory twin of the store for the service's
 // unit tests. It mirrors the unique-per-message arbiter and the optimistic version; the state machine itself is the service's
 // (and, in production, the database trigger's) - the live suite proves that one.
+import { ACK_OPEN_STATUSES } from "@wardenx/types";
 import {
   type AckEventRow,
   type AckMessageFacts,
@@ -103,10 +104,16 @@ export function createMemoryAckStore(): MemoryAckStore {
         );
     },
     async listForChannel(channelId, limit) {
-      return [...requests.values()]
+      const inChannel = [...requests.values()]
         .filter((r) => r.organizationId === orgId && r.channelId === channelId)
-        .sort((a, b) => b.requestedAt.getTime() - a.requestedAt.getTime())
-        .slice(0, limit);
+        .sort((a, b) => b.requestedAt.getTime() - a.requestedAt.getTime());
+      const isOpen = (r: { status: string }) =>
+        (ACK_OPEN_STATUSES as readonly string[]).includes(r.status);
+      const open = inChannel.filter(isOpen);
+      return [
+        ...open,
+        ...inChannel.filter((r) => !isOpen(r)).slice(0, Math.max(0, limit - open.length)),
+      ];
     },
     async messageFacts(messageId) {
       return messages.get(messageId) ?? null;

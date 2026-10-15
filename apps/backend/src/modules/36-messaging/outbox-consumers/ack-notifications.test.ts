@@ -29,7 +29,7 @@ const event = (eventType: string, payload: Record<string, unknown> = {}) =>
 function setup(
   over: {
     canView?: () => Promise<boolean>;
-    open?: () => Promise<boolean>;
+    open?: (...args: unknown[]) => Promise<boolean>;
     qualified?: () => Promise<boolean>;
   } = {},
 ) {
@@ -38,7 +38,7 @@ function setup(
   const consumer = buildM36AckNotificationsConsumer({
     alerts: { emit } as unknown as AlertEmitter,
     messaging: { canViewChannel: over.canView ?? (async () => true) },
-    isOpenAndAssignedTo: over.open ?? (async () => true),
+    isWaitingForAssignee: over.open ?? (async () => true),
     stillQualified: over.qualified ?? (async () => true),
     warn,
   });
@@ -93,6 +93,15 @@ describe("M36 acknowledgment-request notifications consumer", () => {
     });
   });
 
+  it("asks whether the request is still waiting for THIS assignee at THIS event's version", async () => {
+    const open = vi.fn().mockResolvedValue(true);
+    const { consumer } = setup({ open });
+
+    await consumer.handle(event("m36.ack.requested"));
+
+    expect(open).toHaveBeenCalledWith(ORG, "r-1", "u-2", 0);
+  });
+
   it("a redelivery converges on the same correlation id", async () => {
     const { emit, consumer } = setup();
 
@@ -107,7 +116,7 @@ describe("M36 acknowledgment-request notifications consumer", () => {
     [
       "the request is closed or reassigned since",
       { open: async () => false },
-      "request_not_open_for_assignee",
+      "request_not_waiting_for_assignee",
     ],
     [
       "the recipient cannot see the channel",

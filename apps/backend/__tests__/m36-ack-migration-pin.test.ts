@@ -149,8 +149,25 @@ describe("migration 1106 deadline maximum", () => {
 describe("migration 1106 history, grants, tenancy", () => {
   it("refuses UPDATE for every role and DELETE for all but the destruction role on the event table", () => {
     expect(sql).toContain('BEFORE UPDATE OR DELETE ON "message_acknowledgment_event"');
+    // The destruction role is recognised by what survives a referential cascade (the session's own role), not only current_user.
+    const guard = flat(sql);
+    expect(guard).toContain("IF TG_OP = 'DELETE' AND (");
+    expect(guard).toContain("current_user = 'wardenx_destruction'");
+    expect(guard).toContain("current_setting('role', true) = 'wardenx_destruction'");
+    expect(guard).toContain("pg_has_role(session_user, 'wardenx_destruction', 'MEMBER')");
+    expect(guard).toContain("r.rolname = session_user");
+  });
+
+  it("guards every history INSERT: the session's own actor and the request's own resulting status", () => {
+    expect(sql).toContain('BEFORE INSERT ON "message_acknowledgment_event"');
+    const guard = flat(sql);
+    expect(guard).toContain("message_ack_event_actor");
+    expect(guard).toContain("NEW.to_status IS DISTINCT FROM v_status");
+  });
+
+  it("lets only the assignee hand an acknowledged request on", () => {
     expect(flat(sql)).toContain(
-      "IF TG_OP = 'DELETE' AND current_user = 'wardenx_destruction' THEN",
+      "IF v_reassign AND OLD.status = 'acknowledged' AND v_actor IS NOT NULL AND v_actor <> OLD.assigned_user_id::text THEN",
     );
   });
 

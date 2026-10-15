@@ -3483,6 +3483,13 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
   const rateLimitStore = rateLimitRedisClient
     ? createRedisRateLimitStore(rateLimitRedisClient)
     : undefined;
+  // M36 WP 4.1/4.2 - the urgent and acknowledgment-request limiters fall back to per-replica memory without a shared store: N
+  // replicas then allow N times the budget. That is bounded but weaker, so say so loudly in production instead of silently.
+  if (!rateLimitStore && process.env.NODE_ENV === "production") {
+    console.warn(
+      "[m36] WARNING: no shared rate-limit store is configured (REDIS_URL); the urgent-message and acknowledgment-request limiters use per-replica memory, so each replica allows its own full budget.",
+    );
+  }
   // WP 2.7b / ADR-0058 P2 - the global-search limiter (active only on the cluster-wide store) and P1 ring key provider.
   // Both are shared by the route mount and the indexer/worker; the ring cache is resolved per call (bound later at boot).
   const m36SearchRateLimit = buildGlobalSearchRateLimit(rateLimitStore);
@@ -9945,7 +9952,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                 buildM36AckNotificationsConsumer({
                   alerts: getSeam("AlertEmitter") as AlertEmitter,
                   messaging: createDbMessagingRouteService(dbHandle.db),
-                  isOpenAndAssignedTo: m36Ack.isOpenAndAssignedTo,
+                  isWaitingForAssignee: m36Ack.isWaitingForAssignee,
                   stillQualified: m36Ack.stillQualified,
                   warn: (message, context) => app.log.warn(context, message),
                 }),

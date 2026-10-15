@@ -9385,7 +9385,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/messaging/escalations": {
     summary:
-      "Ask ONE named, qualified colleague to take clinical responsibility for a message the caller wrote (WP 4.2, ADR-0069; messaging.send + messaging.urgent.send + a required Idempotency-Key; rate limited per user, organisation and caller-colleague pair; 404 while the tenant flag `messaging.ack_requests` is off). The message must be in a patient care-team channel; the class is derived from the message (an urgent message needs its named recipient, any other is `important`) and the deadline is the platform default (important 60 min, urgent 15 min; provisional), so the body has only `message_id` and `assigned_user_id`. The assignee must be a care-team member of the channel who holds messaging.urgent.receive (never an aide), is admitted by the Part 2 gate and is not the caller: any failure is one uniform 422 ACK_ASSIGNEE_INVALID. 403 ACK_NOT_REQUESTER (not the author), 422 ACK_NOT_PATIENT_CHANNEL, 409 ACK_ALREADY_REQUESTED (another assignee). 201 created; 200 created:false replays the same request. An urgent message sent while the flag is on already has its request. NOT a page and NOT the emergency path. Read-audited against the request and patient",
+      "Ask ONE named, qualified colleague to take clinical responsibility for a message the caller wrote (WP 4.2, ADR-0069; messaging.send + messaging.urgent.send + a required Idempotency-Key; rate limited per user, organisation and caller-colleague pair; 404 while the tenant flag `messaging.ack_requests` is off, 503 ACK_UNAVAILABLE when the flag cannot be read). The message must be in a patient care-team channel; the class is derived from the message (an urgent message needs its named recipient, any other is `important`) and the deadline is the platform default (important 60 min, urgent 15 min; provisional), so the body has only `message_id` and `assigned_user_id`. The assignee must be a care-team member of the channel who holds messaging.urgent.receive (never an aide), is admitted by the Part 2 gate and is not the caller: any failure is one uniform 422 ACK_ASSIGNEE_INVALID. 403 ACK_NOT_REQUESTER (not the author), 422 ACK_NOT_PATIENT_CHANNEL, 409 ACK_ALREADY_REQUESTED (another assignee). 201 created; 200 created:false replays the same request. An urgent message sent while the flag is on already has its request. NOT a page and NOT the emergency path. Read-audited against the request and patient",
     headers: IDEMPOTENCY_KEY_HEADER,
     body: M36CreateAckBodySchema,
     response: M36AckCreateResponseSchema,
@@ -9398,7 +9398,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/messaging/channels/:id/escalations": {
     summary:
-      "The acknowledgment requests of one channel, newest first, at most 100 (WP 4.2; messaging.read + channel visibility), for the thread card. Each carries `viewer_actions`, a hint from identity and state only (the server decides every action). Never writes anything. Read-audited against the channel",
+      "The acknowledgment requests of one channel: every open request first, then the newest closed ones up to 100 in all (WP 4.2; messaging.read + channel visibility), for the thread card. Each carries `viewer_actions`, a hint from identity and state only (the server decides every action). Never writes anything. Read-audited against the channel",
     response: M36AckChannelListResponseSchema,
   },
   "POST /api/v1/messaging/escalations/:id/acknowledge": {
@@ -9409,7 +9409,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/messaging/escalations/:id/reassign": {
     summary:
-      "Move a request to another qualified colleague (WP 4.2; messaging.read, rate limited like create). Only the requester or the current assignee may; the new assignee passes the same checks as at create and differs from the current one and the requester (422 ACK_ASSIGNEE_INVALID otherwise, 403 ACK_NOT_PARTY for anyone else). The window restarts for the new assignee (status back to pending, new default deadline) and `requested_at` is kept. A repeat by the same actor is 200 changed:false. 409 once resolved or cancelled. Read-audited",
+      "Move a request to another qualified colleague (WP 4.2; messaging.read, rate limited like create). Only the current assignee may at any open state (no qualification check, so a hand-off never strands the item); the requester may only until the request is taken (403 ACK_NOT_ASSIGNEE once acknowledged) and must still hold messaging.urgent.send. The new assignee passes the same checks as at create and differs from the current one and the requester (422 ACK_ASSIGNEE_INVALID otherwise, 403 ACK_NOT_PARTY for anyone else). The window restarts for the new assignee (status back to pending, new default deadline) and `requested_at` is kept. A repeat by the same actor is 200 changed:false. 409 once resolved or cancelled. Read-audited",
     body: M36ReassignAckBodySchema,
     response: M36AckRequestResponseSchema,
   },

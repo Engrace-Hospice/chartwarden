@@ -76,6 +76,7 @@ import { type SQL, and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-
 import { getSeam } from "../../bootstrap/index";
 import { cancelOpenRequestForMessage } from "./ack-requests/ack-cancel";
 import { assertMessageEditable } from "./ack-requests/ack-edit-lock";
+import { ackGuardName } from "./ack-requests/ack-service";
 import { projectAlertInboxPresentation } from "./alert-inbox-presentation";
 import { attachmentPreviewLabel } from "./attachment-preview-label";
 import { bindAttachmentsInTx, loadAttachmentViews } from "./attachments/attachment-service-db";
@@ -1705,10 +1706,22 @@ export function createDbMessagingRouteService(
           outbox: opts.outbox,
           at: deletedAt,
         });
-        await tx
-          .update(MSG)
-          .set({ status: "deleted", deletedAt: deletedAt, editedAt: null })
-          .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, input.messageId)));
+        try {
+          await tx
+            .update(MSG)
+            .set({ status: "deleted", deletedAt: deletedAt, editedAt: null })
+            .where(and(eq(MSG.organizationId, orgId), eq(MSG.id, input.messageId)));
+        } catch (err) {
+          // A request raised after the cancel above (a race) makes the database refuse the tombstone: a conflict to retry, not a 500.
+          if (ackGuardName(err)) {
+            throw new WardenXError(
+              "ACK_MESSAGE_HAS_OPEN_REQUEST",
+              "This message has an open response request. Try deleting it again.",
+              409,
+            );
+          }
+          throw err;
+        }
         // WP 2.4: a deleted message frees its pin (the 20-pin cap counts live pins only). Same per-channel lock a pin
         // takes, so a pin racing this delete either lands first (and is freed here) or waits and then finds the
         // message deleted; it can never leave a pin on a deleted message.

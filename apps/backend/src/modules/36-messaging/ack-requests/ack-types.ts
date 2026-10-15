@@ -105,7 +105,7 @@ export interface AckTx {
   update(id: string, expectedVersion: number, patch: AckPatch): Promise<AckRow>;
   insertEvent(event: NewAckEvent): Promise<void>;
   listEvents(requestId: string): Promise<readonly AckEventRow[]>;
-  /** Newest first. */
+  /** Every open request, then the newest closed ones up to `limit` in all; newest first within each group. */
   listForChannel(channelId: string, limit: number): Promise<readonly AckRow[]>;
   messageFacts(messageId: string): Promise<AckMessageFacts | null>;
 }

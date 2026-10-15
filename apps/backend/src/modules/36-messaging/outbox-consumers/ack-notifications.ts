@@ -3,8 +3,8 @@
 //   - `m36.ack.requested` alerts only for the IMPORTANT class (an urgent message already told its recipient through
 //     m36.message.urgent_sent; this consumer stays silent for it);
 //   - `m36.ack.reassigned` alerts the NEW assignee, whatever the class.
-// The tenant comes from the envelope, never the payload. At consume time the request must STILL be open and STILL assigned to the
-// recipient (a stale event alerts nobody), the recipient must still see the channel and still be qualified. A clean "no" is a quiet,
+// The tenant comes from the envelope, never the payload. At consume time the request must STILL be waiting (pending), STILL assigned to the
+// recipient and STILL at the event's version (a stale event alerts nobody), the recipient must still see the channel and still be qualified. A clean "no" is a quiet,
 // id-only warn-level skip; a lookup ERROR is rethrown so the outbox retries and dead-letters (an alert is never dropped on a blip).
 // The text is fixed and PROVISIONAL (clinical-lead sign-off pending): no name, no patient, no message text. This is an inbox entry,
 // NOT a page, NOT the emergency path, and it does not time anything (WP 4.3 - 4.5).
@@ -33,11 +33,12 @@ function requireString(payload: Record<string, unknown>, key: string): string {
 export function buildM36AckNotificationsConsumer(deps: {
   readonly alerts: AlertEmitter;
   readonly messaging: Pick<MessagingRouteService, "canViewChannel">;
-  /** Is the request still open and still assigned to this user? A throw propagates (retry). */
-  readonly isOpenAndAssignedTo: (
+  /** Is the request still waiting (pending), still assigned to this user and still at the event's version? A throw propagates (retry). */
+  readonly isWaitingForAssignee: (
     orgId: string,
     requestId: string,
     userId: string,
+    version: number,
   ) => Promise<boolean>;
   /** Active, messaging keys, `messaging.urgent.receive`, Part 2 gate. A clean false is a skip; a throw propagates. */
   readonly stillQualified: (orgId: string, userId: string, channelId: string) => Promise<boolean>;
@@ -69,8 +70,10 @@ export function buildM36AckNotificationsConsumer(deps: {
           channelId,
           assignedUserId,
         });
-      if (!(await deps.isOpenAndAssignedTo(event.organizationId, requestId, assignedUserId))) {
-        return skip("request_not_open_for_assignee");
+      if (
+        !(await deps.isWaitingForAssignee(event.organizationId, requestId, assignedUserId, version))
+      ) {
+        return skip("request_not_waiting_for_assignee");
       }
       if (!(await deps.messaging.canViewChannel(event.organizationId, assignedUserId, channelId))) {
         return skip("recipient_cannot_view_channel");

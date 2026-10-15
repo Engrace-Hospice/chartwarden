@@ -243,7 +243,7 @@ function MessageRowImpl({
             {!deleted && patientLinked ? (
               <AckForMessage
                 messageId={message.messageId}
-                authorName={message.authorDisplayName}
+                authorName={message.authorDisplayName ?? undefined}
                 sentAt={message.createdAt}
               />
             ) : null}

@@ -16,9 +16,14 @@
 --   * acknowledged_by is the assignee (nobody acknowledges on another person's behalf);
 --   * the deadline window is positive and never longer than the platform maximum for the class (CHECK), and a window can only
 --     START at (about) the database's now(), so a forged start cannot stretch the deadline;
---   * who acts: acknowledge and resolve only as the assigned user (the session's app.user_id), reassign only as the requester or
---     the current assignee, cancel only as the requester; an empty app.user_id is a system write (WP 4.4 / 4.5), never a user;
---   * the event table takes INSERT only (UPDATE refused for every role, DELETE only by the tenant-destruction role);
+--   * who acts: acknowledge and resolve only as the assigned user (the session's app.user_id), reassign only as the requester
+--     (before the request is taken) or the current assignee, cancel only as the requester; an empty app.user_id is a system write
+--     (WP 4.4 / 4.5), never a user. NOTE: app.user_id is set by the application, so binding writes to it is a BACKSTOP against
+--     application bugs (a code path acting as the wrong person), not a defence against a compromised application role, which
+--     could set the setting to anything. Authentication and the service checks are the control; the audit trigger records it;
+--   * every history event names the session's actor and the request's own resulting status (a forged event is refused);
+--   * the event table takes INSERT only (UPDATE refused for every role, DELETE only by the tenant-destruction role, including
+--     the referential cascade from a request or message it erases);
 --   * a message cannot be tombstoned while its request is open, and cannot be edited once a request exists.
 -- wardenx_app has NO DELETE (lifecycle-no-delete gate); wardenx_destruction may DELETE for tenant destruction / the eraser.
 -- Tenancy: organization_id plus a server-derived patient_id (a logical pointer); M36 carries no provider/location, so those
@@ -222,6 +227,10 @@ BEGIN
      AND v_actor NOT IN (OLD.requester_user_id::text, OLD.assigned_user_id::text) THEN
     RAISE EXCEPTION 'message_ack_request_actor: only the sender or the assignee reassigns' USING ERRCODE = 'check_violation';
   END IF;
+  -- Once the assignee took responsibility only the assignee hands it on: the sender cannot take it back from under them.
+  IF v_reassign AND OLD.status = 'acknowledged' AND v_actor IS NOT NULL AND v_actor <> OLD.assigned_user_id::text THEN
+    RAISE EXCEPTION 'message_ack_request_actor: only the person who took responsibility hands it on' USING ERRCODE = 'check_violation';
+  END IF;
   IF NEW.status = 'cancelled' AND v_actor IS NOT NULL AND v_actor <> OLD.requester_user_id::text THEN
     RAISE EXCEPTION 'message_ack_request_actor: only the sender withdraws a request' USING ERRCODE = 'check_violation';
   END IF;
@@ -264,12 +273,19 @@ CREATE TRIGGER "trg_message_ack_request_update_guard"
   BEFORE UPDATE ON "message_acknowledgment_request"
   FOR EACH ROW EXECUTE FUNCTION message_ack_request_update_guard();--> statement-breakpoint
 
--- Event history is append-only: no UPDATE for any role (a superuser included); DELETE only by the tenant-destruction role
--- (the erasure path, including the ON DELETE CASCADE from a request or message it removes).
+-- Event history is append-only: no UPDATE for any role (a superuser included); DELETE only for tenant destruction (the erasure
+-- path, including the ON DELETE CASCADE from a request or message it removes). A referential cascade runs as the OWNER of the
+-- history table, so `current_user` is not the destruction role there; the role the SESSION connected as (session_user) or
+-- SET ROLE'd to (the `role` setting) survives the cascade. A superuser login is excluded as a plain session_user: it is a
+-- member of every role, so membership alone proves nothing. wardenx_app is not a member and has no DELETE on either table.
 CREATE OR REPLACE FUNCTION message_ack_event_append_only() RETURNS trigger
 LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
 BEGIN
-  IF TG_OP = 'DELETE' AND current_user = 'wardenx_destruction' THEN
+  IF TG_OP = 'DELETE' AND (
+       current_user = 'wardenx_destruction'
+    OR current_setting('role', true) = 'wardenx_destruction'
+    OR (pg_has_role(session_user, 'wardenx_destruction', 'MEMBER')
+        AND NOT (SELECT r.rolsuper FROM pg_catalog.pg_roles r WHERE r.rolname = session_user))) THEN
     RETURN OLD;
   END IF;
   RAISE EXCEPTION 'message_ack_event_append_only: the history cannot be changed or removed' USING ERRCODE = 'check_violation';
@@ -277,6 +293,32 @@ END $$;--> statement-breakpoint
 CREATE TRIGGER "trg_message_ack_event_append_only"
   BEFORE UPDATE OR DELETE ON "message_acknowledgment_event"
   FOR EACH ROW EXECUTE FUNCTION message_ack_event_append_only();--> statement-breakpoint
+
+-- INSERT guard: an event is written AFTER its request's own change in the same transaction, so it must name the session's actor
+-- (a user event the user of the session; a system event only when the session has no user) and the request's resulting status. A
+-- forged event - another person's name, or a status the request is not in - is refused. A backstop against application bugs (see
+-- the header), not against a compromised application role. Runs as the caller: the request is read under the same RLS.
+CREATE OR REPLACE FUNCTION message_ack_event_insert_guard() RETURNS trigger
+LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
+DECLARE v_actor text; v_status message_ack_status;
+BEGIN
+  v_actor := NULLIF(current_setting('app.user_id', true), '');
+  IF NEW.actor_user_id IS NOT NULL AND NEW.actor_user_id::text IS DISTINCT FROM v_actor THEN
+    RAISE EXCEPTION 'message_ack_event_actor: an event names the session''s own user' USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.actor_user_id IS NULL AND v_actor IS NOT NULL THEN
+    RAISE EXCEPTION 'message_ack_event_actor: a system event cannot be written from a user session' USING ERRCODE = 'check_violation';
+  END IF;
+  SELECT r.status INTO v_status FROM message_acknowledgment_request r
+   WHERE r.organization_id = NEW.organization_id AND r.id = NEW.request_id;
+  IF NEW.to_status IS DISTINCT FROM v_status THEN
+    RAISE EXCEPTION 'message_ack_event_status: an event records the request''s own resulting status' USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$;--> statement-breakpoint
+CREATE TRIGGER "trg_message_ack_event_insert_guard"
+  BEFORE INSERT ON "message_acknowledgment_event"
+  FOR EACH ROW EXECUTE FUNCTION message_ack_event_insert_guard();--> statement-breakpoint
 
 -- A message with an OPEN request cannot be tombstoned (the delete path cancels the request first), and a message that has a
 -- request (not cancelled) cannot be edited: a correction is a new linked message (ADR-0056 D8). Body re-encryption and other
