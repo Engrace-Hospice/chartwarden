@@ -187,6 +187,12 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     templateKey: "appeal_packet",
     contentField: "payload",
   },
+  // M25 milestone 2b — the cover sheet and enclosure index of a filed ADR response, filed against the case.
+  "m25.adr_packet.render_requested": {
+    aggregateIdFields: ["adrCaseId"],
+    templateKey: "adr_response_packet",
+    contentField: "payload",
+  },
   // M27 §4.10 — ONE wire name, THREE artifacts, discriminated by `artifactKind`. The aggregate is the
   // SUBMISSION (`submissionId`), not the cost report: a reopened report submits again, and filing both
   // against `costReportId` would make the second render an idempotent skip of the first.

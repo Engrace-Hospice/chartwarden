@@ -3404,6 +3404,38 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "provider_entity_scope",
   },
+  // --- ADR surface (hospice ADR/TPE/QIC PRD milestone 2a; granted by migration 1108) ---
+  "adr.read": {
+    resource: "adr_case",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "adr.manage": {
+    resource: "adr_case",
+    action: "manage",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  // Milestone 2b (migration 1110): sign off a packet / record the filing (the filing is also step-up gated).
+  "adr.review": {
+    resource: "adr_case",
+    action: "review",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "adr.submit": {
+    resource: "adr_case",
+    action: "submit",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "mac_rule.manage": {
+    resource: "mac_rule",
+    action: "manage",
+    category: "billing",
+    abac: "none",
+  },
   // --- taxonomy surface ---
   "taxonomy.read": {
     resource: "denial_taxonomy",

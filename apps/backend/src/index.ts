@@ -1049,6 +1049,7 @@ import {
   M25_OUTBOX_EVENTS,
   M25_PLATFORM_JOB_ID,
   type TerminologyLookupPort,
+  buildDrizzleAdrService,
   buildDrizzleDenialSeedStore,
   buildDrizzleM25IngestService,
   buildDrizzleM25ReadService,
@@ -5369,6 +5370,14 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                 buildFoundationSiteReader().providerEntityTimezones(tx, providerEntityId),
             }),
             ingestService: m25IngestService,
+            adrService: buildDrizzleAdrService(dbHandle.db, {
+              // Milestone 2b: attachments are validated through M22/M23's seams and a filing emits the render
+              // request on the same transaction (no outbox bound -> the filing is refused, never half-recorded).
+              outbox: m25OutboxPublisher,
+              sources: buildSeamAppealSourcePorts(),
+              providerZones: (tx, providerEntityId) =>
+                buildFoundationSiteReader().providerEntityTimezones(tx, providerEntityId),
+            }),
           });
           // M26 (Cap Management) — mount the §4.1 route plugins over the Drizzle READ + WRITE services; the
           // §4.10 `m26.cap.*` transactional outbox publisher binds here (events persist on the mutation's tx).

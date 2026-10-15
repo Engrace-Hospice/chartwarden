@@ -26,3 +26,4 @@ export * from "./remittance"; // remittance_advice, remittance_line, remittance_
 export * from "./denial"; // denial_case, denial_case_assignment, denial_taxonomy_overlay
 export * from "./appeal"; // appeal_case, appeal_case_event
 export * from "./patient-responsibility"; // patient_responsibility_ledger
+export * from "./adr"; // adr_case, adr_case_event, mac_rule (milestone 2a)

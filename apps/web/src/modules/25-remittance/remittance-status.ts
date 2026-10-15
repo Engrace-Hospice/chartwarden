@@ -55,6 +55,17 @@ export const APPEAL_STATE_TONE: Record<string, StatusTone> = {
   closed: "neutral",
 };
 
+/** adr_case state → tone. */
+export const ADR_STATE_TONE: Record<string, StatusTone> = {
+  received: "warning",
+  in_assembly: "progress",
+  in_review: "progress",
+  submitted: "success",
+  denied_no_response: "error",
+  withdrawn: "neutral",
+  closed: "neutral",
+};
+
 /** appeal decision_outcome → tone. */
 export const APPEAL_OUTCOME_TONE: Record<string, StatusTone> = {
   favorable: "success",

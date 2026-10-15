@@ -8,6 +8,7 @@
 // close-write-off / appeal-submit compose the §D15 step-up, and every mutating route declares
 // `Idempotency-Key` (§F05).
 import type { FastifyInstance } from "fastify";
+import { registerAdrRoutes } from "./adr.routes";
 import { registerAppealRoutes } from "./appeals.routes";
 import { registerDenialRoutes } from "./denials.routes";
 import type { M25RouteServices } from "./index";
@@ -15,6 +16,7 @@ import { registerInternalRoutes } from "./internal.routes";
 import { registerRemittanceRoutes } from "./remittance.routes";
 import { registerTaxonomyRoutes } from "./taxonomy.routes";
 
+export { registerAdrRoutes, type AdrRouteDeps } from "./adr.routes";
 export { registerRemittanceRoutes, type RemittanceRouteDeps } from "./remittance.routes";
 export { registerDenialRoutes, type DenialRouteDeps } from "./denials.routes";
 export { registerAppealRoutes, type AppealRouteDeps } from "./appeals.routes";
@@ -23,10 +25,11 @@ export { registerInternalRoutes, type InternalRouteDeps } from "./internal.route
 
 /** Mount every M25 §4.1 route plugin over the Drizzle-backed (or in-memory slice) read + write services. */
 export function mountM25Routes(app: FastifyInstance, services: M25RouteServices): void {
-  const { readService, writeService, ingestService } = services;
+  const { readService, writeService, ingestService, adrService } = services;
   registerRemittanceRoutes(app, { readService, writeService });
   registerDenialRoutes(app, { readService, writeService });
   registerAppealRoutes(app, { readService, writeService });
   registerTaxonomyRoutes(app, { readService, writeService });
   registerInternalRoutes(app, { readService, ingestService });
+  if (adrService) registerAdrRoutes(app, { adrService });
 }

@@ -6,6 +6,9 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // this gates nav visibility only. The four M25 surfaces sit under the "Billing" navGroup (revenue cycle).
 import { lazy } from "react";
 import type { ComponentType } from "react";
+const AdrWorklist = lazy(() =>
+  import("./adr-worklist").then((m) => ({ default: m.AdrWorklist })),
+);
 const AppealTracker = lazy(() =>
   import("./appeal-tracker").then((m) => ({ default: m.AppealTracker })),
 );
@@ -38,6 +41,14 @@ export const remittanceScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Billing",
       requiredPermission: "denial.worklist.read",
       screen: DenialWorklist,
+    },
+    {
+      id: "remittance.adrs",
+      path: "/remittance/adrs",
+      title: "ADR Requests",
+      navGroup: "Billing",
+      requiredPermission: "adr.read",
+      screen: AdrWorklist,
     },
     {
       id: "remittance.appeals",

@@ -2,8 +2,8 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1604,
-    "coveredRoutes": 1604,
+    "routes": 1615,
+    "coveredRoutes": 1615,
     "directRoutesReferenced": 1521
   },
   "modules": [
@@ -379,7 +379,7 @@
     },
     {
       "module": "25-remittance",
-      "routes": 33,
+      "routes": 44,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m25-denial-version.live.test.ts",

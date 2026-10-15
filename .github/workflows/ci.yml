@@ -707,7 +707,7 @@ jobs:
           # m18.evv.aggregator_rejected.
           - {
               name: "M25 denial-worklist seed consumers",
-              scripts: "test:m25:denial-seed-consumers:live test:m25:appeal-packet:live",
+              scripts: "test:m25:denial-seed-consumers:live test:m25:appeal-packet:live test:m25:adr:live test:m25:adr-packet:live",
             }
           # F-160 (#248) — the CapConsumerStore build: real MBI/first-election org-explicit seam reads
           # feeding a real Drizzle-backed store for 8 of M26's 9 `handlers-unbound` events.

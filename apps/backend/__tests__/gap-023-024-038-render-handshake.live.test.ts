@@ -24,7 +24,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { runWithRequestContext, withOrgContext } from "@wardenx/tenancy";
-import { buildAppealPacketRenderPayload } from "@wardenx/types";
+import { buildAdrPacketRenderPayload, buildAppealPacketRenderPayload } from "@wardenx/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
@@ -123,6 +123,7 @@ const RENDERED_TYPES = [
   "bereavement_letter",
   "safety_incident_report",
   "appeal_packet",
+  "adr_response_packet",
   "cost_report_ecr",
   "body_release_authorization",
 ]
@@ -1007,6 +1008,42 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
         }),
       }),
       aggregateType: "appeal_packet",
+      retentionClass: "compliance",
+      patientId: null,
+    },
+    {
+      label: "M25 ADR response packet",
+      eventType: "m25.adr_packet.render_requested",
+      aggregateKind: "adr_case",
+      payload: (id: string) => ({
+        adrCaseId: id,
+        // Milestone 2b - M22 validates the typed packet before drawing the cover sheet and index.
+        payload: buildAdrPacketRenderPayload({
+          adrCaseId: id,
+          claimId: id,
+          macName: "CGS",
+          reviewType: "adr",
+          adrReference: null,
+          requestedOn: "2026-01-28",
+          responseDueAt: "2026-03-14T03:59:59.999Z",
+          filedAt: "2026-03-10T15:00:00.000Z",
+          filedLate: false,
+          filingChannel: "fax",
+          filingConfirmationRef: "FAX-1",
+          reviewedAt: "2026-03-09T15:00:00.000Z",
+          checklist: [{ key: "plan_of_care", state: "ready" }],
+          enclosures: [
+            {
+              documentId: id,
+              title: "Plan of care",
+              documentDate: "2026-02-20T09:00:00.000Z",
+              documentKind: "plan_of_care",
+              checklistKey: "plan_of_care",
+            },
+          ],
+        }),
+      }),
+      aggregateType: "adr_response_packet",
       retentionClass: "compliance",
       patientId: null,
     },

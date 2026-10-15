@@ -31046,6 +31046,962 @@
         }
       }
     },
+    "/api/v1/adrs": {
+      "get": {
+        "operationId": "getApiV1Adrs",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "ADR worklist, soonest response due first",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "claimId",
+                          "denialCaseId",
+                          "macName",
+                          "reviewType",
+                          "state",
+                          "adrReference",
+                          "requestedOn",
+                          "windowDays",
+                          "windowSource",
+                          "windowVerified",
+                          "responseDueAt",
+                          "dueDay",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "claimId": {
+                            "type": "string"
+                          },
+                          "denialCaseId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "macName": {
+                            "type": "string"
+                          },
+                          "reviewType": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "adrReference": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "requestedOn": {
+                            "type": "string"
+                          },
+                          "windowDays": {
+                            "type": "integer"
+                          },
+                          "windowSource": {
+                            "type": "string"
+                          },
+                          "windowVerified": {
+                            "type": "boolean"
+                          },
+                          "responseDueAt": {
+                            "type": "string"
+                          },
+                          "dueDay": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Adrs",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Log an additional documentation request; the response due date is derived from the MAC rule",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "claimId",
+                  "macName",
+                  "reviewType",
+                  "requestedOn"
+                ],
+                "properties": {
+                  "claimId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "macName": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "reviewType": {
+                    "anyOf": [
+                      {
+                        "const": "adr",
+                        "type": "string"
+                      },
+                      {
+                        "const": "re_adr",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "requestedOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "adrReference": {
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "denialCaseId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/adrs/{id}": {
+      "get": {
+        "operationId": "getApiV1AdrsById",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "ADR case detail with its due-date derivation and event timeline",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "claimId",
+                    "denialCaseId",
+                    "macName",
+                    "reviewType",
+                    "state",
+                    "adrReference",
+                    "requestedOn",
+                    "windowDays",
+                    "windowSource",
+                    "windowVerified",
+                    "responseDueAt",
+                    "dueDay",
+                    "version",
+                    "packet",
+                    "calendarDueDay",
+                    "events"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "claimId": {
+                      "type": "string"
+                    },
+                    "denialCaseId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "macName": {
+                      "type": "string"
+                    },
+                    "reviewType": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "adrReference": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "requestedOn": {
+                      "type": "string"
+                    },
+                    "windowDays": {
+                      "type": "integer"
+                    },
+                    "windowSource": {
+                      "type": "string"
+                    },
+                    "windowVerified": {
+                      "type": "boolean"
+                    },
+                    "responseDueAt": {
+                      "type": "string"
+                    },
+                    "dueDay": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "packet": {
+                      "type": "object",
+                      "required": [
+                        "documents",
+                        "checklist",
+                        "sentToReviewByMembershipId",
+                        "reviewedByMembershipId",
+                        "reviewedAt",
+                        "filing"
+                      ],
+                      "properties": {
+                        "documents": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "documentId",
+                              "checklistKey",
+                              "attachedAt"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "documentId": {
+                                "type": "string"
+                              },
+                              "checklistKey": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "attachedAt": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        },
+                        "checklist": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "key",
+                              "state"
+                            ],
+                            "properties": {
+                              "key": {
+                                "type": "string"
+                              },
+                              "state": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        },
+                        "sentToReviewByMembershipId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "reviewedByMembershipId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "reviewedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "filing": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "channel",
+                                "confirmationRef",
+                                "filedAt",
+                                "filedLate",
+                                "receiptDocumentId"
+                              ],
+                              "properties": {
+                                "channel": {
+                                  "type": "string"
+                                },
+                                "confirmationRef": {
+                                  "type": "string"
+                                },
+                                "filedAt": {
+                                  "type": "string"
+                                },
+                                "filedLate": {
+                                  "type": "boolean"
+                                },
+                                "receiptDocumentId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "calendarDueDay": {
+                      "type": "string"
+                    },
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "eventKind",
+                          "occurredAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "eventKind": {
+                            "type": "string"
+                          },
+                          "occurredAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/adrs/{id}/checklist/{key}": {
+      "put": {
+        "operationId": "putApiV1AdrsByIdChecklistByKey",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Set one documentation checklist item while the ADR is in assembly (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "state"
+                ],
+                "properties": {
+                  "state": {
+                    "anyOf": [
+                      {
+                        "const": "pending",
+                        "type": "string"
+                      },
+                      {
+                        "const": "ready",
+                        "type": "string"
+                      },
+                      {
+                        "const": "not_applicable",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/adrs/{id}/documents": {
+      "post": {
+        "operationId": "postApiV1AdrsByIdDocuments",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Attach an M22 document to the ADR response (appeal enclosure rules; If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "documentId"
+                ],
+                "properties": {
+                  "documentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "checklistKey": {
+                    "anyOf": [
+                      {
+                        "const": "certification_of_terminal_illness",
+                        "type": "string"
+                      },
+                      {
+                        "const": "election_statement",
+                        "type": "string"
+                      },
+                      {
+                        "const": "plan_of_care",
+                        "type": "string"
+                      },
+                      {
+                        "const": "physician_orders",
+                        "type": "string"
+                      },
+                      {
+                        "const": "visit_notes",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medical_records_cover",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/adrs/{id}/documents/{documentId}": {
+      "delete": {
+        "operationId": "deleteApiV1AdrsByIdDocumentsByDocumentId",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Detach a document from the ADR response while it is in assembly (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/adrs/{id}/sign-off": {
+      "post": {
+        "operationId": "postApiV1AdrsByIdSignoff",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Sign off the packet; the reviewer must differ from who sent it to review (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/adrs/{id}/submit": {
+      "post": {
+        "operationId": "postApiV1AdrsByIdSubmit",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Record the filed ADR response with its proof of submission: step-up, frozen manifest, retained PDF (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "channel",
+                  "confirmationRef",
+                  "filedAt"
+                ],
+                "properties": {
+                  "channel": {
+                    "anyOf": [
+                      {
+                        "const": "mac_portal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "fax",
+                        "type": "string"
+                      },
+                      {
+                        "const": "mail",
+                        "type": "string"
+                      },
+                      {
+                        "const": "esmd",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "confirmationRef": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "filedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "lateAcknowledged": {
+                    "type": "boolean"
+                  },
+                  "receiptDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/adrs/{id}/transition": {
+      "post": {
+        "operationId": "postApiV1AdrsByIdTransition",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Move an ADR through assembly, review, withdrawal or a missed response (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "to"
+                ],
+                "properties": {
+                  "to": {
+                    "anyOf": [
+                      {
+                        "const": "in_assembly",
+                        "type": "string"
+                      },
+                      {
+                        "const": "in_review",
+                        "type": "string"
+                      },
+                      {
+                        "const": "denied_no_response",
+                        "type": "string"
+                      },
+                      {
+                        "const": "withdrawn",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ai/capabilities": {
       "get": {
         "operationId": "getApiV1AiCapabilities",
@@ -144684,6 +145640,184 @@
                         "type": "string"
                       }
                     ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/mac-rules": {
+      "get": {
+        "operationId": "getApiV1Macrules",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "The organization's MAC response-window rules",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "macName",
+                          "reviewType",
+                          "responseDays",
+                          "sourceNote",
+                          "verifiedOn",
+                          "effectiveFrom",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "macName": {
+                            "type": "string"
+                          },
+                          "reviewType": {
+                            "type": "string"
+                          },
+                          "responseDays": {
+                            "type": "integer"
+                          },
+                          "sourceNote": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "verifiedOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "effectiveFrom": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1Macrules",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Create or update a MAC response-window rule",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "macName",
+                  "reviewType",
+                  "responseDays"
+                ],
+                "properties": {
+                  "macName": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "reviewType": {
+                    "anyOf": [
+                      {
+                        "const": "adr",
+                        "type": "string"
+                      },
+                      {
+                        "const": "re_adr",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "responseDays": {
+                    "minimum": 1,
+                    "maximum": 365,
+                    "type": "integer"
+                  },
+                  "sourceNote": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "verifiedOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "effectiveFrom": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
                   }
                 }
               }
