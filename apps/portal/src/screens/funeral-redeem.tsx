@@ -35,7 +35,7 @@ export function PortalLinkRedeem(): JSX.Element {
     }
     void (async () => {
       const res = await client.POST("/api/v1/collaborators/consume", { body: { token } });
-      if (res.error) {
+      if ("error" in res) {
         const status = res.response?.status;
         setState(status === 429 ? "throttled" : status === 503 ? "unavailable" : "failed");
         return;

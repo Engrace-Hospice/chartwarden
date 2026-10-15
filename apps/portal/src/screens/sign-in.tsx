@@ -1,23 +1,30 @@
-import { Button, CenteredCardLayout, InlineAlert, TextField } from "@wardenx/ui";
-// @wardenx/portal — §5.1 Landing / sign-in (`/`). The invitee authenticates through M2 (Better Auth); this screen
-// holds NO PHI and issues no portal read. Two ways in, matching the spec (§7.1: the invitation's magic link sets the
-// account up; later sign-ins are a link, or a password plus an authenticator code):
-//   • "Email me a sign-in link" — the primary path; the same single-use link primitive the auditor / CAHPS links use.
-//   • "Use a password instead" — an established account; a second factor prompt follows when the server demands it.
-// A passkey sign-in is NOT offered here yet (the WebAuthn ceremony needs the auth client bundle; it is enrolled and
-// used from the account page once built) — nothing on this screen pretends otherwise.
-// Either way the browser ends up at `/signed-in`, where the portal account is bound to the new session.
-import { useState } from "react";
+import {
+  Button,
+  CenteredCardLayout,
+  InlineAlert,
+  TextField,
+} from "@wardenx/ui";
+import { useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useNavigate } from "react-router-dom";
-import { type SignInOutcome, requestMagicLink, signInWithPassword, verifyTotp } from "../auth-http";
+import {
+  type SignInOutcome,
+  requestMagicLink,
+  signInWithPassword,
+  verifyTotp,
+} from "../auth-http";
+import {
+  PortalOnboardingBrand,
+  PortalOnboardingHeading,
+  PortalOnboardingHelp,
+} from "./onboarding-ui";
 
 type Step = "email" | "link_sent" | "password" | "code";
 
 const FAILED = "We couldn't sign you in. Check your details and try again.";
 const THROTTLED = "Too many attempts. Please wait a few minutes and try again.";
 
-function messageFor(outcome: SignInOutcome | "sent" | "rate_limited" | "failed"): string | null {
+function messageFor(outcome: SignInOutcome | "sent"): string | null {
   if (outcome === "rate_limited") return THROTTLED;
   if (outcome === "failed") return FAILED;
   return null;
@@ -25,6 +32,7 @@ function messageFor(outcome: SignInOutcome | "sent" | "rate_limited" | "failed")
 
 export function PortalSignIn(): JSX.Element {
   const navigate = useNavigate();
+  const inFlight = useRef(false);
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -32,159 +40,229 @@ export function PortalSignIn(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const linkProblem =
-    typeof window !== "undefined" && new URLSearchParams(window.location.search).has("link");
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).has("link");
 
-  async function onLink(e: FormEvent): Promise<void> {
-    e.preventDefault();
-    setBusy(true);
+  function changeStep(next: Step): void {
+    if (inFlight.current) return;
+    setStep(next);
     setError(null);
-    const outcome = await requestMagicLink(email.trim(), window.location.origin);
-    setBusy(false);
-    // The same acknowledgement whether or not the address maps to an account (no account enumeration).
-    if (outcome === "sent") setStep("link_sent");
-    else setError(messageFor(outcome));
-  }
-
-  async function onPassword(e: FormEvent): Promise<void> {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    const outcome = await signInWithPassword(email.trim(), password);
-    setBusy(false);
     setPassword("");
-    if (outcome === "ok") navigate("/signed-in");
-    else if (outcome === "two_factor") setStep("code");
-    else setError(messageFor(outcome));
+    setCode("");
   }
 
-  async function onCode(e: FormEvent): Promise<void> {
-    e.preventDefault();
+  async function submit(task: () => Promise<void>): Promise<void> {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setError(null);
-    const outcome = await verifyTotp(code.trim());
-    setBusy(false);
-    if (outcome === "ok") navigate("/signed-in");
-    else setError(messageFor(outcome));
+    try {
+      await task();
+    } catch {
+      setError(
+        "We couldn't connect securely. Please check your connection and try again.",
+      );
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
   }
 
+  function onLink(e: FormEvent<HTMLFormElement>): void {
+    e.preventDefault();
+    void submit(async () => {
+      const outcome = await requestMagicLink(
+        email.trim(),
+        window.location.origin,
+      );
+      if (outcome === "sent") changeStepAfterSubmission("link_sent");
+      else setError(messageFor(outcome));
+    });
+  }
+
+  // The submit guard remains held until the handler finishes; this transition must not clear credentials
+  // through the normal changeStep method, which intentionally blocks navigation while a request is active.
+  function changeStepAfterSubmission(next: Step): void {
+    setStep(next);
+    setPassword("");
+    setCode("");
+  }
+
+  function onPassword(e: FormEvent<HTMLFormElement>): void {
+    e.preventDefault();
+    void submit(async () => {
+      const outcome = await signInWithPassword(email.trim(), password);
+      setPassword("");
+      if (outcome === "ok") navigate("/signed-in", { replace: true });
+      else if (outcome === "two_factor") changeStepAfterSubmission("code");
+      else setError(messageFor(outcome));
+    });
+  }
+
+  function onCode(e: FormEvent<HTMLFormElement>): void {
+    e.preventDefault();
+    void submit(async () => {
+      const outcome = await verifyTotp(code.trim());
+      setCode("");
+      if (outcome === "ok") navigate("/signed-in", { replace: true });
+      else setError(messageFor(outcome));
+    });
+  }
+
+  const isLink = step === "email" || step === "link_sent";
   return (
     <CenteredCardLayout
-      brand={
-        <div className="wx-portal-auth-brand">
-          <span className="wx-portal-auth-brand__mark" aria-hidden="true">
-            W
-          </span>
-          <div>
-            <strong>WardenX</strong>
-            <span>Family Portal</span>
-          </div>
-        </div>
-      }
-      footer={
-        <p className="wx-portal-auth-help">
-          Need help signing in? Contact your hospice team. Never share your password or
-          authenticator code.
-        </p>
-      }
+      brand={<PortalOnboardingBrand />}
+      footer={<PortalOnboardingHelp />}
     >
-      {step === "link_sent" ? (
-        <div className="wx-portal-auth-form">
-          <div className="wx-portal-auth-heading">
-            <span className="wx-portal-auth-heading__eyebrow">Secure sign-in</span>
-            <h1>Check your email</h1>
-          </div>
-          <InlineAlert tone="success">
-            If a family portal account exists for {email || "that address"}, a secure sign-in link
-            is on its way. It can be used once and expires shortly.
-          </InlineAlert>
-          <Button tone="tertiary" onClick={() => setStep("email")}>
-            Use a different address
-          </Button>
-        </div>
-      ) : step === "code" ? (
-        <form onSubmit={onCode} aria-label="Authenticator code" className="wx-portal-auth-form">
-          <div className="wx-portal-auth-heading">
-            <span className="wx-portal-auth-heading__eyebrow">One more step</span>
-            <h1>Enter your code</h1>
-            <p>Use the current code from your authenticator app.</p>
-          </div>
-          <TextField
-            label="Authenticator code"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            required
-            value={code}
-            onChange={(ev) => setCode(ev.target.value)}
-          />
-          {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
-          <Button type="submit" loading={busy} disabled={code.trim().length < 6}>
-            Continue
-          </Button>
-        </form>
-      ) : step === "password" ? (
-        <form
-          onSubmit={onPassword}
-          aria-label="Sign in with a password"
-          className="wx-portal-auth-form"
+      <div className="wx-portal-onboarding" data-auth-step={step}>
+        <div
+          className="wx-portal-onboarding__method"
+          aria-label="Sign-in method"
         >
-          <div className="wx-portal-auth-heading">
-            <span className="wx-portal-auth-heading__eyebrow">Welcome back</span>
-            <h1>Sign in with your password</h1>
-          </div>
-          <TextField
-            label="Email address"
-            type="email"
-            autoComplete="username"
-            required
-            value={email}
-            onChange={(ev) => setEmail(ev.target.value)}
-          />
-          <TextField
-            label="Password"
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(ev) => setPassword(ev.target.value)}
-          />
-          {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
-          <Button type="submit" loading={busy} disabled={!email || !password}>
-            Sign in
-          </Button>
-          <Button tone="tertiary" onClick={() => setStep("email")}>
-            Email me a sign-in link instead
-          </Button>
-        </form>
-      ) : (
-        <form onSubmit={onLink} aria-label="Sign in" className="wx-portal-auth-form">
-          <div className="wx-portal-auth-heading">
-            <span className="wx-portal-auth-heading__eyebrow">Private and secure</span>
-            <h1>Sign in</h1>
-            <p>Access care updates shared with you by the hospice team.</p>
-          </div>
-          {linkProblem ? (
-            <InlineAlert tone="error">
-              That sign-in link can't be used. It may have expired or been used already. Request a
-              new one below.
+          <span className={isLink ? "is-current" : ""}>Email link</span>
+          <span className={!isLink ? "is-current" : ""}>Password</span>
+        </div>
+        {step === "link_sent" ? (
+          <div className="wx-portal-auth-form">
+            <PortalOnboardingHeading
+              eyebrow="Check your inbox"
+              title="Check your email"
+              description="If this address has portal access, we'll send a secure, single-use sign-in link."
+            />
+            <InlineAlert tone="success">
+              If a portal account exists for that address, a sign-in email is on
+              its way.
             </InlineAlert>
-          ) : null}
-          <TextField
-            label="Email address"
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(ev) => setEmail(ev.target.value)}
-          />
-          {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
-          <Button type="submit" loading={busy} disabled={!email}>
-            Email me a sign-in link
-          </Button>
-          <Button tone="tertiary" onClick={() => setStep("password")}>
-            Use a password instead
-          </Button>
-        </form>
-      )}
+            <p className="wx-portal-auth-note">
+              Not seeing an email? Check your spam folder, then contact your
+              hospice care team if you still need help.
+            </p>
+            <Button tone="secondary" onClick={() => changeStep("email")}>
+              Use a different address
+            </Button>
+          </div>
+        ) : step === "code" ? (
+          <form
+            onSubmit={onCode}
+            aria-label="Authenticator code"
+            className="wx-portal-auth-form"
+          >
+            <PortalOnboardingHeading
+              eyebrow="Identity verification"
+              title="Enter your code"
+              description="Enter the current code from your authenticator app to finish signing in."
+            />
+            <TextField
+              label="Authenticator code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              required
+              maxLength={8}
+              value={code}
+              onChange={(ev) => setCode(ev.target.value)}
+            />
+            {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
+            <Button
+              type="submit"
+              loading={busy}
+              disabled={busy || code.trim().length < 6}
+            >
+              Verify and continue
+            </Button>
+            <Button
+              tone="tertiary"
+              disabled={busy}
+              onClick={() => changeStep("password")}
+            >
+              Back to password
+            </Button>
+          </form>
+        ) : step === "password" ? (
+          <form
+            onSubmit={onPassword}
+            aria-label="Sign in with a password"
+            className="wx-portal-auth-form"
+          >
+            <PortalOnboardingHeading
+              eyebrow="Welcome back"
+              title="Sign in with your password"
+              description="Use the email address linked to your family portal access."
+            />
+            <TextField
+              label="Email address"
+              type="email"
+              autoComplete="username"
+              required
+              value={email}
+              onChange={(ev) => setEmail(ev.target.value)}
+            />
+            <TextField
+              label="Password"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(ev) => setPassword(ev.target.value)}
+            />
+            {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
+            <Button
+              type="submit"
+              loading={busy}
+              disabled={busy || !email.trim() || !password}
+            >
+              Sign in
+            </Button>
+            <Button
+              tone="tertiary"
+              disabled={busy}
+              onClick={() => changeStep("email")}
+            >
+              Email me a sign-in link instead
+            </Button>
+          </form>
+        ) : (
+          <form
+            onSubmit={onLink}
+            aria-label="Sign in"
+            className="wx-portal-auth-form"
+          >
+            <PortalOnboardingHeading
+              eyebrow="Private and secure"
+              title="Sign in"
+              description="Visit updates, care information, and secure messages shared by your hospice team."
+            />
+            {linkProblem ? (
+              <InlineAlert tone="error">
+                That sign-in link can't be used. Request a new one below.
+              </InlineAlert>
+            ) : null}
+            <TextField
+              label="Email address"
+              type="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(ev) => setEmail(ev.target.value)}
+            />
+            {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
+            <Button
+              type="submit"
+              loading={busy}
+              disabled={busy || !email.trim()}
+            >
+              Email me a sign-in link
+            </Button>
+            <Button
+              tone="tertiary"
+              disabled={busy}
+              onClick={() => changeStep("password")}
+            >
+              Use a password instead
+            </Button>
+          </form>
+        )}
+      </div>
     </CenteredCardLayout>
   );
 }

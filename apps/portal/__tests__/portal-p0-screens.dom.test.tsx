@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 // @wardenx/portal — P0 convergence coverage for sign-in, patient selection, and the patient home.
 // Fixtures are synthetic and contain only the fields returned by the portal-minimised DTOs.
 import { createApiClient } from "@wardenx/ui";
@@ -14,11 +14,12 @@ function json(data: unknown): Response {
   });
 }
 
-function fixtureClient() {
+function fixtureClient(requests: string[] = []) {
   return createApiClient({
     baseUrl: "http://localhost",
     fetch: async (input) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
+      requests.push(`${input instanceof Request ? input.method : "GET"} ${url.pathname}`);
       if (url.pathname === "/api/v1/portal/sessions/patients") {
         return json({
           items: [
@@ -42,11 +43,12 @@ function fixtureClient() {
           pendingDocumentSharesCount: 5,
         });
       }
+      if (url.pathname === "/api/v1/portal/sessions/select-patient") return json({ ok: true });
       if (url.pathname === "/api/v1/portal/upcoming") {
         return json([
           {
             visitId: "33333333-3333-4333-8333-333333333333",
-            scheduledStartedAt: "2026-10-14T14:00:00.000Z",
+            scheduledStartedAt: "2099-10-14T14:00:00.000Z",
             visitPurposeLabel: "Nurse visit",
             visitSetting: "home",
           },
@@ -68,22 +70,28 @@ describe("portal P0 screens", () => {
   });
 
   it("renders an accessible patient choice from the minimised grant DTO", async () => {
+    const requests: string[] = [];
     window.history.pushState({}, "", "/patient-picker");
-    render(<PortalApp client={fixtureClient()} />);
+    render(<PortalApp client={fixtureClient(requests)} />);
 
     const option = await screen.findByRole("button", { name: /Sample patient/ });
     expect(option.getAttribute("aria-describedby")).toBeTruthy();
-    expect(screen.getByText("Family Caregiver · 2 areas of access")).toBeTruthy();
+    expect(screen.getByText("Access as Family Caregiver")).toBeTruthy();
+    fireEvent.click(option);
+    await waitFor(() => expect(window.location.pathname).toBe(`/p/${PATIENT_ID}`));
+    expect(requests).toContain("POST /api/v1/portal/sessions/select-patient");
   });
 
   it("renders the patient dashboard hierarchy and authorised summary counts", async () => {
     window.history.pushState({}, "", `/p/${PATIENT_ID}`);
     render(<PortalApp client={fixtureClient()} />);
 
-    expect(await screen.findByRole("heading", { name: "Sam", level: 1 })).toBeTruthy();
-    expect(screen.getByRole("link", { name: /Upcoming visits/ }).textContent).toContain("1");
-    expect(screen.getByRole("link", { name: /Unread messages/ }).textContent).toContain("4");
+    expect(await screen.findByRole("heading", { name: "Welcome back", level: 1 })).toBeTruthy();
+    expect(await screen.findByText("Sam")).toBeTruthy();
+    expect(screen.getByText("4")).toBeTruthy();
+    expect(screen.getByText("unread messages")).toBeTruthy();
     expect(screen.getByText("Nurse visit")).toBeTruthy();
-    await waitFor(() => expect(screen.queryByText("Loading your dashboard…")).toBeNull());
+    expect(screen.getByText("3 active medications")).toBeTruthy();
+    expect(screen.getByText("5 new document shares")).toBeTruthy();
   });
 });

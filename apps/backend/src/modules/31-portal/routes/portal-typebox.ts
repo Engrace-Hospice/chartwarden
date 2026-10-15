@@ -219,6 +219,22 @@ export const MessagesChannelResponse = Type.Object({
   channelId: Uuid,
   lastReadPointer: Type.Union([LayStr, Type.Null()]),
 });
+export const PortalMessageHistoryQuery = Type.Object({
+  cursor: Type.Optional(LayStr),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
+});
+export const PortalMessageHistoryResponse = Type.Object({
+  messages: Type.Array(
+    Type.Object({
+      messageId: Uuid,
+      body: LayStr,
+      sentAt: Iso,
+      direction: Type.Union([Type.Literal("outgoing"), Type.Literal("incoming")]),
+      senderLabel: LayStr,
+    }),
+  ),
+  nextCursor: Type.Optional(LayStr),
+});
 export const MessageSendRequest = Type.Object({
   body: Type.String({ minLength: 1, maxLength: 8000 }),
 });

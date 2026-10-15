@@ -32,7 +32,7 @@ import {
 import { rejectOffsetPagination } from "./concurrency";
 import { ABAC_ACCOUNT, ABAC_BEREAVED, ABAC_GRANT, P } from "./guards";
 import type { PortalRouteDeps } from "./index";
-import { WithinQuery, parseQuery } from "./portal-typebox";
+import { PortalMessageHistoryQuery, WithinQuery, parseQuery } from "./portal-typebox";
 
 const NO_OFFSET = rejectOffsetPagination();
 const PHI = (resourceKind: string, list = true) => ({ auditRead: { resourceKind, list } });
@@ -53,11 +53,33 @@ interface PortalPatientLayArm {
   ): Promise<{ category: string; problems: unknown[]; redacted: boolean }>;
 }
 interface MessagingArm {
-  syncCareTeamChannel?(orgId: string, patientId: string): Promise<{ channelId: string }>;
+  syncCareTeamChannel?(
+    orgId: string,
+    patientId: string,
+    portalUserId?: string,
+  ): Promise<{ channelId: string }>;
   openChannel(
     orgId: string,
     spec: { kind: string; subjectId?: string; creatorUserId: string },
   ): Promise<{ channelId: string }>;
+  listMessages(
+    orgId: string,
+    input: {
+      channelId: string;
+      userId: string;
+      cursor?: string;
+      limit?: number;
+      direction?: "forward" | "backward";
+    },
+  ): Promise<{
+    messages: readonly {
+      messageId: string;
+      authorUserId: string | null;
+      body: string;
+      createdAt: string;
+    }[];
+    nextCursor?: string;
+  }>;
 }
 /** The M22 `PortalDocumentReader` arms the download route drives (F-225 — the published contract). */
 interface DocumentDownloadArm {
@@ -355,16 +377,55 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
       const patientId = portalPatientIdOf(actor);
       try {
         const provider = arm<MessagingArm>("MessagingProvider");
-        await provider.syncCareTeamChannel?.(actor.organizationId, patientId);
-        const channel = await provider.openChannel(actor.organizationId, {
-          kind: "care_team",
-          subjectId: patientId,
-          creatorUserId: actor.userId,
-        });
+        const channel = await provider.syncCareTeamChannel?.(
+          actor.organizationId,
+          patientId,
+          actor.userId,
+        );
+        if (!channel) throw new WardenXError("MESSAGING_UNAVAILABLE", "messaging is unavailable", 503);
         return { channelId: channel.channelId, lastReadPointer: null };
       } catch {
         return { channelId: "", lastReadPointer: null };
       }
+    },
+  );
+
+  // Portal-safe M36 projection. The browser never supplies a channel id: the patient-bound care-team
+  // channel is resolved from the authenticated session, then M36 re-checks live membership before decrypting.
+  app.get(
+    "/api/v1/portal/messages/history",
+    {
+      preHandler: [P("portal.messages.read_channel"), ABAC_GRANT("portal.messages.read_channel")],
+      config: PHI("portal_message"),
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const patientId = portalPatientIdOf(actor);
+      const q = parseQuery(PortalMessageHistoryQuery, request.query);
+      const provider = arm<MessagingArm>("MessagingProvider");
+      const channel = await provider.syncCareTeamChannel?.(
+        actor.organizationId,
+        patientId,
+        actor.userId,
+      );
+      if (!channel) throw new WardenXError("MESSAGING_UNAVAILABLE", "messaging is unavailable", 503);
+      const page = await provider.listMessages(actor.organizationId, {
+        channelId: channel.channelId,
+        userId: actor.userId,
+        cursor: q.cursor,
+        limit: q.limit ?? 30,
+        direction: "backward",
+      });
+      return {
+        messages: page.messages.map((message) => ({
+          messageId: message.messageId,
+          body: message.body,
+          sentAt: message.createdAt,
+          direction: message.authorUserId === actor.userId ? "outgoing" : "incoming",
+          senderLabel: message.authorUserId === actor.userId ? "You" : "Care team",
+        })),
+        ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+      };
     },
   );
 

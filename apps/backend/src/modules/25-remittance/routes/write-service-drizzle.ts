@@ -90,15 +90,14 @@ export function buildDrizzleM25WriteService(
   }
 
   /**
-   * The zone in which a provider's last filing day ends: the zone of its locations when they all agree,
-   * otherwise the conservative default (earliest-ending mainland zone).
+   * The zones in which a provider's last filing day may end: every known zone of its locations (the deadline
+   * uses whichever ends earliest), or the conservative default when none is known.
    */
-  async function providerZone(tx: M25Tx, providerEntityId: string): Promise<string> {
-    const zones = new Set(
-      ports.providerZones ? await ports.providerZones(tx as unknown as DbClient, providerEntityId) : [],
-    );
-    const only = zones.size === 1 ? [...zones][0]! : null;
-    return only && isKnownZone(only) ? only : DEFAULT_DEADLINE_ZONE;
+  async function providerZone(tx: M25Tx, providerEntityId: string): Promise<readonly string[]> {
+    const zones = (
+      ports.providerZones ? await ports.providerZones(tx as unknown as DbClient, providerEntityId) : []
+    ).filter(isKnownZone);
+    return zones.length > 0 ? zones : [DEFAULT_DEADLINE_ZONE];
   }
 
   /**

@@ -13,7 +13,8 @@
 // not the day WardenX ingested the file. The last filing day is usable until it ends: the deadline is the
 // last millisecond of that calendar day in `zone`. The presumption is rebuttable by documented receipt;
 // that override is intentionally NOT built here (conservative: the presumed date always applies).
-// No weekend/holiday roll-forward: none was found in 42 CFR Part 405; a deadline on a Saturday stays there.
+// A last filing day that is a weekend or US federal holiday moves BACK to the previous business day (clinical-
+// billing SME decision: conservative, never later than the regulatory date). 42 CFR Part 405 has no roll-forward.
 //
 // Good cause for late filing is handled by the submit-late-good-cause route, not here. The `appeal.submit`
 // route hard-blocks past T-0 via the `appeal_within_deadline` ABAC predicate; the cron emits T-30/14/7/1.
@@ -32,9 +33,8 @@ export const TIER_WINDOW_DAYS: Record<AppealTier, number> = {
 export const RECEIPT_PRESUMPTION_DAYS = 5;
 
 /**
- * Fallback zone in which the last filing day ends, used when a provider entity's locations do not agree on
- * one zone. It is the earliest-ending US mainland zone, so it errs toward alerting early rather than letting
- * a west-coast user believe they have hours they do not. Callers pass the provider's own zone when known.
+ * Zone used when no provider location zone is known. It is the earliest-ending US mainland zone, so it errs
+ * toward alerting early. When locations are known but disagree, the earliest-ending of THEM is used instead.
  */
 export const DEFAULT_DEADLINE_ZONE = "America/New_York";
 
@@ -59,7 +59,8 @@ export interface TierDeadlineDerivation {
   readonly noticeDay: string; // YYYY-MM-DD printed on the notice
   readonly presumedReceiptOn: string; // noticeDay + RECEIPT_PRESUMPTION_DAYS
   readonly windowDays: number;
-  readonly lastFilingDay: string; // presumedReceiptOn + windowDays
+  readonly calendarLastDay: string; // presumedReceiptOn + windowDays, before any business-day roll-back
+  readonly lastFilingDay: string; // calendarLastDay, moved back to a business day
   readonly deadlineAt: Date; // end of lastFilingDay in `zone`
   readonly zone: string;
 }
@@ -99,6 +100,47 @@ function formatterFor(zone: string): Intl.DateTimeFormat {
   return made;
 }
 
+const nthWeekday = (y: number, month: number, weekday: number, n: number): number => {
+  const first = new Date(Date.UTC(y, month, 1)).getUTCDay();
+  return Date.UTC(y, month, 1 + ((weekday - first + 7) % 7) + (n - 1) * 7);
+};
+const lastMonday = (y: number, month: number): number => {
+  const last = new Date(Date.UTC(y, month + 1, 0));
+  return last.getTime() - ((last.getUTCDay() + 6) % 7) * MS_PER_DAY;
+};
+
+/** US federal holidays as OBSERVED (Saturday -> Friday, Sunday -> Monday) for calendar year `y`, UTC midnights. */
+function observedFederalHolidays(y: number): number[] {
+  const fixed = [[0, 1], [5, 19], [6, 4], [10, 11], [11, 25]].map(([m, d]) => {
+    const ms = Date.UTC(y, m!, d!);
+    const dow = new Date(ms).getUTCDay();
+    return dow === 6 ? ms - MS_PER_DAY : dow === 0 ? ms + MS_PER_DAY : ms;
+  });
+  return [
+    ...fixed,
+    nthWeekday(y, 0, 1, 3), // Martin Luther King Jr. Day
+    nthWeekday(y, 1, 1, 3), // Washington's Birthday
+    lastMonday(y, 4), // Memorial Day
+    nthWeekday(y, 8, 1, 1), // Labor Day
+    nthWeekday(y, 9, 1, 2), // Columbus Day
+    nthWeekday(y, 10, 4, 4), // Thanksgiving
+  ];
+}
+
+function isBusinessDay(dayMs: number): boolean {
+  const dow = new Date(dayMs).getUTCDay();
+  if (dow === 0 || dow === 6) return false;
+  const y = new Date(dayMs).getUTCFullYear();
+  // A New Year's Day that falls on a Saturday is observed on 31 December of the prior year.
+  return ![...observedFederalHolidays(y), ...observedFederalHolidays(y + 1)].includes(dayMs);
+}
+
+function previousBusinessDay(dayMs: number): number {
+  let ms = dayMs;
+  while (!isBusinessDay(ms)) ms -= MS_PER_DAY;
+  return ms;
+}
+
 /** Milliseconds `zone` is ahead of UTC at the instant `ts` (negative west of UTC). */
 function zoneOffsetMs(ts: number, zone: string): number {
   const parts = formatterFor(zone).formatToParts(new Date(ts));
@@ -124,19 +166,28 @@ function endOfDayInZone(dayUtcMidnightMs: number, zone: string): Date {
 export function deriveTierDeadline(
   tier: AppealTier,
   noticeDay: string,
-  zone: string = DEFAULT_DEADLINE_ZONE,
+  zones: string | readonly string[] = DEFAULT_DEADLINE_ZONE,
 ): TierDeadlineDerivation {
   const noticeMs = parseNoticeDay(noticeDay);
   const receiptMs = noticeMs + RECEIPT_PRESUMPTION_DAYS * MS_PER_DAY;
   const windowDays = TIER_WINDOW_DAYS[tier];
-  const lastMs = receiptMs + windowDays * MS_PER_DAY;
+  const calendarLastMs = receiptMs + windowDays * MS_PER_DAY;
+  const lastMs = previousBusinessDay(calendarLastMs);
+  // Several zones: the day ends earliest in the one whose end-of-day instant comes first.
+  const zoneList = Array.isArray(zones) ? zones : [zones as string];
+  const ends = (zoneList.length > 0 ? zoneList : [DEFAULT_DEADLINE_ZONE]).map((zone) => ({
+    zone,
+    at: endOfDayInZone(lastMs, zone),
+  }));
+  const first = ends.reduce((a, b) => (b.at.getTime() < a.at.getTime() ? b : a));
   return {
     noticeDay,
     presumedReceiptOn: isoDay(receiptMs),
     windowDays,
+    calendarLastDay: isoDay(calendarLastMs),
     lastFilingDay: isoDay(lastMs),
-    deadlineAt: endOfDayInZone(lastMs, zone),
-    zone,
+    deadlineAt: first.at,
+    zone: first.zone,
   };
 }
 
@@ -144,9 +195,9 @@ export function deriveTierDeadline(
 export function computeTierDeadline(
   tier: AppealTier,
   noticeDay: string,
-  zone: string = DEFAULT_DEADLINE_ZONE,
+  zones: string | readonly string[] = DEFAULT_DEADLINE_ZONE,
 ): Date {
-  return deriveTierDeadline(tier, noticeDay, zone).deadlineAt;
+  return deriveTierDeadline(tier, noticeDay, zones).deadlineAt;
 }
 
 /**

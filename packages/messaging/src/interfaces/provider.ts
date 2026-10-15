@@ -132,13 +132,22 @@ export interface MessagingProvider {
   /** Paginated channel history (decrypts bodies for entitled users only). */
   listMessages(
     orgId: string,
-    input: { channelId: string; userId: string; cursor?: string; limit?: number },
+    input: {
+      channelId: string;
+      userId: string;
+      cursor?: string;
+      limit?: number;
+      /** Retrieve the newest page first and walk toward older messages. */
+      direction?: "forward" | "backward";
+    },
   ): Promise<{ messages: readonly ResolvedMessage[]; nextCursor?: string }>;
 
   /** Auto-sync hooks consumed by M5/M17/M19/M16 outbox events (§2.3). */
   syncCareTeamChannel(
     orgId: string,
     patientId: string,
+    /** Portal user whose active patient grant has already been verified by M31. */
+    portalUserId?: string,
   ): Promise<{ channelId: string; membershipChanged: boolean }>;
   syncOnCallChannel(orgId: string, providerEntityId: string): Promise<void>;
   syncBereavementChannel(

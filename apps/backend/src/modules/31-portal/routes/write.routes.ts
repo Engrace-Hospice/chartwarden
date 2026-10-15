@@ -153,7 +153,11 @@ interface AdmissionArm {
   isDischargedReadOnly?(orgId: string, patientId: string): Promise<boolean>;
 }
 interface MessagingSendArm {
-  syncCareTeamChannel?(orgId: string, patientId: string): Promise<{ channelId: string }>;
+  syncCareTeamChannel?(
+    orgId: string,
+    patientId: string,
+    portalUserId?: string,
+  ): Promise<{ channelId: string }>;
   openChannel(
     orgId: string,
     spec: { kind: string; subjectId?: string; creatorUserId: string },
@@ -459,12 +463,12 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
       // (the exact GAP-059 condition, where the M5 CareTeamProvider seam is the thing that throws).
       // read.routes.ts's channel-pointer catch is NOT precedent for this: there the catch abandons the
       // whole read (`channelId: ""`) and discloses nothing; here the handler proceeds to write.
-      await provider.syncCareTeamChannel?.(actor.organizationId, patientId);
-      const channel = await provider.openChannel(actor.organizationId, {
-        kind: "care_team",
-        subjectId: patientId,
-        creatorUserId: actor.userId,
-      });
+      const channel = await provider.syncCareTeamChannel?.(
+        actor.organizationId,
+        patientId,
+        actor.userId,
+      );
+      if (!channel) throw new WardenXError("MESSAGING_UNAVAILABLE", "messaging is unavailable", 503);
       const sent = await provider.sendMessage(actor.organizationId, {
         channelId: channel.channelId,
         authorUserId: actor.userId,

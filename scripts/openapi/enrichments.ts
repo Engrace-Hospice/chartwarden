@@ -2011,6 +2011,8 @@ import {
   PortalInvitationIssueRequest as M31PortalInvitationIssueRequest,
   PortalInvitationIssueResponse as M31PortalInvitationIssueResponse,
   PortalInvitationListResponse as M31PortalInvitationListResponse,
+  PortalMessageHistoryQuery as M31PortalMessageHistoryQuery,
+  PortalMessageHistoryResponse as M31PortalMessageHistoryResponse,
   PortalSessionCurrentResponse as M31PortalSessionCurrentResponse,
   PortalSessionPatientsResponse as M31PortalSessionPatientsResponse,
   PortalSignInAccountsResponse as M31PortalSignInAccountsResponse,
@@ -3830,6 +3832,11 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/portal/messages/channel": {
     summary: "The care-team channel id + last-read pointer (M36)",
     response: M31MessagesChannelResponse,
+  },
+  "GET /api/v1/portal/messages/history": {
+    summary: "Patient-bound care-team message history (portal-safe M36 projection)",
+    query: M31PortalMessageHistoryQuery,
+    response: M31PortalMessageHistoryResponse,
   },
   "POST /api/v1/portal/messages/send": {
     summary: "Send to the care team (thin pass-through to M36)",
