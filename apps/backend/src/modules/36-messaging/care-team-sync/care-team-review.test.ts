@@ -17,7 +17,9 @@ import { routeRemovedClinicianForReview } from "./care-team-review";
 
 const EVENT = "00000000-0000-4000-8000-0000000000f1";
 
-function harness(opts: { roster?: string[]; rosterThrows?: boolean; flag?: boolean } = {}) {
+function harness(
+  opts: { roster?: string[]; rosterThrows?: boolean; flag?: boolean; flagThrows?: boolean } = {},
+) {
   const kit = buildKit();
   const alertCalls: Array<Parameters<AlertEmitter["emit"]>[1]> = [];
   const alerts: AlertEmitter = {
@@ -38,7 +40,10 @@ function harness(opts: { roster?: string[]; rosterThrows?: boolean; flag?: boole
         taskStore: kit.taskStore,
         store: kit.store,
         alerts,
-        isFlagOn: async () => opts.flag ?? true,
+        isFlagOn: async () => {
+          if (opts.flagThrows) throw new Error("flag down");
+          return opts.flag ?? true;
+        },
       },
       { orgId: ORG, patientId: patient, clinicianUserId: clinician, eventId },
     );
@@ -130,5 +135,24 @@ describe("routeRemovedClinicianForReview", () => {
 
     expect((await h.route()).routed).toBe(1);
     expect(h.alertCalls).toHaveLength(0);
+  });
+
+  it("rethrows when the flag read fails, with the rows already queued and the alert sent on the retry", async () => {
+    const failing = harness({ flagThrows: true });
+    await failing.kit.task(ALICE);
+    await expect(failing.route()).rejects.toThrow("flag down");
+    expect(failing.alertCalls).toHaveLength(0);
+    expect(
+      await failing.kit.store.list(null as never, ORG, { state: "open", limit: 50 }),
+    ).toHaveLength(1);
+  });
+
+  it("queues every task of a clinician with more than 500 open tasks", async () => {
+    const h = harness();
+    for (let i = 0; i < 520; i++) await h.kit.task(ALICE);
+
+    const out = await h.route();
+
+    expect(out.routed).toBe(520);
   });
 });

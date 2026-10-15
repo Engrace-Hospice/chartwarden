@@ -24,7 +24,7 @@ export const messagingReviewItems = pgTable(
       .references(() => organizations.id, { onDelete: "restrict" }),
     source: text("source").notNull(),
     cause: text("cause").notNull(),
-    /** death: the patient id; discharge / transfer: the admission id; care_team_change: the assignment id. */
+    /** death: the patient id; discharge / transfer: the admission id; care_team_change: the m5.patient.assignment_ended outbox event id. */
     triggerRef: uuid("trigger_ref").notNull(),
     patientId: uuid("patient_id").notNull(),
     /** The holder when queued (WP 3.9: the removed clinician). */

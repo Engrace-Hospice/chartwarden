@@ -1,11 +1,6 @@
-// WP 3.9 - the pure care-team-removal rules: still-on-roster check, stable deduped item set, the per-event cap.
+// WP 3.9 - the pure care-team-removal rules: still-on-roster check, stable deduped item set, batching with no cap.
 import { describe, expect, it } from "vitest";
-import {
-  CARE_TEAM_REVIEW_MAX_ITEMS,
-  careTeamTriggerRef,
-  reviewItemsFor,
-  shouldRoute,
-} from "../src/care-team";
+import { careTeamTriggerRef, reviewItemBatches, shouldRoute } from "../src/care-team";
 
 describe("shouldRoute", () => {
   it("routes when the clinician is no longer on the roster", () => {
@@ -16,17 +11,18 @@ describe("shouldRoute", () => {
   });
 });
 
-describe("reviewItemsFor", () => {
+describe("reviewItemBatches", () => {
   it("deduplicates and sorts so a redelivery yields the same set", () => {
-    expect(reviewItemsFor(["b", "a", "b"])).toEqual({ taskIds: ["a", "b"], truncated: 0 });
+    expect(reviewItemBatches(["b", "a", "b"])).toEqual([["a", "b"]]);
   });
-  it("caps at the maximum and reports how many were left out", () => {
-    const ids = Array.from({ length: CARE_TEAM_REVIEW_MAX_ITEMS + 3 }, (_, i) =>
-      String(i).padStart(5, "0"),
-    );
-    const r = reviewItemsFor(ids);
-    expect(r.taskIds).toHaveLength(CARE_TEAM_REVIEW_MAX_ITEMS);
-    expect(r.truncated).toBe(3);
+  it("returns no batch for no tasks", () => {
+    expect(reviewItemBatches([])).toEqual([]);
+  });
+  it("splits into ordered batches and drops nothing above 500 tasks", () => {
+    const ids = Array.from({ length: 1234 }, (_, i) => String(i).padStart(5, "0"));
+    const batches = reviewItemBatches([...ids].reverse(), 500);
+    expect(batches.map((b) => b.length)).toEqual([500, 500, 234]);
+    expect(batches.flat()).toEqual(ids);
   });
 });
 

@@ -13,7 +13,7 @@ import type { DbClient } from "@wardenx/db";
 import {
   type AlertEmitter,
   careTeamTriggerRef,
-  reviewItemsFor,
+  reviewItemBatches,
   shouldRoute,
 } from "@wardenx/messaging";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
@@ -56,13 +56,8 @@ export async function routeRemovedClinicianForReview(
     r.clinicianUserId,
     r.patientId,
   );
-  const { taskIds, truncated } = reviewItemsFor(open);
-  if (taskIds.length === 0) return { routed: 0, skipped: "nothing_open" };
-  if (truncated > 0) {
-    deps.warn?.("care-team review: items over the cap were not queued", {
-      truncated: String(truncated),
-    });
-  }
+  const batches = reviewItemBatches(open);
+  if (batches.length === 0) return { routed: 0, skipped: "nothing_open" };
 
   const triggerRef = careTeamTriggerRef(r.eventId);
   const { inserted, hasOpen } = await withOrgContext(
@@ -70,18 +65,23 @@ export async function routeRemovedClinicianForReview(
     systemOrgContext(r.orgId),
     async (scoped) => {
       const tx = scoped as unknown as Tx;
-      const { inserted: n } = await deps.store.queueItems(tx, {
-        orgId: r.orgId,
-        source: CARE_TEAM_CHANGE_SOURCE,
-        cause: "care_team_removed",
-        triggerRef,
-        patientId: r.patientId,
-        items: taskIds.map((itemId) => ({
-          itemKind: "task",
-          itemId,
-          subjectUserId: r.clinicianUserId,
-        })),
-      });
+      let n = 0;
+      // Every task is queued, a batch at a time, in the one transaction (the unique indexes make a re-run a no-op).
+      for (const batch of batches) {
+        const { inserted: added } = await deps.store.queueItems(tx, {
+          orgId: r.orgId,
+          source: CARE_TEAM_CHANGE_SOURCE,
+          cause: "care_team_removed",
+          triggerRef,
+          patientId: r.patientId,
+          items: batch.map((itemId) => ({
+            itemKind: "task",
+            itemId,
+            subjectUserId: r.clinicianUserId,
+          })),
+        });
+        n += added;
+      }
       const subjects = await deps.store.openSubjectsForTrigger(
         tx,
         r.orgId,
@@ -93,7 +93,8 @@ export async function routeRemovedClinicianForReview(
   );
 
   // Re-read after the insert so a redelivery whose alert failed the first time still alerts (the dedupe absorbs repeats).
-  if (hasOpen && (await deps.isFlagOn(r.orgId).catch(() => false))) {
+  // A flag-read error propagates so the relay retries (rows are idempotent; the alert is re-sent on the retry).
+  if (hasOpen && (await deps.isFlagOn(r.orgId))) {
     await emitReviewQueuedAlert({ alerts: deps.alerts, warn: deps.warn }, r.orgId, {
       source: CARE_TEAM_CHANGE_SOURCE,
       triggerRef,
