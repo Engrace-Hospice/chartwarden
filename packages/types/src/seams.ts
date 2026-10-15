@@ -77,6 +77,7 @@ import type {
   IpuTenantPostureReader,
   IpuVisitorReader,
 } from "./inpatient";
+import type { EscalationRouter } from "./messaging-escalation";
 import type { ChartPromotionSourceReader } from "./messaging-promotion";
 import type {
   HospitalizationRiskProvider,
@@ -391,6 +392,7 @@ export type SeamName =
   | "PatientSitingReader" // M6 — the location ids of a patient's active admission(s) (M36 care-team channel siting)
   | "SupervisorReader" // M3 — supervision/location facts about a membership (M33 scoping, M36 member admin)
   | "AuditorEngagementReader" // M3 — is an auditor engagement active for this auditor now (M31 auditor view, GAP-093)
+  | "EscalationRouter" // M19 — who is on call for a role at tier n, and is there a tier n+1; M36 owns timers + state (WP 4.3, ADR-0057)
   | "OnCallProvider" // M19 — who is on call now + the active shifts M36's channel synchronizer re-syncs on
   | "TriageCallReader" // M19 — M32's PHI-free feature read + M14's since-last-IDG digest
   | "TriageCallProvider" // M19 — M14's full packet slice + M11's verbal-order → triage-context reverse lookup
@@ -1334,6 +1336,7 @@ export interface SeamContracts {
   BereavementEncounterReader: BereavementEncounterReader;
   SupervisorReader: SupervisorReader;
   AuditorEngagementReader: AuditorEngagementReader;
+  EscalationRouter: EscalationRouter;
   OnCallProvider: OnCallProvider;
   TriageCallReader: TriageCallReader;
   TriageCallProvider: TriageCallProvider;

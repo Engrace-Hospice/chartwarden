@@ -55,6 +55,21 @@ WP 4.1 is built behind the flag `messaging.urgent_clinical` (default off) with *
 - **Rate limits (provisional):** 10 urgent messages per minute per sender, 100 per minute per organisation, 5 per 5 minutes from one sender to one recipient. Too low or too high for a busy shift?
 - **Not before 4.2 to 4.4 (decided: the flag stays off for every tenant until then):** the feature records and shows an urgent message but nobody tracks whether the recipient acted. We recommend it is not switched on for any tenant as a safety net until the acknowledgment request, escalation and timers ship. Please confirm.
 
+## 5. Acknowledgment requests (WP 4.2, ADR-0069) - provisional values and readings to approve
+
+WP 4.2 is built behind the flag `messaging.ack_requests` (default off) with **provisional** values. It stores a request, lets the named clinician take responsibility by one explicit action, and keeps a history; it has no timers, tiers or paging yet (WP 4.3 - 4.5). Please approve or change:
+
+- **Deadlines** (platform default / hard maximum, in minutes): important 60 / 120, urgent 15 / 30, Critical 5 / 10. They are stored and shown; nothing acts on a missed deadline until WP 4.4. A tenant may not exceed the maximum (a database rule). Tenant tightening is **not built yet**: do you want it, and who in an agency would set it?
+- **Who may take responsibility (acknowledge):** the proposed stricter reading is the **named assignee only**, who must hold the same role key that qualifies a recipient of an urgent message (RN, RN case manager, director of nursing, physicians and prescribers, clinical supervisor, clinical lead; **not** LPN, social worker, chaplain, aide, volunteer, org admin or compliance). An aide can raise a request but never take it. Is LPN in or out? Should a team lead or supervisor be able to acknowledge **on behalf of** the assignee (we recommend not: they reassign to themselves if qualified)?
+- **Who may reassign:** the proposed rule is the sender or the current assignee, to another qualified care-team colleague; the window restarts for the new assignee and the original request time is kept for reporting. Is there a limit on how many times, and may a supervisor reassign without being either party (not built; the supervisor queue is WP 4.9)?
+- **Who may resolve (close):** the assignee, after acknowledging. Should the sender be able to close, and is a reason code needed?
+- **Who may ask for a response on an existing message:** its author, naming one qualified care-team colleague (the class is important unless the message was sent as an urgent clinical message). Is "important" an acceptable name, and should its composer control come with this release?
+- **Critical (symptom) class:** exists as a value but nothing can create it until you say which roles may raise and take it.
+- **What happens to an open request** when its assignee is offboarded, the patient is discharged or dies, or the care team changes? Today it stays open and visible; the plan's rule is that a request never ends with no open owner.
+- **Wording:** the card notice ("Taking responsibility is an explicit action. Opening or reading this message does not do it. This does not page anyone and is not the emergency path."), the two in-app alert texts ("You have an important clinical message that needs your response", "A clinical message was reassigned to you") and the button labels ("Take responsibility", "Close this request").
+- **Rate limits (provisional):** create and reassign 20 per minute per user, 200 per minute per organisation, 5 per 5 minutes from one person to one colleague.
+- **Not before 4.3 - 4.4:** both flags (`messaging.urgent_clinical`, `messaging.ack_requests`) stay off for every tenant until timers and backup routing ship; a request nobody is chasing is not a safety net.
+
 ## What happens with the answers
 
 ADR-0056 is updated with the signed numbers and role map, then accepted by the product owner. Numbers live as platform

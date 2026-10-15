@@ -71,6 +71,7 @@ import {
   embeddingsProviderDenyStub,
   emergencyServiceJurisdictionReaderDenyStub,
   encounterCreatorDenyStub,
+  escalationRouterDenyStub,
   evvAggregatorReferenceReaderDenyStub,
   evvBracketResolverDenyStub,
   evvComplianceReaderDenyStub,
@@ -1254,6 +1255,10 @@ export const REQUIRED_SEAMS = [
   //     care-log entry for one patient).
   //   • `TriageCallMetricsProvider` is phi: FALSE — window-scoped aggregates only, no patient argument
   //     and no per-patient row (the M17 `VisitMetricsProvider` / M18 `EvvMetricsProvider` precedent).
+  // M19 WP 4.3 (ADR-0057) - the EscalationRouter M36 asks "who is on call for role R at tier n, and is there a tier n+1?". Ids only,
+  // so phi: FALSE (same split as OnCallProvider). No M19 owner is named yet, so NOTHING registers a real router: the deny-stub
+  // answers `unavailable` (source "deny_stub") and callers must treat that as "cannot route".
+  { key: "EscalationRouter", ownerModule: 19, phi: false, denyStub: escalationRouterDenyStub },
   { key: "OnCallProvider", ownerModule: 19, phi: false, denyStub: onCallProviderDenyStub },
   { key: "TriageCallReader", ownerModule: 19, phi: true, denyStub: triageCallReaderDenyStub },
   {

@@ -26,10 +26,11 @@ import type {
 } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { bindAttachmentsInTx } from "./attachments/attachment-service-db";
 import { assertMemberCategoryAllowed, excludedMemberUserIds } from "./member-category-gate";
+import { decodeCursor, encodeCursor } from "./message-cursor";
 import { publishMessageHint } from "./message-hint-events";
 import {
   type MessagingOutboxPort,
@@ -218,6 +219,16 @@ export function createDbMessagingProvider(
       return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
         await channelOr404(tx, orgId, input.channelId);
         const limit = Math.min(Math.max(input.limit ?? 50, 1), 200);
+        const backward = input.direction === "backward";
+        const cursor = input.cursor ? decodeCursor(input.cursor) : null;
+        const where = [eq(MSG.organizationId, orgId), eq(MSG.channelId, input.channelId)];
+        if (cursor) {
+          where.push(
+            backward
+              ? sql`(${MSG.createdAt}, ${MSG.id}) < (${cursor.createdAt}, ${cursor.id})`
+              : sql`(${MSG.createdAt}, ${MSG.id}) > (${cursor.createdAt}, ${cursor.id})`,
+          );
+        }
         const rows = (await tx
           .select({
             id: MSG.id,
@@ -230,9 +241,12 @@ export function createDbMessagingProvider(
             parentMessageId: MSG.parentMessageId,
           })
           .from(MSG)
-          .where(and(eq(MSG.organizationId, orgId), eq(MSG.channelId, input.channelId)))
-          .orderBy(asc(MSG.createdAt), asc(MSG.id))
-          .limit(limit)) as Array<{
+          .where(and(...where))
+          .orderBy(
+            backward ? desc(MSG.createdAt) : asc(MSG.createdAt),
+            backward ? desc(MSG.id) : asc(MSG.id),
+          )
+          .limit(limit + 1)) as Array<{
           id: string;
           channelId: string;
           authorUserId: string | null;
@@ -242,8 +256,11 @@ export function createDbMessagingProvider(
           createdAt: Date;
           parentMessageId: string | null;
         }>;
+        const hasMore = rows.length > limit;
+        const pageRows = rows.slice(0, limit);
+        if (backward) pageRows.reverse();
         const messages = await Promise.all(
-          rows.map(
+          pageRows.map(
             async (m): Promise<ResolvedMessage> => ({
               messageId: m.id,
               channelId: m.channelId,
@@ -263,14 +280,21 @@ export function createDbMessagingProvider(
             }),
           ),
         );
-        return { messages };
+        const cursorRow = backward ? pageRows[0] : pageRows.at(-1);
+        return {
+          messages,
+          nextCursor:
+            hasMore && cursorRow
+              ? encodeCursor(cursorRow.createdAt.toISOString(), cursorRow.id)
+              : undefined,
+        };
       });
     },
 
     // GAP-059 / M36 spec D5 — reconcile the patient's `care_team` channel membership against the
     // real roster (M5 CareTeamProvider). Auto-sourced rows only: a `source:'manual'` add (admin
     // override) is left alone, never re-added and never removed by the reconciler.
-    async syncCareTeamChannel(orgId, patientId) {
+    async syncCareTeamChannel(orgId, patientId, portalUserId) {
       // The M5 roster read runs BEFORE the write transaction opens, and must stay there.
       //
       // `CareTeamProvider`'s production store is `createDrizzleCareTeamStore(db)`, whose `listMembers`
@@ -364,11 +388,16 @@ export function createDbMessagingProvider(
           const channelArchived = channel.isArchived;
 
           const activeMembers = (await tx
-            .select({ id: CM.id, userId: CM.userId, source: CM.source })
+            .select({ id: CM.id, userId: CM.userId, source: CM.source, role: CM.role })
             .from(CM)
             .where(
               and(eq(CM.organizationId, orgId), eq(CM.channelId, channelId), isNull(CM.removedAt)),
-            )) as Array<{ id: string; userId: string; source: "auto" | "manual" }>;
+            )) as Array<{
+            id: string;
+            userId: string;
+            source: "auto" | "manual";
+            role: "owner" | "member" | "read_only" | "portal_caregiver";
+          }>;
           const activeUserIds = new Set(activeMembers.map((m) => m.userId));
 
           // GAP-104 — an archived (discharged/deceased) channel takes no NEW members; removals still apply
@@ -379,8 +408,10 @@ export function createDbMessagingProvider(
             ? []
             : [...roster].filter((userId) => !activeUserIds.has(userId) && !excluded.has(userId));
           const toRemove = activeMembers.filter(
-            (m) => m.source === "auto" && !roster.has(m.userId),
+            (m) => m.source === "auto" && m.role !== "portal_caregiver" && !roster.has(m.userId),
           );
+          const addPortalCaregiver =
+            !channelArchived && Boolean(portalUserId) && !activeUserIds.has(portalUserId!);
 
           if (toAdd.length > 0) {
             await tx.insert(CM).values(
@@ -393,11 +424,28 @@ export function createDbMessagingProvider(
               })),
             );
           }
+          if (addPortalCaregiver) {
+            await tx
+              .insert(CM)
+              .values({
+                organizationId: orgId,
+                channelId,
+                userId: portalUserId!,
+                role: "portal_caregiver",
+                source: "auto",
+              })
+              // Two portal reads can reconcile concurrently. The partial active-membership unique
+              // index is the arbiter; the loser proceeds to the same authorized channel.
+              .onConflictDoNothing();
+          }
           for (const m of toRemove) {
             await tx.update(CM).set({ removedAt: new Date() }).where(eq(CM.id, m.id));
           }
 
-          return { channelId, membershipChanged: toAdd.length > 0 || toRemove.length > 0 };
+          return {
+            channelId,
+            membershipChanged: toAdd.length > 0 || toRemove.length > 0 || addPortalCaregiver,
+          };
         },
       );
     },

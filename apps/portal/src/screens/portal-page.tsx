@@ -9,12 +9,21 @@ export interface PortalPageProps {
   subtitle?: string;
   actions?: ReactNode;
   children: ReactNode;
+  width?: "reading" | "standard" | "workspace";
+  className?: string;
 }
 
-/** Titled reading column — the frame for every non-dashboard §5.1 screen. */
-export function PortalPage({ title, subtitle, actions, children }: PortalPageProps): JSX.Element {
+/** A page frame whose width reflects the task instead of forcing every workflow into one column. */
+export function PortalPage({
+  title,
+  subtitle,
+  actions,
+  children,
+  width = "standard",
+  className,
+}: PortalPageProps): JSX.Element {
   return (
-    <div className="wx-portal-page">
+    <div className={`wx-portal-page wx-portal-page--${width}${className ? ` ${className}` : ""}`}>
       <header className="wx-portal-page__header">
         <div className="wx-portal-page__intro">
           <h1>{title}</h1>
@@ -26,6 +35,8 @@ export function PortalPage({ title, subtitle, actions, children }: PortalPagePro
     </div>
   );
 }
+
+export const PortalPageContainer = PortalPage;
 
 /** A titled card holding a screen section. */
 export function PortalCard({

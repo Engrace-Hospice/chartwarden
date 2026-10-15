@@ -1,0 +1,157 @@
+// WP 4.2 - static guards for the acknowledgment-request aggregate (the sibling of m36-urgent-no-escalation.test.ts). 4.2 ADDS the
+// right to write acknowledgment rows; it still must not time, route, escalate or page anyone (WP 4.3 - 4.5), must never acknowledge
+// from a read, an open or a receipt, and must keep every writer inside the aggregate's own directory.
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
+import { describe, expect, it } from "vitest";
+
+const ROOT = join(__dirname, "../../..");
+const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
+
+function walk(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) return name === "node_modules" ? [] : walk(path);
+    return /\.(ts|tsx)$/.test(name) && !/\.test\.tsx?$/.test(name) ? [path] : [];
+  });
+}
+
+const ACK_DIR = "apps/backend/src/modules/36-messaging/ack-requests";
+const ACK_FILES = [
+  ...walk(join(ROOT, ACK_DIR)).map((f) => relative(ROOT, f)),
+  "apps/backend/src/modules/36-messaging/routes/ack-routes.ts",
+  "apps/backend/src/modules/36-messaging/routes/ack-typebox.ts",
+  "apps/backend/src/modules/36-messaging/outbox-consumers/ack-notifications.ts",
+  "apps/backend/src/bootstrap/plugins/ack-rate-limit.ts",
+  "packages/messaging/src/ack-requests/ack-rules.ts",
+];
+
+describe("the aggregate does not time, route, escalate or page (WP 4.3 - 4.5)", () => {
+  it("scans the files it means to", () => {
+    expect(ACK_FILES.length).toBeGreaterThan(12);
+  });
+
+  it.each(ACK_FILES)("%s", (file) => {
+    const src = read(file);
+    expect(src).not.toMatch(
+      /escalat(e|ion)Router|EscalationRouter|oncall|on_call|pager|bullmq|setTimeout|setInterval|cron/i,
+    );
+    expect(src).not.toMatch(/from "@wardenx\/(oncall|triage)|modules\/(19|11|12|13)-/);
+    // 4.2 never writes a state or an event type that belongs to a later package.
+    expect(src).not.toMatch(/status:\s*"(escalated|failed_unreachable)"/);
+    expect(src).not.toMatch(/toStatus:\s*"(escalated|failed_unreachable)"/);
+    expect(src).not.toMatch(/eventType:\s*"(opened|delivered|overdue|escalated|delivery_failed)"/);
+  });
+});
+
+describe("only an explicit transition writes an acknowledgment", () => {
+  const service = read(`${ACK_DIR}/ack-service.ts`);
+  const between = (from: string, to: string) =>
+    service.slice(service.indexOf(from), service.indexOf(to));
+
+  it("get and listForChannel never write a row, an event or an outbox message", () => {
+    const readers = between(
+      "    async get(actor, requestId)",
+      "    async acknowledge(actor, requestId)",
+    );
+    expect(readers.length).toBeGreaterThan(100);
+    expect(readers).not.toMatch(/insertEvent|\.update\(|\.insert\(|publishAckEvent/);
+  });
+
+  it("the GET routes call only the two read methods", () => {
+    const routes = read("apps/backend/src/modules/36-messaging/routes/ack-routes.ts");
+    const getBlocks = routes
+      .split("app.get(")
+      .slice(1)
+      .map((b) => b.split("app.post(")[0] ?? "");
+    expect(getBlocks.length).toBe(2);
+    for (const block of getBlocks) {
+      expect(block).not.toMatch(/service\.(create|acknowledge|reassign|resolve)\(/);
+    }
+  });
+
+  it("the acknowledged status is written in exactly one place: the acknowledge transition", () => {
+    const hits = service.match(/status:\s*"acknowledged"/g) ?? [];
+    expect(hits).toHaveLength(1);
+    expect(service.indexOf('status: "acknowledged"')).toBeGreaterThan(
+      service.indexOf("    async acknowledge(actor, requestId)"),
+    );
+    expect(service.indexOf('status: "acknowledged"')).toBeLessThan(
+      service.indexOf("    async resolve(actor, requestId)"),
+    );
+  });
+
+  it("no receipt, read, presence or delivery code imports the aggregate", () => {
+    const importers = [
+      ...walk(join(ROOT, "apps/backend/src")),
+      ...walk(join(ROOT, "packages/messaging/src")),
+    ]
+      .map((f) => relative(ROOT, f))
+      .filter((f) => !f.startsWith(ACK_DIR) && /ack-requests\//.test(read(f)))
+      .sort();
+    expect(importers).toEqual(
+      [
+        "apps/backend/src/modules/36-messaging/index.ts",
+        "apps/backend/src/modules/36-messaging/messaging-route-service-db.ts",
+        "apps/backend/src/modules/36-messaging/outbox-consumers/ack-notifications.ts",
+        "apps/backend/src/modules/36-messaging/routes/ack-routes.ts",
+        "packages/messaging/src/index.ts",
+      ].sort(),
+    );
+  });
+});
+
+describe("one writer of the aggregate's tables", () => {
+  it("no file outside the aggregate names the tables or their Drizzle handles", () => {
+    const allowed = new Set([
+      "packages/db/src/schema/messaging/message-acknowledgments.ts",
+      // The audit resource kind of the read audit, a label and not a table access.
+      "apps/backend/src/modules/36-messaging/routes/ack-routes.ts",
+    ]);
+    const offenders = [
+      ...walk(join(ROOT, "apps/backend/src")),
+      ...walk(join(ROOT, "packages/messaging/src")),
+    ]
+      .map((f) => relative(ROOT, f))
+      .filter(
+        (f) =>
+          !f.startsWith(ACK_DIR) &&
+          !allowed.has(f) &&
+          /messageAckRequests|messageAckEvents|message_acknowledgment_/.test(read(f)),
+      );
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe("the request schemas carry no class, status, deadline or role", () => {
+  it("CreateAckBodySchema and ReassignAckBodySchema accept only ids", () => {
+    const src = read("apps/backend/src/modules/36-messaging/routes/ack-typebox.ts");
+    const requests = src
+      .split(/export const (?=\w+Schema)/)
+      .filter((s) => /^(Create|Reassign|Empty)AckBodySchema/.test(s))
+      .map((s) => s.split("\n\n")[0] ?? "");
+    expect(requests).toHaveLength(3);
+    for (const schema of requests) {
+      expect(schema).not.toMatch(/ack_class|status|deadline|required_role|urgency|tier/);
+      expect(schema).toContain("additionalProperties: false");
+    }
+  });
+
+  it("the ordinary send, edit, schedule and draft schemas still accept no ack field", () => {
+    for (const file of [
+      "apps/backend/src/modules/36-messaging/routes/messaging-typebox.ts",
+      "apps/backend/src/modules/36-messaging/routes/scheduled-send-typebox.ts",
+      "apps/backend/src/modules/36-messaging/routes/draft-typebox.ts",
+    ]) {
+      expect(read(file)).not.toMatch(/ack_class|assigned_user_id|message_acknowledgment/);
+    }
+  });
+});
+
+describe("the urgent code stays unaware of the aggregate except through the generic hook", () => {
+  it("urgent files neither import nor name the aggregate", () => {
+    for (const f of walk(join(ROOT, "apps/backend/src/modules/36-messaging/urgent"))) {
+      expect(readFileSync(f, "utf8")).not.toMatch(/ack-requests|messageAck|AckService/);
+    }
+  });
+});

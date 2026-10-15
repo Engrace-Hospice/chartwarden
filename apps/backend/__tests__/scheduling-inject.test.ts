@@ -100,6 +100,7 @@ const ALL_PERMS = [
 ];
 const PERMISSION_SEED = [
   { userId: "sched_1", permissions: ALL_PERMS },
+  { userId: "portal_1", permissions: ["portal.visits.read_upcoming"] },
   { userId: "viewer_1", permissions: ["visit.read"] },
   { userId: "none_1", permissions: [] as string[] },
 ];
@@ -163,6 +164,7 @@ function makeServer() {
 const SCHED = { "x-test-user": "sched_1", "x-test-org": ORG, "x-test-roles": "scheduler" };
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
 const NONE = { "x-test-user": "none_1", "x-test-org": ORG, "x-test-roles": "none" };
+const PORTAL = { "x-test-user": "portal_1", "x-test-org": ORG, "x-test-roles": "portal" };
 
 const visitBody = (over: Record<string, unknown> = {}) => ({
   patientId: PATIENT,
@@ -672,6 +674,15 @@ describe("M17-T07 — routes 23-25 & 27: day/week/map views + portal upcoming", 
     });
     expect(portal.statusCode).toBe(200);
     expect((portal.json() as Array<{ visitId: string }>).map((v) => v.visitId)).toContain(id);
+
+    // The actual M31 portal session capability is plural; the compatibility guard must accept it
+    // without requiring the legacy singular M17 key reported by production clients.
+    const m31Portal = await app.inject({
+      method: "GET",
+      url: `/api/v1/portal/upcoming?patient=${PATIENT}`,
+      headers: { ...PORTAL, "x-test-session-patient": PATIENT },
+    });
+    expect(m31Portal.statusCode).toBe(200);
 
     // GAP-132 — a portal session pinned to patient B asking for patient A (or an unpinned session) is a 404.
     const OTHER_PATIENT = "99999999-9999-4999-8999-999999999999";
