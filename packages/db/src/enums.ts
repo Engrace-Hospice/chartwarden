@@ -349,6 +349,7 @@ export const messageAckClass = pgEnum("message_ack_class", [
   "urgent",
   "critical_symptom",
 ]);
+// `route_unavailable` and `ladder_exhausted` were added by migration 1108 (WP 4.4, ADR-0070).
 export const messageAckEventType = pgEnum("message_ack_event_type", [
   "requested",
   "delivered",
@@ -360,6 +361,8 @@ export const messageAckEventType = pgEnum("message_ack_event_type", [
   "resolved",
   "cancelled",
   "delivery_failed",
+  "route_unavailable",
+  "ladder_exhausted",
 ]);
 
 // `message_receipt_status` — per-recipient receipt state (§3.4): `delivered` (fanned out server-side) |

@@ -101,6 +101,41 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     enabled: true,
   },
   {
+    eventType: "m36.ack.escalated",
+    category: "clinical_urgent",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    // WP 4.4: the tier's clinician an unacknowledged request was escalated to is told, in-app only, with generic text. Out-of-band
+    // delivery is WP 4.6. NOT a page and NOT the emergency path.
+    resolverArgs: { roleKeys: [], userIdPaths: ["recipientUserId"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.ack.route_unavailable",
+    category: "clinical_urgent",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    // WP 4.4: the deadline passed and no tier could be reached; the sender and the current assignee are told it is still open.
+    resolverArgs: { roleKeys: [], userIdPaths: ["recipientUserIds"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.ack.ladder_exhausted",
+    category: "clinical_urgent",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    // WP 4.4: no further tier exists; the sender, the assignee and the supervisor audience (role keys copied from
+    // m36.medication_question.unrouted; tenants re-aim it through the alert-rule admin) are told it is still open.
+    resolverArgs: { roleKeys: ["clinical_supervisor", "don"], userIdPaths: ["recipientUserIds"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
     eventType: "m36.medication_question.unrouted",
     category: "clinical_routine",
     severityFloor: "warn",

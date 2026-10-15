@@ -2,7 +2,7 @@
 // sign-off is recorded; see docs/messaging-hub/brief-clinical-lead-signoff.md): change the text here, never the codes.
 // Taking responsibility is an explicit action; opening or reading a message never does it, nothing here pages anyone, and
 // messaging is not the emergency path. No tenant can remove the notice.
-import type { AckStatus } from "@wardenx/types";
+import type { AckEscalationNote, AckStatus } from "@wardenx/types";
 
 export const ACK_NOTICE =
   "Taking responsibility is an explicit action: opening or reading this message does not do it. This does not page anyone and is not the emergency path; for critical symptoms follow the agency telephone/emergency procedure.";
@@ -37,6 +37,17 @@ export const ACK_STATUS_TEXT: Readonly<Record<AckStatus, string>> = {
   cancelled: "Withdrawn",
 };
 
+/**
+ * WP 4.4: what an overdue request that could not be passed on says. Honest and plain: it is still open and still with the person
+ * it was with. PROVISIONAL pending clinical-lead review. These notes appear only on a request the server marked as unrouted.
+ */
+export const ACK_NOTE_TEXT: Readonly<Record<AckEscalationNote, string>> = {
+  route_unavailable:
+    "Nobody has taken responsibility and the deadline has passed. It could not be passed to the next person, so it is still open.",
+  ladder_exhausted:
+    "Nobody has taken responsibility and the deadline has passed. There is no one further to pass it to, so it is still open.",
+};
+
 export const takeName = (author: string | undefined, sent: string): string =>
   `${ACK_TAKE_LABEL} for the message${author ? ` from ${author}` : ""} sent ${sent}`;
 export const closeName = (author: string | undefined, sent: string): string =>
@@ -44,3 +55,9 @@ export const closeName = (author: string | undefined, sent: string): string =>
 
 export const waitingFor = (forViewer: boolean): string =>
   forViewer ? "Waiting for you" : "Waiting for the person it was sent to";
+
+/** WP 4.4: the line for an escalated request (the deadline passed and it was handed to the next responsible clinician). */
+export const escalatedWaitingFor = (forViewer: boolean): string =>
+  forViewer
+    ? "Escalated to you because it was not taken in time"
+    : "Escalated to the next responsible person because it was not taken in time";

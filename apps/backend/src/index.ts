@@ -44,6 +44,7 @@ import {
 import { createUnboundIqiesAdapter } from "@wardenx/iqies-client";
 import type { AlertEmitter, MessagingProvider } from "@wardenx/messaging";
 import {
+  MESSAGING_QUEUES,
   REALTIME_HINT_EVENT,
   accountRoom,
   computeRoomSet,
@@ -1421,6 +1422,7 @@ import {
   bindOutOfBandTransports,
   buildAckDeps,
   buildClinicalLinkDeps,
+  buildEscalationBinding,
   buildHandoffDeps,
   buildIdgAlertConsumers,
   buildIdgCarryForwardComplianceConsumer,
@@ -1435,8 +1437,10 @@ import {
   buildTaskDeps,
   buildUrgentDeps,
   createAttachmentService,
+  createBullmqTimerPort,
   createDbMessagingProvider,
   createDbMessagingRouteService,
+  createDlqAuditRecorder,
   createDrizzleAlertEmitter,
   createDrizzleDeliveryDispatchStore,
   createDrizzleIdgAttendeeLookup,
@@ -1446,8 +1450,10 @@ import {
   createRealtimeAuditWriter,
   createScheduledSendDispatcher,
   createSosContactCaller,
+  getEscalationRouter,
   mountMessagingRoutes,
   mountMessagingWebhookRoutes,
+  registerM36AckEscalationWorkers,
   registerM36AttachmentScanWorker,
   registerM36DeliveryWorkers,
   registerM36HandoffExpiryWorker,
@@ -1455,6 +1461,7 @@ import {
   registerM36ScheduledSendWorker,
   registerMessagingErasers,
   registerMessagingSeams,
+  scheduleM36AckEscalationJobs,
   scheduleM36AttachmentScanJobs,
   scheduleM36DeliveryJobs,
   scheduleM36HandoffExpiryJobs,
@@ -1475,7 +1482,9 @@ import {
   buildM36AccessRevocationPlatformConsumer,
   combineReassignments,
 } from "./modules/36-messaging/outbox-consumers/access-revocation";
+import { buildM36AckEscalationNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/ack-escalation-notifications";
 import { buildM36AckNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/ack-notifications";
+import { buildM36AckTimerArmingConsumer } from "./modules/36-messaging/outbox-consumers/ack-timer-arming";
 import { buildM36AdmissionComplianceAlertConsumer } from "./modules/36-messaging/outbox-consumers/admission-compliance-alerts";
 import { buildM36AmendmentSlaAlertConsumer } from "./modules/36-messaging/outbox-consumers/amendment-sla-alerts";
 import { buildM36CapThresholdAlertConsumer } from "./modules/36-messaging/outbox-consumers/cap-threshold-alerts";
@@ -4272,6 +4281,36 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         });
       })()
     : undefined;
+  // WP 4.4 - durable escalation timers (ADR-0070). The DATABASE decides what is due; a delayed BullMQ job per (request, tier,
+  // window) and a per-minute sweeper only wake the escalation, which is one guarded write. The ACTION is behind the ops flag
+  // `messaging.escalation_timers` (default off): with it off a due request is left untouched. The router is the M19 seam
+  // (today the fail-closed deny-stub), resolved lazily and wrapped in the org-checking guard; the timer queue exists only with a
+  // Redis connection, otherwise nothing is armed and the sweeper alone wakes the escalation.
+  let m36AckEscalationError: (
+    context: { organizationId: string; requestId: string },
+    err: unknown,
+  ) => void = (context, err) =>
+    console.error("M36 ack escalation request failed", {
+      ...context,
+      reason: err instanceof Error ? err.name : "unknown",
+    });
+  const m36AckTimerQueue = queueConnection
+    ? new Queue(MESSAGING_QUEUES.ackEscalationTimer, { connection: queueConnection })
+    : undefined;
+  const m36AckEscalation = m36Ack
+    ? buildEscalationBinding({
+        flags: featureFlagReader,
+        store: m36Ack.store,
+        outbox: m36OutboxPublisher,
+        router: {
+          resolveTier: (orgId, request) => getEscalationRouter().resolveTier(orgId, request),
+        },
+        stillQualified: m36Ack.stillQualified,
+        ...(m36AckTimerQueue ? { timers: createBullmqTimerPort(m36AckTimerQueue) } : {}),
+        // Ids and the error class only: a database error can carry statement parameters. Swapped for the app logger below.
+        onError: (context, err) => m36AckEscalationError(context, err),
+      })
+    : undefined;
   // WP 4.1 - "Urgent clinical". One binding for the routes; off unless the tenant flags `messaging.urgent_clinical` AND
   // `messaging.sbar` are on. It stores and marks an urgent message and tells the named recipient in-app; it does not page,
   // escalate or acknowledge (WP 4.2 - 4.4).
@@ -6036,6 +6075,42 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       .catch((err) => app.log.error({ err }, "platform-staff reconcile could not list orgs"));
   }
   mountMetricsRoute(app, metricsRegistry);
+  // WP 4.4 - the escalation timer queue the arming consumer adds to, and a boot report of what answers for the EscalationRouter. Until
+  // M19 binds a router the registry holds the fail-closed deny-stub: an unacknowledged request cannot be routed to a tier, it
+  // stays open and visible with its current assignee (ADR-0057, ADR-0070). Said once, loudly, so it is not a surprise.
+  m36AckEscalationError = (context, err) =>
+    app.log.error(
+      { ...context, reason: err instanceof Error ? err.name : "unknown" },
+      "M36 ack escalation request failed",
+    );
+  if (m36AckTimerQueue) {
+    app.addHook("onClose", async () => {
+      await m36AckTimerQueue.close();
+    });
+  }
+  if (m36AckEscalation) {
+    const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+    getEscalationRouter()
+      .resolveTier(NIL_UUID, {
+        patientId: NIL_UUID,
+        requiredRole: "rn",
+        tier: 1,
+        asOf: new Date().toISOString(),
+      })
+      .then((answer) => {
+        if (answer.source === "deny_stub") {
+          app.log.warn(
+            "M36 EscalationRouter is the deny-stub (no M19 router is bound): unacknowledged requests cannot be escalated to a tier; they stay open with their assignee and the sender is told",
+          );
+        }
+      })
+      .catch((err) =>
+        app.log.info(
+          { reason: err instanceof Error ? err.name : "unknown" },
+          "M36 EscalationRouter boot probe was refused (a bound router enforcing its org check)",
+        ),
+      );
+  }
   // TASK-040D (OPS-012) — DLQ-promotion alerting, shared by BOTH the BullMQ worker-runner block and the
   // outbox-dispatcher block below (two SEPARATE top-level `if`s — declared here, outside either, so it's
   // in scope for both rather than duplicated). Log-based always-on (the task's own explicit "log-based
@@ -8802,6 +8877,54 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       );
     }
 
+    // ── M36 WP 4.4 — durable escalation timers. `messaging.ack_escalation_timer` runs the delayed job armed per (request,
+    // tier, window); `messaging.ack_escalation_sweep` (every minute) finds the requests the DATABASE says are past their
+    // deadline whether or not a job exists (a flushed Redis, a lost job, a request nobody could route yet). Both run the same
+    // guarded write, so together they cannot escalate twice. The action itself is behind `messaging.escalation_timers`
+    // (default off). A job that exhausts its retries is copied to its DLQ queue and audited as `m36.dlq_job`.
+    if (platformDbHandle && m36AckEscalation) {
+      const m36AckEscalationOrgs = buildActiveOrgEnumerator({
+        platformDb: platformDbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M36_INTEGRITY_PLATFORM_JOB_ID,
+        reason: "M36 WP 4.4 ack_escalation_sweep active-org fan-out",
+      });
+      const m36AckEscalationWorkers = registerM36AckEscalationWorkers({
+        connection: queueConnection,
+        service: m36AckEscalation.service,
+        activeOrgs: m36AckEscalationOrgs,
+        recordDlq: createDlqAuditRecorder(dbHandle.db),
+        // Ids and the error class only: a database error can carry statement parameters.
+        onError: (context, err) =>
+          app.log.error(
+            { ...context, reason: err instanceof Error ? err.name : "unknown" },
+            "M36 ack escalation error",
+          ),
+        onDlqError: (context, err) =>
+          app.log.error(
+            { ...context, reason: err instanceof Error ? err.name : "unknown" },
+            "M36 ack escalation DLQ landing failed",
+          ),
+      });
+      attachDlqAlertsToAll(m36AckEscalationWorkers.workers, "m36");
+      app.addHook("onClose", async () => {
+        await Promise.all(m36AckEscalationWorkers.workers.map((w) => w.close()));
+        await m36AckEscalationWorkers.dlqQueue.close();
+      });
+      try {
+        const m36AckEscalationQueues = await scheduleM36AckEscalationJobs(queueConnection);
+        app.addHook("onClose", async () => {
+          await Promise.all(m36AckEscalationQueues.map((q) => q.close()));
+        });
+      } catch (err) {
+        app.log.error(err, "M36 ack-escalation schedule registration failed");
+      }
+    } else if (m36AckEscalation) {
+      app.log.warn(
+        "M36 ack escalation sweep disabled: DATABASE_PLATFORM_URL (active-org fan-out) is required; a lost timer is not recovered",
+      );
+    }
+
     // ── M36 WP 1.9 (audit F8) — nightly `messaging.hash_verify` (message heads + revision chain) and weekly
     // `messaging.retention_scan` (plan only, hold-aware). Active-org fan-out needs the platform pool; each org's
     // run opens its own tenant transaction and records its summary through @wardenx/audit.
@@ -9955,6 +10078,24 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                   alerts: getSeam("AlertEmitter") as AlertEmitter,
                   messaging: createDbMessagingRouteService(dbHandle.db),
                   isWaitingForAssignee: m36Ack.isWaitingForAssignee,
+                  stillQualified: m36Ack.stillQualified,
+                  warn: (message, context) => app.log.warn(context, message),
+                }),
+              ]
+            : []),
+          // WP 4.4 - arms the escalation timer for a request that was requested, reassigned or escalated (reads the request's
+          // current window from the database; ignores the escalation flag: arming writes nothing to the request).
+          ...(m36AckEscalation
+            ? [buildM36AckTimerArmingConsumer({ armFromRequest: m36AckEscalation.armFromRequest })]
+            : []),
+          // WP 4.4 - generic in-app alerts: the tier's clinician an unacknowledged request was escalated to, and the sender and
+          // assignee (plus the supervisor audience when the ladder is exhausted) when no tier could be reached.
+          ...(m36Ack && m36AckEscalation
+            ? [
+                buildM36AckEscalationNotificationsConsumer({
+                  alerts: getSeam("AlertEmitter") as AlertEmitter,
+                  messaging: createDbMessagingRouteService(dbHandle.db),
+                  readRequest: m36AckEscalation.readRequest,
                   stillQualified: m36Ack.stillQualified,
                   warn: (message, context) => app.log.warn(context, message),
                 }),

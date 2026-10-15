@@ -63401,6 +63401,7 @@ export interface operations {
                             resolved_at: string | null;
                             cancelled_at: string | null;
                             version: number;
+                            escalation_note?: ("route_unavailable" | "ladder_exhausted") | null;
                             viewer_actions: {
                                 can_acknowledge: boolean;
                                 can_reassign: boolean;
@@ -65331,6 +65332,7 @@ export interface operations {
                             resolved_at: string | null;
                             cancelled_at: string | null;
                             version: number;
+                            escalation_note?: ("route_unavailable" | "ladder_exhausted") | null;
                             viewer_actions: {
                                 can_acknowledge: boolean;
                                 can_reassign: boolean;
@@ -65391,6 +65393,7 @@ export interface operations {
                             resolved_at: string | null;
                             cancelled_at: string | null;
                             version: number;
+                            escalation_note?: ("route_unavailable" | "ladder_exhausted") | null;
                             viewer_actions: {
                                 can_acknowledge: boolean;
                                 can_reassign: boolean;
@@ -65400,7 +65403,7 @@ export interface operations {
                         events: {
                             /** Format: uuid */
                             id: string;
-                            event_type: "requested" | "delivered" | "opened" | "acknowledged" | "overdue" | "escalated" | "reassigned" | "resolved" | "cancelled" | "delivery_failed";
+                            event_type: "requested" | "delivered" | "opened" | "acknowledged" | "overdue" | "escalated" | "reassigned" | "resolved" | "cancelled" | "delivery_failed" | "route_unavailable" | "ladder_exhausted";
                             actor_user_id: string | null;
                             actor_kind: "user" | "system";
                             from_status: ("pending" | "acknowledged" | "escalated" | "resolved" | "cancelled" | "failed_unreachable") | null;
@@ -65467,6 +65470,7 @@ export interface operations {
                             resolved_at: string | null;
                             cancelled_at: string | null;
                             version: number;
+                            escalation_note?: ("route_unavailable" | "ladder_exhausted") | null;
                             viewer_actions: {
                                 can_acknowledge: boolean;
                                 can_reassign: boolean;
@@ -65532,6 +65536,7 @@ export interface operations {
                             resolved_at: string | null;
                             cancelled_at: string | null;
                             version: number;
+                            escalation_note?: ("route_unavailable" | "ladder_exhausted") | null;
                             viewer_actions: {
                                 can_acknowledge: boolean;
                                 can_reassign: boolean;
@@ -65595,6 +65600,7 @@ export interface operations {
                             resolved_at: string | null;
                             cancelled_at: string | null;
                             version: number;
+                            escalation_note?: ("route_unavailable" | "ladder_exhausted") | null;
                             viewer_actions: {
                                 can_acknowledge: boolean;
                                 can_reassign: boolean;

@@ -78,6 +78,15 @@ export interface AckEventRow {
   readonly createdAt: Date;
 }
 
+/** The WP 4.4 timer's one status write: hand an unacknowledged request to the next tier's user and start that tier's window. */
+export interface AckEscalation {
+  readonly assignedUserId: string;
+  readonly tier: number;
+  /** The new window's length; the DATABASE starts it at its own now() (the update guard demands a window that starts now). */
+  readonly windowMinutes: number;
+  readonly updatedAt: Date;
+}
+
 /** What the service needs to know about the message a request is about. */
 export interface AckMessageFacts {
   readonly channelId: string;
@@ -104,6 +113,12 @@ export interface AckTx {
   /** Applies the patch only if the stored version is `expectedVersion` (then bumps it); else throws AckStaleError. */
   update(id: string, expectedVersion: number, patch: AckPatch): Promise<AckRow>;
   insertEvent(event: NewAckEvent): Promise<void>;
+  /** WP 4.4: applies an escalation only if the stored version is `expectedVersion`; else throws AckStaleError. */
+  escalate(id: string, expectedVersion: number, escalation: AckEscalation): Promise<AckRow>;
+  /** WP 4.4: the stamp of the newest history row of this type for the request, or null. */
+  lastEventAt(requestId: string, eventType: AckEventType): Promise<Date | null>;
+  /** WP 4.4: open waiting requests (pending or escalated) whose deadline is at or before `asOf`, oldest deadline first. */
+  listDue(asOf: Date, limit: number): Promise<readonly AckRow[]>;
   listEvents(requestId: string): Promise<readonly AckEventRow[]>;
   /** Every open request, then the newest closed ones up to `limit` in all; newest first within each group. */
   listForChannel(channelId: string, limit: number): Promise<readonly AckRow[]>;
@@ -116,6 +131,8 @@ export interface AckStore {
     actor: { readonly orgId: string; readonly userId: string },
     fn: (tx: AckTx, rawTx: unknown) => Promise<T>,
   ): Promise<T>;
+  /** WP 4.4: a tenant-scoped transaction with NO acting user (the timer's own writes: an empty app.user_id is a system write). */
+  runAsSystem<T>(orgId: string, fn: (tx: AckTx, rawTx: unknown) => Promise<T>): Promise<T>;
   /** A tenant-scoped read with no acting user (outbox consumers are not requests). Never writes. */
   readAsSystem<T>(orgId: string, fn: (tx: AckTx) => Promise<T>): Promise<T>;
   /** A view over a transaction somebody else owns (the send core's hook, the delete path). */

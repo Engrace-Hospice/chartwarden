@@ -10,6 +10,18 @@
 export const ACK_REQUESTS_FLAG_KEY = "messaging.ack_requests";
 
 /**
+ * Ops flag (default off, absent = off) for WP 4.4. Gates the escalation ACTION (the worker's state change), not arming: with it
+ * off a due request is left exactly as it is, still open and visible. See ADR-0070.
+ */
+export const ACK_ESCALATION_TIMERS_FLAG_KEY = "messaging.escalation_timers";
+
+/**
+ * The role key WP 4.4 asks the EscalationRouter about. PROVISIONAL: the request stores no `required_role` (ADR-0069), so every
+ * class asks for the same ladder until the M19 owner and the clinical lead name the role-to-ladder map (ADR-0057, ADR-0070).
+ */
+export const ACK_ESCALATION_REQUIRED_ROLE = "rn";
+
+/**
  * Status meanings (the enum is the whole machine; 4.4/4.5 only add writers):
  *  - pending            waiting for the assignee to act (also the state a reassign returns to).
  *  - acknowledged       the assignee took clinical responsibility by an explicit action.
@@ -52,6 +64,10 @@ export const ACK_EVENT_TYPES = [
   "resolved",
   "cancelled",
   "delivery_failed",
+  // WP 4.4 (migration 1108): the deadline passed and no tier could be reached (`route_unavailable`), or the ladder has no
+  // further tier (`ladder_exhausted`). Neither changes the request's state; both are id-only history rows.
+  "route_unavailable",
+  "ladder_exhausted",
 ] as const;
 export type AckEventType = (typeof ACK_EVENT_TYPES)[number];
 
@@ -62,6 +78,13 @@ export const ACK_EVENT_TYPES_WRITTEN_BY_4_2 = [
   "reassigned",
   "resolved",
   "cancelled",
+] as const satisfies readonly AckEventType[];
+
+/** The event types WP 4.4 writes (a timer, never a person). `overdue` is not written: `escalated` / `route_unavailable` say it. */
+export const ACK_EVENT_TYPES_WRITTEN_BY_4_4 = [
+  "escalated",
+  "route_unavailable",
+  "ladder_exhausted",
 ] as const satisfies readonly AckEventType[];
 
 /**
@@ -96,6 +119,14 @@ export const ACK_ERROR_CODES = [
 ] as const;
 export type AckErrorCode = (typeof ACK_ERROR_CODES)[number];
 
+/**
+ * WP 4.4: why an overdue open request has not moved on. `route_unavailable`: the deadline passed and no next tier could be reached
+ * (no router bound, a coverage gap, nobody qualified); `ladder_exhausted`: there is no further tier. Neither is a state change; both
+ * say the request is STILL OPEN with its current assignee. Only on reads (the detail and the channel list), never null-filled elsewhere.
+ */
+export const ACK_ESCALATION_NOTES = ["route_unavailable", "ladder_exhausted"] as const;
+export type AckEscalationNote = (typeof ACK_ESCALATION_NOTES)[number];
+
 export interface AckRequestDto {
   readonly id: string;
   readonly message_id: string;
@@ -116,6 +147,8 @@ export interface AckRequestDto {
   readonly resolved_at: string | null;
   readonly cancelled_at: string | null;
   readonly version: number;
+  /** WP 4.4: present on reads only; null when the request is not overdue-and-unrouted. */
+  readonly escalation_note?: AckEscalationNote | null;
   /**
    * Which controls the viewer is offered, from identity and state ONLY (a hint, not an authorization: the server decides on
    * every call and re-checks the caller's qualification).

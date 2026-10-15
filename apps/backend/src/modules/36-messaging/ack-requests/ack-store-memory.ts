@@ -3,6 +3,7 @@
 // (and, in production, the database trigger's) - the live suite proves that one.
 import { ACK_OPEN_STATUSES } from "@wardenx/types";
 import {
+  type AckEscalation,
   type AckEventRow,
   type AckMessageFacts,
   type AckPatch,
@@ -15,6 +16,8 @@ import {
 } from "./ack-types";
 
 export interface MemoryAckStore extends AckStore {
+  /** Test seam (WP 4.4): the clock the memory store uses for the window an escalation starts (the DB's now() in production). */
+  now: () => Date;
   /** Test seam: the messages the service can see. */
   readonly messages: Map<string, AckMessageFacts>;
   readonly requests: Map<string, AckRow>;
@@ -26,6 +29,7 @@ export function createMemoryAckStore(): MemoryAckStore {
   const requests = new Map<string, AckRow>();
   const events: Array<NewAckEvent & { readonly id: string }> = [];
   let seq = 0;
+  const clock = { now: () => new Date() };
   const nextId = (): string => {
     seq += 1;
     return `00000000-0000-4000-8000-${String(seq).padStart(12, "0")}`;
@@ -85,6 +89,44 @@ export function createMemoryAckStore(): MemoryAckStore {
     async insertEvent(e) {
       events.push({ ...e, id: nextId() });
     },
+    async escalate(id, expectedVersion, e: AckEscalation) {
+      const cur = requests.get(id);
+      if (!cur || cur.organizationId !== orgId || cur.version !== expectedVersion) {
+        throw new AckStaleError();
+      }
+      const start = clock.now();
+      const next: AckRow = {
+        ...cur,
+        status: "escalated",
+        assignedUserId: e.assignedUserId,
+        currentTier: e.tier,
+        windowStartedAt: start,
+        deadlineAt: new Date(start.getTime() + e.windowMinutes * 60_000),
+        version: expectedVersion + 1,
+      };
+      requests.set(id, next);
+      return next;
+    },
+    async lastEventAt(requestId, eventType) {
+      const at = events
+        .filter(
+          (e) =>
+            e.organizationId === orgId && e.requestId === requestId && e.eventType === eventType,
+        )
+        .map((e) => e.at.getTime());
+      return at.length > 0 ? new Date(Math.max(...at)) : null;
+    },
+    async listDue(asOf, limit) {
+      return [...requests.values()]
+        .filter(
+          (r) =>
+            r.organizationId === orgId &&
+            (r.status === "pending" || r.status === "escalated") &&
+            r.deadlineAt.getTime() <= asOf.getTime(),
+        )
+        .sort((a, b) => a.deadlineAt.getTime() - b.deadlineAt.getTime() || a.id.localeCompare(b.id))
+        .slice(0, limit);
+    },
     async listEvents(requestId) {
       return events
         .filter((e) => e.requestId === requestId && e.organizationId === orgId)
@@ -124,6 +166,13 @@ export function createMemoryAckStore(): MemoryAckStore {
     messages,
     requests,
     events,
+    get now() {
+      return clock.now;
+    },
+    set now(fn: () => Date) {
+      clock.now = fn;
+    },
+    runAsSystem: (orgId, fn) => fn(txFor(orgId), {}),
     run: (actor, fn) => fn(txFor(actor.orgId), {}),
     readAsSystem: (orgId, fn) => fn(txFor(orgId)),
     bind: (_raw, orgId) => txFor(orgId),

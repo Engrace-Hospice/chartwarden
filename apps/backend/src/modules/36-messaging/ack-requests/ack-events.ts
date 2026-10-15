@@ -10,13 +10,20 @@ export const M36_ACK_ACKNOWLEDGED = "m36.ack.acknowledged";
 export const M36_ACK_REASSIGNED = "m36.ack.reassigned";
 export const M36_ACK_RESOLVED = "m36.ack.resolved";
 export const M36_ACK_CANCELLED = "m36.ack.cancelled";
+// WP 4.4 (ADR-0070): written by the escalation timer, never by a person.
+export const M36_ACK_ESCALATED = "m36.ack.escalated";
+export const M36_ACK_ROUTE_UNAVAILABLE = "m36.ack.route_unavailable";
+export const M36_ACK_LADDER_EXHAUSTED = "m36.ack.ladder_exhausted";
 
 export type AckEventName =
   | typeof M36_ACK_REQUESTED
   | typeof M36_ACK_ACKNOWLEDGED
   | typeof M36_ACK_REASSIGNED
   | typeof M36_ACK_RESOLVED
-  | typeof M36_ACK_CANCELLED;
+  | typeof M36_ACK_CANCELLED
+  | typeof M36_ACK_ESCALATED
+  | typeof M36_ACK_ROUTE_UNAVAILABLE
+  | typeof M36_ACK_LADDER_EXHAUSTED;
 
 export interface AckEventFacts {
   readonly orgId: string;
@@ -25,10 +32,14 @@ export interface AckEventFacts {
   readonly channelId: string;
   readonly ackClass: AckClass;
   readonly assignedUserId: string;
-  /** Null never happens in 4.2 (every transition is a user's); WP 4.4 timers will pass null. */
+  /** Null for the timer's own events (WP 4.4: escalated, route_unavailable, ladder_exhausted); a user's id otherwise. */
   readonly actorUserId: string | null;
   readonly version: number;
   readonly previousAssignedUserId?: string;
+  /** WP 4.4: the router tier the request was escalated to, or the tier that could not be reached. */
+  readonly tier?: number;
+  /** WP 4.4 (`escalated` only): the deadline of the window the escalation started. */
+  readonly deadlineAt?: Date;
   readonly at: Date;
 }
 
@@ -44,6 +55,8 @@ export function ackEventPayload(f: AckEventFacts): Record<string, unknown> {
     requestVersion: f.version,
     at: f.at.toISOString(),
     ...(f.previousAssignedUserId ? { previousAssignedUserId: f.previousAssignedUserId } : {}),
+    ...(f.tier !== undefined ? { tier: f.tier } : {}),
+    ...(f.deadlineAt ? { deadlineAt: f.deadlineAt.toISOString() } : {}),
   };
 }
 

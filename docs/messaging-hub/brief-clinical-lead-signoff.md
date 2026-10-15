@@ -70,6 +70,17 @@ WP 4.2 is built behind the flag `messaging.ack_requests` (default off) with **pr
 - **Rate limits (provisional):** create and reassign 20 per minute per user, 200 per minute per organisation, 5 per 5 minutes from one person to one colleague.
 - **Not before 4.3 - 4.4:** both flags (`messaging.urgent_clinical`, `messaging.ack_requests`) stay off for every tenant until timers and backup routing ship; a request nobody is chasing is not a safety net.
 
+## 6. Escalation timers (WP 4.4, ADR-0070) - provisional values to approve
+
+WP 4.4 is built behind the flag `messaging.escalation_timers` (default off; it acts only on requests created under `messaging.ack_requests`). When a request's deadline passes with nobody having taken responsibility it hands the request to the next tier's clinician, who can then take responsibility; **until the on-call owner (M19) binds a real roster nothing can be routed**: the request stays open with its assignee, the sender and the assignee are told once an hour, and the card says plainly that it is still open. Please approve or change:
+
+- **Time each next tier gets** (minutes): important 30, then 15, 7, 5 (half the previous, never under 5); urgent 7 then 5; Critical 3 then 2 (Critical has no writer yet). These are the table already in the plan's deadline policy; the first tier after the named person is "tier 1".
+- **Who is told at each tier:** the proposal is **one** clinician per tier (the first available who is qualified and is not the sender): that person is asked to take responsibility and is the only one alerted. Should every on-call person of the tier be alerted, with the first to act taking it?
+- **Which on-call ladder:** the request does not store a role, so every request asks the same ladder (the placeholder role key `rn`). Which ladder should an urgent request use, and should it differ by class?
+- **When nobody can be reached:** today the request is not marked "nobody could be reached" (that is WP 4.5's delivery-failure rule); it stays open, and the sender and the assignee get a generic in-app note at most once an hour. When the ladder has no further tier the supervisor audience is told too. Is once an hour right, and should an exhausted ladder also page operations?
+- **Wording:** the three in-app texts ("A clinical message was escalated to you because it was not acknowledged in time", "...was not acknowledged in time and could not be escalated; it is still open", "...and there is no further escalation tier; it is still open") and the card lines ("Escalated to you because it was not taken in time", "Nobody has taken responsibility and the deadline has passed. It could not be passed to the next person, so it is still open.").
+- **Not yet:** all three flags (`messaging.urgent_clinical`, `messaging.ack_requests`, `messaging.escalation_timers`) stay off for every tenant. Switching the third on escalates every request that is already overdue at the next minute, so settle old open requests first.
+
 ## What happens with the answers
 
 ADR-0056 is updated with the signed numbers and role map, then accepted by the product owner. Numbers live as platform

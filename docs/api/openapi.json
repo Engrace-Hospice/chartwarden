@@ -158820,6 +158820,25 @@
                           "version": {
                             "type": "integer"
                           },
+                          "escalation_note": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "route_unavailable",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "ladder_exhausted",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "viewer_actions": {
                             "type": "object",
                             "required": [
@@ -166353,6 +166372,25 @@
                         "version": {
                           "type": "integer"
                         },
+                        "escalation_note": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "route_unavailable",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ladder_exhausted",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "viewer_actions": {
                           "type": "object",
                           "required": [
@@ -166601,6 +166639,25 @@
                         "version": {
                           "type": "integer"
                         },
+                        "escalation_note": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "route_unavailable",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ladder_exhausted",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "viewer_actions": {
                           "type": "object",
                           "required": [
@@ -166683,6 +166740,14 @@
                               },
                               {
                                 "const": "delivery_failed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "route_unavailable",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ladder_exhausted",
                                 "type": "string"
                               }
                             ]
@@ -167008,6 +167073,25 @@
                         "version": {
                           "type": "integer"
                         },
+                        "escalation_note": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "route_unavailable",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ladder_exhausted",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "viewer_actions": {
                           "type": "object",
                           "required": [
@@ -167239,6 +167323,25 @@
                         },
                         "version": {
                           "type": "integer"
+                        },
+                        "escalation_note": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "route_unavailable",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ladder_exhausted",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         },
                         "viewer_actions": {
                           "type": "object",
@@ -167479,6 +167582,25 @@
                         },
                         "version": {
                           "type": "integer"
+                        },
+                        "escalation_note": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "route_unavailable",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ladder_exhausted",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         },
                         "viewer_actions": {
                           "type": "object",

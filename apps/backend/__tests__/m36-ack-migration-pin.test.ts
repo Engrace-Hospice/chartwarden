@@ -8,6 +8,7 @@ import {
   ACK_CLASSES,
   ACK_DEADLINE_POLICY,
   ACK_EVENT_TYPES,
+  ACK_EVENT_TYPES_WRITTEN_BY_4_4,
   ACK_STATUSES,
   type AckStatus,
 } from "@wardenx/types";
@@ -16,19 +17,28 @@ import { describe, expect, it } from "vitest";
 const root = join(__dirname, "../../..");
 const read = (p: string) => readFileSync(join(root, p), "utf8");
 const sql = read("packages/db/migrations/1107_m36_message_acknowledgment_request.sql");
+// WP 4.4 (migration 1108) replaces the update guard in full and adds two event types; the state machine is pinned on THAT text.
+const sql1108 = read("packages/db/migrations/1108_m36_ack_escalation_timers.sql");
 const flat = (s: string) => s.replace(/\s+/g, " ");
 const list = (values: readonly string[]) => values.map((v) => `'${v}'`).join(", ");
 const quoted = (values: readonly string[]) => values.map((v) => `"${v}"`).join(", ");
 
+/** The two event types migration 1108 adds on top of 1107's list (WP 4.4). */
+const ADDED_IN_1108 = ["route_unavailable", "ladder_exhausted"] as const;
+
 describe("migration 1107 enums", () => {
   it.each([
-    ["message_ack_status", ACK_STATUSES],
-    ["message_ack_class", ACK_CLASSES],
-    ["message_ack_event_type", ACK_EVENT_TYPES],
+    ["message_ack_status", ACK_STATUSES, ACK_STATUSES],
+    ["message_ack_class", ACK_CLASSES, ACK_CLASSES],
+    [
+      "message_ack_event_type",
+      ACK_EVENT_TYPES.filter((v) => !(ADDED_IN_1108 as readonly string[]).includes(v)),
+      ACK_EVENT_TYPES,
+    ],
   ] as const)(
-    "%s has exactly the code-side values, in SQL and in the Drizzle enums",
-    (name, values) => {
-      expect(flat(sql)).toContain(`CREATE TYPE "${name}" AS ENUM (${list(values)})`);
+    "%s has exactly the code-side values, in SQL (1107 plus 1108) and in the Drizzle enums",
+    (name, createdValues, values) => {
+      expect(flat(sql)).toContain(`CREATE TYPE "${name}" AS ENUM (${list(createdValues)})`);
       expect(flat(read("packages/db/src/enums.ts"))).toMatch(
         new RegExp(
           `pgEnum\\(\\s*"${name}",\\s*\\[\\s*${quoted(values).replace(/, /g, ",\\s*")},?\\s*\\]`,
@@ -38,8 +48,19 @@ describe("migration 1107 enums", () => {
   );
 });
 
-describe("migration 1107 state machine", () => {
-  const guard = flat(sql.slice(sql.indexOf("message_ack_request_update_guard()")));
+describe("migration 1108 event types", () => {
+  it("adds exactly the two history types the timer writes beyond 1107's list, ahead of any use", () => {
+    for (const value of ADDED_IN_1108) {
+      expect(flat(sql1108)).toContain(
+        `ALTER TYPE "message_ack_event_type" ADD VALUE IF NOT EXISTS '${value}'`,
+      );
+    }
+    expect(ACK_EVENT_TYPES_WRITTEN_BY_4_4).toEqual(["escalated", ...ADDED_IN_1108]);
+  });
+});
+
+describe("the update guard (migration 1108 replaces 1107's, in full) is the state machine", () => {
+  const guard = flat(sql1108.slice(sql1108.indexOf("message_ack_request_update_guard()")));
 
   it("final states cannot change", () => {
     expect(guard).toContain("IF OLD.status IN ('resolved', 'cancelled') THEN");
@@ -87,10 +108,44 @@ describe("migration 1107 state machine", () => {
     expect(guard).toContain("abs(extract(epoch FROM (NEW.window_started_at - now()))) > 300");
   });
 
-  it("moves the assignee only on a reassign, and a reassign needs a new assignee who is an active member", () => {
-    expect(guard).toContain("the assignee changes only by a reassign");
+  it("moves the assignee only on a reassign or a timer escalation, and a reassign needs a new assignee who is an active member", () => {
+    expect(guard).toContain("the assignee changes only by a reassign or an escalation");
     expect(guard).toContain("a return to pending needs a new assignee");
     expect(guard).toContain("mb.status = 'active'");
+  });
+});
+
+describe("migration 1108 escalation write", () => {
+  const guard = flat(sql1108.slice(sql1108.indexOf("message_ack_request_update_guard()")));
+
+  it("is the timer's alone: a person's session (a non-empty app.user_id) cannot write an escalation", () => {
+    expect(guard).toContain(
+      "v_escalation := NEW.status = 'escalated' AND OLD.status IN ('pending', 'escalated')",
+    );
+    expect(guard).toContain("IF v_escalation AND v_actor IS NOT NULL THEN");
+    expect(guard).toContain("only the escalation timer escalates a request");
+  });
+
+  it("lets an escalation hand the request to the tier's user and start the next window now, like a reassign", () => {
+    expect(guard).toContain("IF NEW.status <> 'pending' AND NOT v_escalation THEN");
+    expect(guard).toContain("AND NOT (v_reassign OR v_escalation) THEN");
+    expect(guard).toContain(
+      "IF (v_reassign OR v_escalation) AND (NEW.window_started_at < OLD.window_started_at OR abs(extract(epoch FROM (NEW.window_started_at - now()))) > 300)",
+    );
+  });
+
+  it("keeps the transition table and the immutable columns of 1107", () => {
+    for (const status of ACK_STATUSES.filter((s) => ACK_TRANSITIONS[s].length > 0)) {
+      expect(guard).toContain(
+        `WHEN '${status}' THEN NEW.status IN (${list(ACK_TRANSITIONS[status])})`,
+      );
+    }
+    expect(guard).toContain("NEW.requested_at <> OLD.requested_at");
+    expect(guard).toContain("NEW.version <> OLD.version + 1");
+  });
+
+  it("adds no table, grant or policy (the 1107 ones stand)", () => {
+    expect(sql1108).not.toMatch(/CREATE TABLE|GRANT |CREATE POLICY|DROP /);
   });
 });
 

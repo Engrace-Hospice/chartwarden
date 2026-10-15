@@ -6,9 +6,10 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { ACK_OPEN_STATUSES } from "@wardenx/types";
-import { and, asc, desc, eq, inArray, notInArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lte, notInArray, sql } from "drizzle-orm";
 import type { Tx } from "../messaging-write-core";
 import {
+  type AckEscalation,
   type AckEventRow,
   type AckMessageFacts,
   type AckPatch,
@@ -138,6 +139,54 @@ export function ackTxOver(tx: Tx, orgId: string): AckTx {
       });
     },
 
+    // WP 4.4: the window starts and ends on the DATABASE clock, because the update guard demands a window that starts now; the
+    // version in the WHERE is the exactly-once arbiter (a duplicate or racing escalation updates no row and is Stale).
+    async escalate(id, expectedVersion, e: AckEscalation) {
+      const [updated] = await tx
+        .update(R)
+        .set({
+          status: "escalated",
+          assignedUserId: e.assignedUserId,
+          currentTier: e.tier,
+          windowStartedAt: sql`now()`,
+          deadlineAt: sql`now() + make_interval(mins => ${e.windowMinutes})`,
+          updatedAt: e.updatedAt,
+          version: expectedVersion + 1,
+        })
+        .where(and(eq(R.organizationId, orgId), eq(R.id, id), eq(R.version, expectedVersion)))
+        .returning();
+      if (!updated) throw new AckStaleError();
+      return toRow(updated);
+    },
+
+    async lastEventAt(requestId, eventType) {
+      const [row] = await tx
+        .select({ at: E.createdAt })
+        .from(E)
+        .where(
+          and(eq(E.organizationId, orgId), eq(E.requestId, requestId), eq(E.eventType, eventType)),
+        )
+        .orderBy(desc(E.createdAt))
+        .limit(1);
+      return row?.at ?? null;
+    },
+
+    async listDue(asOf, limit) {
+      const rows = await tx
+        .select()
+        .from(R)
+        .where(
+          and(
+            eq(R.organizationId, orgId),
+            inArray(R.status, ["pending", "escalated"]),
+            lte(R.deadlineAt, asOf),
+          ),
+        )
+        .orderBy(asc(R.deadlineAt), asc(R.id))
+        .limit(limit);
+      return rows.map(toRow);
+    },
+
     async listEvents(requestId) {
       const rows = await tx
         .select()
@@ -191,6 +240,10 @@ export function createDbAckStore(db: DbClient): AckStore {
     run: (actor, fn) =>
       withOrgContext(db, { organizationId: actor.orgId, userId: actor.userId }, (tx) =>
         fn(ackTxOver(tx as unknown as Tx, actor.orgId), tx),
+      ),
+    runAsSystem: (orgId, fn) =>
+      withOrgContext(db, systemOrgContext(orgId), (tx) =>
+        fn(ackTxOver(tx as unknown as Tx, orgId), tx),
       ),
     readAsSystem: (orgId, fn) =>
       withOrgContext(db, systemOrgContext(orgId), (tx) =>

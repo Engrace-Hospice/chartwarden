@@ -15,6 +15,7 @@ import {
   ACK_GONE_TEXT,
   ACK_INDETERMINATE_TEXT,
   ACK_INVALID_TEXT,
+  ACK_NOTE_TEXT,
   ACK_NOTICE,
   ACK_NOT_PERMITTED_TEXT,
   ACK_NOT_QUALIFIED_TEXT,
@@ -779,5 +780,82 @@ describe("ack card - focus and keyboard", () => {
     const alert = document.querySelector('[role="alert"]');
     await waitFor(() => expect(alert?.textContent).toBe(ACK_CHANGED_TEXT));
     expect(document.querySelector("output.wx-ack-live")?.textContent).toBe("");
+  });
+});
+
+// WP 4.4 (ADR-0070): an escalated request, and an overdue one the server could not pass on. The clock is fixed (FIXED_NOW).
+describe("ack request card - escalation (WP 4.4)", () => {
+  const PAST = "2026-10-15T12:05:00.000Z"; // before FIXED_NOW (12:10)
+  const escalated = (over: Partial<AckRequestDto> = {}) =>
+    request({
+      status: "escalated",
+      current_tier: 1,
+      deadline_at: "2026-10-15T12:30:00.000Z",
+      ...over,
+    });
+
+  it("says an escalated request was escalated to the viewer, takes the same one explicit action, and has no a11y violations", async () => {
+    mount({ get: () => ok([escalated()]) });
+
+    expect(await takeButton()).toBeTruthy();
+    expect(screen.getByRole("group", { name: ACK_STATUS_TEXT.escalated })).toBeTruthy();
+    expect(screen.getByText(/Escalated to you because it was not taken in time/)).toBeTruthy();
+    expect(screen.getByText(/Respond by/)).toBeTruthy();
+    expect((await axe.run(document.body)).violations).toEqual([]);
+  });
+
+  it("tells another viewer, without a button, that it was escalated to the next responsible person", async () => {
+    mount({
+      get: () =>
+        ok([
+          escalated({
+            viewer_actions: { can_acknowledge: false, can_reassign: true, can_resolve: false },
+          }),
+        ]),
+    });
+
+    expect(await screen.findByText(/Escalated to the next responsible person/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Take responsibility/ })).toBeNull();
+  });
+
+  it("marks an overdue escalated request as overdue, not as 'Respond by'", async () => {
+    mount({ get: () => ok([escalated({ deadline_at: PAST })]) });
+
+    expect(await screen.findByText(/Overdue: was due/)).toBeTruthy();
+  });
+
+  it.each(["route_unavailable", "ladder_exhausted"] as const)(
+    "says honestly that an overdue request which %s is still open, and keeps its controls",
+    async (note) => {
+      mount({ get: () => ok([request({ deadline_at: PAST, escalation_note: note })]) });
+
+      expect(await screen.findByText(ACK_NOTE_TEXT[note])).toBeTruthy();
+      expect(screen.getByText(/Overdue: was due/)).toBeTruthy();
+      expect(screen.getByText(ACK_STATUS_TEXT.pending)).toBeTruthy();
+      expect(await takeButton()).toBeTruthy();
+      expect((await axe.run(document.body)).violations).toEqual([]);
+    },
+  );
+
+  it("shows no note when the server sent none, null, or the request is no longer waiting", async () => {
+    mount({
+      get: () =>
+        ok([
+          request({ deadline_at: PAST }),
+          request({ id: "r-2", message_id: "m-2", deadline_at: PAST, escalation_note: null }),
+          request({
+            id: "r-3",
+            message_id: "m-3",
+            status: "acknowledged",
+            acknowledged_at: PAST,
+            escalation_note: "route_unavailable",
+            viewer_actions: { can_acknowledge: false, can_reassign: false, can_resolve: false },
+          }),
+        ]),
+    });
+    await takeButton();
+
+    expect(screen.queryByText(ACK_NOTE_TEXT.route_unavailable)).toBeNull();
+    expect(screen.queryByText(ACK_NOTE_TEXT.ladder_exhausted)).toBeNull();
   });
 });
