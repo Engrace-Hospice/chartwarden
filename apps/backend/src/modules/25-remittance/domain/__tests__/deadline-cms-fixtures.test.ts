@@ -3,7 +3,8 @@
 // review the table without reading code. A mismatch here is a wrong legal deadline shown to a user.
 //
 // Rule: window runs from RECEIPT, receipt is presumed 5 calendar days after the notice date, the last day
-// is usable until its end in the deadline zone. No weekend/holiday roll-forward (not found in Part 405).
+// is usable until its end in the deadline zone. A last day on a weekend or US federal holiday moves BACK to
+// the previous business day (clinical-billing SME decision); the calendar day is kept as `calendarLastDay`.
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_DEADLINE_ZONE,
@@ -25,14 +26,14 @@ interface Fixture {
 const FIXTURES: readonly Fixture[] = [
   // redetermination: 120 days from receipt = notice + 5 + 120 = notice + 125 (42 CFR 405.942)
   { name: "redetermination mid-year", tier: "redetermination", noticeDay: "2026-01-01", lastFilingDay: "2026-05-06" },
-  { name: "redetermination crossing year end", tier: "redetermination", noticeDay: "2025-09-01", lastFilingDay: "2026-01-04" },
-  { name: "redetermination crossing leap day", tier: "redetermination", noticeDay: "2024-01-01", lastFilingDay: "2024-05-05" },
+  { name: "redetermination crossing year end", tier: "redetermination", noticeDay: "2025-09-01", lastFilingDay: "2026-01-02" },
+  { name: "redetermination crossing leap day", tier: "redetermination", noticeDay: "2024-01-01", lastFilingDay: "2024-05-03" },
   // reconsideration (QIC): 180 days from receipt = notice + 185 (42 CFR 405.962)
-  { name: "reconsideration mid-year", tier: "reconsideration", noticeDay: "2026-01-01", lastFilingDay: "2026-07-05" },
+  { name: "reconsideration mid-year", tier: "reconsideration", noticeDay: "2026-01-01", lastFilingDay: "2026-07-02" },
   { name: "reconsideration crossing year end", tier: "reconsideration", noticeDay: "2026-08-01", lastFilingDay: "2027-02-02" },
   // alj / council / federal court: 60 days from receipt = notice + 65 (405.1002, 405.1102, 405.1136)
-  { name: "alj", tier: "alj", noticeDay: "2026-01-01", lastFilingDay: "2026-03-07" },
-  { name: "council", tier: "council", noticeDay: "2026-01-01", lastFilingDay: "2026-03-07" },
+  { name: "alj", tier: "alj", noticeDay: "2026-01-01", lastFilingDay: "2026-03-06" },
+  { name: "council", tier: "council", noticeDay: "2026-01-01", lastFilingDay: "2026-03-06" },
   { name: "federal court crossing month end", tier: "federal_court", noticeDay: "2026-01-20", lastFilingDay: "2026-03-26" },
 ];
 
@@ -40,6 +41,12 @@ describe("CMS appeal deadlines — last filing day", () => {
   it.each(FIXTURES)("$name", ({ tier, noticeDay, lastFilingDay }) => {
     const derived = deriveTierDeadline(tier, noticeDay);
     expect(derived.lastFilingDay).toBe(lastFilingDay);
+  });
+
+  it("keeps the calendar day beside the rolled-back filing day", () => {
+    const d = deriveTierDeadline("reconsideration", "2026-01-01");
+    expect(d.calendarLastDay).toBe("2026-07-05"); // Sunday; Saturday 4 July is observed on Friday 3 July
+    expect(d.lastFilingDay).toBe("2026-07-02");
   });
 
   it("presumes receipt 5 calendar days after the notice date", () => {
@@ -79,33 +86,56 @@ describe("CMS appeal deadlines — last day is usable until it ends", () => {
   });
 });
 
+describe("CMS appeal deadlines — business-day roll-back", () => {
+  const last = (tier: AppealTier, day: string) => deriveTierDeadline(tier, day).lastFilingDay;
+
+  it("moves a Saturday back to Friday and a Sunday back to Friday", () => {
+    expect(last("alj", "2026-01-01")).toBe("2026-03-06"); // calendar Saturday 7 March
+    expect(last("redetermination", "2024-01-01")).toBe("2024-05-03"); // calendar Sunday 5 May
+  });
+
+  it("moves a Monday holiday back over the weekend to the previous Friday", () => {
+    // 2026-07-04 + 65 = Monday 2026-09-07 (Labor Day) -> Friday 2026-09-04.
+    expect(deriveTierDeadline("alj", "2026-07-04").calendarLastDay).toBe("2026-09-07");
+    expect(last("alj", "2026-07-04")).toBe("2026-09-04");
+  });
+
+  it("treats Christmas on a Friday as a holiday", () => {
+    // 2026-12-25 is a Friday. alj: notice + 65 = 2026-12-25 -> notice 2026-10-21.
+    expect(deriveTierDeadline("alj", "2026-10-21").calendarLastDay).toBe("2026-12-25");
+    expect(last("alj", "2026-10-21")).toBe("2026-12-24");
+  });
+
+  it("observes a Saturday 1 January on the prior 31 December", () => {
+    // 1 January 2028 is a Saturday, observed Friday 31 December 2027.
+    expect(deriveTierDeadline("redetermination", "2027-08-29").calendarLastDay).toBe("2028-01-01");
+    expect(last("redetermination", "2027-08-29")).toBe("2027-12-30");
+  });
+});
+
 describe("CMS appeal deadlines — time zone and daylight saving", () => {
   it("uses the supplied zone for the end of the last day", () => {
-    // Last filing day 2026-03-07; Los Angeles is still on standard time (UTC-8) until Mar 8.
+    // Last filing day Friday 2026-03-06; Los Angeles is on standard time (UTC-8).
     const pacific = computeTierDeadline("alj", "2026-01-01", "America/Los_Angeles");
-    expect(pacific.toISOString()).toBe("2026-03-08T07:59:59.999Z");
+    expect(pacific.toISOString()).toBe("2026-03-07T07:59:59.999Z");
   });
 
   it("defaults to a documented zone", () => {
     expect(DEFAULT_DEADLINE_ZONE).toBe("America/New_York");
-    // 23:59:59.999 EST (UTC-5) on 2026-03-07.
-    expect(computeTierDeadline("alj", "2026-01-01").toISOString()).toBe("2026-03-08T04:59:59.999Z");
+    // 23:59:59.999 EST (UTC-5) on 2026-03-06.
+    expect(computeTierDeadline("alj", "2026-01-01").toISOString()).toBe("2026-03-07T04:59:59.999Z");
   });
 
-  it("ends the day correctly on the spring daylight-saving change day", () => {
-    // Last filing day 2026-03-08, the day US clocks spring forward; 23:59:59.999 EDT (UTC-4).
-    const deadline = computeTierDeadline("alj", "2026-01-02", "America/New_York");
-    expect(deadline.toISOString()).toBe("2026-03-09T03:59:59.999Z");
+  it("uses the earliest-ending zone when a provider has locations in several", () => {
+    // Friday 2026-03-06: Puerto Rico (AST, UTC-4 all year) ends before New York (EST, UTC-5) and Los Angeles.
+    const zones = ["America/Los_Angeles", "America/New_York", "America/Puerto_Rico"];
+    const d = deriveTierDeadline("alj", "2026-01-01", zones);
+    expect(d.zone).toBe("America/Puerto_Rico");
+    expect(d.deadlineAt.toISOString()).toBe("2026-03-07T03:59:59.999Z");
   });
 
   it("recognises real IANA zones and rejects unknown ones", () => {
     expect(isKnownZone("America/Chicago")).toBe(true);
     expect(isKnownZone("Mars/Olympus")).toBe(false);
-  });
-
-  it("ends the day correctly on the autumn daylight-saving change day", () => {
-    // 2026-06-29 + 125 days = 2026-11-01, the day US clocks fall back; 23:59:59.999 EST (UTC-5).
-    const deadline = computeTierDeadline("redetermination", "2026-06-29", "America/New_York");
-    expect(deadline.toISOString()).toBe("2026-11-02T04:59:59.999Z");
   });
 });
