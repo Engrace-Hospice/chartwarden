@@ -4,7 +4,7 @@
 
 A module's pure-function permission/ABAC tests prove its DECISIONS are correct; they prove nothing about the route wiring, schema validation, or service composition around them (the M30 dead-`inOrg` class, the Claim Workbench 404). `covered` requires a real Fastify `.inject()` call through the module's route registrar.
 
-**Totals:** 39/39 modules covered (100%) · 1603/1603 route defs sit behind a covered module · 1520/1603 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
+**Totals:** 39/39 modules covered (100%) · 1604/1604 route defs sit behind a covered module · 1521/1604 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
 
 | Module | Routes | Covered | Direct refs | Suite file(s) |
 |---|--:|:--:|--:|---|
@@ -37,7 +37,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 28-fhir | 35 | ✅ | 35/35 | apps/backend/__tests__/fhir-inject.test.ts, apps/backend/__tests__/m28-fhir-gateway.live.test.ts |
 | 29-external-interfaces | 33 | ✅ | 33/33 | apps/backend/__tests__/external-interfaces-inject.test.ts |
 | 30-quality | 63 | ✅ | 63/63 | apps/backend/__tests__/gap-091-m30-phi-scope.test.ts, apps/backend/__tests__/m30-close-cosign.test.ts, apps/backend/__tests__/m30-mortality-patient-display.test.ts, apps/backend/__tests__/quality-inject.test.ts |
-| 31-portal | 58 | ✅ | 58/58 | apps/backend/__tests__/f225-portal-document-access-log.live.test.ts, apps/backend/__tests__/gap-094-m31-portal-telehealth-authz.live.test.ts, apps/backend/__tests__/m31-portal-signin-decision.test.ts, apps/backend/__tests__/m31-portal-signin.live.test.ts, apps/backend/__tests__/portal-inject.test.ts |
+| 31-portal | 59 | ✅ | 59/59 | apps/backend/__tests__/f225-portal-document-access-log.live.test.ts, apps/backend/__tests__/gap-094-m31-portal-telehealth-authz.live.test.ts, apps/backend/__tests__/m31-portal-signin-decision.test.ts, apps/backend/__tests__/m31-portal-signin.live.test.ts, apps/backend/__tests__/portal-inject.test.ts |
 | 32-ai-platform | 32 | ✅ | 32/32 | apps/backend/__tests__/ai-platform-inject.test.ts, apps/backend/__tests__/auth.live.test.ts |
 | 33-reporting | 42 | ✅ | 42/42 | apps/backend/__tests__/gap-097-m33-schedule-authz.test.ts, apps/backend/__tests__/m6-readmission.live.test.ts, apps/backend/__tests__/reporting-inject.test.ts |
 | 34-saas-tenant-platform | 58 | ✅ | 57/58 | apps/backend/__tests__/m34-ops-routes-inject.test.ts, apps/backend/__tests__/saas-tenant-platform-inject.test.ts |

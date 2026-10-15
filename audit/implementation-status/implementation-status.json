@@ -611,8 +611,8 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 58,
-        "enriched": 58
+        "routes": 59,
+        "enriched": 59
       },
       "screens": true,
       "tests": true,
