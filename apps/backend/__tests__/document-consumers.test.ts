@@ -69,6 +69,7 @@ describe("M22-T06 — §4.11 outbox subscriptions catalog", () => {
       "m16.bereavement.outreach_artifact_requested",
       "m20.safety.incident_report_requested",
       "m25.appeal_packet.render_requested",
+      "m25.adr_packet.render_requested",
       "m27.artifact.render_requested",
       "m37.body_release.document_requested",
       // F-100 — M6's six CoP compliance documents. M6 emits no `*.document_requested`; the M22 spec's own

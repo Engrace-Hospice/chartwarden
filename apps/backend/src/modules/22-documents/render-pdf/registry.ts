@@ -2,6 +2,7 @@
 // A template key with an entry here renders its own bespoke layout; every other key renders its payload
 // through the structured generic builder (generic-payload-doc.ts) - still a REAL, openable PDF, never the old
 // JSON-behind-a-%PDF-header stand-in (GAP-033). Adding a bespoke layout is one row here and nothing else changes.
+import { buildAdrResponseDoc } from "./adr-response-doc";
 import { buildAppealPacketDoc } from "./appeal-packet-doc";
 import type { DocModel } from "./doc-model";
 import { buildElectionAddendumDoc } from "./election-addendum-doc";
@@ -36,6 +37,8 @@ export const DEFAULT_PDF_RENDERERS: PdfRendererRegistry = {
   election_statement: buildElectionStatementDoc,
   // GAP-036 - M25's typed AppealPacketRenderPayload (validated here; a malformed packet fails the render).
   appeal_packet: buildAppealPacketDoc,
+  // Milestone 2b - M25's typed AdrPacketRenderPayload: the cover sheet and enclosure index of a filed ADR response.
+  adr_response_packet: buildAdrResponseDoc,
 };
 
 /**

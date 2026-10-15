@@ -352,6 +352,90 @@ export async function transitionAdr(
   });
 }
 
+// ── ADR response packet (milestone 2b): attachments, checklist, sign-off, recorded filing ────────────────
+
+export type AdrChecklistState = ReqBody<operations["putApiV1AdrsByIdChecklistByKey"]>["state"];
+export type AdrAttachInput = ReqBody<operations["postApiV1AdrsByIdDocuments"]>;
+export type AdrFilingInput = ReqBody<operations["postApiV1AdrsByIdSubmit"]>;
+
+export async function attachAdrDocument(
+  client: ApiClient,
+  id: string,
+  version: number,
+  body: AdrAttachInput,
+): Promise<WriteResult<VersionedResult>> {
+  return guarded(async () => {
+    const { data, error, response } = await client.POST("/api/v1/adrs/{id}/documents", {
+      params: { path: { id } },
+      headers: ifMatch(version),
+      body,
+    });
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
+}
+
+export async function detachAdrDocument(
+  client: ApiClient,
+  id: string,
+  version: number,
+  documentId: string,
+): Promise<WriteResult<VersionedResult>> {
+  return guarded(async () => {
+    const { data, error, response } = await client.DELETE(
+      "/api/v1/adrs/{id}/documents/{documentId}",
+      { params: { path: { id, documentId } }, headers: ifMatch(version) },
+    );
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
+}
+
+export async function setAdrChecklist(
+  client: ApiClient,
+  id: string,
+  version: number,
+  key: string,
+  state: AdrChecklistState,
+): Promise<WriteResult<VersionedResult>> {
+  return guarded(async () => {
+    const { data, error, response } = await client.PUT("/api/v1/adrs/{id}/checklist/{key}", {
+      params: { path: { id, key } },
+      headers: ifMatch(version),
+      body: { state },
+    });
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
+}
+
+export async function signOffAdr(
+  client: ApiClient,
+  id: string,
+  version: number,
+): Promise<WriteResult<VersionedResult>> {
+  return guarded(async () => {
+    const { data, error, response } = await client.POST("/api/v1/adrs/{id}/sign-off", {
+      params: { path: { id } },
+      headers: ifMatch(version),
+    });
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
+}
+
+export async function submitAdr(
+  client: ApiClient,
+  id: string,
+  version: number,
+  body: AdrFilingInput,
+): Promise<WriteResult<VersionedResult>> {
+  return guarded(async () => {
+    const { data, error, response } = await client.POST("/api/v1/adrs/{id}/submit", {
+      params: { path: { id } },
+      headers: ifMatch(version),
+      body,
+    });
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
+}
+
 export async function loadMacRules(client: ApiClient): Promise<WriteResult<MacRulesPage>> {
   return guarded(async () => {
     const { data, error, response } = await client.GET("/api/v1/mac-rules");

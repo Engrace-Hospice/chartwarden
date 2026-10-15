@@ -552,9 +552,12 @@ import {
   VoidClaimBody as M24VoidClaimBody,
 } from "../../apps/backend/src/modules/24-billing-medicaid/routes/m24-typebox";
 import {
+  AdrAttachDocumentRequestSchema as M25AdrAttachDocumentRequestSchema,
+  AdrChecklistRequestSchema as M25AdrChecklistRequestSchema,
   AdrCreateRequestSchema as M25AdrCreateRequestSchema,
   AdrDetailSchema as M25AdrDetailSchema,
   AdrPageSchema as M25AdrPageSchema,
+  AdrSubmitRequestSchema as M25AdrSubmitRequestSchema,
   AdrTransitionRequestSchema as M25AdrTransitionRequestSchema,
   AdrVersionedResultSchema as M25AdrVersionedResultSchema,
   MacRulePageSchema as M25MacRulePageSchema,
@@ -8113,7 +8116,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M25AdrDetailSchema,
   },
   "POST /api/v1/adrs": {
-    summary: "Log an additional documentation request; the response due date is derived from the MAC rule",
+    summary:
+      "Log an additional documentation request; the response due date is derived from the MAC rule",
     body: M25AdrCreateRequestSchema,
     response: M25AdrVersionedResultSchema,
     status: 201,
@@ -8121,6 +8125,31 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/adrs/:id/transition": {
     summary: "Move an ADR through assembly, review, withdrawal or a missed response (If-Match)",
     body: M25AdrTransitionRequestSchema,
+    response: M25AdrVersionedResultSchema,
+  },
+  // Milestone 2b — the response packet.
+  "POST /api/v1/adrs/:id/documents": {
+    summary: "Attach an M22 document to the ADR response (appeal enclosure rules; If-Match)",
+    body: M25AdrAttachDocumentRequestSchema,
+    response: M25AdrVersionedResultSchema,
+  },
+  "DELETE /api/v1/adrs/:id/documents/:documentId": {
+    summary: "Detach a document from the ADR response while it is in assembly (If-Match)",
+    response: M25AdrVersionedResultSchema,
+  },
+  "PUT /api/v1/adrs/:id/checklist/:key": {
+    summary: "Set one documentation checklist item while the ADR is in assembly (If-Match)",
+    body: M25AdrChecklistRequestSchema,
+    response: M25AdrVersionedResultSchema,
+  },
+  "POST /api/v1/adrs/:id/sign-off": {
+    summary: "Sign off the packet; the reviewer must differ from who sent it to review (If-Match)",
+    response: M25AdrVersionedResultSchema,
+  },
+  "POST /api/v1/adrs/:id/submit": {
+    summary:
+      "Record the filed ADR response with its proof of submission: step-up, frozen manifest, retained PDF (If-Match)",
+    body: M25AdrSubmitRequestSchema,
     response: M25AdrVersionedResultSchema,
   },
   "GET /api/v1/mac-rules": {

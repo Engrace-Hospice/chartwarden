@@ -206,6 +206,13 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     retentionClass: "compliance",
     defaultTitle: "Appeal Packet",
   },
+  // M25 — the cover sheet and enclosure index of a filed ADR response (milestone 2b, mig 1108). Retained as the
+  // record of what went to the MAC.
+  adr_response_packet: {
+    aggregateType: "adr_response_packet",
+    retentionClass: "compliance",
+    defaultTitle: "ADR Response Packet",
+  },
   // M25 — the manual (no-appeal) denial-resolution letter, filed against `denial_case`. F-144 (#248):
   // catalogued (`m25.denial_resolution_letter.render_requested`) and never emitted before this pass.
   denial_resolution_letter: {

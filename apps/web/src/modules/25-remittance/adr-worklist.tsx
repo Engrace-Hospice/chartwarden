@@ -17,8 +17,15 @@ import {
 // hidden. Rows open the ADR work panel; "Log an ADR" and "MAC response windows" open the two forms.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { useSession } from "../../shell/session";
+import {
+  clearStepUpDraft,
+  findStepUpDraftResourceId,
+  stepUpDraftKey,
+} from "../../shell/step-up-redirect";
 import { AdrDetailPanel } from "./adr-detail-panel";
 import { LogAdrModal, MacRulesModal } from "./adr-forms";
+import { ADR_DRAFT_ACTION } from "./adr-packet-panel";
 import { ADR_STATE_TONE, humanize, toneOf } from "./remittance-status";
 
 interface AdrRow {
@@ -50,7 +57,11 @@ export function AdrWorklist(): JSX.Element {
   const client = useApiClient();
   const [rows, setRows] = useState<AdrRow[]>([]);
   const [stateFilter, setStateFilter] = useState("all");
-  const [workingId, setWorkingId] = useState<string | null>(null);
+  const session = useSession();
+  // Coming back from /step-up: reopen the ADR whose filing form was stashed.
+  const [workingId, setWorkingId] = useState<string | null>(() =>
+    findStepUpDraftResourceId(session, ADR_DRAFT_ACTION),
+  );
   const [logging, setLogging] = useState(false);
   const [editingRules, setEditingRules] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -261,7 +272,11 @@ export function AdrWorklist(): JSX.Element {
             <AdrDetailPanel
               key={workingId}
               adrId={workingId}
-              onClose={() => setWorkingId(null)}
+              onClose={() => {
+                // Closing abandons a stashed filing form (it would otherwise reopen this case on every visit).
+                clearStepUpDraft(stepUpDraftKey(session, ADR_DRAFT_ACTION, workingId));
+                setWorkingId(null);
+              }}
               onChanged={() => void load()}
             />
           ) : null

@@ -3417,6 +3417,19 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "provider_entity_scope",
   },
+  // Milestone 2b (migration 1110): sign off a packet / record the filing (the filing is also step-up gated).
+  "adr.review": {
+    resource: "adr_case",
+    action: "review",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "adr.submit": {
+    resource: "adr_case",
+    action: "submit",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
   "mac_rule.manage": {
     resource: "mac_rule",
     action: "manage",

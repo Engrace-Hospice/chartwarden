@@ -864,6 +864,7 @@ exports.MODULES = [
       "appeal_case_event",
       "adr_case",
       "adr_case_event",
+      "adr_case_document",
       "mac_rule",
       "denial_case",
       "denial_case_assignment",

@@ -2577,6 +2577,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/adrs/{id}/checklist/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set one documentation checklist item while the ADR is in assembly (If-Match) */
+        put: operations["putApiV1AdrsByIdChecklistByKey"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/adrs/{id}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach an M22 document to the ADR response (appeal enclosure rules; If-Match) */
+        post: operations["postApiV1AdrsByIdDocuments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/adrs/{id}/documents/{documentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Detach a document from the ADR response while it is in assembly (If-Match) */
+        delete: operations["deleteApiV1AdrsByIdDocumentsByDocumentId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/adrs/{id}/sign-off": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sign off the packet; the reviewer must differ from who sent it to review (If-Match) */
+        post: operations["postApiV1AdrsByIdSignoff"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/adrs/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the filed ADR response with its proof of submission: step-up, frozen manifest, retained PDF (If-Match) */
+        post: operations["postApiV1AdrsByIdSubmit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/adrs/{id}/transition": {
         parameters: {
             query?: never;
@@ -31744,12 +31829,197 @@ export interface operations {
                         responseDueAt: string;
                         dueDay: string;
                         version: number;
+                        packet: {
+                            documents: {
+                                id: string;
+                                documentId: string;
+                                checklistKey: string | null;
+                                attachedAt: string;
+                            }[];
+                            checklist: {
+                                key: string;
+                                state: string;
+                            }[];
+                            sentToReviewByMembershipId: string | null;
+                            reviewedByMembershipId: string | null;
+                            reviewedAt: string | null;
+                            filing: {
+                                channel: string;
+                                confirmationRef: string;
+                                filedAt: string;
+                                filedLate: boolean;
+                                receiptDocumentId: string | null;
+                            } | null;
+                        };
                         calendarDueDay: string;
                         events: {
                             id: string;
                             eventKind: string;
                             occurredAt: string;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1AdrsByIdChecklistByKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    state: "pending" | "ready" | "not_applicable";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdrsByIdDocuments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    documentId: string;
+                    checklistKey?: "certification_of_terminal_illness" | "election_statement" | "plan_of_care" | "physician_orders" | "visit_notes" | "medical_records_cover";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1AdrsByIdDocumentsByDocumentId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                documentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdrsByIdSignoff: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdrsByIdSubmit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    channel: "mac_portal" | "fax" | "mail" | "esmd" | "other";
+                    confirmationRef: string;
+                    /** Format: date-time */
+                    filedAt: string;
+                    lateAcknowledged?: boolean;
+                    /** Format: uuid */
+                    receiptDocumentId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
                     };
                 };
             };

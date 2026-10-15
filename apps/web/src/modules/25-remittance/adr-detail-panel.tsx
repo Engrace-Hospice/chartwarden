@@ -2,12 +2,13 @@ import { Button, LoadingSpinner, StatusPill, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/25-remittance — the ADR WORK PANEL (hospice ADR/TPE/QIC PRD, milestone 2a). Reads the
 // case fresh (so the If-Match version is the one the server holds NOW), shows HOW the response due date was
 // reached (request date + the MAC window, any business-day roll-back, and whether that window is verified),
-// and offers only the moves the ADR state machine has an arc for. There is no "submit" here: filing needs the
-// reviewed packet and proof of submission that milestone 2b adds. The server re-validates every move and
-// every refusal is shown verbatim (ADR-0030).
+// and offers only the moves the ADR state machine has an arc for. Filing is not a move: it is recorded from the
+// response packet section (sign-off by a second person, proof, step-up; milestone 2b). The server re-validates
+// every move and every refusal is shown verbatim (ADR-0030).
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { ActionRail, ButtonRow, ErrorAlert, Facts, Hint, NoticeAlert } from "./action-ui";
+import { AdrPacketPanel } from "./adr-packet-panel";
 import { type AdrDetail, type AdrTransitionTarget, loadAdr, transitionAdr } from "./remittance-api";
 import { ADR_STATE_TONE, humanize, toneOf } from "./remittance-status";
 
@@ -137,9 +138,18 @@ export function AdrDetailPanel({ adrId, onClose, onChanged }: AdrDetailPanelProp
             ))}
             {moves.length === 0 ? <Hint>No move is available from this state.</Hint> : null}
           </ButtonRow>
+          <AdrPacketPanel
+            adr={adr}
+            locked={busy}
+            onBusyChange={setBusy}
+            onChanged={async () => {
+              onChanged();
+              await load();
+            }}
+          />
           <Hint>
-            Sending a packet to the MAC is added in a later release; until then, file outside
-            WardenX and record the MAC's response here.
+            WardenX does not send the response to the MAC yet: file it through the MAC's portal, fax
+            or mail, then record the filing here with its confirmation.
           </Hint>
           <h3 className="wx-action-title">History</h3>
           <ul>
