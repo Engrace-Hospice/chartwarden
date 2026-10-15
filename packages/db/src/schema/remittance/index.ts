@@ -27,3 +27,4 @@ export * from "./denial"; // denial_case, denial_case_assignment, denial_taxonom
 export * from "./appeal"; // appeal_case, appeal_case_event
 export * from "./patient-responsibility"; // patient_responsibility_ledger
 export * from "./adr"; // adr_case, adr_case_event, mac_rule (milestone 2a)
+export * from "./reopening"; // denial_route_rule, reopening_case, reopening_case_event (milestone 3)

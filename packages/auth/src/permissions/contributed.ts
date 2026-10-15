@@ -3436,6 +3436,39 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "none",
   },
+  // --- non-response routing and MAC reopenings (milestone 3; granted by migration 1113) ---
+  "reopening.read": {
+    resource: "reopening_case",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "reopening.manage": {
+    resource: "reopening_case",
+    action: "manage",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  // Record the filing (also step-up gated).
+  "reopening.submit": {
+    resource: "reopening_case",
+    action: "submit",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  // Appeal a denial the rules route to a reopening, with a recorded reason.
+  "denial.route_override": {
+    resource: "denial_case",
+    action: "route_override",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "denial_route.manage": {
+    resource: "denial_route_rule",
+    action: "manage",
+    category: "billing",
+    abac: "none",
+  },
   // --- taxonomy surface ---
   "taxonomy.read": {
     resource: "denial_taxonomy",

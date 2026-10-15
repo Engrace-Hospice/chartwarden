@@ -59,6 +59,12 @@ export interface AppealCreateInput {
   readonly tier?: "redetermination" | "reconsideration" | "alj" | "council" | "federal_court";
   /** YYYY-MM-DD printed on the notice the tier's clock runs from; inferred from the remittance / prior decision when absent. */
   readonly noticeDate?: string;
+  /**
+   * Milestone 3: the reason a person appeals a denial the routing rules send to a MAC reopening. Without it such a
+   * denial refuses the appeal (409 ROUTE_IS_REOPENING); with it the appeal opens and the reason is recorded on the
+   * appeal's first event. Ignored when the denial is not on a reopening route.
+   */
+  readonly routeOverrideReason?: string;
 }
 export interface AppealSubmitInput {
   readonly appealNarrative: string;

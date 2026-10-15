@@ -31,11 +31,15 @@ import {
   NoticeAlert,
   ReasonField,
 } from "./action-ui";
+import { DenialRoutePanel } from "./denial-route-panel";
+import { REOPENING_DRAFT_ACTION } from "./reopening-panel";
 import {
   type AppealTier,
   type DenialAction,
   type DenialDetail,
+  type DenialRouteView,
   MIN_REASON,
+  MIN_ROUTE_OVERRIDE_REASON,
   isUuid,
   loadDenial,
   runDenialAction,
@@ -115,6 +119,8 @@ export function DenialDetailPanel({
   const [assignee, setAssignee] = useState(restored?.assignee ?? "");
   const [tier, setTier] = useState<AppealTier>(restored?.tier ?? "redetermination");
   const [noticeDate, setNoticeDate] = useState(restored?.noticeDate ?? "");
+  // Which path the routing rules send this denial to; a reopening route makes an appeal need a recorded reason.
+  const [route, setRoute] = useState<DenialRouteView["route"] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -143,7 +149,8 @@ export function DenialDetailPanel({
     setError(null);
   }
 
-  const floor = act ? (REASON_FLOOR[act] ?? 0) : 0;
+  const appealOverride = act === "appeal" && route === "reopening";
+  const floor = appealOverride ? MIN_ROUTE_OVERRIDE_REASON : act ? (REASON_FLOOR[act] ?? 0) : 0;
   const blocked =
     act === null ||
     (floor > 0 && reason.trim().length < floor) ||
@@ -164,7 +171,12 @@ export function DenialDetailPanel({
       case "reopen":
         return { kind, reason: reason.trim() };
       case "appeal":
-        return { kind, tier, ...(noticeDate ? { noticeDate } : {}) };
+        return {
+          kind,
+          tier,
+          ...(noticeDate ? { noticeDate } : {}),
+          ...(appealOverride ? { overrideReason: reason.trim() } : {}),
+        };
       default:
         return { kind };
     }
@@ -195,6 +207,7 @@ export function DenialDetailPanel({
 
   function closePanel(): void {
     clearStepUpDraft(draftKey);
+    clearStepUpDraft(stepUpDraftKey(session, REOPENING_DRAFT_ACTION, denialId));
     onClose();
   }
 
@@ -231,11 +244,18 @@ export function DenialDetailPanel({
             ]}
           />
           <NoticeAlert message={notice} />
+          <DenialRoutePanel
+            denialId={denialId}
+            denialVersion={version}
+            onDenialChanged={load}
+            onChanged={onChanged}
+            onRoute={setRoute}
+          />
           {act === null ? (
             <ButtonRow>
               {available.map((kind) => (
                 <Button key={kind} tone="secondary" size="sm" onClick={() => pick(kind)}>
-                  {LABEL[kind]}
+                  {kind === "appeal" && route === "reopening" ? "Appeal anyway" : LABEL[kind]}
                 </Button>
               ))}
               {available.length === 0 ? <Hint>No action is available from this state.</Hint> : null}
@@ -283,9 +303,15 @@ export function DenialDetailPanel({
                   onChange={(e) => setNoticeDate(e.target.value)}
                 />
               ) : null}
+              {appealOverride ? (
+                <Hint>
+                  The routing rules send this denial to a MAC reopening, not an appeal. Appealing it
+                  anyway needs a reason, which is kept on the appeal.
+                </Hint>
+              ) : null}
               {floor > 0 ? (
                 <ReasonField
-                  label="Reason"
+                  label={appealOverride ? "Why appeal this anyway?" : "Reason"}
                   value={reason}
                   min={floor}
                   max={1000}

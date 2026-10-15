@@ -21,6 +21,7 @@ import { BillingTabs } from "../../shell/billing-tabs";
 import { useSession } from "../../shell/session";
 import { findStepUpDraftResourceId } from "../../shell/step-up-redirect";
 import { DENIAL_DRAFT_ACTION, DenialDetailPanel } from "./denial-detail-panel";
+import { REOPENING_DRAFT_ACTION } from "./reopening-panel";
 import {
   AGING_BUCKET_TONE,
   DENIAL_CATEGORY_TONE,
@@ -56,9 +57,11 @@ export function DenialWorklist(): JSX.Element {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const session = useSession();
-  // Coming back from /step-up: reopen the case whose typed reason was stashed.
-  const [workingId, setWorkingId] = useState<string | null>(() =>
-    findStepUpDraftResourceId(session, DENIAL_DRAFT_ACTION),
+  // Coming back from /step-up: reopen the case whose typed reason (or reopening filing) was stashed.
+  const [workingId, setWorkingId] = useState<string | null>(
+    () =>
+      findStepUpDraftResourceId(session, DENIAL_DRAFT_ACTION) ??
+      findStepUpDraftResourceId(session, REOPENING_DRAFT_ACTION),
   );
 
   const load = useCallback(async () => {

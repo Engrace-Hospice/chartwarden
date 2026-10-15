@@ -11,6 +11,7 @@ import { clampLimit, ifMatchVersion, requireIdempotencyKey } from "./concurrency
 import { ASSIGNED_TO_ACTOR, P, STEP_UP } from "./guards";
 import {
   AppealCreateRequestSchema,
+  AppealOverrideRequestSchema,
   DenialAssignRequestSchema,
   DenialCloseWriteOffRequestSchema,
   DenialEscalateRequestSchema,
@@ -36,6 +37,7 @@ const CLOSE_WO = P("denial.close_with_write_off");
 const CLOSE_WO_STEPUP = STEP_UP("denial.close_with_write_off");
 const REOPEN = P("denial.reopen");
 const CREATE_APPEAL = P("appeal.create");
+const ROUTE_OVERRIDE = P("denial.route_override");
 const IDEMPOTENT = requireIdempotencyKey();
 
 function qStr(q: unknown, key: string): string | undefined {
@@ -199,6 +201,23 @@ export function registerDenialRoutes(app: FastifyInstance, deps: DenialRouteDeps
       const res = await writeService.createAppeal(actor, idOf(request), {
         tier: body.tier,
         noticeDate: body.noticeDate,
+      });
+      return reply.code(201).send(res);
+    },
+  );
+
+  // Milestone 3: appeal a denial the routing rules send to a MAC reopening. Needs the billing-lead key as well as
+  // appeal.create, and a reason that is kept on the appeal's first event.
+  app.post(
+    "/api/v1/denials/:id/appeals/override",
+    { preHandler: [CREATE_APPEAL, ROUTE_OVERRIDE, IDEMPOTENT] },
+    async (request, reply) => {
+      const actor = writeActorOf(request);
+      const body = parse(AppealOverrideRequestSchema, request.body);
+      const res = await writeService.createAppeal(actor, idOf(request), {
+        tier: body.tier,
+        noticeDate: body.noticeDate,
+        routeOverrideReason: body.overrideReason,
       });
       return reply.code(201).send(res);
     },
