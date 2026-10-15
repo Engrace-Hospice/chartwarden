@@ -73,14 +73,14 @@ describe("appeal-tier deadlines (D6 / M25-F04)", () => {
   });
 
   it("hard-blocks past T-0 but not on the last filing day", () => {
-    const deadline = computeTierDeadline("alj", "2026-01-01"); // last filing day 2026-03-07
-    expect(isWithinDeadline(deadline, new Date("2026-03-07T12:00:00Z"))).toBe(true);
+    const deadline = computeTierDeadline("alj", "2026-01-01"); // calendar Sat 03-07, rolled back to Fri 2026-03-06
+    expect(isWithinDeadline(deadline, new Date("2026-03-06T12:00:00Z"))).toBe(true);
     expect(isWithinDeadline(deadline, new Date("2026-03-09T00:00:00Z"))).toBe(false);
   });
 
   it("later tiers anchor on the prior decision-letter date with their own windows", () => {
-    expect(deriveTierDeadline("reconsideration", "2026-01-01").lastFilingDay).toBe("2026-07-05");
-    expect(deriveTierDeadline("council", "2026-01-01").lastFilingDay).toBe("2026-03-07");
+    expect(deriveTierDeadline("reconsideration", "2026-01-01").lastFilingDay).toBe("2026-07-02"); // Sun 07-05, Sat 07-04 holiday observed Fri 07-03
+    expect(deriveTierDeadline("council", "2026-01-01").lastFilingDay).toBe("2026-03-06");
   });
 
   it("reads a notice date off a UTC-midnight timestamp", () => {

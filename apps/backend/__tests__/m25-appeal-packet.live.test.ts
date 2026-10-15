@@ -737,8 +737,9 @@ describe.skipIf(!DB_URL)("GAP-036 - appeal packet render payload - LIVE Postgres
       ).rows[0];
       const row = await appealRow(next.id);
       expect(row.notice).toBe("2026-01-01");
-      // 2026-01-01 + 5 + 180 = 2026-07-05, usable to 23:59:59.999 EDT.
-      expect(new Date(row.tier_deadline_at).toISOString()).toBe("2026-07-06T03:59:59.999Z");
+      // 2026-01-01 + 5 + 180 = Sunday 2026-07-05; 4 July is a Saturday holiday observed Friday 3 July, so the
+      // last filing day rolls back to Thursday 2026-07-02, usable to 23:59:59.999 EDT.
+      expect(new Date(row.tier_deadline_at).toISOString()).toBe("2026-07-03T03:59:59.999Z");
     });
   });
 });
