@@ -6,6 +6,7 @@
 import type { DbClient } from "@wardenx/db";
 import type { PatientLabelPort } from "../handoffs/handoff-dto";
 import type { HintOutboxPort } from "../message-hint-events";
+import { isActiveMessagingUser } from "../messaging-route-service-db";
 import type { Part2ChannelGate } from "../part2-channel-gate";
 import { cacheFlagRead } from "../presence/binding";
 import { TASKS_FLAG_KEY } from "../tasks/task-service";
@@ -57,6 +58,12 @@ export function buildReviewBinding(input: ReviewBindingInput): ReviewBinding {
       isEligible: async (orgId, userId, channelId) =>
         (await input.isActiveUser(orgId, userId)) &&
         (await input.messaging.canViewChannel(orgId, userId, channelId)),
+      isActiveInTx: (tx, orgId, userId) =>
+        isActiveMessagingUser(
+          tx as unknown as Parameters<typeof isActiveMessagingUser>[0],
+          orgId,
+          userId,
+        ),
       part2Gate: input.part2Gate,
       patientLabels: input.patientLabels,
       displayName: input.displayName,

@@ -61,6 +61,12 @@ describe("planRoleTemplateMaterialization", () => {
       expect(plan().find((r) => r.key === key)?.permissionKeys).not.toContain("messaging.review");
   });
 
+  it("grants messaging.review to the director of nursing template only among the defaults", () => {
+    expect(plan().find((r) => r.key === "director_of_nursing")?.permissionKeys).toContain(
+      "messaging.review",
+    );
+  });
+
   it("grants a locked role at least its CoP floor", () => {
     const director = plan().find((r) => r.key === "medical_director");
     const template = ROLE_TEMPLATES.find((t) => t.key === "medical_director");

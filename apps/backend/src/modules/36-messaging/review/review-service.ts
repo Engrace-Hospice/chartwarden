@@ -57,7 +57,10 @@ export interface ReviewServiceDeps {
   readonly store: ReviewStore;
   readonly taskStore: TaskStore;
   /** Active user who can see the task's channel (Part 2 included). A throw is "not eligible". */
+  /** Full eligibility (active + can view the channel, Part 2 included). Opens its own connections: call it OUTSIDE the decide tx. */
   readonly isEligible: (orgId: string, userId: string, channelId: string) => Promise<boolean>;
+  /** The target is still an active member, read on the decide tx's OWN connection (no pool checkout while locks are held). */
+  readonly isActiveInTx: (tx: Tx, orgId: string, userId: string) => Promise<boolean>;
   readonly part2Gate: Part2ChannelGate;
   readonly patientLabels: PatientLabelPort;
   readonly displayName: (orgId: string, userId: string) => Promise<string | null>;
@@ -195,9 +198,10 @@ export function createReviewService(deps: ReviewServiceDeps): ReviewService {
     }
     if (task.channelId !== channelId) throw assigneeInvalid();
     if (d.kind === "reassign") {
-      // Eligibility is judged HERE, after the locks, so a target deactivated or removed from the channel since the
-      // request began is refused with nothing changed.
-      if (!(await eligible(actor, d.toUserId, channelId))) throw assigneeInvalid();
+      // Full eligibility ran before this tx (it needs other connections, which must not be taken while row locks are held:
+      // N concurrent reassigns would starve the pool). Here only what the tx's own connection can answer is rechecked.
+      // Residual window (ADR-0065): a target who loses channel access between the two checks is still assigned.
+      if (!(await deps.isActiveInTx(tx, actor.orgId, d.toUserId))) throw assigneeInvalid();
       const holders = await taskStore.activeAssigneeIds(tx, actor.orgId, task.messageId);
       if (task.assigneeId === d.toUserId || holders.includes(d.toUserId)) throw assigneeInvalid();
     }
@@ -265,7 +269,10 @@ export function createReviewService(deps: ReviewServiceDeps): ReviewService {
     if (row.state !== "open") throw stateConflict();
     const [task] = await run(actor, (tx) => store.tasksByIds(tx, actor.orgId, [row.itemId]));
     if (!task) throw stateConflict();
-    if (d.kind === "reassign" && d.toUserId === task.assigneeId) throw assigneeInvalid();
+    if (d.kind === "reassign") {
+      if (d.toUserId === task.assigneeId) throw assigneeInvalid();
+      if (!(await eligible(actor, d.toUserId, task.channelId))) throw assigneeInvalid();
+    }
     const outcome = await run(actor, (tx) => decide(tx, actor, id, task.id, task.channelId, d));
     if (outcome === "stale") throw stateConflict();
     const after = await run(actor, (tx) => store.get(tx, actor.orgId, id));

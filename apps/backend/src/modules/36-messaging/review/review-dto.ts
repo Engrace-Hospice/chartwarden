@@ -73,8 +73,9 @@ export async function buildReviewDtos(
       source: restricted ? null : (r.source as ReviewSource),
       cause: restricted ? null : (r.cause as ReviewCause),
       state: r.state as ReviewState,
-      resolution: r.resolution as ReviewResolution | null,
-      resolution_reason: r.resolutionReason as TaskCloseReason | null,
+      // A restricted row keeps only its state and age: the outcome of a Part 2 patient's review is not shown either.
+      resolution: restricted ? null : (r.resolution as ReviewResolution | null),
+      resolution_reason: restricted ? null : (r.resolutionReason as TaskCloseReason | null),
       restricted,
       patient_id: restricted ? null : r.patientId,
       patient_display_name: label?.displayName ?? null,

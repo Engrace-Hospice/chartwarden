@@ -273,6 +273,8 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     systemLocked: true,
     description: "CoP 418.64(a) director of nursing services.",
     floor: SYSTEM_LOCKED_FLOORS.director_of_nursing,
+    // The lifecycle review queue is a supervisory decision (ADR-0065 D6); no template grants it to the org-wide admins.
+    grants: ["messaging.review"],
   },
   {
     key: "administrator",

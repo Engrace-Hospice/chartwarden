@@ -61,6 +61,21 @@ describe("list", () => {
     expect(item?.created_at).toBeTruthy();
   });
 
+  it("hides the resolution of a resolved Part 2 restricted row", async () => {
+    const kit = buildKit({ part2Denied: [`${SUPERVISOR}:${P1}`] });
+    const { task } = await queued(kit);
+    await kit.closeElsewhere(task.id, ALICE);
+
+    const [item] = await kit.service.list(sup, { state: "resolved", limit: 50 });
+
+    expect(item).toMatchObject({
+      restricted: true,
+      state: "resolved",
+      resolution: null,
+      resolution_reason: null,
+    });
+  });
+
   it("treats a throwing Part 2 gate as restricted (fail closed), still listing the row", async () => {
     const kit = buildKit({ part2Throws: true });
     await queued(kit);
@@ -124,7 +139,7 @@ describe("reassign", () => {
     expect(kit.published).toHaveLength(0);
   });
 
-  it("re-checks eligibility only after the task is locked, so a target deactivated in the gap is refused", async () => {
+  it("runs the full eligibility check before the transaction and only a tx-local active recheck after the lock", async () => {
     const order: string[] = [];
     const ineligible: string[] = [];
     const kit = buildKit({ ineligible, trace: (e) => order.push(e) });
@@ -132,13 +147,13 @@ describe("reassign", () => {
     const lock = kit.taskStore.getForUpdate.bind(kit.taskStore);
     kit.taskStore.getForUpdate = async (...args) => {
       order.push("lock");
-      ineligible.push(BOB); // BOB is deactivated before the check inside the transaction
+      ineligible.push(BOB); // BOB is deactivated after the pre-check, before the in-tx recheck
       return lock(...args);
     };
 
     const outcome = await kit.code(kit.service.reassign(sup, reviewId, BOB));
 
-    expect(order.indexOf("lock")).toBeLessThan(order.indexOf("eligible"));
+    expect(order).toEqual(["eligible", "lock", "active-in-tx"]);
     expect(outcome).toBe("422:REVIEW_ASSIGNEE_INVALID");
     expect(kit.store.rows.get(reviewId)?.state).toBe("open");
     expect(kit.taskStore.tasks.get(task.id)?.assigneeId).toBe(ALICE);

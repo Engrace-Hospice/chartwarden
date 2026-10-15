@@ -68,6 +68,10 @@ export function buildKit(opts: KitOptions = {}) {
       opts.trace?.("eligible");
       return !(opts.ineligible ?? [DAVE]).includes(userId);
     },
+    isActiveInTx: async (_tx, _o, userId) => {
+      opts.trace?.("active-in-tx");
+      return !(opts.ineligible ?? [DAVE]).includes(userId);
+    },
     part2Gate,
     patientLabels: async (_o, ids) =>
       new Map(ids.map((id) => [id, { displayName: "Pat I.", mrnSuffix: "1234" }])),
