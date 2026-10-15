@@ -25,7 +25,7 @@ import {
   ACK_TAKE_LABEL,
   ACK_TOO_MANY_TEXT,
 } from "./ack-wording";
-import { useAckRequests } from "./use-ack-requests";
+import { ACK_POLL_MS, ACK_RELOAD_TIMEOUT_MS, useAckRequests } from "./use-ack-requests";
 
 const LIST = "/api/v1/messaging/channels/{id}/escalations";
 const request = (over: Partial<AckRequestDto> = {}): AckRequestDto => ({
@@ -145,7 +145,7 @@ describe("ack request card", () => {
       "/api/v1/messaging/escalations/{id}/acknowledge",
     );
     expect(take.getAttribute("aria-disabled")).toBe("true");
-    expect(take.getAttribute("aria-label")).toMatch(/^Take responsibility/);
+    expect(take.getAttribute("aria-label")).toMatch(/^Saving/);
     await act(async () => resolvePost({ data: {}, response: { status: 200 } }));
 
     await waitFor(() => expect(GET).toHaveBeenCalledTimes(2));
@@ -275,7 +275,7 @@ describe("ack request card - action failures", () => {
     fireEvent.click(await takeButton());
 
     expect(await screen.findByText(text)).toBeTruthy();
-    expect(document.querySelector(".wx-ack-live")?.textContent ?? "").toContain(text);
+    expect(document.querySelector(".wx-ack-alert")?.textContent ?? "").toContain(text);
   });
 
   it("close: a 403 not-qualified says the role cannot CLOSE the message", async () => {
@@ -484,7 +484,7 @@ describe("useAckRequests - stale channel", () => {
     expect(GET).toHaveBeenCalledTimes(before);
   });
 
-  it("the same holds for c-1 -> c-2 -> c-1: the old visit's answer is dropped", async () => {
+  it("c-1 -> c-2 -> c-1: the old visit's notice is dropped but the current list is re-read", async () => {
     const hold = deferred();
     const GET = vi.fn(() => Promise.resolve(ok([request()])));
     const POST = vi.fn(() => hold.promise);
@@ -508,8 +508,9 @@ describe("useAckRequests - stale channel", () => {
       await acting;
     });
 
+    // No notice (it belongs to the old visit), but the list the person is looking at again is re-read once.
     expect(result.current.notice).toBeNull();
-    expect(GET).toHaveBeenCalledTimes(before);
+    expect(GET).toHaveBeenCalledTimes(before + 1);
     expect(result.current.busyId).toBeNull();
   });
 
@@ -526,5 +527,200 @@ describe("useAckRequests - stale channel", () => {
 
     expect(result.current.requests).toHaveLength(0);
     expect(result.current.status).toBe("loading");
+  });
+});
+
+describe("ack hook - background reads, focus, timeouts", () => {
+  const BG = { "x-wardenx-background": "1" };
+  const hookClient = (get: () => unknown, post?: unknown) => {
+    const GET = vi.fn((_p: string, _i: unknown) => Promise.resolve(get()));
+    const POST = post ?? vi.fn().mockResolvedValue({ data: {}, response: { status: 200 } });
+    return { GET, POST, client: { GET, POST } as unknown as ApiClient };
+  };
+  const wrap =
+    (client: ApiClient) =>
+    ({ children }: { children: React.ReactNode }) => (
+      <ApiClientProvider client={client}>{children}</ApiClientProvider>
+    );
+  const headersOf = (GET: { mock: { calls: unknown[][] } }, i: number) =>
+    (GET.mock.calls[i]?.[1] as { headers?: unknown }).headers;
+
+  it("the interval poll is a BACKGROUND read, the first read and a focus read are not, and it skips a hidden tab", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
+    try {
+      const { GET, client } = hookClient(() => ok([request()]));
+      renderHook(() => useAckRequests("c-1", true), { wrapper: wrap(client) });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(GET).toHaveBeenCalledTimes(1);
+      expect(headersOf(GET, 0)).toBeUndefined();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ACK_POLL_MS);
+      });
+      expect(GET).toHaveBeenCalledTimes(2);
+      expect(headersOf(GET, 1)).toEqual(BG);
+
+      const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ACK_POLL_MS);
+      });
+      expect(GET).toHaveBeenCalledTimes(2);
+      hidden.mockRestore();
+
+      act(() => {
+        window.dispatchEvent(new Event("focus"));
+      });
+      expect(GET).toHaveBeenCalledTimes(3);
+      expect(headersOf(GET, 2)).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("sets no timer when no request is open", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
+    try {
+      const { GET, client } = hookClient(() =>
+        ok([
+          request({
+            status: "resolved",
+            viewer_actions: { can_acknowledge: false, can_reassign: false, can_resolve: false },
+          }),
+        ]),
+      );
+      renderHook(() => useAckRequests("c-1", true), { wrapper: wrap(client) });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ACK_POLL_MS * 3);
+      });
+      expect(GET).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a new-message refresh is a background read, and exactly one GET happens per open (the first id is not news)", async () => {
+    const { GET, client } = hookClient(() => ok([request()]));
+    const { rerender } = renderHook(
+      ({ key }: { key: string | null }) => useAckRequests("c-1", true, key),
+      { wrapper: wrap(client), initialProps: { key: null as string | null } },
+    );
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(1));
+
+    rerender({ key: "m-1" });
+    rerender({ key: "m-1" });
+    await act(async () => undefined);
+    expect(GET).toHaveBeenCalledTimes(1);
+
+    rerender({ key: "m-2" });
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(2));
+    expect(headersOf(GET, 1)).toEqual(BG);
+  });
+
+  it("a hung reload cannot hold the busy state forever", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout"] });
+    try {
+      let gets = 0;
+      const { client } = hookClient(() => {
+        gets += 1;
+        return gets === 1 ? ok([request()]) : new Promise(() => undefined);
+      });
+      const { result } = renderHook(() => useAckRequests("c-1", true), { wrapper: wrap(client) });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      act(() => {
+        void result.current.act("r-1", "acknowledge");
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(result.current.busyId).toBe("r-1");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ACK_RELOAD_TIMEOUT_MS);
+      });
+
+      expect(result.current.busyId).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("ack card - focus and keyboard", () => {
+  const acknowledgedAfterFirstRead = () => {
+    let gets = 0;
+    return () => {
+      gets += 1;
+      return ok([
+        request(
+          gets > 1
+            ? {
+                status: "acknowledged",
+                acknowledged_at: "2026-10-15T12:05:00.000Z",
+                viewer_actions: { can_acknowledge: false, can_reassign: true, can_resolve: true },
+              }
+            : {},
+        ),
+      ]);
+    };
+  };
+
+  it("does not steal focus from the composer when the action finishes", async () => {
+    const holder = document.createElement("textarea");
+    document.body.appendChild(holder);
+    const hold = deferred();
+    mount({ get: acknowledgedAfterFirstRead(), post: vi.fn(() => hold.promise) });
+    fireEvent.click(await takeButton());
+    holder.focus();
+
+    await act(async () => hold.resolve({ data: {}, response: { status: 200 } }));
+    await screen.findByText(ACK_STATUS_TEXT.acknowledged);
+
+    expect(document.activeElement).toBe(holder);
+    holder.remove();
+  });
+
+  it("a background poll or refresh never moves focus", async () => {
+    const holder = document.createElement("textarea");
+    document.body.appendChild(holder);
+    const { GET, view, tree } = mount({ refreshKey: "m-1" });
+    await takeButton();
+    holder.focus();
+
+    view.rerender(tree("c-1", "m-2"));
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(2));
+
+    expect(document.activeElement).toBe(holder);
+    holder.remove();
+  });
+
+  it("Enter and Space on a busy (aria-disabled) button send nothing", async () => {
+    const hold = deferred();
+    const post = vi.fn(() => hold.promise);
+    mount({ post });
+    const take = await takeButton();
+    fireEvent.click(take);
+    expect(post).toHaveBeenCalledTimes(1);
+
+    take.focus();
+    fireEvent.keyDown(take, { key: "Enter" });
+    fireEvent.keyUp(take, { key: " " });
+    fireEvent.click(take);
+
+    expect(post).toHaveBeenCalledTimes(1);
+    await act(async () => hold.resolve({ data: {}, response: { status: 200 } }));
+  });
+
+  it("announces a failure assertively (role=alert) and a success politely", async () => {
+    const post = vi.fn().mockResolvedValue({ error: {}, response: { status: 409 } });
+    mount({ post });
+    fireEvent.click(await takeButton());
+
+    const alert = document.querySelector('[role="alert"]');
+    await waitFor(() => expect(alert?.textContent).toBe(ACK_CHANGED_TEXT));
+    expect(document.querySelector("output.wx-ack-live")?.textContent).toBe("");
   });
 });

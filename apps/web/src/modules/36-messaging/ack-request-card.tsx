@@ -74,9 +74,15 @@ export function AckRequestCard({
 }: CardProps): JSX.Element {
   const statusId = useId();
   const statusRef = useRef<HTMLParagraphElement>(null);
+  const cardRef = useRef<HTMLFieldSetElement>(null);
   useEffect(() => {
     if (!focusRequested) return;
-    statusRef.current?.focus();
+    // Never steal focus from somewhere the person moved to meanwhile (the composer, another message): the clicked button
+    // has just left the page (so focus is on the body) or is still inside this card.
+    const active = document.activeElement;
+    if (!active || active === document.body || cardRef.current?.contains(active)) {
+      statusRef.current?.focus();
+    }
     onFocused?.();
   }, [focusRequested, onFocused]);
 
@@ -86,6 +92,9 @@ export function AckRequestCard({
   const icon =
     request.status === "resolved" || request.status === "acknowledged" ? "check" : "clock";
   const sent = localTime(sentAt ?? request.requested_at);
+  // The accessible name starts with the VISIBLE text (WCAG 2.5.3), then says which message it is about.
+  const nameOf = (label: string, make: typeof takeName): string =>
+    busy ? make(authorName, sent).replace(label, ACK_WORKING_TEXT) : make(authorName, sent);
   const guard = (action: AckAction) => () => {
     if (!anyBusy) onAct(request.id, action);
   };
@@ -96,7 +105,12 @@ export function AckRequestCard({
   } as const;
   const inertStyle = anyBusy ? { cursor: "not-allowed", opacity: 0.72 } : undefined;
   return (
-    <fieldset className="wx-ack-card" aria-labelledby={statusId} data-status={request.status}>
+    <fieldset
+      ref={cardRef}
+      className="wx-ack-card"
+      aria-labelledby={statusId}
+      data-status={request.status}
+    >
       <p id={statusId} ref={statusRef} tabIndex={-1} className="wx-ack-status">
         <Glyph name={request.status === "failed_unreachable" ? "alert" : icon} size={14} />
         <span>{ACK_STATUS_TEXT[request.status]}</span>
@@ -121,7 +135,7 @@ export function AckRequestCard({
             <Button
               {...buttonProps}
               style={inertStyle}
-              aria-label={takeName(authorName, sent)}
+              aria-label={nameOf(ACK_TAKE_LABEL, takeName)}
               aria-describedby={noticeId}
               onClick={guard("acknowledge")}
             >
@@ -132,7 +146,7 @@ export function AckRequestCard({
             <Button
               {...buttonProps}
               style={inertStyle}
-              aria-label={closeName(authorName, sent)}
+              aria-label={nameOf(ACK_CLOSE_LABEL, closeName)}
               aria-describedby={noticeId}
               onClick={guard("resolve")}
             >
@@ -200,10 +214,13 @@ export function AckRequestsProvider({
     <SlotContext.Provider value={enabled ? slot : null}>
       {enabled ? (
         <>
-          {/* Always mounted so a screen reader hears the result of an action. */}
+          {/* Always mounted so a screen reader hears the result of an action: success politely, a failure assertively. */}
           <output aria-live="polite" aria-atomic="true" className="wx-ack-live">
-            {state.notice}
+            {state.noticeIsFailure ? null : state.notice}
           </output>
+          <div role="alert" className="wx-ack-live wx-ack-alert">
+            {state.noticeIsFailure ? state.notice : null}
+          </div>
           {problem ? (
             <output className="wx-ack-banner">
               {problem}

@@ -6,7 +6,7 @@
 // channel's messages change, when the window regains focus, and on a modest interval while any request is still open. The
 // server stays the authority on every action. Nothing here runs on open or read.
 import type { AckRequestDto } from "@wardenx/types";
-import { useApiClient } from "@wardenx/ui";
+import { BACKGROUND_REQUEST_HEADERS, useApiClient } from "@wardenx/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ACK_CHANGED_TEXT,
@@ -27,7 +27,7 @@ import {
 interface AckClient {
   GET(
     path: string,
-    init: { params: { path: { id: string } } },
+    init: { params: { path: { id: string } }; headers?: Readonly<Record<string, string>> },
   ): Promise<{
     data?: { requests?: AckRequestDto[] };
     error?: unknown;
@@ -51,6 +51,8 @@ export type AckListStatus =
 
 /** While any request is still waiting the list is re-read this often (display refresh only; nothing escalates from here). */
 export const ACK_POLL_MS = 60_000;
+/** The reload after an action may not hold the busy state longer than this, whatever the network does. */
+export const ACK_RELOAD_TIMEOUT_MS = 15_000;
 const OPEN_STATUSES = new Set(["pending", "escalated", "failed_unreachable"]);
 const KEEPS_LAST_GOOD: ReadonlySet<AckListStatus> = new Set(["transient", "throttled"]);
 
@@ -99,6 +101,7 @@ export function useAckRequests(channelId: string, enabled: boolean, refreshKey?:
   const [loaded, setLoaded] = useState<Loaded>({ channelId, status: "loading", requests: [] });
   const [busy, setBusy] = useState<Busy | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [noticeIsFailure, setNoticeIsFailure] = useState(false);
   const [focusRequestId, setFocusRequestId] = useState<string | null>(null);
   const latest = useRef(0);
   const epoch = useRef(0);
@@ -106,31 +109,37 @@ export function useAckRequests(channelId: string, enabled: boolean, refreshKey?:
   const channelRef = useRef(channelId);
   channelRef.current = channelId;
 
-  const load = useCallback(async (): Promise<void> => {
-    latest.current += 1;
-    const token = latest.current;
-    const settle = (status: AckListStatus, requests: readonly AckRequestDto[] = []): void => {
-      if (token !== latest.current) return;
-      setLoaded((prev) => {
-        const keep = KEEPS_LAST_GOOD.has(status) && prev.channelId === channelId;
-        return { channelId, status, requests: keep ? prev.requests : requests };
-      });
-    };
-    try {
-      const result = await client.GET("/api/v1/messaging/channels/{id}/escalations", {
-        params: { path: { id: channelId } },
-      });
-      const status = listStatusOf(result?.response?.status, Boolean(result?.data));
-      if (status !== "ready") return settle(status);
-      settle("ready", (result?.data?.requests ?? []) as readonly AckRequestDto[]);
-    } catch {
-      settle("transient");
-    }
-  }, [client, channelId]);
+  /** `background`: a read the person did not cause (timer, new message). It must not count as activity for the idle logoff. */
+  const load = useCallback(
+    async (opts: { readonly background?: boolean } = {}): Promise<void> => {
+      latest.current += 1;
+      const token = latest.current;
+      const settle = (status: AckListStatus, requests: readonly AckRequestDto[] = []): void => {
+        if (token !== latest.current) return;
+        setLoaded((prev) => {
+          const keep = KEEPS_LAST_GOOD.has(status) && prev.channelId === channelId;
+          return { channelId, status, requests: keep ? prev.requests : requests };
+        });
+      };
+      try {
+        const result = await client.GET("/api/v1/messaging/channels/{id}/escalations", {
+          params: { path: { id: channelId } },
+          ...(opts.background ? { headers: BACKGROUND_REQUEST_HEADERS } : {}),
+        });
+        const status = listStatusOf(result?.response?.status, Boolean(result?.data));
+        if (status !== "ready") return settle(status);
+        settle("ready", (result?.data?.requests ?? []) as readonly AckRequestDto[]);
+      } catch {
+        settle("transient");
+      }
+    },
+    [client, channelId],
+  );
 
   useEffect(() => {
     if (!enabled) return;
     setNotice(null);
+    setFocusRequestId(null);
     void load();
     return () => {
       latest.current += 1;
@@ -143,8 +152,10 @@ export function useAckRequests(channelId: string, enabled: boolean, refreshKey?:
   useEffect(() => {
     const previous = lastRefresh.current;
     lastRefresh.current = { channelId, refreshKey };
+    // The first id after the thread opened is the initial read of the message list, not news: the open already loaded.
     if (!enabled || previous.channelId !== channelId || previous.refreshKey === refreshKey) return;
-    void load();
+    if (previous.refreshKey == null) return;
+    void load({ background: true });
   }, [enabled, channelId, refreshKey, load]);
 
   useEffect(() => {
@@ -159,7 +170,7 @@ export function useAckRequests(channelId: string, enabled: boolean, refreshKey?:
   useEffect(() => {
     if (!enabled || !anyOpen) return;
     const timer = setInterval(() => {
-      if (!busyRef.current) void load();
+      if (!busyRef.current && !document.hidden) void load({ background: true });
     }, ACK_POLL_MS);
     return () => clearInterval(timer);
   }, [enabled, anyOpen, load]);
@@ -192,12 +203,26 @@ export function useAckRequests(channelId: string, enabled: boolean, refreshKey?:
       }
       // The person may have left this channel (even to come back) while the call was in flight: its notice and reload
       // belong to the old visit.
-      if (epoch.current !== startedEpoch) return release();
+      if (epoch.current !== startedEpoch) {
+        // Left and came back: no notice (it belongs to the old visit), but the list this person is looking at may now be stale.
+        const backHere = mine.channelId === channelRef.current;
+        release();
+        if (backHere) await load();
+        return;
+      }
       const saved = action === "acknowledge" ? ACK_SAVED_TAKEN_TEXT : ACK_SAVED_CLOSED_TEXT;
       setNotice(outcome ?? saved);
+      setNoticeIsFailure(outcome !== null);
+      let timer: ReturnType<typeof setTimeout> | undefined;
       try {
-        await load();
+        await Promise.race([
+          load(),
+          new Promise<void>((resolveTimeout) => {
+            timer = setTimeout(resolveTimeout, ACK_RELOAD_TIMEOUT_MS);
+          }),
+        ]);
       } finally {
+        clearTimeout(timer);
         if (epoch.current === startedEpoch && !outcome) setFocusRequestId(requestId);
         release();
       }
@@ -211,7 +236,11 @@ export function useAckRequests(channelId: string, enabled: boolean, refreshKey?:
     requests: current?.requests ?? [],
     busyId: busy?.channelId === channelId ? busy.requestId : null,
     notice,
-    focusRequestId,
+    noticeIsFailure,
+    // Only a request that is on screen can take focus.
+    focusRequestId: (current?.requests ?? []).some((r) => r.id === focusRequestId)
+      ? focusRequestId
+      : null,
     clearFocus,
     act,
     reload: load,
