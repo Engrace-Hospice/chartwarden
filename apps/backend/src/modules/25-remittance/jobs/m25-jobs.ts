@@ -109,3 +109,31 @@ export async function runAppealDeadlineWatch(
   }
   return { alerts };
 }
+
+/** An ADR still awaiting its response, as the deadline cron sees it. */
+export interface DeadlineAdrRow {
+  readonly id: string;
+  readonly responseDueAt: string;
+}
+
+export interface AdrDeadlineStore {
+  watchableAdrs(): Promise<DeadlineAdrRow[]>;
+}
+
+/** Emit the T-30/14/7/1 alert for each open ADR at its current boundary (same boundaries as appeals). */
+export async function runAdrDeadlineWatch(
+  store: AdrDeadlineStore,
+  now: Date,
+): Promise<AppealDeadlineResult> {
+  const alerts: AlertEmission[] = [];
+  for (const a of await store.watchableAdrs()) {
+    const boundary = deadlineAlertBoundary(new Date(a.responseDueAt), now);
+    if (boundary !== null) {
+      alerts.push({
+        kind: "adr.deadline_approaching",
+        detail: { adrCaseId: a.id, daysRemaining: boundary },
+      });
+    }
+  }
+  return { alerts };
+}

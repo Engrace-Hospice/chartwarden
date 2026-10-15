@@ -32,3 +32,14 @@ export type AgingBucketLabel = "0-7" | "8-15" | "16-30" | "31-60" | "61-90" | "9
 
 /** The posting outcome a remittance line resolves to — drives the M23 claim-state event (§2.4). */
 export type PostingOutcome = "paid" | "partial_paid" | "denied" | "recouped";
+
+/** What kind of additional documentation request a MAC sent: the first ADR, or a re-ADR after a signature/other defect. */
+export type AdrReviewType = "adr" | "re_adr";
+export type AdrState =
+  | "received"
+  | "in_assembly"
+  | "in_review"
+  | "submitted"
+  | "denied_no_response"
+  | "withdrawn"
+  | "closed";

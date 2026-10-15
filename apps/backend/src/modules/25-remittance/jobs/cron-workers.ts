@@ -10,8 +10,10 @@ import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { eq, sql } from "drizzle-orm";
 import {
+  type AdrDeadlineStore,
   type AppealDeadlineStore,
   type DenialAgingStore,
+  runAdrDeadlineWatch,
   runAppealDeadlineWatch,
   runDenialAging,
 } from "./m25-jobs";
@@ -134,7 +136,7 @@ export async function runDenialAgingCron(deps: M25WorkerDeps): Promise<void> {
   }
 }
 
-/** Nightly: emit the T-30/14/7/1 appeal-deadline alerts at each appeal's tightest boundary (§2.4 / D6). */
+/** Nightly: emit the T-30/14/7/1 appeal- and ADR-deadline alerts at each case's tightest boundary (§2.4 / D6). */
 export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> {
   const now = (deps.now ?? (() => new Date()))();
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
@@ -159,7 +161,29 @@ export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> 
           }));
         },
       };
-      const result = await runAppealDeadlineWatch(store, now);
+      const ADR = schema.adrCase;
+      const adrStore: AdrDeadlineStore = {
+        async watchableAdrs() {
+          const rows = await tx
+            .select({ id: ADR.id, responseDueAt: ADR.responseDueAt })
+            .from(ADR)
+            .where(sql`${ADR.state} IN ('received','in_assembly','in_review')`)
+            .limit(100000);
+          return rows.map((r) => ({
+            id: r.id,
+            responseDueAt:
+              r.responseDueAt instanceof Date
+                ? r.responseDueAt.toISOString()
+                : String(r.responseDueAt),
+          }));
+        },
+      };
+      const result = {
+        alerts: [
+          ...(await runAppealDeadlineWatch(store, now)).alerts,
+          ...(await runAdrDeadlineWatch(adrStore, now)).alerts,
+        ],
+      };
       for (const a of result.alerts) {
         await alerts.dispatch({
           alertCode: a.kind,

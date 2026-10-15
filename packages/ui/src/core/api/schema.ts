@@ -2542,6 +2542,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/adrs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** ADR worklist, soonest response due first */
+        get: operations["getApiV1Adrs"];
+        put?: never;
+        /** Log an additional documentation request; the response due date is derived from the MAC rule */
+        post: operations["postApiV1Adrs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/adrs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** ADR case detail with its due-date derivation and event timeline */
+        get: operations["getApiV1AdrsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/adrs/{id}/transition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move an ADR through assembly, review, withdrawal or a missed response (If-Match) */
+        post: operations["postApiV1AdrsByIdTransition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ai/capabilities": {
         parameters: {
             query?: never;
@@ -12215,6 +12267,24 @@ export interface paths {
         head?: never;
         /** Edit a location's address / contact / timezone / lifecycle status */
         patch: operations["patchApiV1LocationsById"];
+        trace?: never;
+    };
+    "/api/v1/mac-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's MAC response-window rules */
+        get: operations["getApiV1Macrules"];
+        /** Create or update a MAC response-window rule */
+        put: operations["putApiV1Macrules"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/map-view": {
@@ -31560,6 +31630,161 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Adrs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            claimId: string;
+                            denialCaseId: string | null;
+                            macName: string;
+                            reviewType: string;
+                            state: string;
+                            adrReference: string | null;
+                            requestedOn: string;
+                            windowDays: number;
+                            windowSource: string;
+                            windowVerified: boolean;
+                            responseDueAt: string;
+                            dueDay: string;
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Adrs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    claimId: string;
+                    macName: string;
+                    reviewType: "adr" | "re_adr";
+                    requestedOn: string;
+                    adrReference?: string;
+                    /** Format: uuid */
+                    denialCaseId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AdrsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        claimId: string;
+                        denialCaseId: string | null;
+                        macName: string;
+                        reviewType: string;
+                        state: string;
+                        adrReference: string | null;
+                        requestedOn: string;
+                        windowDays: number;
+                        windowSource: string;
+                        windowVerified: boolean;
+                        responseDueAt: string;
+                        dueDay: string;
+                        version: number;
+                        calendarDueDay: string;
+                        events: {
+                            id: string;
+                            eventKind: string;
+                            occurredAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdrsByIdTransition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    to: "in_assembly" | "in_review" | "denied_no_response" | "withdrawn";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -59812,6 +60037,75 @@ export interface operations {
                         createdAt: string;
                         /** Format: date-time */
                         updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Macrules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            macName: string;
+                            reviewType: string;
+                            responseDays: number;
+                            sourceNote: string | null;
+                            verifiedOn: string | null;
+                            effectiveFrom: string;
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1Macrules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    macName: string;
+                    reviewType: "adr" | "re_adr";
+                    responseDays: number;
+                    sourceNote?: string;
+                    verifiedOn?: string;
+                    effectiveFrom?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
                     };
                 };
             };

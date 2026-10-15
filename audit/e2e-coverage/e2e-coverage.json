@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 178,
+  "totalStaticWebScreens": 179,
   "e2eReachedCount": 19,
-  "axeReachedCount": 169,
+  "axeReachedCount": 170,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -881,6 +881,14 @@
       "module": "25-remittance",
       "path": "/remittance",
       "permission": "remittance.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "remittance.adrs",
+      "module": "25-remittance",
+      "path": "/remittance/adrs",
+      "permission": "adr.read",
       "e2eReached": false,
       "axeReached": true
     },
@@ -2349,6 +2357,14 @@
       "module": "25-remittance",
       "path": "/remittance",
       "permission": "remittance.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "remittance.adrs",
+      "module": "25-remittance",
+      "path": "/remittance/adrs",
+      "permission": "adr.read",
       "e2eReached": false,
       "axeReached": true
     },

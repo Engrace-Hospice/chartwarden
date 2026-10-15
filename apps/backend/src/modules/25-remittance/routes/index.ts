@@ -9,8 +9,10 @@ export {
   type TerminologyLookupPort,
 } from "./read-service-drizzle";
 export { buildDrizzleM25WriteService } from "./write-service-drizzle";
+export { buildDrizzleAdrService, type AdrService } from "./adr-service";
 
 import type { M25IngestService } from "../ingest/service";
+import type { AdrService } from "./adr-service";
 import type { M25ReadService } from "./read-service";
 import type { M25WriteService } from "./write-service";
 
@@ -24,4 +26,6 @@ export interface M25RouteServices {
   readonly readService: M25ReadService;
   readonly writeService: M25WriteService;
   readonly ingestService?: M25IngestService;
+  /** ADR intake + MAC rules (milestone 2a); the ADR routes mount only when supplied. */
+  readonly adrService?: AdrService;
 }

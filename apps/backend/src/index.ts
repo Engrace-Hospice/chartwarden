@@ -1046,6 +1046,7 @@ import {
   buildDrizzleDenialSeedStore,
   buildDrizzleM25IngestService,
   buildDrizzleM25ReadService,
+  buildDrizzleAdrService,
   buildDrizzleM25WriteService,
   buildM18EvvAggregatorRejectedConsumer,
   buildM23BackedClaimMatchCandidateProvider,
@@ -5325,6 +5326,10 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                 buildFoundationSiteReader().providerEntityTimezones(tx, providerEntityId),
             }),
             ingestService: m25IngestService,
+            adrService: buildDrizzleAdrService(dbHandle.db, {
+              providerZones: (tx, providerEntityId) =>
+                buildFoundationSiteReader().providerEntityTimezones(tx, providerEntityId),
+            }),
           });
           // M26 (Cap Management) — mount the §4.1 route plugins over the Drizzle READ + WRITE services; the
           // §4.10 `m26.cap.*` transactional outbox publisher binds here (events persist on the mutation's tx).
