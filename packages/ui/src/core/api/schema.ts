@@ -17649,6 +17649,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/portal/messages/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Patient-bound care-team message history (portal-safe M36 projection) */
+        get: operations["getApiV1PortalMessagesHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/portal/messages/send": {
         parameters: {
             query?: never;
@@ -76125,6 +76142,42 @@ export interface operations {
                         /** Format: uuid */
                         channelId: string;
                         lastReadPointer: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PortalMessagesHistory: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        messages: {
+                            /** Format: uuid */
+                            messageId: string;
+                            body: string;
+                            /** Format: date-time */
+                            sentAt: string;
+                            direction: "outgoing" | "incoming";
+                            senderLabel: string;
+                        }[];
+                        nextCursor?: string;
                     };
                 };
             };

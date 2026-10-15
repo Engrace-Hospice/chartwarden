@@ -210765,6 +210765,102 @@
         }
       }
     },
+    "/api/v1/portal/messages/history": {
+      "get": {
+        "operationId": "getApiV1PortalMessagesHistory",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Patient-bound care-team message history (portal-safe M36 projection)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "messages"
+                  ],
+                  "properties": {
+                    "messages": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "messageId",
+                          "body",
+                          "sentAt",
+                          "direction",
+                          "senderLabel"
+                        ],
+                        "properties": {
+                          "messageId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "body": {
+                            "type": "string"
+                          },
+                          "sentAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "direction": {
+                            "anyOf": [
+                              {
+                                "const": "outgoing",
+                                "type": "string"
+                              },
+                              {
+                                "const": "incoming",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "senderLabel": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/portal/messages/send": {
       "post": {
         "operationId": "postApiV1PortalMessagesSend",
