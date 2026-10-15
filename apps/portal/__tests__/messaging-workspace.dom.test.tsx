@@ -54,7 +54,7 @@ describe("PR6.1 — bounded message workspace", () => {
     expect(timeline).toBeTruthy();
     expect(composer).toBeTruthy();
     expect(
-      timeline?.compareDocumentPosition(composer as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+      (timeline?.compareDocumentPosition(composer as Node) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
       screen.getByRole("textbox", { name: "Message your care team" }).getAttribute("rows"),

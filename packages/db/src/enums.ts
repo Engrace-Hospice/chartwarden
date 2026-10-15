@@ -333,6 +333,35 @@ export const messageStatus = pgEnum("message_status", ["sent", "edited", "delete
 // "Urgent clinical" entry and is fixed at send; `important` has no writer until WP 4.2. Never inferred from text.
 export const messageUrgency = pgEnum("message_urgency", ["routine", "important", "urgent"]);
 
+// WP 4.2 (ADR-0069, migration 1107): the acknowledgment-request aggregate. Mirrors ACK_STATUSES / ACK_CLASSES / ACK_EVENT_TYPES in
+// @wardenx/types (pinned by a test). `escalated` and `failed_unreachable` have no writer until WP 4.4 / 4.5; `critical_symptom`
+// has none until the clinical lead signs off who may raise or take it.
+export const messageAckStatus = pgEnum("message_ack_status", [
+  "pending",
+  "acknowledged",
+  "escalated",
+  "resolved",
+  "cancelled",
+  "failed_unreachable",
+]);
+export const messageAckClass = pgEnum("message_ack_class", [
+  "important",
+  "urgent",
+  "critical_symptom",
+]);
+export const messageAckEventType = pgEnum("message_ack_event_type", [
+  "requested",
+  "delivered",
+  "opened",
+  "acknowledged",
+  "overdue",
+  "escalated",
+  "reassigned",
+  "resolved",
+  "cancelled",
+  "delivery_failed",
+]);
+
 // `message_receipt_status` — per-recipient receipt state (§3.4): `delivered` (fanned out server-side) |
 // `read` (explicitly read). `ack` is a retired value kept only to match the DB enum (a Postgres enum value
 // cannot be dropped in place); migration 1079 CHECK-blocks it. It is NOT a clinical acknowledgement

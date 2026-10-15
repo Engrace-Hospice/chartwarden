@@ -28,7 +28,7 @@
 // `recipientKind` is read from the alert's `alert_rule` resolver; `recipientMembershipId` is null (the delivery
 // row carries the user id, not the membership); `providerEntityId` / `sourceAggregateId` are read from
 // `alert.payload` when the emitting module put them there, else null.
-import { Type } from "@sinclair/typebox";
+import { type TSchema, Type } from "@sinclair/typebox";
 import {
   CHART_PROMOTION_TARGET_KINDS,
   CHART_PROMOTION_TARGET_MODULES,
@@ -67,6 +67,71 @@ const channel = Type.Union([
   Type.Literal("email"),
   Type.Literal("voice"),
 ]);
+
+// WP 4.2 (ADR-0069): the acknowledgment-request lifecycle. PHI-free: ids, the class enum, the request version and one instant - no
+// patient id, no name, no text. Each is published in the same transaction as the transition; an idempotent repeat publishes nothing.
+const ackClass = Type.Union([
+  Type.Literal("important"),
+  Type.Literal("urgent"),
+  Type.Literal("critical_symptom"),
+]);
+const ackPayload = (extra: Record<string, TSchema> = {}) =>
+  Type.Object(
+    {
+      organizationId: id,
+      requestId: id,
+      messageId: id,
+      channelId: id,
+      ackClass,
+      assignedUserId: id,
+      actorUserId: nullableId,
+      requestVersion: Type.Integer({ minimum: 0 }),
+      at: isoInstant,
+      ...extra,
+    },
+    { additionalProperties: false },
+  );
+const ackEntry = (
+  eventName: `m36.ack.${string}`,
+  description: string,
+  declaredConsumers: readonly `m${number}`[],
+  extra?: Record<string, TSchema>,
+) => ({
+  eventName,
+  moduleOwner: "m36" as const,
+  description,
+  payloadSchema: ackPayload(extra),
+  declaredConsumers,
+  isOutboxOnly: true,
+});
+const ACK_EVENT_ENTRIES = [
+  ackEntry(
+    "m36.ack.requested",
+    "One qualified colleague was asked to take clinical responsibility for a message (WP 4.2, ADR-0069). Created with an urgent message (same transaction) or for an important one by its author. M36 tells the assignee in-app for the important class (an urgent message already has its own alert). Not a page, not the emergency path.",
+    ["m36"],
+  ),
+  ackEntry(
+    "m36.ack.acknowledged",
+    "The assigned clinician took clinical responsibility by an explicit action (WP 4.2). Opening or reading never produces this. No consumer yet: telling the sender arrives with the supervisor and queue screens (WP 4.9).",
+    [],
+  ),
+  ackEntry(
+    "m36.ack.reassigned",
+    "A request moved to a new assignee; the window restarted, the original request time was kept (WP 4.2). M36 tells the new assignee in-app.",
+    ["m36"],
+    { previousAssignedUserId: id },
+  ),
+  ackEntry(
+    "m36.ack.resolved",
+    "The assigned clinician closed an acknowledged request (WP 4.2). No consumer yet (WP 4.9).",
+    [],
+  ),
+  ackEntry(
+    "m36.ack.cancelled",
+    "A request was withdrawn because its message was deleted (WP 4.2). No consumer yet (WP 4.9).",
+    [],
+  ),
+];
 
 export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
   {
@@ -324,6 +389,7 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
+  ...ACK_EVENT_ENTRIES,
   {
     eventName: "m36.promotion.requested",
     moduleOwner: "m36",

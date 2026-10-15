@@ -1,0 +1,235 @@
+// WP 4.2 - the TypeScript enums and constants, the Drizzle schema, the manifest and migration 1107 agree, and the structural
+// promises of the migration (the state machine, the deadline maximum, append-only history, grants, RLS) are asserted on its text, so a
+// change in one place without the others fails here. The live suite proves the same rules against a real database.
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { ACK_TRANSITIONS } from "@wardenx/messaging";
+import {
+  ACK_CLASSES,
+  ACK_DEADLINE_POLICY,
+  ACK_EVENT_TYPES,
+  ACK_STATUSES,
+  type AckStatus,
+} from "@wardenx/types";
+import { describe, expect, it } from "vitest";
+
+const root = join(__dirname, "../../..");
+const read = (p: string) => readFileSync(join(root, p), "utf8");
+const sql = read("packages/db/migrations/1107_m36_message_acknowledgment_request.sql");
+const flat = (s: string) => s.replace(/\s+/g, " ");
+const list = (values: readonly string[]) => values.map((v) => `'${v}'`).join(", ");
+const quoted = (values: readonly string[]) => values.map((v) => `"${v}"`).join(", ");
+
+describe("migration 1107 enums", () => {
+  it.each([
+    ["message_ack_status", ACK_STATUSES],
+    ["message_ack_class", ACK_CLASSES],
+    ["message_ack_event_type", ACK_EVENT_TYPES],
+  ] as const)(
+    "%s has exactly the code-side values, in SQL and in the Drizzle enums",
+    (name, values) => {
+      expect(flat(sql)).toContain(`CREATE TYPE "${name}" AS ENUM (${list(values)})`);
+      expect(flat(read("packages/db/src/enums.ts"))).toMatch(
+        new RegExp(
+          `pgEnum\\(\\s*"${name}",\\s*\\[\\s*${quoted(values).replace(/, /g, ",\\s*")},?\\s*\\]`,
+        ),
+      );
+    },
+  );
+});
+
+describe("migration 1107 state machine", () => {
+  const guard = flat(sql.slice(sql.indexOf("message_ack_request_update_guard()")));
+
+  it("final states cannot change", () => {
+    expect(guard).toContain("IF OLD.status IN ('resolved', 'cancelled') THEN");
+  });
+
+  it.each(ACK_STATUSES.filter((s) => ACK_TRANSITIONS[s].length > 0))(
+    "the trigger allows exactly the %s transitions the code allows",
+    (from: AckStatus) => {
+      const expected = `WHEN '${from}' THEN NEW.status IN (${list(ACK_TRANSITIONS[from])})`;
+      expect(guard).toContain(expected);
+    },
+  );
+
+  it("allows only two same-status updates: a reassign of a pending request and a tier-up of an escalated one", () => {
+    expect(guard).toContain(
+      "OLD.status = 'pending' AND NEW.assigned_user_id IS DISTINCT FROM OLD.assigned_user_id",
+    );
+    expect(guard).toContain("OLD.status = 'escalated' AND NEW.current_tier > OLD.current_tier");
+  });
+
+  it("makes identity, class, requester and requested_at immutable and the version strictly +1", () => {
+    for (const column of [
+      "NEW.message_id <> OLD.message_id",
+      "NEW.patient_id <> OLD.patient_id",
+      "NEW.ack_class <> OLD.ack_class",
+      "NEW.requester_user_id <> OLD.requester_user_id",
+      "NEW.requested_at <> OLD.requested_at",
+    ]) {
+      expect(guard).toContain(column);
+    }
+    expect(guard).toContain("NEW.version <> OLD.version + 1");
+  });
+
+  it("binds who acts: acknowledge and resolve as the assigned user, reassign as a party, cancel as the sender, windows start now", () => {
+    expect(guard).toContain("v_actor := NULLIF(current_setting('app.user_id', true), '')");
+    expect(guard).toContain(
+      "NEW.status IN ('acknowledged', 'resolved') AND OLD.status <> NEW.status AND v_actor IS DISTINCT FROM NEW.assigned_user_id::text",
+    );
+    expect(guard).toContain(
+      "v_actor NOT IN (OLD.requester_user_id::text, OLD.assigned_user_id::text)",
+    );
+    expect(guard).toContain(
+      "NEW.status = 'cancelled' AND v_actor IS NOT NULL AND v_actor <> OLD.requester_user_id::text",
+    );
+    expect(guard).toContain("abs(extract(epoch FROM (NEW.window_started_at - now()))) > 300");
+  });
+
+  it("moves the assignee only on a reassign, and a reassign needs a new assignee who is an active member", () => {
+    expect(guard).toContain("the assignee changes only by a reassign");
+    expect(guard).toContain("a return to pending needs a new assignee");
+    expect(guard).toContain("mb.status = 'active'");
+  });
+});
+
+describe("migration 1107 insert guard", () => {
+  const guard = flat(sql.slice(sql.indexOf("message_ack_request_insert_guard()")));
+
+  it("requires the author as requester, a live message, a pending first window and an active assignee", () => {
+    expect(guard).toContain("NEW.requester_user_id IS DISTINCT FROM v_author");
+    expect(guard).toContain("v_status = 'deleted'");
+    expect(guard).toContain("NEW.status <> 'pending' OR NEW.version <> 0 OR NEW.current_tier <> 0");
+    expect(guard).toContain("mb.status = 'active'");
+  });
+
+  it("takes the patient from the care-team channel and starts the window now", () => {
+    expect(guard).toContain(
+      "v_kind IS DISTINCT FROM 'care_team' OR v_subject IS DISTINCT FROM NEW.patient_id",
+    );
+    expect(guard).toContain("abs(extract(epoch FROM (NEW.requested_at - now()))) > 300");
+  });
+
+  it("gives the critical class no writer and ties the urgent class to the named recipient", () => {
+    expect(guard).toContain("NEW.ack_class = 'critical_symptom'");
+    expect(guard).toContain("(v_urgency = 'urgent') <> (NEW.ack_class = 'urgent')");
+    expect(guard).toContain("NEW.assigned_user_id IS DISTINCT FROM v_recipient");
+  });
+
+  it("lets a replay through to the caller's ON CONFLICT instead of refusing it", () => {
+    expect(guard).toContain(
+      "IF EXISTS (SELECT 1 FROM message_acknowledgment_request r WHERE r.organization_id = NEW.organization_id AND r.message_id = NEW.message_id) THEN RETURN NEW;",
+    );
+  });
+});
+
+describe("migration 1107 deadline maximum", () => {
+  it("pins the per-class window maximum to the platform policy constants", () => {
+    const check = flat(sql.slice(sql.indexOf('CONSTRAINT "message_ack_request_window"')));
+    for (const ackClass of ACK_CLASSES) {
+      expect(check).toContain(
+        `WHEN '${ackClass}' THEN interval '${ACK_DEADLINE_POLICY[ackClass].maxMinutes} minutes'`,
+      );
+    }
+    expect(flat(read("packages/db/src/schema/messaging/message-acknowledgments.ts"))).toContain(
+      "WHEN 'important' THEN interval '120 minutes' WHEN 'urgent' THEN interval '30 minutes' WHEN 'critical_symptom' THEN interval '10 minutes'",
+    );
+  });
+
+  it("every default is within its maximum", () => {
+    for (const ackClass of ACK_CLASSES) {
+      const { defaultMinutes, maxMinutes } = ACK_DEADLINE_POLICY[ackClass];
+      expect(defaultMinutes).toBeGreaterThan(0);
+      expect(defaultMinutes).toBeLessThanOrEqual(maxMinutes);
+    }
+  });
+});
+
+describe("migration 1107 history, grants, tenancy", () => {
+  it("refuses UPDATE for every role and DELETE for all but the destruction role on the event table", () => {
+    expect(sql).toContain('BEFORE UPDATE OR DELETE ON "message_acknowledgment_event"');
+    // The destruction role is recognised by what survives a referential cascade (the session's own role), not only current_user.
+    const guard = flat(sql);
+    expect(guard).toContain("IF TG_OP = 'DELETE' AND (");
+    expect(guard).toContain("current_user = 'wardenx_destruction'");
+    expect(guard).toContain("current_setting('role', true) = 'wardenx_destruction'");
+    expect(guard).toContain("pg_has_role(session_user, 'wardenx_destruction', 'MEMBER')");
+    expect(guard).toContain("r.rolname = session_user");
+  });
+
+  it("guards every history INSERT: the session's own actor and the request's own resulting status", () => {
+    expect(sql).toContain('BEFORE INSERT ON "message_acknowledgment_event"');
+    const guard = flat(sql);
+    expect(guard).toContain("message_ack_event_actor");
+    expect(guard).toContain("NEW.to_status IS DISTINCT FROM v_status");
+  });
+
+  it("lets only the assignee hand an acknowledged request on", () => {
+    expect(flat(sql)).toContain(
+      "IF v_reassign AND OLD.status = 'acknowledged' AND v_actor IS NOT NULL AND v_actor <> OLD.assigned_user_id::text THEN",
+    );
+  });
+
+  it("grants wardenx_app SELECT+INSERT on the history and no DELETE anywhere", () => {
+    expect(sql).toContain('GRANT SELECT, INSERT ON "message_acknowledgment_event" TO wardenx_app;');
+    expect(sql).toContain(
+      'GRANT SELECT, INSERT ON "message_acknowledgment_request" TO wardenx_app;',
+    );
+    expect(sql).not.toMatch(/GRANT[^;]*DELETE[^;]*TO wardenx_app/);
+    expect(sql).not.toMatch(/GRANT UPDATE[^;]*ON "message_acknowledgment_event"/);
+  });
+
+  it.each(["message_acknowledgment_request", "message_acknowledgment_event"])(
+    "%s has RLS enabled and FORCED with an org-isolation policy and an audit trigger",
+    (table) => {
+      expect(sql).toContain(`ALTER TABLE "${table}" ENABLE ROW LEVEL SECURITY;`);
+      expect(sql).toContain(`ALTER TABLE "${table}" FORCE ROW LEVEL SECURITY;`);
+      expect(flat(sql)).toMatch(
+        new RegExp(
+          `ON "${table}" FOR ALL TO wardenx_app USING \\(organization_id = current_setting\\('app.org_id', true\\)::uuid\\)`,
+        ),
+      );
+      expect(sql).toMatch(new RegExp(`AFTER INSERT OR UPDATE OR DELETE ON ${table}`));
+    },
+  );
+
+  it("the request update grant lists only the transition columns", () => {
+    const grant = flat(
+      sql.slice(
+        sql.indexOf('GRANT UPDATE ("status"'),
+        sql.indexOf(
+          'ON "message_acknowledgment_request" TO wardenx_app;',
+          sql.indexOf('GRANT UPDATE ("status"'),
+        ),
+      ),
+    );
+    for (const immutable of [
+      "organization_id",
+      "message_id",
+      "channel_id",
+      "patient_id",
+      "ack_class",
+      "requester_user_id",
+      "requested_at",
+    ]) {
+      expect(grant).not.toContain(`"${immutable}"`);
+    }
+  });
+
+  it("guards the message: no tombstone while the request is open, no edit once a request exists", () => {
+    expect(sql).toContain('CREATE TRIGGER "trg_message_ack_request_message_guard"');
+    expect(flat(sql)).toContain("NEW.status = 'deleted' AND OLD.status <> 'deleted' AND EXISTS");
+    expect(flat(sql)).toContain(
+      "NEW.edited_at IS NOT NULL AND NEW.edited_at IS DISTINCT FROM OLD.edited_at",
+    );
+  });
+
+  it("registers both tables as M36-owned in the manifest (.ts and .cjs)", () => {
+    for (const file of ["architecture/module-manifest.ts", "architecture/module-manifest.cjs"]) {
+      const text = read(file);
+      expect(text).toContain('"message_acknowledgment_request"');
+      expect(text).toContain('"message_acknowledgment_event"');
+    }
+  });
+});

@@ -53,6 +53,7 @@ import {
   createDrizzleCareTeamStore,
   createDrizzlePatientReaderStore,
 } from "../src/modules/05-patient/seams/drizzle-stores";
+import { buildAckDeps } from "../src/modules/36-messaging/ack-requests/deps";
 import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import type { AttachmentStoragePort } from "../src/modules/36-messaging/attachments/attachment-ports";
 import { createBuiltinScanner } from "../src/modules/36-messaging/attachments/attachment-scanners";
@@ -205,6 +206,14 @@ const ROUTES: Record<string, Verdict> = {
   // random id, flag off) is the 404 a random channel gets, and nothing is written (also attacked in m36-urgency.live).
   "POST /api/v1/messaging/channels/:id/urgent-messages": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/urgent-messages/options": { kind: "idor" },
+  // WP 4.2 acknowledgment requests: the id is a request's (or a channel's / a body message id); every refusal (org B, a non-member,
+  // a random id) is the 404 a random id gets and nothing is written (also attacked in m36-ack-requests.live).
+  "POST /api/v1/messaging/escalations": { kind: "idor" },
+  "GET /api/v1/messaging/escalations/:id": { kind: "idor" },
+  "GET /api/v1/messaging/channels/:id/escalations": { kind: "idor" },
+  "POST /api/v1/messaging/escalations/:id/acknowledge": { kind: "idor" },
+  "POST /api/v1/messaging/escalations/:id/reassign": { kind: "idor" },
+  "POST /api/v1/messaging/escalations/:id/resolve": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/medication-questions/options": { kind: "idor" },
   "POST /api/v1/messaging/channels/:id/messages/:messageId/chart-promotions": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/messages/:messageId/chart-promotions": { kind: "idor" },
@@ -313,6 +322,8 @@ const REGISTRAR_FILES = [
   "medication-question-routes.ts", // WP 3.10 medication questions, mounted by registerMessagingRoutes
   "medication-question-typebox.ts", // schemas only
   "urgent-routes.ts", // WP 4.1 urgent clinical message, mounted by registerMessagingRoutes
+  "ack-routes.ts", // WP 4.2 acknowledgment requests, mounted by registerMessagingRoutes
+  "ack-typebox.ts", // schemas only
   "urgent-typebox.ts", // schemas only
   "promotion-routes.ts", // WP 3.7 chart promotion, mounted by registerMessagingRoutes
   "promotion-typebox.ts", // schemas only
@@ -486,7 +497,8 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       route === "POST /api/v1/messaging/attachments/:id/complete" ||
       route === "POST /api/v1/messaging/announce" ||
       route === "POST /api/v1/messaging/channels/:id/medication-questions" ||
-      route === "POST /api/v1/messaging/channels/:id/urgent-messages";
+      route === "POST /api/v1/messaging/channels/:id/urgent-messages" ||
+      route === "POST /api/v1/messaging/escalations";
     const res = await app.inject({
       method: method as "GET",
       url: url + query,
@@ -672,6 +684,9 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
               // its permission holders by design, so no org-A attacker holds it.
               // WP 4.1: EVERY persona holds messaging.urgent.send, so only channel visibility / tenancy stops an attacker.
               "messaging.urgent.send",
+              // WP 4.2: EVERY persona also holds messaging.urgent.receive, so the acknowledge / resolve routes are stopped only by
+              // tenancy and the assignee rule, never by a missing key.
+              "messaging.urgent.receive",
               ...(w === u1 ? ["messaging.review"] : []),
               ...(w === reviewerB ? ["messaging.review", "patient.read"] : []),
               ...(w.roles.includes("org_admin") ? adminKeys : ["alert.rules.read"]),
@@ -771,6 +786,23 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
           new Set(["messaging.read", "messaging.send", "patient.read", "messaging.urgent.receive"]),
         careTeamMembers: async () => [],
       }),
+      ackRequests: {
+        service: buildAckDeps({
+          db: handle.db,
+          flags: { forOrg: async () => ({ "messaging.ack_requests": true }) },
+          outbox: outbox as never,
+          messaging: service,
+          part2Gate: { allowedUserIds: async ({ userIds }) => new Set(userIds) },
+          permissionsFor: async () =>
+            new Set([
+              "messaging.read",
+              "messaging.send",
+              "patient.read",
+              "messaging.urgent.receive",
+            ]),
+          careTeamMembers: async () => [u1.userId, u2.userId],
+        }).service,
+      },
       promotions: buildPromotionDeps({
         db: handle.db,
         flags: { forOrg: async () => ({ "messaging.promotions": true }) },
@@ -1959,6 +1991,74 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         await expectNoOracle(optionsRoute, attacker, { id: careTeamA });
       }
       expect((await urgent()).rows[0].n).toBe(before);
+    });
+    it("WP 4.2: org B and an in-org non-member get a random id's answer for A's acknowledgment request, and change nothing", async () => {
+      const BASE = "/api/v1/messaging/escalations";
+      await admin.query(
+        `INSERT INTO channel_member (organization_id, channel_id, user_id, role, source)
+         VALUES ($1,$2,$3,'member','manual') ON CONFLICT DO NOTHING`,
+        [orgA, careTeamA, u2.userId],
+      );
+      const sent = await service.sendMessage(orgA, {
+        channelId: careTeamA,
+        authorUserId: u1.userId,
+        body: "please look at this",
+      });
+      const made = await call(
+        `POST ${BASE}`,
+        u1,
+        {},
+        { message_id: sent.messageId, assigned_user_id: u2.userId },
+      );
+      expect(made.statusCode, made.body).toBe(201);
+      const id = made.json().request.id as string;
+      const state = () =>
+        admin.query(
+          "SELECT status, assigned_user_id, version, (SELECT count(*)::int FROM message_acknowledgment_event) AS events FROM message_acknowledgment_request WHERE id=$1",
+          [id],
+        );
+      const before = (await state()).rows[0];
+
+      for (const attacker of [bUser, adminB, outsider]) {
+        // the body id: A's real message and a random one must answer identically
+        const real = await call(
+          `POST ${BASE}`,
+          attacker,
+          {},
+          { message_id: sent.messageId, assigned_user_id: attacker.userId },
+        );
+        const control = await call(
+          `POST ${BASE}`,
+          attacker,
+          {},
+          { message_id: randomUUID(), assigned_user_id: attacker.userId },
+        );
+        attackers.add(attacker.name);
+        expect(real.statusCode, `${attacker.name}: ${real.body}`).toBeGreaterThanOrEqual(400);
+        expect(real.statusCode).toBeLessThan(500);
+        expect(shape(real), `${attacker.name} create differs from a random message id`).toBe(
+          shape(control),
+        );
+        expectNoLeak(real.body, attacker, `${attacker.name} create`);
+        await expectNoOracle("GET /api/v1/messaging/escalations/:id", attacker, { id });
+        await expectNoOracle("POST /api/v1/messaging/escalations/:id/acknowledge", attacker, {
+          id,
+        });
+        await expectNoOracle("POST /api/v1/messaging/escalations/:id/resolve", attacker, { id });
+        await expectNoOracle(
+          "POST /api/v1/messaging/escalations/:id/reassign",
+          attacker,
+          { id },
+          { assigned_user_id: attacker.userId },
+        );
+        await expectNoOracle("GET /api/v1/messaging/channels/:id/escalations", attacker, {
+          id: careTeamA,
+        });
+      }
+      expect((await state()).rows[0]).toEqual(before);
+      // the assignee, by contrast, really can act: the refusals above were tenancy, not shape.
+      const ack = await call("POST /api/v1/messaging/escalations/:id/acknowledge", u2, { id });
+      expect(ack.statusCode, ack.body).toBe(200);
     });
     it("WP 3.4: org B and an in-org non-member get a random id's answer for A's task and A's message, and list none of it", async () => {
       const convertRoute = "POST /api/v1/messaging/channels/:id/messages/:messageId/tasks";

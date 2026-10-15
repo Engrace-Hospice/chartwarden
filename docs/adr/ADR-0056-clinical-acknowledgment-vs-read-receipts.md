@@ -1,7 +1,10 @@
 # ADR-0056 — Clinical acknowledgment is its own aggregate (acknowledgment request + append-only events), distinct from delivery and read receipts; deadlines are per-urgency defaults a tenant may only tighten
 
 - **Status:** **Proposed** — needs product-owner acceptance **and clinical-lead sign-off of the deadline numbers** (decision D4)
-  before Phase 4 ships. Drafted in Phase 0.
+  before Phase 4 ships. Drafted in Phase 0. **WP 4.2 built the aggregate provisionally (2026-10-15, [ADR-0069](ADR-0069-messaging-acknowledgment-request-aggregate.md)):
+  the tables, the four transitions, the state machine in code and in the database, the platform deadline defaults and maxima, cancel-on-delete and
+  the edit lock. Tenant tightening, `required_role`, `resolution_note_ref`, the Critical writer, timers and tiers are not built; the numbers and the
+  role map are provisional and this ADR stays Proposed until they are signed.**
 - **Date:** 2026-10-11
 - **Phase:** Messaging Hub Phase 4 (WP 4.1, 4.2, 4.4, 4.5, 4.6); the `ack` retirement (WP 1.6/1.9) lands in Phase 1.
 - **Extends:** M36 spec §3.4 (`message_receipt`). Resolves audit F7.
@@ -95,8 +98,9 @@
     correction is a **new linked amendment message** (visible as an amendment), never an overwrite; the old request is cancelled or
     reassigned explicitly, or stays open on the unchanged original.
 11. **Events.** `m36.ack_request.created.v1`, `.acknowledged.v1`, `.overdue.v1`, `.failed_unreachable.v1` registered in the event catalog
-    under the `m36.` convention; consumers are idempotent. These are not yet in `apps/backend/src/modules/36-messaging/events-by-m36.ts`
-    (which today carries `m36.message.mentioned` and `m36.notification.delivery_failed`).
+    under the `m36.` convention; consumers are idempotent. **As built in WP 4.2 (ADR-0069 decision 11):** the catalog has no version suffix and the
+    lifecycle events are `m36.ack.requested`, `.acknowledged`, `.reassigned`, `.resolved` and `.cancelled`; `.overdue` and `.failed_unreachable` arrive
+    with WP 4.4 / 4.5.
 
 ## Alternatives considered
 

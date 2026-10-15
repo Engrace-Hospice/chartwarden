@@ -259,22 +259,26 @@ export function createDbMessagingProvider(
         const hasMore = rows.length > limit;
         const pageRows = rows.slice(0, limit);
         if (backward) pageRows.reverse();
-        const messages = pageRows.map(
-          (m): ResolvedMessage => ({
-            messageId: m.id,
-            channelId: m.channelId,
-            authorUserId: m.authorUserId,
-            authorDisplayName: null,
-            body:
-              m.status === "deleted"
-                ? ""
-                : decodeStoredBody(m.bodyKind as MessageBodyKind, cipher.open(orgId, m.bodyCipher))
-                    .body,
-            bodyKind: m.bodyKind as MessageBodyKind,
-            createdAt: m.createdAt.toISOString(),
-            parentMessageId: m.parentMessageId,
-            references: [],
-          }),
+        const messages = await Promise.all(
+          pageRows.map(
+            async (m): Promise<ResolvedMessage> => ({
+              messageId: m.id,
+              channelId: m.channelId,
+              authorUserId: m.authorUserId,
+              authorDisplayName: null,
+              body:
+                m.status === "deleted"
+                  ? ""
+                  : decodeStoredBody(
+                      m.bodyKind as MessageBodyKind,
+                      await cipher.open(orgId, m.bodyCipher),
+                    ).body,
+              bodyKind: m.bodyKind as MessageBodyKind,
+              createdAt: m.createdAt.toISOString(),
+              parentMessageId: m.parentMessageId,
+              references: [],
+            }),
+          ),
         );
         const cursorRow = backward ? pageRows[0] : pageRows.at(-1);
         return {
@@ -389,11 +393,11 @@ export function createDbMessagingProvider(
             .where(
               and(eq(CM.organizationId, orgId), eq(CM.channelId, channelId), isNull(CM.removedAt)),
             )) as Array<{
-              id: string;
-              userId: string;
-              source: "auto" | "manual";
-              role: "owner" | "member" | "read_only" | "portal_caregiver";
-            }>;
+            id: string;
+            userId: string;
+            source: "auto" | "manual";
+            role: "owner" | "member" | "read_only" | "portal_caregiver";
+          }>;
           const activeUserIds = new Set(activeMembers.map((m) => m.userId));
 
           // GAP-104 — an archived (discharged/deceased) channel takes no NEW members; removals still apply
@@ -404,8 +408,7 @@ export function createDbMessagingProvider(
             ? []
             : [...roster].filter((userId) => !activeUserIds.has(userId) && !excluded.has(userId));
           const toRemove = activeMembers.filter(
-            (m) =>
-              m.source === "auto" && m.role !== "portal_caregiver" && !roster.has(m.userId),
+            (m) => m.source === "auto" && m.role !== "portal_caregiver" && !roster.has(m.userId),
           );
           const addPortalCaregiver =
             !channelArchived && Boolean(portalUserId) && !activeUserIds.has(portalUserId!);

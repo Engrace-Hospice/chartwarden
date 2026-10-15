@@ -157,6 +157,7 @@ import type { buildIdgDiscussionDeps as _buildIdgDiscussionDeps } from "./idg/bi
 import { createDbMessagingRouteService as _createDbMessagingRouteService } from "./messaging-route-service-db";
 import type { MessagingOutboxPort } from "./messaging-route-service-db";
 import { createDbPollService as _createDbPollService } from "./polls/poll-service-db";
+import type { AckRouteDeps as _AckRouteDeps } from "./routes/ack-routes";
 import {
   buildAdminAlertDeliveriesDeps as _buildAdminAlertDeliveriesDeps,
   registerAdminAlertDeliveriesRoutes as _registerAdminAlertDeliveriesRoutes,
@@ -219,6 +220,8 @@ export function mountMessagingRoutes(
     medicationQuestions?: _MedicationQuestionRouteDeps;
     /** WP 4.1: urgent clinical message (service). Omitted => flag off. */
     urgent?: _UrgentRouteDeps;
+    /** WP 4.2: acknowledgment requests (service + limiter). Omitted => every route is the uniform 404. */
+    ackRequests?: _AckRouteDeps;
     /** WP 3.7: chart promotion (tenant flag + service). Omitted => flag off. */
     promotions?: _PromotionRouteDeps;
     /** WP 3.6: IDG discussions (tenant flags + read-only store). Omitted => flag off. */
@@ -245,6 +248,7 @@ export function mountMessagingRoutes(
     ...(opts.review ? { review: opts.review } : {}),
     ...(opts.medicationQuestions ? { medicationQuestions: opts.medicationQuestions } : {}),
     ...(opts.urgent ? { urgent: opts.urgent } : {}),
+    ...(opts.ackRequests ? { ackRequests: opts.ackRequests } : {}),
     ...(opts.promotions ? { promotions: opts.promotions } : {}),
     ...(opts.idgDiscussions ? { idgDiscussions: opts.idgDiscussions } : {}),
   }); // WP 2.9, 2.12, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8
@@ -307,6 +311,7 @@ export { buildHandoffDeps } from "./handoffs/deps";
 export { buildReviewDeps } from "./review/deps";
 export { buildMedicationQuestionDeps } from "./medication-questions/deps";
 export { buildUrgentDeps } from "./urgent/deps";
+export { buildAckDeps } from "./ack-requests/deps";
 export { buildPromotionDeps } from "./promotions/deps";
 export { buildIdgDiscussionDeps } from "./idg/deps";
 export {

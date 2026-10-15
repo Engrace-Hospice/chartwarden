@@ -39,8 +39,46 @@ const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
     "ADR-0058 F5 tenant notice acknowledgement (an org admin accepting the discoverability notice), not a message receipt",
   "apps/backend/src/modules/36-messaging/routes/global-search-settings-typebox.ts":
     "ADR-0058 F5 tenant notice acknowledgement (an org admin accepting the discoverability notice), not a message receipt",
+  "apps/web/src/modules/36-messaging/message-row.tsx":
+    "WP 4.2 mounts the acknowledgment-request card under a message of a patient conversation (one import and one element)",
+  "apps/web/src/modules/36-messaging/conversation-thread.tsx":
+    "WP 4.2 wraps the timeline in the acknowledgment-request loader for a patient care-team conversation (one import and one element)",
+  "apps/web/src/modules/36-messaging/ack-request-card.tsx":
+    "WP 4.2 web: the acknowledgment-request card (taking responsibility is an explicit button; opening or reading sends nothing)",
+  "apps/web/src/modules/36-messaging/ack-wording.ts":
+    "WP 4.2 web: every word the acknowledgment-request card shows (provisional, pending clinical-lead review)",
+  "apps/web/src/modules/36-messaging/use-ack-requests.ts":
+    "WP 4.2 web hook for the acknowledgment requests of a channel and the explicit acknowledge / resolve calls",
+  "apps/backend/src/modules/36-messaging/routes/ack-routes.ts":
+    "WP 4.2 routes of the acknowledgment-request aggregate (acknowledge is an explicit POST by the assignee; no GET or receipt writes)",
+  "apps/backend/src/modules/36-messaging/routes/ack-typebox.ts":
+    "WP 4.2 request/response schemas of the acknowledgment-request aggregate",
+  "apps/backend/src/modules/36-messaging/routes/messaging-routes.ts":
+    "WP 4.2 mounts the acknowledgment-request routes (a registrar line and its comment)",
+  "apps/backend/src/modules/36-messaging/index.ts":
+    "WP 4.2 exports the acknowledgment-request binding (an export line and its comment)",
+  "apps/backend/src/modules/36-messaging/events-by-m36.ts":
+    "WP 4.2 outbox catalog entries of the acknowledgment-request lifecycle (m36.ack.*)",
+  "apps/backend/src/modules/36-messaging/messaging-route-service-db.ts":
+    "WP 4.2 delete cancels the message's open acknowledgment request and edit is refused once a request exists (import lines and comments)",
+  "apps/backend/src/modules/36-messaging/outbox-consumers/ack-notifications.ts":
+    "WP 4.2 the in-app alert for the assignee of an acknowledgment request (never a receipt)",
+  "packages/messaging/src/index.ts": "WP 4.2 re-exports the pure acknowledgment-request rules",
   "apps/web/src/modules/36-messaging/reaction-palette.ts":
     "WP 2.4 user-facing copy that NEGATES the word: a reaction does not mean a message was read, acknowledged or acted on",
+};
+
+/**
+ * WP 4.2 (ADR-0069, which retires the old `ack` per ADR-0056 item 4): the acknowledgment-request aggregate LEGITIMATELY lands here.
+ * Whole directories that implement it may use the words (each WITH a reason). This relaxes ONLY the wording check: the `"ack"`
+ * status literal and the retired `acked_at` column stay banned everywhere, so a receipt, a read or a delivery still cannot be
+ * labelled acknowledged by code outside the aggregate.
+ */
+const WORDING_ALLOWLIST_PREFIXES: Readonly<Record<string, string>> = {
+  "apps/backend/src/modules/36-messaging/ack-requests/":
+    "WP 4.2 the acknowledgment-request aggregate itself (service, store, events, binding): an explicit action by the assigned clinician, never a receipt",
+  "packages/messaging/src/ack-requests/":
+    "WP 4.2 the pure state machine and deadline rules of the acknowledgment-request aggregate",
 };
 
 /** The schema owns the retired column; the test files below pin that it stays NULL. */
@@ -63,6 +101,8 @@ const files = [
 const STATUS_LITERAL = /["'`]ack["'`]/;
 const ACKED_AT = /\backedAt\b|\backed_at\b/;
 const WORDING = /\back(ed|s)?\b|acknowledg/i;
+const allowedPrefix = (rel: string): boolean =>
+  Object.keys(WORDING_ALLOWLIST_PREFIXES).some((prefix) => rel.startsWith(prefix));
 
 describe("M36 receipt semantics ratchet (no acknowledgement on a receipt)", () => {
   it("scans a non-trivial file set", () => {
@@ -83,7 +123,7 @@ describe("M36 receipt semantics ratchet (no acknowledgement on a receipt)", () =
 
   it("does not label a delivery, open or read as an ack/acknowledgement (reasoned allowlist only)", () => {
     const hits = files
-      .filter((f) => !(f.rel in WORDING_ALLOWLIST) && WORDING.test(f.text))
+      .filter((f) => !(f.rel in WORDING_ALLOWLIST) && !allowedPrefix(f.rel) && WORDING.test(f.text))
       .map((f) => `${f.rel}: ${WORDING.exec(f.text)?.[0]}`);
     expect(hits).toEqual([]);
   });
@@ -93,6 +133,13 @@ describe("M36 receipt semantics ratchet (no acknowledgement on a receipt)", () =
       const f = files.find((x) => x.rel === rel);
       return !f || !WORDING.test(f.text);
     });
+    expect(stale).toEqual([]);
+  });
+
+  it("keeps every allowlisted directory live (a prefix with no file that needs it is deleted)", () => {
+    const stale = Object.keys(WORDING_ALLOWLIST_PREFIXES).filter(
+      (prefix) => !files.some((f) => f.rel.startsWith(prefix) && WORDING.test(f.text)),
+    );
     expect(stale).toEqual([]);
   });
 });
