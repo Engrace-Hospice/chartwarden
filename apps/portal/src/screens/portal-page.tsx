@@ -10,6 +10,7 @@ export interface PortalPageProps {
   actions?: ReactNode;
   children: ReactNode;
   width?: "reading" | "standard" | "workspace";
+  className?: string;
 }
 
 /** A page frame whose width reflects the task instead of forcing every workflow into one column. */
@@ -19,9 +20,10 @@ export function PortalPage({
   actions,
   children,
   width = "standard",
+  className,
 }: PortalPageProps): JSX.Element {
   return (
-    <div className={`wx-portal-page wx-portal-page--${width}`}>
+    <div className={`wx-portal-page wx-portal-page--${width}${className ? ` ${className}` : ""}`}>
       <header className="wx-portal-page__header">
         <div className="wx-portal-page__intro">
           <h1>{title}</h1>

@@ -47,6 +47,7 @@ export function PortalAccount(): JSX.Element {
     };
   }, []);
   useEffect(() => {
+    void loadAttempt;
     let current = true;
     setLoading(true);
     setError(null);
@@ -110,31 +111,28 @@ export function PortalAccount(): JSX.Element {
     try {
       const res = await client.POST("/api/v1/portal/sessions/logout", {});
       if ("error" in res) {
-        if (active.current)
-          setSignOutError("We couldn't confirm sign-out. Please try again.");
+        if (active.current) setSignOutError("We couldn't confirm sign-out. Please try again.");
         return;
       }
       // Full navigation ensures no patient-scoped React state survives a successful sign-out.
       window.location.assign("/");
     } catch {
-      if (active.current)
-        setSignOutError("We couldn't confirm sign-out. Please try again.");
+      if (active.current) setSignOutError("We couldn't confirm sign-out. Please try again.");
     } finally {
       inFlightLogout.current = false;
       if (active.current) setSigningOut(false);
     }
   }
 
-  const patientPath = ctx?.activePatientId
-    ? `/p/${encodeURIComponent(ctx.activePatientId)}`
-    : null;
+  const patientPath = ctx?.activePatientId ? `/p/${encodeURIComponent(ctx.activePatientId)}` : null;
   const prefsPath = patientPath ? `${patientPath}/preferences` : null;
 
   return (
     <PortalPage
       title="Account & security"
-      subtitle="Your access, sign-in security, and display preferences."
+      subtitle="Manage your portal access, security, and preferences."
       width="standard"
+      className="wx-portal-account-page"
       actions={
         patientPath ? (
           <Link className="wx-portal-account-back" to={patientPath}>
@@ -151,24 +149,18 @@ export function PortalAccount(): JSX.Element {
         emptyDescription="We couldn't load your account. Please sign in again."
         onRetry={() => setLoadAttempt((value) => value + 1)}
       >
-        <div className="wx-portal-settings-layout">
-          <div className="wx-portal-settings-main">
-            <section
-              className="wx-portal-settings-panel"
-              aria-labelledby="portal-access-heading"
-            >
-              <div className="wx-portal-settings-panel__heading">
-                <span
-                  className="wx-portal-settings-panel__icon"
-                  aria-hidden="true"
-                >
-                  <Glyph name="users" size={20} />
-                </span>
-                <div>
-                  <h2 id="portal-access-heading">Your portal access</h2>
-                  <p>Information about your current family portal account.</p>
-                </div>
+        <div className="wx-portal-account-surface">
+          <section className="wx-portal-account-section" aria-labelledby="portal-access-heading">
+            <div className="wx-portal-account-section__heading">
+              <span aria-hidden="true">
+                <Glyph name="users" size={18} />
+              </span>
+              <div>
+                <h2 id="portal-access-heading">Portal access</h2>
+                <p>Your current Family Portal access.</p>
               </div>
+            </div>
+            <div className="wx-portal-access-summary">
               <dl className="wx-portal-settings-details">
                 <div>
                   <dt>Relationship</dt>
@@ -178,10 +170,7 @@ export function PortalAccount(): JSX.Element {
                   <dt>Access status</dt>
                   <dd>
                     {ctx ? (
-                      <StatusPill
-                        tone={statusTone(ctx.status)}
-                        label={humanize(ctx.status)}
-                      />
+                      <StatusPill tone={statusTone(ctx.status)} label={humanize(ctx.status)} />
                     ) : (
                       "—"
                     )}
@@ -189,103 +178,81 @@ export function PortalAccount(): JSX.Element {
                 </div>
               </dl>
               {patientPath ? (
-                <div className="wx-portal-settings-panel__footer">
-                  <Link to="/patient-picker" className="wx-portal-account-back">
-                    Switch patient →
-                  </Link>
-                </div>
+                <Link to="/patient-picker" className="wx-portal-account-link">
+                  Switch patient <Glyph name="arrow-right" size={15} />
+                </Link>
               ) : (
-                <p className="wx-portal-supporting-copy">
-                  Choose a patient to review care information.
-                </p>
+                <Link to="/patient-picker" className="wx-portal-account-link">
+                  Choose a patient <Glyph name="arrow-right" size={15} />
+                </Link>
               )}
-            </section>
+            </div>
+          </section>
 
-            <section
-              className="wx-portal-settings-panel"
-              aria-labelledby="portal-verify-heading"
-            >
-              <div className="wx-portal-settings-panel__heading">
-                <span
-                  className="wx-portal-settings-panel__icon"
-                  aria-hidden="true"
-                >
-                  <Glyph name="shield-check" size={20} />
-                </span>
-                <div>
-                  <h2 id="portal-verify-heading">Verify your identity</h2>
-                  <p>
-                    Use a code from your authenticator app when an additional
-                    security check is required.
-                  </p>
-                </div>
+          <section className="wx-portal-account-section" aria-labelledby="portal-verify-heading">
+            <div className="wx-portal-account-section__heading">
+              <span aria-hidden="true">
+                <Glyph name="shield-check" size={18} />
+              </span>
+              <div>
+                <h2 id="portal-verify-heading">Verify your identity</h2>
+                <p>Use an authenticator code when an additional security check is required.</p>
               </div>
-              <form
-                className="wx-portal-settings-verify"
-                onSubmit={(e) => void stepUp(e)}
+            </div>
+            <form className="wx-portal-settings-verify" onSubmit={(e) => void stepUp(e)}>
+              <TextField
+                label="One-time code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="6-digit code"
+                required
+                maxLength={8}
+                value={totp}
+                onChange={(e) => {
+                  setTotp(e.target.value);
+                  setStepState(null);
+                }}
+              />
+              <Button
+                type="submit"
+                loading={verifying}
+                disabled={verifying || !/^\d{6,8}$/.test(totp.trim())}
               >
-                <TextField
-                  label="One-time code"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  placeholder="6-digit code"
-                  required
-                  maxLength={8}
-                  value={totp}
-                  onChange={(e) => {
-                    setTotp(e.target.value);
-                    setStepState(null);
-                  }}
-                />
-                <Button
-                  type="submit"
-                  loading={verifying}
-                  disabled={verifying || !/^\d{6,8}$/.test(totp.trim())}
-                >
-                  Verify code
-                </Button>
-              </form>
-              {stepState ? (
-                <div role="status" className="wx-portal-settings-feedback">
-                  <InlineAlert
-                    tone={stepState.tone === "err" ? "error" : "success"}
-                  >
-                    {stepState.msg}
-                  </InlineAlert>
-                </div>
-              ) : null}
-              <p className="wx-portal-settings-hint">
-                This check does not change your password or enable new account
-                permissions.
-              </p>
-            </section>
-          </div>
+                Verify code
+              </Button>
+            </form>
+            {stepState ? (
+              <output className="wx-portal-settings-feedback">
+                <InlineAlert tone={stepState.tone === "err" ? "error" : "success"}>
+                  {stepState.msg}
+                </InlineAlert>
+              </output>
+            ) : null}
+            <p className="wx-portal-settings-hint">
+              Verification applies only to the current security step. It does not change account
+              permissions.
+            </p>
+          </section>
 
-          <aside
-            className="wx-portal-settings-aside"
-            aria-label="Preferences and session"
+          <section
+            className="wx-portal-account-section"
+            aria-labelledby="portal-preferences-heading"
           >
-            <section
-              className="wx-portal-settings-panel"
-              aria-labelledby="portal-theme-heading"
-            >
-              <div className="wx-portal-settings-panel__heading">
-                <span
-                  className="wx-portal-settings-panel__icon"
-                  aria-hidden="true"
-                >
-                  <Glyph name="sun" size={20} />
-                </span>
-                <div>
-                  <h2 id="portal-theme-heading">Appearance</h2>
-                  <p>Choose how the portal looks on this device.</p>
-                </div>
+            <div className="wx-portal-account-section__heading">
+              <span aria-hidden="true">
+                <Glyph name="settings" size={18} />
+              </span>
+              <div>
+                <h2 id="portal-preferences-heading">Preferences</h2>
+                <p>Display and notification options.</p>
               </div>
-              <div
-                className="wx-portal-theme-options"
-                role="group"
-                aria-label="Color theme"
-              >
+            </div>
+            <div className="wx-portal-setting-row">
+              <div>
+                <strong>Appearance</strong>
+                <small>Saved on this device.</small>
+              </div>
+              <fieldset className="wx-portal-theme-options" aria-label="Color theme">
                 <button
                   type="button"
                   className={mode === "light" ? "is-active" : ""}
@@ -294,7 +261,7 @@ export function PortalAccount(): JSX.Element {
                     if (mode !== "light") toggle();
                   }}
                 >
-                  Light
+                  <Glyph name="sun" size={15} /> Light
                 </button>
                 <button
                   type="button"
@@ -304,72 +271,45 @@ export function PortalAccount(): JSX.Element {
                     if (mode !== "dark") toggle();
                   }}
                 >
-                  Dark
+                  <Glyph name="moon" size={15} /> Dark
                 </button>
-              </div>
-              <span className="wx-portal-settings-hint">
-                Saved on this device.
-              </span>
-            </section>
-
-            <section
-              className="wx-portal-settings-panel"
-              aria-labelledby="portal-notifications-heading"
-            >
-              <div className="wx-portal-settings-panel__heading">
-                <span
-                  className="wx-portal-settings-panel__icon"
-                  aria-hidden="true"
-                >
-                  <Glyph name="bell" size={20} />
-                </span>
-                <div>
-                  <h2 id="portal-notifications-heading">Notifications</h2>
-                  <p>See which notification channels are available.</p>
-                </div>
+              </fieldset>
+            </div>
+            <div className="wx-portal-setting-row">
+              <div>
+                <strong>Notifications</strong>
+                <small>Review the channels available for the selected patient.</small>
               </div>
               {prefsPath ? (
-                <Link className="wx-portal-account-back" to={prefsPath}>
-                  View notification preferences →
+                <Link className="wx-portal-account-link" to={prefsPath}>
+                  View notification preferences <Glyph name="chevron-right" size={15} />
                 </Link>
               ) : (
-                <p className="wx-portal-settings-hint">
-                  Select a patient to see their notification preferences.
-                </p>
+                <span className="wx-portal-settings-hint">Choose a patient first.</span>
               )}
-            </section>
+            </div>
+          </section>
 
-            <section
-              className="wx-portal-settings-panel wx-portal-settings-panel--signout"
-              aria-labelledby="portal-signout-heading"
-            >
-              <div className="wx-portal-settings-panel__heading">
-                <span
-                  className="wx-portal-settings-panel__icon"
-                  aria-hidden="true"
-                >
-                  <Glyph name="shield-check" size={20} />
-                </span>
-                <div>
-                  <h2 id="portal-signout-heading">End your session</h2>
-                  <p>
-                    Sign out when you finish, especially on a shared device.
-                  </p>
-                </div>
-              </div>
-              {signOutError ? (
-                <InlineAlert tone="error">{signOutError}</InlineAlert>
-              ) : null}
+          <section
+            className="wx-portal-account-section wx-portal-session-row"
+            aria-labelledby="portal-signout-heading"
+          >
+            <div>
+              <h2 id="portal-signout-heading">Session</h2>
+              <p>Sign out when using a shared device.</p>
+            </div>
+            <div>
+              {signOutError ? <InlineAlert tone="error">{signOutError}</InlineAlert> : null}
               <Button
                 tone="secondary"
                 loading={signingOut}
                 disabled={signingOut}
                 onClick={() => void logout()}
               >
-                Sign out of this device
+                Sign out
               </Button>
-            </section>
-          </aside>
+            </div>
+          </section>
         </div>
       </PortalLoadState>
     </PortalPage>
