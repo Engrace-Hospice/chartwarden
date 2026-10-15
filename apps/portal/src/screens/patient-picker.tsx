@@ -18,8 +18,7 @@ export function PortalPatientPicker(): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const autoOpen =
-    (location.state as { openOnlyPatient?: boolean } | null)
-      ?.openOnlyPatient === true;
+    (location.state as { openOnlyPatient?: boolean } | null)?.openOnlyPatient === true;
   const autoAttempted = useRef(false);
   const [patients, setPatients] = useState<GrantedPatient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,6 +39,7 @@ export function PortalPatientPicker(): JSX.Element {
   }, []);
 
   useEffect(() => {
+    void loadAttempt;
     const version = ++generation.current;
     setLoading(true);
     setError(null);
@@ -52,11 +52,9 @@ export function PortalPatientPicker(): JSX.Element {
         if ("error" in res) setError(readError(res.response?.status));
         else setPatients((res.data?.items ?? []) as GrantedPatient[]);
       } catch {
-        if (mounted.current && version === generation.current)
-          setError(readError(undefined));
+        if (mounted.current && version === generation.current) setError(readError(undefined));
       } finally {
-        if (mounted.current && version === generation.current)
-          setLoading(false);
+        if (mounted.current && version === generation.current) setLoading(false);
       }
     })();
     return () => {
@@ -67,14 +65,7 @@ export function PortalPatientPicker(): JSX.Element {
   useEffect(() => {
     // Only the immediate post-sign-in redirect may auto-open a single authorized patient.
     // Manual visits to /patient-picker must always allow the user to stay and choose.
-    if (
-      !autoOpen ||
-      loading ||
-      error ||
-      patients.length !== 1 ||
-      autoAttempted.current
-    )
-      return;
+    if (!autoOpen || loading || error || patients.length !== 1 || autoAttempted.current) return;
     autoAttempted.current = true;
     void enter(patients[0]!.patientId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -97,9 +88,7 @@ export function PortalPatientPicker(): JSX.Element {
       else navigate(`/p/${encodeURIComponent(patientId)}`, { replace: true });
     } catch {
       if (mounted.current && version === generation.current)
-        setSelectionError(
-          "We couldn't open this care record. Please try again.",
-        );
+        setSelectionError("We couldn't open this care record. Please try again.");
     } finally {
       selectingRef.current = false;
       if (mounted.current && version === generation.current) setSelecting(null);
@@ -109,83 +98,67 @@ export function PortalPatientPicker(): JSX.Element {
   return (
     <PortalPage
       title="Choose a patient"
-      subtitle="Open the care information you have permission to view."
+      subtitle="Select the care record you'd like to view."
       width="standard"
+      className="wx-portal-picker-page"
     >
-      <div className="wx-portal-picker-intro">
-        <span className="wx-portal-picker-intro__icon" aria-hidden="true">
-          <Glyph name="users" size={23} />
-        </span>
-        <div>
-          <h2>Whose care are you here for?</h2>
-          <p>
-            Each care record is kept separate. You can return here to switch
-            patients at any time.
-          </p>
-        </div>
-      </div>
       {selectionError ? (
         <div className="wx-portal-picker-error" role="alert">
           <InlineAlert tone="error">{selectionError}</InlineAlert>
         </div>
       ) : null}
-      <PortalLoadState
-        loading={loading}
-        error={error}
-        empty={patients.length === 0}
-        emptyTitle="No active patient access"
-        emptyDescription="Your hospice care team can help if you expect to see a patient here."
-        onRetry={() => setLoadAttempt((attempt) => attempt + 1)}
-      >
-        <div className="wx-portal-picker-heading">
-          <h2>Available care records</h2>
-          <span>
-            {patients.length} {patients.length === 1 ? "patient" : "patients"}
-          </span>
-        </div>
-        <div className="wx-portal-patient-list">
-          {patients.map((patient, index) => (
-            <button
-              key={patient.grantId}
-              type="button"
-              className="wx-portal-patient-option"
-              disabled={selecting !== null}
-              aria-describedby={`patient-access-${index}`}
-              onClick={() => void enter(patient.patientId)}
-            >
-              <span
-                className="wx-portal-patient-option__avatar"
-                aria-hidden="true"
-              >
-                <Glyph name="user" size={24} />
-              </span>
-              <span className="wx-portal-patient-option__copy">
-                <strong>
-                  {patient.layPatientLabel || "Patient care record"}
-                </strong>
-                <span id={`patient-access-${index}`}>
-                  Access as {humanize(patient.grantKind)}
-                </span>
-                <small>
-                  {selecting === patient.patientId
-                    ? "Opening secure record…"
-                    : "View care information"}
-                </small>
-              </span>
-              <span
-                className="wx-portal-patient-option__arrow"
-                aria-hidden="true"
-              >
-                {selecting === patient.patientId ? "…" : "→"}
-              </span>
-            </button>
-          ))}
-        </div>
-      </PortalLoadState>
+      {loading ? (
+        <output className="wx-portal-picker-skeleton" aria-label="Loading care records">
+          <span />
+          <span />
+        </output>
+      ) : (
+        <PortalLoadState
+          loading={false}
+          error={error}
+          empty={patients.length === 0}
+          emptyTitle="No active patient access"
+          emptyDescription="No care records are currently shared with this account."
+          onRetry={() => setLoadAttempt((attempt) => attempt + 1)}
+        >
+          <section aria-labelledby="available-patients-heading">
+            <div className="wx-portal-picker-heading">
+              <h2 id="available-patients-heading">Available care records</h2>
+              <span>{patients.length}</span>
+            </div>
+            <div className="wx-portal-patient-list">
+              {patients.map((patient, index) => (
+                <button
+                  key={patient.grantId}
+                  type="button"
+                  className="wx-portal-patient-option"
+                  disabled={selecting !== null}
+                  aria-describedby={`patient-access-${index}`}
+                  onClick={() => void enter(patient.patientId)}
+                >
+                  <span className="wx-portal-patient-option__avatar" aria-hidden="true">
+                    <Glyph name="user" size={20} />
+                  </span>
+                  <span className="wx-portal-patient-option__copy">
+                    <strong>{patient.layPatientLabel || "Patient care record"}</strong>
+                    <span id={`patient-access-${index}`}>
+                      Access as {humanize(patient.grantKind)}
+                    </span>
+                  </span>
+                  <span className="wx-portal-patient-option__action">
+                    {selecting === patient.patientId ? "Opening…" : "Open care record"}
+                    <Glyph name="arrow-right" size={16} aria-hidden="true" />
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        </PortalLoadState>
+      )}
       <div className="wx-portal-picker-footer">
         <Glyph name="shield-check" size={19} />
         <p>
-          Only care records shared with your account appear here.{" "}
+          Only records shared with your account appear here.{" "}
           <Link to="/account">Account & security</Link>
         </p>
       </div>
