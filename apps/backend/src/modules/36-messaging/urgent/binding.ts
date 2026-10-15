@@ -41,6 +41,14 @@ export interface UrgentBinding {
    * ERROR propagates (the outbox retries); only a clean "no" returns false.
    */
   readonly stillQualified: (orgId: string, userId: string, channelId: string) => Promise<boolean>;
+  /** True only when this sender already stored an urgent message under this client id for this recipient (the limiter's replay test). */
+  readonly isReplay: (q: {
+    organizationId: string;
+    userId: string;
+    channelId: string;
+    clientMessageId: string;
+    recipientUserId: string;
+  }) => Promise<boolean>;
   readonly service: UrgentService;
 }
 
@@ -68,6 +76,15 @@ export function buildUrgentBinding(input: UrgentBindingInput): UrgentBinding {
   return {
     isEnabled,
     stillQualified,
+    isReplay: async (q) =>
+      (
+        (await input.findReplayRecipient?.(
+          q.organizationId,
+          q.userId,
+          q.channelId,
+          q.clientMessageId,
+        )) ?? ""
+      ).toLowerCase() === q.recipientUserId.toLowerCase(),
     service: createUrgentService({
       isEnabled,
       outbox: input.outbox,

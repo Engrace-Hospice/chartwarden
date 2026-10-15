@@ -22,13 +22,30 @@ export const URGENT_PAIR_LIMIT = { max: 5, windowMs: 5 * 60_000 } as const;
 export type UrgentRouteRateLimit = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** A retry of one message (same client_message_id) is bounded, but never counts against the send budgets. */
+/** A replay of a message that was really stored is bounded by its own cap, and never counts against the send budgets. */
 export const URGENT_RETRY_CAP = 30;
+
+/**
+ * True ONLY when this sender already stored an urgent message in this channel under this client_message_id for this
+ * recipient (a database fact, not a counter). A request whose first attempt was refused created nothing, so it is not a
+ * replay and pays the budgets like any new message. A lookup error reads as "not a replay" (the budgets apply).
+ */
+export type UrgentReplayCheck = (q: {
+  readonly organizationId: string;
+  readonly userId: string;
+  readonly channelId: string;
+  readonly clientMessageId: string;
+  readonly recipientUserId: string;
+}) => Promise<boolean>;
 
 export function buildUrgentRateLimit(
   store: RateLimitStore,
-  onStoreError?: (err: unknown) => void,
+  opts: {
+    readonly onStoreError?: (err: unknown) => void;
+    readonly isReplay?: UrgentReplayCheck;
+  } = {},
 ): UrgentRouteRateLimit {
+  const { onStoreError, isReplay } = opts;
   const base = createRouteRateLimit({
     store,
     limit: URGENT_ROUTE_RATE_LIMIT,
@@ -56,6 +73,8 @@ export function buildUrgentRateLimit(
     reply.header("Retry-After", String(Math.ceil(windowMs / 1000)));
     throw new RateLimitedError();
   };
+  const uuidOrNull = (value: unknown): string | null =>
+    typeof value === "string" && UUID.test(value) ? value.toLowerCase() : null;
   return async (request, reply) => {
     const { organizationId, userId } = request.context ?? {};
     if (!organizationId || !userId) throw new UnauthorizedError();
@@ -63,24 +82,33 @@ export function buildUrgentRateLimit(
       recipient_user_id?: unknown;
       client_message_id?: unknown;
     };
-    const clientId =
-      typeof body.client_message_id === "string" && UUID.test(body.client_message_id)
-        ? body.client_message_id.toLowerCase()
-        : null;
-    const recipient =
-      typeof body.recipient_user_id === "string" && UUID.test(body.recipient_user_id)
-        ? body.recipient_user_id.toLowerCase()
-        : null;
-    // A flaky-network retry of ONE message must never lock the sender out: the second and later sightings of the same
-    // client_message_id are bounded by their own cap and skip the send budgets (the core replays the original anyway).
-    if (clientId) {
-      const seen = await count(
-        request,
-        `${URGENT_RATE_LIMIT_KEY_PREFIX}:seen:${organizationId}:${userId}:${clientId}`,
-        URGENT_PAIR_LIMIT.windowMs,
-      );
-      if (seen > URGENT_RETRY_CAP) refuse(reply, URGENT_PAIR_LIMIT.windowMs);
-      if (seen > 1) return;
+    const clientId = uuidOrNull(body.client_message_id);
+    const recipient = uuidOrNull(body.recipient_user_id);
+    const channelId = uuidOrNull((request.params as { id?: unknown } | undefined)?.id);
+    // A real replay (the message is already stored for this recipient) cannot create anything, so it skips the send budgets;
+    // it is bounded by its own cap. Anything else - including the second try of a request whose first try was REFUSED - pays.
+    if (isReplay && clientId && recipient && channelId) {
+      let replay = false;
+      try {
+        replay = await isReplay({
+          organizationId,
+          userId,
+          channelId,
+          clientMessageId: clientId,
+          recipientUserId: recipient,
+        });
+      } catch {
+        replay = false;
+      }
+      if (replay) {
+        const seen = await count(
+          request,
+          `${URGENT_RATE_LIMIT_KEY_PREFIX}:replay:${organizationId}:${userId}:${clientId}`,
+          URGENT_PAIR_LIMIT.windowMs,
+        );
+        if (seen > URGENT_RETRY_CAP) refuse(reply, URGENT_PAIR_LIMIT.windowMs);
+        return;
+      }
     }
     await base(request, reply);
     if (!recipient) return;

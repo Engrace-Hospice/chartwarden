@@ -40,6 +40,8 @@ import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-store-db";
+import { createInMemoryRateLimitStore } from "../src/bootstrap/plugins/rate-limit-store";
+import { buildUrgentRateLimit } from "../src/bootstrap/plugins/urgent-rate-limit";
 import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import { CHANNEL_VISIBILITY_PREDICATE } from "../src/modules/36-messaging/index";
 import { buildM36UrgentNotificationsConsumer } from "../src/modules/36-messaging/outbox-consumers/urgent-notifications";
@@ -117,6 +119,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.1 urgency model - LIVE Postgres", () => {
     outbox: {
       publish: (tx: unknown, e: Record<string, unknown>) => Promise<void>;
     } = catalogOutbox(),
+    limited = false,
   ) => {
     const server = buildServer({
       db: kit.handle.db,
@@ -127,17 +130,28 @@ describe.skipIf(!DB_URL)("M36 WP 4.1 urgency model - LIVE Postgres", () => {
     registerMessagingRoutes(server, {
       service: kit.service,
       announcements: createDbAnnouncementService(kit.handle.db),
-      urgent: buildUrgentDeps({
-        db: kit.handle.db,
-        flags: { forOrg: async () => flags },
-        outbox: outbox as never,
-        messaging: kit.service,
-        permissionsFor,
-        part2Gate: {
-          allowedUserIds: async ({ userIds }) => new Set(userIds.filter((u) => u !== part2Blocked)),
-        },
-        careTeamMembers: async () => careTeam,
-      }),
+      urgent: (() => {
+        const deps = buildUrgentDeps({
+          db: kit.handle.db,
+          flags: { forOrg: async () => flags },
+          outbox: outbox as never,
+          messaging: kit.service,
+          permissionsFor,
+          part2Gate: {
+            allowedUserIds: async ({ userIds }) =>
+              new Set(userIds.filter((u) => u !== part2Blocked)),
+          },
+          careTeamMembers: async () => careTeam,
+        });
+        return limited
+          ? {
+              ...deps,
+              rateLimit: buildUrgentRateLimit(createInMemoryRateLimitStore(), {
+                isReplay: deps.isReplay,
+              }),
+            }
+          : deps;
+      })(),
     });
     return server;
   };
@@ -364,6 +378,51 @@ describe.skipIf(!DB_URL)("M36 WP 4.1 urgency model - LIVE Postgres", () => {
       const res = await send(app, nurse, { client_message_id: clientId, recipient_user_id: rn2 });
       expect(res.statusCode).toBe(409);
       expect(await snapshot()).toEqual(before);
+    });
+  });
+
+  describe("rate limit against the real database", () => {
+    it("a refused request is never a replay: resending the refused id stays refused and creates nothing; a real replay is free", async () => {
+      const limitedApp = makeServer(FLAGS, catalogOutbox(), true);
+      await limitedApp.ready();
+      try {
+        const admitted = randomUUID();
+        expect((await send(limitedApp, aide, { client_message_id: admitted })).statusCode).toBe(
+          201,
+        );
+        for (let i = 0; i < 4; i++) {
+          expect((await send(limitedApp, aide, {})).statusCode).toBe(201); // pair budget (5) now spent
+        }
+        const before = await snapshot();
+        const refusedId = randomUUID();
+        for (let i = 0; i < 3; i++) {
+          expect((await send(limitedApp, aide, { client_message_id: refusedId })).statusCode).toBe(
+            429,
+          );
+        }
+        expect(await snapshot()).toEqual(before);
+        expect(
+          await kit.count("SELECT count(*)::int AS n FROM message WHERE client_message_id=$1", [
+            refusedId,
+          ]),
+        ).toBe(0);
+        // a retry of the ADMITTED message is a real replay: 200, nothing written, not counted against the cap
+        for (let i = 0; i < 3; i++) {
+          const again = await send(limitedApp, aide, { client_message_id: admitted });
+          expect(again.statusCode, again.body).toBe(200);
+          expect(again.json().created).toBe(false);
+        }
+        expect(await snapshot()).toEqual(before);
+        // the same admitted id naming a different recipient is not a replay: it pays (and here the DB refuses it too)
+        const other = await send(limitedApp, aide, {
+          client_message_id: admitted,
+          recipient_user_id: rn2,
+        });
+        expect(other.statusCode).toBeGreaterThanOrEqual(400);
+        expect(await snapshot()).toEqual(before);
+      } finally {
+        await limitedApp.close();
+      }
     });
   });
 

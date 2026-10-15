@@ -4803,6 +4803,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                     // Fail-closed per-user / per-org / per-pair limiter; the in-memory store is per replica (weaker, still bounded).
                     rateLimit: buildUrgentRateLimit(
                       rateLimitStore ?? createInMemoryRateLimitStore(),
+                      { isReplay: m36Urgent.isReplay },
                     ),
                   },
                 }
