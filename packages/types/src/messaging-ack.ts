@@ -64,7 +64,7 @@ export const ACK_EVENT_TYPES = [
   "resolved",
   "cancelled",
   "delivery_failed",
-  // WP 4.4 (migration 1112): the deadline passed and no tier could be reached (`route_unavailable`), or the ladder has no
+  // WP 4.4 (migration 1114): the deadline passed and no tier could be reached (`route_unavailable`), or the ladder has no
   // further tier (`ladder_exhausted`). Neither changes the request's state; both are id-only history rows.
   "route_unavailable",
   "ladder_exhausted",
