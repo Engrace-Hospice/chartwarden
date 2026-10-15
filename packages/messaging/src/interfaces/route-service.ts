@@ -258,6 +258,14 @@ export interface MessagingRouteService extends MessageReactionPinService, Messag
        * persist an unvalidated link.
        */
       clinicalLinks?: readonly ValidatedClinicalLinkInput[];
+      /**
+       * WP 3.10: runs inside the send transaction after the message and its links are written, and NOT on an idempotent
+       * replay. A throw rolls the message back with it. `tx` is the database transaction (null in the in-memory core).
+       */
+      inTransaction?: (
+        tx: unknown,
+        sent: { messageId: string; createdAt: string },
+      ) => Promise<void>;
     },
   ): Promise<{ messageId: string; channelId: string; createdAt: string }>;
   /** Edit within the edit window; FORBIDDEN unless the actor authored it (§4.2 PATCH). */

@@ -3,13 +3,15 @@
 // Called from the access-revocation consumer on `m2.membership.revoked` / `m2.user.deactivated` (not `suspended`:
 // reinstatable). A relay tick is not a request, so this is org-explicit and runs under the system actor. For each ACTIVE
 // task assigned to the leaver the successor is, in order: the task's creator, then (patient task) the first eligible
-// care-team member by user id. Eligible = not the leaver, active and able to view the channel, holding no active task on
+// care-team member by user id. A WP 3.10 medication question instead tries the primary RN, then the care team, never its
+// asker, and a flagged one also publishes m36.medication_question.unrouted. Eligible = not the leaver, active and able to view the channel, holding no active task on
 // the message. No successor => the task keeps the leaver, is flagged `needs_owner`, and the creator is told by the
 // `m36.task.needs_owner` event. Converges on redelivery: a reassigned or flagged task no longer matches. Revocation never
 // depends on the `messaging.tasks` flag. Per-task failures are isolated, counted, and rethrown at the end so the
 // dispatcher retries; the error text carries no seam message.
 import type { DbClient } from "@wardenx/db";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
+import { publishMedicationQuestionUnrouted } from "../medication-questions/medication-question-events";
 import type { HintOutboxPort } from "../message-hint-events";
 import { publishTaskEvent } from "./task-events";
 import type { TaskRow, TaskStore } from "./task-store-db";
@@ -24,6 +26,8 @@ export interface ReassignDeps {
   readonly isEligible: (orgId: string, userId: string, channelId: string) => Promise<boolean>;
   /** Care-team user ids for a patient (CareTeamProvider seam). May throw: step 2 is then skipped. */
   readonly careTeamMembers: (orgId: string, patientId: string) => Promise<readonly string[]>;
+  /** WP 3.10: the patient's primary RN (CareTeamProvider seam). May throw: that step is then skipped. */
+  readonly primaryRn?: (orgId: string, patientId: string) => Promise<string | null>;
   readonly now?: () => Date;
   /** Failure log sink: ids and the error class name only, never the error message (a seam error may carry PHI). */
   readonly warn?: (message: string, context: Record<string, string>) => void;
@@ -52,6 +56,20 @@ async function careTeamCandidates(
   }
 }
 
+async function primaryRnCandidate(
+  deps: ReassignDeps,
+  orgId: string,
+  task: TaskRow,
+): Promise<string[]> {
+  if (!task.patientId || !deps.primaryRn) return [];
+  try {
+    const rn = await deps.primaryRn(orgId, task.patientId);
+    return rn ? [rn] : [];
+  } catch {
+    return [];
+  }
+}
+
 async function pickSuccessor(
   deps: ReassignDeps,
   orgId: string,
@@ -59,7 +77,14 @@ async function pickSuccessor(
   holders: ReadonlySet<string>,
 ): Promise<string | null> {
   const careTeam = await careTeamCandidates(deps, orgId, task);
-  const candidates = [task.createdBy, ...careTeam].filter(
+  // WP 3.10: a medication question goes to the primary RN, then the care team - NEVER back to the person who asked it.
+  const ordered =
+    task.sourceKind === "medication_question"
+      ? [...(await primaryRnCandidate(deps, orgId, task)), ...careTeam].filter(
+          (id) => id !== task.createdBy,
+        )
+      : [task.createdBy, ...careTeam];
+  const candidates = ordered.filter(
     (id, i, all) => id !== task.assigneeId && !holders.has(id) && all.indexOf(id) === i,
   );
   for (const userId of candidates) {
@@ -115,6 +140,16 @@ async function reassignOne(
       creatorUserId: task.createdBy,
       at: clock(),
     });
+    if (task.sourceKind === "medication_question") {
+      await publishMedicationQuestionUnrouted(deps.outbox, tx, {
+        orgId,
+        channelId: task.channelId,
+        messageId: task.messageId,
+        askedByUserId: task.createdBy,
+        reason: "owner_left",
+        at: clock(),
+      });
+    }
     return "flagged";
   });
 }

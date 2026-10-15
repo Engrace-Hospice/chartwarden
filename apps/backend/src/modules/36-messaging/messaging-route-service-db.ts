@@ -1426,6 +1426,8 @@ export function createDbMessagingRouteService(
               links: clinicalLinks,
             });
           }
+          // WP 3.10: a caller-supplied write that must commit or roll back with the message (never run on a replay).
+          await input.inTransaction?.(tx, { messageId, createdAt });
           if (references.length > 0) {
             await tx.insert(MER).values(
               references.map((reference) => ({

@@ -33,6 +33,7 @@ import {
   CHART_PROMOTION_TARGET_KINDS,
   CHART_PROMOTION_TARGET_MODULES,
   HANDOFF_UNACCEPTED_CAUSES,
+  MEDICATION_QUESTION_UNROUTED_REASONS,
   type ModuleEventContribution,
   TASK_STATUSES,
 } from "@wardenx/types";
@@ -41,6 +42,9 @@ const id = Type.String({ minLength: 1 });
 const nullableId = Type.Union([id, Type.Null()]);
 const isoInstant = Type.String({ minLength: 1 });
 const handoffCause = Type.Union(HANDOFF_UNACCEPTED_CAUSES.map((cause) => Type.Literal(cause)));
+const medicationQuestionReason = Type.Union(
+  MEDICATION_QUESTION_UNROUTED_REASONS.map((reason) => Type.Literal(reason)),
+);
 const promotionTargetModule = Type.Union(
   CHART_PROMOTION_TARGET_MODULES.map((module) => Type.Literal(module)),
 );
@@ -275,6 +279,25 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
         cause: handoffCause,
         unacceptedItemCount: count,
         acceptedItemCount: count,
+        at: isoInstant,
+      },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m36.medication_question.unrouted",
+    moduleOwner: "m36",
+    description:
+      "A medication question has no assigned nurse (WP 3.10, ADR-0067): the asker sent it without one, or the assigned nurse left and nobody could take it. PHI-free: ids, the reason enum and one instant - no patient id and no text. Published in the same transaction as the write. M36 tells the supervisor audience with one fixed in-app alert; it is never the emergency path and never an order.",
+    payloadSchema: Type.Object(
+      {
+        organizationId: id,
+        channelId: id,
+        messageId: id,
+        askedByUserId: id,
+        reason: medicationQuestionReason,
         at: isoInstant,
       },
       { additionalProperties: false },

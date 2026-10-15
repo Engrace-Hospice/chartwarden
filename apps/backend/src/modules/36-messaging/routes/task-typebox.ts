@@ -7,6 +7,7 @@ import {
   TASK_ACTOR_KINDS,
   TASK_CLOSE_REASONS,
   TASK_EVENT_TYPES,
+  TASK_SOURCE_KINDS,
   TASK_STATUSES,
 } from "@wardenx/types";
 import { UUID_PATTERN } from "./messaging-typebox";
@@ -55,6 +56,7 @@ export const TaskSchema = Type.Object({
   due_at: nullable(Type.String({ format: "date-time" })),
   status: literals(TASK_STATUSES),
   clinical_concern: Type.Boolean(),
+  source_kind: literals(TASK_SOURCE_KINDS),
   closed_reason: nullable(literals(TASK_CLOSE_REASONS)),
   needs_owner: Type.Boolean(),
   overdue: Type.Boolean(),

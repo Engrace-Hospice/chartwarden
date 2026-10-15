@@ -159008,6 +159008,454 @@
         }
       }
     },
+    "/api/v1/messaging/channels/{id}/medication-questions": {
+      "post": {
+        "operationId": "postApiV1MessagingChannelsByIdMedicationquestions",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Ask a nurse about a medication (WP 3.10; messaging.send + channel visibility + a required Idempotency-Key; 404 while the tenant flags `messaging.medication_questions` AND `messaging.tasks` are not both on). The server builds the message from `text` (never parsed) and an optional read-only medication link, and creates a task for the patient's primary RN (or the chosen colleague) in ONE transaction. Only a care-team channel of a patient qualifies (422 MEDICATION_QUESTION_NOT_PATIENT_CHANNEL); the patient comes from the channel. 422 MEDICATION_QUESTION_ASSIGNEE_INVALID (chosen colleague not on the care team or not eligible), MEDICATION_QUESTION_NO_NURSE (nobody to route to and `allow_unrouted` is not true), CLINICAL_LINK_NOT_AVAILABLE (the caller may not link that medication; nothing is written). With allow_unrouted:true and no nurse the message is sent with no task and the supervisor audience is alerted (routed:false). 201 created; 200 created:false replays the same client_message_id. A message never creates or changes an order: orders are entered and signed in Orders. Not the emergency path. Read-audited against the message and patient",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "message_id",
+                    "channel_id",
+                    "patient_id",
+                    "routed",
+                    "task",
+                    "created"
+                  ],
+                  "properties": {
+                    "message_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "channel_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patient_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "routed": {
+                      "type": "boolean"
+                    },
+                    "task": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "message_id",
+                            "channel_id",
+                            "patient_id",
+                            "created_by",
+                            "assignee_id",
+                            "assignee_display_name",
+                            "created_by_display_name",
+                            "due_at",
+                            "status",
+                            "clinical_concern",
+                            "source_kind",
+                            "closed_reason",
+                            "needs_owner",
+                            "overdue",
+                            "created_at",
+                            "updated_at",
+                            "allowed_actions"
+                          ],
+                          "properties": {
+                            "id": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "message_id": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "channel_id": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "patient_id": {
+                              "anyOf": [
+                                {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "created_by": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "assignee_id": {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            "assignee_display_name": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "created_by_display_name": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "due_at": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "open",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "accepted",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "done",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "cancelled",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "clinical_concern": {
+                              "type": "boolean"
+                            },
+                            "source_kind": {
+                              "anyOf": [
+                                {
+                                  "const": "message",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "medication_question",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "closed_reason": {
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "const": "action_taken",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "handled_elsewhere",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "no_action_needed",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "unable_to_complete",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "duplicate",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "needs_owner": {
+                              "type": "boolean"
+                            },
+                            "overdue": {
+                              "type": "boolean"
+                            },
+                            "created_at": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "updated_at": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "allowed_actions": {
+                              "type": "array",
+                              "items": {
+                                "anyOf": [
+                                  {
+                                    "const": "accept",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "complete",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "cancel",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "reassign",
+                                    "type": "string"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "created": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "text",
+                  "client_message_id"
+                ],
+                "properties": {
+                  "text": {
+                    "minLength": 1,
+                    "maxLength": 8000,
+                    "type": "string"
+                  },
+                  "medication_id": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  },
+                  "assignee_user_id": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  },
+                  "allow_unrouted": {
+                    "type": "boolean"
+                  },
+                  "client_message_id": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/channels/{id}/medication-questions/options": {
+      "get": {
+        "operationId": "getApiV1MessagingChannelsByIdMedicationquestionsOptions",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Who a medication question in this channel would go to (WP 3.10; messaging.read + channel visibility): the patient's primary RN when eligible, up to 20 eligible care-team colleagues (names only), and whether medication links are on. 200 {enabled:false} while the feature flags are off; a hidden channel is the uniform 404. Read-audited (it discloses care-team names)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "enabled"
+                      ],
+                      "properties": {
+                        "enabled": {
+                          "const": false,
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "enabled",
+                        "patient_linked",
+                        "patient_id",
+                        "nurse",
+                        "colleagues",
+                        "links_enabled"
+                      ],
+                      "properties": {
+                        "enabled": {
+                          "const": true,
+                          "type": "boolean"
+                        },
+                        "patient_linked": {
+                          "type": "boolean"
+                        },
+                        "patient_id": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "nurse": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "user_id",
+                                "display_name"
+                              ],
+                              "properties": {
+                                "user_id": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "display_name": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "colleagues": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "user_id",
+                              "display_name"
+                            ],
+                            "properties": {
+                              "user_id": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "display_name": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        "links_enabled": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/channels/{id}/members": {
       "get": {
         "operationId": "getApiV1MessagingChannelsByIdMembers",
@@ -161403,6 +161851,7 @@
                         "due_at",
                         "status",
                         "clinical_concern",
+                        "source_kind",
                         "closed_reason",
                         "needs_owner",
                         "overdue",
@@ -161495,6 +161944,18 @@
                         },
                         "clinical_concern": {
                           "type": "boolean"
+                        },
+                        "source_kind": {
+                          "anyOf": [
+                            {
+                              "const": "message",
+                              "type": "string"
+                            },
+                            {
+                              "const": "medication_question",
+                              "type": "string"
+                            }
+                          ]
                         },
                         "closed_reason": {
                           "anyOf": [
@@ -171248,6 +171709,7 @@
                           "due_at",
                           "status",
                           "clinical_concern",
+                          "source_kind",
                           "closed_reason",
                           "needs_owner",
                           "overdue",
@@ -171340,6 +171802,18 @@
                           },
                           "clinical_concern": {
                             "type": "boolean"
+                          },
+                          "source_kind": {
+                            "anyOf": [
+                              {
+                                "const": "message",
+                                "type": "string"
+                              },
+                              {
+                                "const": "medication_question",
+                                "type": "string"
+                              }
+                            ]
                           },
                           "closed_reason": {
                             "anyOf": [
@@ -171469,6 +171943,7 @@
                         "due_at",
                         "status",
                         "clinical_concern",
+                        "source_kind",
                         "closed_reason",
                         "needs_owner",
                         "overdue",
@@ -171561,6 +172036,18 @@
                         },
                         "clinical_concern": {
                           "type": "boolean"
+                        },
+                        "source_kind": {
+                          "anyOf": [
+                            {
+                              "const": "message",
+                              "type": "string"
+                            },
+                            {
+                              "const": "medication_question",
+                              "type": "string"
+                            }
+                          ]
                         },
                         "closed_reason": {
                           "anyOf": [
@@ -171858,6 +172345,7 @@
                         "due_at",
                         "status",
                         "clinical_concern",
+                        "source_kind",
                         "closed_reason",
                         "needs_owner",
                         "overdue",
@@ -171950,6 +172438,18 @@
                         },
                         "clinical_concern": {
                           "type": "boolean"
+                        },
+                        "source_kind": {
+                          "anyOf": [
+                            {
+                              "const": "message",
+                              "type": "string"
+                            },
+                            {
+                              "const": "medication_question",
+                              "type": "string"
+                            }
+                          ]
                         },
                         "closed_reason": {
                           "anyOf": [
@@ -172077,6 +172577,7 @@
                         "due_at",
                         "status",
                         "clinical_concern",
+                        "source_kind",
                         "closed_reason",
                         "needs_owner",
                         "overdue",
@@ -172169,6 +172670,18 @@
                         },
                         "clinical_concern": {
                           "type": "boolean"
+                        },
+                        "source_kind": {
+                          "anyOf": [
+                            {
+                              "const": "message",
+                              "type": "string"
+                            },
+                            {
+                              "const": "medication_question",
+                              "type": "string"
+                            }
+                          ]
                         },
                         "closed_reason": {
                           "anyOf": [
@@ -172320,6 +172833,7 @@
                         "due_at",
                         "status",
                         "clinical_concern",
+                        "source_kind",
                         "closed_reason",
                         "needs_owner",
                         "overdue",
@@ -172412,6 +172926,18 @@
                         },
                         "clinical_concern": {
                           "type": "boolean"
+                        },
+                        "source_kind": {
+                          "anyOf": [
+                            {
+                              "const": "message",
+                              "type": "string"
+                            },
+                            {
+                              "const": "medication_question",
+                              "type": "string"
+                            }
+                          ]
                         },
                         "closed_reason": {
                           "anyOf": [
@@ -172563,6 +173089,7 @@
                         "due_at",
                         "status",
                         "clinical_concern",
+                        "source_kind",
                         "closed_reason",
                         "needs_owner",
                         "overdue",
@@ -172655,6 +173182,18 @@
                         },
                         "clinical_concern": {
                           "type": "boolean"
+                        },
+                        "source_kind": {
+                          "anyOf": [
+                            {
+                              "const": "message",
+                              "type": "string"
+                            },
+                            {
+                              "const": "medication_question",
+                              "type": "string"
+                            }
+                          ]
                         },
                         "closed_reason": {
                           "anyOf": [

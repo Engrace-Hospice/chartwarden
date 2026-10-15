@@ -7,6 +7,7 @@ import { useId, useRef, useState } from "react";
 import type { JSX, KeyboardEvent } from "react";
 import {
   CHOOSE_REASON_TEXT,
+  MEDICATION_CLOSE_NOTE,
   TASK_CLOSE_REASON_LABELS,
   isStaleRefusal,
   taskErrorText,
@@ -77,6 +78,9 @@ export function TaskCloseDialog({
         onKeyDown={onKeyDown}
       >
         <h2>{title}</h2>
+        {task.source_kind === "medication_question" ? (
+          <p className="wx-task-notice">{MEDICATION_CLOSE_NOTE}</p>
+        ) : null}
         <div className="wx-task-field">
           <label htmlFor={`${id}-reason`}>
             Reason{task.clinical_concern ? " (required)" : " (optional)"}

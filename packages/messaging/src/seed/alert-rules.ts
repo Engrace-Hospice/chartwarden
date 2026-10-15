@@ -66,6 +66,18 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     enabled: true,
   },
   {
+    eventType: "m36.medication_question.unrouted",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    // WP 3.10: supervisors are told a medication question has no assigned nurse. Org-wide by role (role keys copied from
+    // m36.handoff.supervisor_review); tenants re-aim it through the alert-rule admin. In-app only, never the emergency path.
+    resolverArgs: { roleKeys: ["clinical_supervisor", "don"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
     eventType: "m36.handoff.offered",
     category: "clinical_routine",
     severityFloor: "info",

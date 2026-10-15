@@ -209,4 +209,58 @@ describe("Phase 2 gate: keyboard-only", () => {
     expect(document.activeElement).toBe(close);
     expect(POST).not.toHaveBeenCalled();
   });
+
+  it("K7 asks a nurse about a medication with keys only and focus returns to the trigger", async () => {
+    const base = fakeApi();
+    const careTeam = { ...channel("ct-1", "Care team"), kind: "care_team", subjectId: "p-1" };
+    const api = {
+      ...base,
+      GET: vi.fn((path: string) => {
+        if (path === "/api/v1/messaging/channels")
+          return Promise.resolve({ data: { channels: [careTeam] }, error: undefined });
+        if (path === "/api/v1/messaging/channels/{id}/medication-questions/options")
+          return Promise.resolve({
+            data: {
+              enabled: true,
+              patient_linked: true,
+              patient_id: "p-1",
+              nurse: { user_id: "n-1", display_name: "Nora Nurse" },
+              colleagues: [],
+              links_enabled: false,
+            },
+          });
+        return base.GET(path);
+      }),
+      POST: vi.fn((path: string) =>
+        Promise.resolve(
+          path === "/api/v1/messaging/channels/{id}/medication-questions"
+            ? {
+                data: {
+                  message_id: "m-9",
+                  channel_id: "ct-1",
+                  patient_id: "p-1",
+                  routed: true,
+                  task: null,
+                  created: true,
+                },
+                response: { status: 201 },
+              }
+            : { data: {}, error: undefined },
+        ),
+      ),
+    };
+    mount(api as unknown as ReturnType<typeof fakeApi>);
+    await tabTo(await screen.findByRole("button", { name: "Care team" }));
+    await userEvent.keyboard("{Enter}");
+    const trigger = await screen.findByRole("button", { name: "Ask a nurse about a medication" });
+    await tabTo(trigger);
+    await userEvent.keyboard("{Enter}");
+    const box = await screen.findByRole("textbox", { name: "Your question" });
+    await tabTo(box);
+    await userEvent.keyboard("Is the dose right?");
+    await tabTo(await screen.findByRole("button", { name: "Send question" }));
+    await userEvent.keyboard("{Enter}");
+    await screen.findByText(/Question sent/);
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
 });

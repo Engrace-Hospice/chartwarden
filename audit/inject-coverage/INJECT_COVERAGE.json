@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1593,
-    "coveredRoutes": 1593,
-    "directRoutesReferenced": 1510
+    "routes": 1595,
+    "coveredRoutes": 1595,
+    "directRoutesReferenced": 1512
   },
   "modules": [
     {
@@ -192,6 +192,7 @@
       "routes": 34,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/m36-medication-question-no-order-route.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/orders-caseload-scope.test.ts",
         "apps/backend/__tests__/orders-discipline-held.test.ts",
@@ -212,6 +213,7 @@
         "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
         "apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts",
         "apps/backend/__tests__/m12-vendor-boundary.live.test.ts",
+        "apps/backend/__tests__/m36-medication-question-no-order-route.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 27
@@ -493,7 +495,7 @@
     },
     {
       "module": "36-messaging",
-      "routes": 103,
+      "routes": 105,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
@@ -518,6 +520,8 @@
         "apps/backend/__tests__/m36-idg-coordination.live.test.ts",
         "apps/backend/__tests__/m36-idg-discussion-routes.test.ts",
         "apps/backend/__tests__/m36-lifecycle-review.live.test.ts",
+        "apps/backend/__tests__/m36-medication-question-routes.test.ts",
+        "apps/backend/__tests__/m36-medication-question.live.test.ts",
         "apps/backend/__tests__/m36-message-search-routes.test.ts",
         "apps/backend/__tests__/m36-message-search.live.test.ts",
         "apps/backend/__tests__/m36-message-templates.live.test.ts",
@@ -544,7 +548,7 @@
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 103
+      "directRoutesReferenced": 105
     },
     {
       "module": "37-ipu",

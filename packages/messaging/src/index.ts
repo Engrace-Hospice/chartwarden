@@ -476,6 +476,9 @@ export * from "./tasks";
 // M36 WP 3.5 clinical handoffs - pure rules and tenant policy
 export * from "./handoffs";
 
+// M36 WP 3.10 medication-clarification flow - pure rules
+export * from "./medication-question";
+
 // M36 WP 3.7 chart promotion - pure request/outcome rules
 export * from "./promotions";
 

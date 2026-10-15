@@ -752,6 +752,13 @@ export function createInMemoryMessagingService(
         parentMessageId: input.parentMessageId ?? null,
         references: input.references ?? [],
       });
+      // WP 3.10: the same all-or-nothing contract as the database core - a throwing hook removes the message again.
+      try {
+        await input.inTransaction?.(null, { messageId, createdAt });
+      } catch (err) {
+        messages.delete(messageId);
+        throw err;
+      }
       return { messageId, channelId: input.channelId, createdAt };
     },
 

@@ -33,6 +33,8 @@ export interface TaskBindingInput {
   readonly displayName: (orgId: string, userId: string) => Promise<string | null>;
   /** Defaults to the CareTeamProvider seam. */
   readonly careTeamMembers?: (orgId: string, patientId: string) => Promise<readonly string[]>;
+  /** WP 3.10: defaults to the CareTeamProvider seam's primaryRnUserId. */
+  readonly primaryRn?: (orgId: string, patientId: string) => Promise<string | null>;
   readonly now?: () => Date;
   /** Offboarding failure log sink (ids and error class name only). */
   readonly warn?: (message: string, context: Record<string, string>) => void;
@@ -45,8 +47,17 @@ export interface TaskBinding {
   readonly reassignForLeaver: (orgId: string, leaverUserId: string) => Promise<ReassignSummary>;
 }
 
-const seamCareTeamMembers = async (orgId: string, patientId: string): Promise<readonly string[]> =>
+export const seamCareTeamMembers = async (
+  orgId: string,
+  patientId: string,
+): Promise<readonly string[]> =>
   (getSeam("CareTeamProvider") as CareTeamProvider).careTeamMembers({
+    organizationId: orgId,
+    patientId,
+  });
+
+export const seamPrimaryRn = async (orgId: string, patientId: string): Promise<string | null> =>
+  (getSeam("CareTeamProvider") as CareTeamProvider).primaryRnUserId({
     organizationId: orgId,
     patientId,
   });
@@ -76,6 +87,7 @@ export function buildTaskBinding(input: TaskBindingInput): TaskBinding {
           store,
           isEligible: (org, userId, channelId) => messaging.canViewChannel(org, userId, channelId),
           careTeamMembers: input.careTeamMembers ?? seamCareTeamMembers,
+          primaryRn: input.primaryRn ?? seamPrimaryRn,
           ...(input.warn ? { warn: input.warn } : {}),
           ...clock,
         },

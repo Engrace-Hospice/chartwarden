@@ -33,6 +33,18 @@ describe("TasksList", () => {
     );
   });
 
+  it("labels a medication-question task with a pill, and an ordinary one without", async () => {
+    mount(
+      ready([
+        { ...TASK_FIXTURE, id: "t-med", source_kind: "medication_question" },
+        { ...TASK_FIXTURE, id: "t-plain" },
+      ]),
+    );
+    const rows = await screen.findAllByRole("listitem");
+    expect(within(rows[0] as HTMLElement).getByText("Medication question")).toBeTruthy();
+    expect(within(rows[1] as HTMLElement).queryByText("Medication question")).toBeNull();
+  });
+
   it("marks a task that needs an owner with words, and a patient task as such", async () => {
     mount(
       ready([

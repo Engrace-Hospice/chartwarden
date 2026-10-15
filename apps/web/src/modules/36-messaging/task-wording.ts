@@ -8,6 +8,10 @@ export const TASK_NOTICE =
 export const TASKS_OFF_TEXT = "Tasks are not turned on for your organization.";
 export const TASKS_LOAD_FAILED = "Tasks could not be loaded. Try again.";
 export const NEEDS_OWNER_LABEL = "Needs new owner";
+export const MEDICATION_QUESTION_LABEL = "Medication question";
+/** D11: shown when closing a medication-question task. */
+export const MEDICATION_CLOSE_NOTE =
+  "If an order is needed, it is entered and signed in Orders. Closing this task does not change any order.";
 export const PATIENT_TASK_LABEL = "Patient task";
 export const OVERDUE_LABEL = "Overdue";
 export const CLINICAL_CONCERN_LABEL = "Clinical concern (needs a closing reason)";

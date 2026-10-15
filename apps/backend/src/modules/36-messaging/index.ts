@@ -166,6 +166,7 @@ import { registerAttachmentRoutes as _registerAttachmentRoutes } from "./routes/
 import { registerDraftRoutes as _registerDraftRoutes } from "./routes/draft-routes";
 import { registerGlobalSearchSettingsRoutes as _registerGlobalSearchSettingsRoutes } from "./routes/global-search-settings-routes";
 import type { HandoffRouteDeps as _HandoffRouteDeps } from "./routes/handoff-routes";
+import type { MedicationQuestionRouteDeps as _MedicationQuestionRouteDeps } from "./routes/medication-question-routes";
 import {
   registerMessagingAbacPredicates as _registerMessagingAbacPredicates,
   registerMessagingRoutes as _registerMessagingRoutes,
@@ -213,6 +214,8 @@ export function mountMessagingRoutes(
     handoffs?: _HandoffRouteDeps;
     /** WP 3.8: lifecycle review queue (tenant flag + service). Omitted => flag off. */
     review?: _ReviewRouteDeps;
+    /** WP 3.10: medication questions (service). Omitted => flag off. */
+    medicationQuestions?: _MedicationQuestionRouteDeps;
     /** WP 3.7: chart promotion (tenant flag + service). Omitted => flag off. */
     promotions?: _PromotionRouteDeps;
     /** WP 3.6: IDG discussions (tenant flags + read-only store). Omitted => flag off. */
@@ -237,6 +240,7 @@ export function mountMessagingRoutes(
     ...(opts.tasks ? { tasks: opts.tasks } : {}),
     ...(opts.handoffs ? { handoffs: opts.handoffs } : {}),
     ...(opts.review ? { review: opts.review } : {}),
+    ...(opts.medicationQuestions ? { medicationQuestions: opts.medicationQuestions } : {}),
     ...(opts.promotions ? { promotions: opts.promotions } : {}),
     ...(opts.idgDiscussions ? { idgDiscussions: opts.idgDiscussions } : {}),
   }); // WP 2.9, 2.12, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8
@@ -297,6 +301,7 @@ export { buildSbarDeps } from "./sbar/binding";
 export { buildTaskDeps } from "./tasks/deps";
 export { buildHandoffDeps } from "./handoffs/deps";
 export { buildReviewDeps } from "./review/deps";
+export { buildMedicationQuestionDeps } from "./medication-questions/deps";
 export { buildPromotionDeps } from "./promotions/deps";
 export { buildIdgDiscussionDeps } from "./idg/deps";
 export {

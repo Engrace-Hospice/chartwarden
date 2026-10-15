@@ -1,0 +1,39 @@
+/* M36 WP 3.10 - medication question: composer action, status and the clinical-link line. Tokens from the shared kit only. */
+.wx-medq {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.wx-medq-status {
+  font-size: 0.8125rem;
+  color: var(--color-on-surface);
+}
+
+.wx-medq-status:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.wx-task-form textarea {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-lowest);
+  color: var(--color-on-surface);
+  font: inherit;
+  resize: vertical;
+}
+
+.wx-task-form textarea:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.wx-clinical-link-banner {
+  display: block;
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  color: var(--color-on-surface-variant, var(--color-on-surface));
+}

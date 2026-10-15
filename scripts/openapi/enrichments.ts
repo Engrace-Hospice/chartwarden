@@ -1289,6 +1289,12 @@ import {
   IdgDiscussionListResponseSchema as M36IdgDiscussionListResponseSchema,
   IdgDiscussionQuerySchema as M36IdgDiscussionQuerySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/idg-discussion-typebox";
+// M36 WP 3.10 medication questions.
+import {
+  AskMedicationQuestionBodySchema as M36AskMedicationQuestionBodySchema,
+  MedicationQuestionOptionsResponseSchema as M36MedicationQuestionOptionsResponseSchema,
+  MedicationQuestionResponseSchema as M36MedicationQuestionResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/medication-question-typebox";
 // ── M36 Secure Messaging & Alerts — request + response schema imports (all M36-aliased) ──
 import {
   // request schemas (query / body) — reused as-is
@@ -9334,6 +9340,19 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M36ConvertTaskBodySchema,
     response: M36ConvertTaskResponseSchema,
     status: 201,
+  },
+  "POST /api/v1/messaging/channels/:id/medication-questions": {
+    summary:
+      "Ask a nurse about a medication (WP 3.10; messaging.send + channel visibility + a required Idempotency-Key; 404 while the tenant flags `messaging.medication_questions` AND `messaging.tasks` are not both on). The server builds the message from `text` (never parsed) and an optional read-only medication link, and creates a task for the patient's primary RN (or the chosen colleague) in ONE transaction. Only a care-team channel of a patient qualifies (422 MEDICATION_QUESTION_NOT_PATIENT_CHANNEL); the patient comes from the channel. 422 MEDICATION_QUESTION_ASSIGNEE_INVALID (chosen colleague not on the care team or not eligible), MEDICATION_QUESTION_NO_NURSE (nobody to route to and `allow_unrouted` is not true), CLINICAL_LINK_NOT_AVAILABLE (the caller may not link that medication; nothing is written). With allow_unrouted:true and no nurse the message is sent with no task and the supervisor audience is alerted (routed:false). 201 created; 200 created:false replays the same client_message_id. A message never creates or changes an order: orders are entered and signed in Orders. Not the emergency path. Read-audited against the message and patient",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    body: M36AskMedicationQuestionBodySchema,
+    response: M36MedicationQuestionResponseSchema,
+    status: 201,
+  },
+  "GET /api/v1/messaging/channels/:id/medication-questions/options": {
+    summary:
+      "Who a medication question in this channel would go to (WP 3.10; messaging.read + channel visibility): the patient's primary RN when eligible, up to 20 eligible care-team colleagues (names only), and whether medication links are on. 200 {enabled:false} while the feature flags are off; a hidden channel is the uniform 404. Read-audited (it discloses care-team names)",
+    response: M36MedicationQuestionOptionsResponseSchema,
   },
   "GET /api/v1/messaging/tasks": {
     summary:

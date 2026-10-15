@@ -25,6 +25,7 @@ import {
   type TaskDto,
   type TaskEventDto,
   type TaskEventType,
+  type TaskSourceKind,
   type TaskStatus,
   WardenXError,
 } from "@wardenx/types";
@@ -122,6 +123,36 @@ function parseReason(reason: string | null | undefined): TaskCloseReason | null 
   return reason as TaskCloseReason;
 }
 
+/** The wire shape of a task row for one viewer. Shared with the medication-question service (WP 3.10). */
+export function taskRowToDto(
+  row: TaskRow,
+  userId: string,
+  nameOf: ReadonlyMap<string, string | null>,
+  now: Date,
+): TaskDto {
+  const status = row.status as TaskStatus;
+  return {
+    id: row.id,
+    message_id: row.messageId,
+    channel_id: row.channelId,
+    patient_id: row.patientId,
+    created_by: row.createdBy,
+    assignee_id: row.assigneeId,
+    assignee_display_name: nameOf.get(row.assigneeId) ?? null,
+    created_by_display_name: nameOf.get(row.createdBy) ?? null,
+    due_at: row.dueAt ? row.dueAt.toISOString() : null,
+    status,
+    clinical_concern: row.clinicalConcern,
+    closed_reason: row.closedReason as TaskCloseReason | null,
+    needs_owner: row.needsOwner,
+    source_kind: row.sourceKind as TaskSourceKind,
+    overdue: isOverdue({ status, dueAt: row.dueAt }, now),
+    created_at: row.createdAt.toISOString(),
+    updated_at: row.updatedAt.toISOString(),
+    allowed_actions: allowedActions({ status }, taskActorRole(row, userId)),
+  };
+}
+
 export function createTaskService(deps: TaskServiceDeps): TaskService {
   const store = deps.store ?? createDbTaskStore(deps.db);
   const clock = deps.now ?? (() => new Date());
@@ -135,29 +166,8 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
     return out;
   }
 
-  function toDto(row: TaskRow, userId: string, nameOf: Map<string, string | null>): TaskDto {
-    const now = clock();
-    const status = row.status as TaskStatus;
-    return {
-      id: row.id,
-      message_id: row.messageId,
-      channel_id: row.channelId,
-      patient_id: row.patientId,
-      created_by: row.createdBy,
-      assignee_id: row.assigneeId,
-      assignee_display_name: nameOf.get(row.assigneeId) ?? null,
-      created_by_display_name: nameOf.get(row.createdBy) ?? null,
-      due_at: row.dueAt ? row.dueAt.toISOString() : null,
-      status,
-      clinical_concern: row.clinicalConcern,
-      closed_reason: row.closedReason as TaskCloseReason | null,
-      needs_owner: row.needsOwner,
-      overdue: isOverdue({ status, dueAt: row.dueAt }, now),
-      created_at: row.createdAt.toISOString(),
-      updated_at: row.updatedAt.toISOString(),
-      allowed_actions: allowedActions({ status }, taskActorRole(row, userId)),
-    };
-  }
+  const toDto = (row: TaskRow, userId: string, nameOf: Map<string, string | null>): TaskDto =>
+    taskRowToDto(row, userId, nameOf, clock());
 
   const toEventDto = (e: TaskEventRow): TaskEventDto => ({
     id: e.id,
@@ -214,6 +224,10 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
     if (action === "reassign") {
       const target = extra.toAssigneeId ?? "";
       if (!target || !(await canView(actor.orgId, target, row.channelId))) throw assigneeInvalid();
+      // WP 3.10: a medication question never goes back to the person who asked it.
+      if (row.sourceKind === "medication_question" && target === row.createdBy) {
+        throw assigneeInvalid();
+      }
     }
     return commit(actor, row, action, reason, extra.toAssigneeId);
   }

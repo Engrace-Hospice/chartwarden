@@ -33,6 +33,26 @@ function mount(
 }
 
 describe("TaskCloseDialog", () => {
+  it("tells the closer a medication-question task never changes an order", () => {
+    render(
+      <ApiClientProvider client={{ POST: vi.fn() } as unknown as ApiClient}>
+        <TaskCloseDialog
+          task={{ ...TASK_FIXTURE, source_kind: "medication_question" }}
+          action="complete"
+          onClose={vi.fn()}
+          onStale={vi.fn()}
+          onDone={vi.fn()}
+        />
+      </ApiClientProvider>,
+    );
+    expect(screen.getByText(/Closing this task does not change any order/)).toBeTruthy();
+  });
+
+  it("shows no order note on an ordinary task", () => {
+    mount(false, "complete");
+    expect(screen.queryByText(/does not change any order/)).toBeNull();
+  });
+
   it("blocks submit without a reason on a clinical task", async () => {
     const { POST } = mount(true, "complete");
     expect(screen.getByRole("dialog", { name: "Complete task" })).toBeTruthy();

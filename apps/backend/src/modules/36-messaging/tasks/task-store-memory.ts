@@ -66,6 +66,10 @@ export function createMemoryTaskStore(): MemoryTaskStore {
     async createOrGetActive(_tx, a) {
       const existing = holders(a.orgId, a.messageId).find((t) => t.assigneeId === a.assigneeId);
       if (existing) return { task: existing, created: false };
+      // Mirrors the database CHECK communication_task_medq_not_creator.
+      if (a.sourceKind === "medication_question" && a.assigneeId === a.createdBy) {
+        throw new TaskStateConflict();
+      }
       const now = new Date();
       const task = put({
         id: nextId(),
@@ -78,6 +82,7 @@ export function createMemoryTaskStore(): MemoryTaskStore {
         dueAt: a.dueAt,
         status: "open",
         clinicalConcern: a.clinicalConcern,
+        sourceKind: a.sourceKind ?? "message",
         closedReason: null,
         needsOwner: false,
         acceptedAt: null,
@@ -97,6 +102,16 @@ export function createMemoryTaskStore(): MemoryTaskStore {
         },
       );
       return { task, created: true };
+    },
+    async findMedicationQuestion(orgId, messageId, creatorId) {
+      const found = [...tasks.values()].filter(
+        (t) =>
+          t.organizationId === orgId &&
+          t.messageId === messageId &&
+          t.createdBy === creatorId &&
+          t.sourceKind === "medication_question",
+      );
+      return found.at(-1) ?? null;
     },
     async getForParticipant(orgId, userId, taskId) {
       const t = tasks.get(taskId);
@@ -142,6 +157,8 @@ export function createMemoryTaskStore(): MemoryTaskStore {
         const target = a.toAssigneeId ?? "";
         if (holders(a.orgId, cur.messageId).some((t) => t.assigneeId === target))
           throw new TaskAssigneeAlreadyHasActive();
+        if (cur.sourceKind === "medication_question" && target === cur.createdBy)
+          throw new TaskStateConflict();
       }
       const closing = a.action === "complete" || a.action === "cancel";
       const task = put({

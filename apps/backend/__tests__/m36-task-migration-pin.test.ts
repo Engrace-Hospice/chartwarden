@@ -8,6 +8,7 @@ import {
   TASK_ACTOR_KINDS,
   TASK_CLOSE_REASONS,
   TASK_EVENT_TYPES,
+  TASK_SOURCE_KINDS,
   TASK_STATUSES,
 } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
@@ -129,5 +130,43 @@ describe("migration 1100 structure", () => {
 
   it("stores no free text: no title, body or note column on either table", () => {
     expect(sql).not.toMatch(/"(title|body|note|notes|text|description|excerpt)"/);
+  });
+});
+
+describe("migration 1104 (WP 3.10 source_kind)", () => {
+  const medq = readFileSync(
+    join(root, "packages/db/migrations/1104_m36_task_source_kind.sql"),
+    "utf8",
+  );
+  const flat = (v: string) => v.replace(/\s+/g, " ");
+
+  it("source_kind CHECK equals the TypeScript union, in SQL and Drizzle", () => {
+    expect(flat(medq)).toContain(`"source_kind" IN (${list(TASK_SOURCE_KINDS)})`);
+    expect(flat(drizzle)).toContain(`IN (${list(TASK_SOURCE_KINDS)})`);
+  });
+
+  it("forbids a medication-question task assigned to its own creator, in SQL and Drizzle", () => {
+    expect(flat(medq)).toContain(
+      `CHECK ("source_kind" <> 'medication_question' OR "assignee_id" <> "created_by")`,
+    );
+    for (const name of [
+      "communication_task_source_kind_shape",
+      "communication_task_medq_not_creator",
+    ]) {
+      expect(medq).toContain(`"${name}"`);
+      expect(drizzle).toContain(`"${name}"`);
+    }
+  });
+
+  it("defaults existing rows to 'message' and adds no grant, so source_kind stays out of the UPDATE grant", () => {
+    expect(medq).toContain(`"source_kind" text DEFAULT 'message' NOT NULL`);
+    expect(medq).not.toMatch(/\bGRANT\b\s+(?!--)/);
+    const grant = /GRANT UPDATE \(([^)]+)\)\s+ON "communication_task" TO wardenx_app/.exec(sql);
+    expect(grant?.[1]).not.toContain("source_kind");
+  });
+
+  it("stores no free text and adds no table", () => {
+    expect(medq).not.toMatch(/CREATE TABLE/);
+    expect(medq).not.toMatch(/"(title|body|note|notes|text|description|excerpt)"/);
   });
 });

@@ -62,6 +62,7 @@ import { createDbDraftService } from "../src/modules/36-messaging/drafts/draft-s
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
 import { buildHandoffDeps } from "../src/modules/36-messaging/handoffs/deps";
 import { buildIdgDiscussionDeps } from "../src/modules/36-messaging/idg/deps";
+import { buildMedicationQuestionDeps } from "../src/modules/36-messaging/medication-questions/deps";
 import {
   channelHintAudience,
   createDbMessagingProvider,
@@ -196,6 +197,10 @@ const ROUTES: Record<string, Verdict> = {
   // WP 3.7 chart promotion: a promotion id (or the channel + message it proposes) from another org or a non-reader is the
   // identical refusal a random id gets (asserted below); the list is the caller's own rows only. The table's FORCE RLS,
   // grants and immutability are also attacked in m36-promotions.live.
+  // WP 3.10 medication questions: the id is a channel's; every refusal (org B, a non-member, a random id, flag off) is the 404 a
+  // random channel gets, and nothing is written (also attacked in m36-medication-question.live).
+  "POST /api/v1/messaging/channels/:id/medication-questions": { kind: "idor" },
+  "GET /api/v1/messaging/channels/:id/medication-questions/options": { kind: "idor" },
   "POST /api/v1/messaging/channels/:id/messages/:messageId/chart-promotions": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/messages/:messageId/chart-promotions": { kind: "idor" },
   "GET /api/v1/messaging/chart-promotions": { kind: "scoped" },
@@ -300,6 +305,8 @@ const REGISTRAR_FILES = [
   "handoff-typebox.ts", // schemas only
   "review-routes.ts", // WP 3.8 lifecycle review queue, mounted by registerMessagingRoutes
   "review-typebox.ts", // schemas only
+  "medication-question-routes.ts", // WP 3.10 medication questions, mounted by registerMessagingRoutes
+  "medication-question-typebox.ts", // schemas only
   "promotion-routes.ts", // WP 3.7 chart promotion, mounted by registerMessagingRoutes
   "promotion-typebox.ts", // schemas only
   "idg-discussion-routes.ts", // WP 3.6 IDG discussions, mounted by registerMessagingRoutes
@@ -470,7 +477,8 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       route === "POST /api/v1/messaging/channels/:id/scheduled-messages" ||
       route === "POST /api/v1/messaging/attachments/uploads" ||
       route === "POST /api/v1/messaging/attachments/:id/complete" ||
-      route === "POST /api/v1/messaging/announce";
+      route === "POST /api/v1/messaging/announce" ||
+      route === "POST /api/v1/messaging/channels/:id/medication-questions";
     const res = await app.inject({
       method: method as "GET",
       url: url + query,
@@ -728,6 +736,18 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         patientLabels: async (_org, ids) =>
           new Map(ids.map((id) => [id, { displayName: "Pat P.", mrnSuffix: "0001" }] as const)),
         part2Gate: { allowedUserIds: async ({ userIds }) => new Set(userIds) },
+      }),
+      medicationQuestions: buildMedicationQuestionDeps({
+        db: handle.db,
+        flags: {
+          forOrg: async () => ({ "messaging.medication_questions": true, "messaging.tasks": true }),
+        },
+        outbox: outbox as never,
+        messaging: service,
+        part2Gate: { allowedUserIds: async ({ userIds }) => new Set(userIds) },
+        permissionsFor: async () => new Set(["messaging.read", "messaging.send", "patient.read"]),
+        careTeamMembers: async () => [],
+        primaryRn: async () => null,
       }),
       promotions: buildPromotionDeps({
         db: handle.db,
@@ -1861,6 +1881,23 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       expect((await put(bUser, 5)).statusCode).toBe(403);
       expect((await get(u2)).json().minChars.situation).toBe(77);
       expect((await call(`DELETE ${admin_}`, adminA, {})).statusCode).toBe(204);
+    });
+    it("WP 3.10: org B and an in-org non-member get a random channel's answer for A's care-team medication question and options, and nothing is written", async () => {
+      const askRoute = "POST /api/v1/messaging/channels/:id/medication-questions";
+      const optionsRoute = "GET /api/v1/messaging/channels/:id/medication-questions/options";
+      const body = { text: "Which dose is due?", client_message_id: randomUUID() };
+      const messages = () =>
+        admin.query("SELECT count(*)::int AS n FROM message WHERE channel_id=$1", [careTeamA]);
+      const before = (await messages()).rows[0].n;
+      for (const attacker of [bUser, adminB, outsider]) {
+        await expectNoOracle(askRoute, attacker, { id: careTeamA }, body);
+        await expectNoOracle(optionsRoute, attacker, { id: careTeamA });
+      }
+      expect((await messages()).rows[0].n).toBe(before);
+      // the member, with nobody to route to, can send it unrouted: the attacks above were refused for tenancy, not for shape.
+      const sent = await call(askRoute, u1, { id: careTeamA }, { ...body, allow_unrouted: true });
+      expect(sent.statusCode, sent.body).toBe(201);
+      expect((await messages()).rows[0].n).toBe(before + 1);
     });
     it("WP 3.4: org B and an in-org non-member get a random id's answer for A's task and A's message, and list none of it", async () => {
       const convertRoute = "POST /api/v1/messaging/channels/:id/messages/:messageId/tasks";

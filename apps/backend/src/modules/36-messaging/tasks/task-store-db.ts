@@ -14,6 +14,7 @@ import {
   type TaskAction,
   type TaskEventType,
   type TaskReassignSource,
+  type TaskSourceKind,
   type TaskStatus,
 } from "@wardenx/types";
 import { and, asc, desc, eq, inArray, notInArray, or, sql } from "drizzle-orm";
@@ -66,6 +67,8 @@ export interface CreateTaskArgs {
   readonly assigneeId: string;
   readonly dueAt: Date | null;
   readonly clinicalConcern: boolean;
+  /** WP 3.10; defaults to 'message'. */
+  readonly sourceKind?: TaskSourceKind;
 }
 
 export interface TransitionArgs {
@@ -106,6 +109,12 @@ export interface TaskStore {
     patientId: string,
     userId: string,
   ): Promise<{ channelId: string }[]>;
+  /** WP 3.10: the medication-question task `creatorId` raised on the message (any state), or null. */
+  findMedicationQuestion(
+    orgId: string,
+    messageId: string,
+    creatorId: string,
+  ): Promise<TaskRow | null>;
   /** Throws TaskNotFound, TaskStateConflict or TaskAssigneeAlreadyHasActive. `changed:false` = idempotent replay. */
   transition(tx: Tx, a: TransitionArgs): Promise<{ task: TaskRow; changed: boolean }>;
 
@@ -147,10 +156,18 @@ const EVENT_FOR_ACTION: Record<TaskAction, TaskEventType> = {
   reassign: "reassigned",
 };
 
-function isUniqueViolation(err: unknown): boolean {
+function sqlState(err: unknown): string | undefined {
   const code = (err as { code?: string } | null)?.code;
-  const cause = (err as { cause?: { code?: string } } | null)?.cause?.code;
-  return code === "23505" || cause === "23505";
+  return code ?? (err as { cause?: { code?: string } } | null)?.cause?.code;
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  return sqlState(err) === "23505";
+}
+
+/** A CHECK constraint refused the write (WP 3.10: a medication question may not be assigned to its asker). */
+function isCheckViolation(err: unknown): boolean {
+  return sqlState(err) === "23514";
 }
 
 async function insertEvent(
@@ -211,6 +228,10 @@ async function applyTransition(
     if (!a.toAssigneeId) throw new TaskStateConflict();
     const holders = await activeAssignees(tx, a.orgId, cur.messageId);
     if (holders.includes(a.toAssigneeId)) throw new TaskAssigneeAlreadyHasActive();
+    // WP 3.10: the database CHECK is the backstop; this says no before any write.
+    if (cur.sourceKind === "medication_question" && a.toAssigneeId === cur.createdBy) {
+      throw new TaskStateConflict();
+    }
   }
   const now = new Date();
   const [updated] = await tx
@@ -275,6 +296,7 @@ export function createDbTaskStore(db: DbClient): TaskStore {
           assigneeId: a.assigneeId,
           dueAt: a.dueAt,
           clinicalConcern: a.clinicalConcern,
+          sourceKind: a.sourceKind ?? "message",
         })
         .onConflictDoNothing()
         .returning();
@@ -304,6 +326,24 @@ export function createDbTaskStore(db: DbClient): TaskStore {
       if (!existing) throw new TaskStateConflict();
       return { task: existing, created: false };
     },
+
+    findMedicationQuestion: (orgId, messageId, creatorId) =>
+      withOrgContext(db, { organizationId: orgId, userId: creatorId }, async (tx) => {
+        const [row] = await tx
+          .select()
+          .from(T)
+          .where(
+            and(
+              eq(T.organizationId, orgId),
+              eq(T.messageId, messageId),
+              eq(T.createdBy, creatorId),
+              eq(T.sourceKind, "medication_question"),
+            ),
+          )
+          .orderBy(desc(T.createdAt), asc(T.id))
+          .limit(1);
+        return row ?? null;
+      }),
 
     getForParticipant: (orgId, userId, taskId) =>
       withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
@@ -384,6 +424,7 @@ export function createDbTaskStore(db: DbClient): TaskStore {
       } catch (err) {
         // A racing create of the same (message, assignee) lost to the unique index after our pre-check.
         if (isUniqueViolation(err)) throw new TaskAssigneeAlreadyHasActive();
+        if (isCheckViolation(err)) throw new TaskStateConflict();
         throw err;
       }
     },
