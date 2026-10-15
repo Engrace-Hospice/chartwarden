@@ -78,6 +78,7 @@ export const BILLING_CAP_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   rule("denial.aging_threshold_breached", "warn", BILLING_MANAGERS),
   rule("denial.high_value", "critical", BILLING_MANAGERS),
   rule("appeal.deadline_approaching", "warn", BILLING_MANAGERS),
+  rule("adr.deadline_approaching", "warn", BILLING_MANAGERS),
   // ── M26 band escalations (GAP-040): raised by M36's `cap-threshold-alerts` consumer of
   // `m26.cap.threshold_crossed`. Watch/warn page finance leads; a breach also pages compliance + org admins.
   ...(["agency", "patient"] as const).flatMap((family) => [

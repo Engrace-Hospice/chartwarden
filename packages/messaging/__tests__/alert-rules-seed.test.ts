@@ -121,6 +121,7 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "denial.aging_threshold_breached",
       "denial.high_value",
       "appeal.deadline_approaching",
+      "adr.deadline_approaching",
       "m26.cap.agency_watch_90",
       "m26.cap.agency_warn_95",
       "m26.cap.agency_breach_100",

@@ -860,6 +860,9 @@ exports.MODULES = [
     ownedTables: [
       "appeal_case",
       "appeal_case_event",
+      "adr_case",
+      "adr_case_event",
+      "mac_rule",
       "denial_case",
       "denial_case_assignment",
       "denial_taxonomy_overlay",

@@ -44,6 +44,7 @@ export {
   type WriteOutboxPort,
   type OutboxEmission,
   type TerminologyLookupPort,
+  buildDrizzleAdrService,
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,
 } from "./routes/index";

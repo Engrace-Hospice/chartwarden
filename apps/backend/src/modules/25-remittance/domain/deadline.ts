@@ -52,7 +52,7 @@ export function isKnownZone(zone: string): boolean {
 export const DEADLINE_ALERT_DAYS: readonly number[] = [30, 14, 7, 1];
 
 const NOTICE_DAY_SHAPE = /^(\d{4})-(\d{2})-(\d{2})$/;
-const MS_PER_DAY = 86_400_000;
+export const MS_PER_DAY = 86_400_000;
 
 /** How a deadline was derived — shown to the user so a date is never an unexplained number. */
 export interface TierDeadlineDerivation {
@@ -65,7 +65,7 @@ export interface TierDeadlineDerivation {
   readonly zone: string;
 }
 
-function parseNoticeDay(noticeDay: string): number {
+export function parseNoticeDay(noticeDay: string): number {
   const m = NOTICE_DAY_SHAPE.exec(noticeDay);
   if (!m) throw new RangeError(`notice day must be YYYY-MM-DD, got "${noticeDay}"`);
   const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
@@ -77,7 +77,7 @@ function parseNoticeDay(noticeDay: string): number {
   return ms;
 }
 
-function isoDay(utcMidnightMs: number): string {
+export function isoDay(utcMidnightMs: number): string {
   return new Date(utcMidnightMs).toISOString().slice(0, 10);
 }
 
@@ -135,7 +135,7 @@ function isBusinessDay(dayMs: number): boolean {
   return ![...observedFederalHolidays(y), ...observedFederalHolidays(y + 1)].includes(dayMs);
 }
 
-function previousBusinessDay(dayMs: number): number {
+export function previousBusinessDay(dayMs: number): number {
   let ms = dayMs;
   while (!isBusinessDay(ms)) ms -= MS_PER_DAY;
   return ms;
@@ -150,7 +150,7 @@ function zoneOffsetMs(ts: number, zone: string): number {
 }
 
 /** The last millisecond (23:59:59.999) of calendar day `dayUtcMidnightMs` as seen in `zone`. */
-function endOfDayInZone(dayUtcMidnightMs: number, zone: string): Date {
+export function endOfDayInZone(dayUtcMidnightMs: number, zone: string): Date {
   const wallEnd = dayUtcMidnightMs + MS_PER_DAY - 1;
   // Two passes settle the offset when the day contains a daylight-saving change.
   let ts = wallEnd - zoneOffsetMs(wallEnd, zone);

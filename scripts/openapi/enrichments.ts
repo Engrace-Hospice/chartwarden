@@ -551,6 +551,15 @@ import {
   ValidationWorklistQuery as M24ValidationWorklistQuery,
   VoidClaimBody as M24VoidClaimBody,
 } from "../../apps/backend/src/modules/24-billing-medicaid/routes/m24-typebox";
+import {
+  AdrCreateRequestSchema as M25AdrCreateRequestSchema,
+  AdrDetailSchema as M25AdrDetailSchema,
+  AdrPageSchema as M25AdrPageSchema,
+  AdrTransitionRequestSchema as M25AdrTransitionRequestSchema,
+  AdrVersionedResultSchema as M25AdrVersionedResultSchema,
+  MacRulePageSchema as M25MacRulePageSchema,
+  MacRuleRequestSchema as M25MacRuleRequestSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/adr.routes";
 import { M25ListQuerySchema } from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
 // M28 FHIR Gateway — the §4.2 request bodies + list queries the §4.1 route handlers validate against.
 import {
@@ -8075,6 +8084,37 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Open an appeal against a denial case (§4.1)",
     body: M25AppealCreateRequestSchema,
     response: M25VersionedResultSchema,
+  },
+
+  // ── adr.routes.ts (hospice ADR/TPE/QIC PRD, milestone 2a) ───────────────────────────────────────
+  "GET /api/v1/adrs": {
+    summary: "ADR worklist, soonest response due first",
+    response: M25AdrPageSchema,
+  },
+  "GET /api/v1/adrs/:id": {
+    summary: "ADR case detail with its due-date derivation and event timeline",
+    response: M25AdrDetailSchema,
+  },
+  "POST /api/v1/adrs": {
+    summary: "Log an additional documentation request; the response due date is derived from the MAC rule",
+    body: M25AdrCreateRequestSchema,
+    response: M25AdrVersionedResultSchema,
+    status: 201,
+  },
+  "POST /api/v1/adrs/:id/transition": {
+    summary: "Move an ADR through assembly, review, withdrawal or a missed response (If-Match)",
+    body: M25AdrTransitionRequestSchema,
+    response: M25AdrVersionedResultSchema,
+    headers: { "If-Match": { required: true, description: "The ADR version the client last read." } },
+  },
+  "GET /api/v1/mac-rules": {
+    summary: "The organization's MAC response-window rules",
+    response: M25MacRulePageSchema,
+  },
+  "PUT /api/v1/mac-rules": {
+    summary: "Create or update a MAC response-window rule",
+    body: M25MacRuleRequestSchema,
+    response: M25AdrVersionedResultSchema,
   },
 
   // ── appeals.routes.ts (§4.1 routes 19-26) ─────────────────────────────────────────────────────
