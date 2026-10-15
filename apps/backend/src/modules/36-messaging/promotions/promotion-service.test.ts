@@ -238,6 +238,47 @@ describe("promotion service - outcomes from the owning module", () => {
     });
   });
 
+  it("closes the newer proposed sibling when a superseded request is accepted (one signed record per message)", async () => {
+    const kit = buildKit();
+    const { promotion: r1 } = await kit.service.request(actor(ALICE), standardRequest);
+    kit.editMessage("The edited text");
+    const { promotion: r2 } = await kit.service.request(actor(ALICE), standardRequest);
+    expect(kit.store.rows.get(r1.id)?.status).toBe("superseded");
+    expect(kit.store.rows.get(r2.id)?.status).toBe("proposed");
+    const r = await kit.service.applyOutcome(actor(ALICE).orgId, event(r1.id));
+    expect(r.applied).toBe("accepted");
+    expect(kit.store.rows.get(r1.id)?.status).toBe("accepted");
+    expect(kit.store.rows.get(r2.id)).toMatchObject({
+      status: "superseded",
+      reasonCode: "superseded",
+    });
+  });
+
+  it("leaves a newer sibling alone when the accepted request was itself proposed", async () => {
+    const kit = buildKit();
+    const { promotion } = await kit.service.request(actor(ALICE), standardRequest);
+    await kit.service.applyOutcome(actor(ALICE).orgId, event(promotion.id));
+    expect(
+      await kit.store.supersedeSiblings(
+        {} as never,
+        actor(ALICE).orgId,
+        kit.store.rows.get(promotion.id) as never,
+      ),
+    ).toBe(0);
+  });
+
+  it("reports (does not apply) an acceptance that arrives for a rejected request", async () => {
+    const kit = buildKit();
+    const { promotion } = await kit.service.request(actor(ALICE), standardRequest);
+    await kit.service.applyOutcome(
+      actor(ALICE).orgId,
+      event(promotion.id, { outcome: "rejected", resultRef: null, reasonCode: "other" }),
+    );
+    const r = await kit.service.applyOutcome(actor(ALICE).orgId, event(promotion.id));
+    expect(r.applied).toBe("conflict");
+    expect(kit.store.rows.get(promotion.id)?.status).toBe("rejected");
+  });
+
   it("converges on redelivery", async () => {
     const kit = buildKit();
     const { promotion } = await kit.service.request(actor(ALICE), standardRequest);

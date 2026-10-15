@@ -15,7 +15,9 @@ import {
   rejectEncounterPromotion,
 } from "./addenda-api";
 import {
-  ALREADY_HAS_ADDENDUM,
+  CREATE_CONFLICT,
+  DECLINED,
+  DRAFT_CREATED,
   EDITED_SINCE_WARNING,
   GENERIC_FAILURE,
   LOAD_FAILED,
@@ -31,8 +33,12 @@ import {
   SNAPSHOT_LABEL,
 } from "./promotion-wording";
 
+/** `hidden`: the viewer may not read proposals (the read route needs encounter.addendum_author) - show nothing. */
+const HIDDEN_STATUSES: readonly (number | null)[] = [401, 403, 404];
+
 type Load =
   | { readonly kind: "loading" }
+  | { readonly kind: "hidden" }
   | { readonly kind: "error" }
   | { readonly kind: "ready"; readonly proposals: readonly PromotionProposalView[] };
 
@@ -60,8 +66,13 @@ export function ProposedFromMessage({
   const [code, setCode] = useState<PromotionRejectReason>("not_clinically_relevant");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const headingRef = useRef<HTMLHeadingElement>(null);
+  const [notice, setNotice] = useState("");
+  // The status line stays mounted whenever the section can show, so focus has a stable home when the last proposal leaves.
+  const statusRef = useRef<HTMLOutputElement>(null);
+  const textRef = useRef<HTMLDivElement>(null);
   const restoreFocusTo = useRef<string | null>(null);
+  const focusStatusAfterRead = useRef(false);
+  const latestRead = useRef(0);
 
   // The opener is unmounted while its form is open: focus it once the form has closed.
   useEffect(() => {
@@ -70,28 +81,43 @@ export function ProposedFromMessage({
     restoreFocusTo.current = null;
   }, [mode]);
 
-  const read = useCallback(async (): Promise<boolean> => {
+  const read = useCallback(async (): Promise<void> => {
+    const id = ++latestRead.current;
+    let next: Load;
     try {
       const res = await loadEncounterPromotions(client, encounterId);
-      const enabled = res.ok && res.value.enabled === true;
-      setLoad(
-        res.ok
-          ? { kind: "ready", proposals: enabled ? res.value.promotions : [] }
-          : { kind: "error" },
-      );
-      return enabled;
+      if (res.ok) {
+        next = {
+          kind: "ready",
+          proposals: res.value.enabled === true ? res.value.promotions : [],
+        };
+      } else {
+        next = HIDDEN_STATUSES.includes(res.status) ? { kind: "hidden" } : { kind: "error" };
+      }
     } catch {
-      setLoad({ kind: "error" });
-      return false;
+      next = { kind: "error" };
     }
+    // A superseded read, or one that finished after unmount, must not write state.
+    if (id === latestRead.current) setLoad(next);
   }, [client, encounterId]);
 
   useEffect(() => {
     void read();
+    return () => {
+      latestRead.current += 1;
+    };
   }, [read]);
+
+  // Land on the status line once the re-read has rendered (the heading may be gone with the last proposal).
+  useEffect(() => {
+    if (!focusStatusAfterRead.current || load.kind === "loading") return;
+    focusStatusAfterRead.current = false;
+    statusRef.current?.focus();
+  }, [load]);
 
   function open(id: string, kind: "start" | "decline"): void {
     setMode({ id, kind });
+    setNotice("");
     setText("");
     setError(null);
   }
@@ -103,16 +129,18 @@ export function ProposedFromMessage({
   }
 
   /** The proposal left the list (decided, withdrawn or moved on): re-read and land on the heading. */
-  async function settle(message: string | null): Promise<void> {
+  async function settle(message: string | null, done = ""): Promise<void> {
     setMode(null);
     setError(message);
+    setNotice(done);
+    focusStatusAfterRead.current = true;
     await read();
-    headingRef.current?.focus();
   }
 
   async function start(id: string): Promise<void> {
     if (text.trim().length < MIN_REASON_LENGTH) {
       setError(REASON_TOO_SHORT);
+      textRef.current?.querySelector("textarea")?.focus();
       return;
     }
     setBusy(true);
@@ -122,22 +150,22 @@ export function ProposedFromMessage({
     setBusy(false);
     if (res?.ok) {
       onChanged();
-      return settle(null);
+      return settle(null, DRAFT_CREATED);
     }
     if (res?.code === "PROMOTION_NOT_AVAILABLE") return settle(NOT_AVAILABLE);
-    setError(res?.status === 409 ? ALREADY_HAS_ADDENDUM : GENERIC_FAILURE);
+    setError(res?.status === 409 ? CREATE_CONFLICT : GENERIC_FAILURE);
   }
 
   async function decline(id: string): Promise<void> {
     setBusy(true);
     const res = await rejectEncounterPromotion(client, encounterId, id, code).catch(() => null);
     setBusy(false);
-    if (res?.ok) return settle(null);
+    if (res?.ok) return settle(null, DECLINED);
     if (res?.code === "PROMOTION_NOT_AVAILABLE") return settle(NOT_AVAILABLE);
     setError(GENERIC_FAILURE);
   }
 
-  if (load.kind === "loading") return null;
+  if (load.kind === "loading" || load.kind === "hidden") return null;
   if (load.kind === "error") {
     return (
       <p role="alert" style={errorText}>
@@ -145,14 +173,32 @@ export function ProposedFromMessage({
       </p>
     );
   }
-  if (load.proposals.length === 0 && !error) return null;
+  const status = (
+    <output ref={statusRef} tabIndex={-1} style={meta}>
+      {notice}
+    </output>
+  );
+  if (load.proposals.length === 0) {
+    if (!error && !notice) return null;
+    return (
+      <div style={stack}>
+        {status}
+        {error ? (
+          <p role="alert" style={errorText}>
+            {error}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <section aria-labelledby="m8-proposals-heading" style={section}>
-      <h3 id="m8-proposals-heading" ref={headingRef} tabIndex={-1} style={heading}>
+      <h3 id="m8-proposals-heading" style={heading}>
         {SECTION_TITLE}
       </h3>
       <p style={meta}>{SECTION_NOTICE}</p>
+      {status}
       {error && !mode ? (
         <p role="alert" style={errorText}>
           {error}
@@ -160,8 +206,12 @@ export function ProposedFromMessage({
       ) : null}
       <ul style={list}>
         {load.proposals.map((p) => (
-          <li key={p.request_id} style={item} aria-label={`Proposal ${p.request_id}`}>
-            <p style={meta}>
+          <li
+            key={p.request_id}
+            style={item}
+            aria-labelledby={`${OPENER_PREFIX}${p.request_id}-who`}
+          >
+            <p id={`${OPENER_PREFIX}${p.request_id}-who`} style={meta}>
               Proposed by {PROPOSER_TEXT} on {when(p.requested_at)}. Message sent{" "}
               {when(p.source_sent_at)}.
             </p>
@@ -179,7 +229,7 @@ export function ProposedFromMessage({
               </p>
             ) : null}
             {mode?.id === p.request_id ? (
-              <div style={form}>
+              <div style={form} ref={textRef}>
                 {mode.kind === "start" ? (
                   <TextAreaField
                     label={REASON_LABEL}

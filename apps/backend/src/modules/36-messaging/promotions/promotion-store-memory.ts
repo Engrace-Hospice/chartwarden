@@ -90,6 +90,16 @@ export function createMemoryPromotionStore(): MemoryPromotionStore {
         updatedAt: now,
       });
     },
+    async supersedeSiblings(_tx, orgId, accepted) {
+      const now = new Date();
+      const siblings = all().filter(
+        (r) => sameKey(r, orgId, accepted) && r.id !== accepted.id && r.status === "proposed",
+      );
+      for (const r of siblings) {
+        patch(r, { status: "superseded", reasonCode: "superseded", closedAt: now, updatedAt: now });
+      }
+      return siblings.length;
+    },
     async withdraw(_tx, orgId, id) {
       const r = owned(orgId, id);
       if (!r || r.status !== "proposed") return null;

@@ -47,6 +47,11 @@ export interface PromotionStore {
   /** Each of these returns null when the row is no longer in a state the move may start from. */
   supersede(tx: Tx, orgId: string, id: string): Promise<PromotionRow | null>;
   withdraw(tx: Tx, orgId: string, id: string): Promise<PromotionRow | null>;
+  /**
+   * Close every OTHER proposed request for the same message and target as superseded (the one just accepted already
+   * carries the reviewer's signed record for that message). Returns how many rows were closed.
+   */
+  supersedeSiblings(tx: Tx, orgId: string, accepted: PromotionRow): Promise<number>;
   markAccepted(
     tx: Tx,
     orgId: string,
@@ -148,6 +153,24 @@ export function createDbPromotionStore(db: DbClient): PromotionStore {
         .where(and(eq(T.organizationId, orgId), eq(T.id, id), eq(T.status, "proposed")))
         .returning();
       return row ?? null;
+    },
+
+    async supersedeSiblings(tx, orgId, accepted) {
+      const now = new Date();
+      const closed = await tx
+        .update(T)
+        .set({
+          status: "superseded",
+          reasonCode: "superseded",
+          closedAt: now,
+          updatedAt: now,
+          ...bump,
+        })
+        .where(
+          and(keyWhere(orgId, accepted), eq(T.status, "proposed"), sql`${T.id} <> ${accepted.id}`),
+        )
+        .returning({ id: T.id });
+      return closed.length;
     },
 
     async withdraw(tx, orgId, id) {

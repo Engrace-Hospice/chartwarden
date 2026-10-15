@@ -5,7 +5,6 @@ import type {
   ChartPromotionTargetKind,
   ChartPromotionTargetModule,
 } from "@wardenx/types";
-import { useApiClient } from "@wardenx/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { refreshPromotions, useOptionalApiClient } from "./use-promotions-enabled";
 
@@ -18,7 +17,14 @@ export type PromotionsView =
 
 export function usePromotions(filter: PromotionStatusFilter) {
   const client = useOptionalApiClient();
-  const [view, setView] = useState<PromotionsView>({ status: "loading" });
+  // The view remembers which filter it answered, so a filter switch reads as loading and never shows the other
+  // filter's rows (Open rows with live Withdraw buttons under Closed).
+  const [answer, setAnswer] = useState<{
+    readonly filter: PromotionStatusFilter;
+    readonly view: PromotionsView;
+  } | null>(null);
+  const view: PromotionsView =
+    answer && answer.filter === filter ? answer.view : { status: "loading" };
   const [tick, setTick] = useState(0);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `tick` is the manual re-read trigger
@@ -29,14 +35,15 @@ export function usePromotions(filter: PromotionStatusFilter) {
       .GET("/api/v1/messaging/chart-promotions", { params: { query: { status: filter } } })
       .then(({ data }) => {
         if (!current) return;
-        setView(
-          data
+        setAnswer({
+          filter,
+          view: data
             ? { status: "ready", promotions: data.enabled === true ? data.promotions : [] }
             : { status: "error" },
-        );
+        });
       })
       .catch(() => {
-        if (current) setView({ status: "error" });
+        if (current) setAnswer({ filter, view: { status: "error" } });
       });
     return () => {
       current = false;
@@ -79,34 +86,38 @@ export interface PromotionActions {
 }
 
 export function usePromotionActions(): PromotionActions {
-  const client = useApiClient();
+  const client = useOptionalApiClient();
   return useMemo(
     () => ({
       propose: (channelId, messageId, body) =>
-        client
-          .POST("/api/v1/messaging/channels/{id}/messages/{messageId}/chart-promotions", {
-            params: { path: { id: channelId, messageId } },
-            body,
-          })
-          .then(
-            (answer) => {
-              refreshPromotions(client);
-              return toResult(answer);
-            },
-            () => NETWORK_FAILURE,
-          ),
+        !client
+          ? Promise.resolve(NETWORK_FAILURE)
+          : client
+              .POST("/api/v1/messaging/channels/{id}/messages/{messageId}/chart-promotions", {
+                params: { path: { id: channelId, messageId } },
+                body,
+              })
+              .then(
+                (answer) => {
+                  refreshPromotions(client);
+                  return toResult(answer);
+                },
+                () => NETWORK_FAILURE,
+              ),
       withdraw: (id) =>
-        client
-          .POST("/api/v1/messaging/chart-promotions/{promotionId}/withdraw", {
-            params: { path: { promotionId: id } },
-          })
-          .then(
-            (answer) => {
-              refreshPromotions(client);
-              return toResult(answer);
-            },
-            () => NETWORK_FAILURE,
-          ),
+        !client
+          ? Promise.resolve(NETWORK_FAILURE)
+          : client
+              .POST("/api/v1/messaging/chart-promotions/{promotionId}/withdraw", {
+                params: { path: { promotionId: id } },
+              })
+              .then(
+                (answer) => {
+                  refreshPromotions(client);
+                  return toResult(answer);
+                },
+                () => NETWORK_FAILURE,
+              ),
     }),
     [client],
   );

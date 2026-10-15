@@ -54450,10 +54450,6 @@ export interface operations {
                             source_author_user_id: string;
                             /** Format: date-time */
                             source_sent_at: string;
-                            /** Format: uuid */
-                            source_message_id: string;
-                            /** Format: uuid */
-                            source_channel_id: string;
                         }[];
                     };
                 };

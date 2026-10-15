@@ -15,6 +15,11 @@ import { getSeam } from "../../bootstrap/index";
 export const CHART_PROMOTION_DECIDED_EVENT = "m14.chart_promotion.decided";
 /** The most proposals the meeting panel lists (the seam caps it again). */
 export const CHART_PROMOTION_LIST_MAX = 50;
+/**
+ * The most distinct patients one GET asks the seam about (the seam runs one 42 CFR Part 2 lookup per patient, so an
+ * org-wide caller's whole caseload must not fan out unbounded). The seam caps it again.
+ */
+export const CHART_PROMOTION_LIST_PATIENTS_MAX = 100;
 /** The title of an agenda item added from a proposal: fixed, generic text (never anything from the message). */
 export const PROMOTED_AGENDA_TITLE = "Raised from a secure message";
 /** The unique index that allows one agenda item per proposal. */
@@ -30,8 +35,6 @@ export interface ChartPromotionView {
   readonly requested_at: string;
   readonly source_author_user_id: string;
   readonly source_sent_at: string;
-  readonly source_message_id: string;
-  readonly source_channel_id: string;
 }
 
 export interface ChartPromotionListView {
@@ -83,7 +86,7 @@ export async function listForPatients(
     if (patientIds.length === 0) return { enabled: true, promotions: [] };
     const pending = await seam.pendingForPatients(organizationId, {
       targetModule: "m14",
-      patientIds,
+      patientIds: [...new Set(patientIds)].slice(0, CHART_PROMOTION_LIST_PATIENTS_MAX),
       reviewerUserId,
       limit: CHART_PROMOTION_LIST_MAX,
     });
@@ -96,8 +99,6 @@ export async function listForPatients(
         requested_at: p.requestedAt,
         source_author_user_id: p.sourceAuthorUserId,
         source_sent_at: p.sourceSentAt,
-        source_message_id: p.sourceMessageId,
-        source_channel_id: p.sourceChannelId,
       })),
     };
   } catch {
@@ -125,6 +126,10 @@ export const decidedPayload = (f: DecidedFacts): Record<string, unknown> => ({
   reasonCode: f.reasonCode,
   at: f.at.toISOString(),
 });
+
+/** A proposal that already has an agenda item cannot be rejected: the coordinator already acted on it (409). */
+export const promotionHasItem = (): ConflictError =>
+  new ConflictError("that proposal already has an agenda item");
 
 /** Map the two database refusals an attributed insert can raise: a second item for the proposal (409) or a proposal that moved (422). */
 export function mapPromotionInsertError(err: unknown): never {

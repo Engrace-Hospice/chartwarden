@@ -10,7 +10,10 @@ export const EDITED_SINCE_WARNING =
 export const NO_TEXT_AVAILABLE = "The message text is not available to show here.";
 export const LOAD_FAILED = "Proposed messages could not be loaded.";
 export const NOT_AVAILABLE = "This proposal is no longer available.";
-export const ALREADY_HAS_ADDENDUM = "This encounter already has an addendum in progress.";
+export const CREATE_CONFLICT =
+  "The addendum could not be created; it may already exist. Refresh and try again.";
+export const DRAFT_CREATED = "Draft addendum created from the proposal.";
+export const DECLINED = "Proposal declined.";
 export const REASON_LABEL = "Why is this addendum needed? (your own words, at least 20 characters)";
 export const REASON_TOO_SHORT = "Write at least 20 characters in your own words.";
 export const GENERIC_FAILURE = "That did not work. Nothing was changed. Try again.";

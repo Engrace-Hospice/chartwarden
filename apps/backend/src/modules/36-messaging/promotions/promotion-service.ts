@@ -421,6 +421,11 @@ export function createPromotionService(deps: PromotionServiceDeps): PromotionSer
                 reasonCode: decision.reasonCode,
               });
         if (!moved) return { applied: "noop" } as const;
+        // A signed record for a withdrawn or superseded request means the reviewer worked from an older proposal. Any
+        // newer proposal for the same message and target is now redundant: close it in the same transaction.
+        if (decision.kind === "accept" && row.status !== "proposed") {
+          await store.supersedeSiblings(tx, orgId, row);
+        }
         return {
           applied: decision.kind === "accept" ? "accepted" : "rejected",
           requestedByUserId: row.requestedByUserId,

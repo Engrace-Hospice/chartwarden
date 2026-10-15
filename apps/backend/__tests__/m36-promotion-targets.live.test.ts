@@ -70,7 +70,7 @@ const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const ORG_A = "11111111-1111-4111-8111-1111000f0801";
 const ORG_B = "22222222-2222-4222-8222-2222000f0802";
 const FLAG = "messaging.promotions";
-const PROMOTER_KEYS = [...STAFF_KEYS, "messaging.promote"];
+const PROMOTER_KEYS = [...STAFF_KEYS, "messaging.promote", "encounter.addendum_sign"];
 const BODY_MARKER = "wp37-owner-secret-night-pain-marker";
 const SERVICE_DATE = "2026-01-15";
 const LIVE_NOW = "2026-01-16T17:00:00Z";
@@ -104,13 +104,14 @@ describe.skipIf(!DB_URL)(
     let reviewerMembership: string;
     let locationId: string;
     const part2Denied = new Set<string>();
+    const withoutSign = new Set<string>();
     const channels = new Map<string, string>();
     const alerts: Array<{ eventType: string; payload: Record<string, unknown> }> = [];
     const KEK = randomBytes(32);
     const inScope = () => true;
     const TREE = ADDENDUM_SELECTIONS;
 
-    const call = (user: string, method: "GET" | "POST", url: string, payload?: object) =>
+    const call = (user: string, method: "GET" | "POST" | "PATCH", url: string, payload?: object) =>
       app.inject({
         method,
         url,
@@ -330,7 +331,12 @@ describe.skipIf(!DB_URL)(
             new Set(userIds.filter((u) => !part2Denied.has(`${u}:${patientId}`))),
         },
         meetingExists: async () => true,
-        permissionsFor: async () => new Set(PROMOTER_KEYS),
+        permissionsFor: async (_org, userId) =>
+          new Set(
+            withoutSign.has(userId)
+              ? PROMOTER_KEYS.filter((k) => k !== "encounter.addendum_sign")
+              : PROMOTER_KEYS,
+          ),
       });
       app = buildServer({
         db: kit.handle.db,
@@ -435,6 +441,148 @@ describe.skipIf(!DB_URL)(
         });
         expect(alerts.at(-1)?.payload).not.toHaveProperty("patientId");
         expect(await rowsOfOrdersAndCarePlan()).toBe(watched);
+      });
+
+      it("a proposal rejected after the draft was made cannot be signed into the chart (fails closed, 422)", async () => {
+        const encounterId = await signedEncounter();
+        const p = await propose(M8T);
+        const draft = await promotedDraft(encounterId, p.id);
+        await finalizeAddendum(encounterId, draft.id);
+        // The race: another reviewer's reject event landed (the consumer applied it) before this reviewer signs.
+        await kit.admin.query(
+          `UPDATE chart_promotion_request SET status='rejected', reason_code='other', decided_by_user_id=$2,
+             decided_at=now(), closed_at=now() WHERE id=$1`,
+          [p.id, author],
+        );
+        await expect(
+          enc.signAddendum(ORG_A, encounterId, draft.id, actor(), { at: SERVICE_DATE as never }),
+        ).rejects.toMatchObject({ statusCode: 422, code: "PROMOTION_NOT_AVAILABLE" });
+        const [row] = await kit.one<{ status: string }>(
+          "SELECT status FROM encounter_addendum WHERE id=$1",
+          [draft.id],
+        );
+        expect(row?.status).toBe("finalized");
+        expect(await decidedRows("m8.chart_promotion.decided", p.id)).toHaveLength(0);
+        // A new draft is refused too (the seam no longer offers a rejected proposal).
+        await expect(promotedDraft(encounterId, p.id)).rejects.toMatchObject({
+          code: "PROMOTION_NOT_AVAILABLE",
+        });
+      });
+
+      it("a draft made from a proposal holds a share lock on it: a concurrent reject cannot slip in before the draft commits", async () => {
+        const encounterId = await signedEncounter();
+        const p = await propose(M8T);
+        const [encRow] = await kit.one<{ id: string }>("SELECT id FROM encounter WHERE id=$1", [
+          encounterId,
+        ]);
+        const [req] = await kit.one<Record<string, unknown>>(
+          "SELECT * FROM chart_promotion_request WHERE id=$1",
+          [p.id],
+        );
+        await kit.appConn.query("BEGIN");
+        try {
+          await kit.appConn.query("SELECT set_config('app.org_id', $1, true)", [ORG_A]);
+          await kit.appConn.query(
+            `INSERT INTO encounter_addendum (organization_id, encounter_id, authored_by_membership_id, reason, status,
+               promotion_request_id, source_message_id, source_author_user_id, source_sent_at, source_body_sha256)
+             SELECT organization_id, id, $1, 'draft holding the proposal lock for the race test', 'draft', $2,$3,$4,$5,$6
+               FROM encounter WHERE id=$7`,
+            [
+              reviewerMembership,
+              p.id,
+              req?.message_id,
+              req?.source_author_user_id,
+              req?.source_sent_at,
+              req?.source_body_sha256,
+              encRow?.id,
+            ],
+          );
+          await kit.admin.query("SET lock_timeout = '400ms'");
+          await expect(
+            kit.admin.query(
+              `UPDATE chart_promotion_request SET status='rejected', reason_code='other', decided_by_user_id=$2,
+                 decided_at=now(), closed_at=now() WHERE id=$1`,
+              [p.id, author],
+            ),
+          ).rejects.toThrow(/lock timeout|canceling statement/);
+        } finally {
+          await kit.admin.query("RESET lock_timeout");
+          await kit.appConn.query("ROLLBACK");
+        }
+        expect((await request(p.id))?.status).toBe("proposed");
+      });
+
+      it("a reject is refused (409) while the proposal has a live addendum, and allowed once it is voided", async () => {
+        const encounterId = await signedEncounter();
+        const p = await propose(M8T);
+        const draft = await promotedDraft(encounterId, p.id);
+        const reject = () =>
+          enc.rejectChartPromotion(ORG_A, encounterId, p.id, {
+            reviewerUserId: reviewer,
+            reasonCode: "other",
+          });
+        await expect(reject()).rejects.toMatchObject({ statusCode: 409 });
+        expect(await decidedRows("m8.chart_promotion.decided", p.id)).toHaveLength(0);
+        await kit.admin.query("UPDATE encounter_addendum SET status='voided' WHERE id=$1", [
+          draft.id,
+        ]);
+        await expect(reject()).resolves.toMatchObject({ outcome: "rejected" });
+      });
+
+      it("a stale draft signed after the message was edited accepts the old request and closes its replacement", async () => {
+        const encounterId = await signedEncounter();
+        const p = await propose(M8T);
+        const draft = await promotedDraft(encounterId, p.id);
+        await finalizeAddendum(encounterId, draft.id);
+        const edit = await call(author, "PATCH", `/api/v1/messaging/messages/${p.messageId}`, {
+          bodyDoc: plainDoc("edited after the first proposal"),
+        });
+        expect(edit.statusCode).toBe(200);
+        const again = await call(
+          requester,
+          "POST",
+          `/api/v1/messaging/channels/${p.channelId}/messages/${p.messageId}/chart-promotions`,
+          M8T,
+        );
+        expect(again.statusCode).toBe(201);
+        const newer = again.json().promotion.id as string;
+        expect((await request(p.id))?.status).toBe("superseded");
+
+        await enc.signAddendum(ORG_A, encounterId, draft.id, actor(), {
+          at: SERVICE_DATE as never,
+        });
+        await deliver("m8.chart_promotion.decided", p.id);
+
+        expect(await request(p.id)).toMatchObject({ status: "accepted", result_ref: draft.id });
+        expect(await request(newer)).toMatchObject({
+          status: "superseded",
+          reason_code: "superseded",
+          result_ref: null,
+        });
+      });
+
+      it("the reviewer's list serves no text for an edited message, and an M8 reviewer without encounter.addendum_sign sees nothing", async () => {
+        const encounterId = await signedEncounter();
+        const p = await propose(M8T);
+        const edit = await call(author, "PATCH", `/api/v1/messaging/messages/${p.messageId}`, {
+          bodyDoc: plainDoc("edited so the proposed text is superseded"),
+        });
+        expect(edit.statusCode).toBe(200);
+        const listed = await enc.listChartPromotions(ORG_A, encounterId, reviewer);
+        const mine = listed.promotions.find((x) => x.request_id === p.id);
+        expect(mine).toMatchObject({ snapshot_text: null, source_state: "edited_since" });
+        expect(JSON.stringify(mine)).not.toContain(BODY_MARKER);
+
+        withoutSign.add(reviewer);
+        try {
+          const hidden = await enc.listChartPromotions(ORG_A, encounterId, reviewer);
+          expect(hidden.promotions.map((x) => x.request_id)).not.toContain(p.id);
+          await expect(promotedDraft(encounterId, p.id)).rejects.toMatchObject({
+            code: "PROMOTION_NOT_AVAILABLE",
+          });
+        } finally {
+          withoutSign.delete(reviewer);
+        }
       });
 
       it("refuses a second live draft for the same proposal (409) even after the first was signed", async () => {
@@ -661,6 +809,35 @@ describe.skipIf(!DB_URL)(
         const p = await propose(M14T);
         await addFromPromotion(m, p.id);
         await expect(addFromPromotion(m, p.id)).rejects.toMatchObject({ statusCode: 409 });
+      });
+
+      it("a reject is refused (409) once an agenda item was raised from the proposal", async () => {
+        const m = await meeting();
+        const p = await propose(M14T);
+        await addFromPromotion(m, p.id);
+        await expect(
+          idg.rejectChartPromotion(ORG_A, m, p.id, {
+            reviewerUserId: reviewer,
+            reasonCode: "duplicate",
+            inScope,
+          }),
+        ).rejects.toMatchObject({ statusCode: 409 });
+        expect(
+          (await decidedRows("m14.chart_promotion.decided", p.id)).map((r) => r.payload.outcome),
+        ).toEqual(["accepted"]);
+      });
+
+      it("an agenda item cannot be raised from a proposal that was rejected in the meantime", async () => {
+        const m = await meeting();
+        const p = await propose(M14T);
+        await kit.admin.query(
+          `UPDATE chart_promotion_request SET status='rejected', reason_code='other', decided_by_user_id=$2,
+             decided_at=now(), closed_at=now() WHERE id=$1`,
+          [p.id, author],
+        );
+        await expect(addFromPromotion(m, p.id)).rejects.toMatchObject({
+          code: "PROMOTION_NOT_AVAILABLE",
+        });
       });
 
       it("reject publishes rejected and adds no agenda item", async () => {

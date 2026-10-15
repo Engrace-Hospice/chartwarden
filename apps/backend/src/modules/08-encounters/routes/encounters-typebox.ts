@@ -250,8 +250,13 @@ export const CreateAddendumSchema = Type.Object({
 
 /** WP 3.7 - params of the reviewer routes on an encounter's chart promotions. */
 export const ChartPromotionParamsSchema = Type.Object({
-  encounterId: Type.String({ minLength: 1, maxLength: 64 }),
+  encounterId: Type.String({ format: "uuid" }),
   requestId: Type.String({ format: "uuid" }),
+});
+
+/** WP 3.7 - params of the list route (the encounter id is a uuid: a malformed one is 422, never a database cast error). */
+export const ChartPromotionListParamsSchema = Type.Object({
+  encounterId: Type.String({ format: "uuid" }),
 });
 
 /** WP 3.7 - decline a proposal (the system-set reasons `requester` / `superseded` are not selectable here). */

@@ -644,8 +644,6 @@ export const ChartPromotionListResponseSchema = Type.Object({
       requested_at: Type.String({ format: "date-time" }),
       source_author_user_id: Type.String({ format: "uuid" }),
       source_sent_at: Type.String({ format: "date-time" }),
-      source_message_id: Type.String({ format: "uuid" }),
-      source_channel_id: Type.String({ format: "uuid" }),
     }),
   ),
 });

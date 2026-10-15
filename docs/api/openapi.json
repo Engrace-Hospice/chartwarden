@@ -127085,9 +127085,7 @@
                           "requested_by",
                           "requested_at",
                           "source_author_user_id",
-                          "source_sent_at",
-                          "source_message_id",
-                          "source_channel_id"
+                          "source_sent_at"
                         ],
                         "properties": {
                           "request_id": {
@@ -127141,14 +127139,6 @@
                           },
                           "source_sent_at": {
                             "format": "date-time",
-                            "type": "string"
-                          },
-                          "source_message_id": {
-                            "format": "uuid",
-                            "type": "string"
-                          },
-                          "source_channel_id": {
-                            "format": "uuid",
                             "type": "string"
                           }
                         }

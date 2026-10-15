@@ -17,8 +17,6 @@ const PROPOSAL = {
   requested_at: "2026-10-14T08:00:00.000Z",
   source_author_user_id: "u2",
   source_sent_at: "2026-10-14T07:00:00.000Z",
-  source_message_id: "m1",
-  source_channel_id: "c1",
 };
 const list = (promotions: unknown[], enabled = true) => ({ data: { enabled, promotions } });
 
@@ -55,7 +53,7 @@ describe("MeetingPromotions", () => {
 
   it("shows the patient and who/when, with no message text", async () => {
     mount(list([PROPOSAL]));
-    const item = await screen.findByLabelText("Proposal req-1");
+    const item = await screen.findByRole("listitem");
     expect(within(item).getByText("Ann B.")).toBeTruthy();
     expect(within(item).getByText(/Proposed by A care-team member on/)).toBeTruthy();
     expect(within(item).queryByRole("link", { name: /open message/i })).toBeNull();
@@ -119,5 +117,57 @@ describe("MeetingPromotions", () => {
     await waitFor(() =>
       expect(document.querySelector("output")?.textContent).toBe("Proposal declined."),
     );
+  });
+
+  it("keeps the decline form and the chosen reason open on a generic failure, and focuses the status", async () => {
+    const post = vi.fn().mockResolvedValue({
+      data: undefined,
+      error: { error: { code: "INTERNAL" } },
+      response: { status: 500 },
+    });
+    mount(list([PROPOSAL]), post);
+    await userEvent.click(await screen.findByRole("button", { name: "Decline" }));
+    await userEvent.selectOptions(screen.getByLabelText("Reason for declining"), "duplicate");
+    await userEvent.click(screen.getByRole("button", { name: "Decline proposal" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/That did not work/);
+    expect((screen.getByLabelText("Reason for declining") as HTMLSelectElement).value).toBe(
+      "duplicate",
+    );
+    expect(document.activeElement).toBe(alert);
+  });
+
+  it("clears the failure state when a new action starts", async () => {
+    const post = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: undefined,
+        error: { error: { code: "INTERNAL" } },
+        response: { status: 500 },
+      })
+      .mockResolvedValue({ data: { id: "a1", kind: "other" }, response: { status: 201 } });
+    mount(list([PROPOSAL]), post);
+    await userEvent.click(await screen.findByRole("button", { name: "Add to agenda" }));
+    await screen.findByRole("alert");
+    await userEvent.click(screen.getByRole("button", { name: "Add to agenda" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+
+  it("retries an add with the same Idempotency-Key until it settles", async () => {
+    const post = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: undefined,
+        error: { error: { code: "INTERNAL" } },
+        response: { status: 500 },
+      })
+      .mockResolvedValue({ data: { id: "a1", kind: "other" }, response: { status: 201 } });
+    mount(list([PROPOSAL]), post);
+    await userEvent.click(await screen.findByRole("button", { name: "Add to agenda" }));
+    await screen.findByRole("alert");
+    await userEvent.click(screen.getByRole("button", { name: "Add to agenda" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+    const key = (call: number) => post.mock.calls[call]?.[1].params.header["Idempotency-Key"];
+    expect(key(1)).toBe(key(0));
   });
 });

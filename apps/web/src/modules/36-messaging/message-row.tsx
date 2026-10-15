@@ -254,6 +254,7 @@ function MessageRowImpl({
               <MessagePromotionButton
                 channelId={message.channelId}
                 messageId={message.messageId}
+                authorName={message.authorDisplayName}
                 patientLinked={patientLinked}
               />
             ) : null}

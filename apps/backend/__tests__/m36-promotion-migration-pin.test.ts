@@ -203,3 +203,24 @@ describe("M8 and M14 attribution columns", () => {
     expect(sql).toContain('CHECK ("promotion_request_id" IS NULL OR "patient_id" IS NOT NULL)');
   });
 });
+
+describe("race guards (review M1)", () => {
+  it("both INSERT guards take a share lock on the proposal row they check", () => {
+    expect(code.match(/FOR SHARE OF p/g)?.length).toBeGreaterThanOrEqual(3);
+    const addendumGuard =
+      /FUNCTION encounter_addendum_promotion_guard\(\)[\s\S]*?END \$\$;/.exec(code)?.[0] ?? "";
+    const agendaGuard =
+      /FUNCTION idg_agenda_item_promotion_guard\(\)[\s\S]*?END \$\$;/.exec(code)?.[0] ?? "";
+    expect(addendumGuard.match(/FOR SHARE OF p/g)?.length).toBe(2);
+    expect(agendaGuard.match(/FOR SHARE OF p/g)).toHaveLength(1);
+  });
+
+  it("signing an attributed addendum re-checks the proposal is still open (never rejected or accepted)", () => {
+    const guard = flat(
+      /FUNCTION encounter_addendum_promotion_guard\(\)[\s\S]*?END \$\$;/.exec(code)?.[0] ?? "",
+    );
+    expect(guard).toContain("NEW.status = 'signed' AND OLD.status IS DISTINCT FROM 'signed'");
+    expect(guard).toContain("p.status IN ('proposed', 'withdrawn', 'superseded')");
+    expect(guard).not.toMatch(/IN \([^)]*'rejected'/);
+  });
+});

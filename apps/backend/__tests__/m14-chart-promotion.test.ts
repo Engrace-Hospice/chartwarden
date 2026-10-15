@@ -81,6 +81,7 @@ interface SeamState {
   reviews: Map<string, ChartPromotionReview>;
   throws: boolean;
   reviewerUserIds: string[];
+  withText: unknown[];
 }
 
 function makeServer(seam: SeamState, status: "scheduled" | "live" | "adjourned" = "live") {
@@ -123,11 +124,13 @@ function makeServer(seam: SeamState, status: "scheduled" | "live" | "adjourned" 
     },
     pendingForPatients: async (_org, q) => {
       seam.reviewerUserIds.push(q.reviewerUserId);
+      if ((q as { withText?: boolean }).withText) seam.withText.push(true);
       return [...seam.reviews.values()].filter((r) => q.patientIds.includes(r.patientId));
     },
     forReview: async (_org, id, q) => {
       if (seam.throws) throw new Error("seam down");
       seam.reviewerUserIds.push(q.reviewerUserId);
+      if (q.withText) seam.withText.push(true);
       const r = seam.reviews.get(id);
       return r && q.targetModule === "m14" ? r : null;
     },
@@ -154,6 +157,7 @@ beforeEach(() => {
     ]),
     throws: false,
     reviewerUserIds: [],
+    withText: [],
   };
 });
 afterEach(() => {
@@ -189,14 +193,23 @@ describe("WP 3.7 M14 - GET /idg/meetings/:id/chart-promotions", () => {
     const body = res.json();
     expect(body.enabled).toBe(true);
     expect(body.promotions).toHaveLength(1);
-    expect(body.promotions[0]).toMatchObject({
-      request_id: REQ,
-      patientId: PATIENT,
-      source_message_id: MESSAGE,
-      source_channel_id: CHANNEL,
-    });
+    expect(body.promotions[0]).toMatchObject({ request_id: REQ, patientId: PATIENT });
+    // The agenda reviewer does not need to know which message or channel it came from.
+    expect(Object.keys(body.promotions[0])).not.toContain("source_message_id");
+    expect(Object.keys(body.promotions[0])).not.toContain("source_channel_id");
     expect(JSON.stringify(body)).not.toContain("snapshot");
     expect(JSON.stringify(body)).not.toContain("a".repeat(64));
+  });
+
+  it("never asks the seam for message text (M14 does not pass withText)", async () => {
+    const { app } = makeServer(seam);
+    await app.inject({
+      method: "GET",
+      url: `/api/v1/idg/meetings/${MTG}/chart-promotions`,
+      headers: h("coordinator"),
+    });
+    await fromPromotion(app, REQ);
+    expect(seam.withText).toEqual([]);
   });
 
   it("asks the seam as the M2 user id, not the membership id", async () => {
@@ -391,6 +404,15 @@ describe("WP 3.7 M14 - POST /idg/meetings/:id/chart-promotions/:requestId/reject
       headers: h("coordinator"),
     });
     expect(agenda.json()).toEqual([]);
+  });
+
+  it("refuses to reject a proposal that already has an agenda item (409) and publishes nothing more", async () => {
+    const { app, backend } = makeServer(seam);
+    expect((await fromPromotion(app, REQ)).statusCode).toBe(201);
+    backend.drainEvents();
+    const res = await reject(app, REQ, { reasonCode: "other" });
+    expect(res.statusCode).toBe(409);
+    expect(decided(backend)).toHaveLength(0);
   });
 
   it.each([["requester"], ["superseded"], ["bogus"]])(

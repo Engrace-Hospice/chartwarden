@@ -15,6 +15,8 @@ export { CHART_PROMOTION_TARGETS, isChartPromotionTarget };
 
 /** Newest proposals shown to a reviewer per call; a reviewer works a short list, not an archive. */
 export const CHART_PROMOTION_PENDING_MAX = 20;
+/** The most distinct patients one pending listing checks the Part 2 gate for (one gate lookup per patient). */
+export const CHART_PROMOTION_PENDING_PATIENTS_MAX = 200;
 
 /** The slice of a stored request the decisions need. */
 export interface PromotionFacts {
@@ -75,7 +77,7 @@ export type PromotionOutcomeDecision =
   | { readonly kind: "noop" }
   /** An event from a module that does not own the target, or a malformed one: believed by nobody. */
   | { readonly kind: "ignore" }
-  /** An accepted row already has a different result: log ids only, change nothing. */
+  /** An accepted row has a different result, or an acceptance arrived for a rejected row: log ids only, change nothing. */
   | { readonly kind: "conflict" };
 
 /** The reason codes a reviewer may give when declining; anything else is recorded as `other`. */
@@ -102,7 +104,9 @@ export function applyPromotionOutcome(
     if (row.status === "accepted") {
       return row.resultRef === event.resultRef ? { kind: "noop" } : { kind: "conflict" };
     }
-    if (row.status === "rejected") return { kind: "noop" };
+    // A signed record exists on a request already rejected: rejected is final, so change nothing, but surface it (the
+    // outcome consumer logs a conflict with ids only) instead of dropping it silently.
+    if (row.status === "rejected") return { kind: "conflict" };
     return { kind: "accept", resultRef: event.resultRef };
   }
   if (row.status !== "proposed") return { kind: "noop" };

@@ -79,6 +79,11 @@ describe("applyPromotionOutcome", () => {
       applyPromotionOutcome({ status: "accepted", targetModule: "m8", resultRef: "R1" }, accepted),
     ).toEqual({ kind: "noop" });
   });
+  it("flags an acceptance that arrives for a rejected request and changes nothing", () => {
+    expect(
+      applyPromotionOutcome({ status: "rejected", targetModule: "m8", resultRef: null }, accepted),
+    ).toEqual({ kind: "conflict" });
+  });
   it("flags a different result on an accepted request and changes nothing", () => {
     expect(
       applyPromotionOutcome({ status: "accepted", targetModule: "m8", resultRef: "R0" }, accepted),

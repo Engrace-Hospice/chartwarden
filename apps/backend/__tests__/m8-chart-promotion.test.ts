@@ -54,6 +54,11 @@ const REVIEWER_PERMS = [
 ];
 const PERMISSION_SEED = [
   { userId: "rn_1", permissions: REVIEWER_PERMS },
+  // Can author an addendum but not sign one: may not decline a proposal.
+  {
+    userId: "author_only",
+    permissions: ["encounter.read", "encounter.addendum_author"],
+  },
   // Holds the messaging promote permission in the real tenant but NOTHING from M8: must be refused by the owner.
   {
     userId: "promoter_only",
@@ -83,6 +88,8 @@ interface SeamState {
   enabled: boolean;
   reviews: Map<string, ChartPromotionReview>;
   throws: boolean;
+  withTextCalls: boolean[];
+  pendingLimits: number[];
 }
 
 function stepUpRecentPredicate(context: {
@@ -165,10 +172,13 @@ function makeServer(seam: SeamState) {
       if (seam.throws) throw new Error("seam down");
       return seam.enabled;
     },
-    pendingForPatients: async (_org, q) =>
-      [...seam.reviews.values()].filter((r) => q.patientIds.includes(r.patientId)),
+    pendingForPatients: async (_org, q) => {
+      seam.pendingLimits.push(q.limit);
+      return [...seam.reviews.values()].filter((r) => q.patientIds.includes(r.patientId));
+    },
     forReview: async (_org, id, q) => {
       if (seam.throws) throw new Error("seam down");
+      seam.withTextCalls.push(q.withText === true);
       const r = seam.reviews.get(id);
       return r && q.targetModule === "m8" ? r : null;
     },
@@ -197,6 +207,8 @@ beforeEach(() => {
       [REQ_OTHER_PATIENT, review({ requestId: REQ_OTHER_PATIENT, patientId: OTHER_PATIENT })],
     ]),
     throws: false,
+    withTextCalls: [],
+    pendingLimits: [],
   };
 });
 afterEach(() => {
@@ -226,6 +238,48 @@ describe("WP 3.7 M8 - GET /encounters/:id/chart-promotions", () => {
       source_state: "current",
       source_author_user_id: AUTHOR_USER,
     });
+  });
+
+  it("is the only caller that asks the seam for the text, and caps how many it opens per GET", async () => {
+    for (let i = 0; i < 25; i++) {
+      const id = `c0000000-0000-4000-8000-0000000001${String(i).padStart(2, "0")}`;
+      seam.reviews.set(id, review({ requestId: id }));
+    }
+    const { app } = makeServer(seam);
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${ENC}/chart-promotions`,
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().promotions.length).toBeLessThanOrEqual(10);
+    expect(seam.withTextCalls.length).toBeLessThanOrEqual(10);
+    expect(seam.withTextCalls.every(Boolean)).toBe(true);
+    expect(seam.pendingLimits).toEqual([10]);
+  });
+
+  it("passes a null snapshot through for an edited message (the superseded text is not served)", async () => {
+    seam.reviews.set(REQ, review({ snapshotText: null, sourceState: "edited_since" }));
+    const { app } = makeServer(seam);
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/encounters/${ENC}/chart-promotions`,
+      headers: RN,
+    });
+    expect(res.json().promotions[0]).toMatchObject({
+      snapshot_text: null,
+      source_state: "edited_since",
+    });
+  });
+
+  it("answers 422 (not 500) for a malformed encounter id on the list route", async () => {
+    const { app } = makeServer(seam);
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/encounters/not-a-uuid/chart-promotions",
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(422);
   });
 
   it("answers enabled:false with an empty list while the feature is off", async () => {
@@ -452,6 +506,42 @@ describe("WP 3.7 M8 - the decided event", () => {
     expect(res.statusCode).toBe(422);
     expect(res.json().error.code).toBe("PROMOTION_NOT_AVAILABLE");
     expect(decided(backend)).toHaveLength(0);
+  });
+
+  it("refuses to reject once the proposal has a non-voided addendum (409) and publishes nothing", async () => {
+    const { app, backend } = makeServer(seam);
+    await draftAndFinalize(app, REQ);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${ENC}/chart-promotions/${REQ}/reject`,
+      headers: RN,
+      payload: { reasonCode: "other" },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(decided(backend)).toHaveLength(0);
+  });
+
+  it("refuses an author who cannot sign (declining needs encounter.addendum_sign)", async () => {
+    const { app, backend } = makeServer(seam);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/${ENC}/chart-promotions/${REQ}/reject`,
+      headers: { "x-test-user": "author_only" },
+      payload: { reasonCode: "other" },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(decided(backend)).toHaveLength(0);
+  });
+
+  it("answers 422 (not 500) for a malformed encounter id on the reject route", async () => {
+    const { app } = makeServer(seam);
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/encounters/not-a-uuid/chart-promotions/${REQ}/reject`,
+      headers: RN,
+      payload: { reasonCode: "other" },
+    });
+    expect(res.statusCode).toBe(422);
   });
 
   it("refuses a caller without the M8 addendum permission even if they hold messaging.promote", async () => {

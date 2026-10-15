@@ -47,6 +47,7 @@ import {
   type RejectReasonCode,
   decidedPayload,
   listForPatients,
+  promotionHasItem,
   requireReview,
 } from "../chart-promotion";
 import { assertMeetingWriteAllowed } from "./meeting-write-policy";
@@ -1608,6 +1609,9 @@ export function createInMemoryIdgBackend(
     async rejectChartPromotion(orgId, meetingId, requestId, args) {
       meetingOf(orgId, meetingId);
       await requireReview(orgId, requestId, args.reviewerUserId, args.inScope);
+      if ([...agenda.values()].some((a) => a.promotion?.request_id === requestId)) {
+        throw promotionHasItem();
+      }
       emit(
         CHART_PROMOTION_DECIDED_EVENT,
         decidedPayload({

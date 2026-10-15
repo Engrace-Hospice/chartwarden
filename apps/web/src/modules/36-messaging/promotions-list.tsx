@@ -67,9 +67,7 @@ export function PromotionsList(): JSX.Element {
           </button>
         ))}
       </fieldset>
-      <output className="sr-only" aria-live="polite">
-        {message}
-      </output>
+      <output className="sr-only">{message}</output>
       {view.status === "loading" ? (
         <LoadingSpinner />
       ) : view.status === "error" ? (
@@ -106,7 +104,7 @@ export function PromotionsList(): JSX.Element {
                 ) : null}
                 <Link
                   className="wx-task-link"
-                  to={`/messaging?channelId=${promotion.channel_id}&messageId=${promotion.message_id}`}
+                  to={`/messaging?${new URLSearchParams({ channelId: promotion.channel_id, messageId: promotion.message_id })}`}
                 >
                   Open message
                 </Link>

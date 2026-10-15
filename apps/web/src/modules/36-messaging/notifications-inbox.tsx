@@ -33,7 +33,7 @@ import { PromotionsList } from "./promotions-list";
 import { TasksList } from "./tasks-list";
 import { useHandoffs } from "./use-handoffs";
 import { useHandoffsEnabled } from "./use-handoffs-enabled";
-import { usePromotionsEnabled } from "./use-promotions-enabled";
+import { PROMOTE_PERMISSION, usePromotionsEnabled } from "./use-promotions-enabled";
 import { useTasks } from "./use-tasks";
 import "./notifications-inbox.css";
 
@@ -96,8 +96,10 @@ export function NotificationsInbox(): JSX.Element {
     myHandoffs.view.status === "ready" && myHandoffs.view.enabled
       ? myHandoffs.view.handoffs.length
       : 0;
-  // Likewise the Chart proposals tab (WP 3.7): only while the tenant has proposals on.
-  const promotionsEnabled = usePromotionsEnabled();
+  // Likewise the Chart proposals tab (WP 3.7): only while the tenant has proposals on and the viewer can propose (no read otherwise).
+  const promotionsEnabled = usePromotionsEnabled(
+    !(session?.permissions?.includes(PROMOTE_PERMISSION) ?? false),
+  );
   const tab: Tab =
     (requestedTab === "handoffs" && !handoffsEnabled) ||
     (requestedTab === "promotions" && !promotionsEnabled)

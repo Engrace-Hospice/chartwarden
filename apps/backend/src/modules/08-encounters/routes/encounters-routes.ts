@@ -25,6 +25,7 @@ import {
   CaptureVitalsSchema,
   CarePlanLinkParamsSchema,
   CarePlanLinkSchema,
+  ChartPromotionListParamsSchema,
   ChartPromotionParamsSchema,
   CreateAddendumSchema,
   CreateEncounterSchema,
@@ -190,6 +191,11 @@ const ABAC_COSIGN = requireAbac("encounter.cosign", "m8.cosigner_role_match") as
 // "still never trusted for the SUBJECT" convention M7's `discipline_scope` guard uses.
 const SCOPE_FOR = (action: string): PreHandler =>
   requireAbac(action, "encounter.scope", { notFoundOnDeny: true }) as PreHandler;
+
+/** WP 3.7: reject a malformed encounter id (422) BEFORE the scope predicate casts it to a uuid (that would be a 500). */
+const PROMOTION_PARAMS_UUID = (async (request: FastifyRequest) => {
+  parse(ChartPromotionListParamsSchema, request.params);
+}) as unknown as PreHandler;
 const SCOPE_CREATE = requireAbac("encounter.author", "encounter.scope", {
   notFoundOnDeny: true,
   getTarget: (request) => ({
@@ -788,12 +794,15 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   app.get(
     "/api/v1/encounters/:encounterId/chart-promotions",
     {
-      preHandler: [ADDENDUM_AUTHOR, SCOPE_FOR("encounter.addendum_author")],
+      preHandler: [PROMOTION_PARAMS_UUID, ADDENDUM_AUTHOR, SCOPE_FOR("encounter.addendum_author")],
       config: {
         auditRead: {
           resourceKind: "encounter",
           resourceIdParam: "encounterId",
           list: true,
+          // Without this the list event carries no resource id; this GET decrypts proposed message text, so the event
+          // must name the encounter it was opened on (WP 3.7 review L6).
+          listResourceId: true,
         },
       },
     },
@@ -810,7 +819,8 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 22c - WP 3.7: decline a proposal. Writes nothing in M8; publishes m8.chart_promotion.decided{rejected}.
   app.post(
     "/api/v1/encounters/:encounterId/chart-promotions/:requestId/reject",
-    { preHandler: [ADDENDUM_AUTHOR, SCOPE_FOR("encounter.addendum_author")] },
+    // Declining is a decision on what enters the chart: the same permission as signing the addendum (WP 3.7 review M4).
+    { preHandler: [PROMOTION_PARAMS_UUID, ADDENDUM_SIGN, SCOPE_FOR("encounter.addendum_sign")] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { encounterId, requestId } = parse(ChartPromotionParamsSchema, request.params);

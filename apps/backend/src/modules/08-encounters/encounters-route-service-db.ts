@@ -54,6 +54,7 @@ import {
   isNotNull,
   isNull,
   lte,
+  ne,
   sql,
 } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
@@ -68,6 +69,7 @@ import {
   decidedPayload,
   listForPatient,
   mapPromotionInsertError,
+  promotionHasDraft,
   requireReview,
 } from "./chart-promotion";
 import { transitionCosignature } from "./cosignature/index";
@@ -2406,6 +2408,14 @@ export function createDbEncounterRouteService(
       // The seam reads in its own tenant context, so resolve it BEFORE opening the write transaction.
       await requireReview(organizationId, requestId, args.reviewerUserId, patientId);
       await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        // A reviewer who already has a (non-voided) addendum from this proposal is mid-decision: rejecting it now would
+        // leave a signed, attributed record against a request that says rejected. They void the draft first.
+        const [draft] = await (tx as unknown as DbClient)
+          .select({ id: ADDENDUM.id })
+          .from(ADDENDUM)
+          .where(and(eq(ADDENDUM.promotionRequestId, requestId), ne(ADDENDUM.status, "voided")))
+          .limit(1);
+        if (draft) throw promotionHasDraft();
         await emit(
           tx,
           organizationId,
@@ -2610,8 +2620,9 @@ export function createDbEncounterRouteService(
             }),
           );
         }
-        return { status: "signed", signedAt: now.toISOString() };
-      });
+        return { status: "signed" as const, signedAt: now.toISOString() };
+        // The database proves the proposal is still open at the moment of signing (rejected, accepted or gone = 422).
+      }).catch(mapPromotionInsertError);
     },
   };
 }

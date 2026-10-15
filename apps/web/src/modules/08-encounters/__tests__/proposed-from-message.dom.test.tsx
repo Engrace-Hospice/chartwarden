@@ -60,6 +60,21 @@ describe("ProposedFromMessage", () => {
     expect(screen.queryByText("Proposed from a secure message")).toBeNull();
   });
 
+  it.each([401, 403])(
+    "renders nothing, and no alert, when the read is refused with %s",
+    async (status) => {
+      const { GET } = mount({
+        data: undefined,
+        error: { error: { code: "FORBIDDEN" } },
+        response: { status },
+      });
+      await waitFor(() => expect(GET).toHaveBeenCalled());
+      await Promise.resolve();
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.queryByText(/could not be loaded/)).toBeNull();
+    },
+  );
+
   it("says so when the read fails", async () => {
     mount({ data: undefined, error: { error: { code: "X" } }, response: { status: 500 } });
     expect((await screen.findByRole("alert")).textContent).toMatch(/could not be loaded/);
@@ -67,7 +82,7 @@ describe("ProposedFromMessage", () => {
 
   it("shows the snapshot read-only with no edit control for it", async () => {
     mount(list([PROPOSAL]));
-    const item = await screen.findByLabelText("Proposal req-1");
+    const item = await screen.findByRole("listitem");
     expect(within(item).getByText("Family reports new pain overnight.")).toBeTruthy();
     expect(within(item).queryByRole("textbox")).toBeNull();
     expect(within(item).queryByText(/edited this message/)).toBeNull();
@@ -110,6 +125,41 @@ describe("ProposedFromMessage", () => {
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 
+  it("focuses the textarea when the reason is too short", async () => {
+    mount(list([PROPOSAL]));
+    await userEvent.click(await screen.findByRole("button", { name: "Start my addendum" }));
+    const box = screen.getByRole("textbox");
+    await userEvent.click(screen.getByRole("button", { name: "Create my addendum draft" }));
+    expect(screen.getByText(/at least 20 characters in your own words/)).toBeTruthy();
+    expect(document.activeElement).toBe(box);
+  });
+
+  it("keeps focus on a surviving status line when the last proposal leaves", async () => {
+    const post = vi.fn().mockResolvedValue({
+      data: { promotionRequestId: "req-1", outcome: "rejected" },
+      response: { status: 200 },
+    });
+    const GET = vi
+      .fn()
+      .mockResolvedValueOnce(list([PROPOSAL]))
+      .mockResolvedValue(list([]));
+    render(
+      <MemoryRouter>
+        <ApiClientProvider client={{ GET, POST: post } as unknown as ApiClient}>
+          <SessionProvider session={{ userId: "u3", organizationId: "o1" }}>
+            <ProposedFromMessage encounterId="enc-1" onChanged={vi.fn()} />
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Decline" }));
+    await userEvent.click(screen.getByRole("button", { name: "Decline proposal" }));
+    await waitFor(() => expect(screen.queryByRole("listitem")).toBeNull());
+    const status = await screen.findByText("Proposal declined.");
+    expect(document.activeElement).toBe(status);
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
   it("returns focus to Start when the form is cancelled", async () => {
     mount(list([PROPOSAL]));
     const start = await screen.findByRole("button", { name: "Start my addendum" });
@@ -136,7 +186,7 @@ describe("ProposedFromMessage", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Start my addendum" }));
     await userEvent.type(screen.getByRole("textbox"), "x".repeat(25));
     await userEvent.click(screen.getByRole("button", { name: "Create my addendum draft" }));
-    expect(await screen.findByText(/already has an addendum in progress/)).toBeTruthy();
+    expect(await screen.findByText(/may already exist/)).toBeTruthy();
   });
 
   it("declines with a reason code and focuses the heading when the row leaves", async () => {

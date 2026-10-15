@@ -84,6 +84,7 @@ import {
   decidedPayload,
   listForPatients,
   mapPromotionInsertError,
+  promotionHasItem,
   requireReview,
 } from "./chart-promotion";
 import { recomputeCarryForwardCountsForMeeting } from "./jobs/carry-forward-count";
@@ -1767,6 +1768,14 @@ export function createDbIdgBackend(
       await requireReview(orgId, requestId, args.reviewerUserId, args.inScope);
       await withOrg(orgId, async (tx) => {
         if (!(await meetingExists(tx, meetingId))) throw new NotFoundError("idg_meeting");
+        // An agenda item already raised from this proposal means it was acted on: rejecting would leave an attributed
+        // item against a request that says rejected.
+        const [item] = await tx
+          .select({ id: AGD.id })
+          .from(AGD)
+          .where(eq(AGD.promotionRequestId, requestId))
+          .limit(1);
+        if (item) throw promotionHasItem();
         await emit(
           tx,
           orgId,

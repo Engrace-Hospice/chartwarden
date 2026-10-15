@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { ALICE, BOB, CAROL, P1, actor, buildKit, sha, standardRequest } from "./promotion-test-kit";
 
-const m8 = { targetModule: "m8", reviewerUserId: CAROL } as const;
+const m8 = { targetModule: "m8", reviewerUserId: CAROL, withText: true } as const;
+const m8NoText = { targetModule: "m8", reviewerUserId: CAROL } as const;
 const m14 = { targetModule: "m14", reviewerUserId: CAROL } as const;
 
 async function proposed(kit: ReturnType<typeof buildKit>, target: "m8" | "m14" = "m8") {
@@ -36,15 +37,76 @@ describe("ChartPromotionSourceReader.forReview", () => {
     expect(review?.requestId).toBe(p.id);
   });
 
-  it("shows the proposed text and edited_since when the sender edited the message afterwards", async () => {
+  it("serves no text when the sender edited the message afterwards, only that the source changed", async () => {
     const kit = buildKit();
     const p = await proposed(kit);
     kit.editMessage("Edited text");
     const review = await kit.reader.forReview(actor(ALICE).orgId, p.id, m8);
-    expect(review).toMatchObject({
-      snapshotText: "Patient reports new pain in left hip",
-      sourceState: "edited_since",
+    expect(review).toMatchObject({ snapshotText: null, sourceState: "edited_since" });
+  });
+
+  it("serves no text unless the caller asks withText", async () => {
+    const kit = buildKit();
+    const p = await proposed(kit);
+    const review = await kit.reader.forReview(actor(ALICE).orgId, p.id, m8NoText);
+    expect(review?.snapshotText).toBeNull();
+    expect(review?.sourceState).toBe("current");
+  });
+
+  it("never opens (decrypts) a body for a caller that did not ask for the text", async () => {
+    const kit = buildKit();
+    const p = await proposed(kit);
+    const opened: string[] = [];
+    const { createPromotionSourceReader } = await import("./promotion-source-reader");
+    const reader = createPromotionSourceReader({
+      store: kit.store,
+      isEnabled: async () => true,
+      part2Gate: { allowedUserIds: async ({ userIds }) => new Set(userIds) },
+      bodies: {
+        ...kit.bodies,
+        open: async (o, c) => {
+          opened.push("x");
+          return kit.bodies.open(o, c);
+        },
+      },
+      permissionsFor: async () => new Set(["patient.read", "encounter.addendum_sign"]),
     });
+    await reader.forReview(actor(ALICE).orgId, p.id, m8NoText);
+    kit.editMessage("Edited text");
+    await reader.forReview(actor(ALICE).orgId, p.id, m8);
+    expect(opened).toEqual([]);
+  });
+
+  it.each([["encounter.addendum_sign"], ["patient.read"]])(
+    "returns null for an m8 reviewer who lacks %s",
+    async (perm) => {
+      const kit = buildKit({ missingPermission: [`${CAROL}:${perm}`] });
+      const p = await proposed(kit);
+      expect(await kit.reader.forReview(actor(ALICE).orgId, p.id, m8)).toBeNull();
+      expect(
+        await kit.reader.pendingForPatients(actor(ALICE).orgId, {
+          ...m8,
+          patientIds: [P1],
+          limit: 5,
+        }),
+      ).toEqual([]);
+    },
+  );
+
+  it("returns null when the reviewer permission lookup throws", async () => {
+    const kit = buildKit();
+    const p = await proposed(kit);
+    const { createPromotionSourceReader } = await import("./promotion-source-reader");
+    const reader = createPromotionSourceReader({
+      store: kit.store,
+      isEnabled: async () => true,
+      part2Gate: { allowedUserIds: async ({ userIds }) => new Set(userIds) },
+      bodies: kit.bodies,
+      permissionsFor: async () => {
+        throw new Error("down");
+      },
+    });
+    expect(await reader.forReview(actor(ALICE).orgId, p.id, m8)).toBeNull();
   });
 
   it("returns null when the recorded hash matches nothing the message ever held", async () => {
@@ -65,6 +127,7 @@ describe("ChartPromotionSourceReader.forReview", () => {
       isEnabled: async () => true,
       part2Gate: { allowedUserIds: async ({ userIds }) => new Set(userIds) },
       bodies: tampered,
+      permissionsFor: async () => new Set(["patient.read", "encounter.addendum_sign"]),
     });
     expect(await reader.forReview(actor(ALICE).orgId, p.id, m8)).toBeNull();
   });

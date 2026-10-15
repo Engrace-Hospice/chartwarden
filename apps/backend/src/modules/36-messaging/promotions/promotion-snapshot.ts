@@ -32,29 +32,37 @@ export interface PromotionBodyPorts {
 }
 
 export interface ResolvedSnapshot {
-  readonly text: string;
+  /** Null unless the caller asked for the text AND the message is unchanged (an edited message serves no text). */
+  readonly text: string | null;
   readonly sourceState: "current" | "edited_since";
 }
 
 const erased = (b: StoredBody): boolean => b.bodyCipher.length === 0;
 
-/** The proposed text and whether the message has changed since, or null when it cannot be proven. */
+/**
+ * Whether the proposed message can still be proven, and whether it changed since, or null when it cannot. The body is
+ * decrypted ONLY when `withText` is set and the message is unchanged: every other caller learns provability from the
+ * stored hash and never causes a decrypt (an edited message's superseded text is never opened for anyone).
+ */
 export async function resolveSnapshot(
   ports: PromotionBodyPorts,
   orgId: string,
   messageId: string,
   expectedSha256: string,
+  withText = false,
 ): Promise<ResolvedSnapshot | null> {
   const current = await ports.current(orgId, messageId);
   if (!current || erased(current)) return null;
   const matches = current.bodySha256 === expectedSha256;
   const stored = matches ? current : await ports.revisionBySha(orgId, messageId, expectedSha256);
   if (!stored || erased(stored)) return null;
+  if (!withText || !matches)
+    return { text: null, sourceState: matches ? "current" : "edited_since" };
   const plaintext = await ports.open(orgId, stored.bodyCipher);
   if (messageBodySha256(plaintext) !== expectedSha256) return null;
   return {
     text: storedBodyToPlainText(stored.bodyKind, plaintext),
-    sourceState: matches ? "current" : "edited_since",
+    sourceState: "current",
   };
 }
 

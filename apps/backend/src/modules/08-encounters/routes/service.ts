@@ -44,6 +44,7 @@ import {
   type RejectReasonCode,
   decidedPayload,
   listForPatient,
+  promotionHasDraft,
   requireReview,
 } from "../chart-promotion";
 import { type CosignatureState, transitionCosignature } from "../cosignature/index";
@@ -1556,6 +1557,12 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
     async rejectChartPromotion(organizationId, encounterId, requestId, args) {
       const r = load(organizationId, encounterId);
       await requireReview(organizationId, requestId, args.reviewerUserId, r.patientId);
+      const hasDraft = [...byId.values()].some(
+        (e) =>
+          e.organizationId === organizationId &&
+          [...e.addenda.values()].some((x) => x.promotionRequestId === requestId),
+      );
+      if (hasDraft) throw promotionHasDraft();
       events.push({
         event: CHART_PROMOTION_DECIDED_EVENT,
         encounterId,

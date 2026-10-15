@@ -107,9 +107,13 @@ export interface ChartPromotionPending {
 export interface ChartPromotionReview extends ChartPromotionPending {
   /** Copied onto the target record as its attribution; never shown to a user. */
   readonly sourceBodySha256: string;
-  /** The quoted text, for the M8 target only (null for M14, or when the text can no longer be proven). */
+  /**
+   * The quoted text. Structurally unavailable unless the caller asked `withText` (only the M8 owner does) AND the target is
+   * `m8` AND the message is unchanged (`sourceState: "current"`). Otherwise null: the reviewer of an edited message sees only
+   * that the source changed, never the superseded text.
+   */
   readonly snapshotText: string | null;
-  /** `edited_since`: the sender edited the message after it was proposed; the text shown is the version proposed. */
+  /** `edited_since`: the sender edited the message after it was proposed; no text is served (`snapshotText` is null). */
   readonly sourceState: "current" | "edited_since";
 }
 
@@ -123,6 +127,8 @@ export interface ChartPromotionPendingQuery {
 export interface ChartPromotionReviewQuery {
   readonly targetModule: ChartPromotionTargetModule;
   readonly reviewerUserId: string;
+  /** Default false: no caller gets the text unless it asks. Only the M8 owner-side module passes true. M14 never does. */
+  readonly withText?: boolean;
 }
 
 /**

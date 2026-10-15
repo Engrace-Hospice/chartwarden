@@ -12,8 +12,11 @@ import {
 import { getSeam } from "../../bootstrap/index";
 
 export const CHART_PROMOTION_DECIDED_EVENT = "m8.chart_promotion.decided";
-/** The most proposals the encounter panel lists (the seam caps it again). */
-export const CHART_PROMOTION_LIST_MAX = 20;
+/**
+ * The most proposals one GET lists. Each listed proposal costs one message-body decrypt (this module is the only caller
+ * allowed to ask the seam for text), so the cap is small; the seam caps it again.
+ */
+export const CHART_PROMOTION_LIST_MAX = 10;
 /** The unique index that allows one live addendum per proposal. */
 const PROMOTION_UNIQUE_INDEX = "encounter_addendum_promotion_uq";
 
@@ -26,7 +29,10 @@ export interface ChartPromotionView {
   readonly requested_at: string;
   readonly source_author_user_id: string;
   readonly source_sent_at: string;
-  /** The quoted text, shown to the reviewer and NEVER inserted into the addendum for them. */
+  /**
+   * The quoted text, shown to the reviewer and NEVER inserted into the addendum for them. Null when the sender edited
+   * the message since it was proposed (`source_state: "edited_since"`): the superseded text is not served.
+   */
   readonly snapshot_text: string | null;
   readonly source_state: "current" | "edited_since";
 }
@@ -72,6 +78,8 @@ export async function requireReview(
     review = await getSeam("ChartPromotionSourceReader").forReview(organizationId, requestId, {
       targetModule: "m8",
       reviewerUserId,
+      // This module is the only caller that asks for text (the seam serves none otherwise).
+      withText: true,
     });
   } catch {
     throw promotionNotAvailable();
@@ -100,8 +108,12 @@ export async function listForPatient(
       limit: CHART_PROMOTION_LIST_MAX,
     });
     const reviews = await Promise.all(
-      pending.map((p) =>
-        seam.forReview(organizationId, p.requestId, { targetModule: "m8", reviewerUserId }),
+      pending.slice(0, CHART_PROMOTION_LIST_MAX).map((p) =>
+        seam.forReview(organizationId, p.requestId, {
+          targetModule: "m8",
+          reviewerUserId,
+          withText: true,
+        }),
       ),
     );
     const promotions = reviews
@@ -134,7 +146,14 @@ export const decidedPayload = (f: DecidedFacts): Record<string, unknown> => ({
   at: f.at.toISOString(),
 });
 
-/** Map the two database refusals an attributed insert can raise: a second live draft (409) or a proposal that moved (422). */
+/** A proposal that already has a non-voided addendum cannot be rejected: the draft's author is mid-decision (409). */
+export const promotionHasDraft = (): ConflictError =>
+  new ConflictError("that proposal already has an addendum");
+
+/**
+ * Map the refusals an attributed write can raise: a second live draft (409), or a proposal that moved or is no longer open
+ * (422), whether at INSERT (the draft) or at SIGN (rejected, accepted or gone by the time the reviewer signs).
+ */
 export function mapPromotionInsertError(err: unknown): never {
   const e = err as { code?: string; constraint?: string; cause?: unknown } | null;
   const own = e?.code !== undefined ? e : (e?.cause as typeof e);

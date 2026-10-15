@@ -255,6 +255,18 @@ BEGIN
       RAISE EXCEPTION 'encounter_addendum_promotion_immutable: promotion attribution cannot change'
         USING ERRCODE = 'check_violation';
     END IF;
+    -- SIGNING is the decision: the proposal must not have been rejected (or already accepted) since the draft was made.
+    -- The share lock makes this agree with the outcome consumer's row lock (a reject that landed first is seen here).
+    IF NEW.promotion_request_id IS NOT NULL AND NEW.status = 'signed' AND OLD.status IS DISTINCT FROM 'signed' THEN
+      IF NOT EXISTS (
+        SELECT 1 FROM chart_promotion_request p
+         WHERE p.organization_id = NEW.organization_id AND p.id = NEW.promotion_request_id
+           AND p.status IN ('proposed', 'withdrawn', 'superseded')
+         FOR SHARE OF p) THEN
+        RAISE EXCEPTION 'encounter_addendum_promotion_source: the proposal is no longer open'
+          USING ERRCODE = 'check_violation';
+      END IF;
+    END IF;
     RETURN NEW;
   END IF;
   IF NEW.promotion_request_id IS NULL THEN
@@ -267,7 +279,8 @@ BEGIN
        AND p.target_module = 'm8' AND p.status = 'proposed'
        AND p.message_id = NEW.source_message_id AND p.source_author_user_id = NEW.source_author_user_id
        AND p.source_sent_at = NEW.source_sent_at AND p.source_body_sha256 = NEW.source_body_sha256
-       AND p.patient_id = e.patient_id) THEN
+       AND p.patient_id = e.patient_id
+     FOR SHARE OF p) THEN
     RAISE EXCEPTION 'encounter_addendum_promotion_source: the attribution does not match an open proposal for this patient'
       USING ERRCODE = 'check_violation';
   END IF;
@@ -300,7 +313,8 @@ BEGIN
        AND p.target_module = 'm14' AND p.status = 'proposed'
        AND p.message_id = NEW.source_message_id AND p.source_author_user_id = NEW.source_author_user_id
        AND p.source_sent_at = NEW.source_sent_at AND p.source_body_sha256 = NEW.source_body_sha256
-       AND p.patient_id = NEW.patient_id) THEN
+       AND p.patient_id = NEW.patient_id
+     FOR SHARE OF p) THEN
     RAISE EXCEPTION 'idg_agenda_item_promotion_source: the attribution does not match an open proposal for this patient'
       USING ERRCODE = 'check_violation';
   END IF;

@@ -3,7 +3,7 @@
 // messaging.promote AND the channel is a patient's care-team conversation; the server stays the authority on all three.
 import type { ChartPromotionDto } from "@wardenx/types";
 import { Button, StatusPill } from "@wardenx/ui";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useSession } from "../../shell/session";
 import { PromotionDialog } from "./promotion-dialog";
@@ -13,16 +13,15 @@ import {
   PROPOSED_OK_TEXT,
   PROPOSED_REPLAY_TEXT,
   PROPOSE_BUTTON_LABEL,
+  UNKNOWN_PERSON,
   WITHDRAWN_TEXT,
   WITHDRAW_LABEL,
   promotionErrorText,
 } from "./promotion-wording";
 import { usePromotionActions } from "./use-promotions";
-import { usePromotionsIndex } from "./use-promotions-enabled";
+import { PROMOTE_PERMISSION, usePromotionsIndex } from "./use-promotions-enabled";
 import "./tasks.css";
 import "./promotions.css";
-
-const PROMOTE_PERMISSION = "messaging.promote";
 
 export function promotionTone(status: ChartPromotionDto["status"]) {
   if (status === "accepted") return "success" as const;
@@ -33,6 +32,8 @@ export function promotionTone(status: ChartPromotionDto["status"]) {
 export interface MessagePromotionButtonProps {
   readonly channelId: string;
   readonly messageId: string;
+  /** Who wrote the message; names the trigger for assistive tech. */
+  readonly authorName?: string | null;
   /** The channel is a patient's care-team conversation (what the client knows; the server decides). */
   readonly patientLinked: boolean;
 }
@@ -40,23 +41,29 @@ export interface MessagePromotionButtonProps {
 export function MessagePromotionButton({
   channelId,
   messageId,
+  authorName,
   patientLinked,
 }: MessagePromotionButtonProps): JSX.Element | null {
   const session = useSession();
-  const { enabled, promotions } = usePromotionsIndex();
+  const permitted = session?.permissions?.includes(PROMOTE_PERMISSION) ?? false;
+  // No read at all for a viewer who cannot propose or in a channel that is not patient-linked.
+  const { enabled, promotions } = usePromotionsIndex(!permitted || !patientLinked);
   const actions = usePromotionActions();
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const permitted = session?.permissions?.includes(PROMOTE_PERMISSION) ?? false;
+  const wasOpen = useRef(false);
+  // The trigger is the one stable control on the row: focus returns to it whenever the dialog closes.
+  useEffect(() => {
+    if (wasOpen.current && !open) triggerRef.current?.focus();
+    wasOpen.current = open;
+  }, [open]);
   if (!enabled || !permitted || !patientLinked) return null;
   const mine = promotions.filter((promotion) => promotion.message_id === messageId);
 
   function close(): void {
     setOpen(false);
-    // The dialog's own restore can lose to the re-render; the trigger is the one stable control on the row.
-    queueMicrotask(() => triggerRef.current?.focus());
   }
 
   async function withdraw(id: string): Promise<void> {
@@ -65,6 +72,8 @@ export function MessagePromotionButton({
     const result = await actions.withdraw(id);
     setBusyId(null);
     setStatus(result.ok ? WITHDRAWN_TEXT : promotionErrorText(result.status, result.code));
+    // The chip (and its Withdraw button) may leave on the re-read; the trigger stays.
+    triggerRef.current?.focus();
   }
 
   return (
@@ -73,7 +82,7 @@ export function MessagePromotionButton({
         type="button"
         ref={triggerRef}
         className="wx-pin-toggle"
-        aria-label="Propose this message for the patient's chart"
+        aria-label={`${PROPOSE_BUTTON_LABEL}, message from ${authorName || UNKNOWN_PERSON}`}
         onClick={() => {
           setStatus("");
           setOpen(true);
@@ -100,9 +109,7 @@ export function MessagePromotionButton({
           ) : null}
         </span>
       ))}
-      <output className="sr-only" aria-live="polite">
-        {status}
-      </output>
+      <output className="sr-only">{status}</output>
       {open ? (
         <PromotionDialog
           channelId={channelId}

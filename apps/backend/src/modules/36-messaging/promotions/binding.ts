@@ -98,6 +98,7 @@ export function buildPromotionBinding(input: PromotionBindingInput): PromotionBi
       isEnabled,
       part2Gate: input.part2Gate,
       bodies: createDbPromotionBodyPorts(db, input.bodyOpener),
+      permissionsFor: input.permissionsFor,
     }),
     stillProposed: async (orgId, id) => (await store.get(orgId, id))?.status === "proposed",
     requestFacts: async (orgId, id) => {

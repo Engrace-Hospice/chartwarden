@@ -68,6 +68,17 @@ export function buildKit(opts: KitOptions = {}) {
       );
     },
   };
+  const permissionsFor = async (_o: string, userId: string): Promise<ReadonlySet<string>> => {
+    return new Set(
+      [
+        "messaging.read",
+        "messaging.send",
+        "messaging.promote",
+        "patient.read",
+        "encounter.addendum_sign",
+      ].filter((p) => !(opts.missingPermission ?? []).includes(`${userId}:${p}`)),
+    );
+  };
   const service: PromotionService = createPromotionService({
     db: fakeDb,
     outbox: {
@@ -89,12 +100,7 @@ export function buildKit(opts: KitOptions = {}) {
       createdAt: new Date("2026-10-14T11:00:00.000Z"),
     }),
     part2Gate,
-    permissionsFor: async (_o, userId) =>
-      new Set(
-        ["messaging.read", "messaging.send", "messaging.promote", "patient.read"].filter(
-          (p) => !(opts.missingPermission ?? []).includes(`${userId}:${p}`),
-        ),
-      ),
+    permissionsFor,
     meetingExists: async (_o, id) => (opts.meetings ?? [MEETING]).includes(id),
     displayName: async (_o, u) => (u === ALICE ? "Alice" : u === BOB ? "Bob" : null),
     now: () => NOW,
@@ -119,6 +125,7 @@ export function buildKit(opts: KitOptions = {}) {
     isEnabled: async () => opts.flagOn ?? true,
     part2Gate,
     bodies,
+    permissionsFor,
   });
   return {
     service,

@@ -54,7 +54,7 @@ const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const ORG_A = "11111111-1111-4111-8111-1111000f0701";
 const ORG_B = "22222222-2222-4222-8222-2222000f0702";
 const FLAG = "messaging.promotions";
-const PROMOTER_KEYS = [...STAFF_KEYS, "messaging.promote"];
+const PROMOTER_KEYS = [...STAFF_KEYS, "messaging.promote", "encounter.addendum_sign"];
 const BASE = "/api/v1/messaging/chart-promotions";
 const BODY_MARKER = "wp37-secret-hip-pain-marker";
 const stripIds = (b: string) => b.replace(/"(requestId|correlationId)":"[^"]*"/g, "");
@@ -618,10 +618,30 @@ describe.skipIf(!DB_URL)("M36 WP 3.7 chart promotion - LIVE Postgres", () => {
       await call(app, author, "PATCH", `/api/v1/messaging/messages/${s.msg}`, {
         bodyDoc: plainDoc("edited after proposal"),
       });
-      await propose(requester, s.ch, s.msg);
+      const newer = (await propose(requester, s.ch, s.msg)).json().promotion.id as string;
       expect((await row(old))?.status).toBe("superseded");
+      expect((await row(newer))?.status).toBe("proposed");
       await decide("m8.chart_promotion.decided", old);
       expect((await row(old))?.status).toBe("accepted");
+      // The replacement for the same message and target is closed in the same flow (one signed record per message).
+      expect(await row(newer)).toMatchObject({
+        status: "superseded",
+        reason_code: "superseded",
+        result_ref: null,
+      });
+    });
+
+    it("an acceptance that arrives for a REJECTED request changes nothing (rejected is final) and is reported, not applied", async () => {
+      const { ch, msg } = await scene();
+      const id = (await propose(requester, ch, msg)).json().promotion.id as string;
+      await decide("m8.chart_promotion.decided", id, {
+        outcome: "rejected",
+        resultRef: null,
+        reasonCode: "other",
+      });
+      expect((await row(id))?.status).toBe("rejected");
+      await decide("m8.chart_promotion.decided", id);
+      expect(await row(id)).toMatchObject({ status: "rejected", result_ref: null });
     });
 
     it("an unknown request id is logged and dropped, never thrown", async () => {
@@ -714,26 +734,54 @@ describe.skipIf(!DB_URL)("M36 WP 3.7 chart promotion - LIVE Postgres", () => {
       expect(res.body).not.toContain(text);
     });
 
-    it("the seam re-reads the text with the real cipher for m8 only, and shows the proposed version after an edit", async () => {
+    it("the seam re-reads the text with the real cipher only for an m8 caller that asks, and serves none once the message was edited", async () => {
       const { ch, msg } = await scene();
       const id = (await propose(requester, ch, msg)).json().promotion.id as string;
       const reader = binding.sourceReader;
-      const review = await reader.forReview(ORG_A, id, {
+      const asked = { targetModule: "m8", reviewerUserId: colleague, withText: true } as const;
+      const review = await reader.forReview(ORG_A, id, asked);
+      expect(review).toMatchObject({ snapshotText: BODY_MARKER, sourceState: "current" });
+      // No withText => structurally no text, even for m8.
+      const silent = await reader.forReview(ORG_A, id, {
         targetModule: "m8",
         reviewerUserId: colleague,
       });
-      expect(review).toMatchObject({ snapshotText: BODY_MARKER, sourceState: "current" });
+      expect(silent).toMatchObject({ snapshotText: null, sourceState: "current" });
       expect(
         await reader.forReview(ORG_A, id, { targetModule: "m14", reviewerUserId: colleague }),
       ).toBeNull();
       await call(app, author, "PATCH", `/api/v1/messaging/messages/${msg}`, {
         bodyDoc: plainDoc("changed afterwards"),
       });
-      const edited = await reader.forReview(ORG_A, id, {
-        targetModule: "m8",
-        reviewerUserId: colleague,
-      });
-      expect(edited).toMatchObject({ snapshotText: BODY_MARKER, sourceState: "edited_since" });
+      const edited = await reader.forReview(ORG_A, id, asked);
+      expect(edited).toMatchObject({ snapshotText: null, sourceState: "edited_since" });
+      expect(JSON.stringify(edited)).not.toContain(BODY_MARKER);
+      expect(JSON.stringify(edited)).not.toContain("changed afterwards");
+    });
+
+    it("an m8 reviewer without encounter.addendum_sign (or patient.read) gets nothing from the seam", async () => {
+      const { ch, msg, patient } = await scene();
+      const id = (await propose(requester, ch, msg)).json().promotion.id as string;
+      noPermissions.add(colleague);
+      try {
+        expect(
+          await binding.sourceReader.forReview(ORG_A, id, {
+            targetModule: "m8",
+            reviewerUserId: colleague,
+            withText: true,
+          }),
+        ).toBeNull();
+        expect(
+          await binding.sourceReader.pendingForPatients(ORG_A, {
+            targetModule: "m8",
+            patientIds: [patient],
+            reviewerUserId: colleague,
+            limit: 10,
+          }),
+        ).toEqual([]);
+      } finally {
+        noPermissions.delete(colleague);
+      }
     });
   });
 

@@ -36,19 +36,22 @@ describe("MessagePromotionButton visibility", () => {
 
   it("renders nothing without messaging.promote", async () => {
     const { GET } = mountWithClient(row(), { permissions: ["messaging.send"] });
-    await waitFor(() => expect(GET).toHaveBeenCalled());
+    await Promise.resolve();
     expect(screen.queryByRole("button", { name: /propose/i })).toBeNull();
+    // A viewer who cannot propose never issues the index read.
+    expect(GET).not.toHaveBeenCalled();
   });
 
   it("renders nothing outside a patient-linked conversation", async () => {
     const { GET } = mountWithClient(row(false));
-    await waitFor(() => expect(GET).toHaveBeenCalled());
+    await Promise.resolve();
     expect(screen.queryByRole("button", { name: /propose/i })).toBeNull();
+    expect(GET).not.toHaveBeenCalled();
   });
 
   it("reads the list route's enabled flag, never a feature-flag hook", async () => {
     const { GET } = mountWithClient(row());
-    await screen.findByRole("button", { name: /propose this message/i });
+    await screen.findByRole("button", { name: /^propose for chart/i });
     expect(GET).toHaveBeenCalledWith(
       "/api/v1/messaging/chart-promotions",
       expect.objectContaining({ params: { query: expect.objectContaining({ status: "all" }) } }),
@@ -58,7 +61,7 @@ describe("MessagePromotionButton visibility", () => {
 
 describe("Propose dialog", () => {
   async function openDialog() {
-    await userEvent.click(await screen.findByRole("button", { name: /propose this message/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^propose for chart/i }));
     return screen.findByRole("dialog");
   }
 
@@ -80,7 +83,7 @@ describe("Propose dialog", () => {
 
   it("returns focus to the trigger when the dialog closes", async () => {
     mountWithClient(row(), { post: created() });
-    const trigger = await screen.findByRole("button", { name: /propose this message/i });
+    const trigger = await screen.findByRole("button", { name: /^propose for chart/i });
     await userEvent.click(trigger);
     await userEvent.click(await screen.findByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(document.activeElement).toBe(trigger));

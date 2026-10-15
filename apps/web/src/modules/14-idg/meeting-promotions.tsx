@@ -55,6 +55,9 @@ export function MeetingPromotions({
   const [failed, setFailed] = useState(false);
   const statusRef = useRef<HTMLOutputElement>(null);
   const restoreFocusTo = useRef<string | null>(null);
+  const latestRead = useRef(0);
+  // One Idempotency-Key per proposal until its attempt settles, so a retry after a dropped answer cannot add twice.
+  const addKeys = useRef(new Map<string, string>());
 
   // The Decline button is unmounted while its form is open: focus it once the form has closed.
   useEffect(() => {
@@ -64,20 +67,25 @@ export function MeetingPromotions({
   }, [decliningId]);
 
   const read = useCallback(async (): Promise<void> => {
+    const id = ++latestRead.current;
+    let next: Load;
     try {
       const res = await loadMeetingPromotions(client, meetingId);
-      setLoad(
-        res.ok
-          ? { kind: "ready", proposals: res.value.enabled === true ? res.value.promotions : [] }
-          : { kind: "error" },
-      );
+      next = res.ok
+        ? { kind: "ready", proposals: res.value.enabled === true ? res.value.promotions : [] }
+        : { kind: "error" };
     } catch {
-      setLoad({ kind: "error" });
+      next = { kind: "error" };
     }
+    // A superseded read, or one that finished after unmount, must not write state.
+    if (id === latestRead.current) setLoad(next);
   }, [client, meetingId]);
 
   useEffect(() => {
     void read();
+    return () => {
+      latestRead.current += 1;
+    };
   }, [read]);
 
   /** Run one decision; a refused or finished proposal leaves the list, so re-read and land on the heading. */
@@ -88,17 +96,19 @@ export function MeetingPromotions({
   ): Promise<void> {
     setBusyId(id);
     setMessage("");
+    setFailed(false);
     const res = await run().catch(() => ({ ok: false, code: null }));
     setBusyId(null);
-    setDecliningId(null);
+    const gone = res.code === "PROMOTION_NOT_AVAILABLE";
     setFailed(!res.ok);
-    setMessage(
-      res.ok ? success : res.code === "PROMOTION_NOT_AVAILABLE" ? NOT_AVAILABLE : GENERIC_FAILURE,
-    );
-    if (res.ok || res.code === "PROMOTION_NOT_AVAILABLE") {
+    setMessage(res.ok ? success : gone ? NOT_AVAILABLE : GENERIC_FAILURE);
+    if (res.ok || gone) {
+      addKeys.current.delete(id);
+      setDecliningId(null);
       await read();
-      statusRef.current?.focus();
     }
+    // On a generic failure the decline form stays open with the chosen reason; the status line takes focus.
+    statusRef.current?.focus();
   }
 
   if (load.kind === "loading") return null;
@@ -117,7 +127,6 @@ export function MeetingPromotions({
         <output
           ref={statusRef}
           tabIndex={-1}
-          aria-live="polite"
           role={failed ? "alert" : undefined}
           style={failed ? errorText : meta}
         >
@@ -125,9 +134,9 @@ export function MeetingPromotions({
         </output>
         <ul style={list}>
           {load.proposals.map((p) => (
-            <li key={p.request_id} style={item} aria-label={`Proposal ${p.request_id}`}>
+            <li key={p.request_id} style={item} aria-labelledby={`m14-promo-${p.request_id}-who`}>
               <PatientLabel patientId={p.patientId} patient={p.patient} />
-              <p style={meta}>
+              <p id={`m14-promo-${p.request_id}-who`} style={meta}>
                 Proposed by {PROPOSER_TEXT} on {when(p.requested_at)}. Message sent{" "}
                 {when(p.source_sent_at)}.
               </p>
@@ -179,10 +188,13 @@ export function MeetingPromotions({
                       void decide(
                         p.request_id,
                         async () => {
+                          const key = addKeys.current.get(p.request_id) ?? crypto.randomUUID();
+                          addKeys.current.set(p.request_id, key);
                           const res = await addAgendaItemFromPromotion(
                             client,
                             meetingId,
                             p.request_id,
+                            key,
                           );
                           if (res.ok) onAgendaChanged();
                           return res;
@@ -200,6 +212,7 @@ export function MeetingPromotions({
                     disabled={busyId === p.request_id}
                     onClick={() => {
                       setMessage("");
+                      setFailed(false);
                       setDecliningId(p.request_id);
                     }}
                   >
