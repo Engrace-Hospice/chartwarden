@@ -5,15 +5,10 @@ import { Button, LoadingSpinner, StatusPill, useApiClient } from "@wardenx/ui";
 // and offers only the moves the ADR state machine has an arc for. There is no "submit" here: filing needs the
 // reviewed packet and proof of submission that milestone 2b adds. The server re-validates every move and
 // every refusal is shown verbatim (ADR-0030).
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { ActionRail, ButtonRow, ErrorAlert, Facts, Hint, NoticeAlert } from "./action-ui";
-import {
-  type AdrDetail,
-  type AdrTransitionTarget,
-  loadAdr,
-  transitionAdr,
-} from "./remittance-api";
+import { type AdrDetail, type AdrTransitionTarget, loadAdr, transitionAdr } from "./remittance-api";
 import { ADR_STATE_TONE, humanize, toneOf } from "./remittance-status";
 
 /** The moves a person may make from each state (the server re-validates). */
@@ -43,9 +38,17 @@ export function AdrDetailPanel({ adrId, onClose, onChanged }: AdrDetailPanelProp
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const load = useCallback(async () => {
     const res = await loadAdr(client, adrId);
+    if (!mounted.current) return;
     if (res.ok) {
       setAdr(res.value);
       setLoadError(null);
@@ -63,6 +66,7 @@ export function AdrDetailPanel({ adrId, onClose, onChanged }: AdrDetailPanelProp
     setBusy(true);
     setError(null);
     const res = await transitionAdr(client, adrId, adr.version, to);
+    if (!mounted.current) return;
     setBusy(false);
     if (!res.ok) {
       setError(res.message);

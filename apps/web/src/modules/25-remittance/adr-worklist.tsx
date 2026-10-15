@@ -30,6 +30,7 @@ interface AdrRow {
   windowDays: number;
   windowVerified: boolean;
   responseDueAt: string;
+  dueDay: string;
 }
 
 const STATE_FILTERS = [
@@ -58,8 +59,8 @@ export function AdrWorklist(): JSX.Element {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const res = await client.GET("/api/v1/adrs");
-    if (res.error) {
+    const res = await client.GET("/api/v1/adrs").catch(() => null);
+    if (!res || res.error) {
       setError("ADR worklist unavailable — you may lack provider scope.");
       setLoading(false);
       return;
@@ -83,187 +84,202 @@ export function AdrWorklist(): JSX.Element {
   const shown = (n: number): string | number => (loading || error ? "—" : n);
 
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader title="ADR Requests" breadcrumb="Revenue Cycle — ADR Requests">
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Additional documentation requests from your MAC, soonest response due first.
-          </div>
-        </PageHeader>
-      }
-      kpis={
-        <KpiStrip>
-          <KpiCard
-            label="Open ADRs"
-            value={shown(open.length)}
-            detail="Awaiting a response"
-            tone="info"
-            accentColor="var(--color-primary)"
-          />
-          <KpiCard
-            label="Due ≤ 7 Days"
-            value={shown(dueSoon.length)}
-            detail="Open responses"
-            tone={dueSoon.length > 0 ? "danger" : "neutral"}
-            accentColor={dueSoon.length > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
-          />
-          <KpiCard
-            label="Overdue"
-            value={shown(overdue.length)}
-            detail="Past the response date"
-            tone={overdue.length > 0 ? "danger" : "neutral"}
-            accentColor={overdue.length > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
-          />
-          <KpiCard
-            label="Unverified Windows"
-            value={shown(unverified.length)}
-            detail="Confirm against the letter"
-            tone={unverified.length > 0 ? "warning" : "neutral"}
-            accentColor={
-              unverified.length > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
-            }
-          />
-        </KpiStrip>
-      }
-      filters={
-        <div style={filterRowStyle}>
-          {error ? (
-            <div role="alert" style={errorBannerStyle}>
-              <Glyph name="alert" size={16} />
-              <span>{error}</span>
+    <>
+      <WorkQueueLayout
+        header={
+          <PageHeader title="ADR Requests" breadcrumb="Revenue Cycle — ADR Requests">
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Additional documentation requests from your MAC, soonest response due first.
             </div>
-          ) : null}
-          <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <span style={mutedStyle}>State</span>
-            <select
-              aria-label="Filter by state"
-              value={stateFilter}
-              onChange={(e) => setStateFilter(e.target.value)}
-              style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
-            >
-              {STATE_FILTERS.map((s) => (
-                <option key={s} value={s}>
-                  {s === "all" ? "All states" : humanize(s)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <span style={mutedStyle}>
-            {filtered.length} of {rows.length} ADRs
-          </span>
-          <span style={{ flex: 1 }} />
-          <Button tone="secondary" size="sm" onClick={() => setEditingRules(true)}>
-            MAC response windows
-          </Button>
-          <Button size="sm" onClick={() => setLogging(true)}>
-            Log an ADR
-          </Button>
-        </div>
-      }
-      table={
-        loading ? (
-          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-            <LoadingSpinner />
-          </div>
-        ) : error ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState title="Unavailable" description={error} />
-          </div>
-        ) : filtered.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState
-              title="No ADRs"
-              description="Log an ADR when your MAC asks for documentation, so its response deadline is tracked."
-              action={
-                <Button size="sm" onClick={() => setLogging(true)}>
-                  Log an ADR
-                </Button>
+          </PageHeader>
+        }
+        kpis={
+          <KpiStrip>
+            <KpiCard
+              label="Open ADRs"
+              value={shown(open.length)}
+              detail="Awaiting a response"
+              tone="info"
+              accentColor="var(--color-primary)"
+            />
+            <KpiCard
+              label="Due ≤ 7 Days"
+              value={shown(dueSoon.length)}
+              detail="Open responses"
+              tone={dueSoon.length > 0 ? "danger" : "neutral"}
+              accentColor={
+                dueSoon.length > 0 ? "var(--color-error)" : "var(--color-outline-variant)"
               }
             />
-          </div>
-        ) : (
-          <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem" }}>
-            <table style={tableStyle}>
-              <thead>
-                <tr style={headerRowStyle}>
-                  <th style={headStyle}>MAC</th>
-                  <th style={headStyle}>Type</th>
-                  <th style={headStyle}>State</th>
-                  <th style={headStyle}>Request date</th>
-                  <th style={headStyle}>Response due</th>
-                  <th style={headStyle}>Work</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((r) => (
-                  <tr key={r.id} style={rowStyle}>
-                    <td style={cellStyle}>{r.macName}</td>
-                    <td style={cellStyle}>{r.reviewType === "re_adr" ? "Re-ADR" : "ADR"}</td>
-                    <td style={cellStyle}>
-                      <StatusPill
-                        label={humanize(r.state)}
-                        tone={toneOf(ADR_STATE_TONE, r.state)}
-                      />
-                    </td>
-                    <td style={cellStyle}>{r.requestedOn}</td>
-                    <td style={cellStyle}>
-                      {isOpen(r.state) ? (
-                        <CountdownChip
-                          dueAt={r.responseDueAt}
-                          label="responds"
-                          warnWithinHours={14 * 24}
-                          alertWithinHours={3 * 24}
-                        />
-                      ) : (
-                        <span style={mutedStyle}>
-                          {new Date(r.responseDueAt).toLocaleDateString()}
-                        </span>
-                      )}
-                      {isOpen(r.state) && !r.windowVerified ? (
-                        <span style={mutedStyle}> · unverified window</span>
-                      ) : null}
-                    </td>
-                    <td style={cellStyle}>
-                      <Button
-                        size="sm"
-                        tone="secondary"
-                        aria-label={`Open ADR from ${r.macName}`}
-                        onClick={() => setWorkingId(r.id)}
-                      >
-                        Open
-                      </Button>
-                    </td>
-                  </tr>
+            <KpiCard
+              label="Overdue"
+              value={shown(overdue.length)}
+              detail="Past the response date"
+              tone={overdue.length > 0 ? "danger" : "neutral"}
+              accentColor={
+                overdue.length > 0 ? "var(--color-error)" : "var(--color-outline-variant)"
+              }
+            />
+            <KpiCard
+              label="Unverified Windows"
+              value={shown(unverified.length)}
+              detail="Confirm against the letter"
+              tone={unverified.length > 0 ? "warning" : "neutral"}
+              accentColor={
+                unverified.length > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
+              }
+            />
+          </KpiStrip>
+        }
+        filters={
+          <div style={filterRowStyle}>
+            {error ? (
+              <div role="alert" style={errorBannerStyle}>
+                <Glyph name="alert" size={16} />
+                <span>{error}</span>
+              </div>
+            ) : null}
+            <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+              <span style={mutedStyle}>State</span>
+              <select
+                aria-label="Filter by state"
+                value={stateFilter}
+                onChange={(e) => setStateFilter(e.target.value)}
+                style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
+              >
+                {STATE_FILTERS.map((s) => (
+                  <option key={s} value={s}>
+                    {s === "all" ? "All states" : humanize(s)}
+                  </option>
                 ))}
-              </tbody>
-            </table>
+              </select>
+            </label>
+            <span style={mutedStyle}>
+              {filtered.length} of {rows.length} ADRs
+            </span>
+            <span style={{ flex: 1 }} />
+            <Button tone="secondary" size="sm" onClick={() => setEditingRules(true)}>
+              MAC response windows
+            </Button>
+            <Button size="sm" onClick={() => setLogging(true)}>
+              Log an ADR
+            </Button>
           </div>
-        )
-      }
-      detail={
-        <>
-          {workingId ? (
+        }
+        table={
+          loading ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : error ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState title="Unavailable" description={error} />
+            </div>
+          ) : filtered.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              {rows.length === 0 ? (
+                <EmptyState
+                  title="No ADRs"
+                  description="Log an ADR when your MAC asks for documentation, so its response deadline is tracked."
+                  action={
+                    <Button size="sm" onClick={() => setLogging(true)}>
+                      Log an ADR
+                    </Button>
+                  }
+                />
+              ) : (
+                <EmptyState
+                  title="No ADRs in this state"
+                  description="No ADR matches the state filter."
+                  action={
+                    <Button tone="secondary" size="sm" onClick={() => setStateFilter("all")}>
+                      Show all states
+                    </Button>
+                  }
+                />
+              )}
+            </div>
+          ) : (
+            <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem" }}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr style={headerRowStyle}>
+                    <th style={headStyle}>MAC</th>
+                    <th style={headStyle}>Type</th>
+                    <th style={headStyle}>State</th>
+                    <th style={headStyle}>Request date</th>
+                    <th style={headStyle}>Response due</th>
+                    <th style={headStyle}>Work</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((r) => (
+                    <tr key={r.id} style={rowStyle}>
+                      <td style={cellStyle}>{r.macName}</td>
+                      <td style={cellStyle}>{r.reviewType === "re_adr" ? "Re-ADR" : "ADR"}</td>
+                      <td style={cellStyle}>
+                        <StatusPill
+                          label={humanize(r.state)}
+                          tone={toneOf(ADR_STATE_TONE, r.state)}
+                        />
+                      </td>
+                      <td style={cellStyle}>{r.requestedOn}</td>
+                      <td style={cellStyle}>
+                        {isOpen(r.state) ? (
+                          <CountdownChip
+                            dueAt={r.responseDueAt}
+                            label="responds"
+                            warnWithinHours={14 * 24}
+                            alertWithinHours={3 * 24}
+                          />
+                        ) : (
+                          <span style={mutedStyle}>{r.dueDay}</span>
+                        )}
+                        {isOpen(r.state) && !r.windowVerified ? (
+                          <span style={mutedStyle}> · unverified window</span>
+                        ) : null}
+                      </td>
+                      <td style={cellStyle}>
+                        <Button
+                          size="sm"
+                          tone="secondary"
+                          aria-label={`Open ADR from ${r.macName}`}
+                          onClick={() => setWorkingId(r.id)}
+                        >
+                          Open
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        }
+        detail={
+          workingId ? (
             <AdrDetailPanel
+              key={workingId}
               adrId={workingId}
               onClose={() => setWorkingId(null)}
               onChanged={() => void load()}
             />
-          ) : null}
-          {logging ? (
-            <LogAdrModal
-              onClose={() => setLogging(false)}
-              onLogged={(id) => {
-                setLogging(false);
-                setWorkingId(id);
-                void load();
-              }}
-            />
-          ) : null}
-          {editingRules ? <MacRulesModal onClose={() => setEditingRules(false)} /> : null}
-        </>
-      }
-      fullPageScroll
-    />
+          ) : null
+        }
+        fullPageScroll
+      />
+      {logging ? (
+        <LogAdrModal
+          onClose={() => setLogging(false)}
+          onLogged={(id) => {
+            setLogging(false);
+            setWorkingId(id);
+            void load();
+          }}
+        />
+      ) : null}
+      {editingRules ? <MacRulesModal onClose={() => setEditingRules(false)} /> : null}
+    </>
   );
 }
 

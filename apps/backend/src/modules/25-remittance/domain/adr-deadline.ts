@@ -61,6 +61,8 @@ export interface AdrRuleRow {
   readonly responseDays: number;
   readonly verifiedOn: string | null;
   readonly sourceNote: string | null;
+  /** YYYY-MM-DD the rule took effect; when several rules match, the newest wins. */
+  readonly effectiveFrom?: string;
 }
 
 export interface AdrWindow {
@@ -77,9 +79,13 @@ export function resolveAdrWindow(
   reviewType: AdrReviewType,
 ): AdrWindow {
   const wanted = macName.trim().toLowerCase();
-  const rule = rules.find(
-    (r) => r.macName.trim().toLowerCase() === wanted && r.reviewType === reviewType,
-  );
+  const rule = rules
+    .filter((r) => r.macName.trim().toLowerCase() === wanted && r.reviewType === reviewType)
+    .reduce<AdrRuleRow | undefined>(
+      (best, r) =>
+        best === undefined || (r.effectiveFrom ?? "") > (best.effectiveFrom ?? "") ? r : best,
+      undefined,
+    );
   if (rule) {
     return {
       days: rule.responseDays,

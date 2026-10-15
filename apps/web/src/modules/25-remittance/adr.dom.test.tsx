@@ -141,6 +141,34 @@ describe("M25 ADR worklist", () => {
   });
 });
 
+describe("M25 MAC response windows", () => {
+  it("loads the rules once and saves one with the typed window", async () => {
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "MAC response windows" }));
+    expect(await screen.findByText(/No rules yet/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("MAC"), { target: { value: "CGS" } });
+    fireEvent.change(screen.getByLabelText("Response window (days)"), { target: { value: "30" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]).toMatchObject({
+      method: "PUT",
+      path: "/api/v1/mac-rules",
+      body: { macName: "CGS", reviewType: "adr", responseDays: 30 },
+    });
+  });
+});
+
+describe("M25 ADR worklist states", () => {
+  it("says the filter excludes everything, not that no ADR exists", async () => {
+    mount();
+    await screen.findByText("CGS");
+    fireEvent.change(screen.getByLabelText("Filter by state"), { target: { value: "closed" } });
+    expect(await screen.findByText("No ADRs in this state")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Show all states" }));
+    expect(await screen.findByText("CGS")).toBeTruthy();
+  });
+});
+
 describe("M25 log an ADR", () => {
   it("keeps Log ADR disabled until the claim, MAC and letter date are valid, then posts them", async () => {
     mount();

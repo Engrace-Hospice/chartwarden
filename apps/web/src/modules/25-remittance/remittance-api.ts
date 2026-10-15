@@ -308,19 +308,32 @@ export type MacRuleInput = ReqBody<operations["putApiV1Macrules"]>;
 export type MacRulesPage = Ok<operations["getApiV1Macrules"]>;
 export type AdrReviewType = AdrCreateInput["reviewType"];
 
+/** A thrown request (network down, aborted) becomes a refusal result instead of an unhandled rejection. */
+async function guarded<T>(run: () => Promise<WriteResult<T>>): Promise<WriteResult<T>> {
+  try {
+    return await run();
+  } catch {
+    return failure(undefined, undefined);
+  }
+}
+
 export async function loadAdr(client: ApiClient, id: string): Promise<WriteResult<AdrDetail>> {
-  const { data, error, response } = await client.GET("/api/v1/adrs/{id}", {
-    params: { path: { id } },
+  return guarded(async () => {
+    const { data, error, response } = await client.GET("/api/v1/adrs/{id}", {
+      params: { path: { id } },
+    });
+    return error || !data ? failure(response?.status, error) : ok(data);
   });
-  return error || !data ? failure(response?.status, error) : ok(data);
 }
 
 export async function createAdr(
   client: ApiClient,
   body: AdrCreateInput,
 ): Promise<WriteResult<VersionedResult>> {
-  const { data, error, response } = await client.POST("/api/v1/adrs", { body });
-  return error || !data ? failure(response?.status, error) : ok(data);
+  return guarded(async () => {
+    const { data, error, response } = await client.POST("/api/v1/adrs", { body });
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
 }
 
 export async function transitionAdr(
@@ -329,23 +342,29 @@ export async function transitionAdr(
   version: number,
   to: AdrTransitionTarget,
 ): Promise<WriteResult<VersionedResult>> {
-  const { data, error, response } = await client.POST("/api/v1/adrs/{id}/transition", {
-    params: { path: { id } },
-    headers: ifMatch(version),
-    body: { to },
+  return guarded(async () => {
+    const { data, error, response } = await client.POST("/api/v1/adrs/{id}/transition", {
+      params: { path: { id } },
+      headers: ifMatch(version),
+      body: { to },
+    });
+    return error || !data ? failure(response?.status, error) : ok(data);
   });
-  return error || !data ? failure(response?.status, error) : ok(data);
 }
 
 export async function loadMacRules(client: ApiClient): Promise<WriteResult<MacRulesPage>> {
-  const { data, error, response } = await client.GET("/api/v1/mac-rules");
-  return error || !data ? failure(response?.status, error) : ok(data);
+  return guarded(async () => {
+    const { data, error, response } = await client.GET("/api/v1/mac-rules");
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
 }
 
 export async function saveMacRule(
   client: ApiClient,
   body: MacRuleInput,
 ): Promise<WriteResult<VersionedResult>> {
-  const { data, error, response } = await client.PUT("/api/v1/mac-rules", { body });
-  return error || !data ? failure(response?.status, error) : ok(data);
+  return guarded(async () => {
+    const { data, error, response } = await client.PUT("/api/v1/mac-rules", { body });
+    return error || !data ? failure(response?.status, error) : ok(data);
+  });
 }

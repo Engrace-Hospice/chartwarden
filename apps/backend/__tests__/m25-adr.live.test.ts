@@ -171,7 +171,12 @@ describe.skipIf(!DB_URL)("M25 ADR intake - LIVE Postgres", () => {
     const future = new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10);
     expect(
       await refused(
-        svc().createAdr(actor(), { claimId, macName: "CGS", reviewType: "adr", requestedOn: future }),
+        svc().createAdr(actor(), {
+          claimId,
+          macName: "CGS",
+          reviewType: "adr",
+          requestedOn: future,
+        }),
       ),
     ).toMatchObject({ code: "REQUEST_DATE_IN_FUTURE" });
     expect(
@@ -186,7 +191,12 @@ describe.skipIf(!DB_URL)("M25 ADR intake - LIVE Postgres", () => {
     ).toMatchObject({ statusCode: 404 });
     expect(
       await refused(
-        svc().createAdr(actor(), { claimId, macName: " ", reviewType: "adr", requestedOn: daysAgo(1) }),
+        svc().createAdr(actor(), {
+          claimId,
+          macName: " ",
+          reviewType: "adr",
+          requestedOn: daysAgo(1),
+        }),
       ),
     ).toMatchObject({ code: "INVALID_MAC" });
     expect(
@@ -196,11 +206,44 @@ describe.skipIf(!DB_URL)("M25 ADR intake - LIVE Postgres", () => {
     ).toMatchObject({ code: "INVALID_WINDOW" });
   });
 
+  it("refuses a date that is not on the calendar, and the history table is append-only", async () => {
+    expect(
+      await refused(
+        svc().createAdr(actor(), {
+          claimId,
+          macName: "CGS",
+          reviewType: "adr",
+          requestedOn: "2026-02-31",
+        }),
+      ),
+    ).toMatchObject({ code: "INVALID_REQUEST_DATE" });
+    expect(
+      await refused(
+        svc().upsertMacRule(actor(), {
+          macName: "CGS",
+          reviewType: "adr",
+          responseDays: 30,
+          verifiedOn: "2026-13-01",
+        }),
+      ),
+    ).toMatchObject({ code: "INVALID_RULE_DATE" });
+    const grants = await admin.query(
+      `SELECT privilege_type FROM information_schema.role_table_grants
+        WHERE table_name='adr_case_event' AND grantee='wardenx_app'`,
+    );
+    expect(grants.rows.map((r) => r.privilege_type).sort()).toEqual(["INSERT", "SELECT"]);
+  });
+
   it("hides a claim outside the actor's provider-entity scope", async () => {
     const scoped = { ...actor(), providerEntityScope: [randomUUID()] };
     expect(
       await refused(
-        svc().createAdr(scoped, { claimId, macName: "CGS", reviewType: "adr", requestedOn: daysAgo(1) }),
+        svc().createAdr(scoped, {
+          claimId,
+          macName: "CGS",
+          reviewType: "adr",
+          requestedOn: daysAgo(1),
+        }),
       ),
     ).toMatchObject({ statusCode: 404 });
     expect((await svc().listAdrs(scoped, {}, 50)).items).toHaveLength(0);
@@ -254,7 +297,49 @@ describe.skipIf(!DB_URL)("M25 ADR intake - LIVE Postgres", () => {
     const b = await svc().transitionAdr(actor(), id, "in_review", a.version);
     expect(b.version).toBe(a.version + 1);
     const detail = await svc().getAdr(actor(), id);
-    expect(detail?.events.map((e) => e.eventKind)).toEqual(["received", "in_assembly", "in_review"]);
+    expect(detail?.events.map((e) => e.eventKind)).toEqual([
+      "received",
+      "in_assembly",
+      "in_review",
+    ]);
+  });
+
+  it("treats an out-of-scope case as absent and refuses a move from a terminal state", async () => {
+    const { id, version } = await svc().createAdr(actor(), {
+      claimId,
+      macName: "NGS",
+      reviewType: "adr",
+      requestedOn: daysAgo(2),
+    });
+    const scoped = { ...actor(), providerEntityScope: [randomUUID()] };
+    expect(await svc().getAdr(scoped, id)).toBeNull();
+    expect(await refused(svc().transitionAdr(scoped, id, "in_assembly", version))).toMatchObject({
+      statusCode: 404,
+    });
+    const w = await svc().transitionAdr(actor(), id, "withdrawn", version);
+    expect(await refused(svc().transitionAdr(actor(), id, "in_assembly", w.version))).toMatchObject(
+      {
+        code: "INVALID_TRANSITION",
+      },
+    );
+  });
+
+  it("matches a MAC rule case-insensitively and keeps one row", async () => {
+    const first = await svc().upsertMacRule(actor(), {
+      macName: "WPS",
+      reviewType: "adr",
+      responseDays: 45,
+    });
+    const second = await svc().upsertMacRule(actor(), {
+      macName: "wps",
+      reviewType: "adr",
+      responseDays: 40,
+    });
+    expect(second.id).toBe(first.id);
+    const n = await admin.query(
+      "SELECT count(*)::int AS n FROM mac_rule WHERE lower(mac_name)='wps'",
+    );
+    expect(n.rows[0].n).toBe(1);
   });
 
   it("freezes a withdrawn case in the database", async () => {
@@ -265,9 +350,9 @@ describe.skipIf(!DB_URL)("M25 ADR intake - LIVE Postgres", () => {
       requestedOn: daysAgo(2),
     });
     await svc().transitionAdr(actor(), id, "withdrawn", version);
-    await expect(admin.query("UPDATE adr_case SET adr_reference='x' WHERE id=$1", [id])).rejects.toThrow(
-      /M25_ADR_TERMINAL_IMMUTABLE/,
-    );
+    await expect(
+      admin.query("UPDATE adr_case SET adr_reference='x' WHERE id=$1", [id]),
+    ).rejects.toThrow(/M25_ADR_TERMINAL_IMMUTABLE/);
   });
 
   it("isolates tenants and writes an audit row", async () => {

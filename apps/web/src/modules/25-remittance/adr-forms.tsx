@@ -3,7 +3,7 @@ import { SelectField, TextField, useApiClient } from "@wardenx/ui";
 // (claim, MAC, review type, the date on the ADR letter) and "MAC response windows" (the organization's per-MAC
 // rules, each with its source and a verified-on date). The server derives the due date and owns every refusal;
 // the forms only collect facts and show the server's message verbatim (ADR-0030).
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { ActionModal, ButtonRow, ErrorAlert, FormButtons, Hint } from "./action-ui";
 import {
@@ -34,6 +34,13 @@ export function LogAdrModal({
   const [adrReference, setAdrReference] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const blocked = !isUuid(claimId) || macName.trim() === "" || requestedOn === "";
 
@@ -47,6 +54,8 @@ export function LogAdrModal({
       requestedOn,
       ...(adrReference.trim() ? { adrReference: adrReference.trim() } : {}),
     });
+    // The ADR exists either way; a modal closed mid-request must not open a panel afterwards.
+    if (!mounted.current) return;
     setBusy(false);
     if (!res.ok) {
       setError(res.message);
@@ -107,6 +116,7 @@ export function MacRulesModal({ onClose }: { readonly onClose: () => void }): JS
   const client = useApiClient();
   const [rules, setRules] = useState<MacRulesPage["items"]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [macName, setMacName] = useState("");
   const [reviewType, setReviewType] = useState<AdrReviewType>("adr");
   const [days, setDays] = useState("45");
@@ -117,8 +127,13 @@ export function MacRulesModal({ onClose }: { readonly onClose: () => void }): JS
 
   async function reload(): Promise<void> {
     const res = await loadMacRules(client);
-    if (res.ok) setRules(res.value.items);
-    else setLoadError(res.message);
+    if (res.ok) {
+      setRules(res.value.items);
+      setLoadError(null);
+      setLoaded(true);
+    } else {
+      setLoadError(res.message);
+    }
   }
 
   useEffect(() => {
@@ -157,11 +172,13 @@ export function MacRulesModal({ onClose }: { readonly onClose: () => void }): JS
   return (
     <ActionModal ariaLabel="MAC response windows" onClose={onClose} width="42rem">
       <ErrorAlert message={loadError} />
-      {rules.length === 0 ? (
+      {!loaded && !loadError ? (
+        <Hint>Loading rules…</Hint>
+      ) : rules.length === 0 && !loadError ? (
         <Hint>
           No rules yet. Until you add one, ADRs use the platform default and show as unverified.
         </Hint>
-      ) : (
+      ) : loadError ? null : (
         <table className="wx-table">
           <thead>
             <tr>

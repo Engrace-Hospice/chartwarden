@@ -61,6 +61,7 @@ const AdrSummarySchema = Type.Object({
   windowSource: Type.String(),
   windowVerified: Type.Boolean(),
   responseDueAt: Type.String(),
+  dueDay: Type.String(),
   version: Type.Integer(),
 });
 export const AdrPageSchema = Type.Object({ items: Type.Array(AdrSummarySchema) });
@@ -68,7 +69,6 @@ export const AdrDetailSchema = Type.Composite([
   AdrSummarySchema,
   Type.Object({
     calendarDueDay: Type.String(),
-    dueDay: Type.String(),
     events: Type.Array(
       Type.Object({ id: Type.String(), eventKind: Type.String(), occurredAt: Type.String() }),
     ),
@@ -94,7 +94,13 @@ const READ = P("adr.read");
 const MANAGE = P("adr.manage");
 const RULES = P("mac_rule.manage");
 const IDEMPOTENT = requireIdempotencyKey();
-const idOf = (request: { params?: unknown }): string => (request.params as { id: string }).id;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** The `:id` path param; a non-uuid can never match a row, so it is a 404 rather than a database cast error. */
+const idOf = (request: { params?: unknown }): string => {
+  const id = (request.params as { id: string }).id;
+  if (!UUID.test(id)) throw new NotFoundError("ADR case not found");
+  return id;
+};
 
 export function registerAdrRoutes(app: FastifyInstance, deps: AdrRouteDeps): void {
   const { adrService } = deps;

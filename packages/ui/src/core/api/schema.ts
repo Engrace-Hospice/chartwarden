@@ -31545,6 +31545,7 @@ export interface operations {
                             windowSource: string;
                             windowVerified: boolean;
                             responseDueAt: string;
+                            dueDay: string;
                             version: number;
                         }[];
                     };
@@ -31622,9 +31623,9 @@ export interface operations {
                         windowSource: string;
                         windowVerified: boolean;
                         responseDueAt: string;
+                        dueDay: string;
                         version: number;
                         calendarDueDay: string;
-                        dueDay: string;
                         events: {
                             id: string;
                             eventKind: string;

@@ -31082,6 +31082,7 @@
                           "windowSource",
                           "windowVerified",
                           "responseDueAt",
+                          "dueDay",
                           "version"
                         ],
                         "properties": {
@@ -31133,6 +31134,9 @@
                             "type": "boolean"
                           },
                           "responseDueAt": {
+                            "type": "string"
+                          },
+                          "dueDay": {
                             "type": "string"
                           },
                           "version": {
@@ -31281,9 +31285,9 @@
                     "windowSource",
                     "windowVerified",
                     "responseDueAt",
+                    "dueDay",
                     "version",
                     "calendarDueDay",
-                    "dueDay",
                     "events"
                   ],
                   "properties": {
@@ -31337,13 +31341,13 @@
                     "responseDueAt": {
                       "type": "string"
                     },
+                    "dueDay": {
+                      "type": "string"
+                    },
                     "version": {
                       "type": "integer"
                     },
                     "calendarDueDay": {
-                      "type": "string"
-                    },
-                    "dueDay": {
                       "type": "string"
                     },
                     "events": {

@@ -56,6 +56,8 @@ CREATE TABLE "adr_case_event" (
 );--> statement-breakpoint
 CREATE INDEX "ix_adr_event_case" ON "adr_case_event" ("adr_case_id", "occurred_at");--> statement-breakpoint
 CREATE INDEX "adr_case_event_org_ix" ON "adr_case_event" ("organization_id", "occurred_at");--> statement-breakpoint
+-- MAC names match case-insensitively, so the rule key must too.
+CREATE UNIQUE INDEX "mac_rule_name_ci_unique" ON "mac_rule" ("organization_id", lower(btrim("mac_name")), "review_type", "effective_from");--> statement-breakpoint
 CREATE INDEX "mac_rule_org_ix" ON "mac_rule" ("organization_id", "created_at");--> statement-breakpoint
 
 -- RLS: the canonical single-shape org policy, FORCEd, app role without DELETE.
@@ -71,20 +73,23 @@ ALTER TABLE "adr_case" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY "adr_case_org" ON "adr_case" FOR ALL TO wardenx_app
   USING (organization_id = current_setting('app.org_id', true)::uuid)
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);--> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE ON "adr_case" TO wardenx_app;--> statement-breakpoint
+-- A case's anchor, window and due date never change after logging: only its progress columns are updatable.
+GRANT SELECT, INSERT ON "adr_case" TO wardenx_app;--> statement-breakpoint
+GRANT UPDATE ("state", "version", "submitted_at", "closed_at") ON "adr_case" TO wardenx_app;--> statement-breakpoint
 GRANT ALL ON "adr_case" TO wardenx_admin;--> statement-breakpoint
 ALTER TABLE "adr_case_event" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "adr_case_event" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY "adr_case_event_org" ON "adr_case_event" FOR ALL TO wardenx_app
   USING (organization_id = current_setting('app.org_id', true)::uuid)
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);--> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE ON "adr_case_event" TO wardenx_app;--> statement-breakpoint
+-- The history is append-only for the app role: no UPDATE, no DELETE.
+GRANT SELECT, INSERT ON "adr_case_event" TO wardenx_app;--> statement-breakpoint
 GRANT ALL ON "adr_case_event" TO wardenx_admin;--> statement-breakpoint
 
 -- M4 write-audit triggers (the 0084 shape). adr_case_event.event_payload is denylisted; no MBI is a column.
 CREATE OR REPLACE FUNCTION audit_phi_write_adr_case() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
-DECLARE v_before jsonb; v_after jsonb; v_cols text[] := ARRAY[]::text[];
+DECLARE v_before jsonb; v_after jsonb; v_cols text[] := ARRAY['adr_reference'];
 BEGIN
   v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN audit_scrub(to_jsonb(OLD), v_cols) ELSE NULL END;
   v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN audit_scrub(to_jsonb(NEW), v_cols) ELSE NULL END;
@@ -109,7 +114,7 @@ CREATE TRIGGER "trg_audit_adr_case_event" AFTER INSERT OR UPDATE OR DELETE ON ad
 
 CREATE OR REPLACE FUNCTION audit_phi_write_mac_rule() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
-DECLARE v_before jsonb; v_after jsonb; v_cols text[] := ARRAY[]::text[];
+DECLARE v_before jsonb; v_after jsonb; v_cols text[] := ARRAY['source_note'];
 BEGIN
   v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN audit_scrub(to_jsonb(OLD), v_cols) ELSE NULL END;
   v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN audit_scrub(to_jsonb(NEW), v_cols) ELSE NULL END;

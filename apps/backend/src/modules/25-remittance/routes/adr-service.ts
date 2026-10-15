@@ -63,12 +63,13 @@ export interface AdrSummary {
   readonly windowSource: string;
   readonly windowVerified: boolean;
   readonly responseDueAt: string;
+  /** The due day as the provider's calendar prints it (the instant above formats a day early west of UTC). */
+  readonly dueDay: string;
   readonly version: number;
 }
 
 export interface AdrDetail extends AdrSummary {
   readonly calendarDueDay: string;
-  readonly dueDay: string;
   readonly events: { id: string; eventKind: string; occurredAt: string }[];
 }
 
@@ -110,6 +111,12 @@ export interface AdrServicePorts {
   readonly providerZones?: (tx: DbClient, providerEntityId: string) => Promise<readonly string[]>;
 }
 
+/** True when `day` is a real YYYY-MM-DD calendar date (the schema only checks the shape). */
+const isRealDay = (day: string): boolean => {
+  const d = new Date(`${day}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === day;
+};
+
 const iso = (d: Date | string): string => (d instanceof Date ? d.toISOString() : String(d));
 
 export function buildDrizzleAdrService(db: DbClient, ports: AdrServicePorts = {}): AdrService {
@@ -131,6 +138,7 @@ export function buildDrizzleAdrService(db: DbClient, ports: AdrServicePorts = {}
     windowSource: r.windowSource,
     windowVerified: r.windowVerified,
     responseDueAt: iso(r.responseDueAt),
+    dueDay: deriveAdrDeadline(r.requestedOn, r.windowDays).dueDay,
     version: r.version,
   });
 
@@ -156,6 +164,7 @@ export function buildDrizzleAdrService(db: DbClient, ports: AdrServicePorts = {}
       responseDays: r.responseDays,
       verifiedOn: r.verifiedOn,
       sourceNote: r.sourceNote,
+      effectiveFrom: r.effectiveFrom,
     }));
   }
 
@@ -163,6 +172,13 @@ export function buildDrizzleAdrService(db: DbClient, ports: AdrServicePorts = {}
     async createAdr(actor, input) {
       const macName = input.macName.trim();
       if (!macName) throw new WardenXError("INVALID_MAC", "the MAC name is required", 422);
+      if (!isRealDay(input.requestedOn)) {
+        throw new WardenXError(
+          "INVALID_REQUEST_DATE",
+          "the ADR request date is not a real date",
+          422,
+        );
+      }
       if (input.requestedOn > noticeDayOf(new Date())) {
         throw new WardenXError(
           "REQUEST_DATE_IN_FUTURE",
@@ -262,7 +278,6 @@ export function buildDrizzleAdrService(db: DbClient, ports: AdrServicePorts = {}
         return {
           ...summary(row),
           calendarDueDay: derived.calendarDueDay,
-          dueDay: derived.dueDay,
           events: events.map((e) => ({ ...e, occurredAt: iso(e.occurredAt) })),
         };
       });
@@ -333,29 +348,49 @@ export function buildDrizzleAdrService(db: DbClient, ports: AdrServicePorts = {}
           422,
         );
       }
+      for (const day of [input.verifiedOn, input.effectiveFrom]) {
+        if (day !== undefined && !isRealDay(day)) {
+          throw new WardenXError("INVALID_RULE_DATE", "a rule date is not a real date", 422);
+        }
+      }
       return withOrgContext(db, actor, async (tx) => {
-        const rows = await tx
+        const effectiveFrom = input.effectiveFrom ?? noticeDayOf(new Date());
+        const fields = {
+          responseDays: input.responseDays,
+          sourceNote: input.sourceNote?.trim() || null,
+          verifiedOn: input.verifiedOn ?? null,
+        };
+        // MAC names match case-insensitively, so "cgs" edits the "CGS" rule instead of adding a second one.
+        const existing = await tx
+          .select({ id: MR.id })
+          .from(MR)
+          .where(
+            and(
+              sql`lower(btrim(${MR.macName})) = ${macName.toLowerCase()}`,
+              eq(MR.reviewType, input.reviewType),
+              eq(MR.effectiveFrom, effectiveFrom),
+            ),
+          )
+          .limit(1);
+        if (existing[0]) {
+          const updated = await tx
+            .update(MR)
+            .set({ ...fields, version: sql`${MR.version} + 1` })
+            .where(eq(MR.id, existing[0].id))
+            .returning({ id: MR.id, version: MR.version });
+          return updated[0]!;
+        }
+        const inserted = await tx
           .insert(MR)
           .values({
             organizationId: actor.organizationId,
             macName,
             reviewType: input.reviewType,
-            responseDays: input.responseDays,
-            sourceNote: input.sourceNote?.trim() || null,
-            verifiedOn: input.verifiedOn ?? null,
-            ...(input.effectiveFrom ? { effectiveFrom: input.effectiveFrom } : {}),
-          })
-          .onConflictDoUpdate({
-            target: [MR.organizationId, MR.macName, MR.reviewType, MR.effectiveFrom],
-            set: {
-              responseDays: input.responseDays,
-              sourceNote: input.sourceNote?.trim() || null,
-              verifiedOn: input.verifiedOn ?? null,
-              version: sql`${MR.version} + 1`,
-            },
+            effectiveFrom,
+            ...fields,
           })
           .returning({ id: MR.id, version: MR.version });
-        return rows[0]!;
+        return inserted[0]!;
       });
     },
   };

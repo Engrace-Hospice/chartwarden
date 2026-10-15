@@ -8,11 +8,41 @@ import { canTransitionAdr, isAdrTerminal } from "../adr-machine";
 
 describe("ADR response deadline", () => {
   const FIXTURES = [
-    { name: "due on Presidents' Day rolls to the prior Friday", requestedOn: "2026-01-02", days: 45, calendar: "2026-02-16", last: "2026-02-13" },
-    { name: "45-day ADR landing on a weekday", requestedOn: "2026-02-02", days: 45, calendar: "2026-03-19", last: "2026-03-19" },
-    { name: "20-day re-ADR across a month end", requestedOn: "2026-03-20", days: 20, calendar: "2026-04-09", last: "2026-04-09" },
-    { name: "due on a Saturday rolls to Friday", requestedOn: "2026-01-28", days: 45, calendar: "2026-03-14", last: "2026-03-13" },
-    { name: "due on a Sunday rolls to Friday", requestedOn: "2026-01-29", days: 45, calendar: "2026-03-15", last: "2026-03-13" },
+    {
+      name: "due on Presidents' Day rolls to the prior Friday",
+      requestedOn: "2026-01-02",
+      days: 45,
+      calendar: "2026-02-16",
+      last: "2026-02-13",
+    },
+    {
+      name: "45-day ADR landing on a weekday",
+      requestedOn: "2026-02-02",
+      days: 45,
+      calendar: "2026-03-19",
+      last: "2026-03-19",
+    },
+    {
+      name: "20-day re-ADR across a month end",
+      requestedOn: "2026-03-20",
+      days: 20,
+      calendar: "2026-04-09",
+      last: "2026-04-09",
+    },
+    {
+      name: "due on a Saturday rolls to Friday",
+      requestedOn: "2026-01-28",
+      days: 45,
+      calendar: "2026-03-14",
+      last: "2026-03-13",
+    },
+    {
+      name: "due on a Sunday rolls to Friday",
+      requestedOn: "2026-01-29",
+      days: 45,
+      calendar: "2026-03-15",
+      last: "2026-03-13",
+    },
   ] as const;
 
   it.each(FIXTURES)("$name", ({ requestedOn, days, calendar, last }) => {
@@ -41,23 +71,54 @@ describe("ADR response deadline", () => {
 describe("ADR window resolution", () => {
   it("prefers the organization's rule and reports it verified or not", () => {
     const rules = [
-      { macName: "CGS", reviewType: "adr", responseDays: 45, verifiedOn: "2026-10-01", sourceNote: "CGS ADR page" },
+      {
+        macName: "CGS",
+        reviewType: "adr",
+        responseDays: 45,
+        verifiedOn: "2026-10-01",
+        sourceNote: "CGS ADR page",
+      },
     ] as const;
     expect(resolveAdrWindow(rules, "cgs", "adr")).toEqual({
-      days: 45, source: "org_rule", verified: true, sourceNote: "CGS ADR page",
+      days: 45,
+      source: "org_rule",
+      verified: true,
+      sourceNote: "CGS ADR page",
     });
+  });
+
+  it("takes the newest rule when several match, whatever the order", () => {
+    const old = {
+      macName: "CGS",
+      reviewType: "adr",
+      responseDays: 45,
+      verifiedOn: null,
+      sourceNote: null,
+      effectiveFrom: "2025-01-01",
+    };
+    const next = { ...old, responseDays: 30, effectiveFrom: "2026-01-01" };
+    expect(resolveAdrWindow([old, next], "CGS", "adr").days).toBe(30);
+    expect(resolveAdrWindow([next, old], "CGS", "adr").days).toBe(30);
   });
 
   it("falls back to the platform default, marked unverified", () => {
     expect(resolveAdrWindow([], "Palmetto GBA", "adr")).toMatchObject({
-      days: DEFAULT_ADR_WINDOWS.adr, source: "platform_default", verified: false,
+      days: DEFAULT_ADR_WINDOWS.adr,
+      source: "platform_default",
+      verified: false,
     });
     expect(resolveAdrWindow([], "Palmetto GBA", "re_adr").days).toBe(DEFAULT_ADR_WINDOWS.re_adr);
   });
 
   it("treats a rule with no verification date as unverified", () => {
-    const rules = [{ macName: "NGS", reviewType: "adr", responseDays: 30, verifiedOn: null, sourceNote: null }] as const;
-    expect(resolveAdrWindow(rules, "NGS", "adr")).toMatchObject({ days: 30, source: "org_rule", verified: false });
+    const rules = [
+      { macName: "NGS", reviewType: "adr", responseDays: 30, verifiedOn: null, sourceNote: null },
+    ] as const;
+    expect(resolveAdrWindow(rules, "NGS", "adr")).toMatchObject({
+      days: 30,
+      source: "org_rule",
+      verified: false,
+    });
   });
 });
 
