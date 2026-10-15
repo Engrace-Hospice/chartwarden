@@ -502,6 +502,7 @@
         "apps/backend/__tests__/m36-announcements.live.test.ts",
         "apps/backend/__tests__/m36-announcements.test.ts",
         "apps/backend/__tests__/m36-attachments.live.test.ts",
+        "apps/backend/__tests__/m36-care-team-review.live.test.ts",
         "apps/backend/__tests__/m36-channel-admin.live.test.ts",
         "apps/backend/__tests__/m36-clinical-link-routes.test.ts",
         "apps/backend/__tests__/m36-clinical-link.live.test.ts",

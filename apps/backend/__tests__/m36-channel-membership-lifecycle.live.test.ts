@@ -517,7 +517,7 @@ describe.skipIf(!DB_URL)("GAP-104 — care_team channel membership lifecycle —
     ).not.toContain(channelId);
     expect(await service.canViewChannel(orgA, rn, channelId)).toBe(true);
 
-    await run("m5.patient.assignment_ended", orgA, { patientId: patientA });
+    await run("m5.patient.assignment_ended", orgA, { patientId: patientA, clinicianUserId: msw });
     expect((await activeMembers()).sort()).toEqual([rn, manual].sort());
     // soft-removed, not deleted: the audit/history row survives
     const removed = await admin.query(

@@ -29,6 +29,7 @@ function harness(resolvedPatient: string | null = PATIENT) {
     archiveCareTeam: vi.fn(async () => undefined),
     reopenCareTeam: vi.fn(async () => true),
     patientIdForAdmission: vi.fn(async () => resolvedPatient),
+    routeForReview: vi.fn(async (..._args: unknown[]): Promise<unknown> => undefined),
   };
   return { deps, consumer: buildM36ChannelMembershipSyncConsumer(deps) };
 }
@@ -52,6 +53,46 @@ describe("M36 channel membership sync consumer (GAP-104)", () => {
     );
     expect(deps.syncCareTeam).toHaveBeenCalledWith(ENVELOPE_ORG, PATIENT);
     expect(deps.archiveCareTeam).not.toHaveBeenCalled();
+  });
+
+  it("syncs BEFORE routing the removed clinician for review, with the envelope tenant and the event id", async () => {
+    const { deps, consumer } = harness();
+    const order: string[] = [];
+    deps.syncCareTeam.mockImplementation(async () => order.push("sync"));
+    deps.routeForReview.mockImplementation(async () => order.push("route"));
+    await consumer.handle(
+      event("m5.patient.assignment_ended", {
+        patientId: PATIENT,
+        organizationId: PAYLOAD_ORG,
+        clinicianUserId: "u",
+        role: "primary_rn",
+      }),
+    );
+    expect(order).toEqual(["sync", "route"]);
+    expect(deps.routeForReview).toHaveBeenCalledWith(
+      ENVELOPE_ORG,
+      PATIENT,
+      "u",
+      "33333333-3333-4333-8333-333333333333",
+    );
+  });
+
+  it("propagates a routing failure so the relay retries", async () => {
+    const { deps, consumer } = harness();
+    deps.routeForReview.mockRejectedValueOnce(new Error("boom"));
+    await expect(
+      consumer.handle(
+        event("m5.patient.assignment_ended", { patientId: PATIENT, clinicianUserId: "u" }),
+      ),
+    ).rejects.toThrow("boom");
+  });
+
+  it("never routes on created, deceased or discharged", async () => {
+    const { deps, consumer } = harness();
+    await consumer.handle(event("m5.patient.assignment_created", { patientId: PATIENT }));
+    await consumer.handle(event("m5.patient.deceased", { patientId: PATIENT }));
+    await consumer.handle(event("m6.admission.discharged", { admissionId: ADMISSION }));
+    expect(deps.routeForReview).not.toHaveBeenCalled();
   });
 
   it("reopens an archived channel and then syncs on a new assignment", async () => {
@@ -80,6 +121,10 @@ describe("M36 channel membership sync consumer (GAP-104)", () => {
     await expect(consumer.handle(event("m5.patient.assignment_ended", {}))).rejects.toThrow(
       /no patientId/,
     );
+    await expect(
+      consumer.handle(event("m5.patient.assignment_ended", { patientId: PATIENT })),
+    ).rejects.toThrow(/no clinicianUserId/);
+    expect(deps.routeForReview).not.toHaveBeenCalled();
     await expect(
       consumer.handle(event("m6.admission.discharged", { admissionId: ADMISSION })),
     ).rejects.toThrow(/does not resolve/);

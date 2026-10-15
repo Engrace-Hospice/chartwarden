@@ -797,6 +797,7 @@ jobs:
           - { name: "M36 handoff lifecycle", scripts: "test:m36:handoff-lifecycle:live" }
           # WP 3.8 - lifecycle review queue: death/discharge/transfer queue the open care-team tasks (bereavement excluded), nothing deleted (row-count snapshots), supervisor reassign/close with task events + outbox, resolved rows final, closed_elsewhere trigger, audit scrub, Part 2 restricted rows, tenant IDOR.
           - { name: "M36 lifecycle review", scripts: "test:m36:lifecycle-review:live" }
+          - { name: "M36 care-team review", scripts: "test:m36:care-team-review:live" }
           # WP 3.7 - chart promotion: pointer + hash table (FORCE RLS, column-level UPDATE, no DELETE, immutable attribution), closed target CHECK, one-proposed index as arbiter, owner outcome events through the real catalog, uniform 404s, audit without patient or hash, no stored message text
           - { name: "M36 chart promotion", scripts: "test:m36:promotions:live" }
           # WP 3.7 - chart promotion owners (Phase 3 gate chart-promotion-attribution): M8 reviewer-authored addendum signed with step-up and M14 agenda item from a real proposal, owner events through the real catalog -> accepted/rejected evidence, immutable attribution + insert guard, wrong patient / withdrawn / superseded refused, plain records untouched, audit without hash, tenant isolation, no orders or care-plan rows

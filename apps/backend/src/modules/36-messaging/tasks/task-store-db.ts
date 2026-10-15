@@ -21,6 +21,7 @@ import type { Tx } from "../messaging-write-core";
 
 const T = schema.communicationTasks;
 const E = schema.communicationTaskEvents;
+const CH = schema.channels;
 
 export type TaskRow = typeof T.$inferSelect;
 export type TaskEventRow = typeof E.$inferSelect;
@@ -115,6 +116,15 @@ export interface TaskStore {
     leaverUserId: string,
     limit: number,
     excludeIds: readonly string[],
+  ): Promise<string[]>;
+  /**
+   * WP 3.9 (read-only): ids of the user's ACTIVE tasks on the patient's care_team channel, flagged or not (a flagged task is
+   * still the removed clinician's open work), oldest id first. Memory store: no channel kinds, so every active task counts.
+   */
+  activeTaskIdsForAssigneeAndPatient(
+    orgId: string,
+    userId: string,
+    patientId: string,
   ): Promise<string[]>;
   /** Locks and returns the task (any state). */
   getForUpdate(tx: Tx, orgId: string, taskId: string): Promise<TaskRow | null>;
@@ -394,6 +404,25 @@ export function createDbTaskStore(db: DbClient): TaskStore {
           )
           .orderBy(asc(T.createdAt), asc(T.id))
           .limit(limit);
+        return rows.map((r) => r.id);
+      }),
+
+    activeTaskIdsForAssigneeAndPatient: (orgId, userId, patientId) =>
+      withOrgContext(db, systemOrgContext(orgId), async (tx) => {
+        const rows = await tx
+          .select({ id: T.id })
+          .from(T)
+          .innerJoin(CH, and(eq(CH.organizationId, T.organizationId), eq(CH.id, T.channelId)))
+          .where(
+            and(
+              eq(T.organizationId, orgId),
+              eq(T.assigneeId, userId),
+              eq(T.patientId, patientId),
+              inArray(T.status, ACTIVE),
+              eq(CH.channelKind, "care_team"),
+            ),
+          )
+          .orderBy(asc(T.id));
         return rows.map((r) => r.id);
       }),
 

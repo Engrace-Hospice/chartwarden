@@ -51,6 +51,12 @@ describe("ReviewQueueList", () => {
     ).toBeTruthy();
   });
 
+  it("labels a care-team removal as such", async () => {
+    mount([{ ...REVIEW_FIXTURE, source: "care_team_change", cause: "care_team_removed" }]);
+    const row = await screen.findByRole("listitem");
+    expect(within(row).getByText("Removed from the care team")).toBeTruthy();
+  });
+
   it("offers only the actions the server allows", async () => {
     mount([{ ...REVIEW_FIXTURE, allowed_actions: ["close"] }]);
     const row = await screen.findByRole("listitem");

@@ -22,7 +22,7 @@ export const REVIEW_CAUSE_LABELS: Readonly<Record<ReviewCause, string>> = {
   death: "Death",
   discharge: "Discharge",
   transfer: "Transfer",
-  care_team_removed: "Care team change",
+  care_team_removed: "Removed from the care team",
 };
 
 export const REVIEW_RESOLUTION_LABELS: Readonly<Record<ReviewResolution, string>> = {
