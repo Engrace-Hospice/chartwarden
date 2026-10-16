@@ -193,7 +193,10 @@ export function SubmissionPanel({ kind, subjectId, onChanged }: SubmissionPanelP
       />
 
       {view.noAttemptRecord ? (
-        <Hint>No submission record: this was filed before submission tracking existed.</Hint>
+        <Hint>
+          No submission record for this case. Cases filed before submission tracking existed have
+          none.
+        </Hint>
       ) : null}
 
       {attempts.map((attempt) => {
