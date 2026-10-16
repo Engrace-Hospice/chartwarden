@@ -29,7 +29,6 @@ import {
   type SubmissionAttempt,
   type SubmissionSubject,
   type SubmissionView,
-  cancelAttempt,
   loadSubmission,
   recordReceipt,
 } from "./submission-api";
@@ -58,16 +57,16 @@ const toLocalInput = (d: Date): string => {
 };
 const isoOrNull = (local: string): string | null =>
   local && !Number.isNaN(Date.parse(local)) ? new Date(local).toISOString() : null;
+/** ADR, reopening and escalation filings keep their own copy on the case, which stays authoritative. */
+const onCase = (purpose: string): boolean => purpose !== "appeal_request";
 const when = (iso: string | null): string => (iso ? new Date(iso).toLocaleString() : "");
 
 export interface SubmissionPanelProps {
   readonly kind: SubmissionSubject;
   readonly subjectId: string;
-  /** Called after any change so the parent reloads what it shows. */
-  readonly onChanged?: () => void;
 }
 
-export function SubmissionPanel({ kind, subjectId, onChanged }: SubmissionPanelProps): JSX.Element {
+export function SubmissionPanel({ kind, subjectId }: SubmissionPanelProps): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
   const location = useLocation();
@@ -81,6 +80,7 @@ export function SubmissionPanel({ kind, subjectId, onChanged }: SubmissionPanelP
   const [receiptAt, setReceiptAt] = useState(restored?.receiptAt ?? toLocalInput(new Date()));
   const [receiptDocumentId, setReceiptDocumentId] = useState(restored?.receiptDocumentId ?? "");
   const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
+  const [focusBack, setFocusBack] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -101,13 +101,29 @@ export function SubmissionPanel({ kind, subjectId, onChanged }: SubmissionPanelP
     }
     setLoadError(null);
     setView(res.value);
-  }, [client, kind, subjectId]);
+    // A draft that points at an attempt that is no longer here would reopen a form for nothing.
+    const known = Array.isArray(res.value.attempts) ? res.value.attempts : [];
+    setOpenAttempt((cur) => {
+      if (cur === null || known.some((a) => a.id === cur)) return cur;
+      clearStepUpDraft(draftKey);
+      return null;
+    });
+  }, [client, kind, subjectId, draftKey]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  // Closing the form hands focus back to the control that opened it.
+  useEffect(() => {
+    if (focusBack === null) return;
+    document.querySelector<HTMLElement>(`[data-attempt-opener="${focusBack}"]`)?.focus();
+    setFocusBack(null);
+  }, [focusBack]);
+
   function closeForm(): void {
+    clearStepUpDraft(draftKey);
+    setFocusBack(openAttempt);
     setOpenAttempt(null);
     setConfirmationRef("");
     setReceiptDocumentId("");
@@ -151,25 +167,23 @@ export function SubmissionPanel({ kind, subjectId, onChanged }: SubmissionPanelP
     setNotice(res.value.amended ? "Correction recorded." : "Receipt recorded.");
     closeForm();
     await load();
-    onChanged?.();
     if (mounted.current) setBusy(false);
   }
 
-  async function cancel(attempt: SubmissionAttempt): Promise<void> {
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    const res = await cancelAttempt(client, kind, subjectId, attempt.version, attempt.id);
-    if (!mounted.current) return;
-    if (!res.ok) setError(res.message);
-    else setNotice("Attempt cancelled.");
-    await load();
-    if (res.ok) onChanged?.();
-    if (mounted.current) setBusy(false);
+  if (!view) {
+    return loadError ? (
+      <>
+        <ErrorAlert message={loadError} />
+        <ButtonRow end>
+          <Button tone="secondary" size="sm" onClick={() => void load()}>
+            Retry
+          </Button>
+        </ButtonRow>
+      </>
+    ) : (
+      <LoadingSpinner />
+    );
   }
-
-  if (loadError) return <ErrorAlert message={loadError} />;
-  if (!view) return <LoadingSpinner />;
 
   const attempts = Array.isArray(view.attempts) ? view.attempts : [];
   const checklist = Array.isArray(view.checklist) ? view.checklist : [];
@@ -181,6 +195,16 @@ export function SubmissionPanel({ kind, subjectId, onChanged }: SubmissionPanelP
       <h3 className="wx-action-title">Submission</h3>
       <NoticeAlert message={notice} />
       <ErrorAlert message={error} />
+      {loadError ? (
+        <>
+          <ErrorAlert message={`Could not refresh: ${loadError}`} />
+          <ButtonRow end>
+            <Button tone="secondary" size="sm" onClick={() => void load()}>
+              Retry
+            </Button>
+          </ButtonRow>
+        </>
+      ) : null}
       <Hint>
         WardenX does not send this to the MAC yet. File it through the channel the MAC or QIC
         instructs, then record the confirmation here.
@@ -222,7 +246,10 @@ export function SubmissionPanel({ kind, subjectId, onChanged }: SubmissionPanelP
                 ["Sent by", attempt.channel ? humanize(attempt.channel) : "Not recorded"],
                 ...(acknowledged
                   ? ([
-                      ["Confirmation", attempt.confirmationRef ?? ""],
+                      [
+                        onCase(attempt.purpose) ? "Confirmation (on the case)" : "Confirmation",
+                        attempt.confirmationRef ?? "",
+                      ],
                       ["Received", when(attempt.receiptAt)],
                       ["Receipt copy", attempt.receiptDocumentId ?? "None kept"],
                     ] as const)
@@ -235,19 +262,31 @@ export function SubmissionPanel({ kind, subjectId, onChanged }: SubmissionPanelP
               </InlineAlert>
             ) : null}
             {attempt.amendments.length > 0 ? (
-              <ul className="wx-action-hint wx-action-list">
-                {attempt.amendments.map((a) => (
-                  <li key={a.recordedAt}>
-                    Correction {when(a.recordedAt)}: {a.confirmationRef}, received{" "}
-                    {when(a.receiptAt)}
-                  </li>
-                ))}
-              </ul>
+              <>
+                <Hint>
+                  {onCase(attempt.purpose)
+                    ? "The case record keeps its original confirmation and is the value WardenX uses. Corrections are kept beside it."
+                    : "The latest correction is the current value; the original receipt is kept above."}
+                </Hint>
+                <ul className="wx-action-hint wx-action-list">
+                  {attempt.amendments.map((a, i) => (
+                    // Append-only list: the position is its identity.
+                    // biome-ignore lint/suspicious/noArrayIndexKey: append-only
+                    <li key={`correction-${i}`}>
+                      {i === attempt.amendments.length - 1 && !onCase(attempt.purpose)
+                        ? "Current correction"
+                        : "Correction"}{" "}
+                      {when(a.recordedAt)}: {a.confirmationRef}, received {when(a.receiptAt)}
+                    </li>
+                  ))}
+                </ul>
+              </>
             ) : null}
 
             {formOpen ? (
               <>
                 <TextField
+                  autoFocus
                   label="Confirmation or tracking reference"
                   value={confirmationRef}
                   onChange={(e) => setConfirmationRef(e.target.value)}
@@ -264,6 +303,11 @@ export function SubmissionPanel({ kind, subjectId, onChanged }: SubmissionPanelP
                   value={receiptDocumentId}
                   onChange={(e) => setReceiptDocumentId(e.target.value)}
                 />
+                {receiptBlocked ? (
+                  <Hint>
+                    Enter the confirmation reference and a valid received time to continue.
+                  </Hint>
+                ) : null}
                 <Hint>
                   {acknowledged
                     ? "The recorded receipt cannot be edited; this adds a correction beside it."
@@ -280,21 +324,12 @@ export function SubmissionPanel({ kind, subjectId, onChanged }: SubmissionPanelP
               </>
             ) : (
               <ButtonRow end>
-                {awaitingProof ? (
-                  <Button
-                    tone="tertiary"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => void cancel(attempt)}
-                  >
-                    Cancel attempt
-                  </Button>
-                ) : null}
                 {awaitingProof || acknowledged ? (
                   <Button
                     tone="secondary"
                     size="sm"
                     disabled={busy}
+                    data-attempt-opener={attempt.id}
                     onClick={() => setOpenAttempt(attempt.id)}
                   >
                     {acknowledged ? "Add a correction" : "Record receipt"}
@@ -329,11 +364,20 @@ export function SubmissionPanel({ kind, subjectId, onChanged }: SubmissionPanelP
         ))}
       </ul>
       <ButtonRow end>
-        <Button tone="secondary" size="sm" disabled>
+        <Button
+          tone="secondary"
+          size="sm"
+          aria-disabled="true"
+          aria-describedby="submission-send-reason"
+          style={{ opacity: 0.55, cursor: "not-allowed" }}
+          onClick={(e) => e.preventDefault()}
+        >
           Approve and send
         </Button>
       </ButtonRow>
-      <Hint>{ELECTRONIC_NOT_CONFIGURED}</Hint>
+      <p id="submission-send-reason" className="wx-action-hint">
+        {ELECTRONIC_NOT_CONFIGURED}
+      </p>
     </>
   );
 }

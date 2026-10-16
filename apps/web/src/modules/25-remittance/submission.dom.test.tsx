@@ -7,6 +7,7 @@ import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
+import { stashStepUpDraft, stepUpDraftKey } from "../../shell/step-up-redirect";
 import { SubmissionPanel } from "./submission-panel";
 
 const APPEAL = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
@@ -18,11 +19,14 @@ let calls: Call[] = [];
 let refusal: { status: number; body: unknown } | null = null;
 let attemptState: "needs_manual" | "acknowledged" | "none" = "needs_manual";
 let loadFails = false;
+let failAfterFirst = false;
+let amendedAttempt = false;
+let purpose = "appeal_request";
 let gets = 0;
 
 const attempt = () => ({
   id: ATTEMPT,
-  purpose: "appeal_request",
+  purpose,
   attemptNo: 1,
   channel: attemptState === "acknowledged" ? "mac_portal" : null,
   adapter: "manual",
@@ -33,7 +37,16 @@ const attempt = () => ({
   receiptAt: attemptState === "acknowledged" ? "2026-09-10T12:00:00.000Z" : null,
   receiptDocumentId: null,
   receiptSource: attemptState === "acknowledged" ? "entered" : null,
-  amendments: [],
+  amendments: amendedAttempt
+    ? [
+        {
+          recordedAt: "2026-09-12T00:00:00.000Z",
+          confirmationRef: "CONF-FIXED",
+          receiptAt: "2026-09-10T12:00:00.000Z",
+          receiptDocumentId: null,
+        },
+      ]
+    : [],
   approvedAt: null,
   createdAt: "2026-09-01T00:00:00.000Z",
   version: 3,
@@ -77,6 +90,9 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   }
   if (path === `/api/v1/appeals/${APPEAL}/submission`) {
     gets += 1;
+    if (failAfterFirst && gets > 1) {
+      return json(500, { error: { code: "INTERNAL", message: "refresh failed" } });
+    }
     return loadFails
       ? json(500, { error: { code: "INTERNAL", message: "submission read failed" } })
       : json(200, viewBody());
@@ -120,6 +136,9 @@ beforeEach(() => {
   refusal = null;
   attemptState = "needs_manual";
   loadFails = false;
+  failAfterFirst = false;
+  amendedAttempt = false;
+  purpose = "appeal_request";
   gets = 0;
   window.sessionStorage.clear();
 });
@@ -132,11 +151,14 @@ describe("M25 submission panel", () => {
     expect(screen.getByText("Needs Manual")).toBeTruthy();
     expect(screen.getByText(/Not configured\. esMD is not configured\./)).toBeTruthy();
     expect(screen.getByText("Download the retained packet.")).toBeTruthy();
-    const send = screen.getByRole("button", { name: "Approve and send" }) as HTMLButtonElement;
-    expect(send.disabled).toBe(true);
-    expect(
-      screen.getByText("Electronic channel not configured. Use guided manual submission."),
-    ).toBeTruthy();
+    const send = screen.getByRole("button", { name: "Approve and send" });
+    expect(send.getAttribute("aria-disabled")).toBe("true");
+    const reason = screen.getByText(
+      "Electronic channel not configured. Use guided manual submission.",
+    );
+    expect(send.getAttribute("aria-describedby")).toBe(reason.id);
+    fireEvent.click(send);
+    expect(calls).toEqual([]);
   });
 
   it("ticks guided steps locally without calling the server", async () => {
@@ -252,16 +274,87 @@ describe("M25 submission panel", () => {
     expect(field.value).toBe("CONF-KEEP");
   });
 
-  it("cancels an attempt that has no receipt", async () => {
+  it("offers no cancel for an attempt that is waiting for its receipt", async () => {
     mount();
-    fireEvent.click(await screen.findByRole("button", { name: "Cancel attempt" }));
-    await waitFor(() => expect(calls).toHaveLength(1));
-    expect(calls[0]).toMatchObject({
-      method: "POST",
-      path: `/api/v1/appeals/${APPEAL}/submission-cancel`,
-      ifMatch: "3",
-      body: { attemptId: ATTEMPT },
+    await screen.findByText(/Proof missing:/);
+    expect(screen.queryByRole("button", { name: /cancel attempt/i })).toBeNull();
+  });
+
+  it("explains a disabled Record receipt, focuses the first field, and returns focus on close", async () => {
+    mount();
+    const opener = await screen.findByRole("button", { name: "Record receipt" });
+    fireEvent.click(opener);
+    const field = screen.getByLabelText(/Confirmation or tracking reference/i);
+    expect(document.activeElement).toBe(field);
+    expect(
+      screen.getByText(/Enter the confirmation reference and a valid received time/i),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close form" }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Record receipt" })),
+    );
+  });
+
+  it("drops the stashed draft when the form is closed", async () => {
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Record receipt" }));
+    fireEvent.change(screen.getByLabelText(/Confirmation or tracking reference/i), {
+      target: { value: "CONF-STALE" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Close form" }));
+    cleanup();
+    mount();
+    await screen.findByText(/Proof missing:/);
+    expect(screen.queryByLabelText(/Confirmation or tracking reference/i)).toBeNull();
+  });
+
+  it("ignores a restored draft that points at an attempt that is not here", async () => {
+    stashStepUpDraft(stepUpDraftKey(SESSION, "m25-submission", APPEAL), {
+      attemptId: "99999999-9999-4999-8999-999999999999",
+      confirmationRef: "X",
+      receiptAt: "2026-09-10T12:00",
+      receiptDocumentId: "",
+    });
+    mount();
+    await screen.findByText(/Proof missing:/);
+    expect(screen.queryByLabelText(/Confirmation or tracking reference/i)).toBeNull();
+  });
+
+  it("keeps the view and offers Retry when a refresh fails", async () => {
+    failAfterFirst = true;
+    refusal = {
+      status: 409,
+      body: { error: { code: "VERSION_CONFLICT", message: "modified by another writer" } },
+    };
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Record receipt" }));
+    fireEvent.change(screen.getByLabelText(/Confirmation or tracking reference/i), {
+      target: { value: "CONF-1" },
+    });
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Record receipt" }).at(-1) as HTMLElement,
+    );
+    expect(await screen.findByText(/Could not refresh: refresh failed/)).toBeTruthy();
+    expect(screen.getByText(/Proof missing:/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("says which value is current: the case keeps the original, corrections sit beside it", async () => {
+    attemptState = "acknowledged";
+    amendedAttempt = true;
+    purpose = "adr_response";
+    mount();
+    expect(await screen.findByText("Confirmation (on the case)")).toBeTruthy();
+    expect(screen.getByText(/case record keeps its original confirmation/i)).toBeTruthy();
+    expect(screen.getByText(/CONF-FIXED/)).toBeTruthy();
+  });
+
+  it("treats the latest correction as current for an appeal, which has no case column", async () => {
+    attemptState = "acknowledged";
+    amendedAttempt = true;
+    mount();
+    expect(await screen.findByText(/Current correction/)).toBeTruthy();
+    expect(screen.getByText(/latest correction is the current value/i)).toBeTruthy();
   });
 
   it("shows an acknowledged receipt and offers only a correction, never an edit", async () => {

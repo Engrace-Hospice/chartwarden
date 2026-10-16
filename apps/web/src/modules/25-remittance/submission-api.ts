@@ -14,7 +14,6 @@ export type SubmissionView = Ok<operations["getApiV1AppealsByIdSubmission"]>;
 export type SubmissionAttempt = SubmissionView["attempts"][number];
 export type ReceiptInput = ReqBody<operations["postApiV1AppealsByIdSubmissionreceipt"]>;
 export type ReceiptResult = Ok<operations["postApiV1AppealsByIdSubmissionreceipt"]>;
-export type CancelResult = Ok<operations["postApiV1AppealsByIdSubmissioncancel"]>;
 
 export type SubmissionSubject = "adr" | "appeal" | "reopening";
 
@@ -50,29 +49,6 @@ export async function recordReceipt(
         : kind === "appeal"
           ? await client.POST("/api/v1/appeals/{id}/submission-receipt", req)
           : await client.POST("/api/v1/reopenings/{id}/submission-receipt", req);
-    return error || !data ? failure(response?.status, error) : ok(data);
-  });
-}
-
-export async function cancelAttempt(
-  client: ApiClient,
-  kind: SubmissionSubject,
-  id: string,
-  version: number,
-  attemptId: string,
-): Promise<WriteResult<CancelResult>> {
-  return guarded(async () => {
-    const req = {
-      params: { path: { id } },
-      headers: ifMatch(version),
-      body: { attemptId },
-    };
-    const { data, error, response } =
-      kind === "adr"
-        ? await client.POST("/api/v1/adrs/{id}/submission-cancel", req)
-        : kind === "appeal"
-          ? await client.POST("/api/v1/appeals/{id}/submission-cancel", req)
-          : await client.POST("/api/v1/reopenings/{id}/submission-cancel", req);
     return error || !data ? failure(response?.status, error) : ok(data);
   });
 }
