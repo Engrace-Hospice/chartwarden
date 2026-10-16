@@ -3,9 +3,11 @@
 // org-less platform-ops sink: always-on log line plus the optional OPS_ALERT_WEBHOOK_URL), so a request nobody could be reached for is
 // never silent. Fixed text, no name, patient or message text; ids only on the ops notice. In-app only: out-of-band delivery is WP 4.6.
 // The wording never says anyone WAS reached: it says the message could not be delivered and nobody is known to have received it.
-// The ops notice is raised first and unconditionally (it records that the event happened); the alert is sent only while the request is
-// STILL `failed_unreachable` at the event's version (a stale event, e.g. the assignee acknowledged meanwhile, alerts nobody). A lookup
-// ERROR is rethrown so the outbox retries and dead-letters.
+// Order: the stale check first (a request that is no longer `failed_unreachable` at the event's version, e.g. the assignee acknowledged
+// meanwhile, alerts and pages nobody), THEN the ops notice, THEN the alert. The notice is never after the alert (a failing alert must not
+// lose it); a retry after a failed alert would repeat it, so it is de-duplicated in-process by correlation id (a restart may repeat it once;
+// the webhook sink cannot dedupe). The channel and message come from the stored request, not the payload. A lookup ERROR is rethrown so
+// the outbox retries and dead-letters.
 import type { AlertEmitter, MessagingRouteService } from "@wardenx/messaging";
 import type {
   DispatchableOutboxEvent,
@@ -38,6 +40,8 @@ function requireString(payload: Record<string, unknown>, key: string): string {
   return value;
 }
 
+const NOTICED_CAP = 1000;
+
 export function buildM36AckUnreachableNotificationsConsumer(deps: {
   readonly alerts: AlertEmitter;
   readonly messaging: Pick<MessagingRouteService, "canViewChannel">;
@@ -45,6 +49,7 @@ export function buildM36AckUnreachableNotificationsConsumer(deps: {
   readonly opsNotice: (notice: UnreachableOpsNotice) => void;
   readonly warn?: (message: string, context: Record<string, string>) => void;
 }): OutboxConsumerBinding {
+  const noticed = new Set<string>();
   return {
     consumerName: M36_ACK_UNREACHABLE_NOTIFICATION_CONSUMER,
     consumerModule: "m36",
@@ -52,20 +57,12 @@ export function buildM36AckUnreachableNotificationsConsumer(deps: {
     async handle(event: DispatchableOutboxEvent) {
       const payload = (event.payload ?? {}) as Record<string, unknown>;
       const requestId = requireString(payload, "requestId");
-      const channelId = requireString(payload, "channelId");
-      const messageId = requireString(payload, "messageId");
       const ackClass = requireString(payload, "ackClass");
       const version = payload.requestVersion;
       if (typeof version !== "number" || !Number.isInteger(version)) {
         throw new Error(`${M36_ACK_UNREACHABLE_NOTIFICATION_CONSUMER}: missing requestVersion`);
       }
       const correlationId = `ack-unreach:${requestId}:${version}`;
-      deps.opsNotice({
-        kind: ACK_UNREACHABLE_OPS_KIND,
-        summary: "An acknowledgment request could not be delivered to anyone and needs a human",
-        details: { organizationId: event.organizationId, requestId, ackClass },
-        correlationId,
-      });
       const row = await deps.readRequest(event.organizationId, requestId);
       if (!row || row.version !== version || row.status !== "failed_unreachable") {
         deps.warn?.("unreachable notification not delivered", {
@@ -75,9 +72,19 @@ export function buildM36AckUnreachableNotificationsConsumer(deps: {
         });
         return;
       }
+      if (!noticed.has(correlationId)) {
+        deps.opsNotice({
+          kind: ACK_UNREACHABLE_OPS_KIND,
+          summary: "An acknowledgment request could not be delivered to anyone and needs a human",
+          details: { organizationId: event.organizationId, requestId, ackClass },
+          correlationId,
+        });
+        noticed.add(correlationId);
+        if (noticed.size > NOTICED_CAP) noticed.delete(noticed.values().next().value as string);
+      }
       const recipients: string[] = [];
       for (const userId of new Set([row.requesterUserId, row.assignedUserId])) {
-        if (await deps.messaging.canViewChannel(event.organizationId, userId, channelId)) {
+        if (await deps.messaging.canViewChannel(event.organizationId, userId, row.channelId)) {
           recipients.push(userId);
         }
       }
@@ -89,10 +96,10 @@ export function buildM36AckUnreachableNotificationsConsumer(deps: {
         correlationId,
         payload: {
           recipientUserIds: recipients,
-          channelId,
-          messageId,
+          channelId: row.channelId,
+          messageId: row.messageId,
           message: ACK_UNREACHABLE_NOTIFICATION_TEXT,
-          deepLink: `/messaging?channelId=${encodeURIComponent(channelId)}&messageId=${encodeURIComponent(messageId)}`,
+          deepLink: `/messaging?channelId=${encodeURIComponent(row.channelId)}&messageId=${encodeURIComponent(row.messageId)}`,
         },
       });
     },

@@ -54,7 +54,7 @@ export const ACK_NOTE_TEXT: Readonly<Record<AckEscalationNote, string>> = {
  * PROVISIONAL pending clinical-lead review.
  */
 export const ACK_UNREACHABLE_TEXT =
-  "It could not be delivered to the person it was sent to by any route outside the app, and no one else could be asked. Nobody is known to have received it and nobody has taken responsibility. It is still open.";
+  "It could not be delivered to the person it was sent to by any route outside the app, and no one else could be asked. It may still be seen in the app. Nobody is known to have received it and nobody has taken responsibility. It is still open.";
 
 export const takeName = (author: string | undefined, sent: string): string =>
   `${ACK_TAKE_LABEL} for the message${author ? ` from ${author}` : ""} sent ${sent}`;
@@ -74,4 +74,7 @@ export const escalatedWaitingFor = (forViewer: boolean): string =>
 export const ACK_ESCALATED_TO_YOU_NOTICE = "A response request was escalated to you.";
 export const ACK_PASSED_ON_NOTICE = "A response request was passed on to the next person.";
 /** A reassign (the request is still `pending`), not an escalation: neutral wording. */
+/** WP 4.5: a poll shows a waiting request that could not be delivered. Polite, once; never says anyone was reached. */
+export const ACK_UNREACHABLE_NOTICE =
+  "A response request could not be delivered. Nobody is known to have received it.";
 export const ACK_REASSIGNED_AWAY_NOTICE = "A response request is now assigned to someone else.";

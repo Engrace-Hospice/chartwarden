@@ -96,6 +96,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.5 delivery-failure handling - LIVE Postgres",
   let consumer: ReturnType<typeof buildM36AckDeliveryFailureConsumer>;
   let routeReaderDb: ReturnType<typeof createDeliveryRouteReader>;
   const warnings: Array<Record<string, string>> = [];
+  const infos: Array<Record<string, string>> = [];
 
   const seed = async (suffix: string, org: string, keys: string[]) => {
     const id = await kit.seedUser(suffix, org, keys);
@@ -223,12 +224,14 @@ describe.skipIf(!DB_URL)("M36 WP 4.5 delivery-failure handling - LIVE Postgres",
       readRoutes: routeReaderDb,
       service: escalation.deliveryFailure,
       warn: (_m, c) => warnings.push(c),
+      info: (_m, c) => infos.push(c),
     });
   };
   const resetCase = () => {
     ladder = {};
     flags[FLAG_TIMERS] = true;
     warnings.length = 0;
+    infos.length = 0;
     rebuild(); // the flag read is cached a few seconds per binding
   };
 
@@ -288,7 +291,12 @@ describe.skipIf(!DB_URL)("M36 WP 4.5 delivery-failure handling - LIVE Postgres",
       ackRequests: { service: ack.service },
     });
     await app.ready();
-    routeReaderDb = createDeliveryRouteReader(kit.handle.db);
+    routeReaderDb = createDeliveryRouteReader(kit.handle.db, async (orgId, messageId) => {
+      const request = await ack.store.readAsSystem(orgId, (tx) =>
+        tx.findByMessage(messageId, false),
+      );
+      return request?.windowStartedAt ?? null;
+    });
     rebuild();
   }, 240_000);
 
@@ -309,7 +317,8 @@ describe.skipIf(!DB_URL)("M36 WP 4.5 delivery-failure handling - LIVE Postgres",
       const { midway } = await outage(id, messageId);
 
       expect(midway.status).toBe("pending"); // sms was still pending: the request keeps waiting
-      expect(warnings.map((w) => w.reason)).toContain("other_routes_still_open");
+      expect(infos.map((w) => w.reason)).toContain("other_routes_still_open");
+      expect(warnings).toEqual([]);
       const after = await row(id);
       expect(after).toMatchObject({
         status: "failed_unreachable",
@@ -522,11 +531,11 @@ describe.skipIf(!DB_URL)("M36 WP 4.5 delivery-failure handling - LIVE Postgres",
       resetCase();
       const { id, messageId } = await freshRequest();
       const before = await row(id);
-      const other = await alertWithRoutes(messageId, rn2, { in_app: "delivered", push: "failed" });
+      const other = await alertWithRoutes(messageId, rn2, { in_app: "delivered", push: "pending" });
       const reminder = await alertWithRoutes(
         messageId,
         rn,
-        { in_app: "delivered", push: "failed" },
+        { in_app: "delivered", push: "pending" },
         "m36.ack.route_unavailable",
       );
 
@@ -539,11 +548,105 @@ describe.skipIf(!DB_URL)("M36 WP 4.5 delivery-failure handling - LIVE Postgres",
       expect(await row(id)).toEqual(before);
     });
 
+    it("a failed urgent alert beside a delivered or pending request alert of the SAME request is not unreachable", async () => {
+      for (const sibling of ["pending", "delivered"]) {
+        resetCase();
+        const { id, messageId } = await freshRequest();
+        const urgent = await alertWithRoutes(
+          messageId,
+          rn,
+          { in_app: "delivered", push: "failed", sms: "pending" },
+          "m36.message.urgent_sent",
+        );
+        await alertWithRoutes(
+          messageId,
+          rn,
+          { in_app: "delivered", sms: sibling },
+          "m36.ack.requested",
+        );
+        const before = await row(id);
+
+        await deliver(await failRoute(urgent.sms as string));
+
+        expect(await row(id), sibling).toEqual(before);
+        expect(await outboxNames(id)).toEqual(["m36.ack.requested"]);
+      }
+    });
+
+    it("two assignee alerts that are BOTH all-failed make the request unreachable once", async () => {
+      resetCase();
+      const { id, messageId } = await freshRequest();
+      const first = await alertWithRoutes(
+        messageId,
+        rn,
+        { in_app: "delivered", push: "pending" },
+        "m36.message.urgent_sent",
+      );
+      const second = await alertWithRoutes(
+        messageId,
+        rn,
+        { in_app: "delivered", sms: "pending" },
+        "m36.ack.requested",
+      );
+      await deliver(await failRoute(first.push as string));
+      expect((await row(id)).status).toBe("pending"); // the second alert's sms is still pending
+
+      await deliver(await failRoute(second.sms as string));
+
+      expect((await row(id)).status).toBe("failed_unreachable");
+    });
+
+    it("a spoofed event payload naming another request's message changes neither request (alert type and message come from the stored rows)", async () => {
+      resetCase();
+      const a = await freshRequest();
+      const b = await freshRequest();
+      const ids = await alertWithRoutes(a.messageId, rn, {
+        in_app: "delivered",
+        push: "pending",
+        sms: "pending",
+      });
+      const envelope = (await failRoute(ids.push as string)) as unknown as {
+        payload: Record<string, unknown>;
+      };
+      const spoofed = {
+        ...envelope,
+        payload: {
+          ...envelope.payload,
+          sourceAggregateId: b.messageId,
+          alertEventType: "m36.ack.requested",
+        },
+      } as never;
+      const beforeA = await row(a.id);
+      const beforeB = await row(b.id);
+
+      await deliver(spoofed);
+
+      expect(await row(a.id)).toEqual(beforeA); // sms still pending: A keeps waiting
+      expect(await row(b.id)).toEqual(beforeB); // the payload's message is never trusted
+      // And with A's routes all failed, the write lands on A (the stored message), never on B.
+      const last = await failRoute(ids.sms as string);
+      const spoofedLast = {
+        ...(last as unknown as object),
+        payload: {
+          ...(last as unknown as { payload: Record<string, unknown> }).payload,
+          sourceAggregateId: b.messageId,
+        },
+      } as never;
+      await deliver(spoofedLast);
+      expect((await row(a.id)).status).toBe("failed_unreachable");
+      expect(await row(b.id)).toEqual(beforeB);
+    });
+
     it("an alert from before a reassign (an earlier window) does not fail the new assignment", async () => {
       resetCase();
       const { id, messageId } = await freshRequest();
       const ids = await alertWithRoutes(messageId, rn, { in_app: "delivered", push: "pending" });
       const failed = await failRoute(ids.push as string);
+      // The alert is a minute older than the window the reassign is about to start (beyond the few seconds of tolerated skew).
+      await kit.one(
+        "UPDATE alert SET created_at = now() - interval '1 minute' WHERE id = (SELECT alert_id FROM notification_delivery WHERE id=$1)",
+        [ids.push],
+      );
       // Hand it to rn2 and back to rn: the window restarts AFTER the old alert was created.
       expect(
         (await postNoKey(nurse, `${BASE}/${id}/reassign`, { assigned_user_id: rn2 })).statusCode,

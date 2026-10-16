@@ -15,6 +15,7 @@ import { type Decision, ackFactsFor, writeEscalation } from "../ack-escalation/e
 import { M36_ACK_FAILED_UNREACHABLE, publishAckEvent } from "../ack-requests/ack-events";
 import { type AckRow, AckStaleError, type AckStore } from "../ack-requests/ack-types";
 import type { HintOutboxPort } from "../message-hint-events";
+import { WINDOW_ALERT_TOLERANCE_MS } from "./route-rules";
 
 /** One failed route, as the consumer reconstructed it from the delivery rows of ONE alert and ONE recipient. */
 export interface FailedRouteFacts {
@@ -138,7 +139,7 @@ export function createDeliveryFailureService(deps: DeliveryFailureDeps): Deliver
     if (!row || !isWaiting(row)) return { kind: "not_waiting" };
     if (
       row.assignedUserId !== facts.recipientUserId ||
-      facts.alertCreatedAt.getTime() < row.windowStartedAt.getTime()
+      facts.alertCreatedAt.getTime() + WINDOW_ALERT_TOLERANCE_MS < row.windowStartedAt.getTime()
     ) {
       return { kind: "not_current" };
     }

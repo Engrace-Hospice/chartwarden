@@ -237,6 +237,24 @@ describe("delivery-failure service", () => {
     expect(outcome).toEqual({ kind: "not_current" });
   });
 
+  it("allows a few seconds of skew: an alert created just before the window start is still current, a minute before is not", async () => {
+    const start = new Date(T0.getTime() + 60_000);
+    const skewed = setup({ row: { windowStartedAt: start } });
+    const stale = setup({ row: { windowStartedAt: start } });
+
+    const near = await skewed.service.onAllRoutesFailed(ORG, {
+      ...skewed.facts,
+      alertCreatedAt: new Date(start.getTime() - 3_000),
+    });
+    const far = await stale.service.onAllRoutesFailed(ORG, {
+      ...stale.facts,
+      alertCreatedAt: new Date(start.getTime() - 60_000),
+    });
+
+    expect(near.kind).toBe("failed_unreachable");
+    expect(far).toEqual({ kind: "not_current" });
+  });
+
   it("ignores an unknown message", async () => {
     const ctx = setup();
 

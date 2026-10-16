@@ -105,13 +105,44 @@ describe("m36.ack-unreachable-notifications", () => {
     });
   });
 
-  it("still pages ops but alerts nobody when the request moved on (the assignee acknowledged)", async () => {
+  it("raises neither the ops notice nor the alert when the request moved on (the assignee acknowledged): no webhook noise on a retry", async () => {
     const ctx = setup(row({ status: "acknowledged", version: 2 }));
 
     await ctx.consumer.handle(event);
 
-    expect(ctx.opsNotice).toHaveBeenCalledOnce();
+    expect(ctx.opsNotice).not.toHaveBeenCalled();
     expect(ctx.emit).not.toHaveBeenCalled();
+  });
+
+  it("a retry after a failed alert does not repeat the ops notice, and the notice is raised before the alert", async () => {
+    const ctx = setup(row());
+    ctx.emit.mockRejectedValueOnce(new Error("emit blip"));
+
+    await expect(ctx.consumer.handle(event)).rejects.toThrow("emit blip");
+    expect(ctx.opsNotice).toHaveBeenCalledOnce(); // not lost although the alert failed
+    await ctx.consumer.handle(event); // the outbox retry
+
+    expect(ctx.opsNotice).toHaveBeenCalledOnce();
+    expect(ctx.emit).toHaveBeenCalledTimes(2);
+  });
+
+  it("takes the channel and message from the stored request, not the payload", async () => {
+    const ctx = setup(row());
+    const base = event as unknown as { payload: Record<string, unknown> };
+    const spoofed = {
+      ...base,
+      payload: {
+        ...base.payload,
+        channelId: "00000000-0000-4000-8000-0000000000ee",
+        messageId: "00000000-0000-4000-8000-0000000000ef",
+      },
+    } as never;
+
+    await ctx.consumer.handle(spoofed);
+
+    const alert = (ctx.emit.mock.calls[0] as unknown as [string, Record<string, any>])[1];
+    expect(alert.payload.channelId).toBe(CHANNEL);
+    expect(alert.payload.messageId).toBe(MESSAGE);
   });
 
   it("drops a party who can no longer see the channel but still alerts the supervisor rule", async () => {

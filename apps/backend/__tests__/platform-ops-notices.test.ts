@@ -1,7 +1,10 @@
 // GAP-173 — the org-less platform-ops notice sink: always logs, posts the webhook only when configured, and a
 // failing webhook never throws into the caller.
 import { describe, expect, it, vi } from "vitest";
-import { buildPlatformOpsNoticeSink } from "../src/bootstrap/platform-ops-notices";
+import {
+  WEBHOOK_TIMEOUT_MS,
+  buildPlatformOpsNoticeSink,
+} from "../src/bootstrap/platform-ops-notices";
 
 const NOTICE = {
   kind: "mdm.duplicate_suspected",
@@ -35,6 +38,19 @@ describe("buildPlatformOpsNoticeSink", () => {
       kind: NOTICE.kind,
       correlationId: NOTICE.correlationId,
     });
+  });
+
+  it("gives the webhook a 5 second abort signal so a hung endpoint cannot hold the caller", () => {
+    const fetchImpl = vi.fn().mockResolvedValue({ ok: true });
+    buildPlatformOpsNoticeSink({
+      webhookUrl: "https://ops.example/hook",
+      log: vi.fn(),
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })(NOTICE);
+    const init = fetchImpl.mock.calls[0]?.[1] as { signal?: AbortSignal };
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(init.signal?.aborted).toBe(false);
+    expect(WEBHOOK_TIMEOUT_MS).toBe(5000);
   });
 
   it("swallows a webhook failure (logged, never thrown into the scan)", async () => {

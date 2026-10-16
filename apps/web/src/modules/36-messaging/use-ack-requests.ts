@@ -24,6 +24,7 @@ import {
   ACK_SAVED_TAKEN_TEXT,
   ACK_SIGN_IN_TEXT,
   ACK_TOO_MANY_TEXT,
+  ACK_UNREACHABLE_NOTICE,
 } from "./ack-wording";
 
 /** The two calls this hook makes, typed loosely: the generated path union makes the full client type too deep to instantiate here. */
@@ -113,6 +114,13 @@ export function movedOnNotice(
   for (const next of after) {
     const prev = earlier.get(next.id);
     if (!prev) continue;
+    // WP 4.5: waiting -> failed_unreachable, for everyone who can see the request.
+    if (
+      (prev.status === "pending" || prev.status === "escalated") &&
+      next.status === "failed_unreachable"
+    ) {
+      return ACK_UNREACHABLE_NOTICE;
+    }
     const could = prev.viewer_actions.can_acknowledge;
     const can = next.viewer_actions.can_acknowledge;
     if (!could && can) return ACK_ESCALATED_TO_YOU_NOTICE;

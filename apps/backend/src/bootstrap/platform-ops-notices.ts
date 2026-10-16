@@ -7,6 +7,9 @@
 // owns config). The webhook never blocks or throws into the caller.
 import { safeErrorMessage } from "./redact-database-error";
 
+/** A hung webhook must not hold a consumer retry or a cron tick: the sink is fire-and-forget and gives up after this long. */
+export const WEBHOOK_TIMEOUT_MS = 5000;
+
 export interface PlatformOpsNoticeEvent {
   readonly kind: string;
   readonly summary: string;
@@ -31,6 +34,7 @@ export function buildPlatformOpsNoticeSink(opts?: {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ ...notice, occurredAt: new Date().toISOString() }),
+      signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
     }).catch((err) => {
       log(`platform-ops notice webhook delivery failed: ${safeErrorMessage(err)}`);
     });

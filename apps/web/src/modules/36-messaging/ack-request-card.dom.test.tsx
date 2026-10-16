@@ -28,6 +28,7 @@ import {
   ACK_STATUS_TEXT,
   ACK_TAKE_LABEL,
   ACK_TOO_MANY_TEXT,
+  ACK_UNREACHABLE_NOTICE,
   ACK_UNREACHABLE_TEXT,
 } from "./ack-wording";
 import { ACK_POLL_MS, ACK_RELOAD_TIMEOUT_MS, useAckRequests } from "./use-ack-requests";
@@ -879,14 +880,56 @@ describe("ack request card - failed_unreachable (WP 4.5)", () => {
     expect((await axe.run(document.body)).violations).toEqual([]);
   });
 
-  it("never implies anyone was reached", () => {
-    const text = `${ACK_STATUS_TEXT.failed_unreachable} ${ACK_UNREACHABLE_TEXT}`;
+  it("the rendered card never implies anyone was reached, notified, paged or alerted", async () => {
+    mount({ get: () => ok([unreachable()]) });
+    await takeButton();
 
-    expect(text).toMatch(/could not be delivered/i);
-    expect(text).toMatch(/nobody is known to have received it/i);
-    expect(text).not.toMatch(
-      /\b(was|were|has been|have been) (reached|notified|alerted|delivered)\b/i,
-    );
+    const text = document.querySelector(".wx-ack-card")?.textContent ?? "";
+
+    expect(text).toContain(ACK_STATUS_TEXT.failed_unreachable);
+    expect(text).toMatch(/It may still be seen in the app/);
+    expect(text).toMatch(/Nobody is known to have received it/);
+    expect(text).not.toMatch(/\b(reached|notified|paged|alerted)\b/i);
+  });
+
+  it("the sender (can_resolve only) sees the status and no Take button, only Close when it applies", async () => {
+    mount({
+      get: () =>
+        ok([
+          unreachable({
+            viewer_actions: { can_acknowledge: false, can_reassign: true, can_resolve: true },
+          }),
+        ]),
+    });
+
+    expect(await screen.findByText(ACK_UNREACHABLE_TEXT)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Take responsibility/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /^Close this request/ })).toBeTruthy();
+  });
+
+  it("taking responsibility on a failed_unreachable card calls acknowledge and shows the request as taken", async () => {
+    let gets = 0;
+    const { POST } = mount({
+      get: () => {
+        gets += 1;
+        return ok([
+          gets > 1
+            ? request({
+                status: "acknowledged",
+                acknowledged_at: "2026-10-15T12:05:00.000Z",
+                viewer_actions: { can_acknowledge: false, can_reassign: true, can_resolve: true },
+              })
+            : unreachable(),
+        ]);
+      },
+    });
+
+    fireEvent.click(await takeButton());
+
+    await screen.findByText(ACK_STATUS_TEXT.acknowledged);
+    expect(POST).toHaveBeenCalledTimes(1);
+    expect(String(POST.mock.calls[0]?.[0])).toMatch(/acknowledge/);
+    expect(screen.queryByText(ACK_UNREACHABLE_TEXT)).toBeNull();
   });
 
   it("offers no button to someone who is not the assignee", async () => {
@@ -954,6 +997,39 @@ describe("ack request card - moved-on announcement (WP 4.4)", () => {
       vi.useRealTimers();
     }
   });
+
+  it.each(["pending", "escalated"] as const)(
+    "a poll that turns %s into failed_unreachable is announced politely once, never as an alert, and not on first load",
+    async (before) => {
+      vi.useFakeTimers(FAKE_CLOCK);
+      try {
+        let phase = 0;
+        mount({
+          get: () =>
+            ok([
+              phase === 0 ? request({ status: before }) : request({ status: "failed_unreachable" }),
+            ]),
+        });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(0);
+        });
+        expect(polite()).toBe("");
+
+        await tick(); // unchanged read: nothing
+        expect(polite()).toBe("");
+
+        phase = 1;
+        await tick();
+        expect(polite()).toBe(ACK_UNREACHABLE_NOTICE);
+        expect(alertText()).toBe("");
+
+        await tick(); // unchanged again: cleared, not repeated
+        expect(polite()).toBe("");
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 
   it("the old assignee: a poll shows the request passed on, the button goes, one polite announcement, and no notice paragraph", async () => {
     vi.useFakeTimers(FAKE_CLOCK);

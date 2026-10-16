@@ -43,6 +43,8 @@ export interface EscalationBinding {
   /** WP 4.5 (ADR-0071): early escalation / `failed_unreachable` when every out-of-band route to the assignee failed. Same flag, same guarded router. */
   readonly deliveryFailure: DeliveryFailureService;
   /** A tenant-scoped read of the request (no acting user), for the consumers' stale-event checks. */
+  /** WP 4.5: when the request for a message started its current window, or null (the route reader's cut-off). */
+  readonly windowStartOfMessage: (orgId: string, messageId: string) => Promise<Date | null>;
   readonly readRequest: (orgId: string, requestId: string) => Promise<AckRow | null>;
   /** Arms the timer for the request's CURRENT window if it is still waiting. Idempotent; a throw means "not armed" (retry). */
   readonly armFromRequest: (orgId: string, requestId: string) => Promise<void>;
@@ -90,6 +92,9 @@ export function buildEscalationBinding(input: EscalationBindingInput): Escalatio
     service,
     deliveryFailure,
     readRequest,
+    windowStartOfMessage: async (orgId, messageId) =>
+      (await input.store.readAsSystem(orgId, (tx) => tx.findByMessage(messageId, false)))
+        ?.windowStartedAt ?? null,
     async armFromRequest(orgId, requestId) {
       if (!input.timers) return;
       const row = await readRequest(orgId, requestId);

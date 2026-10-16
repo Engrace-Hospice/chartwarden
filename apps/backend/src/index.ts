@@ -10133,9 +10133,13 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
           ...(m36AckEscalation
             ? [
                 buildM36AckDeliveryFailureConsumer({
-                  readRoutes: createDeliveryRouteReader(dbHandle.db),
+                  readRoutes: createDeliveryRouteReader(
+                    dbHandle.db,
+                    m36AckEscalation.windowStartOfMessage,
+                  ),
                   service: m36AckEscalation.deliveryFailure,
                   warn: (message, context) => app.log.warn(context, message),
+                  info: (message, context) => app.log.info(context, message),
                 }),
               ]
             : []),
