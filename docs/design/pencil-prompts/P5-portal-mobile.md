@@ -59,7 +59,7 @@ waiting-room · dark.
 
 ---
 
-## Mobile (field) — Capacitor wrap of apps/web (ADR-0035)
+## Mobile (field) — separate React Native/Expo renderer (ADR-0069)
 
 Mobile is **not** a responsive reflow — it is a parallel **Mobile Task Flow** (one action per
 screen). Generate these as a distinct mobile frame set. 44px targets are doubly load-bearing;

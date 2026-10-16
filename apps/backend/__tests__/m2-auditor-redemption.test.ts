@@ -280,6 +280,7 @@ describe("authenticate hook — auditor sessions are read-only and stage-gated",
 
   it("an ENROLMENT-stage auditor reaches exactly the enrolment routes, sign-out and redemption", async () => {
     const allowed: ReadonlyArray<readonly [string, string]> = [
+      ["GET", "/api/v1/auth/csrf"],
       ["GET", "/api/v1/auditors/enrolment/state"],
       ["POST", "/api/v1/auditors/enrolment/baa"],
       ["POST", "/api/v1/auditors/enrolment/totp/begin"],

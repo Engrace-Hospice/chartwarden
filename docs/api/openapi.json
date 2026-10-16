@@ -41535,6 +41535,45 @@
         }
       }
     },
+    "/api/v1/auth/csrf": {
+      "get": {
+        "operationId": "getApiV1AuthCsrf",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Bootstrap the authenticated cookie client's WardenX double-submit CSRF nonce",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "token"
+                  ],
+                  "properties": {
+                    "token": {
+                      "minLength": 64,
+                      "maxLength": 64,
+                      "pattern": "^[a-f0-9]+$",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/auth/memberships": {
       "get": {
         "operationId": "getApiV1AuthMemberships",

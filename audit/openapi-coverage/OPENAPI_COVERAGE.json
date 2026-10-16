@@ -11,12 +11,12 @@
   "modules": [
     {
       "module": "02-identity",
-      "routes": 53,
-      "enriched": 53,
+      "routes": 54,
+      "enriched": 54,
       "deficit": 0,
       "mutating": 33,
       "mutatingNoBody": 0,
-      "gets": 16,
+      "gets": 17,
       "getsNoResponse": 0
     },
     {

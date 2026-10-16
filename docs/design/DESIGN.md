@@ -3,7 +3,7 @@
 Version: 1.0
 Status: Design Language (authoritative for the *visual* layer)
 Scope: The token system, component patterns, and hard rules for every WardenX surface
-(staff web, admin, patient/family portal, Capacitor mobile).
+(staff web, admin, patient/family portal, and the separate React Native/Expo mobile renderer).
 
 > **How this fits the corpus.** WardenX already specifies the *structural* layer — the
 > [layout-pattern glossary](./WARDENX_UI_LAYOUT_PATTERNS.md) (regions, base patterns,
@@ -567,7 +567,7 @@ accessibility/compassion constraints:
 | Staff / clinical web | `apps/web` | The bulk of the corpus; dense data, full Guardrail/Provenance/Sensitivity systems |
 | Internal admin / ops | `apps/admin` | Admin Console/Hierarchy/Split/Settings patterns; same tokens |
 | Patient / family portal | `apps/portal` | Portal family: AA→AAA, single-column, Fraunces warmth, safety affordance |
-| Mobile (field) | Capacitor wrap of `apps/web` (ADR-0035) | Mobile Task Flow; offline/EVV; 44px targets are doubly load-bearing |
+| Mobile (field) | Separate `wardenx-mobile` React Native/Expo renderer (ADR-0069) | Mobile Task Flow; offline/EVV targets require native implementation evidence; 44px targets are doubly load-bearing |
 
 ---
 
