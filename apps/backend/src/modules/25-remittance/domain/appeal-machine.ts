@@ -6,7 +6,10 @@ import type { AppealDecisionOutcome, AppealState } from "./types";
 export const APPEAL_TRANSITIONS: Readonly<Record<AppealState, readonly AppealState[]>> = {
   draft: ["submitted", "withdrawn"],
   submitted: ["under_review", "withdrawn"],
-  under_review: ["decided", "withdrawn"],
+  // `escalated` (milestone 4): a late QIC reconsideration the provider moved to OMHA. It is not a decision of this
+  // tier; the case then only closes. A QIC decision recorded instead still goes `under_review -> decided`.
+  under_review: ["decided", "escalated", "withdrawn"],
+  escalated: ["closed"],
   decided: ["closed"],
   withdrawn: [],
   closed: [],

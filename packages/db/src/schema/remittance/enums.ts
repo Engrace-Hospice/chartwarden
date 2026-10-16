@@ -88,6 +88,7 @@ export const m25AppealState = pgEnum("m25_appeal_state", [
   "decided",
   "withdrawn",
   "closed",
+  "escalated", // milestone 4 (migration 1114): a late QIC reconsideration moved to OMHA
 ]);
 export const m25AppealDecisionOutcome = pgEnum("m25_appeal_decision_outcome", [
   "favorable",
@@ -104,6 +105,10 @@ export const m25AppealEventKind = pgEnum("m25_appeal_event_kind", [
   "withdrawn",
   "escalated_to_next_tier",
   "closed",
+  // milestone 4 (migration 1114)
+  "evidence_updated",
+  "qic_clock_recorded",
+  "escalation_requested",
 ]);
 export const m25TaxonomyOwnerRole = pgEnum("m25_taxonomy_owner_role", [
   "billing_specialist",

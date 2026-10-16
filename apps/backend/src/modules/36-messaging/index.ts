@@ -47,6 +47,7 @@ export {
   registerMessagingSeams,
   getAlertEmitter,
   getMessagingProvider,
+  getEscalationRouter,
 } from "./seams";
 // §8.1.2 / #205 — M36's one cross-module outbox event. See events-by-m36.ts's header for why it
 // has no producer yet.
@@ -312,6 +313,14 @@ export { buildReviewDeps } from "./review/deps";
 export { buildMedicationQuestionDeps } from "./medication-questions/deps";
 export { buildUrgentDeps } from "./urgent/deps";
 export { buildAckDeps } from "./ack-requests/deps";
+// WP 4.4 (ADR-0070): the escalation timers - binding, BullMQ timer port and workers, and the DLQ audit recorder.
+export { buildEscalationBinding } from "./ack-escalation/binding";
+export { createDlqAuditRecorder } from "./ack-escalation/dlq-audit";
+export { createBullmqTimerPort } from "./ack-escalation/escalation-timers";
+export {
+  registerM36AckEscalationWorkers,
+  scheduleM36AckEscalationJobs,
+} from "./ack-escalation/escalation-worker";
 export { buildPromotionDeps } from "./promotions/deps";
 export { buildIdgDiscussionDeps } from "./idg/deps";
 export {

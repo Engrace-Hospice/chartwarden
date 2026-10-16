@@ -267,14 +267,18 @@ describe.skipIf(!DB_URL)("M36 WP 4.2 acknowledgment requests - LIVE Postgres", (
   };
   /** Runs the statements in order as the app role in a rolled-back transaction; returns the LAST one's error (earlier ones must pass). */
   const asAppSeq = async (
-    statements: Array<[string, unknown[]]>,
+    statements: Array<[string, unknown[]] | [string, unknown[], string | null]>,
     user: string = nurse,
   ): Promise<string | null> => {
     await kit.appConn.query("BEGIN");
     try {
       await kit.appConn.query("SELECT set_config('app.org_id', $1, true)", [ORG_A]);
       await kit.appConn.query("SELECT set_config('app.user_id', $1, true)", [user]);
-      for (const [i, [sql, params]] of statements.entries()) {
+      for (const [i, [sql, params, actor]] of statements.entries()) {
+        // WP 4.4: an escalation is the timer's write (no acting user); a statement may name its own actor (null = the system).
+        if (actor !== undefined) {
+          await kit.appConn.query("SELECT set_config('app.user_id', $1, true)", [actor ?? ""]);
+        }
         try {
           await kit.appConn.query(sql, params);
         } catch (err) {
@@ -934,28 +938,35 @@ describe.skipIf(!DB_URL)("M36 WP 4.2 acknowledgment requests - LIVE Postgres", (
     });
 
     it("accepts the transitions 4.4 and 4.5 will need (pending -> escalated -> tier up -> failed_unreachable) so they cannot be blocked", async () => {
-      const up = (set: string): [string, unknown[]] => [
+      // The escalation writes are the TIMER's (no acting user); the final acknowledgment is the assignee's.
+      const up = (
+        set: string,
+        actor?: string | null,
+      ): [string, unknown[], string | null | undefined] => [
         `UPDATE message_acknowledgment_request SET ${set}, version=version+1 WHERE id=$1`,
         [pendingId],
+        actor,
       ];
       const err = await asAppSeq(
         [
-          up("status='escalated', current_tier=1"),
-          up("current_tier=2"),
-          up("status='failed_unreachable'"),
+          up("status='escalated', current_tier=1", null),
+          up("current_tier=2", null),
+          up("status='failed_unreachable'", null),
           up(
             "status='acknowledged', acknowledged_at=now(), acknowledged_by_user_id=assigned_user_id",
+            rn,
           ),
-        ],
+        ] as Array<[string, unknown[], string | null]>,
         rn,
       );
       expect(err).toBeNull();
     });
 
     it("refuses escalated -> resolved, a lower tier, and failed_unreachable -> escalated", async () => {
-      const up = (set: string): [string, unknown[]] => [
+      const up = (set: string): [string, unknown[], string | null] => [
         `UPDATE message_acknowledgment_request SET ${set}, version=version+1 WHERE id=$1`,
         [pendingId],
+        null,
       ];
       expect(
         await asAppSeq([

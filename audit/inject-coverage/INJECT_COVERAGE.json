@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1639,
-    "coveredRoutes": 1639,
-    "directRoutesReferenced": 1535
+    "routes": 1644,
+    "coveredRoutes": 1644,
+    "directRoutesReferenced": 1540
   },
   "modules": [
     {
@@ -340,6 +340,7 @@
         "apps/backend/__tests__/f238-records-request-expiry.test.ts",
         "apps/backend/__tests__/f238-records-request.test.ts",
         "apps/backend/__tests__/m22-doclens-sud-gate.test.ts",
+        "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 54
@@ -364,6 +365,7 @@
         "apps/backend/__tests__/m23-validation-override.live.test.ts",
         "apps/backend/__tests__/m23-visit-charge-routes.test.ts",
         "apps/backend/__tests__/m23-wage-index-routes.test.ts",
+        "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 66
@@ -379,15 +381,16 @@
     },
     {
       "module": "25-remittance",
-      "routes": 68,
+      "routes": 73,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m25-denial-version.live.test.ts",
+        "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-tpe.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/remittance-inject.test.ts"
       ],
-      "directRoutesReferenced": 46
+      "directRoutesReferenced": 51
     },
     {
       "module": "26-cap",
@@ -502,6 +505,7 @@
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
         "apps/backend/__tests__/m34-platform-alert-audience-no-authority.test.ts",
+        "apps/backend/__tests__/m36-ack-escalation.live.test.ts",
         "apps/backend/__tests__/m36-ack-requests.live.test.ts",
         "apps/backend/__tests__/m36-ack-routes.test.ts",
         "apps/backend/__tests__/m36-admin-alert-deliveries.test.ts",

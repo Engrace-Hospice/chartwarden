@@ -63,6 +63,12 @@ const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
     "WP 4.2 delete cancels the message's open acknowledgment request and edit is refused once a request exists (import lines and comments)",
   "apps/backend/src/modules/36-messaging/outbox-consumers/ack-notifications.ts":
     "WP 4.2 the in-app alert for the assignee of an acknowledgment request (never a receipt)",
+  "apps/backend/src/modules/36-messaging/outbox-consumers/ack-escalation-notifications.ts":
+    "WP 4.4 the in-app alerts of an escalated or unrouted acknowledgment request (never a receipt)",
+  "apps/backend/src/modules/36-messaging/outbox-consumers/ack-timer-arming.ts":
+    "WP 4.4 arms the escalation timer of an acknowledgment request (never a receipt)",
+  "packages/messaging/src/jobs/queues.ts":
+    "WP 4.4 names the two escalation queues of the acknowledgment-request aggregate (ack_escalation_timer / _sweep)",
   "packages/messaging/src/index.ts": "WP 4.2 re-exports the pure acknowledgment-request rules",
   "apps/web/src/modules/36-messaging/reaction-palette.ts":
     "WP 2.4 user-facing copy that NEGATES the word: a reaction does not mean a message was read, acknowledged or acted on",
@@ -78,7 +84,9 @@ const WORDING_ALLOWLIST_PREFIXES: Readonly<Record<string, string>> = {
   "apps/backend/src/modules/36-messaging/ack-requests/":
     "WP 4.2 the acknowledgment-request aggregate itself (service, store, events, binding): an explicit action by the assigned clinician, never a receipt",
   "packages/messaging/src/ack-requests/":
-    "WP 4.2 the pure state machine and deadline rules of the acknowledgment-request aggregate",
+    "WP 4.2 the pure state machine and deadline rules of the acknowledgment-request aggregate (and WP 4.4's timer rules)",
+  "apps/backend/src/modules/36-messaging/ack-escalation/":
+    "WP 4.4 the escalation timers of the acknowledgment-request aggregate: what happens when nobody took responsibility in time",
 };
 
 /** The schema owns the retired column; the test files below pin that it stays NULL. */

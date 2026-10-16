@@ -2,7 +2,7 @@
 // routes. The create body has NO class, deadline, role or status field: the class is derived from the message, the deadline
 // from the platform policy, and the only choice the sender makes is one named colleague. `additionalProperties:false`.
 import { type TSchema, Type } from "@sinclair/typebox";
-import { ACK_CLASSES, ACK_EVENT_TYPES, ACK_STATUSES } from "@wardenx/types";
+import { ACK_CLASSES, ACK_ESCALATION_NOTES, ACK_EVENT_TYPES, ACK_STATUSES } from "@wardenx/types";
 import { UUID_PATTERN } from "./messaging-typebox";
 
 const Uuid = Type.String({ pattern: UUID_PATTERN });
@@ -42,6 +42,7 @@ const AckRequest = Type.Object({
   resolved_at: nullable(Type.String({ format: "date-time" })),
   cancelled_at: nullable(Type.String({ format: "date-time" })),
   version: Type.Integer(),
+  escalation_note: Type.Optional(nullable(oneOf(ACK_ESCALATION_NOTES))),
   viewer_actions: Type.Object({
     can_acknowledge: Type.Boolean(),
     can_reassign: Type.Boolean(),

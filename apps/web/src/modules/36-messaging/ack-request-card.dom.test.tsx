@@ -12,12 +12,16 @@ import {
   ACK_CHANGED_TEXT,
   ACK_CLOSE_LABEL,
   ACK_CLOSE_NOT_QUALIFIED_TEXT,
+  ACK_ESCALATED_TO_YOU_NOTICE,
   ACK_GONE_TEXT,
   ACK_INDETERMINATE_TEXT,
   ACK_INVALID_TEXT,
+  ACK_NOTE_TEXT,
   ACK_NOTICE,
   ACK_NOT_PERMITTED_TEXT,
   ACK_NOT_QUALIFIED_TEXT,
+  ACK_PASSED_ON_NOTICE,
+  ACK_REASSIGNED_AWAY_NOTICE,
   ACK_SAVED_TAKEN_TEXT,
   ACK_SIGN_IN_TEXT,
   ACK_STALE_TEXT,
@@ -779,5 +783,231 @@ describe("ack card - focus and keyboard", () => {
     const alert = document.querySelector('[role="alert"]');
     await waitFor(() => expect(alert?.textContent).toBe(ACK_CHANGED_TEXT));
     expect(document.querySelector("output.wx-ack-live")?.textContent).toBe("");
+  });
+});
+
+// WP 4.4 (ADR-0070): an escalated request, and an overdue one the server could not pass on. The clock is fixed (FIXED_NOW).
+describe("ack request card - escalation (WP 4.4)", () => {
+  const PAST = "2026-10-15T12:05:00.000Z"; // before FIXED_NOW (12:10)
+  const escalated = (over: Partial<AckRequestDto> = {}) =>
+    request({
+      status: "escalated",
+      current_tier: 1,
+      deadline_at: "2026-10-15T12:30:00.000Z",
+      ...over,
+    });
+
+  it("says an escalated request was escalated to the viewer, takes the same one explicit action, and has no a11y violations", async () => {
+    mount({ get: () => ok([escalated()]) });
+
+    expect(await takeButton()).toBeTruthy();
+    expect(screen.getByRole("group", { name: ACK_STATUS_TEXT.escalated })).toBeTruthy();
+    expect(screen.getByText(/Escalated to you because it was not taken in time/)).toBeTruthy();
+    expect(screen.getByText(/Respond by/)).toBeTruthy();
+    expect((await axe.run(document.body)).violations).toEqual([]);
+  });
+
+  it("tells another viewer, without a button, that it was escalated to the next responsible person", async () => {
+    mount({
+      get: () =>
+        ok([
+          escalated({
+            viewer_actions: { can_acknowledge: false, can_reassign: true, can_resolve: false },
+          }),
+        ]),
+    });
+
+    expect(await screen.findByText(/Escalated to the next responsible person/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Take responsibility/ })).toBeNull();
+  });
+
+  it("marks an overdue escalated request as overdue, not as 'Respond by'", async () => {
+    mount({ get: () => ok([escalated({ deadline_at: PAST })]) });
+
+    expect(await screen.findByText(/Overdue: was due/)).toBeTruthy();
+  });
+
+  it.each(["route_unavailable", "ladder_exhausted"] as const)(
+    "says honestly that an overdue request which %s is still open, and keeps its controls",
+    async (note) => {
+      mount({ get: () => ok([request({ deadline_at: PAST, escalation_note: note })]) });
+
+      expect(await screen.findByText(ACK_NOTE_TEXT[note])).toBeTruthy();
+      expect(screen.getByText(/Overdue: was due/)).toBeTruthy();
+      expect(screen.getByText(ACK_STATUS_TEXT.pending)).toBeTruthy();
+      expect(await takeButton()).toBeTruthy();
+      expect((await axe.run(document.body)).violations).toEqual([]);
+    },
+  );
+
+  it("shows no note when the server sent none, null, or the request is no longer waiting", async () => {
+    mount({
+      get: () =>
+        ok([
+          request({ deadline_at: PAST }),
+          request({ id: "r-2", message_id: "m-2", deadline_at: PAST, escalation_note: null }),
+          request({
+            id: "r-3",
+            message_id: "m-3",
+            status: "acknowledged",
+            acknowledged_at: PAST,
+            escalation_note: "route_unavailable",
+            viewer_actions: { can_acknowledge: false, can_reassign: false, can_resolve: false },
+          }),
+        ]),
+    });
+    await takeButton();
+
+    expect(screen.queryByText(ACK_NOTE_TEXT.route_unavailable)).toBeNull();
+    expect(screen.queryByText(ACK_NOTE_TEXT.ladder_exhausted)).toBeNull();
+  });
+});
+
+// WP 4.4: a poll or focus re-read that shows the request moved on is announced ONCE, politely (never role=alert), and not again.
+describe("ack request card - moved-on announcement (WP 4.4)", () => {
+  const polite = () => document.querySelector("output.wx-ack-live")?.textContent ?? "";
+  const alertText = () => document.querySelector('[role="alert"]')?.textContent ?? "";
+  const NO_ACTIONS = { can_acknowledge: false, can_reassign: true, can_resolve: false };
+  const tick = async () => {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ACK_POLL_MS);
+    });
+  };
+
+  it("the new assignee: a poll turns pending into escalated, the button appears and exactly one polite announcement is made", async () => {
+    vi.useFakeTimers(FAKE_CLOCK);
+    let phase = 0;
+    const seen: string[] = [];
+    const observer = new MutationObserver(() => {
+      const text = polite();
+      if (text && seen.at(-1) !== text) seen.push(text);
+    });
+    try {
+      mount({
+        get: () =>
+          ok([
+            phase === 0
+              ? request({ viewer_actions: NO_ACTIONS })
+              : request({ status: "escalated", current_tier: 1, assigned_user_id: "u-3" }),
+          ]),
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+      expect(screen.queryByRole("button", { name: /^Take responsibility/ })).toBeNull();
+      expect(polite()).toBe("");
+
+      phase = 1;
+      await tick();
+      expect(screen.getByRole("button", { name: /^Take responsibility/ })).toBeTruthy();
+      expect(polite()).toBe(ACK_ESCALATED_TO_YOU_NOTICE);
+      expect(alertText()).toBe("");
+
+      await tick(); // nothing changed: the announcement is not repeated and is cleared
+      expect(polite()).toBe("");
+      await tick();
+      expect(seen).toEqual([ACK_ESCALATED_TO_YOU_NOTICE]);
+    } finally {
+      observer.disconnect();
+      vi.useRealTimers();
+    }
+  });
+
+  it("the old assignee: a poll shows the request passed on, the button goes, one polite announcement, and no notice paragraph", async () => {
+    vi.useFakeTimers(FAKE_CLOCK);
+    try {
+      let phase = 0;
+      mount({
+        get: () =>
+          ok([
+            phase === 0
+              ? request()
+              : request({ status: "escalated", current_tier: 1, viewer_actions: NO_ACTIONS }),
+          ]),
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByRole("button", { name: /^Take responsibility/ })).toBeTruthy();
+
+      phase = 1;
+      await tick();
+
+      expect(screen.queryByRole("button", { name: /^Take responsibility/ })).toBeNull();
+      expect(polite()).toBe(ACK_PASSED_ON_NOTICE);
+      expect(screen.queryByText(ACK_NOTICE)).toBeNull();
+      expect(screen.getByText(/Nobody has taken responsibility yet/)).toBeTruthy();
+      expect(alertText()).toBe("");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a reassign away (the request is still pending, not escalated) is announced neutrally, once", async () => {
+    vi.useFakeTimers(FAKE_CLOCK);
+    try {
+      let phase = 0;
+      mount({
+        get: () =>
+          ok([
+            phase === 0
+              ? request()
+              : request({ assigned_user_id: "u-9", viewer_actions: NO_ACTIONS }),
+          ]),
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      phase = 1;
+      await tick();
+
+      expect(polite()).toBe(ACK_REASSIGNED_AWAY_NOTICE);
+      expect(polite()).not.toMatch(/next person/);
+      expect(alertText()).toBe("");
+      await tick();
+      expect(polite()).toBe("");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("makes no announcement on the first load, nor when only the deadline text changes", async () => {
+    vi.useFakeTimers(FAKE_CLOCK);
+    try {
+      let n = 0;
+      mount({
+        get: () => {
+          n += 1;
+          return ok([
+            request({
+              status: "escalated",
+              current_tier: 1,
+              version: n,
+              deadline_at: "2026-10-15T13:00:00.000Z",
+            }),
+          ]);
+        },
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(polite()).toBe("");
+      await tick();
+      expect(polite()).toBe("");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a requester viewing the escalated request sees no buttons and no response notice", async () => {
+    mount({
+      get: () =>
+        ok([request({ status: "escalated", current_tier: 1, viewer_actions: NO_ACTIONS })]),
+    });
+
+    expect(await screen.findByText(/Nobody has taken responsibility yet/)).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByText(ACK_NOTICE)).toBeNull();
   });
 });

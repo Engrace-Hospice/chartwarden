@@ -1,11 +1,16 @@
 // apps/backend/src/modules/36-messaging/ack-requests/ack-dto.ts - WP 4.2: row -> wire shape (snake_case, ISO instants).
 import { viewerActionsFor } from "@wardenx/messaging";
-import type { AckEventDto, AckRequestDto } from "@wardenx/types";
+import type { AckEscalationNote, AckEventDto, AckRequestDto } from "@wardenx/types";
 import type { AckEventRow, AckRow } from "./ack-types";
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 
-export function toAckRequestDto(row: AckRow, viewerUserId: string): AckRequestDto {
+export function toAckRequestDto(
+  row: AckRow,
+  viewerUserId: string,
+  /** Reads pass the note (or null); a mutation response leaves it out. */
+  escalationNote?: AckEscalationNote | null,
+): AckRequestDto {
   const base = {
     id: row.id,
     message_id: row.messageId,
@@ -27,6 +32,7 @@ export function toAckRequestDto(row: AckRow, viewerUserId: string): AckRequestDt
   };
   return {
     ...base,
+    ...(escalationNote !== undefined ? { escalation_note: escalationNote } : {}),
     viewer_actions: viewerActionsFor(
       {
         status: row.status,

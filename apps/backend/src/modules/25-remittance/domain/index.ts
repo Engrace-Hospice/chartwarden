@@ -18,3 +18,4 @@ export * from "./adr-packet-rules";
 export * from "./denial-route";
 export * from "./reopening-machine";
 export * from "./tpe";
+export * from "./qic";

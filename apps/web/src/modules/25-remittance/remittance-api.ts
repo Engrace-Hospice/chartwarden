@@ -212,7 +212,15 @@ export async function runDenialAction(
 
 export type AppealAction =
   | { kind: "attach"; documentId: string }
-  | { kind: "submit"; appealNarrative: string; attachedDocumentIds: string[] }
+  | {
+      kind: "submit";
+      appealNarrative: string;
+      attachedDocumentIds: string[];
+      /** Milestone 4: only a QIC reconsideration sends these (the server checks them against the cited evidence). */
+      redeterminationMacName?: string;
+      redeterminationNoticeDocumentId?: string;
+      evidencePreclusionAcknowledged?: boolean;
+    }
   | { kind: "ack" }
   | {
       kind: "decide";
@@ -250,6 +258,15 @@ export async function runAppealAction(
         body: {
           appealNarrative: action.appealNarrative,
           attachedDocumentIds: action.attachedDocumentIds,
+          ...(action.redeterminationMacName
+            ? { redeterminationMacName: action.redeterminationMacName }
+            : {}),
+          ...(action.redeterminationNoticeDocumentId
+            ? { redeterminationNoticeDocumentId: action.redeterminationNoticeDocumentId }
+            : {}),
+          ...(action.evidencePreclusionAcknowledged !== undefined
+            ? { evidencePreclusionAcknowledged: action.evidencePreclusionAcknowledged }
+            : {}),
         },
       });
       return error || !data ? failure(response?.status, error) : ok(data);

@@ -71,6 +71,12 @@ export interface AppealSubmitInput {
   readonly attachedDocumentIds: readonly string[];
   /** An existing M22 document the biller assembled as the medical-records bundle (validated like an enclosure). */
   readonly medicalRecordsBundleDocumentId?: string;
+  /** Milestone 4: required on a QIC reconsideration, ignored on every other tier (see appeal-packet-payload.ts). */
+  readonly reconsideration?: {
+    readonly redeterminationMacName?: string;
+    readonly redeterminationNoticeDocumentId?: string;
+    readonly evidencePreclusionAcknowledged?: boolean;
+  };
 }
 /** M25-F03 — a late good-cause filing: the normal submit input plus the documented justification (>= 40). */
 export interface AppealLateGoodCauseInput extends AppealSubmitInput {

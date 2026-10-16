@@ -131,6 +131,33 @@ const ACK_EVENT_ENTRIES = [
     "A request was withdrawn because its message was deleted (WP 4.2). No consumer yet (WP 4.9).",
     [],
   ),
+  // WP 4.4 (ADR-0070): written by the escalation timer (actorUserId null). Ids, the tier and instants only.
+  ackEntry(
+    "m36.ack.escalated",
+    "The deadline passed with nobody having taken responsibility and the request was handed to the next tier's clinician (WP 4.4). `assignedUserId` is the tier's user, `previousAssignedUserId` the one who did not act, `deadlineAt` the end of the new window. M36 tells the new assignee in-app and arms the next tier's timer. Not a page, not the emergency path.",
+    ["m36"],
+    { previousAssignedUserId: id, tier: Type.Integer({ minimum: 1 }), deadlineAt: isoInstant },
+  ),
+  ackEntry(
+    "m36.ack.route_unavailable",
+    "The deadline passed and no tier could be reached (no router bound, a coverage gap, or nobody qualified), so the request stays open with its current assignee (WP 4.4). Written with an increasing backoff (1 h, 2 h ... 24 h) and at most 8 times per window (`occurrence`). M36 tells the sender and the assignee in-app, generically.",
+    ["m36"],
+    {
+      tier: Type.Integer({ minimum: 1 }),
+      occurrence: Type.Integer({ minimum: 1 }),
+      typeOccurrence: Type.Integer({ minimum: 1 }),
+    },
+  ),
+  ackEntry(
+    "m36.ack.ladder_exhausted",
+    "The deadline passed and the escalation ladder has no further tier, so the request stays open (WP 4.4; a request that nobody can be reached for is WP 4.5). Written with an increasing backoff and at most 8 times per window (`occurrence`). M36 tells the sender and the assignee in-app, and the supervisor audience on the FIRST record only.",
+    ["m36"],
+    {
+      tier: Type.Integer({ minimum: 1 }),
+      occurrence: Type.Integer({ minimum: 1 }),
+      typeOccurrence: Type.Integer({ minimum: 1 }),
+    },
+  ),
 ];
 
 export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
