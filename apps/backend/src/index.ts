@@ -1057,6 +1057,7 @@ import {
   buildDrizzleM25WriteService,
   buildDrizzleQicService,
   buildDrizzleReopeningService,
+  buildDrizzleSubmissionService,
   buildDrizzleTpeService,
   buildM18EvvAggregatorRejectedConsumer,
   buildM23BackedClaimMatchCandidateProvider,
@@ -5401,6 +5402,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             qicService: buildDrizzleQicService(dbHandle.db, {
               providerZones: (tx, providerEntityId) =>
                 buildFoundationSiteReader().providerEntityTimezones(tx, providerEntityId),
+            }),
+            // Milestone 6a: submission attempts and receipts. Guided manual only: nothing is transmitted; the
+            // esMD / fax adapters are unbound shells. The receipt document is validated through M22 / M23's seams.
+            submissionService: buildDrizzleSubmissionService(dbHandle.db, {
+              sources: buildSeamAppealSourcePorts(),
             }),
           });
           // M26 (Cap Management) — mount the §4.1 route plugins over the Drizzle READ + WRITE services; the
