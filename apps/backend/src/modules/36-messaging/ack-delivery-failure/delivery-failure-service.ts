@@ -9,7 +9,7 @@
 // Both outcomes are ONE guarded write like WP 4.4's: the row locked FOR UPDATE, re-checked, updated WHERE version = the version read,
 // with the history row and the id-only outbox event in the same transaction. A duplicate event, a retry or two workers find the request
 // no longer waiting on that recipient and do nothing; an acknowledgment racing this wins in either order (the loser sees a changed
-// version or status). The system actor is an empty app.user_id; migration 1115 makes that the ONLY writer of `failed_unreachable`.
+// version or status). The system actor is an empty app.user_id; migration 1116 makes that the ONLY writer of `failed_unreachable`.
 import type { AckClass } from "@wardenx/types";
 import { type Decision, ackFactsFor, writeEscalation } from "../ack-escalation/escalation-service";
 import { M36_ACK_FAILED_UNREACHABLE, publishAckEvent } from "../ack-requests/ack-events";

@@ -19,8 +19,8 @@ const read = (p: string) => readFileSync(join(root, p), "utf8");
 const sql = read("packages/db/migrations/1107_m36_message_acknowledgment_request.sql");
 // WP 4.4 (migration 1114) replaces the update guard in full and adds two event types; the state machine is pinned on THAT text.
 const sql1114 = read("packages/db/migrations/1114_m36_ack_escalation_timers.sql");
-// WP 4.5 (migration 1115) replaces the update guard in full once more (only `failed_unreachable` is new); the guard is pinned on THAT text.
-const sql1115 = read("packages/db/migrations/1115_m36_ack_delivery_failure.sql");
+// WP 4.5 (migration 1116) replaces the update guard in full once more (only `failed_unreachable` is new); the guard is pinned on THAT text.
+const sql1116 = read("packages/db/migrations/1116_m36_ack_delivery_failure.sql");
 const flat = (s: string) => s.replace(/\s+/g, " ");
 const list = (values: readonly string[]) => values.map((v) => `'${v}'`).join(", ");
 const quoted = (values: readonly string[]) => values.map((v) => `"${v}"`).join(", ");
@@ -61,8 +61,8 @@ describe("migration 1114 event types", () => {
   });
 });
 
-describe("the update guard (migration 1115 replaces 1114's, in full) is the state machine", () => {
-  const guard = flat(sql1115.slice(sql1115.indexOf("message_ack_request_update_guard()")));
+describe("the update guard (migration 1116 replaces 1114's, in full) is the state machine", () => {
+  const guard = flat(sql1116.slice(sql1116.indexOf("message_ack_request_update_guard()")));
 
   it("final states cannot change", () => {
     expect(guard).toContain("IF OLD.status IN ('resolved', 'cancelled') THEN");
@@ -117,8 +117,8 @@ describe("the update guard (migration 1115 replaces 1114's, in full) is the stat
   });
 });
 
-describe("migration 1114 escalation write (kept by 1115)", () => {
-  const guard = flat(sql1115.slice(sql1115.indexOf("message_ack_request_update_guard()")));
+describe("migration 1114 escalation write (kept by 1116)", () => {
+  const guard = flat(sql1116.slice(sql1116.indexOf("message_ack_request_update_guard()")));
 
   it("is the timer's alone: a person's session (a non-empty app.user_id) cannot write an escalation", () => {
     expect(guard).toContain(
@@ -164,8 +164,8 @@ describe("migration 1114 escalation write (kept by 1115)", () => {
   });
 });
 
-describe("migration 1115 failed_unreachable write", () => {
-  const guard = flat(sql1115.slice(sql1115.indexOf("message_ack_request_update_guard()")));
+describe("migration 1116 failed_unreachable write", () => {
+  const guard = flat(sql1116.slice(sql1116.indexOf("message_ack_request_update_guard()")));
 
   it("is the delivery-failure handler's alone: a person's session (a non-empty app.user_id) cannot write it", () => {
     expect(guard).toContain(
@@ -183,7 +183,7 @@ describe("migration 1115 failed_unreachable write", () => {
   });
 
   it("adds no table, grant, policy, enum value or drop", () => {
-    expect(sql1115).not.toMatch(/CREATE TABLE|GRANT |CREATE POLICY|DROP |ALTER TYPE/);
+    expect(sql1116).not.toMatch(/CREATE TABLE|GRANT |CREATE POLICY|DROP |ALTER TYPE/);
   });
 });
 
