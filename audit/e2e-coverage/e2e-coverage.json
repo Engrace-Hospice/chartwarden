@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 179,
+  "totalStaticWebScreens": 180,
   "e2eReachedCount": 19,
-  "axeReachedCount": 170,
+  "axeReachedCount": 171,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -913,6 +913,14 @@
       "module": "25-remittance",
       "path": "/remittance/taxonomy",
       "permission": "taxonomy.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "remittance.tpe",
+      "module": "25-remittance",
+      "path": "/remittance/tpe",
+      "permission": "tpe.read",
       "e2eReached": false,
       "axeReached": true
     },
@@ -2389,6 +2397,14 @@
       "module": "25-remittance",
       "path": "/remittance/taxonomy",
       "permission": "taxonomy.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "remittance.tpe",
+      "module": "25-remittance",
+      "path": "/remittance/tpe",
+      "permission": "tpe.read",
       "e2eReached": false,
       "axeReached": true
     },

@@ -587,6 +587,21 @@ import {
   RouteRulePageSchema as M25RouteRulePageSchema,
   RouteRuleRequestSchema as M25RouteRuleRequestSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/reopening.routes";
+import {
+  TpeClaimRequestSchema as M25TpeClaimRequestSchema,
+  TpeEducationRequestSchema as M25TpeEducationRequestSchema,
+  TpeOutcomeRequestSchema as M25TpeOutcomeRequestSchema,
+  TpeProgramCreateRequestSchema as M25TpeProgramCreateRequestSchema,
+  TpeProgramDetailSchema as M25TpeProgramDetailSchema,
+  TpeProgramListQuerySchema as M25TpeProgramListQuerySchema,
+  TpeProgramPageSchema as M25TpeProgramPageSchema,
+  TpeResultsRequestSchema as M25TpeResultsRequestSchema,
+  TpeRoundCreateRequestSchema as M25TpeRoundCreateRequestSchema,
+  TpeRoundCreatedSchema as M25TpeRoundCreatedSchema,
+  TpeRulePageSchema as M25TpeRulePageSchema,
+  TpeRuleRequestSchema as M25TpeRuleRequestSchema,
+  TpeVersionedResultSchema as M25TpeVersionedResultSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/tpe.routes";
 // M28 FHIR Gateway — the §4.2 request bodies + list queries the §4.1 route handlers validate against.
 import {
   AcceptProposalBody as M28AcceptProposalBody,
@@ -8253,6 +8268,67 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Create or update a denial routing rule",
     body: M25RouteRuleRequestSchema,
     response: M25ReopeningVersionedResultSchema,
+  },
+
+  // ── tpe.routes.ts (hospice ADR/TPE/QIC PRD, milestone 5) ────────────────────────────────────────
+  "GET /api/v1/tpe-programs": {
+    summary:
+      "TPE programs with current round, the MAC's rate against the threshold, next round and advisory risk",
+    query: M25TpeProgramListQuerySchema,
+    response: M25TpeProgramPageSchema,
+  },
+  "GET /api/v1/tpe-programs/:id": {
+    summary: "TPE program detail: rounds, sampled claims with their ADR state, warnings, outcome",
+    response: M25TpeProgramDetailSchema,
+  },
+  "POST /api/v1/tpe-programs": {
+    summary: "Open a TPE program for a provider entity and MAC (one active program per pair)",
+    body: M25TpeProgramCreateRequestSchema,
+    response: M25TpeVersionedResultSchema,
+    status: 201,
+  },
+  "POST /api/v1/tpe-programs/:id/rounds": {
+    summary:
+      "Start the next TPE round (max 3; the previous round needs results); an interval under 45 days is a warning (If-Match on the program)",
+    body: M25TpeRoundCreateRequestSchema,
+    response: M25TpeRoundCreatedSchema,
+    status: 201,
+  },
+  "PUT /api/v1/tpe-rounds/:id/results": {
+    summary:
+      "Record the MAC's results letter for a round; the threshold in force is snapshotted on first record (If-Match)",
+    body: M25TpeResultsRequestSchema,
+    response: M25TpeVersionedResultSchema,
+  },
+  "PUT /api/v1/tpe-rounds/:id/education": {
+    summary: "Record (or clear) the education date and note for a round (If-Match)",
+    body: M25TpeEducationRequestSchema,
+    response: M25TpeVersionedResultSchema,
+  },
+  "PUT /api/v1/tpe-rounds/:id/claims/:claimId": {
+    summary:
+      "Add or update a sampled claim of a round: its ADR link and result (If-Match on the round)",
+    body: M25TpeClaimRequestSchema,
+    response: M25TpeVersionedResultSchema,
+  },
+  "POST /api/v1/tpe-programs/:id/outcome": {
+    summary:
+      "Record the program outcome from the CMS / MAC letter: relief (compliant) or referral with its types (If-Match)",
+    body: M25TpeOutcomeRequestSchema,
+    response: M25TpeVersionedResultSchema,
+  },
+  "POST /api/v1/tpe-programs/:id/close": {
+    summary: "Close a TPE program; a closed program is frozen by the database (If-Match)",
+    response: M25TpeVersionedResultSchema,
+  },
+  "GET /api/v1/tpe-rules": {
+    summary: "The organization's per-MAC TPE exit thresholds (none are seeded)",
+    response: M25TpeRulePageSchema,
+  },
+  "PUT /api/v1/tpe-rules": {
+    summary: "Create or update a per-MAC TPE exit threshold with its source and verification day",
+    body: M25TpeRuleRequestSchema,
+    response: M25TpeVersionedResultSchema,
   },
 
   // ── qic.routes.ts (hospice ADR/TPE/QIC PRD, milestone 4) ────────────────────────────────────────
