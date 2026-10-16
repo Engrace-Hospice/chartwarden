@@ -91,6 +91,12 @@ const IDEMPOTENT = requireIdempotencyKey();
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Handler = (request: FastifyRequest, reply: FastifyReply) => Promise<unknown>;
+/** The route passes `request.body` in itself, so the registration is where the body is visibly read. */
+type BodyHandler = (
+  request: FastifyRequest,
+  reply: FastifyReply,
+  body: unknown,
+) => Promise<unknown>;
 
 /** The three handlers one subject kind shares; the registrars below keep every path and permission key literal. */
 function handlersFor(svc: SubmissionService, kind: SubmissionSubjectKind, what: string) {
@@ -101,8 +107,8 @@ function handlersFor(svc: SubmissionService, kind: SubmissionSubjectKind, what: 
   };
   const get: Handler = async (request, reply) =>
     reply.send(await svc.getSubmission(actorOf(request), kind, idOf(request)));
-  const receipt: Handler = async (request, reply) => {
-    const body = parse(SubmissionReceiptRequestSchema, request.body);
+  const receipt: BodyHandler = async (request, reply, rawBody) => {
+    const body = parse(SubmissionReceiptRequestSchema, rawBody);
     return reply.send(
       await svc.recordReceipt(
         writeActorOf(request),
@@ -113,8 +119,8 @@ function handlersFor(svc: SubmissionService, kind: SubmissionSubjectKind, what: 
       ),
     );
   };
-  const cancel: Handler = async (request, reply) => {
-    const body = parse(SubmissionCancelRequestSchema, request.body);
+  const cancel: BodyHandler = async (request, reply, rawBody) => {
+    const body = parse(SubmissionCancelRequestSchema, rawBody);
     return reply.send(
       await svc.cancelAttempt(
         writeActorOf(request),
@@ -142,9 +148,13 @@ export function registerAdrSubmissionRoutes(app: FastifyInstance, deps: Submissi
   app.post(
     "/api/v1/adrs/:id/submission-receipt",
     { preHandler: [submit, STEP_UP("adr.submit"), IDEMPOTENT] },
-    h.receipt,
+    (request, reply) => h.receipt(request, reply, request.body),
   );
-  app.post("/api/v1/adrs/:id/submission-cancel", { preHandler: [submit, IDEMPOTENT] }, h.cancel);
+  app.post(
+    "/api/v1/adrs/:id/submission-cancel",
+    { preHandler: [submit, IDEMPOTENT] },
+    (request, reply) => h.cancel(request, reply, request.body),
+  );
 }
 
 export function registerAppealSubmissionRoutes(
@@ -164,9 +174,13 @@ export function registerAppealSubmissionRoutes(
   app.post(
     "/api/v1/appeals/:id/submission-receipt",
     { preHandler: [submit, STEP_UP("appeal.submit"), IDEMPOTENT] },
-    h.receipt,
+    (request, reply) => h.receipt(request, reply, request.body),
   );
-  app.post("/api/v1/appeals/:id/submission-cancel", { preHandler: [submit, IDEMPOTENT] }, h.cancel);
+  app.post(
+    "/api/v1/appeals/:id/submission-cancel",
+    { preHandler: [submit, IDEMPOTENT] },
+    (request, reply) => h.cancel(request, reply, request.body),
+  );
 }
 
 export function registerReopeningSubmissionRoutes(
@@ -186,12 +200,12 @@ export function registerReopeningSubmissionRoutes(
   app.post(
     "/api/v1/reopenings/:id/submission-receipt",
     { preHandler: [submit, STEP_UP("reopening.submit"), IDEMPOTENT] },
-    h.receipt,
+    (request, reply) => h.receipt(request, reply, request.body),
   );
   app.post(
     "/api/v1/reopenings/:id/submission-cancel",
     { preHandler: [submit, IDEMPOTENT] },
-    h.cancel,
+    (request, reply) => h.cancel(request, reply, request.body),
   );
 }
 

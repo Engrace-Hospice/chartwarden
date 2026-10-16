@@ -34,7 +34,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M22 Document Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 58/58 ✅ | ✅ | ✅ | — | 21/21 ✅ |
 | M23 Billing — Medicare | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 90/90 ✅ | ✅ | ✅ | ✅ | 29/29 ✅ |
 | M24 Billing — Medicaid | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 39/39 ✅ | ✅ | ✅ | ✅ | 16/16 ✅ |
-| M25 Remittance & Denials | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 73/73 ✅ | ✅ | ✅ | ✅ | 22/22 ✅ |
+| M25 Remittance & Denials | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 82/82 ✅ | ✅ | ✅ | ✅ | 23/23 ✅ |
 | M26 Cap Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 27/27 ✅ | ✅ | ✅ | — | 12/12 ✅ |
 | M27 Cost Report | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 45/45 ✅ | ✅ | ✅ | ✅ | 15/15 ✅ |
 | M28 FHIR Gateway | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 35/35 ✅ | ❌ | ✅ | — | 9/9 ✅ |

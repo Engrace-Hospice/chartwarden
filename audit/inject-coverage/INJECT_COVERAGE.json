@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1644,
-    "coveredRoutes": 1644,
-    "directRoutesReferenced": 1540
+    "routes": 1653,
+    "coveredRoutes": 1653,
+    "directRoutesReferenced": 1555
   },
   "modules": [
     {
@@ -341,6 +341,7 @@
         "apps/backend/__tests__/f238-records-request.test.ts",
         "apps/backend/__tests__/m22-doclens-sud-gate.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
+        "apps/backend/__tests__/m25-submission.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 54
@@ -366,6 +367,7 @@
         "apps/backend/__tests__/m23-visit-charge-routes.test.ts",
         "apps/backend/__tests__/m23-wage-index-routes.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
+        "apps/backend/__tests__/m25-submission.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 66
@@ -381,16 +383,17 @@
     },
     {
       "module": "25-remittance",
-      "routes": 73,
+      "routes": 82,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m25-denial-version.live.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
+        "apps/backend/__tests__/m25-submission.live.test.ts",
         "apps/backend/__tests__/m25-tpe.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/remittance-inject.test.ts"
       ],
-      "directRoutesReferenced": 51
+      "directRoutesReferenced": 66
     },
     {
       "module": "26-cap",

@@ -554,7 +554,10 @@ describe.skipIf(!DB_URL)("M25 submission attempts (milestone 6a) - LIVE Postgres
       await write().submitAppealLateGoodCause(
         A(),
         id,
-        appealFields({ goodCauseJustification: "The notice was misdelivered to a prior address." }),
+        {
+          ...appealFields(),
+          goodCauseJustification: "The notice was misdelivered to a prior address.",
+        },
         await ver("appeal_case", id),
       );
       const rows = await attempts("appeal_case_id", id);

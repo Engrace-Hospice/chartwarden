@@ -158,14 +158,15 @@ The master list. Every external connection appears here exactly once. New integr
 |31|External triage vendor (after-hours)|Bidirectional|vendor API / portal|Yes (clinical; SUD ⇒ **QSOA**)|**Yes** (+ QSOA for Part 2)|per-tenant|19|`packages/triage-vendors`|Tier 2|
 |32|HaveIBeenPwned (HIBP) breach check|Outbound query|REST (k-anonymity, SHA-1 prefix)|**No**|**No** (no PHI)|platform|2|`packages/auth` (hibp adapter)|Tier 4|
 |33|Outbound HL7 ORM (lab orders)|Outbound|HL7 v2 over MLLP / SFTP|Yes|**Yes** (with lab)|per-tenant / per-feed|11, 29|`apps/backend/src/modules/29-external-interfaces` (see row 18; `packages/hl7-worker` deferred)|Tier 3|
+|34|MAC / esMD / QIC filing channels (ADR responses, appeals, reopenings, OMHA escalation requests; M25 milestone 6)|None today (the filing is made by a person outside WardenX)|manual / guided only. esMD and fax adapters exist as UNBOUND shells; no portal, gateway or QIC code, endpoint or credential exists|Yes (the filed packet; WardenX stores only the confirmation reference, receipt time and an optional receipt copy)|n/a today; **Yes (vendor)** before any fax or intermediary is bound|per-tenant (6b)|25|`apps/backend/src/modules/25-remittance/submission/` (`FilingChannelAdapter` port; manual adapter always bound; esMD and fax shells report `bound:false`, fail closed to `needs_manual`, and have no transmit)|Tier 3|
 
-> **Counts:** **33** catalogued surfaces. Surfaces **26–33 were added in the Phase-5 remediation
+> **Counts:** **34** catalogued surfaces. Surfaces **26–33 were added in the Phase-5 remediation
 > (ADR-0020)** — they had been shipped by their modules without the mandatory INT-002 five-step
 > addition (X8). Each PHI surface (26–31, 33) is gated on an **executed BAA / trading-partner
 > agreement (INT-014 hard gate)** before production PHI flows — and the triage vendor (31)
 > additionally on a **QSOA** for any 42 CFR Part 2 SUD data. HIBP (32) carries no PHI and needs no
 > BAA. DoseSpot webhook event types (M12) extend the already-catalogued surface #1 via the §7 webhook
-> catalog. The named-priority integrations remain the §20.C per-integration-contract minimum; the
+> catalog. Surface 34 (M25 milestone 6a) is catalogued honestly as MANUAL ONLY: no esMD, MAC-portal or QIC-portal transport, credential or vendor exists, and the esMD and fax adapters are unbound shells; a fax vendor or intermediary needs an executed BAA before it is bound. The named-priority integrations remain the §20.C per-integration-contract minimum; the
 > remainder are catalogued for completeness and security-review traceability.
 
 -----
@@ -290,6 +291,7 @@ The compliance-facing summary. Surveyors and customer security reviewers receive
 |External triage vendor|Yes (clinical; SUD)|BAA **+ QSOA** for 42 CFR Part 2|Tenant-selected triage vendor|**Required — BAA EXECUTED + QSOA before any SUD re-disclosure**|Phase-5 add (M19); Part 2 re-disclosure gate (ADR-0014)|
 |HaveIBeenPwned (HIBP)|**No**|None (no PHI — SHA-1 prefix k-anonymity)|HIBP|n/a|Phase-5 add (M02); SEC-029 control|
 |Outbound HL7 ORM (labs)|Yes|BAA / trading-partner|Reference lab|**Required — EXECUTED before prod**|Phase-5 add (M11/M29); pairs with inbound lab feed|
+|MAC / esMD / QIC filing channels|Yes (the filed packet) once electronic|BAA with any fax vendor or esMD intermediary; CMS contractors need none|Not selected: none contracted today|**Required — EXECUTED before any electronic filing channel is bound**|M25 milestone 6a: manual only; esMD and fax adapters are unbound shells|
 
 -----
 
@@ -660,6 +662,7 @@ The per-integration input to WARDENX_DR_BCP §2 vendor-outage response. "Degrade
 |External triage vendor|2|After-hours triage|Fall back to on-call supervisor + tenant emergency number (ADR-0009 degraded fallback)|"After-hours triage degraded — calls routed to on-call supervisor"|
 |HIBP|4|Password breach check|Accept password, flag for async re-check (M02-F10)|(silent; no block on password set)|
 |Outbound HL7 ORM (labs)|3|Lab order transmission|Order queues; M11 lab-transmission retry; results path unaffected|(no care block; transmission-lag alert)|
+|MAC / esMD / QIC filing channels|2|Nothing is transmitted today|Filing is made outside WardenX; the attempt is `needs_manual` with a guided checklist, and a missing receipt raises the nightly `submission.proof_missing` alert|"Electronic channel not configured. Use guided manual submission."|
 
 -----
 
