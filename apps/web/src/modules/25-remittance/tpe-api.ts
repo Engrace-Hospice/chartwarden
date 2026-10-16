@@ -160,9 +160,14 @@ export async function loadTpeRules(client: ApiClient): Promise<WriteResult<TpeRu
 export async function saveTpeRule(
   client: ApiClient,
   body: TpeRuleInput,
+  /** The version read for an existing rule; omit to create. */
+  version?: number,
 ): Promise<WriteResult<TpeVersioned>> {
   return guarded(async () => {
-    const { data, error, response } = await client.PUT("/api/v1/tpe-rules", { body });
+    const { data, error, response } = await client.PUT("/api/v1/tpe-rules", {
+      body,
+      ...(version === undefined ? {} : { headers: ifMatch(version) }),
+    });
     return error || !data ? failure(response?.status, error) : ok(data);
   });
 }

@@ -20,6 +20,9 @@ type Call = { method: string; path: string; ifMatch: string | null; body: Record
 let calls: Call[] = [];
 let programs: unknown[] = [];
 let refusal: { status: number; body: unknown } | null = null;
+/** Runs once when a refusal is served (the server moved on: a fresh version is now readable). */
+let oneShot = false;
+let afterRefusal: (() => void) | null = null;
 let detailGets = 0;
 let thresholdPct: number | null = null;
 let rounds: unknown[] = [];
@@ -88,7 +91,15 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
       ifMatch: req?.headers.get("if-match") ?? null,
       body: raw ? (JSON.parse(raw) as Record<string, unknown>) : {},
     });
-    if (refusal) return json(refusal.status, refusal.body);
+    if (refusal) {
+      const served = refusal;
+      refusal = null;
+      afterRefusal?.();
+      afterRefusal = null;
+      // A refusal that stays (the default) is re-armed unless the test asked for a one-shot.
+      if (!oneShot) refusal = served;
+      return json(served.status, served.body);
+    }
     if (path.endsWith("/rounds"))
       return json(201, { id: ROUND2, version: 1, roundNumber: 2, warnings: ["Under 45 days."] });
     return json(200, { id: PROGRAM, version: 4 });
@@ -99,6 +110,11 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
     return json(200, { ...(programs[0] as object), rounds });
   }
   if (path === "/api/v1/tpe-rules") return json(200, { items: [] });
+  if (path === "/api/v1/provider-entities")
+    return json(200, {
+      items: [{ id: PE, legalName: "Hospice North", ccn: "CCN-1", npi: "NPI-1", status: "active" }],
+      nextCursor: null,
+    });
   return json(200, {});
 }
 
@@ -134,6 +150,8 @@ async function openProgram(): Promise<void> {
 beforeEach(() => {
   calls = [];
   refusal = null;
+  oneShot = false;
+  afterRefusal = null;
   detailGets = 0;
   thresholdPct = null;
   programs = [summary()];
@@ -166,6 +184,18 @@ describe("M25 TPE tracker list", () => {
     expect(screen.getByText(/^30%/)).toBeTruthy();
     expect(screen.getByText("Referral risk (advisory)")).toBeTruthy();
     expect(screen.getByText("Elevated")).toBeTruthy();
+  });
+
+  it("adds a text cue, not only colour, when the MAC rate is above the threshold", async () => {
+    thresholdPct = 20;
+    programs = [summary()];
+    mount();
+    expect(await screen.findByText(/above threshold 20%/)).toBeTruthy();
+  });
+
+  it("gives the provider a full-id label", async () => {
+    mount();
+    expect(await screen.findByLabelText(`Provider entity ${PE}`)).toBeTruthy();
   });
 
   it("shows the relief and referral outcomes in the risk column", async () => {
@@ -217,9 +247,11 @@ describe("M25 TPE program panel", () => {
     ).toBeGreaterThan(0);
     expect(screen.getByText(/2026-03-01 · 30% · Non Compliant/)).toBeTruthy();
     expect(screen.getByText(/Warning: 1 claims sampled/)).toBeTruthy();
-    expect(screen.getByRole("link", { name: "View in ADR Requests" }).getAttribute("href")).toBe(
-      "/remittance/adrs",
-    );
+    expect(
+      screen
+        .getByRole("link", { name: `View ADR for claim ${CLAIM} in ADR Requests` })
+        .getAttribute("href"),
+    ).toBe("/remittance/adrs");
     expect(screen.getByText(/This is a claim count, not the MAC's calculation/)).toBeTruthy();
     expect(
       screen.getByText(/advisory label from the MAC's results so far, not a CMS determination/),
@@ -344,6 +376,9 @@ describe("M25 TPE program panel", () => {
     fireEvent.change(await screen.findByLabelText("Date on the MAC / CMS letter"), {
       target: { value: "2026-05-01" },
     });
+    // nothing is assumed: the relief date stays blank until typed or the suggestion is taken
+    expect((screen.getByLabelText("Relief runs until") as HTMLInputElement).value).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: /Use suggested date \(2027-05-01\)/ }));
     expect((screen.getByLabelText("Relief runs until") as HTMLInputElement).value).toBe(
       "2027-05-01",
     );
@@ -366,6 +401,128 @@ describe("M25 TPE program panel", () => {
     );
   });
 
+  it("sends no relief date unless the user enters or accepts one", async () => {
+    await openProgram();
+    fireEvent.click(screen.getByRole("button", { name: "Record outcome" }));
+    fireEvent.change(await screen.findByLabelText("Date on the MAC / CMS letter"), {
+      target: { value: "2026-05-01" },
+    });
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Record outcome" }),
+    );
+    await waitFor(() =>
+      expect(calls).toEqual([
+        {
+          method: "POST",
+          path: `/api/v1/tpe-programs/${PROGRAM}/outcome`,
+          ifMatch: "3",
+          body: { kind: "compliant", outcomeOn: "2026-05-01" },
+        },
+      ]),
+    );
+  });
+
+  it("keeps the program form and its input when a duplicate active program is refused", async () => {
+    refusal = {
+      status: 409,
+      body: {
+        error: {
+          code: "TPE_PROGRAM_ACTIVE",
+          message: "this provider entity already has an active TPE program with that MAC",
+        },
+      },
+    };
+    mount();
+    fireEvent.click(
+      (await screen.findAllByRole("button", { name: "Open a program" }))[0] as HTMLElement,
+    );
+    const dialog = within(await screen.findByRole("dialog"));
+    fireEvent.click(await dialog.findByText("Hospice North"));
+    fireEvent.change(dialog.getByLabelText("MAC"), { target: { value: "CGS" } });
+    fireEvent.change(dialog.getByLabelText("Date on the MAC's TPE notice"), {
+      target: { value: "2026-01-10" },
+    });
+    fireEvent.click(dialog.getByRole("button", { name: "Open program" }));
+    expect(await screen.findByText(/already has an active TPE program/)).toBeTruthy();
+    expect((dialog.getByLabelText("MAC") as HTMLInputElement).value).toBe("CGS");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("keeps a business 409 in the form with the typed input, and does not reload", async () => {
+    refusal = {
+      status: 409,
+      body: {
+        error: {
+          code: "TPE_PREVIOUS_ROUND_OPEN",
+          message: "record the results of round 1 before starting the next round",
+        },
+      },
+    };
+    await openProgram();
+    const before = detailGets;
+    fireEvent.click(screen.getByRole("button", { name: "Start round 2" }));
+    const date = await screen.findByLabelText("Date on the MAC's notice for this round");
+    fireEvent.change(date, { target: { value: "2026-03-20" } });
+    fireEvent.click(screen.getByRole("button", { name: "Start round" }));
+    expect(await screen.findByText(/record the results of round 1/)).toBeTruthy();
+    expect(
+      (screen.getByLabelText("Date on the MAC's notice for this round") as HTMLInputElement).value,
+    ).toBe("2026-03-20");
+    expect(detailGets).toBe(before);
+  });
+
+  it("after a version conflict reloads, the retry carries the fresh If-Match", async () => {
+    refusal = {
+      status: 409,
+      body: {
+        error: { code: "VERSION_CONFLICT", message: "the resource was modified by another writer" },
+      },
+    };
+    oneShot = true;
+    afterRefusal = () => {
+      programs = [summary({ version: 4 })];
+    };
+    await openProgram();
+    fireEvent.click(screen.getByRole("button", { name: "Start round 2" }));
+    fireEvent.change(await screen.findByLabelText("Date on the MAC's notice for this round"), {
+      target: { value: "2026-03-20" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Start round" }));
+    expect(await screen.findByText(/modified by another writer/)).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    fireEvent.click(await screen.findByRole("button", { name: "Start round 2" }));
+    fireEvent.change(await screen.findByLabelText("Date on the MAC's notice for this round"), {
+      target: { value: "2026-03-20" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Start round" }));
+    await waitFor(() => expect(calls.map((c) => c.ifMatch)).toEqual(["3", "4"]));
+  });
+
+  it("shows a refusal to close the program and leaves it open", async () => {
+    refusal = {
+      status: 409,
+      body: {
+        error: {
+          code: "TPE_PROGRAM_CLOSED",
+          message: "this TPE program is closed and cannot change",
+        },
+      },
+    };
+    await openProgram();
+    fireEvent.click(screen.getByRole("button", { name: "Close program" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm close" }));
+    expect(await screen.findByText(/closed and cannot change/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Close program" })).toBeTruthy();
+  });
+
+  it("can cancel the close confirmation without sending anything", async () => {
+    await openProgram();
+    fireEvent.click(screen.getByRole("button", { name: "Close program" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("button", { name: "Close program" })).toBeTruthy();
+    expect(calls).toEqual([]);
+  });
+
   it("freezes a closed program: no write controls", async () => {
     programs = [summary({ state: "closed" })];
     mount();
@@ -385,6 +542,22 @@ describe("M25 TPE program panel", () => {
         { method: "POST", path: `/api/v1/tpe-programs/${PROGRAM}/close`, ifMatch: "3", body: {} },
       ]),
     );
+  });
+});
+
+describe("M25 TPE thresholds form refusal", () => {
+  it("shows the server's message and keeps the typed threshold", async () => {
+    refusal = {
+      status: 403,
+      body: { error: { code: "FORBIDDEN", message: "requires permission tpe_rule.manage" } },
+    };
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Exit thresholds" }));
+    fireEvent.change(await screen.findByLabelText("MAC"), { target: { value: "CGS" } });
+    fireEvent.change(screen.getByLabelText("Exit error rate (%)"), { target: { value: "15" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save threshold" }));
+    expect(await screen.findByText("requires permission tpe_rule.manage")).toBeTruthy();
+    expect((screen.getByLabelText("Exit error rate (%)") as HTMLInputElement).value).toBe("15");
   });
 });
 

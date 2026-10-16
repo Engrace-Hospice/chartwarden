@@ -5,7 +5,7 @@ import { TextField, useApiClient } from "@wardenx/ui";
 // does, the tracker says "No threshold confirmed" instead of assuming one.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { ActionModal, ButtonRow, ErrorAlert, FormButtons, Hint } from "./action-ui";
+import { ActionModal, ErrorAlert, FormButtons, Hint } from "./action-ui";
 import { type TpeRulesPage, loadTpeRules, saveTpeRule } from "./tpe-api";
 
 export function TpeRulesModal({
@@ -47,15 +47,29 @@ export function TpeRulesModal({
   async function save(): Promise<void> {
     setBusy(true);
     setError(null);
-    const res = await saveTpeRule(client, {
-      macName: macName.trim(),
-      exitErrorRatePct: rate,
-      ...(sourceNote.trim() ? { sourceNote: sourceNote.trim() } : {}),
-      ...(verifiedOn ? { verifiedOn } : {}),
-    });
+    // Saving over today's rule for the same MAC is an update: send the version we read so a concurrent edit is a
+    // 409 instead of a silent overwrite. A new MAC or day is a create and needs none.
+    const today = new Date().toISOString().slice(0, 10);
+    const existing = rules.find(
+      (x) =>
+        x.macName.trim().toLowerCase() === macName.trim().toLowerCase() &&
+        x.effectiveFrom === today,
+    );
+    const res = await saveTpeRule(
+      client,
+      {
+        macName: macName.trim(),
+        exitErrorRatePct: rate,
+        ...(sourceNote.trim() ? { sourceNote: sourceNote.trim() } : {}),
+        ...(verifiedOn ? { verifiedOn } : {}),
+      },
+      existing?.version,
+    );
     setBusy(false);
     if (!res.ok) {
       setError(res.message);
+      // The rule moved under us: show the message, and refresh the list so the next save carries the new version.
+      if (res.code === "VERSION_CONFLICT") await reload();
       return;
     }
     setMacName("");
@@ -131,15 +145,13 @@ export function TpeRulesModal({
         official values.
       </Hint>
       <ErrorAlert message={error} />
-      <ButtonRow end>
-        <FormButtons
-          submitLabel="Save threshold"
-          busy={busy}
-          blocked={blocked}
-          onSubmit={() => void save()}
-          onCancel={onClose}
-        />
-      </ButtonRow>
+      <FormButtons
+        submitLabel="Save threshold"
+        busy={busy}
+        blocked={blocked}
+        onSubmit={() => void save()}
+        onCancel={onClose}
+      />
     </ActionModal>
   );
 }

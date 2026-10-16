@@ -1,6 +1,6 @@
 // apps/backend/src/modules/25-remittance/routes/tpe.routes.ts — M25 milestone 5 routes: the TPE program tracker.
 // Reads gate on `tpe.read`, writes on `tpe.manage`, and the organization's per-MAC exit thresholds on
-// `tpe_rule.manage`. Every change is If-Match (409 when stale) and every mutation requires an Idempotency-Key. Org,
+// `tpe_rule.manage`. Every change to a program, round or sampled claim is If-Match (409 when stale), a threshold update takes an optional If-Match, and every mutation requires an Idempotency-Key. Org,
 // actor and provider-entity scope are server-derived (actor.ts). Nothing is filed and no threshold has a default.
 import { FormatRegistry, Type } from "@sinclair/typebox";
 import { NotFoundError } from "@wardenx/types";
@@ -322,6 +322,9 @@ export function registerTpeRoutes(app: FastifyInstance, deps: TpeRouteDeps): voi
 
   app.put("/api/v1/tpe-rules", { preHandler: [RULES, IDEMPOTENT] }, async (request, reply) => {
     const body = parse(TpeRuleRequestSchema, request.body);
-    return reply.send(await tpeService.upsertRule(writeActorOf(request), body));
+    // If-Match is optional here: it guards an UPDATE of an existing rule; a new rule needs none.
+    const raw = request.headers["if-match"];
+    const version = raw === undefined ? undefined : ifMatchVersion(request);
+    return reply.send(await tpeService.upsertRule(writeActorOf(request), body, version));
   });
 }

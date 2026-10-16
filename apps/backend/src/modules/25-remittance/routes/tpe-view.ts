@@ -177,7 +177,8 @@ export function detailOfProgram(
     const prev = i > 0 ? sorted[i - 1] : undefined;
     const warnings = [
       intervalWarning(prev?.educationOn ?? null, r.noticeOn),
-      sampleSizeWarning(mine.length),
+      // no warning while nothing is sampled yet: an empty round is simply not started
+      mine.length > 0 ? sampleSizeWarning(mine.length) : null,
     ].filter((w): w is string => w !== null);
     return {
       id: r.id,

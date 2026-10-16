@@ -38,7 +38,10 @@ CREATE TABLE "tpe_program" (
   "created_at" timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT "tpe_program_compliant_has_outcome" CHECK ("state" <> 'compliant' OR "outcome_on" IS NOT NULL),
   CONSTRAINT "tpe_program_referred_has_outcome" CHECK ("state" <> 'referred'
-    OR ("outcome_on" IS NOT NULL AND cardinality("referral_kinds") > 0))
+    OR ("outcome_on" IS NOT NULL AND cardinality("referral_kinds") > 0)),
+  -- Referral types belong to a referral only, and a relief end date to a relief only.
+  CONSTRAINT "tpe_program_compliant_no_referral" CHECK ("state" <> 'compliant' OR cardinality("referral_kinds") = 0),
+  CONSTRAINT "tpe_program_referred_no_relief" CHECK ("state" <> 'referred' OR "relief_until" IS NULL)
 );--> statement-breakpoint
 -- One active program per provider entity and MAC: a second would double-count the same rounds.
 CREATE UNIQUE INDEX "tpe_program_active_per_mac" ON "tpe_program"
@@ -94,7 +97,9 @@ ALTER TABLE "tpe_mac_rule" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 CREATE POLICY "tpe_mac_rule_org" ON "tpe_mac_rule" FOR ALL TO wardenx_app
   USING (organization_id = current_setting('app.org_id', true)::uuid)
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);--> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE ON "tpe_mac_rule" TO wardenx_app;--> statement-breakpoint
+-- The MAC and effective day are the rule's key and never change: only the threshold and its provenance are updatable.
+GRANT SELECT, INSERT ON "tpe_mac_rule" TO wardenx_app;--> statement-breakpoint
+GRANT UPDATE ("exit_error_rate_pct", "source_note", "verified_on", "version") ON "tpe_mac_rule" TO wardenx_app;--> statement-breakpoint
 GRANT ALL ON "tpe_mac_rule" TO wardenx_admin;--> statement-breakpoint
 ALTER TABLE "tpe_program" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "tpe_program" FORCE ROW LEVEL SECURITY;--> statement-breakpoint

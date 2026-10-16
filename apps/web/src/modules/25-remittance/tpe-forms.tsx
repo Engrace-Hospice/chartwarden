@@ -1,4 +1,4 @@
-import { SelectField, TextField, useApiClient } from "@wardenx/ui";
+import { Button, SelectField, TextField, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/25-remittance — the TPE tracker forms (hospice ADR/TPE/QIC PRD, milestone 5): open a program,
 // start a round, record a round's results, education, a sampled claim, and the outcome. Each form collects facts typed
 // from the MAC's letters and shows the server's message verbatim (ADR-0030); a 409 means the record changed under the
@@ -6,7 +6,7 @@ import { SelectField, TextField, useApiClient } from "@wardenx/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { ProviderEntityLookupField } from "../../shell/entity-lookups";
-import { ActionModal, ErrorAlert, FormButtons, Hint } from "./action-ui";
+import { ActionModal, ButtonRow, ErrorAlert, FormButtons, Hint } from "./action-ui";
 import { type WriteResult, isUuid } from "./remittance-api";
 import { humanize } from "./remittance-status";
 import {
@@ -51,7 +51,9 @@ function useSubmit<T>(props: TpeFormProps<T>) {
       props.onDone(res.value);
       return;
     }
-    if (res.status === 409) props.onStale(res.message);
+    // Only a true version conflict means "the record moved: reload". A business 409 (a duplicate active program, a
+    // previous round still open, a closed program...) is an ordinary refusal: show it here and keep what was typed.
+    if (res.code === "VERSION_CONFLICT") props.onStale(res.message);
     else setError(res.message);
   }
   return { busy, error, run };
@@ -314,10 +316,9 @@ export function TpeOutcomeModal(
   const { busy, error, run } = useSubmit(props);
   const [kind, setKind] = useState<"compliant" | "referred">("compliant");
   const [outcomeOn, setOutcomeOn] = useState("");
-  const [relief, setRelief] = useState<string | null>(null);
+  const [reliefUntil, setReliefUntil] = useState("");
   const [kinds, setKinds] = useState<readonly string[]>([]);
   const suggestedRelief = plusOneYear(outcomeOn);
-  const reliefUntil = relief ?? suggestedRelief;
   const blocked = outcomeOn === "" || (kind === "referred" && kinds.length === 0);
   const toggle = (k: string) =>
     setKinds((cur) => (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]));
@@ -344,11 +345,19 @@ export function TpeOutcomeModal(
             label="Relief runs until"
             type="date"
             value={reliefUntil}
-            onChange={(e) => setRelief(e.target.value)}
+            onChange={(e) => setReliefUntil(e.target.value)}
           />
+          {suggestedRelief ? (
+            <ButtonRow>
+              <Button tone="tertiary" size="sm" onClick={() => setReliefUntil(suggestedRelief)}>
+                Use suggested date ({suggestedRelief})
+              </Button>
+            </ButtonRow>
+          ) : null}
           <Hint>
-            Suggested as one year after the letter date. Confirm the end date against the letter:
-            whether relief runs from the results letter or the CMS notice is unconfirmed.
+            Leave blank unless the letter states an end date. The suggestion is one year after the
+            letter date; whether relief runs from the results letter or the CMS notice is
+            unconfirmed.
           </Hint>
         </>
       ) : (

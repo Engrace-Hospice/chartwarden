@@ -30,7 +30,9 @@ type Modal =
   | { readonly kind: "outcome" }
   | { readonly kind: "results" | "education" | "claim"; readonly roundId: string };
 
-export const NO_THRESHOLD_TEXT = "No threshold confirmed — enter it from your MAC's TPE letter";
+/** The short form used where space is tight (the tracker table). */
+export const NO_THRESHOLD = "No threshold confirmed";
+export const NO_THRESHOLD_TEXT = `${NO_THRESHOLD} — enter it from your MAC's TPE letter`;
 
 export function thresholdText(t: { pct: number | null; verified: boolean }): string {
   if (t.pct === null) return NO_THRESHOLD_TEXT;
@@ -45,12 +47,15 @@ export interface TpeDetailPanelProps {
   readonly programId: string;
   readonly onClose: () => void;
   readonly onChanged: () => void;
+  /** Bumped by the screen when something the panel shows changed elsewhere (a threshold edit): reloads the panel. */
+  readonly refreshKey?: number;
 }
 
 export function TpeDetailPanel({
   programId,
   onClose,
   onChanged,
+  refreshKey = 0,
 }: TpeDetailPanelProps): JSX.Element {
   const client = useApiClient();
   const [program, setProgram] = useState<TpeProgramDetail | null>(null);
@@ -68,9 +73,12 @@ export function TpeDetailPanel({
     };
   }, []);
 
+  // Only the newest response may land: a slow earlier read must not overwrite a fresher one.
+  const latestRequest = useRef(0);
   const load = useCallback(async () => {
+    const request = ++latestRequest.current;
     const res = await loadTpeProgram(client, programId);
-    if (!mounted.current) return;
+    if (!mounted.current || request !== latestRequest.current) return;
     if (res.ok) {
       setProgram(res.value);
       setLoadError(null);
@@ -79,9 +87,10 @@ export function TpeDetailPanel({
     }
   }, [client, programId]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey is the screen's "reload now" signal
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, refreshKey]);
 
   const done = (message: string) => async () => {
     setModal(null);
@@ -108,7 +117,7 @@ export function TpeDetailPanel({
     setBusy(false);
     setConfirmClose(false);
     if (!res.ok) {
-      if (res.status === 409) stale(res.message);
+      if (res.code === "VERSION_CONFLICT") stale(res.message);
       else setError(res.message);
       return;
     }
@@ -125,9 +134,19 @@ export function TpeDetailPanel({
   return (
     <ActionRail ariaLabel="TPE program" onClose={onClose}>
       {loadError ? (
-        <ErrorAlert message={loadError} />
-      ) : !program ? (
-        <LoadingSpinner />
+        <>
+          <ErrorAlert message={loadError} />
+          <ButtonRow>
+            <Button tone="secondary" size="sm" onClick={() => void load()}>
+              Retry
+            </Button>
+          </ButtonRow>
+        </>
+      ) : null}
+      {!program ? (
+        loadError ? null : (
+          <LoadingSpinner />
+        )
       ) : (
         <>
           <Facts
@@ -205,11 +224,12 @@ export function TpeDetailPanel({
                 <Hint>No sampled claims recorded.</Hint>
               ) : (
                 <table className="wx-table">
+                  <caption className="wx-sr-only">Sampled claims, round {r.roundNumber}</caption>
                   <thead>
                     <tr>
-                      <th>Claim</th>
-                      <th>ADR</th>
-                      <th>Result</th>
+                      <th scope="col">Claim</th>
+                      <th scope="col">ADR</th>
+                      <th scope="col">Result</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -219,7 +239,12 @@ export function TpeDetailPanel({
                         <td>
                           {c.adrCaseId ? (
                             <>
-                              <Link to="/remittance/adrs">View in ADR Requests</Link>{" "}
+                              <Link
+                                to="/remittance/adrs"
+                                aria-label={`View ADR for claim ${c.claimId} in ADR Requests`}
+                              >
+                                View in ADR Requests
+                              </Link>{" "}
                               {c.adrState ? (
                                 <StatusPill
                                   label={humanize(c.adrState)}
@@ -249,6 +274,7 @@ export function TpeDetailPanel({
                   <Button
                     tone="secondary"
                     size="sm"
+                    disabled={busy}
                     onClick={() => setModal({ kind: "results", roundId: r.id })}
                   >
                     {r.resultsOn ? "Edit results" : "Record results"}
@@ -256,6 +282,7 @@ export function TpeDetailPanel({
                   <Button
                     tone="secondary"
                     size="sm"
+                    disabled={busy}
                     onClick={() => setModal({ kind: "education", roundId: r.id })}
                   >
                     Education
@@ -263,6 +290,7 @@ export function TpeDetailPanel({
                   <Button
                     tone="secondary"
                     size="sm"
+                    disabled={busy}
                     onClick={() => setModal({ kind: "claim", roundId: r.id })}
                   >
                     Add sampled claim
@@ -316,9 +344,24 @@ export function TpeDetailPanel({
                 </Button>
               ) : null}
               {confirmClose ? (
-                <Button tone="danger" size="sm" disabled={busy} onClick={() => void closeProgram()}>
-                  Confirm close
-                </Button>
+                <>
+                  <Button
+                    tone="danger"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => void closeProgram()}
+                  >
+                    Confirm close
+                  </Button>
+                  <Button
+                    tone="tertiary"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => setConfirmClose(false)}
+                  >
+                    Cancel
+                  </Button>
+                </>
               ) : (
                 <Button
                   tone="tertiary"

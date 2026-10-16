@@ -134,12 +134,12 @@ describe.skipIf(!DB_URL)("M25 TPE program tracker - LIVE Postgres", () => {
     ).rows[0].id as string;
   }
   /** A fresh active program on its own MAC (one active program per provider entity and MAC). */
-  async function newProgram(peId = pe1) {
+  async function newProgram(peId = pe1, openedOn = daysAgo(200)) {
     const macName = `MAC-${++macSeq}`;
     const { id } = await svc().createProgram(A(), {
       providerEntityId: peId,
       macName,
-      openedOn: daysAgo(200),
+      openedOn,
     });
     return { id, macName };
   }
@@ -290,6 +290,7 @@ describe.skipIf(!DB_URL)("M25 TPE program tracker - LIVE Postgres", () => {
       macName,
       exitErrorRatePct: 20,
       sourceNote: "MAC letter 2026-03",
+      effectiveFrom: daysAgo(300),
     });
     const r = await completeRound(id, daysAgo(100), daysAgo(80), daysAgo(75), 30);
     expect(Number((await rrow(r.id)).threshold_pct)).toBe(20);
@@ -299,6 +300,7 @@ describe.skipIf(!DB_URL)("M25 TPE program tracker - LIVE Postgres", () => {
       macName: macName.toLowerCase(),
       exitErrorRatePct: 10,
       verifiedOn: daysAgo(1),
+      effectiveFrom: daysAgo(300),
     });
     expect(
       Number(
@@ -324,6 +326,117 @@ describe.skipIf(!DB_URL)("M25 TPE program tracker - LIVE Postgres", () => {
     const rules = (await svc().listRules(A())).items.filter((x) => x.macName === macName);
     expect(rules).toHaveLength(1);
     expect(rules[0]?.exitErrorRatePct).toBe(10);
+    // an update may carry the version it read; a stale one is a 409, and a new rule needs none
+    const rule = rules[0] as { version: number };
+    const edit = { macName, exitErrorRatePct: 12, effectiveFrom: daysAgo(300) };
+    await svc().upsertRule(A(), edit, rule.version);
+    expect((await refused(svc().upsertRule(A(), edit, rule.version)))?.code).toBe(
+      "VERSION_CONFLICT",
+    );
+  });
+
+  it("resolves a re-recorded 'none' threshold as of the letter's date, not today", async () => {
+    const { id, macName } = await newProgram();
+    const r = await completeRound(id, daysAgo(100), daysAgo(80), daysAgo(75), 30);
+    expect((await rrow(r.id)).threshold_source).toBe("none");
+    const again = async () =>
+      svc().setResults(
+        A(),
+        r.id,
+        { resultsOn: daysAgo(80), macErrorRatePct: 30, macResult: "non_compliant" },
+        await rver(r.id),
+      );
+    // a rule that took effect AFTER the letter does not apply to it
+    await svc().upsertRule(A(), { macName, exitErrorRatePct: 5, effectiveFrom: daysAgo(10) });
+    await again();
+    expect((await rrow(r.id)).threshold_source).toBe("none");
+    // one in force on the letter's date does
+    await svc().upsertRule(A(), { macName, exitErrorRatePct: 25, effectiveFrom: daysAgo(90) });
+    await again();
+    expect(Number((await rrow(r.id)).threshold_pct)).toBe(25);
+  });
+
+  it("validates round and outcome dates against the program and the previous round", async () => {
+    const { id } = await newProgram(pe1, daysAgo(100));
+    expect((await refused(svc().createRound(A(), id, daysAgo(101), await pver(id))))?.code).toBe(
+      "NOTICE_BEFORE_PROGRAM",
+    );
+    const r1 = await svc().createRound(A(), id, daysAgo(60), await pver(id));
+    await svc().setResults(
+      A(),
+      r1.id,
+      { resultsOn: daysAgo(50), macErrorRatePct: 10, macResult: "compliant" },
+      await rver(r1.id),
+    );
+    expect((await refused(svc().createRound(A(), id, daysAgo(70), await pver(id))))?.code).toBe(
+      "NOTICE_BEFORE_PREVIOUS_ROUND",
+    );
+    const out = { kind: "compliant" as const, outcomeOn: daysAgo(101) };
+    expect((await refused(svc().recordOutcome(A(), id, out, await pver(id))))?.code).toBe(
+      "OUTCOME_BEFORE_PROGRAM",
+    );
+  });
+
+  it("takes no round writes once an outcome is recorded", async () => {
+    const { id } = await newProgram();
+    const r = await svc().createRound(A(), id, daysAgo(30), await pver(id));
+    await svc().recordOutcome(
+      A(),
+      id,
+      { kind: "compliant", outcomeOn: daysAgo(2) },
+      await pver(id),
+    );
+    const code = async (p: Promise<unknown>) => (await refused(p))?.code;
+    expect(
+      await code(
+        svc().setResults(
+          A(),
+          r.id,
+          { resultsOn: daysAgo(1), macErrorRatePct: 1, macResult: "compliant" },
+          await rver(r.id),
+        ),
+      ),
+    ).toBe("TPE_PROGRAM_NOT_ACTIVE");
+    expect(
+      await code(svc().setEducation(A(), r.id, { educationOn: daysAgo(1) }, await rver(r.id))),
+    ).toBe("TPE_PROGRAM_NOT_ACTIVE");
+    expect(await code(svc().upsertClaim(A(), r.id, claim1, {}, await rver(r.id)))).toBe(
+      "TPE_PROGRAM_NOT_ACTIVE",
+    );
+    expect(await code(svc().createRound(A(), id, daysAgo(1), await pver(id)))).toBe(
+      "TPE_PROGRAM_NOT_ACTIVE",
+    );
+  });
+
+  it("keeps referral types to a referral and a relief date to a relief, in SQL too", async () => {
+    const a = await newProgram();
+    expect(
+      await dbMessage(
+        admin.query(
+          "UPDATE tpe_program SET state='compliant', outcome_on=CURRENT_DATE, referral_kinds='{rac}' WHERE id=$1",
+          [a.id],
+        ),
+      ),
+    ).toMatch(/tpe_program_compliant_no_referral/);
+    const b = await newProgram();
+    expect(
+      await dbMessage(
+        admin.query(
+          "UPDATE tpe_program SET state='referred', outcome_on=CURRENT_DATE, referral_kinds='{rac}', relief_until=CURRENT_DATE WHERE id=$1",
+          [b.id],
+        ),
+      ),
+    ).toMatch(/tpe_program_referred_no_relief/);
+    // the rule key is fixed: only the threshold and its provenance are updatable by the app role
+    await svc().upsertRule(A(), { macName: `KEY-${++macSeq}`, exitErrorRatePct: 1 });
+    expect(
+      await dbMessage(asApp((tx) => tx.execute(sql`UPDATE tpe_mac_rule SET mac_name='x'`))),
+    ).toMatch(/permission denied/i);
+    expect(
+      await dbMessage(
+        asApp((tx) => tx.execute(sql`UPDATE tpe_mac_rule SET effective_from=CURRENT_DATE`)),
+      ),
+    ).toMatch(/permission denied/i);
   });
 
   it("walks the rounds: previous round must have results, interval and sample warnings, a 4th round is refused", async () => {
@@ -381,12 +494,13 @@ describe.skipIf(!DB_URL)("M25 TPE program tracker - LIVE Postgres", () => {
     });
     expect(detail?.nextRoundEarliest).toBeNull();
     expect(detail?.rounds[1]?.warnings.some((w) => /45 days/.test(w))).toBe(true);
-    expect(detail?.rounds[0]?.warnings.some((w) => /claims sampled/.test(w))).toBe(true);
+    // an empty sample is not warned about; only a started sample outside 20 to 40 is
+    expect(detail?.rounds[0]?.warnings.some((w) => /claims sampled/.test(w))).toBe(false);
     expect(detail?.rounds[0]?.educationNote).toBe("call with MAC nurse");
   });
 
   it("derives the earliest next round from the education date and rejects bad dates", async () => {
-    const { id } = await newProgram();
+    const { id } = await newProgram(pe1, "2025-11-01");
     const r1 = await svc().createRound(A(), id, "2025-12-01", await pver(id));
     await svc().setResults(
       A(),
@@ -474,6 +588,7 @@ describe.skipIf(!DB_URL)("M25 TPE program tracker - LIVE Postgres", () => {
       [claim1b, "error", null],
     ]);
     expect(detail?.claimCountRate).toEqual({ reviewed: 2, errors: 2, pct: 100 });
+    expect(detail?.rounds[0]?.warnings.some((w) => /2 claims sampled/.test(w))).toBe(true);
     await put(claim1, { adrCaseId: null }); // unlink
     expect((await svc().getProgram(A(), id))?.rounds[0]?.claims[0]?.adrCaseId).toBeNull();
   });
@@ -935,6 +1050,33 @@ describe.skipIf(!DB_URL)("M25 TPE program tracker - LIVE Postgres", () => {
         payload: { result: "error" },
       });
       expect(stale.statusCode).toBe(409);
+      const ruleBody = {
+        macName: `HTTP-RULE-${macSeq}`,
+        exitErrorRatePct: 9,
+        effectiveFrom: daysAgo(30),
+      };
+      const created1 = await app.inject({
+        method: "PUT",
+        url: "/api/v1/tpe-rules",
+        headers: WRITE_HEADERS(),
+        payload: ruleBody,
+      });
+      expect(created1.statusCode, created1.body).toBe(200);
+      const v = created1.json().version as number;
+      const edited = await app.inject({
+        method: "PUT",
+        url: "/api/v1/tpe-rules",
+        headers: WRITE_HEADERS(v),
+        payload: { ...ruleBody, exitErrorRatePct: 8 },
+      });
+      expect(edited.statusCode).toBe(200);
+      const staleRule = await app.inject({
+        method: "PUT",
+        url: "/api/v1/tpe-rules",
+        headers: WRITE_HEADERS(v),
+        payload: { ...ruleBody, exitErrorRatePct: 7 },
+      });
+      expect(staleRule.statusCode).toBe(409);
       await app.close();
     });
 

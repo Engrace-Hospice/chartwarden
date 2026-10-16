@@ -133,7 +133,8 @@ export interface TpeService {
   ): Promise<Versioned>;
   closeProgram(actor: M25WriteActor, programId: string, ifMatch: number): Promise<Versioned>;
   listRules(actor: M25ReadActor): Promise<{ items: TpeRuleView[] }>;
-  upsertRule(actor: M25WriteActor, input: TpeRuleInput): Promise<Versioned>;
+  /** `ifMatch` guards an UPDATE of an existing rule (stale -> 409); creating a rule needs none. */
+  upsertRule(actor: M25WriteActor, input: TpeRuleInput, ifMatch?: number): Promise<Versioned>;
 }
 
 export interface TpeServicePorts {
@@ -223,7 +224,7 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
     return rows[0];
   }
 
-  /** A round plus its program, the program inside the actor's scope; a closed program is refused. */
+  /** A round plus its program, the program inside the actor's scope; only an ACTIVE program takes round writes. */
   async function loadRound(tx: Tx, actor: M25ReadActor, roundId: string) {
     const rows = await tx.select().from(RD).where(eq(RD.id, roundId)).limit(1);
     if (!rows[0]) throw new NotFoundError("TPE round");
@@ -231,6 +232,14 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
       throw new NotFoundError("TPE round");
     });
     if (program.state === "closed") throw CLOSED();
+    // A recorded outcome is final: results, education and sampled claims no longer change once it is in.
+    if (program.state !== "active") {
+      throw new WardenXError(
+        "TPE_PROGRAM_NOT_ACTIVE",
+        `a ${program.state} program's rounds can no longer change`,
+        409,
+      );
+    }
     return { round: rows[0], program };
   }
 
@@ -393,6 +402,20 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
           );
         }
         const prev = existing[existing.length - 1];
+        if (noticeOn < program.openedOn) {
+          throw new WardenXError(
+            "NOTICE_BEFORE_PROGRAM",
+            "the round notice cannot be dated before the program opened",
+            422,
+          );
+        }
+        if (prev && noticeOn < prev.noticeOn) {
+          throw new WardenXError(
+            "NOTICE_BEFORE_PREVIOUS_ROUND",
+            `the round notice cannot be dated before round ${prev.roundNumber}'s notice`,
+            422,
+          );
+        }
         if (prev && prev.resultsOn === null) {
           throw new WardenXError(
             "TPE_PREVIOUS_ROUND_OPEN",
@@ -455,11 +478,11 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
         }
         // The threshold is snapshotted when the results are first recorded, so a later rule edit never rewrites
         // history. A round recorded with no rule ("none") is re-resolved on a later edit, so a rule added since
-        // is picked up; a round that already holds a rule's threshold keeps it.
+        // is picked up; a round that already holds a rule's threshold keeps it. Rules apply as of the letter's date.
         const keep = round.thresholdSource === "org_rule";
         const resolved = keep
           ? null
-          : resolveTpeThreshold(await rulesInForce(tx), program.macName, noticeDayOf(new Date()));
+          : resolveTpeThreshold(await rulesInForce(tx), program.macName, input.resultsOn);
         return updateRound(tx, round, ifMatch, {
           resultsOn: input.resultsOn,
           macErrorRatePct: input.macErrorRatePct === null ? null : input.macErrorRatePct.toFixed(2),
@@ -598,6 +621,13 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
       return withOrgContext(db, actor, async (tx) => {
         const program = await loadProgram(tx, actor, programId);
         if (program.state === "closed") throw CLOSED();
+        if (input.outcomeOn < program.openedOn) {
+          throw new WardenXError(
+            "OUTCOME_BEFORE_PROGRAM",
+            "the outcome cannot be dated before the program opened",
+            422,
+          );
+        }
         if (!canTransitionTpeProgram(program.state as TpeProgramState, input.kind)) {
           throw new WardenXError(
             "INVALID_TRANSITION",
@@ -652,7 +682,7 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
       });
     },
 
-    async upsertRule(actor, input) {
+    async upsertRule(actor, input, ifMatch) {
       const macName = input.macName.trim();
       if (!macName) throw new WardenXError("INVALID_MAC", "the MAC name is required", 422);
       if (!isPct(input.exitErrorRatePct)) {
@@ -687,9 +717,14 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
           const updated = await tx
             .update(RU)
             .set({ ...fields, version: sql`${RU.version} + 1` })
-            .where(eq(RU.id, existing[0].id))
+            .where(
+              ifMatch === undefined
+                ? eq(RU.id, existing[0].id)
+                : and(eq(RU.id, existing[0].id), eq(RU.version, ifMatch)),
+            )
             .returning({ id: RU.id, version: RU.version });
-          return updated[0]!;
+          if (!updated[0]) throw new VersionConflictError(null);
+          return updated[0];
         }
         try {
           const inserted = await tx

@@ -15,11 +15,11 @@ import {
 // this organization recorded for that MAC, the earliest date the next round may start, and an advisory referral-risk
 // label. No threshold is built in: a MAC with none shows "No threshold confirmed". Rows open the program panel; "Open a
 // program" and "Exit thresholds" open the two forms. Claims are shown by id and ADR state only, never patient names.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { TPE_PROGRAM_STATE_TONE, TPE_RISK_TONE, humanize, toneOf } from "./remittance-status";
 import { type TpeProgramSummary, loadTpePrograms } from "./tpe-api";
-import { NO_THRESHOLD_TEXT, TpeDetailPanel, rateText } from "./tpe-detail-panel";
+import { NO_THRESHOLD, TpeDetailPanel, rateText } from "./tpe-detail-panel";
 import { TpeProgramModal } from "./tpe-forms";
 import { TpeRulesModal } from "./tpe-rules-modal";
 
@@ -32,20 +32,25 @@ export function TpeTracker(): JSX.Element {
   const [workingId, setWorkingId] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
   const [editingRules, setEditingRules] = useState(false);
-  const [loading, setLoading] = useState(true);
+  // The spinner is for the first load only; a refresh keeps the rows on screen, and a failed refresh keeps the last
+  // good rows with the message and a Retry.
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [panelRefresh, setPanelRefresh] = useState(0);
+  // Only the newest response may land, so a slow earlier read cannot overwrite a fresher one.
+  const latestRequest = useRef(0);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    const request = ++latestRequest.current;
     const res = await loadTpePrograms(client);
+    if (request !== latestRequest.current) return;
     if (!res.ok) {
       setError(res.message);
-      setLoading(false);
       return;
     }
     setRows(res.value);
-    setLoading(false);
+    setError(null);
+    setLoaded(true);
   }, [client]);
 
   useEffect(() => {
@@ -60,7 +65,7 @@ export function TpeTracker(): JSX.Element {
   const inRound3 = active.filter((r) => r.currentRound === r.maxRounds);
   const overThreshold = active.filter((r) => r.aboveThreshold === true);
   const noThreshold = active.filter((r) => r.threshold.pct === null);
-  const shown = (n: number): string | number => (loading || error ? "—" : n);
+  const shown = (n: number): string | number => (loaded ? n : "—");
 
   return (
     <>
@@ -139,6 +144,11 @@ export function TpeTracker(): JSX.Element {
               {filtered.length} of {rows.length} programs
             </span>
             <span style={{ flex: 1 }} />
+            {error && loaded ? (
+              <Button tone="secondary" size="sm" onClick={() => void load()}>
+                Retry
+              </Button>
+            ) : null}
             <Button tone="secondary" size="sm" onClick={() => setEditingRules(true)}>
               Exit thresholds
             </Button>
@@ -148,13 +158,21 @@ export function TpeTracker(): JSX.Element {
           </div>
         }
         table={
-          loading ? (
+          !loaded && !error ? (
             <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
               <LoadingSpinner />
             </div>
-          ) : error ? (
+          ) : !loaded ? (
             <div style={{ padding: "2rem 1.5rem" }}>
-              <EmptyState title="Unavailable" description={error} />
+              <EmptyState
+                title="Unavailable"
+                description={error ?? ""}
+                action={
+                  <Button tone="secondary" size="sm" onClick={() => void load()}>
+                    Retry
+                  </Button>
+                }
+              />
             </div>
           ) : filtered.length === 0 ? (
             <div style={{ padding: "2rem 1.5rem" }}>
@@ -182,23 +200,44 @@ export function TpeTracker(): JSX.Element {
             </div>
           ) : (
             <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem" }}>
-              <table style={tableStyle}>
+              <table className="wx-table" style={tableStyle}>
+                <caption className="wx-sr-only">TPE programs</caption>
                 <thead>
                   <tr style={headerRowStyle}>
-                    <th style={headStyle}>Provider</th>
-                    <th style={headStyle}>MAC</th>
-                    <th style={headStyle}>State</th>
-                    <th style={headStyle}>Round</th>
-                    <th style={headStyle}>MAC error rate vs threshold</th>
-                    <th style={headStyle}>Earliest next round</th>
-                    <th style={headStyle}>Referral risk (advisory)</th>
-                    <th style={headStyle}>Work</th>
+                    <th scope="col" style={headStyle}>
+                      Provider
+                    </th>
+                    <th scope="col" style={headStyle}>
+                      MAC
+                    </th>
+                    <th scope="col" style={headStyle}>
+                      State
+                    </th>
+                    <th scope="col" style={headStyle}>
+                      Round
+                    </th>
+                    <th scope="col" style={headStyle}>
+                      MAC error rate vs threshold
+                    </th>
+                    <th scope="col" style={headStyle}>
+                      Earliest next round
+                    </th>
+                    <th scope="col" style={headStyle}>
+                      Referral risk (advisory)
+                    </th>
+                    <th scope="col" style={headStyle}>
+                      Work
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((r) => (
                     <tr key={r.id} style={rowStyle}>
-                      <td style={cellStyle}>{r.providerEntityId.slice(0, 8)}</td>
+                      <td style={cellStyle} title={r.providerEntityId}>
+                        <span aria-label={`Provider entity ${r.providerEntityId}`}>
+                          Provider {r.providerEntityId.slice(0, 8)}
+                        </span>
+                      </td>
                       <td style={cellStyle}>{r.macName}</td>
                       <td style={cellStyle}>
                         <StatusPill
@@ -213,13 +252,13 @@ export function TpeTracker(): JSX.Element {
                         {r.latestRound ? rateText(r.latestRound.macErrorRatePct) : "No results"}
                         {" · "}
                         {r.threshold.pct === null ? (
-                          <span style={mutedStyle}>{NO_THRESHOLD_TEXT.split(" — ")[0]}</span>
+                          <span style={mutedStyle}>{NO_THRESHOLD}</span>
                         ) : (
                           <span
                             style={r.aboveThreshold ? { color: "var(--color-error)" } : undefined}
                           >
-                            threshold {r.threshold.pct}%
-                            {r.threshold.verified ? "" : " (unverified)"}
+                            {r.aboveThreshold ? "above threshold " : "threshold "}
+                            {r.threshold.pct}%{r.threshold.verified ? "" : " (unverified)"}
                           </span>
                         )}
                       </td>
@@ -253,6 +292,7 @@ export function TpeTracker(): JSX.Element {
               programId={workingId}
               onClose={() => setWorkingId(null)}
               onChanged={() => void load()}
+              refreshKey={panelRefresh}
             />
           ) : null
         }
@@ -270,7 +310,13 @@ export function TpeTracker(): JSX.Element {
         />
       ) : null}
       {editingRules ? (
-        <TpeRulesModal onClose={() => setEditingRules(false)} onSaved={() => void load()} />
+        <TpeRulesModal
+          onClose={() => setEditingRules(false)}
+          onSaved={() => {
+            void load();
+            setPanelRefresh((n) => n + 1);
+          }}
+        />
       ) : null}
     </>
   );
