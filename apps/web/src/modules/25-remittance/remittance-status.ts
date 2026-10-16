@@ -51,6 +51,7 @@ export const APPEAL_STATE_TONE: Record<string, StatusTone> = {
   submitted: "progress",
   under_review: "progress",
   decided: "success",
+  escalated: "progress", // a late QIC reconsideration moved to OMHA (milestone 4)
   withdrawn: "neutral",
   closed: "neutral",
 };

@@ -267,6 +267,7 @@
     "test:m25:adr:live": "vitest run apps/backend/__tests__/m25-adr.live.test.ts",
     "test:m25:adr-packet:live": "vitest run apps/backend/__tests__/m25-adr-packet.live.test.ts",
     "test:m25:routing:live": "vitest run apps/backend/__tests__/m25-denial-routing.live.test.ts",
+    "test:m25:qic:live": "vitest run apps/backend/__tests__/m25-qic.live.test.ts",
     "test:m6:loc-change-signed:live": "vitest run apps/backend/__tests__/m6-loc-change-signed.live.test.ts",
     "test:m6:adequacy-gate:live": "vitest run apps/backend/__tests__/m6-adequacy-gate.live.test.ts",
     "test:m6:recert-period-start:live": "vitest run apps/backend/__tests__/m6-recert-period-start.live.test.ts",

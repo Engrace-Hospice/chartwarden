@@ -126,6 +126,36 @@ export const AppealRemitCopy = Type.Object({
 });
 export type AppealRemitCopy = Static<typeof AppealRemitCopy>;
 
+/**
+ * One piece of documentation the redetermination notice named as missing (milestone 4). It is either enclosed (a
+ * `documentId` that appears in `supportingDocuments`) or explained (`notAvailableReason`) - never both blank.
+ */
+export const AppealCitedEvidence = Type.Object({
+  label: Type.String({ minLength: 1 }),
+  documentId: nullableStr,
+  notAvailableReason: nullableStr,
+});
+export type AppealCitedEvidence = Static<typeof AppealCitedEvidence>;
+
+/**
+ * The CMS request elements specific to a QIC reconsideration (hospice ADR/TPE/QIC PRD, milestone 4): the
+ * redetermination MAC and notice, the missing documentation the notice cited, and the preclusion acknowledgement.
+ * The beneficiary name and MBI are NOT here (M25 holds no MBI; the letter prints fill-in cells, like the ABN).
+ */
+export const AppealReconsiderationBlock = Type.Object({
+  redeterminationMacName: Type.String({ minLength: 1 }),
+  /** The date printed on the redetermination notice (YYYY-MM-DD). */
+  redeterminationNoticeDate: Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" }),
+  /** The enclosed copy of the redetermination notice (must be in `supportingDocuments`). */
+  redeterminationNoticeDocumentId: id,
+  citedEvidence: Type.Array(AppealCitedEvidence),
+  /** The attestation that the redetermination notice named no missing documentation. */
+  citedEvidenceNone: Type.Boolean(),
+  /** The person acknowledged that evidence left out of this request may be excluded at later levels. */
+  evidencePreclusionAcknowledged: Type.Boolean(),
+});
+export type AppealReconsiderationBlock = Static<typeof AppealReconsiderationBlock>;
+
 export const AppealPacketRenderPayload = Type.Object({
   appealCaseId: id,
   denialCaseId: id,
@@ -168,6 +198,8 @@ export const AppealPacketRenderPayload = Type.Object({
     }),
   ),
   macReferenceNumbers: Type.Optional(Type.Record(Type.String(), Type.String())),
+  /** Present exactly when `tier` is `reconsideration` (QIC request elements and the cited-evidence table). */
+  reconsideration: Type.Optional(AppealReconsiderationBlock),
 });
 export type AppealPacketRenderPayload = Static<typeof AppealPacketRenderPayload>;
 
@@ -191,6 +223,7 @@ export interface AppealPacketFacts {
   };
   readonly lateGoodCause?: { readonly justification: string };
   readonly medicalRecordsBundle?: Omit<AppealSupportingDocument, "ordinal">;
+  readonly reconsideration?: AppealReconsiderationBlock;
 }
 
 /** Pure: assemble the packet payload from the facts M25 holds. Throws if the result is not a valid packet. */
@@ -231,6 +264,7 @@ export function buildAppealPacketRenderPayload(
           },
         }
       : {}),
+    ...(facts.reconsideration ? { reconsideration: facts.reconsideration } : {}),
   };
   return assertAppealPacketRenderPayload(payload);
 }
@@ -264,6 +298,43 @@ export function appealEnclosureRefusal(
   return null;
 }
 
+/**
+ * Cross-field rules of the reconsideration block: present exactly for the reconsideration tier, and every document
+ * it points at is an enclosure the letter lists. The domain guard (M25 `checkQicEvidence`) decides whether the
+ * evidence is COMPLETE; this only refuses a payload that contradicts itself, so M22 never draws a half-true filing.
+ */
+function reconsiderationViolations(p: AppealPacketRenderPayload): string[] {
+  const block = p.reconsideration;
+  if (p.tier !== "reconsideration") {
+    return block ? ["/reconsideration: only a reconsideration carries QIC request elements"] : [];
+  }
+  if (!block) return ["/reconsideration: required for a reconsideration"];
+  const enclosed = new Set(p.supportingDocuments.map((d) => d.documentId));
+  const errors: string[] = [];
+  if (!enclosed.has(block.redeterminationNoticeDocumentId))
+    errors.push("/reconsideration/redeterminationNoticeDocumentId: must be an enclosure");
+  if (block.citedEvidenceNone && block.citedEvidence.length > 0)
+    errors.push("/reconsideration/citedEvidence: must be empty when the notice named none");
+  if (!block.citedEvidenceNone && block.citedEvidence.length === 0)
+    errors.push(
+      "/reconsideration/citedEvidence: list the cited items or attest the notice named none",
+    );
+  for (const item of block.citedEvidence) {
+    if (item.documentId !== null && !enclosed.has(item.documentId))
+      errors.push(`/reconsideration/citedEvidence: "${item.label}" is not among the enclosures`);
+    if (item.documentId === null && item.notAvailableReason === null)
+      errors.push(`/reconsideration/citedEvidence: "${item.label}" needs an enclosure or a reason`);
+  }
+  if (
+    block.citedEvidence.some((i) => i.documentId === null) &&
+    !block.evidencePreclusionAcknowledged
+  )
+    errors.push(
+      "/reconsideration/evidencePreclusionAcknowledged: required when an item is not enclosed",
+    );
+  return errors;
+}
+
 /** The first schema violations, as `path: message` strings (empty = valid). */
 export function appealPacketViolations(payload: unknown): string[] {
   const errors = [...Value.Errors(AppealPacketRenderPayload, payload)].map(
@@ -279,6 +350,7 @@ export function appealPacketViolations(payload: unknown): string[] {
       errors.push("/remitCopy: required when the denial came from a remittance line");
     if (p.remitCopyRef.remittanceLineId === null && p.remitCopy !== undefined)
       errors.push("/remitCopy: must be absent when the denial has no remittance line");
+    errors.push(...reconsiderationViolations(p));
   }
   return errors.slice(0, 5);
 }

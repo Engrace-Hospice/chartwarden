@@ -703,6 +703,8 @@ jobs:
             }
           # M25 denial read `version` -> If-Match transition loop through the real routes + RLS.
           - { name: "M25 denial version", scripts: "test:m25:denial-version:live" }
+          # Milestone 4 - QIC reconsideration evidence guard, 60-day clock and OMHA escalation.
+          - { name: "M25 QIC reconsideration", scripts: "test:m25:qic:live" }
           # F-158 (#248) — the `handlers-unbound` denial-worklist seed: m23.claim.rejected +
           # m18.evv.aggregator_rejected.
           - {

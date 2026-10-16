@@ -17,7 +17,7 @@ import {
   parse,
 } from "./m25-typebox";
 import type { M25ReadService } from "./read-service";
-import type { M25WriteService } from "./write-service";
+import type { AppealSubmitInput, M25WriteService } from "./write-service";
 
 export interface AppealRouteDeps {
   readonly readService: M25ReadService;
@@ -38,6 +38,32 @@ function qStr(q: unknown, key: string): string | undefined {
   return typeof v === "string" && v.length > 0 ? v : undefined;
 }
 const idOf = (request: { params?: unknown }): string => (request.params as { id: string }).id;
+
+/** The reconsideration-only submit fields, passed on only when sent (the server ignores them on other tiers). */
+function reconsiderationOf(body: {
+  redeterminationMacName?: string;
+  redeterminationNoticeDocumentId?: string;
+  evidencePreclusionAcknowledged?: boolean;
+}): { reconsideration?: NonNullable<AppealSubmitInput["reconsideration"]> } {
+  const {
+    redeterminationMacName,
+    redeterminationNoticeDocumentId,
+    evidencePreclusionAcknowledged,
+  } = body;
+  if (
+    redeterminationMacName === undefined &&
+    redeterminationNoticeDocumentId === undefined &&
+    evidencePreclusionAcknowledged === undefined
+  )
+    return {};
+  return {
+    reconsideration: {
+      ...(redeterminationMacName !== undefined ? { redeterminationMacName } : {}),
+      ...(redeterminationNoticeDocumentId !== undefined ? { redeterminationNoticeDocumentId } : {}),
+      ...(evidencePreclusionAcknowledged !== undefined ? { evidencePreclusionAcknowledged } : {}),
+    },
+  };
+}
 
 export function registerAppealRoutes(app: FastifyInstance, deps: AppealRouteDeps): void {
   const { readService, writeService } = deps;
@@ -105,6 +131,7 @@ export function registerAppealRoutes(app: FastifyInstance, deps: AppealRouteDeps
             ...(body.medicalRecordsBundleDocumentId
               ? { medicalRecordsBundleDocumentId: body.medicalRecordsBundleDocumentId }
               : {}),
+            ...reconsiderationOf(body),
           },
           ifMatchVersion(request),
         ),
@@ -132,6 +159,7 @@ export function registerAppealRoutes(app: FastifyInstance, deps: AppealRouteDeps
               ? { medicalRecordsBundleDocumentId: body.medicalRecordsBundleDocumentId }
               : {}),
             goodCauseJustification: body.goodCauseJustification,
+            ...reconsiderationOf(body),
           },
           ifMatchVersion(request),
         ),
