@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { expo } from "@better-auth/expo";
 import { passkey } from "@better-auth/passkey";
 // @wardenx/auth · identity — Better Auth integration (M2-T01; M2 spec §1, §3.1).
 //
@@ -26,9 +27,9 @@ import { APIError, createAuthMiddleware } from "better-auth/api";
 import { haveIBeenPwned, magicLink, twoFactor, username } from "better-auth/plugins";
 import { eq, sql } from "drizzle-orm";
 import { type AuthAuditEvent, type AuthAuditSink, buildPasswordResetEvent } from "./auth-audit";
+import { credentialAdminPlugin, isAllowedUsername, normalizeUsername } from "./credential-admin";
 import { type EmailTransport, createNoopEmailTransport } from "./email-transport";
 import { linkSessionPlugin } from "./link-session";
-import { credentialAdminPlugin, isAllowedUsername, normalizeUsername } from "./credential-admin";
 import { argon2idHash, argon2idVerify } from "./password-hash";
 import { SESSION_MAX_ABSOLUTE_SEC, isUserStatusBlocked } from "./session-timeout";
 import { type EncryptableAdapter, withTwoFactorEncryption } from "./two-factor-adapter";
@@ -181,11 +182,12 @@ export function resolvePasskeyRpId(): string {
  * answer: an origin the browser may call this API from is exactly an origin a ceremony may run on, and
  * a second variable is a second thing to get wrong. @simplewebauthn accepts the list.
  */
-export function resolvePasskeyOrigins(): readonly string[] {
-  const trusted = resolveTrustedOrigins();
+export function resolvePasskeyOrigins(
+  env: Record<string, string | undefined> = process.env,
+): readonly string[] {
+  const trusted = resolveWebTrustedOrigins(env);
   const base =
-    process.env.BETTER_AUTH_URL ??
-    (process.env.NODE_ENV === "production" ? undefined : "http://localhost:3000");
+    env.BETTER_AUTH_URL ?? (env.NODE_ENV === "production" ? undefined : "http://localhost:3000");
   // `baseURL` last: a same-origin deployment names it and nothing else, and a split deployment needs
   // the SPA origin in the list either way. Deduped so an origin present in both is not repeated in the
   // "expected one of: …" message a genuine mismatch prints.
@@ -193,19 +195,91 @@ export function resolvePasskeyOrigins(): readonly string[] {
 }
 
 /**
- * The front-end origins allowed to call this auth server (Better Auth's CSRF allowlist). Shared with
- * {@link resolvePasskeyOrigins} so the two cannot disagree about which hosts are ours.
+ * Browser HTTP(S) origins allowed to call this server. This is also the only allowlist WebAuthn and
+ * CORS may consume: a native deep-link scheme is not a WebAuthn expectedOrigin and is not a browser
+ * CORS origin.
  */
-export function resolveTrustedOrigins(): string[] {
-  if (process.env.TRUSTED_ORIGINS) {
-    return process.env.TRUSTED_ORIGINS.split(",")
+export function resolveWebTrustedOrigins(
+  env: Record<string, string | undefined> = process.env,
+): string[] {
+  if (env.TRUSTED_ORIGINS) {
+    const origins = env.TRUSTED_ORIGINS.split(",")
       .map((o) => o.trim())
       .filter(Boolean);
+    for (const origin of origins) {
+      let parsed: URL;
+      try {
+        parsed = new URL(origin);
+      } catch {
+        throw new Error("TRUSTED_ORIGINS must contain exact HTTP(S) origins");
+      }
+      if (
+        (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+        parsed.username !== "" ||
+        parsed.password !== "" ||
+        parsed.pathname !== "/" ||
+        parsed.search !== "" ||
+        parsed.hash !== "" ||
+        origin.replace(/\/$/, "") !== parsed.origin
+      ) {
+        throw new Error("TRUSTED_ORIGINS must contain exact HTTP(S) origins");
+      }
+    }
+    return [...new Set(origins.map((origin) => origin.replace(/\/$/, "")))];
   }
-  if (process.env.NODE_ENV === "production") return [];
+  if (env.NODE_ENV === "production") return [];
   // The three local-dev SPAs: web (:5173), portal (:5174), the admin/platform-ops console (:5175) —
   // each proxies /api to this backend at a different Vite dev-server origin.
   return ["http://localhost:5173", "http://localhost:5174", "http://localhost:5175"];
+}
+
+/**
+ * Explicit native callback schemes trusted by Better Auth's Expo integration.
+ *
+ * The value is intentionally separate from `TRUSTED_ORIGINS`: it may contain only exact custom
+ * schemes (`wardenx://`), never HTTP(S), `null`, a wildcard, host, path or query. Universal/App Links
+ * are HTTPS browser origins and belong in `TRUSTED_ORIGINS`. There is no implicit production or
+ * localhost fallback.
+ */
+export function resolveMobileAuthOrigins(
+  env: Record<string, string | undefined> = process.env,
+): string[] {
+  const raw = env.MOBILE_AUTH_TRUSTED_ORIGINS;
+  if (!raw?.trim()) return [];
+  const origins = raw
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  for (const origin of origins) {
+    if (
+      !/^[a-z][a-z0-9+.-]*:\/\/$/i.test(origin) ||
+      /^https?:/i.test(origin) ||
+      /^exp:/i.test(origin)
+    ) {
+      throw new Error(
+        "MOBILE_AUTH_TRUSTED_ORIGINS must contain exact custom schemes such as wardenx://",
+      );
+    }
+  }
+  return [...new Set(origins)];
+}
+
+/** Better Auth's complete exact allowlist: browser origins plus native callback schemes. */
+export function resolveTrustedOrigins(
+  env: Record<string, string | undefined> = process.env,
+): string[] {
+  return [...new Set([...resolveWebTrustedOrigins(env), ...resolveMobileAuthOrigins(env)])];
+}
+
+/**
+ * Better Auth's Expo plugin trusts the broad `exp://` scheme automatically in development. WardenX
+ * requires every native scheme to be configured explicitly, so retain the official plugin's request
+ * and callback handling while removing only that implicit development initializer. This is pinned to
+ * @better-auth/expo 1.6.25 and covered by the config-shape test.
+ */
+function explicitOriginsExpoPlugin(): ReturnType<typeof expo> {
+  const { init: _implicitDevelopmentOrigin, ...plugin } = expo();
+  return plugin as ReturnType<typeof expo>;
 }
 
 /**
@@ -301,6 +375,10 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
     // transport, injected at the composition root (FB-T14). Runtime + any schema reconciliation are
     // exercised in the AUTH-T06 live-PG lane.
     plugins: [
+      // Native clients use the same Better Auth instance, tables, routes and session cookies. The
+      // plugin maps Expo's explicit `expo-origin` header into Better Auth's existing origin check; it
+      // does not introduce a token type or a second auth surface.
+      explicitOriginsExpoPlugin(),
       // Server-only mint of the session a REDEEMED collaborator / funeral-home link yields (never on the HTTP router).
       linkSessionPlugin(),
       credentialAdminPlugin(),

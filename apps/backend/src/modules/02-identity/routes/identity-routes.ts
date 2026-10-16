@@ -7,6 +7,7 @@
 // step-up routes are M2-T05; the auditor-invite route is M3-owned per D4 — see §4.1):
 //
 //   GET    /api/v1/auth/memberships           list own memberships (pre-org)          §7.2
+//   GET    /api/v1/auth/csrf                  bootstrap native double-submit nonce     ADR-0069
 //   POST   /api/v1/auth/select-organization   bind the session to one org (one-time)  §7.2
 //   POST   /api/v1/orgs/:id/invitations       invite a user to an org                 §7.1
 //   POST   /api/v1/invitations/accept         consume an invite token → membership    §7.1
@@ -185,6 +186,22 @@ async function deliverInvite(
 }
 
 export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRouteDeps): void {
+  // Authenticated CSRF bootstrap for native cookie transport. The global CSRF onRequest hook has
+  // already selected an existing nonce or staged a fresh `wardenx_csrf` Set-Cookie. Returning that
+  // exact value lets a non-browser client construct BOTH halves of the existing double-submit proof;
+  // it grants no identity/org/role fact, mutates no state and changes no browser behavior.
+  app.get("/api/v1/auth/csrf", async (request, reply) => {
+    await resolveActor(deps, request); // real Better Auth session required; pre-org is allowed
+    const token = request.__csrfCookieToken;
+    if (typeof token !== "string") {
+      throw new WardenXError("CSRF_BOOTSTRAP_UNAVAILABLE", "CSRF protection is unavailable", 503);
+    }
+    reply.header("Cache-Control", "no-store, max-age=0");
+    reply.header("Pragma", "no-cache");
+    reply.header("Vary", "Cookie");
+    return { token };
+  });
+
   // --- §7.2 Traveling nurse: list memberships, then bind exactly one org ------------------
   app.get("/api/v1/auth/memberships", async (request) => {
     const actor = await resolveActor(deps, request);

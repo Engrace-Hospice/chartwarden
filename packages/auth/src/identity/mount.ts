@@ -264,6 +264,10 @@ export function registerIdentityAuth(
           : Array.isArray(existing)
             ? existing.map(String)
             : [String(existing)];
+      // Fastify appends array-valued Set-Cookie headers when `header()` is called again. Remove the
+      // staged value first, then write the deliberately merged list once; otherwise the CSRF cookie
+      // appears twice even though no cookie is lost.
+      reply.removeHeader("set-cookie");
       reply.header("set-cookie", [...existingList, ...setCookies]);
     }
     const body = Buffer.from(await res.arrayBuffer());

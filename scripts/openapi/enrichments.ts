@@ -60,6 +60,7 @@ import {
   CollaboratorInviteRequestSchema as M2CollaboratorInviteRequestSchema,
   CollaboratorInviteResponseSchema as M2CollaboratorInviteResponseSchema,
   CredentialStatusResponseSchema as M2CredentialStatusResponseSchema,
+  CsrfBootstrapResponseSchema as M2CsrfBootstrapResponseSchema,
   ElevatedApprovalGrantRequestSchema as M2ElevatedApprovalGrantRequestSchema,
   ElevatedApprovalGrantSchema as M2ElevatedApprovalGrantSchema,
   ElevatedApprovalRevokeRequestSchema as M2ElevatedApprovalRevokeRequestSchema,
@@ -6377,6 +6378,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/auth/context": {
     summary: "App-shell identity/role/permission projection (FB-T15)",
     response: M2AuthContextResponseSchema,
+  },
+  "GET /api/v1/auth/csrf": {
+    summary: "Bootstrap the authenticated cookie client's WardenX double-submit CSRF nonce",
+    response: M2CsrfBootstrapResponseSchema,
   },
   "GET /api/v1/auth/credential-status": {
     summary: "Read the authenticated identity's authoritative password-rotation state",

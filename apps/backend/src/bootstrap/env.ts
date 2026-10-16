@@ -97,7 +97,46 @@ const REQUIREMENTS: readonly Requirement[] = [
     key: "BETTER_AUTH_URL",
     rule: (v) => (/^https:\/\//.test(v) ? null : "must be an https:// origin"),
   },
-  { key: "TRUSTED_ORIGINS" },
+  {
+    key: "TRUSTED_ORIGINS",
+    rule: (value) => {
+      for (const origin of value.split(",").map((entry) => entry.trim())) {
+        try {
+          const parsed = new URL(origin);
+          if (
+            (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+            parsed.username !== "" ||
+            parsed.password !== "" ||
+            parsed.pathname !== "/" ||
+            parsed.search !== "" ||
+            parsed.hash !== "" ||
+            origin.replace(/\/$/, "") !== parsed.origin
+          ) {
+            return "must contain exact HTTP(S) origins without paths, credentials or wildcards";
+          }
+        } catch {
+          return "must contain exact HTTP(S) origins without paths, credentials or wildcards";
+        }
+      }
+      return null;
+    },
+  },
+  {
+    key: "MOBILE_AUTH_TRUSTED_ORIGINS",
+    when: (env) => Boolean(env.MOBILE_AUTH_TRUSTED_ORIGINS?.trim()),
+    rule: (value) =>
+      value
+        .split(",")
+        .map((entry) => entry.trim())
+        .every(
+          (origin) =>
+            /^[a-z][a-z0-9+.-]*:\/\/$/i.test(origin) &&
+            !/^https?:/i.test(origin) &&
+            !/^exp:/i.test(origin),
+        )
+        ? null
+        : "must contain exact custom schemes such as wardenx://; exp://, HTTP(S), paths and wildcards are forbidden",
+  },
   {
     // M24 §8.7 — the master KEK for state trading-partner secrets (client secret / SFTP key). Required in
     // production: without it a credential write fails closed, so Medicaid submission could never be

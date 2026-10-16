@@ -3774,6 +3774,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/csrf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Bootstrap the authenticated cookie client's WardenX double-submit CSRF nonce */
+        get: operations["getApiV1AuthCsrf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/memberships": {
         parameters: {
             query?: never;
@@ -35267,6 +35284,30 @@ export interface operations {
                     "application/json": {
                         passwordChangeRequired: boolean;
                         reason: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AuthCsrf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        token: string;
                     };
                 };
             };

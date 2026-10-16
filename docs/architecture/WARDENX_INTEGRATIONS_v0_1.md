@@ -495,7 +495,7 @@ Each section follows the same shape: **Purpose · Direction & protocol · Endpoi
 
 ### 6.15 Web Push — VAPID (Module 36)
 
-- **Purpose:** PWA push notifications (portal users; clinical/field via Capacitor native push where applicable). **No PHI in payload** — deep-link only.
+- **Purpose:** PWA push notifications for browser clients. Native APNs/FCM delivery for the separate Expo/RN application is a future integration and is not supplied by this Web Push transport. **No PHI in any notification payload** — authenticated deep-link only.
 - **Direction & protocol:** Outbound Web Push Protocol to browser push services (FCM/APNs endpoints via the standard).
 - **Credential model:** Platform VAPID key pair.
 - **BAA / PHI:** No PHI; browser push services are not BAA counterparties (which is precisely why no PHI may be in the payload).

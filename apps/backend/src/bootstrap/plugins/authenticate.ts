@@ -52,6 +52,7 @@ const AUDITOR_ALLOWED_MUTATION_PATHS: ReadonlySet<string> = new Set([
  * reachable so a half-enrolled auditor can always leave or start over.
  */
 const AUDITOR_ENROLMENT_ROUTES: ReadonlySet<string> = new Set([
+  "GET /api/v1/auth/csrf",
   "GET /api/v1/auditors/enrolment/state",
   "POST /api/v1/auditors/enrolment/baa",
   "POST /api/v1/auditors/enrolment/totp/begin",
@@ -72,11 +73,15 @@ const BACKGROUND_HEADER = "x-wardenx-background";
 const PASSWORD_CHANGE_ALLOWED_ROUTES: ReadonlySet<string> = new Set([
   "GET /api/auth/get-session",
   "POST /api/auth/sign-out",
+  "GET /api/v1/auth/csrf",
   "GET /api/v1/auth/credential-status",
   "POST /api/v1/auth/password/complete-required-change",
 ]);
 
-function assertCredentialStateMayCall(request: FastifyRequest, required: boolean | undefined): void {
+function assertCredentialStateMayCall(
+  request: FastifyRequest,
+  required: boolean | undefined,
+): void {
   if (!required) return;
   const path = request.url.split("?")[0] ?? "";
   if (PASSWORD_CHANGE_ALLOWED_ROUTES.has(`${request.method.toUpperCase()} ${path}`)) return;
