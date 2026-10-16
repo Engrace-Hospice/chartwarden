@@ -17,6 +17,7 @@ import {
   runAppealDeadlineWatch,
   runDenialAging,
 } from "./m25-jobs";
+import { type QicOverdueStore, runQicOverdueWatch } from "./qic-overdue";
 import {
   type M25CronQueueName,
   M25_CRON_QUEUES,
@@ -178,10 +179,42 @@ export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> 
           }));
         },
       };
+      // Milestone 4: a QIC reconsideration past its recorded decision date with no escalation requested.
+      const qicStore: QicOverdueStore = {
+        async overdueCandidates() {
+          const rows = await tx
+            .select({
+              id: AC.id,
+              receivedOn: AC.qicReceivedOn,
+              extensions: AC.qicClockExtensions,
+              escalationRequestedAt: AC.escalationRequestedAt,
+            })
+            .from(AC)
+            .where(
+              sql`${AC.tier} = 'reconsideration' AND ${AC.state} = 'under_review' AND ${AC.qicReceivedOn} IS NOT NULL`,
+            )
+            .limit(100000);
+          return rows.flatMap((r) =>
+            r.receivedOn === null
+              ? []
+              : [
+                  {
+                    id: r.id,
+                    receivedOn: r.receivedOn,
+                    extensions: Array.isArray(r.extensions)
+                      ? (r.extensions as { days: number; recordedAt: string }[])
+                      : [],
+                    escalationRequested: r.escalationRequestedAt !== null,
+                  },
+                ],
+          );
+        },
+      };
       const result = {
         alerts: [
           ...(await runAppealDeadlineWatch(store, now)).alerts,
           ...(await runAdrDeadlineWatch(adrStore, now)).alerts,
+          ...(await runQicOverdueWatch(qicStore, now)).alerts,
         ],
       };
       for (const a of result.alerts) {

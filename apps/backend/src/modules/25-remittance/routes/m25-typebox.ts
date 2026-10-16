@@ -121,6 +121,19 @@ export const AppealAttachRequestSchema = Type.Object({
   documentId: Type.String({ format: "uuid" }),
 });
 
+/**
+ * What only a QIC reconsideration adds to a submit body (milestone 4); ignored on every other tier. The server
+ * checks them against the cited evidence on the appeal row: nothing here is trusted as complete.
+ */
+const ReconsiderationSubmitFields = {
+  /** The MAC that issued the redetermination notice. */
+  redeterminationMacName: Type.Optional(Type.String({ minLength: 1, maxLength: 120 })),
+  /** The attached document that is the copy of the redetermination notice (must be among attachedDocumentIds). */
+  redeterminationNoticeDocumentId: Type.Optional(Type.String({ format: "uuid" })),
+  /** The person acknowledged that evidence left out may be excluded at later levels of appeal. */
+  evidencePreclusionAcknowledged: Type.Optional(Type.Boolean()),
+};
+
 /** POST /appeals/:id/submit — draft → submitted; step-up + within-deadline. Narrative audit-denylisted. */
 export const AppealSubmitRequestSchema = Type.Object({
   appealNarrative: Type.String({ minLength: 100, maxLength: 10000 }),
@@ -129,6 +142,7 @@ export const AppealSubmitRequestSchema = Type.Object({
     maxItems: MAX_APPEAL_ENCLOSURES,
   }),
   medicalRecordsBundleDocumentId: Type.Optional(Type.String({ format: "uuid" })),
+  ...ReconsiderationSubmitFields,
 });
 
 /**
@@ -144,6 +158,7 @@ export const AppealSubmitLateGoodCauseRequestSchema = Type.Object({
     maxItems: MAX_APPEAL_ENCLOSURES,
   }),
   medicalRecordsBundleDocumentId: Type.Optional(Type.String({ format: "uuid" })),
+  ...ReconsiderationSubmitFields,
   goodCauseJustification: Type.String({ minLength: 40, maxLength: 4000 }),
 });
 
@@ -247,6 +262,7 @@ export const AppealSummarySchema = Type.Object({
   decisionOutcome: nullableString(),
   tierDeadlineAt: Type.String({ format: "date-time" }),
   ...DeadlineDerivationFields,
+  filedByEscalation: Type.Boolean(),
   version: Type.Integer(),
 });
 export const AppealSummaryPageSchema = pageOf(AppealSummarySchema);
@@ -327,6 +343,7 @@ export const AppealDetailSchema = Type.Object({
   decisionOutcome: nullableString(),
   tierDeadlineAt: Type.String({ format: "date-time" }),
   ...DeadlineDerivationFields,
+  filedByEscalation: Type.Boolean(),
   version: Type.Integer(),
   appealPacketDocumentId: nullableString(),
   submittedAt: nullableString(),

@@ -64,6 +64,8 @@ export interface AppealSummary {
   readonly presumedReceiptOn: string | null;
   readonly windowDays: number | null;
   readonly lastFilingDay: string | null;
+  /** True on the ALJ case an escalation opened: filed by the QIC's forwarding, so it has no filing deadline. */
+  readonly filedByEscalation: boolean;
   readonly version: number;
 }
 

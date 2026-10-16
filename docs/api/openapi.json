@@ -37952,6 +37952,7 @@
                           "presumedReceiptOn",
                           "windowDays",
                           "lastFilingDay",
+                          "filedByEscalation",
                           "version"
                         ],
                         "properties": {
@@ -38027,6 +38028,9 @@
                               }
                             ]
                           },
+                          "filedByEscalation": {
+                            "type": "boolean"
+                          },
                           "version": {
                             "type": "integer"
                           }
@@ -38093,6 +38097,7 @@
                     "presumedReceiptOn",
                     "windowDays",
                     "lastFilingDay",
+                    "filedByEscalation",
                     "version",
                     "appealPacketDocumentId",
                     "submittedAt",
@@ -38171,6 +38176,9 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "filedByEscalation": {
+                      "type": "boolean"
                     },
                     "version": {
                       "type": "integer"
@@ -38362,6 +38370,115 @@
         }
       }
     },
+    "/api/v1/appeals/{id}/cited-evidence": {
+      "patch": {
+        "operationId": "patchApiV1AppealsByIdCitedevidence",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Set the documentation the redetermination notice named as missing, or attest it named none (draft only; If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "items",
+                  "none"
+                ],
+                "properties": {
+                  "items": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "label",
+                        "documentId",
+                        "notAvailableReason"
+                      ],
+                      "properties": {
+                        "label": {
+                          "minLength": 1,
+                          "maxLength": 300,
+                          "type": "string"
+                        },
+                        "documentId": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "notAvailableReason": {
+                          "anyOf": [
+                            {
+                              "maxLength": 1000,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  "none": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/appeals/{id}/close": {
       "post": {
         "operationId": "postApiV1AppealsByIdClose",
@@ -38408,6 +38525,78 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/appeals/{id}/confirm-escalation": {
+      "post": {
+        "operationId": "postApiV1AppealsByIdConfirmescalation",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Confirm the QIC forwarded the case to OMHA: the reconsideration becomes escalated and an ALJ case opens (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version",
+                    "nextAppealCaseId"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "nextAppealCaseId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "forwardedOn"
+                ],
+                "properties": {
+                  "forwardedOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -38516,6 +38705,442 @@
         }
       }
     },
+    "/api/v1/appeals/{id}/qic": {
+      "get": {
+        "operationId": "getApiV1AppealsByIdQic",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "QIC reconsideration view: cited evidence, the 60-day decision clock with its derivation, and escalation state",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "kind",
+                    "tier",
+                    "state",
+                    "version",
+                    "redeterminationNoticeDate",
+                    "citedEvidence",
+                    "citedEvidenceNone",
+                    "evidenceEditable",
+                    "clock",
+                    "escalation",
+                    "escalationEligible",
+                    "escalationBlockedReason",
+                    "nextAppealCaseId",
+                    "escalatedFromAppealCaseId"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "anyOf": [
+                        {
+                          "const": "reconsideration",
+                          "type": "string"
+                        },
+                        {
+                          "const": "escalated_alj",
+                          "type": "string"
+                        },
+                        {
+                          "const": "none",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "tier": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "redeterminationNoticeDate": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "citedEvidence": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "label",
+                          "documentId",
+                          "notAvailableReason"
+                        ],
+                        "properties": {
+                          "label": {
+                            "type": "string"
+                          },
+                          "documentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "notAvailableReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "citedEvidenceNone": {
+                      "type": "boolean"
+                    },
+                    "evidenceEditable": {
+                      "type": "boolean"
+                    },
+                    "clock": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "receivedOn",
+                            "baseDays",
+                            "extensionDays",
+                            "extensions",
+                            "decisionDueOn",
+                            "decisionDueAt",
+                            "zone",
+                            "overdue",
+                            "daysOverdue"
+                          ],
+                          "properties": {
+                            "receivedOn": {
+                              "type": "string"
+                            },
+                            "baseDays": {
+                              "type": "integer"
+                            },
+                            "extensionDays": {
+                              "type": "integer"
+                            },
+                            "extensions": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "days",
+                                  "recordedAt"
+                                ],
+                                "properties": {
+                                  "days": {
+                                    "type": "integer"
+                                  },
+                                  "recordedAt": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            },
+                            "decisionDueOn": {
+                              "type": "string"
+                            },
+                            "decisionDueAt": {
+                              "type": "string"
+                            },
+                            "zone": {
+                              "type": "string"
+                            },
+                            "overdue": {
+                              "type": "boolean"
+                            },
+                            "daysOverdue": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "escalation": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "requestedAt",
+                            "channel",
+                            "confirmationRef",
+                            "confirmedOn"
+                          ],
+                          "properties": {
+                            "requestedAt": {
+                              "type": "string"
+                            },
+                            "channel": {
+                              "type": "string"
+                            },
+                            "confirmationRef": {
+                              "type": "string"
+                            },
+                            "confirmedOn": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "escalationEligible": {
+                      "type": "boolean"
+                    },
+                    "escalationBlockedReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "nextAppealCaseId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "escalatedFromAppealCaseId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/appeals/{id}/qic-clock": {
+      "patch": {
+        "operationId": "patchApiV1AppealsByIdQicclock",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Record the date the QIC received the request, or add a late-evidence extension of 0-14 days (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "receivedOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "extensionDays": {
+                    "minimum": 0,
+                    "maximum": 14,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/appeals/{id}/request-escalation": {
+      "post": {
+        "operationId": "postApiV1AppealsByIdRequestescalation",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Record the OMHA escalation request made outside WardenX once the QIC's decision date has passed: step-up, frozen once recorded (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "channel",
+                  "confirmationRef",
+                  "requestedAt"
+                ],
+                "properties": {
+                  "channel": {
+                    "anyOf": [
+                      {
+                        "const": "qic_portal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "fax",
+                        "type": "string"
+                      },
+                      {
+                        "const": "mail",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "confirmationRef": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "requestedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/appeals/{id}/submit": {
       "post": {
         "operationId": "postApiV1AppealsByIdSubmit",
@@ -38592,6 +39217,18 @@
                   "medicalRecordsBundleDocumentId": {
                     "format": "uuid",
                     "type": "string"
+                  },
+                  "redeterminationMacName": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "redeterminationNoticeDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "evidencePreclusionAcknowledged": {
+                    "type": "boolean"
                   }
                 }
               }
@@ -38677,6 +39314,18 @@
                   "medicalRecordsBundleDocumentId": {
                     "format": "uuid",
                     "type": "string"
+                  },
+                  "redeterminationMacName": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "redeterminationNoticeDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "evidencePreclusionAcknowledged": {
+                    "type": "boolean"
                   },
                   "goodCauseJustification": {
                     "minLength": 40,
