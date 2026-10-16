@@ -61,7 +61,7 @@ const FALLBACK: Record<number, string> = {
 };
 
 /** Turn an openapi-fetch error into a result. The server's own message wins; it is never paraphrased. */
-function failure(status: number | undefined, body: unknown): WriteResult<never> {
+export function failure(status: number | undefined, body: unknown): WriteResult<never> {
   const httpStatus = typeof status === "number" ? status : null;
   const err =
     body && typeof body === "object" && "error" in body
@@ -76,8 +76,8 @@ function failure(status: number | undefined, body: unknown): WriteResult<never> 
   return { ok: false, status: httpStatus, code, message, stepUp: code === "STEP_UP_REQUIRED" };
 }
 
-const ok = <T>(value: T): WriteResult<T> => ({ ok: true, value });
-const ifMatch = (version: number) => ({ "If-Match": String(version) });
+export const ok = <T>(value: T): WriteResult<T> => ({ ok: true, value });
+export const ifMatch = (version: number) => ({ "If-Match": String(version) });
 
 // ── reads ──────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -212,7 +212,15 @@ export async function runDenialAction(
 
 export type AppealAction =
   | { kind: "attach"; documentId: string }
-  | { kind: "submit"; appealNarrative: string; attachedDocumentIds: string[] }
+  | {
+      kind: "submit";
+      appealNarrative: string;
+      attachedDocumentIds: string[];
+      /** Milestone 4: only a QIC reconsideration sends these (the server checks them against the cited evidence). */
+      redeterminationMacName?: string;
+      redeterminationNoticeDocumentId?: string;
+      evidencePreclusionAcknowledged?: boolean;
+    }
   | { kind: "ack" }
   | {
       kind: "decide";
@@ -250,6 +258,15 @@ export async function runAppealAction(
         body: {
           appealNarrative: action.appealNarrative,
           attachedDocumentIds: action.attachedDocumentIds,
+          ...(action.redeterminationMacName
+            ? { redeterminationMacName: action.redeterminationMacName }
+            : {}),
+          ...(action.redeterminationNoticeDocumentId
+            ? { redeterminationNoticeDocumentId: action.redeterminationNoticeDocumentId }
+            : {}),
+          ...(action.evidencePreclusionAcknowledged !== undefined
+            ? { evidencePreclusionAcknowledged: action.evidencePreclusionAcknowledged }
+            : {}),
         },
       });
       return error || !data ? failure(response?.status, error) : ok(data);
@@ -324,7 +341,7 @@ export type MacRulesPage = Ok<operations["getApiV1Macrules"]>;
 export type AdrReviewType = AdrCreateInput["reviewType"];
 
 /** A thrown request (network down, aborted) becomes a refusal result instead of an unhandled rejection. */
-async function guarded<T>(run: () => Promise<WriteResult<T>>): Promise<WriteResult<T>> {
+export async function guarded<T>(run: () => Promise<WriteResult<T>>): Promise<WriteResult<T>> {
   try {
     return await run();
   } catch {

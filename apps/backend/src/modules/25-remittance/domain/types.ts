@@ -23,6 +23,7 @@ export type AppealState =
   | "submitted"
   | "under_review"
   | "decided"
+  | "escalated"
   | "withdrawn"
   | "closed";
 export type AppealDecisionOutcome = "favorable" | "partial" | "unfavorable";

@@ -484,6 +484,11 @@ describe.skipIf(!DB_URL)("GAP-036 - appeal packet render payload - LIVE Postgres
 
   it("a late good-cause filing carries the justification and the flag in the typed packet", async () => {
     const { id } = await seedAppeal("reconsideration", "2025-01-01T00:00:00Z");
+    // Milestone 4: a reconsideration also carries the QIC request elements (the notice named no missing documentation).
+    await admin.query(
+      "UPDATE appeal_case SET notice_dated_on = '2024-06-01', cited_evidence_none = true WHERE id = $1",
+      [id],
+    );
     await write().submitAppealLateGoodCause(
       actor,
       id,
@@ -492,6 +497,10 @@ describe.skipIf(!DB_URL)("GAP-036 - appeal packet render payload - LIVE Postgres
         attachedDocumentIds: [docF2f],
         goodCauseJustification:
           "The MAC notice was misdelivered to a prior address on file with CMS.",
+        reconsideration: {
+          redeterminationMacName: "Example MAC",
+          redeterminationNoticeDocumentId: docF2f,
+        },
       },
       1,
     );

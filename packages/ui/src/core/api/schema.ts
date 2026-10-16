@@ -3315,6 +3315,23 @@ export interface paths {
         patch: operations["patchApiV1AppealsByIdAttach"];
         trace?: never;
     };
+    "/api/v1/appeals/{id}/cited-evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set the documentation the redetermination notice named as missing, or attest it named none (draft only; If-Match) */
+        patch: operations["patchApiV1AppealsByIdCitedevidence"];
+        trace?: never;
+    };
     "/api/v1/appeals/{id}/close": {
         parameters: {
             query?: never;
@@ -3332,6 +3349,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/appeals/{id}/confirm-escalation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm the QIC forwarded the case to OMHA: the reconsideration becomes escalated and an ALJ case opens (If-Match) */
+        post: operations["postApiV1AppealsByIdConfirmescalation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/appeals/{id}/decide": {
         parameters: {
             query?: never;
@@ -3343,6 +3377,57 @@ export interface paths {
         put?: never;
         /** Record the payer's appeal decision (typed outcome, §4.1) */
         post: operations["postApiV1AppealsByIdDecide"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/qic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** QIC reconsideration view: cited evidence, the 60-day decision clock with its derivation, and escalation state */
+        get: operations["getApiV1AppealsByIdQic"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/qic-clock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Record the date the QIC received the request, or add a late-evidence extension of 0-14 days (If-Match) */
+        patch: operations["patchApiV1AppealsByIdQicclock"];
+        trace?: never;
+    };
+    "/api/v1/appeals/{id}/request-escalation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the OMHA escalation request made outside WardenX once the QIC's decision date has passed: step-up, frozen once recorded (If-Match) */
+        post: operations["postApiV1AppealsByIdRequestescalation"];
         delete?: never;
         options?: never;
         head?: never;
@@ -33838,6 +33923,7 @@ export interface operations {
                             presumedReceiptOn: string | null;
                             windowDays: number | null;
                             lastFilingDay: string | null;
+                            filedByEscalation: boolean;
                             version: number;
                         }[];
                         nextCursor: string | null;
@@ -33881,6 +33967,7 @@ export interface operations {
                         presumedReceiptOn: string | null;
                         windowDays: number | null;
                         lastFilingDay: string | null;
+                        filedByEscalation: boolean;
                         version: number;
                         appealPacketDocumentId: string | null;
                         submittedAt: string | null;
@@ -33962,6 +34049,44 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    patchApiV1AppealsByIdCitedevidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    items: {
+                        label: string;
+                        documentId: string | null;
+                        notAvailableReason: string | null;
+                    }[];
+                    none: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1AppealsByIdClose: {
         parameters: {
             query?: never;
@@ -33983,6 +34108,40 @@ export interface operations {
                         /** Format: uuid */
                         id: string;
                         version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AppealsByIdConfirmescalation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    forwardedOn: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                        nextAppealCaseId: string;
                     };
                 };
             };
@@ -34031,6 +34190,138 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1AppealsByIdQic: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        kind: "reconsideration" | "escalated_alj" | "none";
+                        tier: string;
+                        state: string;
+                        version: number;
+                        redeterminationNoticeDate: string | null;
+                        citedEvidence: {
+                            label: string;
+                            documentId: string | null;
+                            notAvailableReason: string | null;
+                        }[];
+                        citedEvidenceNone: boolean;
+                        evidenceEditable: boolean;
+                        clock: {
+                            receivedOn: string;
+                            baseDays: number;
+                            extensionDays: number;
+                            extensions: {
+                                days: number;
+                                recordedAt: string;
+                            }[];
+                            decisionDueOn: string;
+                            decisionDueAt: string;
+                            zone: string;
+                            overdue: boolean;
+                            daysOverdue: number;
+                        } | null;
+                        escalation: {
+                            requestedAt: string;
+                            channel: string;
+                            confirmationRef: string;
+                            confirmedOn: string | null;
+                        } | null;
+                        escalationEligible: boolean;
+                        escalationBlockedReason: string | null;
+                        nextAppealCaseId: string | null;
+                        escalatedFromAppealCaseId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1AppealsByIdQicclock: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    receivedOn?: string;
+                    extensionDays?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AppealsByIdRequestescalation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    channel: "qic_portal" | "fax" | "mail" | "other";
+                    confirmationRef: string;
+                    /** Format: date-time */
+                    requestedAt: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1AppealsByIdSubmit: {
         parameters: {
             query?: never;
@@ -34047,6 +34338,10 @@ export interface operations {
                     attachedDocumentIds: string[];
                     /** Format: uuid */
                     medicalRecordsBundleDocumentId?: string;
+                    redeterminationMacName?: string;
+                    /** Format: uuid */
+                    redeterminationNoticeDocumentId?: string;
+                    evidencePreclusionAcknowledged?: boolean;
                 };
             };
         };
@@ -34084,6 +34379,10 @@ export interface operations {
                     attachedDocumentIds: string[];
                     /** Format: uuid */
                     medicalRecordsBundleDocumentId?: string;
+                    redeterminationMacName?: string;
+                    /** Format: uuid */
+                    redeterminationNoticeDocumentId?: string;
+                    evidencePreclusionAcknowledged?: boolean;
                     goodCauseJustification: string;
                 };
             };

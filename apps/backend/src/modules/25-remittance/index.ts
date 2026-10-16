@@ -46,6 +46,7 @@ export {
   type TerminologyLookupPort,
   buildDrizzleAdrService,
   buildDrizzleDenialRouteService,
+  buildDrizzleQicService,
   buildDrizzleReopeningService,
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,

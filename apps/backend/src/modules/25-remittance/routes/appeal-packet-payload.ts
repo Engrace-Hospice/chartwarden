@@ -6,12 +6,16 @@
 import { type DbClient, schema } from "@wardenx/db";
 import {
   type AppealPacketRenderPayload,
+  type AppealReconsiderationBlock,
   NotFoundError,
   WardenXError,
   buildAppealPacketRenderPayload,
 } from "@wardenx/types";
 import { eq } from "drizzle-orm";
+import { checkQicEvidence } from "../domain";
 import { type AppealSourcePorts, describeEnclosures, loadRemitCopy } from "./appeal-packet-sources";
+import { QIC_EVIDENCE_MESSAGES } from "./qic-messages";
+import { asEvidence } from "./qic-service";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
@@ -30,6 +34,16 @@ export interface AppealPacketSubmitInput {
   /** An existing M22 document the biller assembled as the medical-records bundle; validated like any enclosure. */
   readonly medicalRecordsBundleDocumentId?: string;
   readonly goodCauseJustification?: string;
+  /**
+   * Milestone 4 - what only a QIC reconsideration needs and the appeal row does not hold: the redetermination MAC,
+   * the attached document that is the copy of the redetermination notice, and the preclusion acknowledgement.
+   * Ignored on every other tier; required (and checked against the cited evidence) on a reconsideration.
+   */
+  readonly reconsideration?: {
+    readonly redeterminationMacName?: string;
+    readonly redeterminationNoticeDocumentId?: string;
+    readonly evidencePreclusionAcknowledged?: boolean;
+  };
 }
 
 export async function loadAppealPacketPayload(
@@ -70,6 +84,13 @@ export async function loadAppealPacketPayload(
     input.attachedDocumentIds,
     input.medicalRecordsBundleDocumentId,
   );
+  const reconsideration =
+    appeal.tier === "reconsideration"
+      ? await reconsiderationBlock(tx, appeal.id, input, [
+          ...enclosures.attached.map((d) => d.documentId),
+          ...(enclosures.bundle ? [enclosures.bundle.documentId] : []),
+        ])
+      : undefined;
   const remitCopy = denial.remittanceLineId
     ? await loadRemitCopy(tx, appeal.organizationId, denial.remittanceLineId)
     : null;
@@ -101,5 +122,70 @@ export async function loadAppealPacketPayload(
     ...(input.goodCauseJustification
       ? { lateGoodCause: { justification: input.goodCauseJustification } }
       : {}),
+    ...(reconsideration ? { reconsideration } : {}),
   });
+}
+
+/**
+ * The evidence-completeness guard of a QIC reconsideration (milestone 4), run on BOTH submit paths because both build
+ * the packet here. The cited items come from the appeal row (editable only in draft), the notice copy and the
+ * preclusion acknowledgement from the submit input; nothing is taken on trust. A refusal rolls the submit back.
+ */
+async function reconsiderationBlock(
+  tx: Tx,
+  appealId: string,
+  input: AppealPacketSubmitInput,
+  enclosedIds: readonly string[],
+): Promise<AppealReconsiderationBlock> {
+  const AC = schema.appealCase;
+  const rows = await tx
+    .select({
+      citedEvidence: AC.citedEvidence,
+      citedEvidenceNone: AC.citedEvidenceNone,
+      noticeDatedOn: AC.noticeDatedOn,
+    })
+    .from(AC)
+    .where(eq(AC.id, appealId))
+    .limit(1);
+  const row = rows[0];
+  if (!row) throw new NotFoundError("appeal case not found");
+  const given = input.reconsideration ?? {};
+  const macName = (given.redeterminationMacName ?? "").trim();
+  if (macName === "") {
+    throw new WardenXError(
+      "REDETERMINATION_MAC_REQUIRED",
+      "name the MAC that issued the redetermination notice",
+      422,
+    );
+  }
+  if (!row.noticeDatedOn) {
+    throw new WardenXError(
+      "REDETERMINATION_NOTICE_DATE_UNKNOWN",
+      "this reconsideration has no recorded redetermination notice date, so its request cannot be assembled",
+      422,
+    );
+  }
+  const items = asEvidence(row.citedEvidence);
+  const noticeDocumentId = given.redeterminationNoticeDocumentId ?? null;
+  const acknowledged = given.evidencePreclusionAcknowledged === true;
+  const refusal = checkQicEvidence({
+    items,
+    none: row.citedEvidenceNone,
+    enclosedIds,
+    preclusionAcknowledged: acknowledged,
+    redeterminationNoticeDocumentId: noticeDocumentId,
+  });
+  if (refusal) throw new WardenXError(refusal, QIC_EVIDENCE_MESSAGES[refusal], 422);
+  return {
+    redeterminationMacName: macName,
+    redeterminationNoticeDate: row.noticeDatedOn,
+    redeterminationNoticeDocumentId: noticeDocumentId as string,
+    citedEvidence: items.map((i) => ({
+      label: i.label.trim(),
+      documentId: i.documentId,
+      notAvailableReason: i.documentId === null ? (i.notAvailableReason ?? "").trim() : null,
+    })),
+    citedEvidenceNone: row.citedEvidenceNone,
+    evidencePreclusionAcknowledged: acknowledged,
+  };
 }

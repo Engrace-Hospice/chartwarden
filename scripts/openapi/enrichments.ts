@@ -565,6 +565,15 @@ import {
 } from "../../apps/backend/src/modules/25-remittance/routes/adr.routes";
 import { M25ListQuerySchema } from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
 import {
+  CitedEvidenceRequestSchema as M25CitedEvidenceRequestSchema,
+  EscalationConfirmRequestSchema as M25EscalationConfirmRequestSchema,
+  EscalationRequestSchema as M25EscalationRequestSchema,
+  QicClockRequestSchema as M25QicClockRequestSchema,
+  QicEscalationConfirmedSchema as M25QicEscalationConfirmedSchema,
+  QicVersionedResultSchema as M25QicVersionedResultSchema,
+  QicViewSchema as M25QicViewSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/qic.routes";
+import {
   DenialRouteSchema as M25DenialRouteSchema,
   MacReasonCodeRequestSchema as M25MacReasonCodeRequestSchema,
   ReopeningCreateRequestSchema as M25ReopeningCreateRequestSchema,
@@ -8244,6 +8253,37 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Create or update a denial routing rule",
     body: M25RouteRuleRequestSchema,
     response: M25ReopeningVersionedResultSchema,
+  },
+
+  // ── qic.routes.ts (hospice ADR/TPE/QIC PRD, milestone 4) ────────────────────────────────────────
+  "GET /api/v1/appeals/:id/qic": {
+    summary:
+      "QIC reconsideration view: cited evidence, the 60-day decision clock with its derivation, and escalation state",
+    response: M25QicViewSchema,
+  },
+  "PATCH /api/v1/appeals/:id/cited-evidence": {
+    summary:
+      "Set the documentation the redetermination notice named as missing, or attest it named none (draft only; If-Match)",
+    body: M25CitedEvidenceRequestSchema,
+    response: M25QicVersionedResultSchema,
+  },
+  "PATCH /api/v1/appeals/:id/qic-clock": {
+    summary:
+      "Record the date the QIC received the request, or add a late-evidence extension of 0-14 days (If-Match)",
+    body: M25QicClockRequestSchema,
+    response: M25QicVersionedResultSchema,
+  },
+  "POST /api/v1/appeals/:id/request-escalation": {
+    summary:
+      "Record the OMHA escalation request made outside WardenX once the QIC's decision date has passed: step-up, frozen once recorded (If-Match)",
+    body: M25EscalationRequestSchema,
+    response: M25QicVersionedResultSchema,
+  },
+  "POST /api/v1/appeals/:id/confirm-escalation": {
+    summary:
+      "Confirm the QIC forwarded the case to OMHA: the reconsideration becomes escalated and an ALJ case opens (If-Match)",
+    body: M25EscalationConfirmRequestSchema,
+    response: M25QicEscalationConfirmedSchema,
   },
 
   // ── appeals.routes.ts (§4.1 routes 19-26) ─────────────────────────────────────────────────────

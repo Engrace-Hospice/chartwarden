@@ -128,6 +128,112 @@ function remitCopyBlocks(p: AppealPacketRenderPayload): Block[] {
   ];
 }
 
+/**
+ * The QIC request elements (hospice ADR/TPE/QIC PRD, milestone 4): the redetermination MAC and notice, the claim
+ * items and dates of service, fill-in cells for the identity this system does not hold (beneficiary name, Medicare
+ * number, appellant, signature - the ABN precedent: the person completes and signs), the documentation the notice
+ * cited, and the preclusion statement. CMS-20033 is not reproduced here: this is the letter request.
+ */
+function reconsiderationBlocks(p: AppealPacketRenderPayload): Block[] {
+  const r = p.reconsideration;
+  if (!r) return [];
+  const noticeCopy = p.supportingDocuments.find(
+    (d) => d.documentId === r.redeterminationNoticeDocumentId,
+  );
+  const anyUnenclosed = r.citedEvidence.some((i) => i.documentId === null);
+  const enclosureOf = (documentId: string | null): string => {
+    const doc = p.supportingDocuments.find((d) => d.documentId === documentId);
+    return doc ? `Enclosed: #${doc.ordinal} ${doc.title}` : "";
+  };
+  return [
+    { kind: "heading", level: 1, text: "Request for reconsideration - required elements" },
+    {
+      kind: "paragraph",
+      text: "Complete the blank cells and sign before sending. This letter is the written request; it does not reproduce form CMS-20033.",
+      muted: true,
+    },
+    {
+      kind: "fieldGrid",
+      cells: [
+        ["Beneficiary name", ""],
+        ["Medicare number (MBI)", ""],
+        ["Appellant (provider) name and NPI/PTAN", ""],
+        ["Representative, if any", ""],
+        ["Redetermination MAC", r.redeterminationMacName],
+        ["Redetermination notice dated", fmtDate(r.redeterminationNoticeDate)],
+        ["Claim control number", p.claimCopy.controlNumber],
+        [
+          "Dates of service",
+          `${fmtDate(p.claimCopy.serviceFrom)} to ${fmtDate(p.claimCopy.serviceTo)}`,
+        ],
+      ],
+    },
+    {
+      kind: "table",
+      columns: [
+        { header: "Line", weight: 1 },
+        { header: "Item (rev code / HCPCS)", weight: 4 },
+        { header: "Dates of service", weight: 4 },
+      ],
+      rows: p.claimCopy.lines.map((l) => [
+        String(l.lineNumber),
+        `${l.revenueCode}${l.hcpcsCode ? ` / ${l.hcpcsCode}` : ""}`,
+        `${fmtDate(l.serviceFrom)} - ${fmtDate(l.serviceTo)}`,
+      ]),
+      emptyText: "The claim carries no service lines.",
+    },
+    {
+      kind: "facts",
+      rows: [
+        [
+          "Copy of the redetermination notice",
+          noticeCopy ? `Enclosed: #${noticeCopy.ordinal} ${noticeCopy.title}` : "",
+        ],
+      ],
+    },
+    { kind: "heading", level: 2, text: "Documentation cited in the redetermination notice" },
+    r.citedEvidenceNone
+      ? {
+          kind: "paragraph",
+          text: "The redetermination notice named no missing documentation.",
+        }
+      : {
+          kind: "table",
+          columns: [
+            { header: "#", weight: 1 },
+            { header: "Documentation named in the notice", weight: 5 },
+            { header: "Included / not available", weight: 6 },
+          ],
+          rows: r.citedEvidence.map((i, n) => [
+            String(n + 1),
+            i.label,
+            i.documentId !== null
+              ? enclosureOf(i.documentId)
+              : `Not enclosed: ${i.notAvailableReason ?? ""}`,
+          ]),
+          emptyText: "No documentation was cited.",
+        },
+    anyUnenclosed
+      ? {
+          kind: "banner",
+          tone: "warn",
+          text: "Evidence that is not submitted before the reconsideration notice may be excluded at later levels of appeal unless good cause is shown.",
+        }
+      : {
+          kind: "paragraph",
+          text: "Evidence not submitted before the reconsideration notice may be excluded at later levels of appeal unless good cause is shown.",
+          muted: true,
+        },
+    {
+      kind: "fieldGrid",
+      cells: [
+        ["Signature", ""],
+        ["Date signed", ""],
+      ],
+    },
+  ];
+}
+
 export function buildAppealPacketDoc(payload: unknown): DocModel {
   const p: AppealPacketRenderPayload = assertAppealPacketRenderPayload(payload);
   const blocks: Block[] = [
@@ -161,6 +267,7 @@ export function buildAppealPacketDoc(payload: unknown): DocModel {
     );
   }
   blocks.push(
+    ...reconsiderationBlocks(p),
     { kind: "heading", level: 1, text: "Statement of appeal" },
     { kind: "paragraph", text: p.appealNarrative },
     { kind: "heading", level: 1, text: "Enclosures" },
