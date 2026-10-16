@@ -247,6 +247,36 @@ describe("Medicare number detection", () => {
     expect(containsMbi("1EG4 TE5 MK73")).toBe(true);
     expect(containsMbi("Patient 1EG4TE5MK73 visit notes")).toBe(true);
   });
+  it("catches separators and disguises: dots, underscores, slashes, spaces in long text, fullwidth, zero-width", () => {
+    expect(containsMbi("1EG4.TE5.MK73")).toBe(true);
+    expect(containsMbi("1EG4_TE5_MK73")).toBe(true);
+    expect(containsMbi("1EG4/TE5/MK73")).toBe(true);
+    expect(containsMbi("1EG4\u00a0TE5\tMK73")).toBe(true);
+    expect(
+      containsMbi(
+        "The facility released the visit notes for the beneficiary whose number is 1EG4 TE5 MK73, and the second batch follows next week with the signed orders.",
+      ),
+    ).toBe(true);
+    expect(containsMbi("\uFF11\uFF25\uFF27\uFF14\uFF34\uFF25\uFF15\uFF2D\uFF2B\uFF17\uFF13")).toBe(
+      true,
+    );
+    expect(containsMbi("1EG4\u200bTE5\u200dMK\u200c73")).toBe(true);
+    expect(containsMbi("1E\u00adG4 TE5 MK73")).toBe(true);
+  });
+  it("leaves ordinary evidence labels, claim numbers, dates and numerics alone", () => {
+    expect(containsMbi("Physician certification of terminal illness dated 03/04/2026")).toBe(false);
+    expect(
+      containsMbi("Claim control number CCN-2026-0042 for service 2026-03-01 to 2026-03-31"),
+    ).toBe(false);
+    expect(
+      containsMbi("Interdisciplinary group comprehensive assessment and updated plan of care"),
+    ).toBe(false);
+    expect(containsMbi("12345678901")).toBe(false);
+    expect(containsMbi("Invoice 2026 0301 0042 7")).toBe(false);
+    expect(
+      containsMbi("Election statement signed by the patient representative on 2026-02-20"),
+    ).toBe(false);
+  });
   it("leaves ordinary references and labels alone", () => {
     expect(containsMbi("FAX-CONF-77")).toBe(false);
     expect(containsMbi("Face-to-face note 2026-02-20")).toBe(false);

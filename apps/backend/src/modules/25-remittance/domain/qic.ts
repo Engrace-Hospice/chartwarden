@@ -189,18 +189,39 @@ export function checkEscalationFiling(input: {
 
 // CMS Medicare Beneficiary Identifier: 11 characters; position 1 a digit 1-9, 2 a letter, 3 a letter or digit, 4 a
 // digit, 5 a letter, 6 a letter or digit, 7 a digit, 8-9 letters, 10-11 digits. S, L, O, I, B and Z are never used.
-const MBI_SHAPE =
-  /[1-9][AC-HJKMNP-RT-Y][AC-HJKMNP-RT-Y0-9][0-9][AC-HJKMNP-RT-Y][AC-HJKMNP-RT-Y0-9][0-9][AC-HJKMNP-RT-Y]{2}[0-9]{2}/;
-/** Short free-text fields (a reference, a label) get spaces removed too, so "1EG4 TE5 MK73" is caught. */
-const SHORT_FIELD_MAX = 40;
+const MBI_BODY =
+  "[1-9][AC-HJKMNP-RT-Y][AC-HJKMNP-RT-Y0-9][0-9][AC-HJKMNP-RT-Y][AC-HJKMNP-RT-Y0-9][0-9][AC-HJKMNP-RT-Y]{2}[0-9]{2}";
+const MBI_WINDOW = new RegExp(MBI_BODY);
+const MBI_EXACT = new RegExp(`^${MBI_BODY}$`);
+const MBI_LENGTH = 11;
 
 /**
  * True when `text` contains something shaped like a Medicare number (MBI). M25 holds no MBI by design, so cited
  * evidence and references must not carry one into the audit-visible and packet-visible record. A false positive
  * costs the person one edit; a miss puts PHI where it does not belong.
+ *
+ * The text is NFKC-normalized (fullwidth digits and letters fold to ASCII) and stripped of invisible format
+ * characters (zero-width, soft hyphen) and combining marks. It is then cut into alphanumeric tokens at EVERY other
+ * character (space, dot, dash, underscore, slash...), so separators cannot hide a number. A token of 11 or more
+ * characters is scanned for an MBI-shaped window; a run of consecutive tokens whose characters concatenate to
+ * exactly 11 is tested against the exact shape. Matching only whole runs keeps prose, dates and claim numbers from
+ * matching on letters that merely happen to line up. Lookalike letters from other scripts (Cyrillic) do not fold
+ * to ASCII under NFKC and are not caught.
  */
 export function containsMbi(text: string): boolean {
-  const upper = text.toUpperCase().replace(/-/g, "");
-  if (MBI_SHAPE.test(upper)) return true;
-  return upper.length <= SHORT_FIELD_MAX && MBI_SHAPE.test(upper.replace(/\s+/g, ""));
+  const folded = text
+    .normalize("NFKC")
+    .replace(/[\p{Cf}\p{M}]/gu, "")
+    .toUpperCase();
+  const tokens = folded.split(/[^A-Z0-9]+/).filter((t) => t !== "");
+  for (let i = 0; i < tokens.length; i++) {
+    if ((tokens[i] as string).length >= MBI_LENGTH && MBI_WINDOW.test(tokens[i] as string))
+      return true;
+    let run = "";
+    for (let j = i; j < tokens.length && run.length < MBI_LENGTH; j++) {
+      run += tokens[j];
+      if (run.length === MBI_LENGTH && MBI_EXACT.test(run)) return true;
+    }
+  }
+  return false;
 }
