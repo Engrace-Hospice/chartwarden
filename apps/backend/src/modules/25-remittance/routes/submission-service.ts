@@ -404,14 +404,9 @@ export function buildDrizzleSubmissionService(
     );
   }
 
+  /** The claim's patient for the read-audit trail. null only when the claim is not found; a real failure surfaces. */
   async function patientOf(organizationId: string, claimId: string): Promise<string | null> {
-    try {
-      return (
-        (await sources.claims().claimCopyForAppeal(organizationId, claimId))?.patientId ?? null
-      );
-    } catch {
-      return null;
-    }
+    return (await sources.claims().claimCopyForAppeal(organizationId, claimId))?.patientId ?? null;
   }
 
   return {

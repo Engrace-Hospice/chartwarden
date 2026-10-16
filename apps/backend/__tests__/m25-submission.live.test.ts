@@ -1052,6 +1052,17 @@ describe.skipIf(!DB_URL)("M25 submission attempts (milestone 6a) - LIVE Postgres
       expect(body.patientId).toBe(patient);
     });
 
+    it("loses patient attribution only for a missing claim: a real source failure surfaces", async () => {
+      const id = await submittedAppeal();
+      await admin.query("UPDATE appeal_case SET claim_id=$2 WHERE id=$1", [id, randomUUID()]);
+      expect((await sub().getSubmission(A(), "appeal", id)).patientId).toBeNull();
+      const unbound = buildDrizzleSubmissionService(handle.db);
+      expect(await refused(unbound.getSubmission(A(), "appeal", id))).toMatchObject({
+        code: "SEAM_UNBOUND",
+        statusCode: 503,
+      });
+    });
+
     it("reports a case filed before milestone 6 as having no attempt record", async () => {
       const id = await seedAppeal();
       await admin.query(

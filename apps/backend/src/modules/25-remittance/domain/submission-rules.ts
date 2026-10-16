@@ -1,7 +1,10 @@
 // M25 milestone 6a - receipt, approval and recovery rules for a submission attempt. PURE; refusals are reason codes the
 // service turns into typed errors, none carries content.
+import { isAdrTerminal } from "./adr-machine";
+import { isAppealTerminal } from "./appeal-machine";
 import { containsMbi } from "./qic";
 import type { SubmissionStatus } from "./submission";
+import type { AdrState, AppealState } from "./types";
 
 /** The longest confirmation reference accepted (mirrors the filing routes). */
 export const MAX_CONFIRMATION_REF_LENGTH = 200;
@@ -118,13 +121,11 @@ export function checkCancel(input: {
   return input.reason.trim().length < MIN_CANCEL_REASON ? "REASON_REQUIRED" : null;
 }
 
-const TERMINAL_STATES: Readonly<Record<"adr" | "appeal" | "reopening", ReadonlySet<string>>> = {
-  adr: new Set(["withdrawn", "closed", "denied_no_response"]),
-  appeal: new Set(["withdrawn", "closed"]),
-  reopening: new Set(["withdrawn", "closed"]),
-};
+const REOPENING_TERMINAL: ReadonlySet<string> = new Set(["withdrawn", "closed"]);
 
 /** A case that is over no longer waits for its receipt: the proof-missing watch skips it. */
 export function isSubjectTerminal(kind: "adr" | "appeal" | "reopening", state: string): boolean {
-  return TERMINAL_STATES[kind].has(state);
+  if (kind === "adr") return isAdrTerminal(state as AdrState);
+  if (kind === "appeal") return isAppealTerminal(state as AppealState);
+  return REOPENING_TERMINAL.has(state);
 }

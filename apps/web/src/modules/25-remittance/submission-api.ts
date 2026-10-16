@@ -1,6 +1,6 @@
 // apps/web/src/modules/25-remittance — client calls for the submission attempt (hospice ADR/TPE/QIC PRD, milestone 6a):
 // the attempts of an ADR response, an appeal (incl. a QIC escalation request) or a reopening request, recording the
-// receipt of a filing made outside WardenX, and cancelling an attempt that has no receipt. Every refusal is returned
+// receipt of a filing made outside WardenX, (cancel exists on the server as 6b scaffolding and is not called from the UI). Every refusal is returned
 // verbatim as a WriteResult (the server owns each rule); `stepUp` marks the 403 the receipt answers with when the
 // session needs re-verifying. Nothing here sends anything outside WardenX.
 import type { ApiClient, operations } from "@wardenx/ui";

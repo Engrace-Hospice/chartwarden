@@ -138,6 +138,8 @@ function handlersFor(svc: SubmissionService, kind: SubmissionSubjectKind, what: 
   return { get, receipt, cancel };
 }
 
+// The cancel routes are deliberate 6b scaffolding: in 6a every attempt is acknowledged or needs_manual, and a
+// needs_manual attempt on a filed case is never cancellable (PROOF_ONLY_PATH), so nothing calls them yet.
 export function registerAdrSubmissionRoutes(app: FastifyInstance, deps: SubmissionRouteDeps): void {
   const h = handlersFor(deps.submissionService, "adr", "ADR case");
   const submit = P("adr.submit");
