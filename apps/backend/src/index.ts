@@ -1406,6 +1406,7 @@ import {
   registerM35Workers,
   scheduleM35Jobs,
 } from "./modules/35-subscription/index";
+import { createDeliveryRouteReader } from "./modules/36-messaging/ack-delivery-failure/delivery-route-reader-db";
 import { emitWithRecipientFallback } from "./modules/36-messaging/alert-recipient-fallback";
 import {
   invalidateMessageBodyKeys,
@@ -1490,9 +1491,11 @@ import {
   buildM36AccessRevocationPlatformConsumer,
   combineReassignments,
 } from "./modules/36-messaging/outbox-consumers/access-revocation";
+import { buildM36AckDeliveryFailureConsumer } from "./modules/36-messaging/outbox-consumers/ack-delivery-failure";
 import { buildM36AckEscalationNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/ack-escalation-notifications";
 import { buildM36AckNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/ack-notifications";
 import { buildM36AckTimerArmingConsumer } from "./modules/36-messaging/outbox-consumers/ack-timer-arming";
+import { buildM36AckUnreachableNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/ack-unreachable-notifications";
 import { buildM36AdmissionComplianceAlertConsumer } from "./modules/36-messaging/outbox-consumers/admission-compliance-alerts";
 import { buildM36AmendmentSlaAlertConsumer } from "./modules/36-messaging/outbox-consumers/amendment-sla-alerts";
 import { buildM36CapThresholdAlertConsumer } from "./modules/36-messaging/outbox-consumers/cap-threshold-alerts";
@@ -10121,6 +10124,33 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                   messaging: createDbMessagingRouteService(dbHandle.db),
                   readRequest: m36AckEscalation.readRequest,
                   stillQualified: m36Ack.stillQualified,
+                  warn: (message, context) => app.log.warn(context, message),
+                }),
+              ]
+            : []),
+          // WP 4.5 (ADR-0071) - when EVERY out-of-band route to a request's assignee has failed, try the next tier now or mark the
+          // request failed_unreachable (same flag and guarded router as the timer; with the flag off the request is left as it is).
+          ...(m36AckEscalation
+            ? [
+                buildM36AckDeliveryFailureConsumer({
+                  readRoutes: createDeliveryRouteReader(dbHandle.db),
+                  service: m36AckEscalation.deliveryFailure,
+                  warn: (message, context) => app.log.warn(context, message),
+                }),
+              ]
+            : []),
+          // WP 4.5 - a request nobody could be reached for is never silent: the supervisor audience, the sender and the assignee get a
+          // generic in-app alert, and the ops notice sink (log line plus OPS_ALERT_WEBHOOK_URL) is raised.
+          ...(m36Ack && m36AckEscalation
+            ? [
+                buildM36AckUnreachableNotificationsConsumer({
+                  alerts: getSeam("AlertEmitter") as AlertEmitter,
+                  messaging: createDbMessagingRouteService(dbHandle.db),
+                  readRequest: m36AckEscalation.readRequest,
+                  opsNotice: buildPlatformOpsNoticeSink({
+                    webhookUrl: process.env.OPS_ALERT_WEBHOOK_URL,
+                    log: (m) => app.log.warn(m),
+                  }),
                   warn: (message, context) => app.log.warn(context, message),
                 }),
               ]

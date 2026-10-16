@@ -4,11 +4,19 @@
 // with the flag off a due request is left exactly as it is, open and visible (ADR-0070).
 import { runWithRequestContext, systemOrgContext } from "@wardenx/tenancy";
 import { ACK_ESCALATION_TIMERS_FLAG_KEY, type EscalationRouter } from "@wardenx/types";
+import {
+  type DeliveryFailureService,
+  createDeliveryFailureService,
+} from "../ack-delivery-failure/delivery-failure-service";
 import type { AckRow, AckStore } from "../ack-requests/ack-types";
 import type { HintOutboxPort } from "../message-hint-events";
 import { cacheFlagRead } from "../presence/binding";
 import { type GuardOptions, guardEscalationRouter } from "./escalation-router-guard";
-import { type EscalationService, createEscalationService } from "./escalation-service";
+import {
+  type EscalationService,
+  createEscalationService,
+  createTierDecider,
+} from "./escalation-service";
 import type { EscalationTimerPort } from "./escalation-timers";
 
 export interface EscalationBindingInput {
@@ -32,6 +40,8 @@ export interface EscalationBindingInput {
 export interface EscalationBinding {
   readonly isEnabled: (organizationId: string) => Promise<boolean>;
   readonly service: EscalationService;
+  /** WP 4.5 (ADR-0071): early escalation / `failed_unreachable` when every out-of-band route to the assignee failed. Same flag, same guarded router. */
+  readonly deliveryFailure: DeliveryFailureService;
   /** A tenant-scoped read of the request (no acting user), for the consumers' stale-event checks. */
   readonly readRequest: (orgId: string, requestId: string) => Promise<AckRow | null>;
   /** Arms the timer for the request's CURRENT window if it is still waiting. Idempotent; a throw means "not armed" (retry). */
@@ -56,20 +66,29 @@ export function buildEscalationBinding(input: EscalationBindingInput): Escalatio
       ? (await input.flags.forOrg(organizationId))[ACK_ESCALATION_TIMERS_FLAG_KEY] === true
       : false,
   );
+  const router = guardEscalationRouter(inOrgScope(input.router), input.routerGuard);
   const service = createEscalationService({
     store: input.store,
     isEnabled,
-    router: guardEscalationRouter(inOrgScope(input.router), input.routerGuard),
+    router,
     stillQualified: input.stillQualified,
     outbox: input.outbox,
     now,
     ...(input.onError ? { onError: input.onError } : {}),
+  });
+  const deliveryFailure = createDeliveryFailureService({
+    store: input.store,
+    isEnabled,
+    decide: createTierDecider({ router, stillQualified: input.stillQualified }),
+    outbox: input.outbox,
+    now,
   });
   const readRequest = (orgId: string, requestId: string) =>
     input.store.readAsSystem(orgId, (tx) => tx.findById(requestId, false));
   return {
     isEnabled,
     service,
+    deliveryFailure,
     readRequest,
     async armFromRequest(orgId, requestId) {
       if (!input.timers) return;

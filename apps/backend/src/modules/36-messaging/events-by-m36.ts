@@ -158,6 +158,12 @@ const ACK_EVENT_ENTRIES = [
       typeOccurrence: Type.Integer({ minimum: 1 }),
     },
   ),
+  // WP 4.5 (ADR-0071): written by the delivery-failure handler (actorUserId null). Ids only.
+  ackEntry(
+    "m36.ack.failed_unreachable",
+    "Every out-of-band delivery route to the assignee failed and no further tier could be reached, so nobody is known to have been reached (WP 4.5, ADR-0071). The request stays open and can still be acknowledged, reassigned or resolved by a person. M36 tells the supervisor audience, the sender and the assignee in-app, generically, and raises an ops notice. Not a page, not the emergency path.",
+    ["m36"],
+  ),
 ];
 
 export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
@@ -512,7 +518,9 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
     // (operational surfacing only, no ledger effect) and this event still has no real producer (see
     // this file's header) — binding it does not make a delivery observable yet, it only makes the
     // catalog/binding agreement true instead of false.
-    declaredConsumers: ["m19", "m20", "m26"],
+    // WP 4.5 (ADR-0071) — m36 ADDED: a failed route to an acknowledgment request's assignee is handled by
+    // `outbox-consumers/ack-delivery-failure.ts` (only for the alert types that carry a request).
+    declaredConsumers: ["m19", "m20", "m26", "m36"],
     isOutboxOnly: true,
   },
 ];

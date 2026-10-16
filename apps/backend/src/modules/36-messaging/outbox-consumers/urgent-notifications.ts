@@ -73,6 +73,8 @@ export function buildM36UrgentNotificationsConsumer(deps: {
           recipientUserId,
           channelId,
           messageId,
+          // The message the alert is ABOUT (read back by `m36.notification.delivery_failed`, WP 4.5).
+          sourceAggregateId: messageId,
           message: URGENT_NOTIFICATION_TEXT,
           deepLink: `/messaging?channelId=${encodeURIComponent(channelId)}&messageId=${encodeURIComponent(messageId)}`,
         },

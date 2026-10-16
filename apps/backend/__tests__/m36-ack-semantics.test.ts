@@ -67,6 +67,10 @@ const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
     "WP 4.4 the in-app alerts of an escalated or unrouted acknowledgment request (never a receipt)",
   "apps/backend/src/modules/36-messaging/outbox-consumers/ack-timer-arming.ts":
     "WP 4.4 arms the escalation timer of an acknowledgment request (never a receipt)",
+  "apps/backend/src/modules/36-messaging/outbox-consumers/ack-delivery-failure.ts":
+    "WP 4.5 turns a failed out-of-band route to the assignee of an acknowledgment request into an early escalation or failed_unreachable (never a receipt)",
+  "apps/backend/src/modules/36-messaging/outbox-consumers/ack-unreachable-notifications.ts":
+    "WP 4.5 the in-app alert and ops notice for an acknowledgment request nobody could be reached for (never a receipt)",
   "packages/messaging/src/jobs/queues.ts":
     "WP 4.4 names the two escalation queues of the acknowledgment-request aggregate (ack_escalation_timer / _sweep)",
   "packages/messaging/src/index.ts": "WP 4.2 re-exports the pure acknowledgment-request rules",
@@ -85,6 +89,8 @@ const WORDING_ALLOWLIST_PREFIXES: Readonly<Record<string, string>> = {
     "WP 4.2 the acknowledgment-request aggregate itself (service, store, events, binding): an explicit action by the assigned clinician, never a receipt",
   "packages/messaging/src/ack-requests/":
     "WP 4.2 the pure state machine and deadline rules of the acknowledgment-request aggregate (and WP 4.4's timer rules)",
+  "apps/backend/src/modules/36-messaging/ack-delivery-failure/":
+    "WP 4.5 what happens to an acknowledgment request when every route to its assignee failed: a failed delivery is never an acknowledgment, it is the opposite",
   "apps/backend/src/modules/36-messaging/ack-escalation/":
     "WP 4.4 the escalation timers of the acknowledgment-request aggregate: what happens when nobody took responsibility in time",
 };

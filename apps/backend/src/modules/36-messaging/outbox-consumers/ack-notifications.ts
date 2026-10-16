@@ -90,6 +90,8 @@ export function buildM36AckNotificationsConsumer(deps: {
           recipientUserId: assignedUserId,
           channelId,
           messageId,
+          // The message the alert is ABOUT (read back by `m36.notification.delivery_failed`, WP 4.5).
+          sourceAggregateId: messageId,
           message:
             event.eventType === M36_ACK_REQUESTED
               ? ACK_NOTIFICATION_TEXT.requested

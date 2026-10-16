@@ -5,6 +5,7 @@
 - **Phase:** Messaging Hub Phase 4 (WP 4.4, Durable timers and backup routing).
 - **Implements:** [ADR-0057](ADR-0057-escalation-ownership-m19-m36.md) decision 4 ("timers stay in M36") and the fall-back note of item 11 (record the resolved tier and assignee on the request; never re-derive ownership from a clock).
 - **Extends:** [ADR-0069](ADR-0069-messaging-acknowledgment-request-aggregate.md) (the `escalated` status, written only here; the update-guard trigger and the transition table, unchanged), [ADR-0056](ADR-0056-clinical-acknowledgment-vs-read-receipts.md) (D4 per-tier windows).
+- **Followed by:** [ADR-0071](ADR-0071-messaging-delivery-failure-handling.md) (WP 4.5: early escalation on a failed route and `failed_unreachable`, which this ADR never writes).
 - **Related:** [ADR-0068](ADR-0068-messaging-urgency-model.md), [ADR-0010](ADR-0010-tenancy-rls-invariants.md), [ADR-0011](ADR-0011-ownership-inversion-rls-bypass.md).
 
 ## Context

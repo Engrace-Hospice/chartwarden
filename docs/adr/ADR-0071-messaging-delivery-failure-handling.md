@@ -1,0 +1,62 @@
+# ADR-0071 — Delivery-failure handling: when every out-of-band route to the assignee has failed, try the next tier now or mark the request `failed_unreachable`, as one guarded write by the system actor, and make it loud
+
+- **Status:** **Accepted** (2026-10-15; decisions closed in the WP 4.5 blueprint). **The reading of "all routes failed", the wording and the supervisor audience are PROVISIONAL: no clinical-lead sign-off is recorded** (`docs/messaging-hub/brief-clinical-lead-signoff.md`, section 6). The action ships behind the existing ops flag `messaging.escalation_timers` (default off for every tenant). ADR-0057 stays **Proposed** (no M19 owner is named).
+- **Date:** 2026-10-15
+- **Phase:** Messaging Hub Phase 4 (WP 4.5, Delivery-failure handling).
+- **Implements:** [ADR-0057](ADR-0057-escalation-ownership-m19-m36.md) decision 5 (failure behaviour: "all delivery routes to the current tier failed: advance without waiting for the deadline"; `failed_unreachable` creates a supervisor work item and an ops page and stays open until a human resolves or reassigns) and [ADR-0056](ADR-0056-clinical-acknowledgment-vs-read-receipts.md) (the `delivery_failed` history type and the `failed_unreachable` state).
+- **Extends:** [ADR-0070](ADR-0070-messaging-escalation-timers.md) (the ladder walk and the one escalation write are reused, not copied), [ADR-0069](ADR-0069-messaging-acknowledgment-request-aggregate.md) (the update guard: migration 1115 makes the system actor the only writer of `failed_unreachable`).
+- **Related:** [ADR-0010](ADR-0010-tenancy-rls-invariants.md), [ADR-0011](ADR-0011-ownership-inversion-rls-bypass.md).
+
+## Context
+
+`docs/messaging-hub/04-phases-4-to-6.md` WP 4.5: "Subscribe to `m36.delivery_failed`; failed primary route triggers next channel immediately (not only at deadline); all-routes-failed -> `failed_unreachable` -> supervisor work item + ops page. Done when: a simulated push+SMS outage produces an actionable supervisor item within the configured window."
+
+What exists, checked in the code:
+
+- The event is `m36.notification.delivery_failed` (the plan's `m36.delivery_failed` is a spelling M19 and M20 already corrected). `delivery/delivery-settlement.ts` publishes it in the same transaction that settles a `notification_delivery` row `failed` (dispatcher retries exhausted, a non-retryable vendor refusal, no verified endpoint, the fail-closed `transport_not_configured` deny-stub, or a vendor webhook). Its payload carries `notificationId`, `channel`, `alertEventType` and `sourceAggregateId` (the id the alert was ABOUT, read from `alert.payload`).
+- Channels are `in_app | push | sms | email | voice`. Fan-out is **additive and parallel**: the in-app floor plus every channel the recipient's routing map names are created at once. There is no sequential "primary then fallback" channel per person, and no seam to add a channel to an existing alert.
+- **Every acknowledgment-request alert is seeded `channelsOverride: ["in_app"]`** (WP 4.1 - 4.4: out-of-band delivery is WP 4.6). So today no `notification_delivery` row of a request alert is out-of-band, no failure event can occur for one, and this WP is correct, tested plumbing that waits for 4.6 to feed it. Nothing here invents a delivery vendor or a channel.
+- The update guard (1114) already allowed `pending|escalated -> failed_unreachable` and `failed_unreachable -> acknowledged|resolved|pending|cancelled`, but allowed **any actor** to write the former.
+- The "supervisor work item" does not exist as a table; the unacknowledged queue is WP 4.9. The "ops page" is the existing org-less platform-ops notice sink (an always-on log line plus the optional `OPS_ALERT_WEBHOOK_URL` webhook), the same sink M40 uses.
+
+## Decision
+
+1. **A route is an out-of-band delivery row of the alert that tells the ASSIGNEE about the request.** Only `m36.message.urgent_sent`, `m36.ack.requested`, `m36.ack.reassigned` and `m36.ack.escalated` count (a reminder to the sender, or the supervisors' own alert, failing is not a failed route to the person who owes the response). The in-app floor never counts as a live route: an inbox entry is not proof anyone was reached. To correlate, those four alerts now carry `sourceAggregateId` = the message id (one request per message).
+2. **"Next channel" is the next tier.** Because fan-out already tried every configured channel in parallel, the next route for the same person does not exist. When **every** out-of-band delivery of that alert to that recipient is terminally `failed` (at least one exists), the request is handled **now**, not at the deadline: the failure consumer asks the same ladder walk as the timer (`createTierDecider`, over the org-checking router guard). A route still `pending`, `sent`, `delivered`, held for quiet hours or forwarded keeps the request waiting; the last failure's event re-evaluates, and the deadline timer remains the backstop.
+3. **Routed -> escalate immediately** with the timer's own write (`writeEscalation`: row lock, same-version update, `escalated` history row, id-only `m36.ack.escalated`), plus a `delivery_failed` history row recording why.
+4. **Not routed (today the deny-stub, a coverage gap, nobody qualified, or no further tier) -> `failed_unreachable`.** One transaction: row locked `FOR UPDATE`, re-checked (still `pending`/`escalated`, same version, still assigned to the user whose routes failed, the failed alert not older than the current window), `UPDATE ... WHERE version = <read>`, a `delivery_failed` history row (system actor, `to_status = failed_unreachable`) and the id-only event `m36.ack.failed_unreachable`. Assignee, tier, deadline and window are unchanged. A duplicate event, a retry or two workers find the request no longer waiting and write nothing; an acknowledgment racing it wins in either order (the loser sees a changed version or status). A router or database error is rethrown so the outbox retries and dead-letters.
+5. **Who may write it: the system actor only (migration 1115).** The update guard is replaced once more (`CREATE OR REPLACE`, SECURITY DEFINER, pinned search_path) so that `failed_unreachable` is refused unless `app.user_id` is empty. Nothing else in the guard changes. No table, enum value, grant or policy is added. Like ADR-0069 D3, the actor binding is a backstop against application bugs, not a defence against a compromised application role.
+6. **`failed_unreachable` is open, not terminal.** The assignee can still acknowledge it (the in-app alert may have been seen), the sender or assignee can reassign it (back to `pending` with a new window, re-armed by the existing consumer), anyone allowed can resolve or cancel it as for any open request. A request never ends with no open owner.
+7. **Loud, never silent.** The `m36.ack.failed_unreachable` consumer (a) raises the ops notice (ids and the class only, first and unconditionally) and (b) emits one generic in-app alert, seeded `in_app` only, to the supervisor audience (role keys `clinical_supervisor`, `don`, copied from `m36.ack.ladder_exhausted`; tenants re-aim it in the alert-rule admin), the sender and the assignee, while the request is still `failed_unreachable` at the event's version. This alert is the supervisor work item until the unacknowledged queue (WP 4.9) lists the request itself. The text says the message could not be delivered and that nobody is known to have received it; it never says anyone was reached.
+8. **Flag.** The same ops flag as the timer, `messaging.escalation_timers` (the early escalation IS an escalation, and a request is only ever escalated or marked unreachable where the tenant has opted in). Off: the request is left exactly as it is. No new flag. All messaging flags stay off for every tenant.
+9. **The web card** shows `failed_unreachable` as "Could not be delivered" with one honest detail line and keeps the assignee's explicit "Take responsibility" button.
+
+## Data model
+
+Migration `1115_m36_ack_delivery_failure.sql`: the update guard only. History uses the existing `delivery_failed` event type; the state is the existing `failed_unreachable`. The seeded alert rule `m36.ack.failed_unreachable` is platform data upserted at boot, like its siblings.
+
+## Alternatives considered
+
+- **A new `failed_unreachable` history event type.** Rejected: `delivery_failed` already exists in the enum and the guard checks the resulting status, so `delivery_failed` with `to_status = failed_unreachable` says it exactly, with no migration beyond the guard.
+- **Mark `failed_unreachable` on the first failed route.** Rejected: a push failure beside a working SMS would page the supervisors for a person who was reached.
+- **Count the in-app floor as a route.** Rejected: it is always "delivered" to an inbox, so the rule could never fire, and an inbox row is the very thing ADR-0056 says is not a response.
+- **A new flag.** Rejected: one flag per routing action is enough; the early escalation and the unreachable state are the same family as the timer.
+- **A `supervisor_work_item` table now.** Rejected (YAGNI): WP 4.9 owns the queue and its screen; the request in `failed_unreachable` plus the supervisor alert is the item. Revisit with 4.9.
+- **A named fallback recipient when the seam throws (ADR-0057 item 5, second bullet).** Deferred: no seam supports "assign to the tenant's supervisor role" without inventing an assignee, and the update guard requires an active member. Today the supervisor audience is told by alert, which is not an assignment. Open for the clinical lead and the M19 owner.
+
+## Consequences
+
+- With the production deny-stub and out-of-band channels not yet enabled, nothing changes today: the handler never fires. The first tenant with a real push or SMS route and the flag on gets the behaviour.
+- Fan-out may be reshaped by WP 4.6 (urgency-based channel policy). If a sequential fallback is introduced there, this consumer's "every out-of-band route failed" test is the place to adapt, not a new mechanism.
+- A dead-lettered failure event (router down for the whole retry budget) leaves the request waiting; the deadline timer then handles it with `route_unavailable` as in WP 4.4.
+- A delivery row's recipient is a user id; a vacation-forwarded route (`forwarded`) counts as open, so a forwarded request waits for the backup's outcome.
+
+## Verification
+
+Unit: the service over the in-memory store (early escalation, `failed_unreachable`, idempotency, concurrency, ack-first, not-assignee, stale window, flag off, router error), the consumers (which alerts and which route sets count), the notification text. Static (`m36-ack-delivery-failure-static.test.ts`): one writer each for the status, the history row and the event; no M19 import; no vendor named. Pin (`m36-ack-migration-pin.test.ts`): the 1115 guard against `ACK_TRANSITIONS`. Live as `wardenx_app` (`m36-ack-delivery-failure.live.test.ts`): a simulated push+SMS outage through the real settlement and event, a bound router, replay and 8-way concurrency, acknowledge versus failure in both orders and concurrently, tenant isolation, the database refusing a person.
+
+## Open questions
+
+- Clinical lead: is "every out-of-band route failed" the right trigger, or should one failed route to an urgent request already count? Is the supervisor audience right (roles, and told at once or after a delay)? Wording of the card and the alert.
+- M19 owner (ADR-0057): the named fallback recipient when the router throws; whether `m19.oncall_shift.coverage_gap` should also feed `failed_unreachable`.
+- WP 4.6: the channel policy decides which routes exist; revisit "parallel fan-out" if it becomes sequential.

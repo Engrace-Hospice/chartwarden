@@ -33,7 +33,7 @@ import {
   M36_ACK_ROUTE_UNAVAILABLE,
   publishAckEvent,
 } from "../ack-requests/ack-events";
-import { type AckRow, AckStaleError, type AckStore } from "../ack-requests/ack-types";
+import { type AckRow, AckStaleError, type AckStore, type AckTx } from "../ack-requests/ack-types";
 import type { HintOutboxPort } from "../message-hint-events";
 
 export type NotRoutedReason = "route_unavailable" | "ladder_exhausted";
@@ -87,7 +87,7 @@ export interface ExpectedWindow {
   readonly deadlineAt: Date;
 }
 
-type Decision =
+export type Decision =
   | { readonly kind: "routed"; readonly tier: number; readonly userId: string }
   | { readonly kind: "none"; readonly reason: NotRoutedReason };
 
@@ -102,15 +102,18 @@ export interface EscalationService {
   sweep(orgId: string): Promise<SweepSummary>;
 }
 
-export function createEscalationService(deps: EscalationDeps): EscalationService {
-  const now = deps.now ?? (() => new Date());
-
+/**
+ * WP 4.4 / 4.5: the ladder walk, shared by the deadline timer and the delivery-failure handler so both ask the router the same way.
+ */
+export function createTierDecider(
+  deps: Pick<EscalationDeps, "router" | "stillQualified">,
+): (orgId: string, row: AckRow, asOf: string) => Promise<Decision> {
   /**
    * Walks the ladder from the next tier up. A tier with a gap, or whose people are all unusable (the sender, the assignee who did
    * not act, someone no longer qualified), is skipped to the router's `nextTier`; the end of the ladder is `ladder_exhausted` only
    * when the router says the tier does not exist. Lookup errors propagate.
    */
-  async function decide(orgId: string, row: AckRow, asOf: string): Promise<Decision> {
+  return async function decide(orgId: string, row: AckRow, asOf: string): Promise<Decision> {
     let tier = row.currentTier + 1;
     for (let hops = 0; hops < ESCALATION_MAX_TIER && tier <= ESCALATION_MAX_TIER; hops += 1) {
       const answer = await deps.router.resolveTier(orgId, {
@@ -138,22 +141,80 @@ export function createEscalationService(deps: EscalationDeps): EscalationService
       tier = answer.nextTier;
     }
     return NONE_UNAVAILABLE;
-  }
+  };
+}
 
-  function factsFor(row: AckRow, extra: Partial<AckEventFacts>, at: Date): AckEventFacts {
-    return {
-      orgId: row.organizationId,
-      requestId: row.id,
-      messageId: row.messageId,
-      channelId: row.channelId,
-      ackClass: row.ackClass,
-      assignedUserId: row.assignedUserId,
-      actorUserId: null,
-      version: row.version,
+export function ackFactsFor(row: AckRow, extra: Partial<AckEventFacts>, at: Date): AckEventFacts {
+  return {
+    orgId: row.organizationId,
+    requestId: row.id,
+    messageId: row.messageId,
+    channelId: row.channelId,
+    ackClass: row.ackClass,
+    assignedUserId: row.assignedUserId,
+    actorUserId: null,
+    version: row.version,
+    at,
+    ...extra,
+  };
+}
+
+/**
+ * The ONE escalation write (WP 4.4, reused by WP 4.5's early escalation): hand the locked, re-checked request to the tier's user,
+ * start that tier's window, append the history row and publish the id-only event, all in the caller's transaction.
+ */
+export async function writeEscalation(
+  tx: AckTx,
+  rawTx: unknown,
+  outbox: HintOutboxPort | undefined,
+  row: AckRow,
+  routed: { readonly tier: number; readonly userId: string },
+  at: Date,
+): Promise<EscalationOutcome & { readonly kind: "escalated" }> {
+  const next = await tx.escalate(row.id, row.version, {
+    assignedUserId: routed.userId,
+    tier: routed.tier,
+    windowMinutes: tierWindowMinutes(row.ackClass, routed.tier),
+    updatedAt: at,
+  });
+  await tx.insertEvent({
+    organizationId: row.organizationId,
+    requestId: row.id,
+    eventType: "escalated",
+    actorUserId: null,
+    fromStatus: row.status,
+    toStatus: "escalated",
+    assignedUserId: next.assignedUserId,
+    previousAssignedUserId: row.assignedUserId,
+    tier: next.currentTier,
+    at,
+  });
+  await publishAckEvent(
+    outbox,
+    rawTx,
+    M36_ACK_ESCALATED,
+    ackFactsFor(
+      next,
+      {
+        previousAssignedUserId: row.assignedUserId,
+        tier: next.currentTier,
+        deadlineAt: next.deadlineAt,
+      },
       at,
-      ...extra,
-    };
-  }
+    ),
+  );
+  return {
+    kind: "escalated",
+    requestId: row.id,
+    tier: next.currentTier,
+    assignedUserId: next.assignedUserId,
+    deadlineAt: next.deadlineAt,
+  };
+}
+
+export function createEscalationService(deps: EscalationDeps): EscalationService {
+  const now = deps.now ?? (() => new Date());
+  const decide = createTierDecider(deps);
 
   async function settle(
     orgId: string,
@@ -171,47 +232,8 @@ export function createEscalationService(deps: EscalationDeps): EscalationService
       ) {
         return { kind: "stale" };
       }
-      if (decision.kind === "routed") {
-        const next = await tx.escalate(row.id, row.version, {
-          assignedUserId: decision.userId,
-          tier: decision.tier,
-          windowMinutes: tierWindowMinutes(row.ackClass, decision.tier),
-          updatedAt: at,
-        });
-        await tx.insertEvent({
-          organizationId: orgId,
-          requestId: row.id,
-          eventType: "escalated",
-          actorUserId: null,
-          fromStatus: row.status,
-          toStatus: "escalated",
-          assignedUserId: next.assignedUserId,
-          previousAssignedUserId: row.assignedUserId,
-          tier: next.currentTier,
-          at,
-        });
-        await publishAckEvent(
-          deps.outbox,
-          rawTx,
-          M36_ACK_ESCALATED,
-          factsFor(
-            next,
-            {
-              previousAssignedUserId: row.assignedUserId,
-              tier: next.currentTier,
-              deadlineAt: next.deadlineAt,
-            },
-            at,
-          ),
-        );
-        return {
-          kind: "escalated",
-          requestId: row.id,
-          tier: next.currentTier,
-          assignedUserId: next.assignedUserId,
-          deadlineAt: next.deadlineAt,
-        };
-      }
+      if (decision.kind === "routed")
+        return writeEscalation(tx, rawTx, deps.outbox, row, decision, at);
       const history = (await tx.unroutedSummary([row])).get(row.id);
       const count = history?.count ?? 0;
       if (history && !unroutedShouldRecord(count, history.lastAt.getTime(), at.getTime())) {
@@ -236,7 +258,7 @@ export function createEscalationService(deps: EscalationDeps): EscalationService
         decision.reason === "ladder_exhausted"
           ? M36_ACK_LADDER_EXHAUSTED
           : M36_ACK_ROUTE_UNAVAILABLE,
-        factsFor(
+        ackFactsFor(
           row,
           {
             tier,

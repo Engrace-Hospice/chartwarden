@@ -28,6 +28,7 @@ import {
   ACK_STATUS_TEXT,
   ACK_TAKE_LABEL,
   ACK_TOO_MANY_TEXT,
+  ACK_UNREACHABLE_TEXT,
 } from "./ack-wording";
 import { ACK_POLL_MS, ACK_RELOAD_TIMEOUT_MS, useAckRequests } from "./use-ack-requests";
 
@@ -860,6 +861,46 @@ describe("ack request card - escalation (WP 4.4)", () => {
 
     expect(screen.queryByText(ACK_NOTE_TEXT.route_unavailable)).toBeNull();
     expect(screen.queryByText(ACK_NOTE_TEXT.ladder_exhausted)).toBeNull();
+  });
+});
+
+// WP 4.5: a request nobody could be reached for says so plainly, never claims anyone received it, and still lets the assignee act.
+describe("ack request card - failed_unreachable (WP 4.5)", () => {
+  const unreachable = (over: Partial<AckRequestDto> = {}) =>
+    request({ status: "failed_unreachable", ...over });
+
+  it("shows the honest status and detail, no 'Respond by' line, and the one explicit action for the assignee", async () => {
+    mount({ get: () => ok([unreachable()]) });
+
+    expect(await takeButton()).toBeTruthy();
+    expect(screen.getByRole("group", { name: ACK_STATUS_TEXT.failed_unreachable })).toBeTruthy();
+    expect(screen.getByText(ACK_UNREACHABLE_TEXT)).toBeTruthy();
+    expect(screen.queryByText(/Respond by|Overdue/)).toBeNull();
+    expect((await axe.run(document.body)).violations).toEqual([]);
+  });
+
+  it("never implies anyone was reached", () => {
+    const text = `${ACK_STATUS_TEXT.failed_unreachable} ${ACK_UNREACHABLE_TEXT}`;
+
+    expect(text).toMatch(/could not be delivered/i);
+    expect(text).toMatch(/nobody is known to have received it/i);
+    expect(text).not.toMatch(
+      /\b(was|were|has been|have been) (reached|notified|alerted|delivered)\b/i,
+    );
+  });
+
+  it("offers no button to someone who is not the assignee", async () => {
+    mount({
+      get: () =>
+        ok([
+          unreachable({
+            viewer_actions: { can_acknowledge: false, can_reassign: true, can_resolve: false },
+          }),
+        ]),
+    });
+
+    expect(await screen.findByText(ACK_UNREACHABLE_TEXT)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Take responsibility/ })).toBeNull();
   });
 });
 

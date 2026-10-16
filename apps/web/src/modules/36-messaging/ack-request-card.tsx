@@ -26,6 +26,7 @@ import {
   ACK_STALE_TEXT,
   ACK_STATUS_TEXT,
   ACK_TAKE_LABEL,
+  ACK_UNREACHABLE_TEXT,
   ACK_WAIT_LOAD_TEXT,
   ACK_WORKING_TEXT,
   closeName,
@@ -130,6 +131,9 @@ export function AckRequestCard({
       ) : null}
       {waiting && request.escalation_note ? (
         <p className="wx-ack-detail">{ACK_NOTE_TEXT[request.escalation_note]}</p>
+      ) : null}
+      {request.status === "failed_unreachable" ? (
+        <p className="wx-ack-detail">{ACK_UNREACHABLE_TEXT}</p>
       ) : null}
       {request.status === "acknowledged" && request.acknowledged_at ? (
         <p className="wx-ack-detail">

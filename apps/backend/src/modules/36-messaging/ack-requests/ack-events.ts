@@ -14,6 +14,8 @@ export const M36_ACK_CANCELLED = "m36.ack.cancelled";
 export const M36_ACK_ESCALATED = "m36.ack.escalated";
 export const M36_ACK_ROUTE_UNAVAILABLE = "m36.ack.route_unavailable";
 export const M36_ACK_LADDER_EXHAUSTED = "m36.ack.ladder_exhausted";
+// WP 4.5 (ADR-0071): written by the delivery-failure handler, never by a person.
+export const M36_ACK_FAILED_UNREACHABLE = "m36.ack.failed_unreachable";
 
 export type AckEventName =
   | typeof M36_ACK_REQUESTED
@@ -23,7 +25,8 @@ export type AckEventName =
   | typeof M36_ACK_CANCELLED
   | typeof M36_ACK_ESCALATED
   | typeof M36_ACK_ROUTE_UNAVAILABLE
-  | typeof M36_ACK_LADDER_EXHAUSTED;
+  | typeof M36_ACK_LADDER_EXHAUSTED
+  | typeof M36_ACK_FAILED_UNREACHABLE;
 
 export interface AckEventFacts {
   readonly orgId: string;
