@@ -31,6 +31,8 @@ export const SubmissionReceiptRequestSchema = Type.Object({
 
 export const SubmissionCancelRequestSchema = Type.Object({
   attemptId: Type.String({ format: "uuid" }),
+  /** Why the attempt is cancelled (at least 10 characters). */
+  reason: Type.String({ minLength: 10, maxLength: 500 }),
 });
 
 export const SubmissionReceiptResultSchema = Type.Object({
@@ -73,6 +75,7 @@ const AttemptSchema = Type.Object({
 export const SubmissionViewSchema = Type.Object({
   subjectKind: Type.String(),
   subjectId: Type.String(),
+  patientId: NULLABLE_STRING,
   attempts: Type.Array(AttemptSchema),
   proofMissing: Type.Boolean(),
   noAttemptRecord: Type.Boolean(),
@@ -127,6 +130,7 @@ function handlersFor(svc: SubmissionService, kind: SubmissionSubjectKind, what: 
         kind,
         idOf(request),
         body.attemptId,
+        body.reason,
         ifMatchVersion(request),
       ),
     );
@@ -141,7 +145,13 @@ export function registerAdrSubmissionRoutes(app: FastifyInstance, deps: Submissi
     "/api/v1/adrs/:id/submission",
     {
       preHandler: [P("adr.read")],
-      config: { auditRead: { resourceKind: "adr_case", resourceIdParam: "id" } },
+      config: {
+        auditRead: {
+          resourceKind: "adr_case",
+          resourceIdParam: "id",
+          patientIdPayloadPath: "patientId",
+        },
+      },
     },
     h.get,
   );
@@ -152,7 +162,7 @@ export function registerAdrSubmissionRoutes(app: FastifyInstance, deps: Submissi
   );
   app.post(
     "/api/v1/adrs/:id/submission-cancel",
-    { preHandler: [submit, IDEMPOTENT] },
+    { preHandler: [submit, STEP_UP("adr.submit"), IDEMPOTENT] },
     (request, reply) => h.cancel(request, reply, request.body),
   );
 }
@@ -167,7 +177,13 @@ export function registerAppealSubmissionRoutes(
     "/api/v1/appeals/:id/submission",
     {
       preHandler: [P("appeal.read")],
-      config: { auditRead: { resourceKind: "appeal", resourceIdParam: "id" } },
+      config: {
+        auditRead: {
+          resourceKind: "appeal",
+          resourceIdParam: "id",
+          patientIdPayloadPath: "patientId",
+        },
+      },
     },
     h.get,
   );
@@ -178,7 +194,7 @@ export function registerAppealSubmissionRoutes(
   );
   app.post(
     "/api/v1/appeals/:id/submission-cancel",
-    { preHandler: [submit, IDEMPOTENT] },
+    { preHandler: [submit, STEP_UP("appeal.submit"), IDEMPOTENT] },
     (request, reply) => h.cancel(request, reply, request.body),
   );
 }
@@ -193,7 +209,13 @@ export function registerReopeningSubmissionRoutes(
     "/api/v1/reopenings/:id/submission",
     {
       preHandler: [P("reopening.read")],
-      config: { auditRead: { resourceKind: "reopening_case", resourceIdParam: "id" } },
+      config: {
+        auditRead: {
+          resourceKind: "reopening_case",
+          resourceIdParam: "id",
+          patientIdPayloadPath: "patientId",
+        },
+      },
     },
     h.get,
   );
@@ -204,7 +226,7 @@ export function registerReopeningSubmissionRoutes(
   );
   app.post(
     "/api/v1/reopenings/:id/submission-cancel",
-    { preHandler: [submit, IDEMPOTENT] },
+    { preHandler: [submit, STEP_UP("reopening.submit"), IDEMPOTENT] },
     (request, reply) => h.cancel(request, reply, request.body),
   );
 }

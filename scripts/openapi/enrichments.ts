@@ -8269,7 +8269,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M25SubmissionReceiptResultSchema,
   },
   "POST /api/v1/adrs/:id/submission-cancel": {
-    summary: "Cancel a submission attempt that has not been acknowledged (If-Match)",
+    summary:
+      "Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match)",
     body: M25SubmissionCancelRequestSchema,
     response: M25SubmissionVersionedResultSchema,
   },
@@ -8285,7 +8286,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M25SubmissionReceiptResultSchema,
   },
   "POST /api/v1/appeals/:id/submission-cancel": {
-    summary: "Cancel a submission attempt that has not been acknowledged (If-Match)",
+    summary:
+      "Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match)",
     body: M25SubmissionCancelRequestSchema,
     response: M25SubmissionVersionedResultSchema,
   },
@@ -8301,7 +8303,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M25SubmissionReceiptResultSchema,
   },
   "POST /api/v1/reopenings/:id/submission-cancel": {
-    summary: "Cancel a submission attempt that has not been acknowledged (If-Match)",
+    summary:
+      "Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match)",
     body: M25SubmissionCancelRequestSchema,
     response: M25SubmissionVersionedResultSchema,
   },

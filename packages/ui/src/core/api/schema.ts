@@ -2671,7 +2671,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Cancel a submission attempt that has not been acknowledged (If-Match) */
+        /** Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match) */
         post: operations["postApiV1AdrsByIdSubmissioncancel"];
         delete?: never;
         options?: never;
@@ -3511,7 +3511,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Cancel a submission attempt that has not been acknowledged (If-Match) */
+        /** Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match) */
         post: operations["postApiV1AppealsByIdSubmissioncancel"];
         delete?: never;
         options?: never;
@@ -20555,7 +20555,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Cancel a submission attempt that has not been acknowledged (If-Match) */
+        /** Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match) */
         post: operations["postApiV1ReopeningsByIdSubmissioncancel"];
         delete?: never;
         options?: never;
@@ -32590,6 +32590,7 @@ export interface operations {
                     "application/json": {
                         subjectKind: string;
                         subjectId: string;
+                        patientId: string | null;
                         attempts: {
                             id: string;
                             purpose: string;
@@ -32646,6 +32647,7 @@ export interface operations {
                 "application/json": {
                     /** Format: uuid */
                     attemptId: string;
+                    reason: string;
                 };
             };
         };
@@ -34786,6 +34788,7 @@ export interface operations {
                     "application/json": {
                         subjectKind: string;
                         subjectId: string;
+                        patientId: string | null;
                         attempts: {
                             id: string;
                             purpose: string;
@@ -34842,6 +34845,7 @@ export interface operations {
                 "application/json": {
                     /** Format: uuid */
                     attemptId: string;
+                    reason: string;
                 };
             };
         };
@@ -84561,6 +84565,7 @@ export interface operations {
                     "application/json": {
                         subjectKind: string;
                         subjectId: string;
+                        patientId: string | null;
                         attempts: {
                             id: string;
                             purpose: string;
@@ -84617,6 +84622,7 @@ export interface operations {
                 "application/json": {
                     /** Format: uuid */
                     attemptId: string;
+                    reason: string;
                 };
             };
         };

@@ -704,27 +704,70 @@ describe.skipIf(!DB_URL)("M25 submission attempts (milestone 6a) - LIVE Postgres
 
   // ── cancel, one live attempt, the CHECKs ───────────────────────────────────────────────────────────────────
   describe("lifecycle guards", () => {
-    it("cancels a needs_manual attempt once, never an acknowledged one, and a cancelled one is frozen", async () => {
+    const cancelCall = (
+      segment: string,
+      id: string,
+      attemptId: string,
+      version: number,
+      over: { stepUp?: boolean; reason?: string; who?: [string, string, string] } = {},
+    ) => {
+      const who = over.who ?? [ORG, userA, memberA];
+      return app.inject({
+        method: "POST",
+        url: `/api/v1/${segment}/${id}/submission-cancel`,
+        headers: {
+          ...as(who[0], who[1], who[2], over.stepUp ?? true),
+          "idempotency-key": randomUUID(),
+          "if-match": String(version),
+        },
+        payload: { attemptId, reason: over.reason ?? "Entered against the wrong claim" },
+      });
+    };
+    /** A `prepared` electronic-shaped attempt (the 6b shape), inserted directly: 6a never creates one. */
+    const preparedAttempt = async (id: string): Promise<{ id: string; version: number }> =>
+      (
+        await admin.query(
+          `INSERT INTO submission_attempt (organization_id, provider_entity_id, appeal_case_id, purpose, attempt_no,
+             idempotency_key, adapter, status)
+           VALUES ($1,$2,$3,'qic_escalation_request',7,$4,'manual','prepared') RETURNING id, version`,
+          [ORG, providerEntityId, id, randomUUID()],
+        )
+      ).rows[0];
+
+    it("never cancels the only path to proof: a needs_manual attempt on a filed case is a 409 PROOF_ONLY_PATH", async () => {
       const id = await submittedAppeal();
       const [att] = await attempts("appeal_case_id", id);
-      const cancel = (version: number) =>
-        app.inject({
-          method: "POST",
-          url: `/api/v1/appeals/${id}/submission-cancel`,
-          headers: {
-            ...as(ORG, userA, memberA),
-            "idempotency-key": randomUUID(),
-            "if-match": String(version),
-          },
-          payload: { attemptId: att.id },
-        });
-      expect((await cancel(att.version)).statusCode).toBe(200);
-      expect((await attempts("appeal_case_id", id))[0].status).toBe("cancelled");
-      expect((await cancel(att.version + 1)).statusCode).toBe(409);
-      await expect(
-        admin.query("UPDATE submission_attempt SET version = version + 1 WHERE id=$1", [att.id]),
-      ).rejects.toThrow(/M25_SUBMISSION_FROZEN/);
+      const res = await cancelCall("appeals", id, att.id, att.version);
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error.code).toBe("PROOF_ONLY_PATH");
+      expect((await attempts("appeal_case_id", id))[0].status).toBe("needs_manual");
+      // the receipt is still recordable afterwards: the appeal is not stranded
+      const ok = await receiptCall("appeals", id, receipt(att.id), att.version);
+      expect(ok.statusCode).toBe(200);
+    });
 
+    it("requires a step-up and a reason to cancel, and a cancelled attempt is frozen", async () => {
+      const id = await submittedAppeal();
+      const prep = await preparedAttempt(id);
+      expect(
+        (await cancelCall("appeals", id, prep.id, prep.version, { stepUp: false })).statusCode,
+      ).toBe(403);
+      expect(
+        await refused(sub().cancelAttempt(A(), "appeal", id, prep.id, "short", prep.version)),
+      ).toMatchObject({ code: "REASON_REQUIRED", statusCode: 409 });
+      const res = await cancelCall("appeals", id, prep.id, prep.version);
+      expect(res.statusCode).toBe(200);
+      const row = (await admin.query("SELECT * FROM submission_attempt WHERE id=$1", [prep.id]))
+        .rows[0];
+      expect(row.status).toBe("cancelled");
+      expect(row.failure_reason).toBe("Cancelled: Entered against the wrong claim");
+      await expect(
+        admin.query("UPDATE submission_attempt SET version = version + 1 WHERE id=$1", [prep.id]),
+      ).rejects.toThrow(/M25_SUBMISSION_FROZEN/);
+      expect((await cancelCall("appeals", id, prep.id, row.version)).statusCode).toBe(409);
+    });
+
+    it("never cancels an acknowledged attempt", async () => {
       const adr = await adrInReview();
       await adrSvc().submitAdr(
         B(),
@@ -737,17 +780,128 @@ describe.skipIf(!DB_URL)("M25 submission attempts (milestone 6a) - LIVE Postgres
         await ver("adr_case", adr),
       );
       const [ack] = await attempts("adr_case_id", adr);
-      const res = await app.inject({
-        method: "POST",
-        url: `/api/v1/adrs/${adr}/submission-cancel`,
-        headers: {
-          ...as(ORG, userA, memberA),
-          "idempotency-key": randomUUID(),
-          "if-match": String(ack.version),
-        },
-        payload: { attemptId: ack.id },
-      });
+      const res = await cancelCall("adrs", adr, ack.id, ack.version);
       expect(res.statusCode).toBe(409);
+      expect(res.json().error.code).toBe("SUBMISSION_NOT_CANCELLABLE");
+    });
+
+    it("refuses to cancel through another tenant's or an out-of-scope actor's route", async () => {
+      const id = await submittedAppeal();
+      const prep = await preparedAttempt(id);
+      const other = await cancelCall("appeals", id, prep.id, prep.version, {
+        who: [ORG_B, userB, memberB],
+      });
+      expect(other.statusCode).toBe(404);
+      const noScope = { ...A(), providerEntityScope: [] as string[] };
+      const elsewhere = { ...A(), providerEntityScope: [randomUUID()] };
+      for (const actor of [noScope, elsewhere]) {
+        expect(
+          await refused(
+            sub().cancelAttempt(actor, "appeal", id, prep.id, "a long enough reason", prep.version),
+          ),
+        ).toMatchObject({ statusCode: 404 });
+        expect(
+          await refused(sub().recordReceipt(actor, "appeal", id, receipt(prep.id), prep.version)),
+        ).toMatchObject({ statusCode: 404 });
+        expect(await refused(sub().getSubmission(actor, "appeal", id))).toMatchObject({
+          statusCode: 404,
+        });
+      }
+      expect((await attempts("appeal_case_id", id)).find((r) => r.id === prep.id)?.status).toBe(
+        "prepared",
+      );
+      const inScope = { ...A(), providerEntityScope: [providerEntityId] };
+      expect((await sub().getSubmission(inScope, "appeal", id)).attempts.length).toBeGreaterThan(0);
+    });
+
+    it("caps the amendment count, rejects an identical correction, and the trigger holds the cap too", async () => {
+      const id = await submittedAppeal();
+      const [att] = await attempts("appeal_case_id", id);
+      await receiptCall("appeals", id, receipt(att.id), att.version);
+      const stamp = new Date(Date.now() - 3_600_000).toISOString();
+      const amend = async (ref: string) => {
+        const cur = (await attempts("appeal_case_id", id))[0];
+        return receiptCall(
+          "appeals",
+          id,
+          { attemptId: att.id, confirmationRef: ref, receiptAt: stamp },
+          cur.version,
+        );
+      };
+      expect((await amend("CORR-0")).statusCode).toBe(200);
+      const dup = await amend("CORR-0");
+      expect(dup.statusCode).toBe(409);
+      expect(dup.json().error.code).toBe("AMENDMENT_DUPLICATE");
+      for (let i = 1; i < 20; i++) expect((await amend(`CORR-${i}`)).statusCode).toBe(200);
+      const over = await amend("CORR-20");
+      expect(over.statusCode).toBe(409);
+      expect(over.json().error.code).toBe("AMENDMENT_LIMIT");
+      const list = (await attempts("appeal_case_id", id))[0].receipt_amendments as unknown[];
+      expect(list).toHaveLength(20);
+      await expect(
+        admin.query("UPDATE submission_attempt SET receipt_amendments = $2::jsonb WHERE id=$1", [
+          att.id,
+          JSON.stringify([...list, { x: 1 }]),
+        ]),
+      ).rejects.toThrow(/M25_SUBMISSION_AMENDMENT_LIMIT/);
+    });
+
+    it("leaves the case's own filing columns untouched when a receipt is amended (the case is authoritative)", async () => {
+      const adr = await adrInReview();
+      await adrSvc().submitAdr(
+        B(),
+        adr,
+        {
+          channel: "mail",
+          confirmationRef: "ORIGINAL-REF",
+          filedAt: new Date(Date.now() - 1000).toISOString(),
+        },
+        await ver("adr_case", adr),
+      );
+      const [ack] = await attempts("adr_case_id", adr);
+      expect((await receiptCall("adrs", adr, receipt(ack.id), ack.version)).statusCode).toBe(200);
+      const caseRow = (await admin.query("SELECT * FROM adr_case WHERE id=$1", [adr])).rows[0];
+      expect(caseRow.filing_confirmation_ref).toBe("ORIGINAL-REF");
+    });
+
+    it("refuses an electronic adapter or a send without an approver other than the preparer, at insert", async () => {
+      const id = await submittedAppeal();
+      const insert = (cols: Record<string, unknown>) => {
+        const all = {
+          organization_id: ORG,
+          provider_entity_id: providerEntityId,
+          appeal_case_id: id,
+          purpose: "qic_escalation_request",
+          attempt_no: 8,
+          idempotency_key: randomUUID(),
+          prepared_by_membership_id: memberA,
+          ...cols,
+        };
+        const keys = Object.keys(all);
+        return admin.query(
+          `INSERT INTO submission_attempt (${keys.join(",")}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(",")})`,
+          Object.values(all),
+        );
+      };
+      const rule =
+        /submission_attempt_electronic_needs_other_approver|submission_attempt_send_is_approved/;
+      await expect(insert({ adapter: "esmd", status: "prepared" })).rejects.toThrow(rule);
+      await expect(
+        insert({
+          adapter: "esmd",
+          status: "queued",
+          approved_by_membership_id: memberA,
+          approved_at: new Date(),
+        }),
+      ).rejects.toThrow(/submission_attempt_electronic_needs_other_approver/);
+      await expect(
+        insert({
+          adapter: "manual",
+          status: "queued",
+          approved_by_membership_id: memberB,
+          approved_at: new Date(),
+        }),
+      ).resolves.toBeTruthy();
     });
 
     it("allows one live attempt per (subject, purpose): the service and the unique index both refuse a second", async () => {
@@ -777,7 +931,7 @@ describe.skipIf(!DB_URL)("M25 submission attempts (milestone 6a) - LIVE Postgres
       ).rejects.toThrow(/submission_attempt_one_live/);
       // a retry after a cancel is a NEW row (attempt 2), never a rewind
       const [att] = await attempts("appeal_case_id", id);
-      await sub().cancelAttempt(A(), "appeal", id, att.id, att.version);
+      await admin.query("UPDATE submission_attempt SET status='cancelled' WHERE id=$1", [att.id]);
       await withOrgContext(handle.db, { organizationId: ORG, userId: "" }, (tx) =>
         recordFilingAttempt(tx as never, {
           organizationId: ORG,
@@ -825,7 +979,7 @@ describe.skipIf(!DB_URL)("M25 submission attempts (milestone 6a) - LIVE Postgres
         insert({ status: "needs_manual", needs_manual_reason: "x", confirmation_ref: "R" }),
       ).rejects.toThrow(/submission_attempt_no_proof_before_ack/);
       await expect(insert({ status: "queued", adapter: "esmd" })).rejects.toThrow(
-        /submission_attempt_send_is_approved/,
+        /submission_attempt_send_is_approved|submission_attempt_electronic_needs_other_approver/,
       );
       await expect(
         insert({
@@ -834,7 +988,9 @@ describe.skipIf(!DB_URL)("M25 submission attempts (milestone 6a) - LIVE Postgres
           approved_by_membership_id: memberA,
           approved_at: new Date(),
         }),
-      ).rejects.toThrow(/submission_attempt_send_is_electronic/);
+      ).rejects.toThrow(
+        /submission_attempt_send_is_electronic|submission_attempt_electronic_needs_other_approver/,
+      );
       // a subject must match the purpose
       await expect(
         admin.query(
@@ -886,6 +1042,14 @@ describe.skipIf(!DB_URL)("M25 submission attempts (milestone 6a) - LIVE Postgres
         [id],
       );
       expect(reads.rows[0].n).toBeGreaterThan(0);
+      // the read is attributed to the claim's patient (the §164.528 accounting joins on context.patientId)
+      const attributed = await admin.query(
+        `SELECT count(*)::int AS n FROM audit_event
+          WHERE resource_id = $1 AND event_type LIKE '%.viewed' AND context->>'patientId' = $2`,
+        [id, patient],
+      );
+      expect(attributed.rows[0].n).toBeGreaterThan(0);
+      expect(body.patientId).toBe(patient);
     });
 
     it("reports a case filed before milestone 6 as having no attempt record", async () => {
@@ -1014,6 +1178,39 @@ describe.skipIf(!DB_URL)("M25 submission attempts (milestone 6a) - LIVE Postgres
         "subjectId",
         "subjectKind",
       ]);
+    });
+
+    it("stops alerting once the case is withdrawn or closed", async () => {
+      const withdrawn = await submittedAppeal();
+      const closed = await submittedAppeal();
+      const live = await submittedAppeal();
+      await admin.query(
+        "UPDATE submission_attempt SET created_at = now() - interval '10 days' WHERE appeal_case_id IN ($1,$2,$3)",
+        [withdrawn, closed, live],
+      );
+      await write().withdrawAppeal(
+        A(),
+        withdrawn,
+        { reason: "Withdrawn: the claim was paid on review, nothing left to appeal." },
+        await ver("appeal_case", withdrawn),
+      );
+      await admin.query("UPDATE appeal_case SET state='closed', closed_at=now() WHERE id=$1", [
+        closed,
+      ]);
+      const dispatched: { alertCode: string; payload: Record<string, unknown> }[] = [];
+      await runAppealDeadlineCron({
+        connection: {} as never,
+        db: handle.db,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG }] },
+        alerts: { dispatch: async (a) => void dispatched.push(a) },
+        now: () => new Date(),
+      });
+      const ids = dispatched
+        .filter((d) => d.alertCode === "submission.proof_missing")
+        .map((d) => d.payload.subjectId);
+      expect(ids).toContain(live);
+      expect(ids).not.toContain(withdrawn);
+      expect(ids).not.toContain(closed);
     });
   });
 });

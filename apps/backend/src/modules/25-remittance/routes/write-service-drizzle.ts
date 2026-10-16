@@ -28,7 +28,7 @@ import { type AppealSourcePorts, UNBOUND_APPEAL_SOURCES } from "./appeal-packet-
 import { VersionConflictError } from "./concurrency";
 import { resolveDenialRoute } from "./denial-route-service";
 import { type RemittanceCommandDeps, buildRemittanceCommands } from "./remittance-commands-drizzle";
-import { recordFilingAttempt } from "./submission-service";
+import { recordAppealFilingAttempt } from "./submission-service";
 import type {
   AppealCreateInput,
   AppealDecideInput,
@@ -749,28 +749,6 @@ export function buildDrizzleM25WriteService(
    * Versioned appeal transition: validate the edge, `UPDATE … WHERE id AND version`, then run the optional
    * `emit` IN THE SAME TX (the §4.5 outbox row commits with the mutation — the D2 posture).
    */
-  /**
-   * Milestone 6a: an appeal submit captures no channel, confirmation or receipt, so its attempt is born `needs_manual`
-   * ("proof missing") and the user records the receipt afterwards. The case still moves to `submitted` as before.
-   */
-  function recordAppealFilingAttempt(
-    tx: M25Tx,
-    actor: M25WriteActor,
-    appealId: string,
-    providerEntityId: string,
-  ): Promise<void> {
-    return recordFilingAttempt(tx, {
-      organizationId: actor.organizationId,
-      providerEntityId,
-      purpose: "appeal_request",
-      subjectId: appealId,
-      channel: null,
-      confirmationRef: null,
-      receiptAt: null,
-      actorMembershipId: actor.membershipId,
-    });
-  }
-
   async function transitionAppeal(
     actor: M25WriteActor,
     id: string,

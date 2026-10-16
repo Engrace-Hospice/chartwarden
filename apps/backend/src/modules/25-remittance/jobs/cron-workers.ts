@@ -222,14 +222,25 @@ export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> 
               appealCaseId: SA.appealCaseId,
               reopeningCaseId: SA.reopeningCaseId,
               createdAt: SA.createdAt,
+              adrState: schema.adrCase.state,
+              appealState: AC.state,
+              reopeningState: schema.reopeningCase.state,
             })
             .from(SA)
+            .leftJoin(schema.adrCase, eq(schema.adrCase.id, SA.adrCaseId))
+            .leftJoin(AC, eq(AC.id, SA.appealCaseId))
+            .leftJoin(schema.reopeningCase, eq(schema.reopeningCase.id, SA.reopeningCaseId))
             .where(sql`${SA.status} = 'needs_manual'`)
             .limit(100000);
           return rows.map((r) => ({
             id: r.id,
-            subjectKind: r.adrCaseId ? "adr" : r.reopeningCaseId ? "reopening" : "appeal",
+            subjectKind: r.adrCaseId
+              ? ("adr" as const)
+              : r.reopeningCaseId
+                ? ("reopening" as const)
+                : ("appeal" as const),
             subjectId: r.adrCaseId ?? r.reopeningCaseId ?? r.appealCaseId ?? "",
+            subjectState: r.adrState ?? r.reopeningState ?? r.appealState ?? "",
             createdAt: r.createdAt.toISOString(),
           }));
         },

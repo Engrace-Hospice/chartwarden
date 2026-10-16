@@ -14,11 +14,15 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import {
+  type AmendmentRefusal,
+  type CancelRefusal,
   type ReceiptRefusal,
   type SubmissionChannel,
   type SubmissionPurpose,
   type SubmissionStatus,
   canTransitionSubmission,
+  checkAmendment,
+  checkCancel,
   checkReceipt,
   isLiveSubmissionStatus,
   nextAttemptNumber,
@@ -37,6 +41,7 @@ import {
   describeEnclosures,
 } from "./appeal-packet-sources";
 import { VersionConflictError } from "./concurrency";
+import { isUniqueViolation } from "./denial-route-service";
 import { providerEntityScopeCondition } from "./scope";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
@@ -85,34 +90,65 @@ export async function recordFilingAttempt(tx: Tx, input: RecordFilingAttemptInpu
     .from(SA)
     .where(and(eq(SA.purpose, input.purpose), eq(column, input.subjectId)));
   if (history.some((h) => isLiveSubmissionStatus(h.status as SubmissionStatus))) {
-    throw new WardenXError(
-      "SUBMISSION_ATTEMPT_LIVE",
-      "this filing already has a submission attempt in progress",
-      409,
-    );
+    throw liveAttemptError();
   }
   const attemptNo = nextAttemptNumber(history.map((h) => h.attemptNo));
   const proven = input.confirmationRef !== null && input.receiptAt !== null;
   const plan = proven
     ? null
     : planAttempt(input.registry ?? DEFAULT_ADAPTER_REGISTRY, input.organizationId, input.channel);
-  await tx.insert(SA).values({
-    organizationId: input.organizationId,
-    providerEntityId: input.providerEntityId,
-    ...subjectValues(input.purpose, input.subjectId),
-    purpose: input.purpose,
-    attemptNo,
-    idempotencyKey: submissionIdempotencyKey(input.purpose, input.subjectId, attemptNo),
-    channel: input.channel,
-    adapter: "manual",
-    status: proven ? "acknowledged" : (plan?.status ?? "needs_manual"),
-    needsManualReason: plan?.reason ?? null,
-    preparedByMembershipId: input.actorMembershipId,
-    confirmationRef: proven ? input.confirmationRef : null,
-    receiptAt: proven ? input.receiptAt : null,
-    receiptSource: proven ? "entered" : null,
-    receiptDocumentId: proven ? (input.receiptDocumentId ?? null) : null,
-    packetManifest: input.packetManifest ?? null,
+  try {
+    await tx.insert(SA).values({
+      organizationId: input.organizationId,
+      providerEntityId: input.providerEntityId,
+      ...subjectValues(input.purpose, input.subjectId),
+      purpose: input.purpose,
+      attemptNo,
+      idempotencyKey: submissionIdempotencyKey(input.purpose, input.subjectId, attemptNo),
+      channel: input.channel,
+      adapter: "manual",
+      status: proven ? "acknowledged" : (plan?.status ?? "needs_manual"),
+      needsManualReason: plan?.reason ?? null,
+      preparedByMembershipId: input.actorMembershipId,
+      confirmationRef: proven ? input.confirmationRef : null,
+      receiptAt: proven ? input.receiptAt : null,
+      receiptSource: proven ? "entered" : null,
+      receiptDocumentId: proven ? (input.receiptDocumentId ?? null) : null,
+      packetManifest: input.packetManifest ?? null,
+    });
+  } catch (e) {
+    // Two concurrent filings race past the pre-check: the unique indexes are the real guard.
+    if (isUniqueViolation(e)) throw liveAttemptError();
+    throw e;
+  }
+}
+
+const liveAttemptError = (): WardenXError =>
+  new WardenXError(
+    "SUBMISSION_ATTEMPT_LIVE",
+    "this filing already has a submission attempt in progress",
+    409,
+  );
+
+/**
+ * An appeal submit captures no channel, confirmation or receipt, so its attempt is born `needs_manual` ("proof
+ * missing") and the user records the receipt afterwards. The case still moves to `submitted` as before.
+ */
+export function recordAppealFilingAttempt(
+  tx: Tx,
+  actor: M25WriteActor,
+  appealId: string,
+  providerEntityId: string,
+): Promise<void> {
+  return recordFilingAttempt(tx, {
+    organizationId: actor.organizationId,
+    providerEntityId,
+    purpose: "appeal_request",
+    subjectId: appealId,
+    channel: null,
+    confirmationRef: null,
+    receiptAt: null,
+    actorMembershipId: actor.membershipId,
   });
 }
 
@@ -150,6 +186,8 @@ export interface SubmissionAttemptView {
 export interface SubmissionView {
   readonly subjectKind: SubmissionSubjectKind;
   readonly subjectId: string;
+  /** The claim's patient, for the read-audit trail; null when the claim cannot be read. */
+  readonly patientId: string | null;
   readonly attempts: readonly SubmissionAttemptView[];
   /** True when any live attempt is still waiting for the receipt. */
   readonly proofMissing: boolean;
@@ -177,6 +215,7 @@ export interface SubmissionService {
     kind: SubmissionSubjectKind,
     id: string,
     attemptId: string,
+    reason: string,
     ifMatch: number,
   ): Promise<{ id: string; version: number }>;
 }
@@ -187,6 +226,16 @@ export interface SubmissionServiceDeps {
   readonly registry?: AdapterRegistry;
   readonly now?: () => Date;
 }
+
+const CANCEL_MESSAGES: Readonly<Record<CancelRefusal, string>> = {
+  PROOF_ONLY_PATH:
+    "this filing is already made and this attempt is the only way to record its receipt, so it cannot be cancelled; record the receipt instead",
+  REASON_REQUIRED: "give a reason of at least 10 characters for cancelling",
+};
+const AMENDMENT_MESSAGES: Readonly<Record<AmendmentRefusal, string>> = {
+  AMENDMENT_LIMIT: "this receipt already carries the most corrections allowed",
+  AMENDMENT_DUPLICATE: "that correction is identical to the value already on record",
+};
 
 const RECEIPT_MESSAGES: Readonly<Record<ReceiptRefusal, string>> = {
   PROOF_REQUIRED: "record the confirmation or tracking reference exactly as the channel shows it",
@@ -355,6 +404,16 @@ export function buildDrizzleSubmissionService(
     );
   }
 
+  async function patientOf(organizationId: string, claimId: string): Promise<string | null> {
+    try {
+      return (
+        (await sources.claims().claimCopyForAppeal(organizationId, claimId))?.patientId ?? null
+      );
+    } catch {
+      return null;
+    }
+  }
+
   return {
     async getSubmission(actor, kind, id) {
       return withOrgContext(db, actor, async (tx) => {
@@ -372,6 +431,7 @@ export function buildDrizzleSubmissionService(
         return {
           subjectKind: kind,
           subjectId: id,
+          patientId: await patientOf(actor.organizationId, subject.claimId),
           attempts,
           proofMissing: attempts.some((a) => a.proofMissing),
           noAttemptRecord: rows.length === 0,
@@ -403,6 +463,23 @@ export function buildDrizzleSubmissionService(
         const status = cur.status as SubmissionStatus;
         if (status === "acknowledged") {
           // The receipt is frozen; a correction is appended, never rewritten (the trigger refuses anything else).
+          const nextFacts = {
+            confirmationRef: input.confirmationRef.trim(),
+            receiptAt: receiptAt.toISOString(),
+            receiptDocumentId: input.receiptDocumentId ?? null,
+          };
+          const amendRefusal = checkAmendment({
+            original: {
+              confirmationRef: cur.confirmationRef ?? "",
+              receiptAt: cur.receiptAt?.toISOString() ?? "",
+              receiptDocumentId: cur.receiptDocumentId,
+            },
+            amendments: amendmentsOf(cur.receiptAmendments),
+            next: nextFacts,
+          });
+          if (amendRefusal) {
+            throw new WardenXError(amendRefusal, AMENDMENT_MESSAGES[amendRefusal], 409);
+          }
           const amendment = {
             recordedAt: now.toISOString(),
             byMembershipId: actor.membershipId,
@@ -448,10 +525,12 @@ export function buildDrizzleSubmissionService(
       });
     },
 
-    async cancelAttempt(actor, kind, id, attemptId, ifMatch) {
+    async cancelAttempt(actor, kind, id, attemptId, reason, ifMatch) {
       return withOrgContext(db, actor, async (tx) => {
         await loadSubject(tx, actor, kind, id);
         const cur = await loadAttempt(tx, kind, id, attemptId);
+        const refusal = checkCancel({ status: cur.status as SubmissionStatus, reason });
+        if (refusal) throw new WardenXError(refusal, CANCEL_MESSAGES[refusal], 409);
         if (!canTransitionSubmission(cur.status as SubmissionStatus, "cancelled")) {
           throw new WardenXError(
             "SUBMISSION_NOT_CANCELLABLE",
@@ -461,7 +540,12 @@ export function buildDrizzleSubmissionService(
         }
         const updated = await tx
           .update(SA)
-          .set({ status: "cancelled", version: cur.version + 1, updatedAt: nowOf() })
+          .set({
+            status: "cancelled",
+            failureReason: `Cancelled: ${reason.trim()}`,
+            version: cur.version + 1,
+            updatedAt: nowOf(),
+          })
           .where(and(eq(SA.id, cur.id), eq(SA.version, ifMatch)))
           .returning({ id: SA.id, version: SA.version });
         if (!updated[0]) throw new VersionConflictError(cur.version);

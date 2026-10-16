@@ -9,6 +9,7 @@ const row = (over: Partial<ProofMissingRow> = {}): ProofMissingRow => ({
   id: "att-1",
   subjectKind: "appeal",
   subjectId: "app-1",
+  subjectState: "submitted",
   createdAt: "2026-04-01T12:00:00Z", // 9 days ago
   ...over,
 });
@@ -32,6 +33,11 @@ describe("runSubmissionProofWatch", () => {
   it("stays silent for an attempt younger than the threshold", async () => {
     const young = row({ createdAt: "2026-04-09T12:00:00Z" });
     expect((await runSubmissionProofWatch(storeOf([young]), now)).alerts).toEqual([]);
+  });
+
+  it("skips an attempt whose case is withdrawn or closed (it would fire forever)", async () => {
+    const rows = [row({ subjectState: "withdrawn" }), row({ subjectState: "closed" })];
+    expect((await runSubmissionProofWatch(storeOf(rows), now)).alerts).toEqual([]);
   });
 
   it("honours a custom threshold", async () => {

@@ -31839,6 +31839,7 @@
                   "required": [
                     "subjectKind",
                     "subjectId",
+                    "patientId",
                     "attempts",
                     "proofMissing",
                     "noAttemptRecord",
@@ -31851,6 +31852,16 @@
                     },
                     "subjectId": {
                       "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "attempts": {
                       "type": "array",
@@ -32075,7 +32086,7 @@
         "tags": [
           "25-remittance"
         ],
-        "summary": "Cancel a submission attempt that has not been acknowledged (If-Match)",
+        "summary": "Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match)",
         "parameters": [
           {
             "name": "id",
@@ -32123,11 +32134,17 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "attemptId"
+                  "attemptId",
+                  "reason"
                 ],
                 "properties": {
                   "attemptId": {
                     "format": "uuid",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 10,
+                    "maxLength": 500,
                     "type": "string"
                   }
                 }
@@ -39580,6 +39597,7 @@
                   "required": [
                     "subjectKind",
                     "subjectId",
+                    "patientId",
                     "attempts",
                     "proofMissing",
                     "noAttemptRecord",
@@ -39592,6 +39610,16 @@
                     },
                     "subjectId": {
                       "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "attempts": {
                       "type": "array",
@@ -39816,7 +39844,7 @@
         "tags": [
           "25-remittance"
         ],
-        "summary": "Cancel a submission attempt that has not been acknowledged (If-Match)",
+        "summary": "Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match)",
         "parameters": [
           {
             "name": "id",
@@ -39864,11 +39892,17 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "attemptId"
+                  "attemptId",
+                  "reason"
                 ],
                 "properties": {
                   "attemptId": {
                     "format": "uuid",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 10,
+                    "maxLength": 500,
                     "type": "string"
                   }
                 }
@@ -235036,6 +235070,7 @@
                   "required": [
                     "subjectKind",
                     "subjectId",
+                    "patientId",
                     "attempts",
                     "proofMissing",
                     "noAttemptRecord",
@@ -235048,6 +235083,16 @@
                     },
                     "subjectId": {
                       "type": "string"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "attempts": {
                       "type": "array",
@@ -235272,7 +235317,7 @@
         "tags": [
           "25-remittance"
         ],
-        "summary": "Cancel a submission attempt that has not been acknowledged (If-Match)",
+        "summary": "Cancel a submission attempt that is not waiting for its receipt: step-up and a reason; a needs_manual attempt is never cancellable (If-Match)",
         "parameters": [
           {
             "name": "id",
@@ -235320,11 +235365,17 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "attemptId"
+                  "attemptId",
+                  "reason"
                 ],
                 "properties": {
                   "attemptId": {
                     "format": "uuid",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 10,
+                    "maxLength": 500,
                     "type": "string"
                   }
                 }

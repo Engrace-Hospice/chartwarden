@@ -76,3 +76,55 @@ export function isProofMissing(input: {
   const days = (input.now.getTime() - input.createdAt.getTime()) / MS_PER_DAY;
   return days >= (input.thresholdDays ?? PROOF_MISSING_DAYS);
 }
+
+/** Most corrections one acknowledged attempt may carry (also enforced by trigger). */
+export const MAX_RECEIPT_AMENDMENTS = 20;
+/** Shortest reason accepted when an attempt is cancelled. */
+export const MIN_CANCEL_REASON = 10;
+
+export interface ReceiptFacts {
+  readonly confirmationRef: string;
+  readonly receiptAt: string;
+  readonly receiptDocumentId: string | null;
+}
+export type AmendmentRefusal = "AMENDMENT_LIMIT" | "AMENDMENT_DUPLICATE";
+
+/** A correction must differ from the latest value on record (the last amendment, else the original receipt). */
+export function checkAmendment(input: {
+  readonly original: ReceiptFacts;
+  readonly amendments: readonly ReceiptFacts[];
+  readonly next: ReceiptFacts;
+}): AmendmentRefusal | null {
+  if (input.amendments.length >= MAX_RECEIPT_AMENDMENTS) return "AMENDMENT_LIMIT";
+  const current = input.amendments.at(-1) ?? input.original;
+  const same =
+    current.confirmationRef === input.next.confirmationRef &&
+    current.receiptAt === input.next.receiptAt &&
+    current.receiptDocumentId === input.next.receiptDocumentId;
+  return same ? "AMENDMENT_DUPLICATE" : null;
+}
+
+export type CancelRefusal = "PROOF_ONLY_PATH" | "REASON_REQUIRED";
+
+/**
+ * A `needs_manual` attempt is the only path to the receipt of a filing that is already made (cancelled is terminal and
+ * 6a has no way to start another), so it is never cancelled. Any other cancel needs a reason.
+ */
+export function checkCancel(input: {
+  readonly status: SubmissionStatus;
+  readonly reason: string;
+}): CancelRefusal | null {
+  if (input.status === "needs_manual") return "PROOF_ONLY_PATH";
+  return input.reason.trim().length < MIN_CANCEL_REASON ? "REASON_REQUIRED" : null;
+}
+
+const TERMINAL_STATES: Readonly<Record<"adr" | "appeal" | "reopening", ReadonlySet<string>>> = {
+  adr: new Set(["withdrawn", "closed", "denied_no_response"]),
+  appeal: new Set(["withdrawn", "closed"]),
+  reopening: new Set(["withdrawn", "closed"]),
+};
+
+/** A case that is over no longer waits for its receipt: the proof-missing watch skips it. */
+export function isSubjectTerminal(kind: "adr" | "appeal" | "reopening", state: string): boolean {
+  return TERMINAL_STATES[kind].has(state);
+}

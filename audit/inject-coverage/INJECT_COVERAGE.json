@@ -4,7 +4,7 @@
     "covered": 39,
     "routes": 1653,
     "coveredRoutes": 1653,
-    "directRoutesReferenced": 1555
+    "directRoutesReferenced": 1543
   },
   "modules": [
     {
@@ -393,7 +393,7 @@
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/remittance-inject.test.ts"
       ],
-      "directRoutesReferenced": 66
+      "directRoutesReferenced": 54
     },
     {
       "module": "26-cap",

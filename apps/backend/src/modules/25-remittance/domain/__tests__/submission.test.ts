@@ -15,10 +15,15 @@ import {
   submissionIdempotencyKey,
 } from "../submission";
 import {
+  MAX_RECEIPT_AMENDMENTS,
+  MIN_CANCEL_REASON,
   PROOF_MISSING_DAYS,
+  checkAmendment,
   checkApproval,
+  checkCancel,
   checkReceipt,
   isProofMissing,
+  isSubjectTerminal,
   staleSendingOutcome,
 } from "../submission-rules";
 
@@ -214,5 +219,65 @@ describe("buildGuidedChecklist", () => {
     const steps = buildGuidedChecklist({ purpose: "adr_response", macName: null, deadline: null });
     expect(steps.length).toBeGreaterThanOrEqual(5);
     expect(steps.every((s) => s.key.length > 0 && s.text.length > 0)).toBe(true);
+  });
+});
+
+describe("checkAmendment", () => {
+  const original = {
+    confirmationRef: "A-1",
+    receiptAt: "2026-04-09T10:00:00.000Z",
+    receiptDocumentId: null,
+  };
+  const next = {
+    confirmationRef: "A-2",
+    receiptAt: "2026-04-09T10:00:00.000Z",
+    receiptDocumentId: null,
+  };
+
+  it("accepts a different correction", () => {
+    expect(checkAmendment({ original, amendments: [], next })).toBeNull();
+  });
+  it("rejects one identical to the original receipt when there are no amendments", () => {
+    expect(checkAmendment({ original, amendments: [], next: { ...original } })).toBe(
+      "AMENDMENT_DUPLICATE",
+    );
+  });
+  it("rejects one identical to the last amendment, but allows reverting to an earlier value", () => {
+    const last = { ...next, confirmationRef: "A-3" };
+    const amendments = [next, last];
+    expect(checkAmendment({ original, amendments, next: { ...last } })).toBe("AMENDMENT_DUPLICATE");
+    expect(checkAmendment({ original, amendments, next: { ...next } })).toBeNull();
+  });
+  it("caps the amendment count", () => {
+    const amendments = Array.from({ length: MAX_RECEIPT_AMENDMENTS }, (_, i) => ({
+      ...next,
+      confirmationRef: `R-${i}`,
+    }));
+    expect(checkAmendment({ original, amendments, next: { ...next, confirmationRef: "X" } })).toBe(
+      "AMENDMENT_LIMIT",
+    );
+  });
+});
+
+describe("checkCancel", () => {
+  const reason = "x".repeat(MIN_CANCEL_REASON);
+  it("never cancels the only path to proof (needs_manual)", () => {
+    expect(checkCancel({ status: "needs_manual", reason })).toBe("PROOF_ONLY_PATH");
+  });
+  it("needs a real reason for the other cancellable states", () => {
+    expect(checkCancel({ status: "prepared", reason: "short" })).toBe("REASON_REQUIRED");
+    expect(checkCancel({ status: "prepared", reason })).toBeNull();
+    expect(checkCancel({ status: "queued", reason })).toBeNull();
+  });
+});
+
+describe("isSubjectTerminal", () => {
+  it("is true for withdrawn / closed cases and a non-response ADR, false while the case is live", () => {
+    expect(isSubjectTerminal("appeal", "withdrawn")).toBe(true);
+    expect(isSubjectTerminal("appeal", "closed")).toBe(true);
+    expect(isSubjectTerminal("reopening", "closed")).toBe(true);
+    expect(isSubjectTerminal("adr", "denied_no_response")).toBe(true);
+    expect(isSubjectTerminal("appeal", "submitted")).toBe(false);
+    expect(isSubjectTerminal("adr", "submitted")).toBe(false);
   });
 });

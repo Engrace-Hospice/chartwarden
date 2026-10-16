@@ -55,6 +55,15 @@ CREATE TABLE IF NOT EXISTS "submission_attempt" (
   CONSTRAINT "submission_attempt_send_is_electronic" CHECK ("status" NOT IN ('sending','sent') OR "adapter" <> 'manual'),
   CONSTRAINT "submission_attempt_send_is_approved" CHECK ("status" NOT IN ('queued','sending','sent')
     OR ("approved_by_membership_id" IS NOT NULL AND "approved_at" IS NOT NULL)),
+  -- Defense in depth for 6b: any electronic adapter, or a queued / sending / sent status, needs a recorded approval by
+  -- someone OTHER than the preparer. The single-eligible-user exception lives in domain checkApproval and is a 6b
+  -- decision: it would have to relax this CHECK deliberately. 6b must also add org-consistency enforcement (the subject
+  -- FKs do not prove the case belongs to organization_id; approved_by / prepared_by / receipt_document_id are logical
+  -- ids) before any send is enabled.
+  CONSTRAINT "submission_attempt_electronic_needs_other_approver" CHECK (
+    ("adapter" = 'manual' AND "status" NOT IN ('queued','sending','sent'))
+    OR ("approved_by_membership_id" IS NOT NULL AND "approved_at" IS NOT NULL
+        AND "approved_by_membership_id" IS DISTINCT FROM "prepared_by_membership_id")),
   CONSTRAINT "submission_attempt_needs_manual_reason" CHECK ("status" <> 'needs_manual'
     OR ("needs_manual_reason" IS NOT NULL AND btrim("needs_manual_reason") <> '')),
   CONSTRAINT "submission_attempt_failed_reason" CHECK ("status" <> 'failed'
@@ -106,8 +115,9 @@ CREATE TRIGGER "trg_audit_submission_attempt" AFTER INSERT OR UPDATE OR DELETE O
 
 -- The legal edges (the same table as domain/submission.ts) and the frozen proof:
 --   - a failed or cancelled attempt never changes again; a retry is a NEW row (attempt_no + 1);
---   - once acknowledged, the receipt (reference, time, document, source), channel, adapter, approval and packet facts
---     are frozen; corrections append to receipt_amendments, which only ever grows (every entry keeps its position).
+--   - once acknowledged, the status, receipt (reference, time, document, source) and approval are frozen; corrections
+--     append to receipt_amendments, which only ever grows (every entry keeps its position) and holds at most 20 entries.
+--     The subject, purpose, channel, adapter and packet facts are not in the app role's UPDATE grants at all.
 CREATE OR REPLACE FUNCTION m25_submission_attempt_guard() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -135,6 +145,9 @@ BEGIN
   IF NEW.receipt_amendments IS DISTINCT FROM OLD.receipt_amendments THEN
     IF OLD.status <> 'acknowledged' THEN
       RAISE EXCEPTION 'M25_SUBMISSION_AMENDMENT_STATE: submission_attempt % can be amended only once acknowledged', OLD.id;
+    END IF;
+    IF jsonb_array_length(NEW.receipt_amendments) > 20 THEN
+      RAISE EXCEPTION 'M25_SUBMISSION_AMENDMENT_LIMIT: submission_attempt % holds at most 20 amendments', OLD.id;
     END IF;
     IF jsonb_array_length(NEW.receipt_amendments) < jsonb_array_length(OLD.receipt_amendments)
        OR EXISTS (

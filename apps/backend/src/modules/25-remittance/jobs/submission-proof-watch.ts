@@ -3,7 +3,7 @@
 // but no confirmation reference / receipt recorded) past PROOF_MISSING_DAYS gets one `submission.proof_missing` alert
 // per night until someone records the receipt or cancels the attempt. Folded into the existing appeal-deadline cron,
 // so there is no new queue. The alert payload is IDs and counts only: no confirmation reference, no free text.
-import { PROOF_MISSING_DAYS, isProofMissing } from "../domain";
+import { PROOF_MISSING_DAYS, isProofMissing, isSubjectTerminal } from "../domain";
 import type { AlertEmission } from "./m25-jobs";
 
 const MS_PER_DAY = 86_400_000;
@@ -13,6 +13,8 @@ export interface ProofMissingRow {
   readonly id: string;
   readonly subjectKind: "adr" | "appeal" | "reopening";
   readonly subjectId: string;
+  /** The case's own state: a withdrawn / closed case is over and no longer waits for a receipt. */
+  readonly subjectState: string;
   readonly createdAt: string;
 }
 
@@ -27,6 +29,7 @@ export async function runSubmissionProofWatch(
 ): Promise<{ readonly alerts: AlertEmission[] }> {
   const alerts: AlertEmission[] = [];
   for (const r of await store.needsManualAttempts()) {
+    if (isSubjectTerminal(r.subjectKind, r.subjectState)) continue;
     const createdAt = new Date(r.createdAt);
     if (!isProofMissing({ status: "needs_manual", createdAt, now, thresholdDays })) continue;
     alerts.push({
