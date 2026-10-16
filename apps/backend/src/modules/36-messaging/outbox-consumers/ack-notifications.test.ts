@@ -68,7 +68,14 @@ describe("M36 acknowledgment-request notifications consumer", () => {
       payload: { recipientUserId: "u-2", message: ACK_NOTIFICATION_TEXT.requested },
     });
     expect(Object.keys(alert.payload as object).sort()).toEqual(
-      ["channelId", "deepLink", "message", "messageId", "recipientUserId"].sort(),
+      [
+        "channelId",
+        "deepLink",
+        "message",
+        "messageId",
+        "recipientUserId",
+        "sourceAggregateId",
+      ].sort(),
     );
   });
 

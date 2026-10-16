@@ -32,7 +32,7 @@ export const ACK_STATUS_TEXT: Readonly<Record<AckStatus, string>> = {
   pending: "Response requested",
   acknowledged: "Responsibility taken",
   escalated: "Escalated",
-  failed_unreachable: "Nobody could be reached",
+  failed_unreachable: "Could not be delivered",
   resolved: "Closed",
   cancelled: "Withdrawn",
 };
@@ -47,6 +47,14 @@ export const ACK_NOTE_TEXT: Readonly<Record<AckEscalationNote, string>> = {
   ladder_exhausted:
     "Nobody has taken responsibility and the deadline has passed. There is no one further to pass it to, so it is still open.",
 };
+
+/**
+ * WP 4.5: what a request says when every delivery route outside the app failed and nobody further could be asked. It never claims
+ * anyone was reached: the message may still be seen in the app, but nobody is known to have received it or taken responsibility.
+ * PROVISIONAL pending clinical-lead review.
+ */
+export const ACK_UNREACHABLE_TEXT =
+  "It could not be delivered to the person it was sent to by any route outside the app, and no one else could be asked. It may still be seen in the app. Nobody is known to have received it and nobody has taken responsibility. It is still open.";
 
 export const takeName = (author: string | undefined, sent: string): string =>
   `${ACK_TAKE_LABEL} for the message${author ? ` from ${author}` : ""} sent ${sent}`;
@@ -65,5 +73,8 @@ export const escalatedWaitingFor = (forViewer: boolean): string =>
 /** WP 4.4: one-shot polite announcements when a background re-read shows the request moved on. Never paged, never an alert. */
 export const ACK_ESCALATED_TO_YOU_NOTICE = "A response request was escalated to you.";
 export const ACK_PASSED_ON_NOTICE = "A response request was passed on to the next person.";
+/** WP 4.5: a poll shows a waiting request that could not be delivered. Polite, once; never says anyone was reached. */
+export const ACK_UNREACHABLE_NOTICE =
+  "A response request could not be delivered. Nobody is known to have received it.";
 /** A reassign (the request is still `pending`), not an escalation: neutral wording. */
 export const ACK_REASSIGNED_AWAY_NOTICE = "A response request is now assigned to someone else.";

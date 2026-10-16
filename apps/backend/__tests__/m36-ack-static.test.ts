@@ -98,6 +98,10 @@ describe("only an explicit transition writes an acknowledgment", () => {
       .sort();
     expect(importers).toEqual(
       [
+        // WP 4.5 (ADR-0071): the delivery-failure handler and its two consumers sit beside the aggregate, like the timers.
+        "apps/backend/src/modules/36-messaging/ack-delivery-failure/delivery-failure-service.ts",
+        "apps/backend/src/modules/36-messaging/ack-delivery-failure/route-rules.ts",
+        "apps/backend/src/modules/36-messaging/outbox-consumers/ack-unreachable-notifications.ts",
         // WP 4.4 (ADR-0070): the escalation timers sit beside the aggregate and use its store port, events and row types.
         "apps/backend/src/modules/36-messaging/ack-escalation/binding.ts",
         "apps/backend/src/modules/36-messaging/ack-escalation/escalation-service.ts",

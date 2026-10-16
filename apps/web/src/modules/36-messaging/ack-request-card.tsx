@@ -26,6 +26,7 @@ import {
   ACK_STALE_TEXT,
   ACK_STATUS_TEXT,
   ACK_TAKE_LABEL,
+  ACK_UNREACHABLE_TEXT,
   ACK_WAIT_LOAD_TEXT,
   ACK_WORKING_TEXT,
   closeName,
@@ -93,6 +94,7 @@ export function AckRequestCard({
   const overdue = waiting && new Date(request.deadline_at) < new Date();
   const icon =
     request.status === "resolved" || request.status === "acknowledged" ? "check" : "clock";
+  const unreachable = request.status === "failed_unreachable";
   const sent = localTime(sentAt ?? request.requested_at);
   // The accessible name starts with the VISIBLE text (WCAG 2.5.3), then says which message it is about.
   const nameOf = (label: string, make: typeof takeName): string =>
@@ -114,7 +116,7 @@ export function AckRequestCard({
       data-status={request.status}
     >
       <p id={statusId} ref={statusRef} tabIndex={-1} className="wx-ack-status">
-        <Glyph name={request.status === "failed_unreachable" ? "alert" : icon} size={14} />
+        <Glyph name={unreachable ? "alert" : icon} size={14} />
         <span>{ACK_STATUS_TEXT[request.status]}</span>
       </p>
       {waiting ? (
@@ -131,6 +133,7 @@ export function AckRequestCard({
       {waiting && request.escalation_note ? (
         <p className="wx-ack-detail">{ACK_NOTE_TEXT[request.escalation_note]}</p>
       ) : null}
+      {unreachable ? <p className="wx-ack-detail">{ACK_UNREACHABLE_TEXT}</p> : null}
       {request.status === "acknowledged" && request.acknowledged_at ? (
         <p className="wx-ack-detail">
           Taken {actions.can_resolve ? "by you" : "by the person it was sent to"} at{" "}

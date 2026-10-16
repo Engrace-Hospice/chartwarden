@@ -92,6 +92,8 @@ export function buildM36AckEscalationNotificationsConsumer(deps: {
             recipientUserId: assignee,
             channelId,
             messageId,
+            // The message the alert is ABOUT (read back by `m36.notification.delivery_failed`, WP 4.5).
+            sourceAggregateId: messageId,
             message: ACK_ESCALATION_NOTIFICATION_TEXT.escalated,
             deepLink,
           },

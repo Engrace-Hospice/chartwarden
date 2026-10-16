@@ -19,6 +19,8 @@ const read = (p: string) => readFileSync(join(root, p), "utf8");
 const sql = read("packages/db/migrations/1107_m36_message_acknowledgment_request.sql");
 // WP 4.4 (migration 1114) replaces the update guard in full and adds two event types; the state machine is pinned on THAT text.
 const sql1114 = read("packages/db/migrations/1114_m36_ack_escalation_timers.sql");
+// WP 4.5 (migration 1120) replaces the update guard in full once more (only `failed_unreachable` is new); the guard is pinned on THAT text.
+const sql1120 = read("packages/db/migrations/1120_m36_ack_delivery_failure.sql");
 const flat = (s: string) => s.replace(/\s+/g, " ");
 const list = (values: readonly string[]) => values.map((v) => `'${v}'`).join(", ");
 const quoted = (values: readonly string[]) => values.map((v) => `"${v}"`).join(", ");
@@ -59,8 +61,8 @@ describe("migration 1114 event types", () => {
   });
 });
 
-describe("the update guard (migration 1114 replaces 1107's, in full) is the state machine", () => {
-  const guard = flat(sql1114.slice(sql1114.indexOf("message_ack_request_update_guard()")));
+describe("the update guard (migration 1120 replaces 1114's, in full) is the state machine", () => {
+  const guard = flat(sql1120.slice(sql1120.indexOf("message_ack_request_update_guard()")));
 
   it("final states cannot change", () => {
     expect(guard).toContain("IF OLD.status IN ('resolved', 'cancelled') THEN");
@@ -115,8 +117,8 @@ describe("the update guard (migration 1114 replaces 1107's, in full) is the stat
   });
 });
 
-describe("migration 1114 escalation write", () => {
-  const guard = flat(sql1114.slice(sql1114.indexOf("message_ack_request_update_guard()")));
+describe("migration 1114 escalation write (kept by 1120)", () => {
+  const guard = flat(sql1120.slice(sql1120.indexOf("message_ack_request_update_guard()")));
 
   it("is the timer's alone: a person's session (a non-empty app.user_id) cannot write an escalation", () => {
     expect(guard).toContain(
@@ -159,6 +161,29 @@ describe("migration 1114 escalation write", () => {
 
   it("adds no table, grant or policy (the 1107 ones stand)", () => {
     expect(sql1114).not.toMatch(/CREATE TABLE|GRANT |CREATE POLICY|DROP /);
+  });
+});
+
+describe("migration 1120 failed_unreachable write", () => {
+  const guard = flat(sql1120.slice(sql1120.indexOf("message_ack_request_update_guard()")));
+
+  it("is the delivery-failure handler's alone: a person's session (a non-empty app.user_id) cannot write it", () => {
+    expect(guard).toContain(
+      "IF NEW.status = 'failed_unreachable' AND OLD.status <> 'failed_unreachable' AND v_actor IS NOT NULL THEN",
+    );
+    expect(guard).toContain("only the delivery-failure handler marks a request unreachable");
+  });
+
+  it("changes nothing else: the 1114 escalation rule, the version rule and SECURITY DEFINER stay", () => {
+    expect(guard).toContain("IF v_escalation AND v_actor IS NOT NULL THEN");
+    expect(guard).toContain("NEW.version <> OLD.version + 1");
+    expect(guard).toContain(
+      "LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp",
+    );
+  });
+
+  it("adds no table, grant, policy, enum value or drop", () => {
+    expect(sql1120).not.toMatch(/CREATE TABLE|GRANT |CREATE POLICY|DROP |ALTER TYPE/);
   });
 });
 

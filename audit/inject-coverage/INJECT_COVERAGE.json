@@ -505,6 +505,7 @@
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
         "apps/backend/__tests__/m34-platform-alert-audience-no-authority.test.ts",
+        "apps/backend/__tests__/m36-ack-delivery-failure.live.test.ts",
         "apps/backend/__tests__/m36-ack-escalation.live.test.ts",
         "apps/backend/__tests__/m36-ack-requests.live.test.ts",
         "apps/backend/__tests__/m36-ack-routes.test.ts",

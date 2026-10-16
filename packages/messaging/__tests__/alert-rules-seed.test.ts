@@ -33,6 +33,7 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m36.ack.escalated",
       "m36.ack.route_unavailable",
       "m36.ack.ladder_exhausted",
+      "m36.ack.failed_unreachable",
       "m36.medication_question.unrouted",
       "m36.handoff.offered",
       "m36.handoff.accepted",

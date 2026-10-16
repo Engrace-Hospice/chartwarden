@@ -62,7 +62,14 @@ describe("M36 urgent notifications consumer", () => {
       },
     });
     expect(Object.keys(alert.payload as object).sort()).toEqual(
-      ["channelId", "deepLink", "message", "messageId", "recipientUserId"].sort(),
+      [
+        "channelId",
+        "deepLink",
+        "message",
+        "messageId",
+        "recipientUserId",
+        "sourceAggregateId",
+      ].sort(),
     );
   });
 

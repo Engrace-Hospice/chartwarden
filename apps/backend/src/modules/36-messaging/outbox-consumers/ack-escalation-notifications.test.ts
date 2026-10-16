@@ -87,7 +87,14 @@ describe("M36 ack escalation notifications consumer", () => {
       payload: { recipientUserId: TIER_USER, message: ACK_ESCALATION_NOTIFICATION_TEXT.escalated },
     });
     expect(Object.keys(alert.payload as object).sort()).toEqual(
-      ["channelId", "deepLink", "message", "messageId", "recipientUserId"].sort(),
+      [
+        "channelId",
+        "deepLink",
+        "message",
+        "messageId",
+        "recipientUserId",
+        "sourceAggregateId",
+      ].sort(),
     );
   });
 
