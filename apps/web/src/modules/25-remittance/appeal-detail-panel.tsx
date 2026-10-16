@@ -52,6 +52,7 @@ import {
   runAppealAction,
 } from "./remittance-api";
 import { APPEAL_OUTCOME_TONE, APPEAL_STATE_TONE, humanize, toneOf } from "./remittance-status";
+import { SubmissionPanel } from "./submission-panel";
 
 const ACTIONS_BY_STATE: Record<string, readonly AppealAction["kind"][]> = {
   draft: ["attach", "submit", "withdraw"],
@@ -371,6 +372,9 @@ export function AppealDetailPanel({
                 void load();
               }}
             />
+          ) : null}
+          {appeal.state !== "draft" ? (
+            <SubmissionPanel key={appealId} kind="appeal" subjectId={appealId} />
           ) : null}
           {act === null ? (
             <ButtonRow>

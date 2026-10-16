@@ -11,6 +11,7 @@ import { ActionRail, ButtonRow, ErrorAlert, Facts, Hint, NoticeAlert } from "./a
 import { AdrPacketPanel } from "./adr-packet-panel";
 import { type AdrDetail, type AdrTransitionTarget, loadAdr, transitionAdr } from "./remittance-api";
 import { ADR_STATE_TONE, humanize, toneOf } from "./remittance-status";
+import { SubmissionPanel } from "./submission-panel";
 
 /** The moves a person may make from each state (the server re-validates). */
 const MOVES: Record<string, readonly AdrTransitionTarget[]> = {
@@ -147,6 +148,9 @@ export function AdrDetailPanel({ adrId, onClose, onChanged }: AdrDetailPanelProp
               await load();
             }}
           />
+          {adr.state === "submitted" || adr.state === "closed" ? (
+            <SubmissionPanel key={adrId} kind="adr" subjectId={adrId} />
+          ) : null}
           <Hint>
             WardenX does not send the response to the MAC yet: file it through the MAC's portal, fax
             or mail, then record the filing here with its confirmation.
