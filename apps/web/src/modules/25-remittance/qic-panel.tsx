@@ -43,6 +43,7 @@ interface EscalationDraft {
   readonly channel: EscalationChannel;
   readonly confirmationRef: string;
   readonly requestedAt: string;
+  readonly forwardedOn: string;
 }
 
 const pad = (n: number): string => String(n).padStart(2, "0");
@@ -54,11 +55,19 @@ const isoOrNull = (local: string): string | null =>
 
 export interface QicPanelProps {
   readonly appealId: string;
+  /** The parent's own copy of the appeal: a change to either means the QIC view must be re-read. */
+  readonly appealState: string;
+  readonly appealVersion: number;
   /** Called after any change so the parent reloads what it shows. */
   readonly onChanged: () => void;
 }
 
-export function QicPanel({ appealId, onChanged }: QicPanelProps): JSX.Element | null {
+export function QicPanel({
+  appealId,
+  appealState,
+  appealVersion,
+  onChanged,
+}: QicPanelProps): JSX.Element | null {
   const client = useApiClient();
   const navigate = useNavigate();
   const location = useLocation();
@@ -72,7 +81,7 @@ export function QicPanel({ appealId, onChanged }: QicPanelProps): JSX.Element | 
   const [channel, setChannel] = useState<EscalationChannel>(restored?.channel ?? "qic_portal");
   const [confirmationRef, setConfirmationRef] = useState(restored?.confirmationRef ?? "");
   const [requestedAt, setRequestedAt] = useState(restored?.requestedAt ?? toLocalInput(new Date()));
-  const [forwardedOn, setForwardedOn] = useState("");
+  const [forwardedOn, setForwardedOn] = useState(restored?.forwardedOn ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -84,10 +93,14 @@ export function QicPanel({ appealId, onChanged }: QicPanelProps): JSX.Element | 
     };
   }, []);
 
+  // Only the newest read may land: a slow earlier response must not overwrite a newer view.
+  const readSeq = useRef(0);
   const load = useCallback(async () => {
+    const seq = ++readSeq.current;
     const res = await loadQic(client, appealId);
-    if (!mounted.current) return;
+    if (!mounted.current || seq !== readSeq.current) return;
     if (!res.ok) {
+      // Keep the last view (and what the person typed); the error shows inline.
       setLoadError(res.message);
       return;
     }
@@ -95,14 +108,38 @@ export function QicPanel({ appealId, onChanged }: QicPanelProps): JSX.Element | 
     setView(res.value);
   }, [client, appealId]);
 
+  // Re-read when the parent's appeal changes (it was submitted, acknowledged, decided...): the draft-only editor and
+  // the If-Match version must follow it, not the copy loaded at mount.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: appealState and appealVersion are the reload triggers
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, appealState, appealVersion]);
 
   /** Runs one command; every refusal is shown verbatim and the case is reloaded so the next one carries its version. */
   async function run(
     label: string,
     call: (version: number) => Promise<{ ok: true } | { ok: false; message: string }>,
+  ): Promise<boolean> {
+    if (!view) return false;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    const res = await call(view.version);
+    if (!mounted.current) return false;
+    if (!res.ok) setError(res.message);
+    else setNotice(`${label}: done.`);
+    await load();
+    if (res.ok) onChanged();
+    if (mounted.current) setBusy(false);
+    return res.ok;
+  }
+
+  /** A step-up-gated command: on the step-up refusal the form is stashed and the person re-verifies, then returns. */
+  async function runWithStepUp(
+    label: string,
+    call: (
+      version: number,
+    ) => Promise<{ ok: true } | { ok: false; message: string; stepUp?: boolean }>,
   ): Promise<void> {
     if (!view) return;
     setBusy(true);
@@ -110,31 +147,13 @@ export function QicPanel({ appealId, onChanged }: QicPanelProps): JSX.Element | 
     setNotice(null);
     const res = await call(view.version);
     if (!mounted.current) return;
-    if (!res.ok) setError(res.message);
-    else setNotice(`${label}: done.`);
-    await load();
-    if (res.ok) onChanged();
-    if (mounted.current) setBusy(false);
-  }
-
-  async function escalate(): Promise<void> {
-    const sentAt = isoOrNull(requestedAt);
-    if (!view || sentAt === null) return;
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    const res = await requestEscalation(client, appealId, view.version, {
-      channel,
-      confirmationRef: confirmationRef.trim(),
-      requestedAt: sentAt,
-    });
-    if (!mounted.current) return;
     if (!res.ok && res.stepUp) {
       setBusy(false);
       stashStepUpDraft(draftKey, {
         channel,
         confirmationRef,
         requestedAt,
+        forwardedOn,
       } satisfies EscalationDraft);
       navigate(`/step-up?returnTo=${encodeURIComponent(`${location.pathname}${location.search}`)}`);
       return;
@@ -142,20 +161,32 @@ export function QicPanel({ appealId, onChanged }: QicPanelProps): JSX.Element | 
     if (!res.ok) setError(res.message);
     else {
       clearStepUpDraft(draftKey);
-      setNotice("Record escalation request: done.");
+      setNotice(`${label}: done.`);
     }
     await load();
     if (res.ok) onChanged();
     if (mounted.current) setBusy(false);
   }
 
-  if (loadError) return <ErrorAlert message={loadError} />;
-  if (!view) return <LoadingSpinner />;
+  function escalate(): void {
+    const sentAt = isoOrNull(requestedAt);
+    if (sentAt === null) return;
+    void runWithStepUp("Record escalation request", (v) =>
+      requestEscalation(client, appealId, v, {
+        channel,
+        confirmationRef: confirmationRef.trim(),
+        requestedAt: sentAt,
+      }),
+    );
+  }
+
+  if (!view) return loadError ? <ErrorAlert message={loadError} /> : <LoadingSpinner />;
   if (view.kind === "none") return null;
 
   if (view.kind === "escalated_alj") {
     return (
       <>
+        <ErrorAlert message={loadError} />
         <h3 className="wx-action-title">Filed by escalation</h3>
         <Hint>
           The QIC did not decide by its date, so the reconsideration was escalated to OMHA. This
@@ -181,13 +212,13 @@ export function QicPanel({ appealId, onChanged }: QicPanelProps): JSX.Element | 
       <h3 className="wx-action-title">QIC reconsideration</h3>
       <NoticeAlert message={notice} />
       <ErrorAlert message={error} />
+      <ErrorAlert message={loadError} />
 
       {view.state === "draft" ? (
         <>
           <PreclusionWarning />
           {view.evidenceEditable ? (
             <EvidenceEditor
-              key={view.version}
               view={view}
               busy={busy}
               onSave={(body) =>
@@ -291,7 +322,7 @@ export function QicPanel({ appealId, onChanged }: QicPanelProps): JSX.Element | 
                   onClick={() =>
                     void run("Extension", (v) =>
                       recordQicClock(client, appealId, v, { extensionDays: extension }),
-                    ).then(() => mounted.current && setExtensionDays(""))
+                    ).then((ok) => ok && mounted.current && setExtensionDays(""))
                   }
                 >
                   Add extension
@@ -339,7 +370,7 @@ export function QicPanel({ appealId, onChanged }: QicPanelProps): JSX.Element | 
           <ButtonRow end>
             <Button
               disabled={busy || confirmationRef.trim() === "" || sentIso === null}
-              onClick={() => void escalate()}
+              onClick={() => escalate()}
             >
               Record escalation request
             </Button>
@@ -373,7 +404,7 @@ export function QicPanel({ appealId, onChanged }: QicPanelProps): JSX.Element | 
             <Button
               disabled={busy || forwardedOn === ""}
               onClick={() =>
-                void run("Confirm forwarded", (v) =>
+                void runWithStepUp("Confirm forwarded", (v) =>
                   confirmEscalation(client, appealId, v, forwardedOn),
                 )
               }

@@ -34,14 +34,22 @@ const toDraft = (items: QicView["citedEvidence"]): readonly DraftItem[] =>
     reason: i.notAvailableReason ?? "",
   }));
 
-function itemProblem(item: DraftItem): string | null {
-  if (item.label.trim() === "") return "Name the documentation.";
+type ItemField = "label" | "documentId" | "reason";
+
+/** The first thing wrong with a draft item and the field it belongs to, so the message sits on that field. */
+function itemProblem(item: DraftItem): { field: ItemField; message: string } | null {
+  if (item.label.trim() === "") return { field: "label", message: "Name the documentation." };
   if (item.documentId.trim() !== "") {
-    return isUuid(item.documentId) ? null : "Enter the attached document's UUID.";
+    return isUuid(item.documentId)
+      ? null
+      : { field: "documentId", message: "Enter the attached document's UUID." };
   }
   return item.reason.trim().length >= MIN_UNAVAILABLE_REASON
     ? null
-    : `Say why it is not available (${MIN_UNAVAILABLE_REASON} characters minimum).`;
+    : {
+        field: "reason",
+        message: `Say why it is not available (${MIN_UNAVAILABLE_REASON} characters minimum).`,
+      };
 }
 
 export interface EvidenceEditorProps {
@@ -56,6 +64,15 @@ export interface EvidenceEditorProps {
 export function EvidenceEditor({ view, busy, onSave }: EvidenceEditorProps): JSX.Element {
   const [items, setItems] = useState<readonly DraftItem[]>(() => toDraft(view.citedEvidence));
   const [none, setNone] = useState(view.citedEvidenceNone);
+  // Start over only when the SAVED list changes (another writer, or our own save). A version bump alone (a refused
+  // stale save re-reads the case) must not throw away what the person typed.
+  const savedSig = JSON.stringify([view.citedEvidence, view.citedEvidenceNone]);
+  const [seenSig, setSeenSig] = useState(savedSig);
+  if (savedSig !== seenSig) {
+    setSeenSig(savedSig);
+    setItems(toDraft(view.citedEvidence));
+    setNone(view.citedEvidenceNone);
+  }
 
   const setItem = (at: number, patch: Partial<DraftItem>): void =>
     setItems((cur) => cur.map((it, i) => (i === at ? { ...it, ...patch } : it)));
@@ -83,25 +100,28 @@ export function EvidenceEditor({ view, busy, onSave }: EvidenceEditorProps): JSX
               value={item.label}
               maxLength={300}
               onChange={(e) => setItem(at, { label: e.target.value })}
+              error={problem?.field === "label" ? problem.message : undefined}
             />
             <TextField
-              label="Attached document ID (leave blank if it cannot be enclosed)"
+              label={`Attached document ID for item ${at + 1} (leave blank if it cannot be enclosed)`}
               value={item.documentId}
               onChange={(e) => setItem(at, { documentId: e.target.value })}
+              error={problem?.field === "documentId" ? problem.message : undefined}
             />
             {item.documentId.trim() === "" ? (
               <TextField
-                label="Why it is not available"
+                label={`Why item ${at + 1} is not available`}
                 value={item.reason}
                 maxLength={1000}
                 onChange={(e) => setItem(at, { reason: e.target.value })}
+                error={problem?.field === "reason" ? problem.message : undefined}
               />
             ) : null}
-            {problem ? <Hint>{problem}</Hint> : null}
             <ButtonRow end>
               <Button
                 tone="tertiary"
                 size="sm"
+                aria-label={`Remove item ${at + 1}`}
                 onClick={() => setItems((cur) => cur.filter((_, i) => i !== at))}
               >
                 Remove item

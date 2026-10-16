@@ -202,6 +202,11 @@ describe.skipIf(!DB_URL)("M25 QIC reconsideration and escalation - LIVE Postgres
     const { id } = await seedAppeal();
     await qic().setCitedEvidence(A(), id, { items: [], none: true }, await ver(id));
     await write().submitAppeal(A(), id, submitFields(), await ver(id));
+    // Filed long ago, so a receipt date in the past is a legitimate one (the service refuses a receipt before filing).
+    await admin.query(
+      "UPDATE appeal_case SET submitted_at = now() - interval '200 days' WHERE id = $1",
+      [id],
+    );
     await write().ackAppeal(A(), id, await ver(id));
     if (receivedDaysAgo !== null) {
       await qic().recordQicClock(A(), id, { receivedOn: daysAgo(receivedDaysAgo) }, await ver(id));
@@ -972,6 +977,148 @@ describe.skipIf(!DB_URL)("M25 QIC reconsideration and escalation - LIVE Postgres
       expect(ids).not.toContain(requested);
       expect(ids).not.toContain(notYet);
       expect(ids).not.toContain(noReceipt);
+    });
+  });
+
+  // ── review hardening ──────────────────────────────────────────────────────────────────────────────────────
+  describe("review hardening", () => {
+    const fax = (over: Record<string, unknown> = {}) => ({
+      channel: "fax",
+      confirmationRef: "FAX-CONF-77",
+      requestedAt: new Date().toISOString(),
+      ...over,
+    });
+
+    it("refuses a receipt date before the request was filed, and keeps the previous value in the event", async () => {
+      const { id } = await seedAppeal();
+      await qic().setCitedEvidence(A(), id, { items: [], none: true }, await ver(id));
+      await write().submitAppeal(A(), id, submitFields(), await ver(id));
+      await write().ackAppeal(A(), id, await ver(id));
+      expect(
+        await refused(qic().recordQicClock(A(), id, { receivedOn: daysAgo(5) }, await ver(id))),
+      ).toMatchObject({ code: "RECEIPT_BEFORE_FILING", statusCode: 422 });
+      await qic().recordQicClock(A(), id, { receivedOn: daysAgo(0) }, await ver(id));
+      await qic().recordQicClock(A(), id, { receivedOn: daysAgo(0) }, await ver(id));
+      const payloads = (
+        await admin.query(
+          "SELECT event_payload FROM appeal_case_event WHERE appeal_case_id=$1 AND event_kind='qic_clock_recorded' ORDER BY occurred_at",
+          [id],
+        )
+      ).rows.map((r) => r.event_payload);
+      expect(payloads[0]).toMatchObject({ receivedOn: daysAgo(0), previousReceivedOn: null });
+      expect(payloads[1].previousReceivedOn).toBeTruthy();
+    });
+
+    it("refuses an escalation request that pre-dates the QIC decision date", async () => {
+      const id = await underReview(70);
+      expect(
+        await refused(
+          qic().requestEscalation(
+            A(),
+            id,
+            fax({ requestedAt: new Date(Date.now() - 20 * 864e5).toISOString() }),
+            await ver(id),
+          ),
+        ),
+      ).toMatchObject({ code: "REQUESTED_BEFORE_DUE", statusCode: 422 });
+      await qic().requestEscalation(A(), id, fax(), await ver(id));
+    });
+
+    it("refuses a Medicare-number-shaped string in evidence text and the confirmation reference", async () => {
+      const { id } = await seedAppeal();
+      expect(
+        await refused(
+          qic().setCitedEvidence(
+            A(),
+            id,
+            {
+              items: [
+                { label: "Notes for 1EG4-TE5-MK73", documentId: docNote, notAvailableReason: null },
+              ],
+              none: false,
+            },
+            await ver(id),
+          ),
+        ),
+      ).toMatchObject({ code: "MBI_NOT_ALLOWED", statusCode: 422 });
+      expect(
+        await refused(
+          qic().setCitedEvidence(
+            A(),
+            id,
+            {
+              items: [
+                {
+                  label: "Visit notes",
+                  documentId: null,
+                  notAvailableReason: "1EG4TE5MK73 not released",
+                },
+              ],
+              none: false,
+            },
+            await ver(id),
+          ),
+        ),
+      ).toMatchObject({ code: "MBI_NOT_ALLOWED" });
+      const late = await underReview(70);
+      expect(
+        await refused(
+          qic().requestEscalation(
+            A(),
+            late,
+            fax({ confirmationRef: "1EG4TE5MK73" }),
+            await ver(late),
+          ),
+        ),
+      ).toMatchObject({ code: "MBI_NOT_ALLOWED", statusCode: 422 });
+    });
+
+    it("takes an extension only while the QIC is reviewing, in the service and in the trigger", async () => {
+      const { id } = await seedAppeal();
+      await qic().setCitedEvidence(A(), id, { items: [], none: true }, await ver(id));
+      await write().submitAppeal(A(), id, submitFields(), await ver(id));
+      await qic().recordQicClock(A(), id, { receivedOn: daysAgo(0) }, await ver(id));
+      expect(
+        await refused(qic().recordQicClock(A(), id, { extensionDays: 3 }, await ver(id))),
+      ).toMatchObject({ code: "INVALID_STATE", statusCode: 409 });
+      await expect(
+        admin.query(
+          `UPDATE appeal_case SET qic_clock_extensions = '[{"days":3,"recordedAt":"x"}]'::jsonb WHERE id = $1`,
+          [id],
+        ),
+      ).rejects.toThrow(/M25_QIC_EXTENSIONS_STATE/);
+    });
+
+    it("sets the forwarding date only by moving the case to escalated", async () => {
+      const id = await underReview(70);
+      await qic().requestEscalation(A(), id, fax(), await ver(id));
+      await expect(
+        admin.query("UPDATE appeal_case SET escalation_confirmed_on = CURRENT_DATE WHERE id = $1", [
+          id,
+        ]),
+      ).rejects.toThrow(/M25_QIC_CONFIRM_STATE/);
+    });
+
+    it("confirm-escalation needs a fresh step-up over the wire", async () => {
+      const id = await underReview(70);
+      await qic().requestEscalation(A(), id, fax(), await ver(id));
+      const send = (stepUp: boolean) =>
+        app.inject({
+          method: "POST",
+          url: `/api/v1/appeals/${id}/confirm-escalation`,
+          headers: {
+            ...as(ORG, userA, memberA, stepUp),
+            "idempotency-key": randomUUID(),
+            "if-match": String(1_000),
+          },
+          payload: { forwardedOn: daysAgo(0) } as never,
+        });
+      const denied = await send(false);
+      expect(denied.statusCode).toBe(403);
+      expect(denied.json().error.code).toBe("STEP_UP_REQUIRED");
+      expect((await row(id)).state).toBe("under_review");
+      // with the step-up it reaches the service (the deliberately stale version is then a 409, nothing written)
+      expect((await send(true)).statusCode).toBe(409);
     });
   });
 });

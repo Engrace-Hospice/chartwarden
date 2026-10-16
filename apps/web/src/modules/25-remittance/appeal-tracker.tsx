@@ -98,23 +98,30 @@ export function AppealTracker(): JSX.Element {
   );
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return rows
-      .filter((r) => {
-        const matchesState = stateFilter === "all" || r.state === stateFilter;
-        const matchesTier = !tierFilter || r.tier === tierFilter;
-        const matchesSearch =
-          !q ||
-          [
-            r.id,
-            r.tier,
-            TIER_LABEL[r.tier] ?? "",
-            r.state,
-            r.decisionOutcome ?? "",
-            r.tierDeadlineAt,
-          ].some((value) => value.toLowerCase().includes(q));
-        return matchesState && matchesTier && matchesSearch;
-      })
-      .sort((a, b) => a.tierDeadlineAt.localeCompare(b.tierDeadlineAt));
+    return (
+      rows
+        .filter((r) => {
+          const matchesState = stateFilter === "all" || r.state === stateFilter;
+          const matchesTier = !tierFilter || r.tier === tierFilter;
+          const matchesSearch =
+            !q ||
+            [
+              r.id,
+              r.tier,
+              TIER_LABEL[r.tier] ?? "",
+              r.state,
+              r.decisionOutcome ?? "",
+              r.tierDeadlineAt,
+            ].some((value) => value.toLowerCase().includes(q));
+          return matchesState && matchesTier && matchesSearch;
+        })
+        // Cases filed by escalation have no deadline to meet, so they sort after every case that has one.
+        .sort(
+          (a, b) =>
+            Number(a.filedByEscalation === true) - Number(b.filedByEscalation === true) ||
+            a.tierDeadlineAt.localeCompare(b.tierDeadlineAt),
+        )
+    );
   }, [rows, searchQuery, stateFilter, tierFilter]);
 
   // A case filed by escalation has no filing deadline to meet, so it never counts as due soon or overdue.
@@ -371,6 +378,7 @@ export function AppealTracker(): JSX.Element {
       detail={
         workingId ? (
           <AppealDetailPanel
+            key={workingId}
             appealId={workingId}
             onClose={() => setWorkingId(null)}
             onChanged={() => void load()}

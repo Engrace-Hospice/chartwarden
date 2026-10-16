@@ -42,4 +42,6 @@ export const QIC_ESCALATION_FILING_MESSAGES: Readonly<Record<QicEscalationFiling
     CHANNEL_INVALID: "the escalation channel must be qic_portal, fax, mail or other",
     PROOF_REQUIRED: "the confirmation or tracking reference for the escalation request is required",
     REQUESTED_IN_FUTURE: "the escalation request time cannot be in the future",
+    REQUESTED_BEFORE_DUE:
+      "the escalation request cannot pre-date the QIC's decision date; record when it was actually sent",
   };

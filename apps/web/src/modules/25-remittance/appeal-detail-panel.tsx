@@ -362,7 +362,10 @@ export function AppealDetailPanel({
           <NoticeAlert message={notice} />
           {appeal.tier === "reconsideration" || appeal.tier === "alj" ? (
             <QicPanel
+              key={appealId}
               appealId={appealId}
+              appealState={appeal.state}
+              appealVersion={appeal.version}
               onChanged={() => {
                 onChanged();
                 void load();

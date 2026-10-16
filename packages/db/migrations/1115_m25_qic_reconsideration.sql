@@ -90,6 +90,9 @@ BEGIN
     RAISE EXCEPTION 'M25_QIC_EVIDENCE_FROZEN: appeal_case % is no longer a draft; its cited evidence cannot change', OLD.id;
   END IF;
   IF NEW.qic_clock_extensions IS DISTINCT FROM OLD.qic_clock_extensions THEN
+    IF OLD.state <> 'under_review' THEN
+      RAISE EXCEPTION 'M25_QIC_EXTENSIONS_STATE: appeal_case % extensions can only be appended while the QIC is reviewing (under_review)', OLD.id;
+    END IF;
     IF jsonb_array_length(NEW.qic_clock_extensions) < jsonb_array_length(OLD.qic_clock_extensions)
        OR EXISTS (
          SELECT 1 FROM jsonb_array_elements(OLD.qic_clock_extensions) WITH ORDINALITY AS o(e, n)
@@ -110,6 +113,9 @@ BEGIN
   END IF;
   IF OLD.escalation_confirmed_on IS NOT NULL AND NEW.escalation_confirmed_on IS DISTINCT FROM OLD.escalation_confirmed_on THEN
     RAISE EXCEPTION 'M25_QIC_ESCALATION_FROZEN: appeal_case % has a recorded forwarding date that cannot change', OLD.id;
+  END IF;
+  IF NEW.escalation_confirmed_on IS NOT NULL AND NEW.state NOT IN ('escalated','closed') THEN
+    RAISE EXCEPTION 'M25_QIC_CONFIRM_STATE: appeal_case % forwarding date can only be set by moving the case to escalated', OLD.id;
   END IF;
   IF NEW.filed_by_escalation IS DISTINCT FROM OLD.filed_by_escalation THEN
     RAISE EXCEPTION 'M25_QIC_ESCALATION_FROZEN: appeal_case % filed_by_escalation is set at insert and never changes', OLD.id;

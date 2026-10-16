@@ -10,6 +10,7 @@ import {
   checkEscalationFiling,
   checkQicEvidence,
   checkQicExtension,
+  containsMbi,
   deriveQicDecisionClock,
   isQicOverdue,
   qicDaysOverdue,
@@ -220,5 +221,36 @@ describe("appeal machine: escalated", () => {
     expect(canTransitionAppeal("draft", "escalated")).toBe(false);
     expect(canTransitionAppeal("escalated", "decided")).toBe(false);
     expect(isAppealTerminal("escalated")).toBe(false);
+  });
+});
+
+describe("escalation request timing", () => {
+  const filing = {
+    channel: "fax",
+    confirmationRef: "FAX-1",
+    requestedAt: new Date("2026-03-09T00:00:00.000Z"),
+    now: new Date("2026-03-10T00:00:00.000Z"),
+  };
+  it("cannot pre-date the QIC decision instant", () => {
+    const notBefore = new Date("2026-03-08T00:00:00.000Z");
+    expect(checkEscalationFiling({ ...filing, notBefore })).toBeNull();
+    expect(
+      checkEscalationFiling({ ...filing, notBefore: new Date("2026-03-09T00:00:00.001Z") }),
+    ).toBe("REQUESTED_BEFORE_DUE");
+  });
+});
+
+describe("Medicare number detection", () => {
+  it("catches an MBI on its own, dashed, spaced, lower-case or inside a sentence", () => {
+    expect(containsMbi("1EG4-TE5-MK73")).toBe(true);
+    expect(containsMbi("1eg4te5mk73")).toBe(true);
+    expect(containsMbi("1EG4 TE5 MK73")).toBe(true);
+    expect(containsMbi("Patient 1EG4TE5MK73 visit notes")).toBe(true);
+  });
+  it("leaves ordinary references and labels alone", () => {
+    expect(containsMbi("FAX-CONF-77")).toBe(false);
+    expect(containsMbi("Face-to-face note 2026-02-20")).toBe(false);
+    expect(containsMbi("The facility has not released the notes yet.")).toBe(false);
+    expect(containsMbi("")).toBe(false);
   });
 });

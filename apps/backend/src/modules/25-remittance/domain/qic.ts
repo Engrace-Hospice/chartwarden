@@ -164,7 +164,8 @@ export function canRequestEscalation(input: {
 export type QicEscalationFilingRefusal =
   | "CHANNEL_INVALID"
   | "PROOF_REQUIRED"
-  | "REQUESTED_IN_FUTURE";
+  | "REQUESTED_IN_FUTURE"
+  | "REQUESTED_BEFORE_DUE";
 
 /** What a recorded escalation request needs: a known channel, the confirmation given, a real past time. */
 export function checkEscalationFiling(input: {
@@ -172,11 +173,34 @@ export function checkEscalationFiling(input: {
   readonly confirmationRef: string;
   readonly requestedAt: Date;
   readonly now: Date;
+  /** The QIC's decision instant: a request cannot pre-date it (and so not the receipt or the filing either). */
+  readonly notBefore?: Date;
 }): QicEscalationFilingRefusal | null {
   if (!(QIC_ESCALATION_CHANNELS as readonly string[]).includes(input.channel)) {
     return "CHANNEL_INVALID";
   }
   if (input.confirmationRef.trim() === "") return "PROOF_REQUIRED";
   if (input.requestedAt.getTime() > input.now.getTime()) return "REQUESTED_IN_FUTURE";
+  if (input.notBefore && input.requestedAt.getTime() < input.notBefore.getTime()) {
+    return "REQUESTED_BEFORE_DUE";
+  }
   return null;
+}
+
+// CMS Medicare Beneficiary Identifier: 11 characters; position 1 a digit 1-9, 2 a letter, 3 a letter or digit, 4 a
+// digit, 5 a letter, 6 a letter or digit, 7 a digit, 8-9 letters, 10-11 digits. S, L, O, I, B and Z are never used.
+const MBI_SHAPE =
+  /[1-9][AC-HJKMNP-RT-Y][AC-HJKMNP-RT-Y0-9][0-9][AC-HJKMNP-RT-Y][AC-HJKMNP-RT-Y0-9][0-9][AC-HJKMNP-RT-Y]{2}[0-9]{2}/;
+/** Short free-text fields (a reference, a label) get spaces removed too, so "1EG4 TE5 MK73" is caught. */
+const SHORT_FIELD_MAX = 40;
+
+/**
+ * True when `text` contains something shaped like a Medicare number (MBI). M25 holds no MBI by design, so cited
+ * evidence and references must not carry one into the audit-visible and packet-visible record. A false positive
+ * costs the person one edit; a miss puts PHI where it does not belong.
+ */
+export function containsMbi(text: string): boolean {
+  const upper = text.toUpperCase().replace(/-/g, "");
+  if (MBI_SHAPE.test(upper)) return true;
+  return upper.length <= SHORT_FIELD_MAX && MBI_SHAPE.test(upper.replace(/\s+/g, ""));
 }

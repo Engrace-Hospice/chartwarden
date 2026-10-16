@@ -124,6 +124,8 @@ const ATTACH = P("appeal.attach_document");
 const SUBMIT = P("appeal.submit");
 const SUBMIT_STEPUP = STEP_UP("appeal.submit");
 const DECIDE = P("appeal.decide");
+// Confirming the forward is irreversible (the case becomes `escalated` and an ALJ case opens), so it needs a step-up.
+const DECIDE_STEPUP = STEP_UP("appeal.decide");
 const IDEMPOTENT = requireIdempotencyKey();
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -215,7 +217,7 @@ export function registerQicRoutes(app: FastifyInstance, deps: QicRouteDeps): voi
 
   app.post(
     "/api/v1/appeals/:id/confirm-escalation",
-    { preHandler: [DECIDE, IDEMPOTENT] },
+    { preHandler: [DECIDE, DECIDE_STEPUP, IDEMPOTENT] },
     async (request, reply) => {
       const body = parse(EscalationConfirmRequestSchema, request.body);
       return reply.send(

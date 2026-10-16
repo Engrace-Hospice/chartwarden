@@ -21,6 +21,7 @@ import {
   canTransitionAppeal,
   checkEscalationFiling,
   checkQicExtension,
+  containsMbi,
   deriveQicDecisionClock,
   isKnownZone,
   isQicOverdue,
@@ -185,6 +186,17 @@ function checkedDay(day: string, what: string, now: Date): string {
     throw new WardenXError("DATE_IN_FUTURE", `${what} cannot be in the future`, 422);
   }
   return day;
+}
+
+/** M25 holds no Medicare number by design: free text that carries one is refused, not stored. */
+function assertNoMbi(value: string | null, what: string): void {
+  if (value !== null && containsMbi(value)) {
+    throw new WardenXError(
+      "MBI_NOT_ALLOWED",
+      `${what} looks like a Medicare number. Do not enter the Medicare number here; the request is completed and signed by hand.`,
+      422,
+    );
+  }
 }
 
 export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}): QicService {
@@ -366,6 +378,10 @@ export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}):
           422,
         );
       }
+      for (const i of input.items) {
+        assertNoMbi(i.label, "an item label");
+        assertNoMbi(i.notAvailableReason, "an item reason");
+      }
       return withOrgContext(db, actor, async (tx) => {
         const cur = await load(tx, actor, id);
         requireReconsideration(cur);
@@ -414,6 +430,13 @@ export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}):
             409,
           );
         }
+        if (receivedOn === null && cur.state !== "under_review") {
+          throw new WardenXError(
+            "INVALID_STATE",
+            "a late-evidence extension is recorded while the QIC is reviewing the request",
+            409,
+          );
+        }
         if (cur.escalationRequestedAt !== null) {
           throw new WardenXError(
             "CLOCK_FROZEN",
@@ -422,6 +445,19 @@ export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}):
           );
         }
         if (receivedOn !== null) {
+          // The QIC cannot have received the request before it was filed. One day of slack: the filing instant
+          // is stored in UTC and the printed receipt date is in the provider's zone.
+          if (
+            cur.submittedAt &&
+            parseNoticeDay(receivedOn) <
+              parseNoticeDay(cur.submittedAt.toISOString().slice(0, 10)) - MS_PER_DAY
+          ) {
+            throw new WardenXError(
+              "RECEIPT_BEFORE_FILING",
+              "the QIC cannot have received the request before it was filed in WardenX; check the date on the acknowledgement",
+              422,
+            );
+          }
           return update(
             tx,
             actor,
@@ -430,7 +466,7 @@ export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}):
             { qicReceivedOn: receivedOn },
             {
               kind: "qic_clock_recorded",
-              payload: { receivedOn },
+              payload: { receivedOn, previousReceivedOn: cur.qicReceivedOn },
             },
           );
         }
@@ -464,23 +500,32 @@ export function buildDrizzleQicService(db: DbClient, deps: QicServiceDeps = {}):
           422,
         );
       }
-      const filing = checkEscalationFiling({
-        channel: input.channel,
-        confirmationRef: input.confirmationRef,
-        requestedAt,
-        now,
-      });
-      if (filing) throw new WardenXError(filing, QIC_ESCALATION_FILING_MESSAGES[filing], 422);
+      const fileWith = (notBefore?: Date) =>
+        checkEscalationFiling({
+          channel: input.channel,
+          confirmationRef: input.confirmationRef,
+          requestedAt,
+          now,
+          ...(notBefore ? { notBefore } : {}),
+        });
+      const early = fileWith();
+      if (early) throw new WardenXError(early, QIC_ESCALATION_FILING_MESSAGES[early], 422);
+      assertNoMbi(input.confirmationRef, "the confirmation reference");
       return withOrgContext(db, actor, async (tx) => {
         const cur = await load(tx, actor, id);
+        const clock = cur.tier === "reconsideration" ? await clockOf(tx, cur) : null;
         const refusal = canRequestEscalation({
           tier: cur.tier,
           state: cur.state,
-          clock: cur.tier === "reconsideration" ? await clockOf(tx, cur) : null,
+          clock,
           alreadyRequested: cur.escalationRequestedAt !== null,
           now,
         });
         if (refusal) throw new WardenXError(refusal, QIC_ESCALATION_MESSAGES[refusal], 409);
+        // The request was made after the QIC's decision date (and so after the receipt and the filing): this also
+        // bounds the forwarding date and the ALJ case's stored instant.
+        const late = fileWith(clock?.decisionDueAt);
+        if (late) throw new WardenXError(late, QIC_ESCALATION_FILING_MESSAGES[late], 422);
         // The state stays `under_review`: the QIC may still decide until it forwards the case.
         return update(
           tx,

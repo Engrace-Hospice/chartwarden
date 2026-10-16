@@ -24,13 +24,17 @@ let tier = "reconsideration";
 let state = "draft";
 let filedByEscalation = false;
 let qic: Record<string, unknown> = {};
+let appealVersion = 4;
+let failQicReads = false;
+/** Runs after a successful write, so a test can move the server-side case the way the real server would. */
+let afterWrite: (() => void) | null = null;
 
 const baseQic = (over: Record<string, unknown> = {}) => ({
   id: APPEAL,
   kind: "reconsideration",
   tier: "reconsideration",
   state,
-  version: 4,
+  version: appealVersion,
   redeterminationNoticeDate: "2026-02-01",
   citedEvidence: [],
   citedEvidenceNone: false,
@@ -69,7 +73,7 @@ const appealBody = () => ({
   windowDays: 180,
   lastFilingDay: "2026-08-05",
   filedByEscalation,
-  version: 4,
+  version: appealVersion,
   appealPacketDocumentId: null,
   submittedAt: null,
   decidedAt: null,
@@ -93,6 +97,7 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
       body: raw ? (JSON.parse(raw) as Record<string, unknown>) : {},
     });
     if (refusal) return json(refusal.status, refusal.body);
+    afterWrite?.();
     return json(200, {
       id: APPEAL,
       version: 5,
@@ -101,7 +106,11 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   }
   gets.push(path);
   if (path === `/api/v1/appeals/${APPEAL}`) return json(200, appealBody());
-  if (path === `/api/v1/appeals/${APPEAL}/qic`) return json(200, qic);
+  if (path === `/api/v1/appeals/${APPEAL}/qic`) {
+    // Only the reads AFTER the first one fail, so the panel has a view to keep.
+    if (failQicReads && gets.filter((g) => g.endsWith("/qic")).length > 1) return json(500, qic);
+    return json(200, qic);
+  }
   return json(200, {});
 }
 
@@ -152,6 +161,9 @@ beforeEach(() => {
   tier = "reconsideration";
   state = "draft";
   filedByEscalation = false;
+  appealVersion = 4;
+  failQicReads = false;
+  afterWrite = null;
   qic = baseQic();
   window.sessionStorage.clear();
 });
@@ -173,15 +185,15 @@ describe("M25 QIC reconsideration - draft", () => {
   it("saves the cited items with the version, and refuses a short reason before sending", async () => {
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "Add item" }));
-    change("Item 1", "Face-to-face note");
-    change(/Attached document ID \(leave blank/, NOTE_DOC);
+    change(/^Item 1/, "Face-to-face note");
+    change(/Attached document ID for item 1/, NOTE_DOC);
     fireEvent.click(screen.getByRole("button", { name: "Add item" }));
-    change("Item 2", "Visit notes");
-    change("Why it is not available", "lost");
+    change(/^Item 2/, "Visit notes");
+    change(/^Why item 2 is not available/, "lost");
     expect(
       (screen.getByRole("button", { name: "Save evidence list" }) as HTMLButtonElement).disabled,
     ).toBe(true);
-    change("Why it is not available", "The facility has not released the notes yet.");
+    change(/^Why item 2 is not available/, "The facility has not released the notes yet.");
     fireEvent.click(screen.getByRole("button", { name: "Save evidence list" }));
     await waitFor(() =>
       expect(calls).toEqual([
@@ -461,5 +473,157 @@ describe("M25 QIC reconsideration - escalation", () => {
       screen.getByText(/None: filed by escalation from the QIC reconsideration\./),
     ).toBeTruthy();
     expect(screen.queryByText("Deadline basis")).toBeNull();
+  });
+});
+
+describe("M25 QIC reconsideration - review fixes", () => {
+  it("follows the parent: after a submit the editor is gone and the next write carries the fresh version", async () => {
+    refusal = null;
+    qic = baseQic({ citedEvidenceNone: true });
+    afterWrite = () => {
+      state = "submitted";
+      appealVersion = 5;
+      qic = baseQic({ citedEvidenceNone: true, version: 5 });
+    };
+    mount();
+    expect(await screen.findByText("Documentation the redetermination notice named")).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "Submit appeal" }));
+    change("Appeal narrative", "N".repeat(120));
+    change("Attached document IDs", `${NOTICE_DOC}, ${NOTE_DOC}`);
+    change("MAC that issued the redetermination notice", "Example MAC");
+    change(/Document ID of the copy of the redetermination notice/, NOTICE_DOC);
+    fireEvent.click(screen.getAllByRole("button", { name: "Submit appeal" }).at(-1) as HTMLElement);
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await waitFor(() =>
+      expect(screen.queryByText("Documentation the redetermination notice named")).toBeNull(),
+    );
+    afterWrite = null;
+    fireEvent.change(await screen.findByLabelText(/Date the QIC received the request/), {
+      target: { value: "2026-01-05" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Record receipt date" }));
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[1]).toMatchObject({ path: `/api/v1/appeals/${APPEAL}/qic-clock`, ifMatch: "5" });
+  });
+
+  it("keeps typed evidence when a stale save is refused with 409", async () => {
+    refusal = {
+      status: 409,
+      body: {
+        error: { code: "VERSION_CONFLICT", message: "This record changed before your action." },
+      },
+    };
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Add item" }));
+    change(/^Item 1/, "Face-to-face note");
+    change(/Attached document ID for item 1/, NOTE_DOC);
+    appealVersion = 6; // the re-read comes back at a newer version, same saved list
+    qic = baseQic({ version: 6 });
+    fireEvent.click(screen.getByRole("button", { name: "Save evidence list" }));
+    expect(await screen.findByText(/This record changed before your action/)).toBeTruthy();
+    await waitFor(() => expect(gets.filter((g) => g.endsWith("/qic")).length).toBeGreaterThan(1));
+    expect((screen.getByLabelText(/^Item 1/) as HTMLInputElement).value).toBe("Face-to-face note");
+  });
+
+  it("gives repeated fields their item number and a named remove button", async () => {
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Add item" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add item" }));
+    expect(screen.getByLabelText(/^Item 2/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Remove item 2" })).toBeTruthy();
+    change(/^Item 1/, "");
+    expect(screen.getAllByText("Name the documentation.").length).toBe(2);
+  });
+
+  it("keeps a refused extension's value, and the escalation form's typed reference after a refusal", async () => {
+    state = "under_review";
+    qic = baseQic({ clock: clockBody() });
+    refusal = {
+      status: 422,
+      body: {
+        error: { code: "EXTENSION_OUT_OF_RANGE", message: "extension must be 0 to 14 days" },
+      },
+    };
+    mount();
+    await screen.findByLabelText(/Late-evidence extension/);
+    change(/Late-evidence extension/, "7");
+    fireEvent.click(screen.getByRole("button", { name: "Add extension" }));
+    expect(await screen.findByText(/extension must be 0 to 14 days/)).toBeTruthy();
+    expect((screen.getByLabelText(/Late-evidence extension/) as HTMLInputElement).value).toBe("7");
+  });
+
+  it("keeps the typed escalation reference after a refusal", async () => {
+    state = "under_review";
+    qic = baseQic({
+      clock: clockBody({ overdue: true, daysOverdue: 3 }),
+      escalationEligible: true,
+    });
+    refusal = {
+      status: 409,
+      body: {
+        error: { code: "ALREADY_REQUESTED", message: "an escalation request is already recorded" },
+      },
+    };
+    mount();
+    await screen.findByLabelText("Confirmation or tracking reference");
+    change("Confirmation or tracking reference", "FAX-CONF-77");
+    fireEvent.click(screen.getByRole("button", { name: "Record escalation request" }));
+    expect(await screen.findByText(/already recorded/)).toBeTruthy();
+    expect(
+      (screen.getByLabelText("Confirmation or tracking reference") as HTMLInputElement).value,
+    ).toBe("FAX-CONF-77");
+  });
+
+  it("shows a failed reload inline and keeps the last view and the refusal", async () => {
+    state = "under_review";
+    qic = baseQic({
+      clock: clockBody({ overdue: true, daysOverdue: 3 }),
+      escalationEligible: true,
+    });
+    refusal = {
+      status: 409,
+      body: {
+        error: { code: "ALREADY_REQUESTED", message: "an escalation request is already recorded" },
+      },
+    };
+    mount();
+    await screen.findByLabelText("Confirmation or tracking reference");
+    change("Confirmation or tracking reference", "FAX-CONF-77");
+    qic = { error: { code: "INTERNAL", message: "reload failed" } };
+    failQicReads = true;
+    fireEvent.click(screen.getByRole("button", { name: "Record escalation request" }));
+    expect(await screen.findByText(/already recorded/)).toBeTruthy();
+    expect(await screen.findByText(/reload failed/)).toBeTruthy();
+    expect(screen.getByLabelText("Confirmation or tracking reference")).toBeTruthy();
+  });
+
+  it("sends the confirm form through step-up and restores it", async () => {
+    state = "under_review";
+    qic = baseQic({
+      clock: clockBody({ overdue: true, daysOverdue: 3 }),
+      escalation: {
+        requestedAt: "2026-03-09T12:00:00.000Z",
+        channel: "fax",
+        confirmationRef: "FAX-CONF-77",
+        confirmedOn: null,
+      },
+    });
+    refusal = {
+      status: 403,
+      body: { error: { code: "STEP_UP_REQUIRED", message: "recent verification required" } },
+    };
+    mount();
+    fireEvent.change(await screen.findByLabelText(/Date the QIC forwarded the case/), {
+      target: { value: "2026-03-10" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm the case was forwarded" }));
+    await waitFor(() => expect(screen.getByTestId("where").textContent).toContain("/step-up"));
+    cleanup();
+    refusal = null;
+    mount();
+    const date = (await screen.findByLabelText(
+      /Date the QIC forwarded the case/,
+    )) as HTMLInputElement;
+    expect(date.value).toBe("2026-03-10");
   });
 });
