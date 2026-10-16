@@ -23211,6 +23211,161 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tpe-programs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** TPE programs with current round, the MAC's rate against the threshold, next round and advisory risk */
+        get: operations["getApiV1Tpeprograms"];
+        put?: never;
+        /** Open a TPE program for a provider entity and MAC (one active program per pair) */
+        post: operations["postApiV1Tpeprograms"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tpe-programs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** TPE program detail: rounds, sampled claims with their ADR state, warnings, outcome */
+        get: operations["getApiV1TpeprogramsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tpe-programs/{id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close a TPE program; a closed program is frozen by the database (If-Match) */
+        post: operations["postApiV1TpeprogramsByIdClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tpe-programs/{id}/outcome": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the program outcome from the CMS / MAC letter: relief (compliant) or referral with its types (If-Match) */
+        post: operations["postApiV1TpeprogramsByIdOutcome"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tpe-programs/{id}/rounds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start the next TPE round (max 3; the previous round needs results); an interval under 45 days is a warning (If-Match on the program) */
+        post: operations["postApiV1TpeprogramsByIdRounds"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tpe-rounds/{id}/claims/{claimId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Add or update a sampled claim of a round: its ADR link and result (If-Match on the round) */
+        put: operations["putApiV1TperoundsByIdClaimsByClaimId"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tpe-rounds/{id}/education": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Record (or clear) the education date and note for a round (If-Match) */
+        put: operations["putApiV1TperoundsByIdEducation"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tpe-rounds/{id}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Record the MAC's results letter for a round; the threshold in force is snapshotted on first record (If-Match) */
+        put: operations["putApiV1TperoundsByIdResults"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tpe-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's per-MAC TPE exit thresholds (none are seeded) */
+        get: operations["getApiV1Tperules"];
+        /** Create or update a per-MAC TPE exit threshold with its source and verification day */
+        put: operations["putApiV1Tperules"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/transfers/{id}/receiving-care-setting": {
         parameters: {
             query?: never;
@@ -92995,6 +93150,453 @@ export interface operations {
                         /** Format: date-time */
                         endsAt: string;
                         state: "requested" | "approved" | "denied" | "cancelled" | "consumed";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Tpeprograms: {
+        parameters: {
+            query?: {
+                state?: string;
+                limit?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            providerEntityId: string;
+                            macName: string;
+                            openedOn: string;
+                            state: string;
+                            outcomeOn: string | null;
+                            reliefUntil: string | null;
+                            referralKinds: string[];
+                            version: number;
+                            maxRounds: number;
+                            roundsRecorded: number;
+                            currentRound: number | null;
+                            latestRound: {
+                                roundNumber: number;
+                                resultsOn: string;
+                                macErrorRatePct: number | null;
+                                macResult: string;
+                            } | null;
+                            threshold: {
+                                pct: number | null;
+                                source: string;
+                                verified: boolean;
+                            };
+                            aboveThreshold: boolean | null;
+                            claimCountRate: {
+                                reviewed: number;
+                                errors: number;
+                                pct: number;
+                            } | null;
+                            nextRoundEarliest: string | null;
+                            risk: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Tpeprograms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    macName: string;
+                    openedOn: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1TpeprogramsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        macName: string;
+                        openedOn: string;
+                        state: string;
+                        outcomeOn: string | null;
+                        reliefUntil: string | null;
+                        referralKinds: string[];
+                        version: number;
+                        maxRounds: number;
+                        roundsRecorded: number;
+                        currentRound: number | null;
+                        latestRound: {
+                            roundNumber: number;
+                            resultsOn: string;
+                            macErrorRatePct: number | null;
+                            macResult: string;
+                        } | null;
+                        threshold: {
+                            pct: number | null;
+                            source: string;
+                            verified: boolean;
+                        };
+                        aboveThreshold: boolean | null;
+                        claimCountRate: {
+                            reviewed: number;
+                            errors: number;
+                            pct: number;
+                        } | null;
+                        nextRoundEarliest: string | null;
+                        risk: string;
+                        rounds: {
+                            id: string;
+                            roundNumber: number;
+                            noticeOn: string;
+                            resultsOn: string | null;
+                            macErrorRatePct: number | null;
+                            macResult: string | null;
+                            threshold: {
+                                pct: number | null;
+                                source: string;
+                                verified: boolean;
+                            } | null;
+                            educationOn: string | null;
+                            educationNote: string | null;
+                            claims: {
+                                id: string;
+                                claimId: string;
+                                adrCaseId: string | null;
+                                adrState: string | null;
+                                result: string;
+                            }[];
+                            claimCountRate: {
+                                reviewed: number;
+                                errors: number;
+                                pct: number;
+                            } | null;
+                            warnings: string[];
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TpeprogramsByIdClose: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TpeprogramsByIdOutcome: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    kind: "compliant" | "referred";
+                    outcomeOn: string;
+                    reliefUntil?: string | null;
+                    referralKinds?: ("prepay_review" | "extrapolation" | "rac" | "other")[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TpeprogramsByIdRounds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    noticeOn: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                        roundNumber: number;
+                        warnings: string[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1TperoundsByIdClaimsByClaimId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                claimId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    adrCaseId?: string | null;
+                    result?: "pending" | "no_error" | "error";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1TperoundsByIdEducation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    educationOn: string | null;
+                    note?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1TperoundsByIdResults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    resultsOn: string;
+                    macErrorRatePct: number | null;
+                    macResult: "compliant" | "non_compliant";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Tperules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            macName: string;
+                            exitErrorRatePct: number;
+                            sourceNote: string | null;
+                            verifiedOn: string | null;
+                            effectiveFrom: string;
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1Tperules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    macName: string;
+                    exitErrorRatePct: number;
+                    sourceNote?: string;
+                    verifiedOn?: string;
+                    effectiveFrom?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
                     };
                 };
             };

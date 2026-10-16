@@ -3469,6 +3469,26 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "none",
   },
+  // --- TPE program tracker (milestone 5; granted by migration 1119) ---
+  "tpe.read": {
+    resource: "tpe_program",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "tpe.manage": {
+    resource: "tpe_program",
+    action: "manage",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  // Edit the organization's per-MAC TPE exit thresholds (no threshold is seeded).
+  "tpe_rule.manage": {
+    resource: "tpe_mac_rule",
+    action: "manage",
+    category: "billing",
+    abac: "none",
+  },
   // --- taxonomy surface ---
   "taxonomy.read": {
     resource: "denial_taxonomy",

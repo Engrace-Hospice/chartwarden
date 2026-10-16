@@ -491,15 +491,15 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 57,
-        "enriched": 57
+        "routes": 68,
+        "enriched": 68
       },
       "screens": true,
       "tests": true,
       "adapter": true,
       "liveInfra": {
-        "tables": 18,
-        "covered": 18
+        "tables": 22,
+        "covered": 22
       }
     },
     {

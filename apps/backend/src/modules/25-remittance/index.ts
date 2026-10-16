@@ -47,6 +47,7 @@ export {
   buildDrizzleAdrService,
   buildDrizzleDenialRouteService,
   buildDrizzleReopeningService,
+  buildDrizzleTpeService,
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,
 } from "./routes/index";

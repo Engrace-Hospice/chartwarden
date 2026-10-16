@@ -75,6 +75,24 @@ export const REOPENING_STATE_TONE: Record<string, StatusTone> = {
   closed: "neutral",
 };
 
+/** tpe_program state → tone (milestone 5). Referred is the bad outcome; compliant is relief. */
+export const TPE_PROGRAM_STATE_TONE: Record<string, StatusTone> = {
+  active: "progress",
+  compliant: "success",
+  referred: "error",
+  closed: "neutral",
+};
+
+/** Advisory TPE referral risk → tone (milestone 5). Not a CMS determination; unknown is inert. */
+export const TPE_RISK_TONE: Record<string, StatusTone> = {
+  relief: "success",
+  low: "success",
+  unknown: "neutral",
+  elevated: "warning",
+  high: "error",
+  referred: "error",
+};
+
 /** The path a denial takes → tone. Undetermined is inert: the denial stays appealable exactly as before. */
 export const DENIAL_ROUTE_TONE: Record<string, StatusTone> = {
   appeal: "progress",

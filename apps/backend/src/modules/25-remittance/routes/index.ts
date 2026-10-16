@@ -15,12 +15,14 @@ export {
   type DenialRouteService,
 } from "./denial-route-service";
 export { buildDrizzleReopeningService, type ReopeningService } from "./reopening-service";
+export { buildDrizzleTpeService, type TpeService } from "./tpe-service";
 
 import type { M25IngestService } from "../ingest/service";
 import type { AdrService } from "./adr-service";
 import type { DenialRouteService } from "./denial-route-service";
 import type { M25ReadService } from "./read-service";
 import type { ReopeningService } from "./reopening-service";
+import type { TpeService } from "./tpe-service";
 import type { M25WriteService } from "./write-service";
 
 /**
@@ -38,4 +40,6 @@ export interface M25RouteServices {
   /** Non-response routing + MAC reopenings (milestone 3); the routes mount only when both are supplied. */
   readonly reopeningService?: ReopeningService;
   readonly denialRouteService?: DenialRouteService;
+  /** TPE program tracker (milestone 5); the routes mount only when supplied. */
+  readonly tpeService?: TpeService;
 }

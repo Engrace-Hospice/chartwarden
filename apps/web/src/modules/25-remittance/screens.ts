@@ -6,9 +6,7 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // this gates nav visibility only. The four M25 surfaces sit under the "Billing" navGroup (revenue cycle).
 import { lazy } from "react";
 import type { ComponentType } from "react";
-const AdrWorklist = lazy(() =>
-  import("./adr-worklist").then((m) => ({ default: m.AdrWorklist })),
-);
+const AdrWorklist = lazy(() => import("./adr-worklist").then((m) => ({ default: m.AdrWorklist })));
 const AppealTracker = lazy(() =>
   import("./appeal-tracker").then((m) => ({ default: m.AppealTracker })),
 );
@@ -18,6 +16,7 @@ const DenialWorklist = lazy(() =>
 const RemittanceWorklist = lazy(() =>
   import("./remittance-worklist").then((m) => ({ default: m.RemittanceWorklist })),
 );
+const TpeTracker = lazy(() => import("./tpe-tracker").then((m) => ({ default: m.TpeTracker })));
 const TaxonomyOverlay = lazy(() =>
   import("./taxonomy-overlay").then((m) => ({ default: m.TaxonomyOverlay })),
 );
@@ -57,6 +56,14 @@ export const remittanceScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Billing",
       requiredPermission: "appeal.read",
       screen: AppealTracker,
+    },
+    {
+      id: "remittance.tpe",
+      path: "/remittance/tpe",
+      title: "TPE Program",
+      navGroup: "Billing",
+      requiredPermission: "tpe.read",
+      screen: TpeTracker,
     },
     {
       id: "remittance.taxonomy",
