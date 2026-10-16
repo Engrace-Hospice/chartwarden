@@ -18,16 +18,24 @@
 -- Nothing here is sent electronically (milestone 6).
 
 ALTER TABLE "appeal_case"
-  ADD COLUMN "cited_evidence" jsonb,
-  ADD COLUMN "cited_evidence_none" boolean NOT NULL DEFAULT false,
-  ADD COLUMN "qic_received_on" date,
-  ADD COLUMN "qic_clock_extensions" jsonb NOT NULL DEFAULT '[]'::jsonb,
-  ADD COLUMN "escalation_requested_at" timestamptz,
-  ADD COLUMN "escalation_channel" text,
-  ADD COLUMN "escalation_confirmation_ref" text,
-  ADD COLUMN "escalation_confirmed_on" date,
-  ADD COLUMN "filed_by_escalation" boolean NOT NULL DEFAULT false;--> statement-breakpoint
+  ADD COLUMN IF NOT EXISTS "cited_evidence" jsonb,
+  ADD COLUMN IF NOT EXISTS "cited_evidence_none" boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS "qic_received_on" date,
+  ADD COLUMN IF NOT EXISTS "qic_clock_extensions" jsonb NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS "escalation_requested_at" timestamptz,
+  ADD COLUMN IF NOT EXISTS "escalation_channel" text,
+  ADD COLUMN IF NOT EXISTS "escalation_confirmation_ref" text,
+  ADD COLUMN IF NOT EXISTS "escalation_confirmed_on" date,
+  ADD COLUMN IF NOT EXISTS "filed_by_escalation" boolean NOT NULL DEFAULT false;--> statement-breakpoint
 
+-- Re-runnable: this file was renumbered from 1114/1115 (a duplicate ordinal), so a database that already ran the
+-- old names runs it again. Every statement is a no-op or an in-place replacement of an identical definition.
+ALTER TABLE "appeal_case" DROP CONSTRAINT IF EXISTS "appeal_case_qic_columns_shape";--> statement-breakpoint
+ALTER TABLE "appeal_case" DROP CONSTRAINT IF EXISTS "appeal_case_qic_reconsideration_only";--> statement-breakpoint
+ALTER TABLE "appeal_case" DROP CONSTRAINT IF EXISTS "appeal_case_filed_by_escalation_alj_only";--> statement-breakpoint
+ALTER TABLE "appeal_case" DROP CONSTRAINT IF EXISTS "appeal_case_escalation_channel_known";--> statement-breakpoint
+ALTER TABLE "appeal_case" DROP CONSTRAINT IF EXISTS "appeal_case_escalation_requested_has_proof";--> statement-breakpoint
+ALTER TABLE "appeal_case" DROP CONSTRAINT IF EXISTS "appeal_case_escalated_has_facts";--> statement-breakpoint
 -- Only a reconsideration carries QIC data: any other tier (including the ALJ case an escalation opens) has none.
 ALTER TABLE "appeal_case"
   ADD CONSTRAINT "appeal_case_qic_columns_shape" CHECK (
@@ -125,4 +133,5 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$;--> statement-breakpoint
+DROP TRIGGER IF EXISTS "trg_appeal_case_qic_guard" ON appeal_case;--> statement-breakpoint
 CREATE TRIGGER "trg_appeal_case_qic_guard" BEFORE UPDATE ON appeal_case FOR EACH ROW EXECUTE FUNCTION m25_appeal_case_qic_guard();

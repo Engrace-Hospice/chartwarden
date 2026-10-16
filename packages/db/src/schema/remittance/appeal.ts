@@ -61,7 +61,7 @@ export const appealCase = pgTable(
     appealPacketDocumentId: uuid("appeal_packet_document_id"), // M22 back-ref
     appealNarrative: jsonb("appeal_narrative"), // denylisted in audit (§3.6)
     macReferenceNumbers: jsonb("mac_reference_numbers"),
-    // Milestone 4 (migration 1115) - QIC reconsideration only (CHECK-guarded: NULL / default on every other tier).
+    // Milestone 4 (migration 1117) - QIC reconsideration only (CHECK-guarded: NULL / default on every other tier).
     // The documentation the redetermination notice named as missing (audit-scrubbed), or the attestation it named none.
     citedEvidence: jsonb("cited_evidence"),
     citedEvidenceNone: boolean("cited_evidence_none").notNull().default(false),

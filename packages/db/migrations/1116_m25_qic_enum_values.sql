@@ -1,5 +1,5 @@
 -- M25 QIC reconsideration and escalation (hospice ADR/TPE/QIC PRD, milestone 4): the enum values the next migration
--- (1115) and the service read and write. Additive only. Own migration: PG forbids using a value added earlier in the
+-- (1117) and the service read and write. Additive only. Own migration: PG forbids using a value added earlier in the
 -- same transaction, so this stands alone ahead of the file that uses it (the 1109 / 0239 precedent).
 --
 --   m25_appeal_state       + escalated            a late QIC reconsideration the provider moved to OMHA
