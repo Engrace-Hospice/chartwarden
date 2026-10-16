@@ -278927,6 +278927,1431 @@
         }
       }
     },
+    "/api/v1/tpe-programs": {
+      "get": {
+        "operationId": "getApiV1Tpeprograms",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "TPE programs with current round, the MAC's rate against the threshold, next round and advisory risk",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "providerEntityId",
+                          "macName",
+                          "openedOn",
+                          "state",
+                          "outcomeOn",
+                          "reliefUntil",
+                          "referralKinds",
+                          "version",
+                          "maxRounds",
+                          "roundsRecorded",
+                          "currentRound",
+                          "latestRound",
+                          "threshold",
+                          "aboveThreshold",
+                          "claimCountRate",
+                          "nextRoundEarliest",
+                          "risk"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "type": "string"
+                          },
+                          "macName": {
+                            "type": "string"
+                          },
+                          "openedOn": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "outcomeOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reliefUntil": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "referralKinds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "maxRounds": {
+                            "type": "integer"
+                          },
+                          "roundsRecorded": {
+                            "type": "integer"
+                          },
+                          "currentRound": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "latestRound": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "roundNumber",
+                                  "resultsOn",
+                                  "macErrorRatePct",
+                                  "macResult"
+                                ],
+                                "properties": {
+                                  "roundNumber": {
+                                    "type": "integer"
+                                  },
+                                  "resultsOn": {
+                                    "type": "string"
+                                  },
+                                  "macErrorRatePct": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "macResult": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "threshold": {
+                            "type": "object",
+                            "required": [
+                              "pct",
+                              "source",
+                              "verified"
+                            ],
+                            "properties": {
+                              "pct": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "source": {
+                                "type": "string"
+                              },
+                              "verified": {
+                                "type": "boolean"
+                              }
+                            }
+                          },
+                          "aboveThreshold": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "claimCountRate": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "reviewed",
+                                  "errors",
+                                  "pct"
+                                ],
+                                "properties": {
+                                  "reviewed": {
+                                    "type": "integer"
+                                  },
+                                  "errors": {
+                                    "type": "integer"
+                                  },
+                                  "pct": {
+                                    "type": "number"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "nextRoundEarliest": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "risk": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Tpeprograms",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Open a TPE program for a provider entity and MAC (one active program per pair)",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "macName",
+                  "openedOn"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "macName": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "openedOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tpe-programs/{id}": {
+      "get": {
+        "operationId": "getApiV1TpeprogramsById",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "TPE program detail: rounds, sampled claims with their ADR state, warnings, outcome",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "providerEntityId",
+                    "macName",
+                    "openedOn",
+                    "state",
+                    "outcomeOn",
+                    "reliefUntil",
+                    "referralKinds",
+                    "version",
+                    "maxRounds",
+                    "roundsRecorded",
+                    "currentRound",
+                    "latestRound",
+                    "threshold",
+                    "aboveThreshold",
+                    "claimCountRate",
+                    "nextRoundEarliest",
+                    "risk",
+                    "rounds"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "macName": {
+                      "type": "string"
+                    },
+                    "openedOn": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "outcomeOn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reliefUntil": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "referralKinds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "maxRounds": {
+                      "type": "integer"
+                    },
+                    "roundsRecorded": {
+                      "type": "integer"
+                    },
+                    "currentRound": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestRound": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "roundNumber",
+                            "resultsOn",
+                            "macErrorRatePct",
+                            "macResult"
+                          ],
+                          "properties": {
+                            "roundNumber": {
+                              "type": "integer"
+                            },
+                            "resultsOn": {
+                              "type": "string"
+                            },
+                            "macErrorRatePct": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "macResult": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "threshold": {
+                      "type": "object",
+                      "required": [
+                        "pct",
+                        "source",
+                        "verified"
+                      ],
+                      "properties": {
+                        "pct": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "source": {
+                          "type": "string"
+                        },
+                        "verified": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "aboveThreshold": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "claimCountRate": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "reviewed",
+                            "errors",
+                            "pct"
+                          ],
+                          "properties": {
+                            "reviewed": {
+                              "type": "integer"
+                            },
+                            "errors": {
+                              "type": "integer"
+                            },
+                            "pct": {
+                              "type": "number"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "nextRoundEarliest": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "risk": {
+                      "type": "string"
+                    },
+                    "rounds": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "roundNumber",
+                          "noticeOn",
+                          "resultsOn",
+                          "macErrorRatePct",
+                          "macResult",
+                          "threshold",
+                          "educationOn",
+                          "educationNote",
+                          "claims",
+                          "claimCountRate",
+                          "warnings",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "roundNumber": {
+                            "type": "integer"
+                          },
+                          "noticeOn": {
+                            "type": "string"
+                          },
+                          "resultsOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "macErrorRatePct": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "macResult": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "threshold": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "pct",
+                                  "source",
+                                  "verified"
+                                ],
+                                "properties": {
+                                  "pct": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "source": {
+                                    "type": "string"
+                                  },
+                                  "verified": {
+                                    "type": "boolean"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "educationOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "educationNote": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "claims": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "id",
+                                "claimId",
+                                "adrCaseId",
+                                "adrState",
+                                "result"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "claimId": {
+                                  "type": "string"
+                                },
+                                "adrCaseId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "adrState": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "result": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "claimCountRate": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "reviewed",
+                                  "errors",
+                                  "pct"
+                                ],
+                                "properties": {
+                                  "reviewed": {
+                                    "type": "integer"
+                                  },
+                                  "errors": {
+                                    "type": "integer"
+                                  },
+                                  "pct": {
+                                    "type": "number"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "warnings": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tpe-programs/{id}/close": {
+      "post": {
+        "operationId": "postApiV1TpeprogramsByIdClose",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Close a TPE program; a closed program is frozen by the database (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/tpe-programs/{id}/outcome": {
+      "post": {
+        "operationId": "postApiV1TpeprogramsByIdOutcome",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Record the program outcome from the CMS / MAC letter: relief (compliant) or referral with its types (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "outcomeOn"
+                ],
+                "properties": {
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "const": "compliant",
+                        "type": "string"
+                      },
+                      {
+                        "const": "referred",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "outcomeOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "reliefUntil": {
+                    "anyOf": [
+                      {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "referralKinds": {
+                    "maxItems": 4,
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "const": "prepay_review",
+                          "type": "string"
+                        },
+                        {
+                          "const": "extrapolation",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rac",
+                          "type": "string"
+                        },
+                        {
+                          "const": "other",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tpe-programs/{id}/rounds": {
+      "post": {
+        "operationId": "postApiV1TpeprogramsByIdRounds",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Start the next TPE round (max 3; the previous round needs results); an interval under 45 days is a warning (If-Match on the program)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version",
+                    "roundNumber",
+                    "warnings"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "roundNumber": {
+                      "type": "integer"
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "noticeOn"
+                ],
+                "properties": {
+                  "noticeOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tpe-rounds/{id}/claims/{claimId}": {
+      "put": {
+        "operationId": "putApiV1TperoundsByIdClaimsByClaimId",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Add or update a sampled claim of a round: its ADR link and result (If-Match on the round)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "claimId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "adrCaseId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "result": {
+                    "anyOf": [
+                      {
+                        "const": "pending",
+                        "type": "string"
+                      },
+                      {
+                        "const": "no_error",
+                        "type": "string"
+                      },
+                      {
+                        "const": "error",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tpe-rounds/{id}/education": {
+      "put": {
+        "operationId": "putApiV1TperoundsByIdEducation",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Record (or clear) the education date and note for a round (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "educationOn"
+                ],
+                "properties": {
+                  "educationOn": {
+                    "anyOf": [
+                      {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "note": {
+                    "anyOf": [
+                      {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tpe-rounds/{id}/results": {
+      "put": {
+        "operationId": "putApiV1TperoundsByIdResults",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Record the MAC's results letter for a round; the threshold in force is snapshotted on first record (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "resultsOn",
+                  "macErrorRatePct",
+                  "macResult"
+                ],
+                "properties": {
+                  "resultsOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "macErrorRatePct": {
+                    "anyOf": [
+                      {
+                        "minimum": 0,
+                        "maximum": 100,
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "macResult": {
+                    "anyOf": [
+                      {
+                        "const": "compliant",
+                        "type": "string"
+                      },
+                      {
+                        "const": "non_compliant",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tpe-rules": {
+      "get": {
+        "operationId": "getApiV1Tperules",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "The organization's per-MAC TPE exit thresholds (none are seeded)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "macName",
+                          "exitErrorRatePct",
+                          "sourceNote",
+                          "verifiedOn",
+                          "effectiveFrom",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "macName": {
+                            "type": "string"
+                          },
+                          "exitErrorRatePct": {
+                            "type": "number"
+                          },
+                          "sourceNote": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "verifiedOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "effectiveFrom": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1Tperules",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Create or update a per-MAC TPE exit threshold with its source and verification day",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "macName",
+                  "exitErrorRatePct"
+                ],
+                "properties": {
+                  "macName": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "exitErrorRatePct": {
+                    "minimum": 0,
+                    "maximum": 100,
+                    "type": "number"
+                  },
+                  "sourceNote": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "verifiedOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "effectiveFrom": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/transfers/{id}/receiving-care-setting": {
       "post": {
         "operationId": "postApiV1TransfersByIdReceivingcaresetting",

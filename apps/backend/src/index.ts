@@ -1057,6 +1057,7 @@ import {
   buildDrizzleM25WriteService,
   buildDrizzleQicService,
   buildDrizzleReopeningService,
+  buildDrizzleTpeService,
   buildM18EvvAggregatorRejectedConsumer,
   buildM23BackedClaimMatchCandidateProvider,
   buildM23ClaimRejectedConsumer,
@@ -5384,6 +5385,15 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             // Milestone 3: which path a denial takes (appeal vs. MAC reopening) and the reopening aggregate.
             reopeningService: buildDrizzleReopeningService(dbHandle.db),
             denialRouteService: buildDrizzleDenialRouteService(dbHandle.db),
+            // Milestone 5: the TPE program tracker (programs, rounds, sampled claims, per-MAC thresholds).
+            tpeService: buildDrizzleTpeService(dbHandle.db, {
+              providerEntityExists: async (tx, organizationId, providerEntityId) =>
+                (await buildFoundationSiteReader().providerEntityIdentifiers(
+                  tx as never,
+                  organizationId,
+                  providerEntityId,
+                )) !== null,
+            }),
             // Milestone 4: QIC reconsideration evidence + decision clock, and the OMHA escalation.
             qicService: buildDrizzleQicService(dbHandle.db, {
               providerZones: (tx, providerEntityId) =>

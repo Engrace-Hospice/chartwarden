@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1633,
-    "coveredRoutes": 1633,
-    "directRoutesReferenced": 1529
+    "routes": 1644,
+    "coveredRoutes": 1644,
+    "directRoutesReferenced": 1540
   },
   "modules": [
     {
@@ -381,15 +381,16 @@
     },
     {
       "module": "25-remittance",
-      "routes": 62,
+      "routes": 73,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m25-denial-version.live.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
+        "apps/backend/__tests__/m25-tpe.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/remittance-inject.test.ts"
       ],
-      "directRoutesReferenced": 40
+      "directRoutesReferenced": 51
     },
     {
       "module": "26-cap",
