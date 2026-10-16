@@ -73,8 +73,8 @@ export const escalatedWaitingFor = (forViewer: boolean): string =>
 /** WP 4.4: one-shot polite announcements when a background re-read shows the request moved on. Never paged, never an alert. */
 export const ACK_ESCALATED_TO_YOU_NOTICE = "A response request was escalated to you.";
 export const ACK_PASSED_ON_NOTICE = "A response request was passed on to the next person.";
-/** A reassign (the request is still `pending`), not an escalation: neutral wording. */
 /** WP 4.5: a poll shows a waiting request that could not be delivered. Polite, once; never says anyone was reached. */
 export const ACK_UNREACHABLE_NOTICE =
   "A response request could not be delivered. Nobody is known to have received it.";
+/** A reassign (the request is still `pending`), not an escalation: neutral wording. */
 export const ACK_REASSIGNED_AWAY_NOTICE = "A response request is now assigned to someone else.";

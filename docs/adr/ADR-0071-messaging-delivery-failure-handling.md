@@ -57,6 +57,10 @@ Migration `1115_m36_ack_delivery_failure.sql`: the update guard only. History us
 
 Unit: the service over the in-memory store (early escalation, `failed_unreachable`, idempotency, concurrency, ack-first, not-assignee, stale window, flag off, router error), the consumers (which alerts and which route sets count), the notification text. Static (`m36-ack-delivery-failure-static.test.ts`): one writer each for the status, the history row and the event; no M19 import; no vendor named. Pin (`m36-ack-migration-pin.test.ts`): the 1115 guard against `ACK_TRANSITIONS`. Live as `wardenx_app` (`m36-ack-delivery-failure.live.test.ts`): a simulated push+SMS outage through the real settlement and event, a bound router, replay and 8-way concurrency, acknowledge versus failure in both orders and concurrently, tenant isolation, the database refusing a person.
 
+## Known ceilings
+
+- **Known ceilings (re-review).** (1) If a request's last two out-of-band routes fail in near-simultaneous settlement transactions, each consumer may still see the other as open and skip; the deadline timer is the backstop. (2) The ops-notice de-duplication is per process (cap 1000): a restart, a second worker or an evicted id can repeat the webhook page, never lose it. (3) The 5-second window tolerance can count an alert to the same person from a window that began within 5 seconds earlier.
+
 ## Open questions
 
 - Clinical lead: is "every out-of-band route failed" the right trigger, or should one failed route to an urgent request already count? Is the supervisor audience right (roles, and told at once or after a delay)? Wording of the card and the alert.
