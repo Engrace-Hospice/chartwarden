@@ -1981,10 +1981,12 @@ import {
   EvvMetricsView as M18EvvMetricsView,
   EvvMissingResolutionListResponse as M18EvvMissingResolutionListResponse,
   EvvMissingResolutionView as M18EvvMissingResolutionView,
+  EvvOfflineSyncV2Response as M18EvvOfflineSyncV2Response,
   MembershipIdQuery as M18MembershipIdQuery,
   MetricsQuery as M18MetricsQuery,
   MissingResolutionListQuery as M18MissingResolutionListQuery,
   OfflineSyncRequest as M18OfflineSyncRequest,
+  OfflineSyncV2Request as M18OfflineSyncV2Request,
   RejectDeviceRequest as M18RejectDeviceRequest,
   ResubmitSubmissionRequest as M18ResubmitSubmissionRequest,
   RetireDeviceRequest as M18RetireDeviceRequest,
@@ -5928,9 +5930,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M18EvvCheckResultView,
   },
   "POST /api/v1/evv/offline-sync": {
-    summary: "Batch offline-sync of capture events (idempotent on device+localId)",
+    summary: "Legacy offline-sync (array response; durable only when localId is supplied)",
     body: M18OfflineSyncRequest,
     response: M18EvvCheckResultListResponse,
+  },
+  "POST /api/v1/evv/offline-sync/v2": {
+    summary: "Durable per-capture offline EVV reconciliation (at-least-once transport)",
+    body: M18OfflineSyncV2Request,
+    response: M18EvvOfflineSyncV2Response,
   },
   "POST /api/v1/evv/events/:eventId/correct": {
     summary: "Correction-of-record (Clinical Supervisor+, fresh step-up)",

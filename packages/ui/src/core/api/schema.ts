@@ -9668,8 +9668,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Batch offline-sync of capture events (idempotent on device+localId) */
+        /** Legacy offline-sync (array response; durable only when localId is supplied) */
         post: operations["postApiV1EvvOfflinesync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evv/offline-sync/v2": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Durable per-capture offline EVV reconciliation (at-least-once transport) */
+        post: operations["postApiV1EvvOfflinesyncV2"];
         delete?: never;
         options?: never;
         head?: never;
@@ -52802,6 +52819,105 @@ export interface operations {
                         geofenceDecision: "pass" | "fail_distance" | "fail_accuracy" | "fail_no_baseline";
                         visitStateAfterEvent: string | null;
                     }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1EvvOfflinesyncV2: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    evvDeviceId: string;
+                    events: (({
+                        /** Format: uuid */
+                        localId: string;
+                        /** Format: uuid */
+                        visitId: string;
+                        /** Format: date-time */
+                        capturedAt: string;
+                        coords: {
+                            lat: number;
+                            lng: number;
+                        };
+                        accuracyM: number;
+                        /** Format: uuid */
+                        evvDeviceId: string;
+                        /** @constant */
+                        offlineCapture?: true;
+                        /** @constant */
+                        gpsQualityAttested?: "degraded_attested";
+                    } & {
+                        /** @constant */
+                        kind: "check_in";
+                        serviceTypeCode: string;
+                    }) | ({
+                        /** Format: uuid */
+                        localId: string;
+                        /** Format: uuid */
+                        visitId: string;
+                        /** Format: date-time */
+                        capturedAt: string;
+                        coords: {
+                            lat: number;
+                            lng: number;
+                        };
+                        accuracyM: number;
+                        /** Format: uuid */
+                        evvDeviceId: string;
+                        /** @constant */
+                        offlineCapture?: true;
+                        /** @constant */
+                        gpsQualityAttested?: "degraded_attested";
+                    } & {
+                        /** @constant */
+                        kind: "check_out";
+                    }))[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        results: ({
+                            /** Format: uuid */
+                            localId: string;
+                            status: "applied" | "already_applied";
+                            /** Format: uuid */
+                            eventId: string;
+                            kind: "check_in" | "check_out";
+                            /** Format: date-time */
+                            capturedAt: string;
+                            gpsQuality: "high" | "acceptable" | "degraded_attested" | "outside_geofence" | "no_geofence_baseline" | "suspected_spoof";
+                            geofenceDecision: "pass" | "fail_distance" | "fail_accuracy" | "fail_no_baseline";
+                            visitStateAfterEvent: string | null;
+                        } | {
+                            /** Format: uuid */
+                            localId: string;
+                            status: "rejected" | "retryable";
+                            code: string;
+                            correlationId: string;
+                        })[];
+                        summary: {
+                            applied: number;
+                            alreadyApplied: number;
+                            rejected: number;
+                            retryable: number;
+                        };
+                    };
                 };
             };
             "4XX": components["responses"]["Error"];

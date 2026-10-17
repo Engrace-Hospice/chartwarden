@@ -32,6 +32,7 @@ const GOOD: EnvLike = {
   M24_CREDENTIAL_ENCRYPTION_KEY: Buffer.alloc(32, 9).toString("base64"),
   // TASK-008 — the §7.4 witness-attestation HMAC secret (raw string, not base64).
   M13_WITNESS_SIGNING_KEY: "y".repeat(32),
+  EVV_OFFLINE_FINGERPRINT_KEY: "e".repeat(32),
   // TASK-010 — the remaining Phase 2 (SEC-005/OPS-010) required vars.
   REDIS_URL: "rediss://user:pass@host:6379",
   M23_X12_GATEWAY_URL: "https://x12.wardenx.cloud",
@@ -173,6 +174,7 @@ describe("collectEnvProblems", () => {
         "TWO_FACTOR_ENCRYPTION_KEY",
         "M24_CREDENTIAL_ENCRYPTION_KEY",
         "M13_WITNESS_SIGNING_KEY",
+        "EVV_OFFLINE_FINGERPRINT_KEY",
         "REDIS_URL",
         "M23_X12_GATEWAY_URL",
         "M23_X12_GATEWAY_TOKEN",
