@@ -451,6 +451,156 @@ describe("§4.1 routes 1-7 — capture + event reads", () => {
     await app.close();
   });
 
+  it("3b: POST /evv/offline-sync/v2 — replay returns the same durable event proof", async () => {
+    const { app, backend } = makeServer();
+    const localId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
+    const payload = {
+      evvDeviceId: DEVICE_UUID,
+      events: [{ kind: "check_in", localId, offlineCapture: true, ...checkInBody() }],
+    };
+    const first = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/offline-sync/v2",
+      headers: CLINICIAN,
+      payload,
+    });
+    const replay = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/offline-sync/v2",
+      headers: CLINICIAN,
+      payload,
+    });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().summary).toEqual({
+      applied: 1,
+      alreadyApplied: 0,
+      rejected: 0,
+      retryable: 0,
+    });
+    expect(replay.json().summary).toEqual({
+      applied: 0,
+      alreadyApplied: 1,
+      rejected: 0,
+      retryable: 0,
+    });
+    expect(replay.json().results[0].eventId).toBe(first.json().results[0].eventId);
+    expect(backend.listEvents(ORG, {})).toHaveLength(1);
+    await app.close();
+  });
+
+  it("3c: POST /evv/offline-sync/v2 — changed payload conflicts without another capture", async () => {
+    const { app, backend } = makeServer();
+    const localId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2";
+    const base = {
+      evvDeviceId: DEVICE_UUID,
+      events: [{ kind: "check_in", localId, ...checkInBody() }],
+    };
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/offline-sync/v2",
+      headers: CLINICIAN,
+      payload: base,
+    });
+    const conflict = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/offline-sync/v2",
+      headers: CLINICIAN,
+      payload: {
+        ...base,
+        events: [{ ...base.events[0], accuracyM: 11 }],
+      },
+    });
+    expect(conflict.statusCode).toBe(200);
+    expect(conflict.json().results[0]).toMatchObject({
+      localId,
+      status: "rejected",
+      code: "IDEMPOTENCY_CONFLICT",
+    });
+    expect(backend.listEvents(ORG, {})).toHaveLength(1);
+    await app.close();
+  });
+
+  it("3d: POST /evv/offline-sync/v2 — causal execution, request-order response and per-item proof", async () => {
+    const { app } = makeServer();
+    const result = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/offline-sync/v2",
+      headers: CLINICIAN,
+      payload: {
+        evvDeviceId: DEVICE_UUID,
+        events: [
+          { kind: "check_out", localId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3", ...checkOutBody() },
+          { kind: "check_in", localId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4", ...checkInBody() },
+        ],
+      },
+    });
+    expect(result.statusCode).toBe(200);
+    expect(result.json().results.map((item: { kind: string }) => item.kind)).toEqual([
+      "check_out",
+      "check_in",
+    ]);
+    expect(result.json().summary.applied).toBe(2);
+    await app.close();
+  });
+
+  it("3e: POST /evv/offline-sync/v2 — duplicate localId is a fatal structural error", async () => {
+    const { app, backend } = makeServer();
+    const localId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5";
+    const result = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/offline-sync/v2",
+      headers: CLINICIAN,
+      payload: {
+        evvDeviceId: DEVICE_UUID,
+        events: [
+          { kind: "check_in", localId, ...checkInBody() },
+          { kind: "check_out", localId, ...checkOutBody() },
+        ],
+      },
+    });
+    expect(result.statusCode).toBe(422);
+    expect(backend.listEvents(ORG, {})).toHaveLength(0);
+    await app.close();
+  });
+
+  it("3f: POST /evv/offline-sync/v2 — a mid-batch business refusal cannot claim total success", async () => {
+    const { app, backend } = makeServer();
+    const result = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/offline-sync/v2",
+      headers: CLINICIAN,
+      payload: {
+        evvDeviceId: DEVICE_UUID,
+        events: [
+          {
+            kind: "check_in",
+            localId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa6",
+            ...checkInBody(),
+          },
+          {
+            kind: "check_out",
+            localId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa7",
+            ...checkOutBody({ capturedAt: "2026-06-08T11:59:59.000Z" }),
+          },
+        ],
+      },
+    });
+    expect(result.statusCode).toBe(200);
+    expect(result.json().summary).toEqual({
+      applied: 1,
+      alreadyApplied: 0,
+      rejected: 1,
+      retryable: 0,
+    });
+    expect(result.json().results[1]).toMatchObject({
+      status: "rejected",
+      code: "EVV_CAUSAL_ORDER_INVALID",
+      correlationId: expect.any(String),
+    });
+    expect(backend.listEvents(ORG, {})).toHaveLength(1);
+    await app.close();
+  });
+
   it("4: GET /evv/events/:eventId — 200", async () => {
     const { app } = makeServer();
     const ci = await app.inject({

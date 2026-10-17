@@ -53,6 +53,7 @@ import {
   type EvvMissingResolutionKind,
   type EvvMissingResolutionStatus,
   ForbiddenError,
+  IdempotencyConflictError,
   NotFoundError,
   ValidationError,
 } from "@wardenx/types";
@@ -69,6 +70,11 @@ import {
   assertCaptureAllowed,
   selectBoundDevice,
 } from "./capture-guards";
+import {
+  EVV_OFFLINE_FINGERPRINT_KEY_ID,
+  fingerprintOfflineCapture,
+  offlineFingerprintKey,
+} from "./offline-idempotency";
 
 /** What binds a capture to the device that sent it (see `resolveCaptureDevice`). */
 interface CaptureBinding {
@@ -100,9 +106,12 @@ import type {
   LocationView,
   MetricsView,
   MissingResolutionView,
+  OfflineCaptureInput,
+  OfflineCaptureResult,
 } from "./routes/service";
 
 const EVENT = schema.evvEvent;
+const OFFLINE_RECEIPT = schema.evvOfflineCaptureReceipt;
 const GEVAL = schema.evvGeofenceEvaluation;
 const DEVICE = schema.evvDevice;
 const POLICY = schema.evvGeofencePolicy;
@@ -214,6 +223,8 @@ export function createDbEvvBackend(
     readonly coordsCipher?: EvvCoordsCipher;
     /** Where the multi-clinician location read reports a coordinate it could not open (default: a warning). */
     readonly onCoordsFault?: EvvCoordsFaultReporter;
+    /** HMAC secret for coordinate-free durable receipt fingerprints (required in production). */
+    readonly offlineFingerprintKey?: string;
   } = {},
 ): EvvRoutePort {
   const coordsCipher = options.coordsCipher ?? UNBOUND_EVV_COORDS_CIPHER;
@@ -224,6 +235,7 @@ export function createDbEvvBackend(
       getSeam("PatientAddressReader").serviceAddressCoordinate(orgId, patientId, patientAddressId));
   // GAP-055 follow-up: injected from validated server config (`EVV_DEVICE_ATTESTATION_ENFORCED`), default OFF.
   const deviceAttestationEnforced = options.deviceAttestationEnforced ?? false;
+  const fingerprintKey = options.offlineFingerprintKey ?? offlineFingerprintKey();
   async function emit(
     tx: unknown,
     orgId: string,
@@ -446,6 +458,9 @@ export function createDbEvvBackend(
       /** §7.7 — the event this capture supersedes, and why, when it is a correction-of-record. */
       replacesEventId?: string;
       correctionReason?: string;
+      offlineCapture?: boolean;
+      localId?: string;
+      syncedAt?: Date;
     },
     binding?: CaptureBinding,
   ): Promise<CheckResultView> {
@@ -488,6 +503,9 @@ export function createDbEvvBackend(
         coordsDekVersion: input.sealedCoords.dekVersion,
         accuracyM: input.accuracyM,
         gpsQuality,
+        offlineCapture: input.offlineCapture ?? false,
+        localId: input.localId ?? null,
+        syncedAt: input.syncedAt ?? null,
         deviceAttestationIdAtRecord: device.attestation,
         // §7.7 — present only on a correction; NULL on an ordinary capture.
         replacesEventId: input.replacesEventId ?? null,
@@ -684,6 +702,8 @@ export function createDbEvvBackend(
         gpsQualityAttested?: "degraded_attested";
         /** The client's CLAIM of the posting device — only ever compared to the session-bound one. */
         claimedDeviceId?: string;
+        offlineCapture?: boolean;
+        localId?: string;
       },
       authority: EvvCaptureAuthority,
     ): Promise<CheckResultView> {
@@ -705,10 +725,128 @@ export function createDbEvvBackend(
           orgId,
           userId,
           kind,
-          { ...input, geofenceBaseline, sealedCoords },
+          {
+            ...input,
+            geofenceBaseline,
+            sealedCoords,
+            ...(input.offlineCapture ? { syncedAt: new Date() } : {}),
+          },
           { authority, claimedDeviceId: input.claimedDeviceId },
         ),
       );
+    },
+
+    async recordOfflineCapture(
+      orgId: string,
+      userId: string,
+      kind: EvvEventKind,
+      input: OfflineCaptureInput,
+      authority: EvvCaptureAuthority,
+    ): Promise<OfflineCaptureResult> {
+      // Revalidate current session authority before receipt lookup: a committed receipt is not an access token.
+      await assertCaptureAllowed(
+        resolver,
+        orgId,
+        userId,
+        input,
+        authority,
+        deviceAttestationEnforced,
+      );
+      const geofenceBaseline = await loadGeofenceBaseline(orgId, input.visitId);
+      const sealedCoords = await sealCoords(orgId, input.coords);
+      return withOrgContext(db, { organizationId: orgId, userId }, async (txRaw) => {
+        const tx = txRaw as DbClient;
+        const device = await resolveCaptureDevice(tx, userId, {
+          authority,
+          claimedDeviceId: input.claimedDeviceId,
+        });
+        const identity = `${orgId}|${device.id}|${input.localId}`;
+        // Serialize the identity before either the event or receipt is inserted. The loser waits for the
+        // winner's transaction, then reads its committed receipt under READ COMMITTED.
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${identity}, 0))`);
+        const fingerprint = fingerprintOfflineCapture(
+          {
+            organizationId: orgId,
+            postingMembershipId: userId,
+            evvDeviceId: device.id,
+            localId: input.localId,
+            kind,
+            visitId: input.visitId,
+            capturedAt: input.capturedAt,
+            coords: input.coords,
+            accuracyM: input.accuracyM,
+            gpsQualityAttested: input.gpsQualityAttested,
+            serviceTypeCode: input.serviceTypeCode,
+          },
+          fingerprintKey,
+        );
+        const [prior] = await tx
+          .select()
+          .from(OFFLINE_RECEIPT)
+          .where(
+            and(
+              eq(OFFLINE_RECEIPT.organizationId, orgId),
+              eq(OFFLINE_RECEIPT.evvDeviceId, device.id),
+              eq(OFFLINE_RECEIPT.localId, input.localId),
+            ),
+          )
+          .limit(1);
+        if (prior) {
+          if (
+            prior.payloadFingerprint !== fingerprint ||
+            prior.fingerprintKeyId !== EVV_OFFLINE_FINGERPRINT_KEY_ID
+          )
+            throw new IdempotencyConflictError();
+          return {
+            localId: input.localId,
+            status: "already_applied",
+            eventId: prior.eventId,
+            kind: prior.kind,
+            capturedAt: toIso(prior.capturedAt),
+            gpsQuality: prior.gpsQuality,
+            geofenceDecision: prior.geofenceDecision as CheckResultView["geofenceDecision"],
+            visitStateAfterEvent: prior.visitStateAfterEvent,
+          };
+        }
+        const syncedAt = new Date();
+        const result = await captureInTx(
+          tx,
+          orgId,
+          userId,
+          kind,
+          {
+            ...input,
+            geofenceBaseline,
+            sealedCoords,
+            offlineCapture: true,
+            localId: input.localId,
+            syncedAt,
+          },
+          { authority, claimedDeviceId: device.id },
+        );
+        await tx.insert(OFFLINE_RECEIPT).values({
+          organizationId: orgId,
+          evvDeviceId: device.id,
+          localId: input.localId,
+          postingMembershipId: userId,
+          payloadFingerprint: fingerprint,
+          fingerprintKeyId: EVV_OFFLINE_FINGERPRINT_KEY_ID,
+          eventId: result.eventId,
+          eventAt: new Date(input.capturedAt),
+          kind: result.kind,
+          capturedAt: new Date(input.capturedAt),
+          gpsQuality: result.gpsQuality,
+          geofenceDecision: result.geofenceDecision,
+          visitStateAfterEvent: result.visitStateAfterEvent,
+          syncedAt,
+        });
+        return {
+          ...result,
+          localId: input.localId,
+          status: "applied",
+          capturedAt: new Date(input.capturedAt).toISOString(),
+        };
+      });
     },
 
     /** Pre-flight for a batch: refuse a claimed device that is not the session-bound one, before any write. */

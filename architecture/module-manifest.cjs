@@ -662,6 +662,7 @@ exports.MODULES = [
       "evv_aggregator_submission",
       "evv_device",
       "evv_event",
+      "evv_offline_capture_receipt",
       "evv_geofence_evaluation",
       "evv_geofence_policy",
       "evv_missing_resolution",

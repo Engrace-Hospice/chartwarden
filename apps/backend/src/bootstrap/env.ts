@@ -167,6 +167,12 @@ const REQUIREMENTS: readonly Requirement[] = [
     rule: (v) => (v.length < 32 ? "must be at least 32 characters" : null),
   },
   {
+    // M18 offline-capture canonical payload HMAC. Keep this key for at least the receipt lifetime;
+    // replacing it in place would make comparison of historical replays impossible.
+    key: "EVV_OFFLINE_FINGERPRINT_KEY",
+    rule: (v) => (v.length < 32 ? "must be at least 32 characters" : null),
+  },
+  {
     // TASK-010/SEC-005 — required so BullMQ workers (outbox dispatcher, cron jobs) actually run in
     // production instead of silently not constructing (index.ts today only warns when unset).
     key: "REDIS_URL",

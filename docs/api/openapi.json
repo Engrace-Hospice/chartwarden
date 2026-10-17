@@ -116990,7 +116990,7 @@
         "tags": [
           "18-evv"
         ],
-        "summary": "Batch offline-sync of capture events (idempotent on device+localId)",
+        "summary": "Legacy offline-sync (array response; durable only when localId is supplied)",
         "parameters": [],
         "responses": {
           "200": {
@@ -117267,6 +117267,407 @@
                                 },
                                 "gpsQualityAttested": {
                                   "const": "degraded_attested",
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/evv/offline-sync/v2": {
+      "post": {
+        "operationId": "postApiV1EvvOfflinesyncV2",
+        "tags": [
+          "18-evv"
+        ],
+        "summary": "Durable per-capture offline EVV reconciliation (at-least-once transport)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "results",
+                    "summary"
+                  ],
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "localId",
+                              "status",
+                              "eventId",
+                              "kind",
+                              "capturedAt",
+                              "gpsQuality",
+                              "geofenceDecision",
+                              "visitStateAfterEvent"
+                            ],
+                            "properties": {
+                              "localId": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "status": {
+                                "anyOf": [
+                                  {
+                                    "const": "applied",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "already_applied",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "eventId": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "anyOf": [
+                                  {
+                                    "const": "check_in",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "check_out",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "capturedAt": {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              "gpsQuality": {
+                                "anyOf": [
+                                  {
+                                    "const": "high",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "acceptable",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "degraded_attested",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "outside_geofence",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "no_geofence_baseline",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "suspected_spoof",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "geofenceDecision": {
+                                "anyOf": [
+                                  {
+                                    "const": "pass",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "fail_distance",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "fail_accuracy",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "fail_no_baseline",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "visitStateAfterEvent": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "localId",
+                              "status",
+                              "code",
+                              "correlationId"
+                            ],
+                            "properties": {
+                              "localId": {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              "status": {
+                                "anyOf": [
+                                  {
+                                    "const": "rejected",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "retryable",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "code": {
+                                "type": "string"
+                              },
+                              "correlationId": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "summary": {
+                      "type": "object",
+                      "required": [
+                        "applied",
+                        "alreadyApplied",
+                        "rejected",
+                        "retryable"
+                      ],
+                      "properties": {
+                        "applied": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "alreadyApplied": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "rejected": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "retryable": {
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "evvDeviceId",
+                  "events"
+                ],
+                "properties": {
+                  "evvDeviceId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "events": {
+                    "minItems": 1,
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "allOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "localId",
+                                "visitId",
+                                "capturedAt",
+                                "coords",
+                                "accuracyM",
+                                "evvDeviceId"
+                              ],
+                              "properties": {
+                                "localId": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "visitId": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "capturedAt": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                "coords": {
+                                  "type": "object",
+                                  "required": [
+                                    "lat",
+                                    "lng"
+                                  ],
+                                  "properties": {
+                                    "lat": {
+                                      "minimum": -90,
+                                      "maximum": 90,
+                                      "type": "number"
+                                    },
+                                    "lng": {
+                                      "minimum": -180,
+                                      "maximum": 180,
+                                      "type": "number"
+                                    }
+                                  }
+                                },
+                                "accuracyM": {
+                                  "minimum": 0,
+                                  "maximum": 500,
+                                  "type": "number"
+                                },
+                                "evvDeviceId": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "offlineCapture": {
+                                  "const": true,
+                                  "type": "boolean"
+                                },
+                                "gpsQualityAttested": {
+                                  "const": "degraded_attested",
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "kind",
+                                "serviceTypeCode"
+                              ],
+                              "properties": {
+                                "kind": {
+                                  "const": "check_in",
+                                  "type": "string"
+                                },
+                                "serviceTypeCode": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "allOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "localId",
+                                "visitId",
+                                "capturedAt",
+                                "coords",
+                                "accuracyM",
+                                "evvDeviceId"
+                              ],
+                              "properties": {
+                                "localId": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "visitId": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "capturedAt": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                "coords": {
+                                  "type": "object",
+                                  "required": [
+                                    "lat",
+                                    "lng"
+                                  ],
+                                  "properties": {
+                                    "lat": {
+                                      "minimum": -90,
+                                      "maximum": 90,
+                                      "type": "number"
+                                    },
+                                    "lng": {
+                                      "minimum": -180,
+                                      "maximum": 180,
+                                      "type": "number"
+                                    }
+                                  }
+                                },
+                                "accuracyM": {
+                                  "minimum": 0,
+                                  "maximum": 500,
+                                  "type": "number"
+                                },
+                                "evvDeviceId": {
+                                  "format": "uuid",
+                                  "type": "string"
+                                },
+                                "offlineCapture": {
+                                  "const": true,
+                                  "type": "boolean"
+                                },
+                                "gpsQualityAttested": {
+                                  "const": "degraded_attested",
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "kind"
+                              ],
+                              "properties": {
+                                "kind": {
+                                  "const": "check_out",
                                   "type": "string"
                                 }
                               }

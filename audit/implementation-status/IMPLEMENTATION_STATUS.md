@@ -11,7 +11,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | Module | Status | Spec | Schema | Migration | Routes | Enriched | Screens | Tests | Adapter | Live |
 |---|---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
 | M01 Foundation | 🟢 Implemented | ✅ | ✅ | ✅ | ❌ | — | ❌ | ✅ | — | 18/18 ✅ |
-| M02 Identity & Org | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 53/53 ✅ | ✅ | ✅ | — | 9/9 ✅ |
+| M02 Identity & Org | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 54/54 ✅ | ✅ | ✅ | — | 9/9 ✅ |
 | M03 Authorization | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 17/17 ✅ | ✅ | ❌ | — | 6/6 ✅ |
 | M04 Audit & Compliance Log | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 13/13 ✅ | ✅ | ✅ | — | 9/9 ✅ |
 | M05 Patient & Demographics | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 44/44 ✅ | ✅ | ✅ | — | 18/18 ✅ |
@@ -27,7 +27,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M15 Discipline Care Plans | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 28/28 ✅ | ✅ | ✅ | — | 12/12 ✅ |
 | M16 Bereavement | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 34/34 ✅ | ✅ | ✅ | — | 11/11 ✅ |
 | M17 Scheduling & Route Optimization | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 38/38 ✅ | ✅ | ✅ | ✅ | 8/9 ⚠️ |
-| M18 EVV | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 25/25 ✅ | ✅ | ✅ | — | 7/7 ✅ |
+| M18 EVV | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 26/26 ✅ | ✅ | ✅ | — | 8/8 ✅ |
 | M19 On-Call Triage | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 40/40 ✅ | ✅ | ✅ | ✅ | 11/11 ✅ |
 | M20 Field Safety | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 33/33 ✅ | ✅ | ✅ | — | 14/14 ✅ |
 | M21 Supplies, DME & Comfort Kits | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 40/40 ✅ | ✅ | ✅ | — | 12/12 ✅ |

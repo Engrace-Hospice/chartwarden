@@ -74,6 +74,37 @@ export const OfflineSyncRequest = Type.Object({
   ),
 });
 
+const OfflineCaptureBaseV2 = Type.Object({
+  localId: Type.String({ format: "uuid" }),
+  visitId: Type.String({ format: "uuid" }),
+  capturedAt: Type.String({ format: "date-time" }),
+  coords: Coords,
+  accuracyM: Type.Number({ minimum: 0, maximum: 500 }),
+  evvDeviceId: Type.String({ format: "uuid" }),
+  offlineCapture: Type.Optional(Type.Literal(true)),
+  gpsQualityAttested: Type.Optional(Type.Literal("degraded_attested")),
+});
+
+export const OfflineSyncV2Request = Type.Object(
+  {
+    evvDeviceId: Type.String({ format: "uuid" }),
+    events: Type.Array(
+      Type.Union([
+        Type.Intersect([
+          OfflineCaptureBaseV2,
+          Type.Object({
+            kind: Type.Literal("check_in"),
+            serviceTypeCode: Type.String({ minLength: 1 }),
+          }),
+        ]),
+        Type.Intersect([OfflineCaptureBaseV2, Type.Object({ kind: Type.Literal("check_out") })]),
+      ]),
+      { minItems: 1, maxItems: 100 },
+    ),
+  },
+  { additionalProperties: false },
+);
+
 export const CorrectEventRequest = Type.Object({
   newEvent: Type.Union([CheckInRequest, CheckOutRequest]),
   correctionReason: Type.String({ minLength: 60 }),
@@ -296,6 +327,32 @@ export const EvvCheckResultView = Type.Object({
   visitStateAfterEvent: Type.Union([Type.String(), Type.Null()]),
 });
 export const EvvCheckResultListResponse = Type.Array(EvvCheckResultView);
+
+const EvvOfflineAppliedResultView = Type.Object({
+  localId: Type.String({ format: "uuid" }),
+  status: Type.Union([Type.Literal("applied"), Type.Literal("already_applied")]),
+  eventId: Type.String({ format: "uuid" }),
+  kind: KindEnum,
+  capturedAt: Type.String({ format: "date-time" }),
+  gpsQuality: GpsQualityEnum,
+  geofenceDecision: GeofenceDecisionEnum,
+  visitStateAfterEvent: Type.Union([Type.String(), Type.Null()]),
+});
+const EvvOfflineFailureResultView = Type.Object({
+  localId: Type.String({ format: "uuid" }),
+  status: Type.Union([Type.Literal("rejected"), Type.Literal("retryable")]),
+  code: Type.String(),
+  correlationId: Type.String(),
+});
+export const EvvOfflineSyncV2Response = Type.Object({
+  results: Type.Array(Type.Union([EvvOfflineAppliedResultView, EvvOfflineFailureResultView])),
+  summary: Type.Object({
+    applied: Type.Integer({ minimum: 0 }),
+    alreadyApplied: Type.Integer({ minimum: 0 }),
+    rejected: Type.Integer({ minimum: 0 }),
+    retryable: Type.Integer({ minimum: 0 }),
+  }),
+});
 
 // The bracket M8's EvvBracketResolver reads (mirrors the @wardenx/types EvvBracketDto: nullable check-in /
 // check-out events + the nested §4.3 EvvMissingResolutionDto, which carries `resolvedAt` the flat route view
