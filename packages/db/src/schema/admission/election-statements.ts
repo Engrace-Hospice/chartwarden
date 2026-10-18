@@ -54,6 +54,8 @@ export const electionStatements = pgTable(
     patientNameAtSigning: text("patient_name_at_signing"),
     hospiceNameAtSigning: text("hospice_name_at_signing"),
     attendingPhysicianId: uuid("attending_physician_id"), // M40 physician (app-validated)
+    declaredEffectiveDate: date("declared_effective_date"),
+    primaryDiagnosisIcd10AtElection: text("primary_diagnosis_icd10_at_election"),
     curativeCareAcknowledgment: boolean("curative_care_acknowledgment"),
     signedAt: date("signed_at"),
     signatureMethod: electionSignatureMethod("signature_method"),

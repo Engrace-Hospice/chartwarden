@@ -40,6 +40,9 @@ native. L’EVV offline, les notifications natives et les écrans métier resten
 - [Baseline vérifiée de PR B](./PR-B-BASELINE.md)
 - [Contrat backend Expo/Better Auth pour PR C](./backend-expo-auth-contract.md)
 - [Checklist et résultats PR B](./PR-B-CHECKLIST.md)
+- [Correctifs contrats M6 PR G.1-B](./pr-g1b-backend-contract-fixes.md)
+- [Rapport de non-régression Web PR G.1-B](./pr-g1b-web-regression-report.md)
+- [Transmission des contrats mobile PR G.1-B](./pr-g1b-mobile-contract-handoff.md)
 - [Benchmark UX](./ux-benchmark.md)
 - [Roadmap d’implémentation](./implementation-roadmap.md)
 

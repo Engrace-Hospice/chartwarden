@@ -743,6 +743,86 @@ export const SummaryRowResponseSchema = Type.Object({
   patientId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 });
 
+const NullableDetailString = Type.Union([Type.String(), Type.Null()]);
+export const NorDetailResponseSchema = Type.Object({
+  id: Type.String(),
+  state: Type.String(),
+  version: Type.Integer(),
+  patientId: Type.Optional(NullableDetailString),
+  acknowledgedAt: Type.Optional(NullableDetailString),
+  acknowledgedAtInstant: Type.Optional(NullableDetailString),
+  acknowledgedByName: Type.Optional(NullableDetailString),
+  acknowledgedByRole: Type.Optional(Type.String()),
+  deliveryMethod: Type.Optional(Type.String()),
+});
+export const ElectionStatementDetailResponseSchema = Type.Object({
+  id: Type.String(),
+  state: Type.String(),
+  version: Type.Integer(),
+  patientId: Type.Optional(NullableDetailString),
+  electionPeriodId: Type.Optional(Type.String()),
+  effectiveDate: Type.Optional(NullableDetailString),
+  primaryDiagnosisIcd10: Type.Optional(NullableDetailString),
+  electedProviderEntityId: Type.Optional(NullableDetailString),
+  electedAttendingPhysicianId: Type.Optional(NullableDetailString),
+  waiverAcknowledged: Type.Optional(Type.Union([Type.Boolean(), Type.Null()])),
+  stateAddendum: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  signerKind: Type.Optional(Type.String()),
+  signedAt: Type.Optional(NullableDetailString),
+});
+export const CtiDetailResponseSchema = Type.Object({
+  id: Type.String(),
+  state: Type.String(),
+  version: Type.Integer(),
+  patientId: Type.Optional(NullableDetailString),
+  electionPeriodId: Type.Optional(Type.String()),
+  hospiceMedicalDirectorId: Type.Optional(Type.String()),
+  attendingPhysicianId: Type.Optional(NullableDetailString),
+  terminalDiagnosisIcd10: Type.Optional(NullableDetailString),
+  secondaryDiagnoses: Type.Optional(Type.Array(Type.String())),
+  prognosisStatement: Type.Optional(NullableDetailString),
+  narrative: Type.Optional(NullableDetailString),
+  clinicalFindings: Type.Optional(
+    Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()]),
+  ),
+  hospiceMdSignedAt: Type.Optional(NullableDetailString),
+  attendingMdSignedAt: Type.Optional(NullableDetailString),
+  periodStart: Type.Optional(NullableDetailString),
+  periodEnd: Type.Optional(NullableDetailString),
+});
+export const F2fDetailResponseSchema = Type.Object({
+  id: Type.String(),
+  state: Type.String(),
+  version: Type.Integer(),
+  patientId: Type.Optional(NullableDetailString),
+  electionPeriodId: Type.Optional(Type.String()),
+  scheduledClinicianId: Type.Optional(Type.String()),
+  clinicianRole: Type.Optional(Type.String()),
+  scheduledDate: Type.Optional(NullableDetailString),
+  encounterDate: Type.Optional(NullableDetailString),
+  requestedWindowStart: Type.Optional(NullableDetailString),
+  requestedWindowEnd: Type.Optional(NullableDetailString),
+  authoritativeWindowStart: Type.Optional(NullableDetailString),
+  authoritativeWindowEnd: Type.Optional(NullableDetailString),
+  withinWindow: Type.Optional(Type.Union([Type.Boolean(), Type.Null()])),
+  windowOverride: Type.Optional(Type.Boolean()),
+  attestationSignedAt: Type.Optional(NullableDetailString),
+});
+export const ElectionPeriodDetailResponseSchema = Type.Object({
+  id: Type.String(),
+  state: Type.String(),
+  version: Type.Integer(),
+  patientId: Type.Optional(NullableDetailString),
+  sequenceNumber: Type.Optional(Type.Integer()),
+  expectedStart: Type.Optional(NullableDetailString),
+  effectiveAt: Type.Optional(NullableDetailString),
+  scheduledEndAt: Type.Optional(NullableDetailString),
+  actualEndAt: Type.Optional(NullableDetailString),
+});
+export const ElectionPeriodListResponseSchema = Type.Object({
+  items: Type.Array(ElectionPeriodDetailResponseSchema),
+});
+
 /** Route 6 (accept) — the referral's post-accept summary + the `admission.draft_from_referral` seed's id. */
 export const ReferralAcceptResponseSchema = Type.Object({
   id: Type.String(),
@@ -962,11 +1042,9 @@ export const SummaryItemsResponseSchema = Type.Object({
 
 // Patient-scoped Election & Certification aggregate (patient-chart tab). `admission` is null when the
 // patient has no admission yet; the ladders are then empty. Dates are ISO strings (timestamps) or date
-// strings. NOTE: `periods` is published as a loose record array on purpose — each period item nests three
-// sub-objects (election statement / CTI / F2F), and publishing that full depth makes openapi-fetch's
-// generated client type instantiate past TypeScript's depth limit (TS2589) once it is one operation among
-// 1000+. The rich per-period shape is the `PatientElectionCertificationView.periods` service type, which
-// the screen casts to; the live-RLS suite is the correctness proof for the assembled shape.
+// strings. The period's calendar and status are typed; nested evidence bundles remain unknown here
+// because publishing their full depth exceeds the generated client's TypeScript instantiation limit.
+// The rich bundle shape remains `PatientElectionCertificationView.periods` in the service.
 const NullableStr = Type.Union([Type.String(), Type.Null()]);
 export const PatientElectionCertificationResponseSchema = Type.Object({
   admission: Type.Union([
@@ -980,7 +1058,20 @@ export const PatientElectionCertificationResponseSchema = Type.Object({
     }),
     Type.Null(),
   ]),
-  periods: Type.Array(Type.Record(Type.String(), Type.Unknown())),
+  periods: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      sequenceNumber: Type.Integer(),
+      periodKind: Type.String(),
+      effectiveAt: NullableStr,
+      scheduledEndAt: NullableStr,
+      actualEndAt: NullableStr,
+      status: Type.String(),
+      electionStatement: Type.Unknown(),
+      cti: Type.Unknown(),
+      faceToFace: Type.Unknown(),
+    }),
+  ),
   complianceWindows: Type.Array(
     Type.Object({
       id: Type.String(),

@@ -31555,6 +31555,11 @@ export interface operations {
                             state: string;
                             version: number;
                             patientId?: string | null;
+                            sequenceNumber?: number;
+                            expectedStart?: string | null;
+                            effectiveAt?: string | null;
+                            scheduledEndAt?: string | null;
+                            actualEndAt?: string | null;
                         }[];
                     };
                 };
@@ -31789,6 +31794,11 @@ export interface operations {
                         state: string;
                         version: number;
                         patientId?: string | null;
+                        acknowledgedAt?: string | null;
+                        acknowledgedAtInstant?: string | null;
+                        acknowledgedByName?: string | null;
+                        acknowledgedByRole?: string;
+                        deliveryMethod?: string;
                     };
                 };
             };
@@ -47089,6 +47099,20 @@ export interface operations {
                         state: string;
                         version: number;
                         patientId?: string | null;
+                        electionPeriodId?: string;
+                        hospiceMedicalDirectorId?: string;
+                        attendingPhysicianId?: string | null;
+                        terminalDiagnosisIcd10?: string | null;
+                        secondaryDiagnoses?: string[];
+                        prognosisStatement?: string | null;
+                        narrative?: string | null;
+                        clinicalFindings?: {
+                            [key: string]: unknown;
+                        } | null;
+                        hospiceMdSignedAt?: string | null;
+                        attendingMdSignedAt?: string | null;
+                        periodStart?: string | null;
+                        periodEnd?: string | null;
                     };
                 };
             };
@@ -50025,6 +50049,17 @@ export interface operations {
                         state: string;
                         version: number;
                         patientId?: string | null;
+                        electionPeriodId?: string;
+                        effectiveDate?: string | null;
+                        primaryDiagnosisIcd10?: string | null;
+                        electedProviderEntityId?: string | null;
+                        electedAttendingPhysicianId?: string | null;
+                        waiverAcknowledged?: boolean | null;
+                        stateAddendum?: {
+                            [key: string]: unknown;
+                        };
+                        signerKind?: string;
+                        signedAt?: string | null;
                     };
                 };
             };
@@ -53015,6 +53050,18 @@ export interface operations {
                         state: string;
                         version: number;
                         patientId?: string | null;
+                        electionPeriodId?: string;
+                        scheduledClinicianId?: string;
+                        clinicianRole?: string;
+                        scheduledDate?: string | null;
+                        encounterDate?: string | null;
+                        requestedWindowStart?: string | null;
+                        requestedWindowEnd?: string | null;
+                        authoritativeWindowStart?: string | null;
+                        authoritativeWindowEnd?: string | null;
+                        withinWindow?: boolean | null;
+                        windowOverride?: boolean;
+                        attestationSignedAt?: string | null;
                     };
                 };
             };
@@ -75195,7 +75242,16 @@ export interface operations {
                             version: number;
                         } | null;
                         periods: {
-                            [key: string]: unknown;
+                            id: string;
+                            sequenceNumber: number;
+                            periodKind: string;
+                            effectiveAt: string | null;
+                            scheduledEndAt: string | null;
+                            actualEndAt: string | null;
+                            status: string;
+                            electionStatement: unknown;
+                            cti: unknown;
+                            faceToFace: unknown;
                         }[];
                         complianceWindows: {
                             id: string;

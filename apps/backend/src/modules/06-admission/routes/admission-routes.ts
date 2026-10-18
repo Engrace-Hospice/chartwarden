@@ -962,6 +962,8 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
         body.electionPeriodId,
         {
           electedProviderEntityId: body.electedProviderEntityId,
+          effectiveDate: body.effectiveDate,
+          primaryDiagnosisIcd10: body.primaryDiagnosisIcd10,
           ...(body.electedAttendingPhysicianId
             ? { electedAttendingPhysicianId: body.electedAttendingPhysicianId }
             : {}),
@@ -1200,6 +1202,8 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
         scheduledClinicianId: body.scheduledClinicianId,
         clinicianRole: body.clinicianRole,
         scheduledDate: body.scheduledDate,
+        windowStart: body.windowStart,
+        windowEnd: body.windowEnd,
       });
       return reply.code(201).send(res);
     },
@@ -1484,6 +1488,8 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
         idOf(request),
         {
           deliveryMethod: body.deliveryMethod,
+          acknowledgedAt: body.acknowledgedAt,
+          acknowledgedByName: body.acknowledgedByName,
           acknowledgedByRole: body.acknowledgedByRole,
         },
         userId,

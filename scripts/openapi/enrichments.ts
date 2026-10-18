@@ -127,6 +127,7 @@ import {
   AdmissionRecommendationSchema,
   AdmissionResumeSchema,
   AdmissionUpdateSchema,
+  CtiDetailResponseSchema,
   CtiDraftSchema,
   CtiHospiceMdSignSchema,
   CtiMarkLateSchema,
@@ -137,12 +138,15 @@ import {
   DischargeDeclineSchema,
   DischargeOrderResponseSchema,
   ElectionPeriodCreateSchema,
+  ElectionPeriodListResponseSchema,
   ElectionPeriodPatchSchema,
   ElectionSignSchema,
+  ElectionStatementDetailResponseSchema,
   ElectionStatementDraftSchema,
   ElectionVoidSchema,
   F2fAttestSchema,
   F2fCompleteSchema,
+  F2fDetailResponseSchema,
   F2fOverrideWindowSchema,
   F2fScheduleSchema,
   LocChangeSchema,
@@ -159,6 +163,7 @@ import {
   SummaryPageResponseSchema as M6SummaryPageResponseSchema,
   SummaryRowResponseSchema as M6SummaryRowResponseSchema,
   NorAcknowledgeSchema,
+  NorDetailResponseSchema,
   PatientElectionCertificationResponseSchema,
   PhysicianSignerListResponseSchema,
   ReferralAcceptResponseSchema,
@@ -4236,7 +4241,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/election-statements/:id": {
     summary: "One election statement's summary + state",
-    response: M6SummaryRowResponseSchema,
+    response: ElectionStatementDetailResponseSchema,
   },
   "POST /api/v1/election-statements/:id/sign": {
     summary: "Sign the election statement",
@@ -4309,7 +4314,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/admissions/:id/election-periods": {
     summary: "The admission's benefit-period ladder",
-    response: M6SummaryItemsResponseSchema,
+    response: ElectionPeriodListResponseSchema,
   },
   "GET /api/v1/patients/:patientId/admissions": {
     summary:
@@ -4341,7 +4346,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/cti/:id": {
     summary: "One CTI's summary + state",
-    response: M6SummaryRowResponseSchema,
+    response: CtiDetailResponseSchema,
   },
   "POST /api/v1/cti/:id/sign-hospice-md": {
     summary: "Hospice medical director signs the CTI",
@@ -4363,7 +4368,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/face-to-face/:id": {
     summary: "One F2F encounter's summary + state",
-    response: M6SummaryRowResponseSchema,
+    response: F2fDetailResponseSchema,
   },
   "POST /api/v1/face-to-face/:id/complete": {
     summary: "Mark the F2F encounter completed",
@@ -4476,7 +4481,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/admissions/:id/nor": {
     summary: "The admission's notice-of-rights acknowledgment",
-    response: M6SummaryRowResponseSchema,
+    response: NorDetailResponseSchema,
   },
   // Compliance windows (routes 43–46)
   "GET /api/v1/admissions/:id/compliance-windows": {

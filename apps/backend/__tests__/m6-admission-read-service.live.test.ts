@@ -257,6 +257,38 @@ describe.skipIf(!DB_URL)("M6 Drizzle read service — LIVE Postgres (M6L-T01)", 
     expect(await service.listElectionPeriods(ORG_A, PATIENT /* not an admission id */)).toBeNull();
   });
 
+  it("keeps pre-migration compliance facts explicitly unknown in detail reads", async () => {
+    const admissionId = seeded[ORG_A].admission;
+    expect(await service.getNor(ORG_A, admissionId)).toMatchObject({
+      state: "acknowledged",
+      acknowledgedAtInstant: null,
+      acknowledgedByName: null,
+    });
+    expect(await service.getNor(ORG_B, admissionId)).toBeNull();
+    const period = (await service.listElectionPeriods(ORG_A, admissionId))![0];
+    const [statement] = (
+      await admin.query("SELECT id FROM election_statement WHERE election_period_id=$1", [
+        period.id,
+      ])
+    ).rows;
+    const [cti] = (
+      await admin.query(
+        "SELECT id FROM certification_of_terminal_illness WHERE election_period_id=$1",
+        [period.id],
+      )
+    ).rows;
+    expect(await service.getElectionStatement(ORG_A, statement.id)).toMatchObject({
+      effectiveDate: null,
+      primaryDiagnosisIcd10: null,
+    });
+    expect(await service.getCti(ORG_A, cti.id)).toMatchObject({
+      prognosisStatement: null,
+      clinicalFindings: null,
+    });
+    expect(await service.getElectionStatement(ORG_B, statement.id)).toBeNull();
+    expect(await service.getCti(ORG_B, cti.id)).toBeNull();
+  });
+
   it("getPatientElectionCertification assembles the patient's admission + period ladder + cert bundles", async () => {
     const res = await service.getPatientElectionCertification(ORG_A, PATIENT);
     expect(res.admission).not.toBeNull();
