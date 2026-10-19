@@ -4366,20 +4366,27 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         messaging: createDbMessagingRouteService(dbHandle.db),
       })
     : undefined;
-  const m36AckEscalation = m36Ack
-    ? buildEscalationBinding({
-        flags: featureFlagReader,
-        store: m36Ack.store,
-        outbox: m36OutboxPublisher,
-        router: {
-          resolveTier: (orgId, request) => getEscalationRouter().resolveTier(orgId, request),
-        },
-        stillQualified: m36Ack.stillQualified,
-        ...(m36AckTimerQueue ? { timers: createBullmqTimerPort(m36AckTimerQueue) } : {}),
-        // Ids and the error class only: a database error can carry statement parameters. Swapped for the app logger below.
-        onError: (context, err) => m36AckEscalationError(context, err),
-      })
+  // The walk skips a candidate who cannot view the channel (ADR-0070 limit i). A consent-seam outage must retry the tick, not read as
+  // "cannot view" (which would skip the user and could end the ladder), so this one instance throws on it.
+  const m36EscalationCanView = dbHandle
+    ? createDbMessagingRouteService(dbHandle.db, { throwOnSeamUnavailable: true }).canViewChannel
     : undefined;
+  const m36AckEscalation =
+    m36Ack && m36EscalationCanView
+      ? buildEscalationBinding({
+          flags: featureFlagReader,
+          store: m36Ack.store,
+          outbox: m36OutboxPublisher,
+          router: {
+            resolveTier: (orgId, request) => getEscalationRouter().resolveTier(orgId, request),
+          },
+          stillQualified: m36Ack.stillQualified,
+          canViewChannel: m36EscalationCanView,
+          ...(m36AckTimerQueue ? { timers: createBullmqTimerPort(m36AckTimerQueue) } : {}),
+          // Ids and the error class only: a database error can carry statement parameters. Swapped for the app logger below.
+          onError: (context, err) => m36AckEscalationError(context, err),
+        })
+      : undefined;
   // WP 4.1 - "Urgent clinical". One binding for the routes; off unless the tenant flags `messaging.urgent_clinical` AND
   // `messaging.sbar` are on. It stores and marks an urgent message and tells the named recipient in-app; it does not page,
   // escalate or acknowledge (WP 4.2 - 4.4).

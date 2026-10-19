@@ -56,7 +56,7 @@ export function buildM36AckEscalationNotificationsConsumer(deps: {
   readonly opsNotice: SupervisorAttentionDeps["opsNotice"];
   readonly messaging: Pick<MessagingRouteService, "canViewChannel">;
   readonly readRequest: (orgId: string, requestId: string) => Promise<AckRow | null>;
-  /** Active, keys, Part 2 gate, sees the channel. A clean false is a skip; a throw propagates. */
+  /** Active, keys, urgent.receive, Part 2 gate (not channel visibility: `messaging.canViewChannel` is asked separately). A clean false is a skip; a throw propagates. */
   readonly stillQualified: (orgId: string, userId: string, channelId: string) => Promise<boolean>;
   readonly warn?: (message: string, context: Record<string, string>) => void;
 }): OutboxConsumerBinding {

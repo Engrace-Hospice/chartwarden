@@ -71,8 +71,14 @@ export interface EscalationDeps {
   readonly isEnabled: (orgId: string) => Promise<boolean>;
   /** The org-checking wrapper around the seam (`guardEscalationRouter`). A throw propagates. */
   readonly router: EscalationRouter;
-  /** Active, keys, Part 2 gate and able to see the channel. A clean false skips the candidate; a throw propagates. */
+  /** Active, messaging keys, urgent.receive, Part 2 gate. It does NOT check channel membership. A clean false skips the candidate; a throw propagates. */
   readonly stillQualified: (orgId: string, userId: string, channelId: string) => Promise<boolean>;
+  /**
+   * The walk's own addition (ADR-0070 limit i, interim for E5): the same `canViewChannel` the ack service and the notification
+   * consumer use. A next-tier user who cannot view the channel could neither be told nor act, so is skipped like an unqualified one.
+   * A clean false skips; a throw (e.g. the consent seam is down) propagates and the walk retries.
+   */
+  readonly canViewChannel: (orgId: string, userId: string, channelId: string) => Promise<boolean>;
   readonly outbox: HintOutboxPort | undefined;
   readonly now?: () => Date;
   /** Ids and a reason only. */
@@ -106,11 +112,11 @@ export interface EscalationService {
  * WP 4.4 / 4.5: the ladder walk, shared by the deadline timer and the delivery-failure handler so both ask the router the same way.
  */
 export function createTierDecider(
-  deps: Pick<EscalationDeps, "router" | "stillQualified">,
+  deps: Pick<EscalationDeps, "router" | "stillQualified" | "canViewChannel">,
 ): (orgId: string, row: AckRow, asOf: string) => Promise<Decision> {
   /**
    * Walks the ladder from the next tier up. A tier with a gap, or whose people are all unusable (the sender, the assignee who did
-   * not act, someone no longer qualified), is skipped to the router's `nextTier`; the end of the ladder is `ladder_exhausted` only
+   * not act, someone no longer qualified, someone who cannot view the request's channel), is skipped to the router's `nextTier`; the end of the ladder is `ladder_exhausted` only
    * when the router says the tier does not exist. Lookup errors propagate.
    */
   return async function decide(orgId: string, row: AckRow, asOf: string): Promise<Decision> {
@@ -130,7 +136,10 @@ export function createTierDecider(
       if (answer.kind === "resolved") {
         for (const userId of answer.userIds) {
           if (userId === row.requesterUserId || userId === row.assignedUserId) continue;
-          if (await deps.stillQualified(orgId, userId, row.channelId)) {
+          if (
+            (await deps.stillQualified(orgId, userId, row.channelId)) &&
+            (await deps.canViewChannel(orgId, userId, row.channelId))
+          ) {
             return { kind: "routed", tier, userId };
           }
         }
