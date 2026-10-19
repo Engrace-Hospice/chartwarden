@@ -44,3 +44,55 @@ export interface OnCallCoverageDto {
   readonly status: OnCallDirectoryStatus;
   readonly tiers: readonly OnCallTierDto[];
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// Role-based send ("message the on-call RN"), ADR-0081 (PROPOSED). The sender names a ROLE for a patient's care-team conversation; the
+// server resolves who covers tier 1 NOW through the same guarded EscalationRouter seam, the sender CONFIRMS that person, and the send is
+// an ordinary urgent message to that one person with the role stored on the response request. There is no silent fallback: a gap or an
+// unconnected roster is an explicit refusal that points at the agency telephone procedure, and a resolution that changed between the
+// preview and the send is a 409 that makes the sender confirm again.
+// ---------------------------------------------------------------------------------------------------------------------------------
+
+/** Tenant flag (ops flag, tenant row wins, absent = off). Off is the uniform 404. Independent of `messaging.oncall_directory`. */
+export const ROLE_SEND_FLAG_KEY = "messaging.role_send";
+
+/** May address a ROLE (a different, wider act than naming a person: it changes who is paged). Needed WITH `messaging.urgent.send`. */
+export const ROLE_SEND_PERMISSION = "messaging.oncall.send";
+
+/** The wording shown for every refusal that is not a covered role: never a guessed person (hazard H-02). */
+export const ROLE_SEND_TELEPHONE_PROCEDURE =
+  "Nobody is confirmed on call for this role right now. Use the agency telephone procedure; no message was sent.";
+
+/** The `code` of the typed errors (409 for a changed resolution, 422 for no coverage, 503 when role send cannot track a response). */
+export const ROLE_SEND_ERROR_CODES = {
+  noCoverage: "ROLE_SEND_NO_COVERAGE",
+  resolutionChanged: "ROLE_SEND_RESOLUTION_CHANGED",
+  unavailable: "ROLE_SEND_UNAVAILABLE",
+  clientIdReused: "ROLE_SEND_CLIENT_ID_REUSED",
+} as const;
+
+export interface RoleSendPersonDto {
+  /** The user a confirmed send will go to. Disclosed only to a caller who may address the role for this visible patient. */
+  readonly user_id: string;
+  /** Null when the name cannot be found (never an id in its place). */
+  readonly display_name: string | null;
+}
+
+/** What the sender confirms: tier 1 only. `people` is non-empty only when `status` is `covered`. */
+export interface RoleSendResolutionDto {
+  readonly role: OnCallDirectoryRole;
+  readonly as_of: string;
+  readonly status: OnCallDirectoryStatus;
+  readonly people: readonly RoleSendPersonDto[];
+  readonly shift_ends_at: string | null;
+  readonly time_zone: string | null;
+}
+
+export interface RoleSendResponse {
+  readonly message_id: string;
+  readonly channel_id: string;
+  readonly patient_id: string;
+  readonly recipient_user_id: string;
+  readonly role: OnCallDirectoryRole;
+  readonly created: boolean;
+}

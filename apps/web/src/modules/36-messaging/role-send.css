@@ -1,0 +1,10 @@
+/* M36 role-based send (ADR-0081) - the confirm region of the dialog. Everything else reuses urgent.css (tokens from the shared kit only). */
+.wx-urgent-confirm {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.wx-urgent-confirm:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}

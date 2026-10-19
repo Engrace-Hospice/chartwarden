@@ -335,6 +335,14 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "none",
   },
+  // --- WP 4.12 follow-on (ADR-0081, PROPOSED): address a ROLE ("message the on-call RN"). It changes who is paged, so it is a key of its
+  //     own and migration 1129 grants it to NO tenant role (full-catalog admin roles receive it); the clinical lead names who may hold it. ---
+  "messaging.oncall.send": {
+    resource: "oncall_role_send",
+    action: "send",
+    category: "clinical",
+    abac: "none",
+  },
   // --- WP 2.7b C4: switch tenant global search on/off (ADR-0058 decision 2; the route also demands a fresh step-up) ---
   "messaging.global_search.manage": {
     resource: "global_search",

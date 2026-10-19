@@ -70,6 +70,7 @@ const toRow = (r: RequestRow): AckRow => ({
   resolvedByUserId: r.resolvedByUserId,
   cancelledAt: r.cancelledAt,
   version: r.version,
+  addressedRole: r.addressedRole,
   updatedAt: r.updatedAt,
 });
 
@@ -124,6 +125,7 @@ export function ackTxOver(tx: Tx, orgId: string): AckTx {
           requestedAt: n.requestedAt,
           windowStartedAt: n.requestedAt,
           deadlineAt: n.deadlineAt,
+          addressedRole: n.addressedRole ?? null,
         })
         .onConflictDoNothing({ target: [R.organizationId, R.messageId] })
         .returning();

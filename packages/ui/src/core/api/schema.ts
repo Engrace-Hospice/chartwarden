@@ -14212,6 +14212,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/role-send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send an urgent clinical message to the person who covers a ROLE, after the sender confirmed that person (role-based send, ADR-0081 PROPOSED; messaging.send + messaging.urgent.send + messaging.oncall.send + channel visibility + patient.read with caseload_or_scope on `patient_id` + a required Idempotency-Key + the urgent route's rate limit; the uniform 404 while the tenant flag `messaging.role_send` is off or for an invisible, missing or other-conversation patient). `recipient_user_id` is the confirmed person from the resolution read. The server re-resolves TIER 1 at send time: 422 ROLE_SEND_NO_COVERAGE when nobody is confirmed on call (a gap, an unconnected roster, no ladder; the message tells the sender to use the agency telephone procedure; NOTHING is sent and there is no fall-back to a backup tier, another role or a guessed person); 409 ROLE_SEND_RESOLUTION_CHANGED when the confirmed person no longer covers (nothing is sent, the sender confirms again). Otherwise it is the ordinary urgent send (see POST urgent-messages for the recipient qualification, SBAR and replay rules) and the response request stores the ROLE as well as the person. 503 ROLE_SEND_UNAVAILABLE when response tracking (`messaging.ack_requests`) is off: a role send is never made without a record of the role. 201 created; 200 created:false replays the same client_message_id with the STORED role (a replay to the same person and role does not re-resolve and answers even if response tracking was turned off since); 409 ROLE_SEND_CLIENT_ID_REUSED when that id was used for a person-send or another role. The Idempotency-Key middleware caches refusals too: use a fresh key after a 409 or 422 refusal. Read-audited against the message and patient */
+        post: operations["postApiV1MessagingChannelsByIdRolesend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/channels/{id}/role-send/resolution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who covers a role NOW, for the sender to confirm (role-based send, ADR-0081 PROPOSED; messaging.read + messaging.urgent.send + messaging.oncall.send + channel visibility + patient.read with caseload_or_scope on `patient_id` (no break-glass), otherwise 403; a patient the caller cannot see, outside the organisation or not this conversation's patient is the uniform 404 and the router is never asked; the uniform 404 while the tenant flag `messaging.role_send` is off). Read-only: nothing is paged or sent. Asks the guarded M19 EscalationRouter seam for TIER 1 only. `status` is covered (`people` are the user ids and display names to choose from), coverage_gap, roster_not_connected (no M19 router is bound: coverage is UNKNOWN) or not_configured: in every status but covered `people` is empty and the sender must use the agency telephone procedure (there is NO fall-back to a backup tier or another role). `time_zone` is the roster's IANA zone; `shift_ends_at` only when the roster supplied a valid future instant. A role outside the closed list, a malformed patient id or an unknown key is a 422. Never cached. Read-audited against the patient */
+        get: operations["getApiV1MessagingChannelsByIdRolesendResolution"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/channels/{id}/scheduled-messages": {
         parameters: {
             query?: never;
@@ -66891,6 +66925,101 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingChannelsByIdRolesend: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    role: "rn" | "physician";
+                    patient_id: string;
+                    recipient_user_id: string;
+                    body_doc: {
+                        /** @constant */
+                        schemaVersion: 1;
+                        doc: {
+                            /** @constant */
+                            type: "doc";
+                            content: unknown[];
+                        };
+                    };
+                    client_message_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        message_id: string;
+                        /** Format: uuid */
+                        channel_id: string;
+                        /** Format: uuid */
+                        patient_id: string;
+                        /** Format: uuid */
+                        recipient_user_id: string;
+                        role: "rn" | "physician";
+                        created: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingChannelsByIdRolesendResolution: {
+        parameters: {
+            query: {
+                role: "rn" | "physician";
+                patient_id: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        role: "rn" | "physician";
+                        /** Format: date-time */
+                        as_of: string;
+                        status: "covered" | "coverage_gap" | "roster_not_connected" | "not_configured";
+                        people: {
+                            /** Format: uuid */
+                            user_id: string;
+                            display_name: string | null;
+                        }[];
+                        shift_ends_at: string | null;
+                        time_zone: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1667,
-    "coveredRoutes": 1667,
-    "directRoutesReferenced": 1557
+    "routes": 1669,
+    "coveredRoutes": 1669,
+    "directRoutesReferenced": 1559
   },
   "modules": [
     {
@@ -139,6 +139,8 @@
         "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts",
         "apps/backend/__tests__/gap-050-visit-start-self-attest.test.ts",
         "apps/backend/__tests__/m36-oncall-directory.test.ts",
+        "apps/backend/__tests__/m36-role-send.live.test.ts",
+        "apps/backend/__tests__/m36-role-send.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.test.ts",
         "apps/backend/__tests__/m5-lifecycle-routes.test.ts",
@@ -504,7 +506,7 @@
     },
     {
       "module": "36-messaging",
-      "routes": 125,
+      "routes": 127,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
@@ -553,6 +555,8 @@
         "apps/backend/__tests__/m36-promotions.live.test.ts",
         "apps/backend/__tests__/m36-review-routes.test.ts",
         "apps/backend/__tests__/m36-rich-body.test.ts",
+        "apps/backend/__tests__/m36-role-send.live.test.ts",
+        "apps/backend/__tests__/m36-role-send.test.ts",
         "apps/backend/__tests__/m36-sbar-routes.test.ts",
         "apps/backend/__tests__/m36-sbar.live.test.ts",
         "apps/backend/__tests__/m36-scheduled-send-routes.test.ts",
@@ -572,7 +576,7 @@
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 125
+      "directRoutesReferenced": 127
     },
     {
       "module": "37-ipu",

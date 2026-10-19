@@ -30,13 +30,13 @@ export interface OnCallCoverageService {
 }
 
 /** A shift end is shown only when it is a real instant after `asOf`; anything else is "not provided". */
-function validShiftEnd(value: string | undefined, asOf: Date): string | null {
+export function validShiftEnd(value: string | undefined, asOf: Date): string | null {
   if (!value) return null;
   const at = new Date(value);
   return Number.isNaN(at.getTime()) || at <= asOf ? null : at.toISOString();
 }
 
-function unavailableStatus(
+export function unavailableStatus(
   answer: Extract<EscalationRouteAnswer, { kind: "unavailable" }>,
 ): OnCallDirectoryStatus {
   return answer.source === "deny_stub" || answer.reason === "router_not_bound"

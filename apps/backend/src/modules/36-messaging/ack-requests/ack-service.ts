@@ -95,6 +95,8 @@ export interface UrgentAckFacts {
   readonly patientId: string;
   readonly requesterUserId: string;
   readonly assigneeUserId: string;
+  /** ADR-0081: the role the sender addressed (role-based send), absent when a person was named. */
+  readonly addressedRole?: string | undefined;
 }
 
 export interface AckService {
@@ -264,6 +266,7 @@ export function createAckService(deps: AckServiceDeps): AckService {
       assignedUserId: facts.assigneeUserId,
       requestedAt: at,
       deadlineAt: defaultDeadline(facts.ackClass, at),
+      addressedRole: facts.addressedRole,
     });
     if (!inserted) return { row, inserted };
     await tx.insertEvent({
