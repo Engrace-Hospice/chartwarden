@@ -49,6 +49,15 @@ describe("migration 1132 thread access grant", () => {
     expect(sql).toContain("NEW.granted_at := now()");
     expect(sql).toContain("NEW.revoked_at := now()");
     expect(sql).toContain('CHECK ("expires_at" > "granted_at")');
+    expect(sql).toContain(`CHECK ("expires_at" <= "granted_at" + interval '7 days')`);
+  });
+
+  it("binds channel and root to the request inside the insert guard", () => {
+    expect(sql).toContain("message_thread_grant_binding: the channel is the request''s channel");
+    expect(sql).toContain(
+      "FROM message_acknowledgment_request r WHERE r.organization_id = NEW.organization_id AND r.id = NEW.request_id",
+    );
+    expect(sql).toContain("m.parent_message_id");
   });
 
   it("has one live grant per (request, grantee), index-covered FKs and the PHI audit trigger", () => {

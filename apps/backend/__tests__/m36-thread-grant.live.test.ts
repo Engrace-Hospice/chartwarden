@@ -11,6 +11,7 @@
  *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m36:thread-grant:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
  */
+import { randomUUID } from "node:crypto";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { findActiveThreadGrant } from "../src/modules/36-messaging/thread-grant/active-grant";
@@ -112,7 +113,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0083 G1 thread access grant - LIVE Postgres", 
       (await asApp("SELECT id FROM message_thread_access_grant WHERE id=$1", [id])).rows,
     ).toHaveLength(1);
     expect((await grant(outsider, "escalated", "4 hours", ORG_B)).error).toMatch(
-      /row-level security|foreign key/i,
+      /row-level security|foreign key|message_thread_grant_binding/i,
     );
     await drop(id);
   });
@@ -186,6 +187,82 @@ describe.skipIf(!DB_URL)("M36 ADR-0083 G1 thread access grant - LIVE Postgres", 
     await new Promise((r) => setTimeout(r, 1500));
     expect(await find()).toBeNull();
     await drop(live, shortLived);
+  });
+
+  it("refuses a grant whose channel is not the request's channel, or whose root is not the request's thread root", async () => {
+    const other = await mkChannel(kit, "care_team", randomUUID(), [author]);
+    const otherMsg = (
+      await kit.one<{ id: string }>(
+        `INSERT INTO message (organization_id, channel_id, author_user_id, author_kind, body_cipher, body_sha256)
+         VALUES ($1,$2,$3,'user', '\\x01'::bytea, $4) RETURNING id`,
+        [ORG_A, other, author, "b".repeat(64)],
+      )
+    )[0].id;
+    const raw = (ch: string, root: string) =>
+      asApp(INSERT, [ORG_A, ch, root, requestId, assignee, "escalated", "4 hours"]);
+    // a different channel of the same org (and its own message) is refused
+    expect((await raw(other, otherMsg)).error).toMatch(/message_thread_grant_binding/);
+    // right channel, a root that is not the request's message
+    expect((await raw(channel, otherMsg)).error).not.toBeNull();
+    // a reply: the request sits on a reply, the grant must name the ROOT, never the reply
+    const reply = (
+      await kit.one<{ id: string }>(
+        `INSERT INTO message (organization_id, channel_id, author_user_id, author_kind, body_cipher, body_sha256, parent_message_id)
+         VALUES ($1,$2,$3,'user', '\\x01'::bytea, $4, $5) RETURNING id`,
+        [ORG_A, channel, author, "c".repeat(64), rootMessage],
+      )
+    )[0].id;
+    const replyReq = (
+      await kit.one<{ id: string }>(
+        `INSERT INTO message_acknowledgment_request
+         (organization_id, message_id, channel_id, patient_id, ack_class, requester_user_id, assigned_user_id, requested_at, window_started_at, deadline_at)
+         VALUES ($1,$2,$3,$4,'important',$5,$6, now(), now(), now() + interval '60 minutes') RETURNING id`,
+        [ORG_A, reply, channel, PATIENT, author, assignee],
+      )
+    )[0].id;
+    const onReply = (root: string) =>
+      asApp(INSERT, [ORG_A, channel, root, replyReq, assignee, "escalated", "4 hours"]);
+    expect((await onReply(reply)).error).toMatch(/message_thread_grant_binding/);
+    expect((await onReply(rootMessage)).error).toBeNull();
+    // and on the original request, naming the reply as root is refused
+    expect((await raw(channel, reply)).error).toMatch(/message_thread_grant_binding/);
+  });
+
+  it("an expired but unrevoked grant still occupies the one-live slot until it is revoked", async () => {
+    const stale = await seedGrant(assignee, "1 second");
+    await new Promise((r) => setTimeout(r, 1500));
+    expect((await grant(assignee)).error).toMatch(/message_thread_grant_one_live/);
+    await kit.one("UPDATE message_thread_access_grant SET revoked_at = now() WHERE id=$1", [stale]);
+    expect((await grant(assignee)).error).toBeNull();
+    await drop(stale);
+  });
+
+  it("caps the window at 7 days on the forced database clock", async () => {
+    expect((await grant(assignee, "escalated", "8 days")).error).toMatch(
+      /message_thread_grant_max_window/,
+    );
+    expect((await grant(assignee, "escalated", "7 days")).error).toBeNull();
+  });
+
+  it("ignores a forged revoked_at on insert, so a grant cannot be born revoked", async () => {
+    const res = await asApp(
+      `INSERT INTO message_thread_access_grant
+       (organization_id, channel_id, root_message_id, request_id, grantee_user_id, reason, expires_at, revoked_at)
+       VALUES ($1,$2,$3,$4,$5,'escalated', now() + interval '1 hour', now()) RETURNING revoked_at`,
+      [ORG_A, channel, rootMessage, requestId, assignee],
+    );
+    expect(res.error).toBeNull();
+    expect(res.rows[0].revoked_at).toBeNull();
+  });
+
+  it("records actor_kind 'system' when no user is in the session, and 'user' when there is one", async () => {
+    const id = await seedGrant(assignee); // the superuser connection sets no app.user_id
+    const [row] = await kit.one<{ actor_kind: string }>(
+      "SELECT actor_kind::text FROM audit_event WHERE resource_kind='message_thread_access_grant' AND resource_id=$1",
+      [id],
+    );
+    expect(row.actor_kind).toBe("system");
+    await drop(id);
   });
 
   it("lands an audit row for the grant and for its revoke", async () => {

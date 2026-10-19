@@ -6,6 +6,13 @@
 --     now() in SQL (never an application clock). expires_at > granted_at is a CHECK.
 --   * Insert / revoke-only: the one permitted update moves revoked_at from NULL to a value, once; the app role holds no DELETE and an
 --     UPDATE grant on revoked_at alone (the trigger is the backstop for any other role). One LIVE grant per (request, grantee).
+--     Deletion is by privilege: the app role has no DELETE grant; only wardenx_destruction deletes.
+--   * Binding: the insert guard requires channel_id to be the REQUEST's channel and root_message_id to be the ROOT of the request's message
+--     (the message itself when parent_message_id IS NULL, else its parent chain followed to the top, at most 10 hops). G2 derives channel
+--     and root server-side from the request row, never from the client; this is the backstop.
+--   * Bounds: expires_at <= granted_at + 7 days (CHECK, evaluated after the trigger has forced granted_at, so it sees the database clock).
+--     The per-tenant hours setting (G2) must stay under it. An expired but unrevoked grant still occupies the one-live slot (index
+--     semantics unchanged): G2 must revoke it before re-granting, or do both in one statement.
 CREATE TABLE "message_thread_access_grant" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "organization_id" uuid NOT NULL REFERENCES "organization"("id") ON DELETE RESTRICT,
@@ -19,6 +26,7 @@ CREATE TABLE "message_thread_access_grant" (
   "revoked_at" timestamptz,
   CONSTRAINT "message_thread_grant_reason" CHECK ("reason" IN ('escalated', 'reassigned', 'oncall_role_send')),
   CONSTRAINT "message_thread_grant_window" CHECK ("expires_at" > "granted_at"),
+  CONSTRAINT "message_thread_grant_max_window" CHECK ("expires_at" <= "granted_at" + interval '7 days'),
   CONSTRAINT "message_thread_grant_root_fk"
     FOREIGN KEY ("organization_id", "channel_id", "root_message_id")
     REFERENCES "message"("organization_id", "channel_id", "id") ON DELETE RESTRICT,
@@ -36,10 +44,24 @@ CREATE INDEX "message_thread_grant_grantee_user_idx" ON "message_thread_access_g
 
 CREATE OR REPLACE FUNCTION message_thread_grant_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
+DECLARE v_channel uuid; v_cur uuid; v_parent uuid; v_hops integer := 0;
 BEGIN
   IF TG_OP = 'INSERT' THEN
     NEW.granted_at := now();
     NEW.revoked_at := NULL;
+    SELECT r.channel_id, r.message_id INTO v_channel, v_cur
+      FROM message_acknowledgment_request r WHERE r.organization_id = NEW.organization_id AND r.id = NEW.request_id;
+    IF v_channel IS DISTINCT FROM NEW.channel_id THEN
+      RAISE EXCEPTION 'message_thread_grant_binding: the channel is the request''s channel' USING ERRCODE = 'check_violation';
+    END IF;
+    LOOP
+      SELECT m.parent_message_id INTO v_parent FROM message m WHERE m.organization_id = NEW.organization_id AND m.id = v_cur;
+      EXIT WHEN v_parent IS NULL OR v_hops >= 10;
+      v_cur := v_parent; v_hops := v_hops + 1;
+    END LOOP;
+    IF v_parent IS NOT NULL OR v_cur IS DISTINCT FROM NEW.root_message_id THEN
+      RAISE EXCEPTION 'message_thread_grant_binding: the root is the root of the request''s message thread' USING ERRCODE = 'check_violation';
+    END IF;
     RETURN NEW;
   END IF;
   IF OLD.revoked_at IS NOT NULL THEN
