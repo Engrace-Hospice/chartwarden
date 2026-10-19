@@ -303,7 +303,11 @@
 | web | 35-subscription | `billing.promos` | `/subscription/promos` | `subscription.read` | ✅ |
 | web | 36-messaging | `messaging.staff` | `/messaging` | `messaging.read` | ✅ |
 | web | 36-messaging | `messaging.unacknowledged` | `/messaging/unacknowledged` | `messaging.review` | ✅ |
+<<<<<<< HEAD
 | web | 36-messaging | `messaging.preferences` | `/messaging/preferences` | `messaging.read` | ✅ |
+=======
+| web | 36-messaging | `messaging.on-call` | `/messaging/on-call` | `messaging.oncall.read` | ✅ |
+>>>>>>> 845966fa0 (feat(m36): WP 4.12 read-only on-call coverage directory (ADR-0080, proposed))
 | web | 36-messaging | `messaging.saved-replies` | `/messaging/saved-replies` | `messaging.send` | ✅ |
 | web | 36-messaging | `messaging.global-search-settings` | `/messaging/search-settings` | `messaging.global_search.manage` | ✅ |
 | web | 36-messaging | `messaging.notification-landing` | `/n/:id` | `(none)` | ✅ |

@@ -1,0 +1,135 @@
+// WP 4.12 (ADR-0080) - the read-only on-call directory route over the REAL Authorization Contract: both permissions are required,
+// the tenant flag off is the uniform 404, the query is closed (role list, uuid, no unknown key), the answer carries names and no ids,
+// and the deny-stub answers "roster not connected" rather than an empty list.
+import {
+  createInMemoryEffectivePermissionStore,
+  registerEffectivePermissionResolver,
+  requirePermission,
+  resetAbacRegistry,
+  resetAuthorizationContract,
+  resetRbacEngine,
+} from "@wardenx/auth";
+import type { EscalationRouter } from "@wardenx/types";
+import type { FastifyReply, FastifyRequest } from "fastify";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { buildServer } from "../src/bootstrap/index";
+import { escalationRouterDenyStub } from "../src/bootstrap/seams/providers";
+import { createOnCallCoverageService } from "../src/modules/36-messaging/oncall-directory/oncall-coverage-service";
+import { registerOnCallRoutes } from "../src/modules/36-messaging/routes/oncall-routes";
+
+type Handler = (r: FastifyRequest, p: FastifyReply) => Promise<void>;
+
+const ORG = "org_a";
+const PATIENT = "99999999-9999-4999-8999-000000000001";
+const COVERING = "dddddddd-dddd-4ddd-8ddd-000000000001";
+const URL = "/api/v1/messaging/oncall/coverage";
+
+let enabled = true;
+let router: EscalationRouter = escalationRouterDenyStub;
+
+const service = createOnCallCoverageService({
+  isEnabled: async () => enabled,
+  router: { resolveTier: (org, request) => router.resolveTier(org, request) },
+  displayName: async () => "Dana K.",
+  now: () => new Date("2026-06-01T21:07:00.000Z"),
+});
+
+function headerAuth(request: FastifyRequest): void {
+  const user = request.headers["x-test-user"];
+  if (typeof user !== "string" || user.length === 0) return;
+  request.context.userId = user;
+  request.context.organizationId = ORG;
+  request.context.roles = [];
+  request.context.locationIds = [];
+}
+
+const grants = (permissionKeys: string[]) => [
+  { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys },
+];
+
+function makeServer() {
+  registerEffectivePermissionResolver(
+    createInMemoryEffectivePermissionStore([
+      { orgId: ORG, userId: "nurse", grants: grants(["messaging.read", "messaging.oncall.read"]) },
+      { orgId: ORG, userId: "reader", grants: grants(["messaging.read"]) },
+      { orgId: ORG, userId: "oncall-only", grants: grants(["messaging.oncall.read"]) },
+    ]).store,
+  );
+  const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+  registerOnCallRoutes(app, { service }, { read: requirePermission("messaging.read") as Handler });
+  return app;
+}
+
+const get = (app: ReturnType<typeof makeServer>, user: string | null, qs: string) =>
+  app.inject({ method: "GET", url: `${URL}${qs}`, headers: user ? { "x-test-user": user } : {} });
+const QS = `?role=rn&patient_id=${PATIENT}`;
+
+beforeEach(() => {
+  enabled = true;
+  router = escalationRouterDenyStub;
+});
+afterEach(() => {
+  resetAuthorizationContract();
+  resetRbacEngine();
+  resetAbacRegistry();
+});
+
+describe("GET /messaging/oncall/coverage", () => {
+  it("answers 'roster not connected' (unknown, not empty) while only the deny-stub is bound", async () => {
+    const res = await get(makeServer(), "nurse", QS);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["cache-control"]).toBe("no-store");
+    expect(res.json()).toMatchObject({ role: "rn", status: "roster_not_connected", tiers: [] });
+  });
+
+  it("returns names, the roster zone and no user id when a router answers", async () => {
+    router = {
+      resolveTier: async (_org, request) => ({
+        kind: "resolved",
+        userIds: [COVERING],
+        nextTier: null,
+        timeZone: "America/Los_Angeles",
+        shiftEndsAt: "2026-06-02T02:00:00Z",
+        tier: request.tier,
+        asOf: request.asOf,
+        source: "m19",
+      }),
+    };
+    const res = await get(makeServer(), "nurse", QS);
+    expect(res.json().tiers).toEqual([
+      {
+        tier: 1,
+        state: "covering",
+        people: ["Dana K."],
+        shift_ends_at: "2026-06-02T02:00:00.000Z",
+        time_zone: "America/Los_Angeles",
+      },
+    ]);
+    expect(res.body).not.toContain(COVERING);
+    expect(res.body).not.toContain(PATIENT);
+  });
+
+  it("is the uniform 404 when the tenant flag is off", async () => {
+    enabled = false;
+    expect((await get(makeServer(), "nurse", QS)).statusCode).toBe(404);
+  });
+
+  it("needs messaging.oncall.read AND messaging.read, and a signed-in caller", async () => {
+    const app = makeServer();
+    expect((await get(app, "reader", QS)).statusCode).toBe(403);
+    expect((await get(app, "oncall-only", QS)).statusCode).toBe(403);
+    expect((await get(app, null, QS)).statusCode).toBe(401);
+  });
+
+  it("refuses a role outside the closed list, a malformed patient id and an unknown key (422, the repo's validation envelope)", async () => {
+    const app = makeServer();
+    for (const qs of [
+      `?role=admin&patient_id=${PATIENT}`,
+      "?role=rn&patient_id=not-a-uuid",
+      "?role=rn",
+      `?role=rn&patient_id=${PATIENT}&org_id=other`,
+    ]) {
+      expect((await get(app, "nurse", qs)).statusCode).toBe(422);
+    }
+  });
+});
