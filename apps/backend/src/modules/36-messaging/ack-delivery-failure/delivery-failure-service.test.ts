@@ -60,7 +60,12 @@ const denyStub = {
 } as const;
 
 function setup(
-  opts: { answer?: EscalationRouteAnswer; enabled?: boolean; row?: Partial<AckRow> } = {},
+  opts: {
+    answer?: EscalationRouteAnswer;
+    enabled?: boolean;
+    row?: Partial<AckRow>;
+    canView?: () => boolean;
+  } = {},
 ) {
   const store = createMemoryAckStore();
   const row = seedRow(opts.row);
@@ -73,6 +78,7 @@ function setup(
     decide: createTierDecider({
       router: { resolveTier: async () => opts.answer ?? denyStub },
       stillQualified: async () => true,
+      canViewChannel: async () => (opts.canView ? opts.canView() : true),
     }),
     outbox: {
       async publish(_tx, e) {
@@ -115,6 +121,19 @@ describe("delivery-failure service", () => {
     });
     expect(ctx.store.events.map((e) => e.eventType)).toEqual(["escalated", "delivery_failed"]);
     expect(ctx.published.map((p) => p.eventName)).toEqual(["m36.ack.escalated"]);
+  });
+
+  it("marks the request failed_unreachable, assignee unchanged, when the only next-tier user cannot view the channel", async () => {
+    const ctx = setup({ answer: resolved([TIER1]), canView: () => false });
+
+    const outcome = await ctx.service.onAllRoutesFailed(ORG, ctx.facts);
+
+    expect(outcome).toMatchObject({ kind: "failed_unreachable" });
+    expect(ctx.stored()).toMatchObject({
+      status: "failed_unreachable",
+      assignedUserId: ASSIGNEE,
+      currentTier: 0,
+    });
   });
 
   it("marks the request failed_unreachable when no tier can be reached (the deny-stub today)", async () => {

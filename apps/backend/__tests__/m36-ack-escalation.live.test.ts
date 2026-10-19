@@ -122,6 +122,8 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
   let rn2: string;
   let tier1: string;
   let tier2: string;
+  /** Qualified (keys, urgent.receive) but NOT a member of the care-team channel. */
+  let outsider: string;
   let orgBUser: string;
   let channel: string;
   let careTeam: string[] = [];
@@ -272,6 +274,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
       outbox: catalogOutbox() as never,
       router,
       stillQualified: ack.stillQualified,
+      canViewChannel: kit.service.canViewChannel,
       now: () => clock.now,
       ...(timers ? { timers } : {}),
     });
@@ -283,6 +286,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
     rn2 = await seed("rn2", ORG_A, RECEIVE_KEYS);
     tier1 = await seed("tier1", ORG_A, RECEIVE_KEYS);
     tier2 = await seed("tier2", ORG_A, RECEIVE_KEYS);
+    outsider = await seed("outsider", ORG_A, RECEIVE_KEYS);
     orgBUser = await seed("orgb", ORG_B, [...SEND_KEYS, ...RECEIVE_KEYS]);
     channel = await mkChannel(kit, "care_team", PATIENT, [nurse, rn, rn2, tier1, tier2]);
     careTeam = [nurse, rn, rn2, tier1, tier2];
@@ -499,6 +503,48 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
       expect(routerCalls).toBe(1);
       // A timer is not a request: the router is called inside the tenant's system scope, so a real router's org check has a context.
       expect(routerScopes).toEqual([ORG_A]);
+    });
+
+    it("3b. a qualified next-tier user who is not in the channel is skipped: the walk goes to the member behind them, who can act", async () => {
+      resetCase();
+      const { id } = await freshRequest();
+      await makeDue(id);
+      ladder[1] = (asOf) => resolved(1, [outsider, tier1], null, asOf);
+
+      const outcome = await escalation.service.processDue(ORG_A, id);
+
+      expect(outcome).toMatchObject({ kind: "escalated", tier: 1, assignedUserId: tier1 });
+      expect((await row(id)).assigned_user_id).toBe(tier1);
+      expect((await acknowledge(tier1, id)).statusCode).toBe(200);
+    });
+
+    it("3c. when the only next-tier user is not in the channel the ladder is exhausted: the request stays with its assignee, who can still act", async () => {
+      resetCase();
+      const { id } = await freshRequest();
+      await makeDue(id);
+      const before = await row(id);
+      ladder[1] = (asOf) => resolved(1, [outsider], null, asOf);
+
+      const outcome = await escalation.service.processDue(ORG_A, id);
+
+      expect(outcome).toEqual({ kind: "not_routed", reason: "ladder_exhausted", recorded: true });
+      expect(await row(id)).toEqual(before);
+      expect(await countEvents(id, "escalated")).toBe(0);
+      expect(await countEvents(id, "ladder_exhausted")).toBe(1);
+      expect(await outboxNames(id)).toContain("m36.ack.ladder_exhausted");
+      expect((await acknowledge(rn, id)).statusCode).toBe(200);
+    });
+
+    it("3d. a tier of non-members is skipped to the router's next tier", async () => {
+      resetCase();
+      const { id } = await freshRequest();
+      await makeDue(id);
+      ladder[1] = (asOf) => resolved(1, [outsider], 2, asOf);
+      ladder[2] = (asOf) => resolved(2, [tier2], null, asOf);
+
+      const outcome = await escalation.service.processDue(ORG_A, id);
+
+      expect(outcome).toMatchObject({ kind: "escalated", tier: 2, assignedUserId: tier2 });
     });
 
     it("4. the tier's clinician can acknowledge the escalated request, the one who did not act can no longer", async () => {
@@ -1146,6 +1192,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.4 escalation timers - LIVE Postgres", () => {
           },
         },
         stillQualified: ack.stillQualified,
+        canViewChannel: kit.service.canViewChannel,
         outbox: undefined,
         now: () => clock.now,
       });

@@ -70,6 +70,8 @@ describe.skipIf(!DB_URL)("M36 WP 4.5 delivery-failure handling - LIVE Postgres",
   let rn: string;
   let rn2: string;
   let tier1: string;
+  /** Qualified but NOT a channel member. */
+  let outsider: string;
   let orgBUser: string;
   let channel: string;
   const keysOf = new Map<string, readonly string[]>();
@@ -217,6 +219,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.5 delivery-failure handling - LIVE Postgres",
       outbox: catalogOutbox() as never,
       router,
       stillQualified: ack.stillQualified,
+      canViewChannel: kit.service.canViewChannel,
     });
   const rebuild = () => {
     escalation = buildBinding();
@@ -259,6 +262,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.5 delivery-failure handling - LIVE Postgres",
     rn = await seed("rn", ORG_A, RECEIVE_KEYS);
     rn2 = await seed("rn2", ORG_A, RECEIVE_KEYS);
     tier1 = await seed("tier1", ORG_A, RECEIVE_KEYS);
+    outsider = await seed("outsider", ORG_A, RECEIVE_KEYS);
     orgBUser = await seed("orgb", ORG_B, [...SEND_KEYS, ...RECEIVE_KEYS]);
     channel = await mkChannel(kit, "care_team", PATIENT, [nurse, rn, rn2, tier1]);
     const registry = createPredicateRegistry();
@@ -441,6 +445,31 @@ describe.skipIf(!DB_URL)("M36 WP 4.5 delivery-failure handling - LIVE Postgres",
         400,
       );
       expect((await postNoKey(tier1, `${BASE}/${id}/acknowledge`)).statusCode).toBe(200);
+    });
+  });
+
+  describe("2b. a next-tier user outside the channel is never chosen", () => {
+    it("both routes failing with only a non-member on the next tier is failed_unreachable: the assignee keeps the request and can still act", async () => {
+      resetCase();
+      ladder[1] = (asOf) => ({
+        kind: "resolved",
+        tier: 1,
+        asOf,
+        source: "m19",
+        userIds: [outsider],
+        nextTier: null,
+        timeZone: "UTC",
+      });
+      const { id, messageId } = await freshRequest();
+
+      await outage(id, messageId);
+
+      expect(await row(id)).toMatchObject({
+        status: "failed_unreachable",
+        assigned_user_id: rn,
+        current_tier: 0,
+      });
+      expect((await postNoKey(rn, `${BASE}/${id}/acknowledge`)).statusCode).toBe(200);
     });
   });
 
