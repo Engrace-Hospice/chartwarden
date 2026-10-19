@@ -36,7 +36,7 @@ export function QuietHoursSection({ value, disabled, onChange }: Props): JSX.Ele
           role="switch"
           className="wx-prefs-switch"
           aria-checked={on}
-          aria-labelledby="wx-prefs-quiet"
+          aria-label="Quiet hours"
           disabled={disabled}
           onClick={() =>
             onChange((v) => ({ ...v, ranges: v.ranges.length > 0 ? [] : [NEW_RANGE] }))

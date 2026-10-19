@@ -41,7 +41,21 @@ const CATEGORIES = [
 const SEVERITIES = ["info", "warn", "critical"];
 const CHANNELS: readonly Channel[] = ["in_app", "push", "sms", "email", "voice"];
 
-const dateOnly = (iso: string | null): string => (iso ?? "").slice(0, 10);
+const BARE_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const pad = (n: number): string => String(n).padStart(2, "0");
+
+/** The local calendar day to show in the date input: a picked bare date as is, a stored instant in the viewer's zone. */
+const dateOnly = (value: string | null): string => {
+  if (!value || BARE_DATE.test(value)) return value ?? "";
+  const d = new Date(value);
+  return Number.isNaN(d.getTime())
+    ? ""
+    : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+/** A picked day means "until the end of that day" in the viewer's zone (a bare date would parse as 00:00 UTC and end forwarding early). */
+const endOfDayInstant = (value: string | null): string | null =>
+  !value ? null : BARE_DATE.test(value) ? new Date(`${value}T23:59:59`).toISOString() : value;
 
 /** A channel toggled in/out of one (category, severity) cell, returned as a new map. */
 export function toggleChannel(
@@ -121,7 +135,7 @@ function PreferencesForm({
     const sent: Preferences = {
       ...draft,
       vacationForwardToUserId: draft.vacationForwardToUserId?.trim() || null,
-      vacationUntil: draft.vacationUntil || null,
+      vacationUntil: endOfDayInstant(draft.vacationUntil),
     };
     const result = await save(sent);
     setSaving(false);
@@ -208,12 +222,11 @@ function PreferencesForm({
           Save preferences
         </Button>
         {dirty ? <span className="wx-prefs-note">{PREFS_UNSAVED}</span> : null}
-        {outcome ? (
-          <p
-            id={outcomeId}
-            className={outcome.ok ? "wx-prefs-note" : "wx-prefs-error"}
-            role={outcome.ok ? "status" : "alert"}
-          >
+        <output className="wx-prefs-note" aria-live="polite">
+          {outcome?.ok ? outcome.text : ""}
+        </output>
+        {outcome && !outcome.ok ? (
+          <p id={outcomeId} className="wx-prefs-error" role="alert">
             {outcome.text}
           </p>
         ) : null}
