@@ -278,6 +278,71 @@ describe.skipIf(!DB_URL)("M19 after-hours triage request - LIVE Postgres as ward
     });
   });
 
+  it("a redelivery of a COALESCED request publishes nothing more", async () => {
+    await seedShift(ORG_A);
+    const a = seeded[ORG_A] as Seed;
+    await deliver(ORG_A, request(ORG_A, a.patient));
+    const secondId = crypto.randomUUID();
+    const payload = request(ORG_A, a.patient);
+    await deliver(ORG_A, payload, secondId);
+    const before = await events(ORG_A);
+    await deliver(ORG_A, payload, secondId);
+
+    expect(await events(ORG_A)).toHaveLength(before.length);
+    expect(await calls(ORG_A)).toHaveLength(1);
+  });
+
+  it("a redelivery after the coalesce target closed neither opens a call nor contradicts the first outcome", async () => {
+    await seedShift(ORG_A);
+    const a = seeded[ORG_A] as Seed;
+    await deliver(ORG_A, request(ORG_A, a.patient));
+    const secondId = crypto.randomUUID();
+    const payload = request(ORG_A, a.patient);
+    await deliver(ORG_A, payload, secondId);
+    await admin.query("UPDATE triage_call SET state = 'abandoned' WHERE organization_id = $1", [
+      ORG_A,
+    ]);
+    await deliver(ORG_A, payload, secondId);
+
+    expect(await calls(ORG_A)).toHaveLength(1);
+    const answers = await outcomes(ORG_A);
+    expect(answers.map((e) => e.payload.outcome)).toEqual(["opened", "coalesced"]);
+  });
+
+  it("a redelivery of a NO_COVERAGE request emits no second coverage_gap or outcome, even if a shift appeared", async () => {
+    const a = seeded[ORG_A] as Seed;
+    const eventId = crypto.randomUUID();
+    const payload = request(ORG_A, a.patient);
+    await deliver(ORG_A, payload, eventId);
+    await seedShift(ORG_A);
+    await deliver(ORG_A, payload, eventId);
+
+    expect(await calls(ORG_A)).toHaveLength(0);
+    expect((await events(ORG_A)).map((e) => e.event_type).sort()).toEqual([
+      "m19.afterhours_triage.outcome",
+      "m19.oncall_shift.coverage_gap",
+    ]);
+  });
+
+  it("a HUMAN-opened open call for the same patient does not block, and is not swallowed by, the request", async () => {
+    const shiftId = await seedShift(ORG_A);
+    const a = seeded[ORG_A] as Seed;
+    // No unique constraint other than `triage_call_source_dedupe_uq` exists on triage_call (the
+    // `triage_call_open_per_pe_uq` named in an old comment was never created): a manual call carries a NULL
+    // source_outbox_event_id, so it is neither a conflict nor a coalesce target.
+    await admin.query(
+      `INSERT INTO triage_call (organization_id, provider_entity_id, on_call_shift_id, patient_id,
+         caller_kind, inbound_channel, source, opened_at)
+       VALUES ($1,$2,$3,$4,'caregiver','phone','manual',$5)`,
+      [ORG_A, a.pe, shiftId, a.patient, new Date(NOW.getTime() - 600_000)],
+    );
+    await deliver(ORG_A, request(ORG_A, a.patient));
+
+    const rows = await calls(ORG_A);
+    expect(rows.map((r) => r.source).sort()).toEqual(["m36_afterhours_request", "manual"]);
+    expect((await outcomes(ORG_A)).map((e) => e.payload.outcome)).toEqual(["opened"]);
+  });
+
   it("a different patient is not coalesced", async () => {
     await seedShift(ORG_A);
     const a = seeded[ORG_A] as Seed;

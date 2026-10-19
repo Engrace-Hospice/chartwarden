@@ -31,3 +31,4 @@ export * from "./roster-sync-debounce";
 export * from "./trigger-context";
 export * from "./trigger-ports-drizzle";
 export * from "./m36-afterhours-requested";
+export * from "./m36-afterhours-binding";

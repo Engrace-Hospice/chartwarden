@@ -51,6 +51,7 @@ const shift = (over: Partial<CoveringShiftCandidate> = {}): CoveringShiftCandida
 
 const facts = (over: Partial<AfterHoursFacts> = {}): AfterHoursFacts => ({
   existingCallForEventId: null,
+  outcomeAlreadyPublished: false,
   patient: { providerEntityId: PE },
   openMachineCallForPatientId: null,
   candidateShifts: [shift()],
@@ -111,6 +112,18 @@ describe("decideAfterHoursRequested", () => {
       kind: "idempotent_skip",
       triageCallId: EXISTING,
     });
+  });
+
+  it("skips a redelivery whose outcome was already published (coalesced / no_coverage arms)", () => {
+    expect(
+      decide(facts({ outcomeAlreadyPublished: true, openMachineCallForPatientId: OPEN })),
+    ).toEqual({
+      kind: "idempotent_skip",
+      triageCallId: null,
+    });
+    expect(decide(facts({ outcomeAlreadyPublished: true, candidateShifts: [] })).kind).toBe(
+      "idempotent_skip",
+    );
   });
 
   it("skips before it even looks at the patient (a redelivery never re-checks tenancy)", () => {
@@ -227,8 +240,21 @@ describe("resolveAfterHoursFacts", () => {
       at: AT as never,
       ports: p,
       reads: r,
+      outcomeAlreadyPublished: async () => {
+        calls.push("outcomeAlreadyPublished");
+        return answered;
+      },
     });
   };
+  let answered = false;
+
+  it("an already-answered event stops after the dedupe and outcome reads", async () => {
+    answered = true;
+    const f = await run(ports(), reads());
+    answered = false;
+    expect(f.outcomeAlreadyPublished).toBe(true);
+    expect(calls).toEqual(["findCallBySourceEvent", "outcomeAlreadyPublished"]);
+  });
 
   it("a redelivery costs only the dedupe read", async () => {
     const f = await run(ports({ findCallBySourceEvent: async () => EXISTING }), reads());
@@ -239,7 +265,7 @@ describe("resolveAfterHoursFacts", () => {
   it("a patient that is not in the org stops before the coalesce and shift reads", async () => {
     const f = await run(ports(), reads({ patientProviderEntity: async () => null }));
     expect(f.patient).toBeNull();
-    expect(calls).toEqual(["findCallBySourceEvent"]);
+    expect(calls).toEqual(["findCallBySourceEvent", "outcomeAlreadyPublished"]);
   });
 
   it("falls back to the org's only provider entity when the patient has none", async () => {

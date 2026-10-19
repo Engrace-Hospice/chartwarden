@@ -233,7 +233,7 @@ export type TriageEscalationState = "open" | "acknowledged" | "resolved";
 
 // ── §3.3 owned tables + the §3.6 audit denylist / retention class (M4 trigger arguments for M19-T02) ──
 
-/** The eleven tables M19 owns per the manifest `ownedTables`. §12/§13 of the spec still say nine — they
+/** The twelve tables M19 owns (the twelfth, `triage_afterhours_decision`, is ADR-0082 slice S2, migration 1132) per the manifest `ownedTables`. §12/§13 of the spec still say nine — they
  *  predate the M19-F08 BCP amendment that added `triage_paper_reentry_worklist`, and neither mentions
  *  `on_call_roster_sync_queue` (F-165, #248 — the §4.8 `m19.shift-sync.debounced` debounce table); the
  *  manifest wins. */
@@ -248,7 +248,8 @@ export type M19TableName =
   | "triage_call_answer"
   | "triage_escalation"
   | "triage_call_state_history"
-  | "triage_paper_reentry_worklist";
+  | "triage_paper_reentry_worklist"
+  | "triage_afterhours_decision";
 
 export const M19_TABLE_NAMES = [
   "tenant_oncall_policy",
@@ -262,6 +263,7 @@ export const M19_TABLE_NAMES = [
   "triage_escalation",
   "triage_call_state_history",
   "triage_paper_reentry_worklist",
+  "triage_afterhours_decision",
 ] as const satisfies readonly M19TableName[];
 
 /**
@@ -296,6 +298,7 @@ export const M19_AUDIT_DENYLIST: { readonly [K in M19TableName]: readonly string
   triage_escalation: ["trigger_detail", "resolution"],
   triage_call_state_history: [],
   triage_paper_reentry_worklist: [],
+  triage_afterhours_decision: [],
 } as const;
 
 /**
@@ -331,6 +334,7 @@ export const M19_AUDIT_RETENTION_CLASS: {
   triage_escalation: "compliance",
   triage_call_state_history: "compliance",
   triage_paper_reentry_worklist: "compliance",
+  triage_afterhours_decision: "operational",
 } as const;
 
 /** §3.7 — the M4 `DataEraser` data class M19 registers at boot. The triage call itself survives

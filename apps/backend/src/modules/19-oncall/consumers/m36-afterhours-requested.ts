@@ -90,6 +90,10 @@ export interface AfterHoursReads {
 export interface AfterHoursFacts {
   /** §2.6 — a call already written for THIS outbox event (the redelivery guard). */
   readonly existingCallForEventId: TriageCallId | null;
+  /** An outcome was already published for THIS event: the decision was made and answered. This is the
+   *  redelivery guard for the arms that write no call row (`coalesced`, `no_coverage`), which would
+   *  otherwise re-decide against facts that have since moved. */
+  readonly outcomeAlreadyPublished: boolean;
   /** `null` = the patient is not in the organization. */
   readonly patient: { readonly providerEntityId: ProviderEntityId | null } | null;
   /** An OPEN machine-opened call already running for this patient (the coalesce grain). */
@@ -105,10 +109,16 @@ export async function resolveAfterHoursFacts(input: {
   readonly at: IsoInstant;
   readonly ports: InboundTriggerPorts;
   readonly reads: AfterHoursReads;
+  /** Has `m19.afterhours_triage.outcome` already been published for this source event? */
+  readonly outcomeAlreadyPublished: (
+    organizationId: OrgId,
+    sourceOutboxEventId: string,
+  ) => Promise<boolean>;
 }): Promise<AfterHoursFacts> {
   const { organizationId, payload, ports, reads } = input;
   const empty: AfterHoursFacts = {
     existingCallForEventId: null,
+    outcomeAlreadyPublished: false,
     patient: null,
     openMachineCallForPatientId: null,
     candidateShifts: [],
@@ -119,6 +129,9 @@ export async function resolveAfterHoursFacts(input: {
     input.sourceOutboxEventId,
   );
   if (existingCallForEventId !== null) return { ...empty, existingCallForEventId };
+  if (await input.outcomeAlreadyPublished(organizationId, input.sourceOutboxEventId)) {
+    return { ...empty, outcomeAlreadyPublished: true };
+  }
 
   // The patient-in-org check is the router's own read: RLS-scoped, and `null` for another tenant's patient.
   const found = await reads.patientProviderEntity(organizationId, payload.patientId);
@@ -171,7 +184,8 @@ export interface AfterHoursCallDraft {
 }
 
 export type AfterHoursAction =
-  | { readonly kind: "idempotent_skip"; readonly triageCallId: TriageCallId }
+  /** A redelivery. Nothing is written or republished: the first delivery's outcome stands. */
+  | { readonly kind: "idempotent_skip"; readonly triageCallId: TriageCallId | null }
   | { readonly kind: "coalesced"; readonly intoTriageCallId: TriageCallId }
   | { readonly kind: "open_call"; readonly draft: AfterHoursCallDraft }
   | { readonly kind: "no_coverage"; readonly gap: TriggerCoverageGap };
@@ -192,6 +206,7 @@ export function decideAfterHoursRequested(input: {
   if (facts.existingCallForEventId !== null) {
     return { kind: "idempotent_skip", triageCallId: facts.existingCallForEventId };
   }
+  if (facts.outcomeAlreadyPublished) return { kind: "idempotent_skip", triageCallId: null };
 
   const patient = facts.patient;
   require_(

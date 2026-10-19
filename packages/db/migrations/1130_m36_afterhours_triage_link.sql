@@ -45,8 +45,9 @@ GRANT SELECT, INSERT ON "message_afterhours_triage_link" TO wardenx_app;--> stat
 GRANT UPDATE ("triage_call_id", "outcome") ON "message_afterhours_triage_link" TO wardenx_app;--> statement-breakpoint
 
 -- The reply columns move once, NULL -> value, and nothing else moves, whoever writes (a superuser too: triggers fire for it).
+-- SECURITY INVOKER (the default): the body reads only OLD and NEW, so it needs no privilege of its own. The search_path stays pinned.
 CREATE OR REPLACE FUNCTION message_afterhours_triage_link_update_guard() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
 BEGIN
   IF NEW.id <> OLD.id OR NEW.organization_id <> OLD.organization_id OR NEW.message_id <> OLD.message_id
      OR NEW.request_id <> OLD.request_id OR NEW.source_outbox_event_id <> OLD.source_outbox_event_id

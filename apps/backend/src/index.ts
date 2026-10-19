@@ -786,6 +786,7 @@ import { evvVisitProviderEntityForOrg } from "./modules/18-evv/seams/evv-visit-p
 import {
   M19_OUTBOX_EVENTS,
   M19_PLATFORM_JOB_ID,
+  buildAfterHoursRequestedConsumer,
   buildDrizzleEscalationRouterReads,
   buildDrizzleM19ReadService,
   buildDrizzleM19WriteService,
@@ -10723,18 +10724,25 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             db: dbHandle.db,
             ports: m19TriggerPorts,
             deliveryPorts: m19TriggerPorts,
-            // ADR-0082 - `m36.afterhours_triage.requested`: the same patient reads the tier-1 router uses
-            // (patient-in-org + provider entity), over the M5 PatientReader seam resolved lazily.
+            outbox: m19OutboxPublisher,
+            // No `alerts` port, matching M19's own route path: the §4.9 pages ride the outbox events,
+            // which M36 resolves through its seam. Binding one here and not there would give the same
+            // alert two carriers with different retry semantics.
+          }),
+          // ADR-0082 - `m36.afterhours_triage.requested`: M36 asks for a triage call by id; M19 decides and
+          // always answers. The same patient reads the tier-1 router uses (patient-in-org + provider entity),
+          // over the M5 PatientReader seam resolved lazily. Flag-off: M36 publishes nothing.
+          buildAfterHoursRequestedConsumer({
+            db: dbHandle.db,
+            ports: m19TriggerPorts,
+            deliveryPorts: m19TriggerPorts,
+            outbox: m19OutboxPublisher,
             afterHoursReads: buildDrizzleEscalationRouterReads({
               db: dbHandle.db,
               patientReader: () => getPatientReader(),
               siteReader: buildFoundationSiteReader(),
               listProviderEntityIds: buildOrgProviderEntityLister(dbHandle.db),
             }),
-            outbox: m19OutboxPublisher,
-            // No `alerts` port, matching M19's own route path: the §4.9 pages ride the outbox events,
-            // which M36 resolves through its seam. Binding one here and not there would give the same
-            // alert two carriers with different retry semantics.
           }),
           // §4.5 path 1 / §4.8 `m19.shift-sync.debounced` (m19 `handlers-unbound` group, #248; F-155's own
           // finding, now built). Bumps the org's `on_call_roster_sync_queue` debounce window forward; the

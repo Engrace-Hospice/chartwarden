@@ -378,7 +378,7 @@
       "tests": true,
       "adapter": true,
       "liveInfra": {
-        "tables": 11,
+        "tables": 12,
         "covered": 11
       }
     },

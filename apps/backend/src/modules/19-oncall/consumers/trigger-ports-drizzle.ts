@@ -43,7 +43,7 @@ const PORT_USER_ID = "";
 /**
  * The call states that mean "this welfare check is still live", for the §2.6 coalesce grain.
  *
- * The same set `triage_call_open_per_pe_uq` uses, minus nothing: a call in ANY of them is one a nurse is
+ * The same set `triage_call_open_pe_idx` (a plain partial index, not unique) uses: a call in ANY of them is one a nurse is
  * still working, so a second machine-opened call about the same patient would be a second page about a
  * problem somebody is already on. `documented` and `closed` are absent because a closed call is history —
  * a NEW no-show an hour later is a new problem and deserves its own row.
