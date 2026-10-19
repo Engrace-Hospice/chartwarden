@@ -161,6 +161,14 @@ Two small personal tools. **Snooze** pauses the phone / text / email copies of o
 - **Who may stand down:** provisional the supervisor on duty for the clinical side and operations for the technical cause, both recorded.
 - **Product gap G-1 (needs a decision):** there is no way to record that a clinician took responsibility by phone. Only the assigned clinician, signed in, can; a supervisor cannot do it for them, by design (ADR-0069, ADR-0056). Do you want an audited supervisor "acknowledged by phone on behalf of" action (it weakens the explicit-action rule), or is "reassign to someone who can sign in, and keep the incident log" enough?
 - **Product gaps for later:** a supervisor reassign from the queue and a way into a conversation they are not in (G-2); a phone page to supervisors and an operations notice for "no one further" alone (G-3).
+- **Go-live precondition (needs a decision):** a tenant should not turn on the escalation timers, or use the urgent and critical-symptom classes in production, until an out-of-hours watcher of the unacknowledged queue is named and signed off. Who, and is this the right condition?
+- **Product gap G-6 (blocking for critical symptoms):** reassigning a request has no screen; it is an API call only. Only the sender (until it is taken) or the assignee can reassign, so if **both** are unreachable the request cannot be moved at all today. Is that acceptable for a critical-symptom request, given that the agency's emergency procedure must then cover the patient? Do you want a screen, a supervisor override, or both?
+- **A verbal "I've got it" does not close a request.** Provisional: stand-down needs the request acknowledged in the system; otherwise a named supervisor follows up at a set interval. Confirm, and set the interval.
+- **Who owns the 911 / emergency decision** while a critical-symptom request is unanswered (provisional: the clinical supervisor on duty, acting on the sender's verbal account).
+- **Verbal handoff of content:** may a clinician tell another clinician the content by phone when the new holder cannot yet see the request? (Provisional: no content on the call; the person is told to stand by for a reassignment.)
+- **Incident log:** where it is kept (an approved store; not a ticket system or chat channel) and the fixed set of non-clinical outcomes.
+- **Drill hygiene:** live drills in a test organisation only; how operations tag or exclude it, because the gauges count all organisations and the ops notices reach the production webhook.
+- **Flag rule:** never turn the escalation timers off while requests are open without your recorded decision. Confirm.
 - **Not yet done:** no tabletop or live drill has been run, so the acceptance evidence does not exist.
 
 ## What happens with the answers

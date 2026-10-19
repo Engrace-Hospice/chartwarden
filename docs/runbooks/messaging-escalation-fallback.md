@@ -9,6 +9,11 @@ never be filled in with any.
 > this runbook and not a message. This runbook covers the case where an *acknowledgment request* (ADR-0069) is still
 > waiting and the system's own routes have not reached anyone.
 
+> **Go-live precondition (OPEN, explicit):** a tenant must not turn on `messaging.escalation_timers`, and must not use the
+> `urgent` or `critical_symptom` classes in production, until an **out-of-hours watcher** of the unacknowledged queue (and of
+> the operations numbers) is named and signed off by the clinical lead. Nothing pages a supervisor's phone today (G-3), so
+> without a named watcher an overdue request can sit unseen at night. The clinical lead decides who; this is not decided.
+
 Decisions in this document marked **OPEN** are provisional and listed for the clinical lead and operations in
 [`brief-clinical-lead-signoff.md` section 13](../messaging-hub/brief-clinical-lead-signoff.md#13-fallback-runbook-and-drills-wp-411---provisional-readings-to-approve-all-open).
 Nothing here has been signed off.
@@ -19,12 +24,12 @@ Nothing here has been signed off.
 |---|---|
 | A request has a class (`important`, `urgent`, `critical_symptom`) with a deadline (provisional 60 / 15 / 5 minutes). States: `pending`, `acknowledged`, `escalated`, `failed_unreachable`, `resolved`, `cancelled`. | ADR-0069; `packages/messaging/src/ack-requests/ack-rules.ts` |
 | Only the **assigned user**, signed in and still qualified, can acknowledge or resolve (explicit "Take responsibility" button). Opening or reading never acknowledges. **There is no supervisor override and no "acknowledged by phone" write.** | ADR-0069 decision 6 |
-| Reassign: the current assignee (any open state) or the requester (until the request is taken). | ADR-0069 decision 6 |
+| Reassign: the current assignee (any open state) or the requester (until the request is taken). Preconditions: the requester must still hold `messaging.send` and `messaging.urgent.send`; the new assignee must be a care-team member who can see the channel and differ from the current assignee and the requester; there is **no qualification check** on the assignee handing it on. **Reassign has no screen today:** it exists only as `POST /api/v1/messaging/escalations/:id/reassign`. The request card offers only "Take responsibility" and "Close this request" (ADR-0069 decision 14) and the queue screen never reassigns (`apps/web/src/modules/36-messaging/unacknowledged-queue.tsx`). | ADR-0069 decisions 5-6, 14 |
 | The escalation action (next tier at the deadline, early escalation on delivery failure) runs only where the ops flag `messaging.escalation_timers` is on for the tenant (default off). Flag off means requests are left exactly as they are. | ADR-0070, ADR-0071 decision 8 |
-| At the deadline the system asks the EscalationRouter (M19 on-call) for the next tier. No tier / no router: the request stays open with its assignee and a `route_unavailable` or `ladder_exhausted` history row; the router is asked again on a backoff (1 h up to 24 h). Production's router is a deny-stub until M19 binds one (ADR-0057 is still Proposed). | `ack-escalation/escalation-service.ts` header |
+| At the deadline the system asks the EscalationRouter (M19 on-call) for the next tier. No tier / no router: the request stays open with its assignee and a `route_unavailable` or `ladder_exhausted` history row; the router is asked again on a backoff (1 h up to 24 h). Production's router is a deny-stub until M19 binds one (ADR-0057 is still Proposed). | `apps/backend/src/modules/36-messaging/ack-escalation/escalation-service.ts` (header) |
 | When every out-of-band delivery of the request alerts to the assignee has terminally failed, the request escalates now, or becomes `failed_unreachable` (written by the system only). `failed_unreachable` is open, not closed, and the deadline timer **stops watching it**. | ADR-0071 decisions 2-6 |
-| Alerts are fixed generic text (no name, patient or message text). `route_unavailable` / `ladder_exhausted` tell the sender and the assignee in-app; `ladder_exhausted` and `failed_unreachable` also reach the supervisor audience (roles `clinical_supervisor`, `don`; tenants can re-aim in the alert-rule admin) **in-app only**. | `outbox-consumers/ack-escalation-notifications.ts`, `ack-unreachable-notifications.ts` |
-| Out-of-band copies (push, SMS, email) go only to verified endpoints; a channel with no configured transport fails closed (`transport_not_configured`). Quiet hours never suppress designated safety-critical routes. | ADR-0073, ADR-0071 |
+| Alerts are fixed generic text (no name, patient or message text). `route_unavailable` / `ladder_exhausted` tell the sender and the assignee in-app; `ladder_exhausted` and `failed_unreachable` also reach the supervisor audience (roles `clinical_supervisor`, `don`; tenants can re-aim in the alert-rule admin) **in-app only**. | `apps/backend/src/modules/36-messaging/outbox-consumers/ack-escalation-notifications.ts`, `.../ack-unreachable-notifications.ts` |
+| Out-of-band copies (push, SMS, email) go only to verified endpoints; a channel with no configured transport fails closed (`transport_not_configured`). Quiet hours never suppress designated safety-critical routes. **Out-of-band delivery is off by default and no vendor transport is configured anywhere today:** the seeded `m36.ack.*` rules are `in_app` only, and a designated out-of-band route needs the flag `messaging.notification_policy` plus the flag of the event's own family (`messaging.ack_requests`, `messaging.urgent_clinical`). So today the in-app inbox and the unacknowledged queue are the only signals; "push has failed" is a scenario for a tenant that has configured a transport. | ADR-0073, ADR-0071 |
 
 ## 2. When to invoke this runbook
 
@@ -68,8 +73,8 @@ already addresses; the order is **OPEN** (brief section 13).
 
 | Step | Role (placeholder) | Name | Primary number | Backup number | Calls whom next if no answer in `<N>` minutes |
 |---|---|---|---|---|---|
-| 0 | Sender of the request | `<on file>` | `<on file>` | | Supervisor on duty |
-| 1 | The assignee (the clinician the request is on) | `<from the queue row>` | `<on-call roster, M19>` | `<on file>` | Step 2 |
+| 0 | Sender of the request (from the queue row; for `critical_symptom` call this person FIRST) | `<on file>` | `<on file>` | | Step 1 if not yet called, otherwise step 3 |
+| 1 | The assignee (the clinician the request is on) | `<from the queue row>` | `<on-call roster, M19>` | `<on file>` | Step 0 (sender) if not yet called, otherwise step 2 |
 | 2 | Next tier on call for the role (the person the system would have escalated to) | `<from the on-call roster>` | `<on file>` | `<on file>` | Step 3 |
 | 3 | Clinical supervisor on duty | `<name>` | `<on file>` | `<on file>` | Step 4 |
 | 4 | Director of nursing | `<name>` | `<on file>` | `<on file>` | Step 5 |
@@ -78,9 +83,16 @@ already addresses; the order is **OPEN** (brief section 13).
 
 Rules for the tree:
 
-- The caller states only: "WardenX shows a response request waiting for you; please sign in and open Messages." Never
-  read out a patient name, a diagnosis or message content on the phone line to confirm identity beyond the agency's
-  normal verification. Never put them in a text or voicemail.
+- Script for step 1 (the assignee): "WardenX shows a response request waiting for you; please sign in and open Messages."
+- Script for step 0 (the sender): "Your WardenX request is still unanswered. Please tell me who you want to hand it to, and
+  hand it on."
+- Script for steps 2 and onward: these people are **not** the assignee and cannot see or act on the request. Say: "You may
+  be asked to take over a WardenX request. Please stand by and sign in to Messages if it is handed to you." Never tell them
+  a request is waiting for them unless it has been reassigned to them.
+- Verify the person by the agency's normal verification procedure.
+- Never say a patient name, a diagnosis or message content on the call, and never put them in a text or voicemail.
+  **OPEN (brief section 13):** whether a clinician-to-clinician verbal handoff of the content is permitted when the new
+  holder cannot yet see it.
 - Call from the agency's own phone system or the numbers on file; never use a number taken from a message.
 - Each unanswered step waits `<N>` minutes (**OPEN**, provisional 5 for `critical_symptom` and `urgent`, 10 for `important`)
   and the caller writes the time of each attempt on the incident log (section 8).
@@ -105,31 +117,51 @@ Rules for the tree:
 1. Check `wardenx_m36_ack_overdue_total`, `..._failed_unreachable_total`, `..._oldest_overdue_seconds` on the internal
    `/metrics` port. A `-1` is "not measured" (no `DATABASE_PLATFORM_URL`, or an organisation could not be counted): treat as
    unknown, not as healthy.
-2. Check the provider status pages for the push/SMS/email vendors and the `notification_delivery` failures in the logs; a
-   channel with no configured transport fails closed by design.
-3. Tell the supervisor in one line whether the outage is channel-wide. Do not change flags in the middle of the incident
-   unless the clinical lead asks (see 6).
+2. If the tenant has a configured transport, check the vendor status pages and the `notification_delivery` failures in the
+   logs; a channel with no configured transport fails closed by design (`transport_not_configured`).
+3. Tell the supervisor in one line whether any out-of-band channel is configured for the tenant at all (today usually none,
+   so the in-app inbox is the only route) and, if one is, whether its vendor is down. Flag rule: **never turn
+   `messaging.escalation_timers` off while requests are open without the clinical lead's recorded decision**, and do not
+   change any other flag mid-incident unless the clinical lead asks (see 5.6).
 
 ### 5.3 Reaching a human and recording that they have it
 
 This is the honest part. **WardenX has no write path for "acknowledged by phone".** Only the assigned clinician can mark a
 request acknowledged, and only by signing in and pressing "Take responsibility". The supervisor cannot do it for them.
+**Moving a request to another person is also not available on any screen today (G-6).**
 
-So the sequence is:
+Who can move a request: only the **sender (requester, until the request is taken) or the assignee**. Nobody else, including
+a supervisor, can. The sequence is therefore:
 
-1. Reach the assignee by phone. Ask them to sign in and open Messages. If they can, they open the request and press
-   **Take responsibility**; the request becomes `acknowledged` and drops out of the queue. That is the system of record.
-2. If the assignee cannot sign in but can act (no signal for the app, device lost): the requester can **reassign** (until
-   the request is taken) to a clinician who can, or the assignee can reassign it; the new assignee signs in and takes
-   responsibility. Reassigning restarts the window and re-arms the timer.
-3. If a human has verbally taken responsibility and no one can do either: the **incident log is the only record** until
-   someone with access signs in. Write the time, who, by what means, and what they agreed to do. Do not close or hide the
-   request. It stays in the queue as overdue, which is the truth.
-4. Never ask anyone to sign in as someone else or to share a session. Never acknowledge on behalf of another person.
+1. Reach the **assignee** by phone (tree step 1). Ask them to sign in and open Messages. If they can, they open the request
+   and press **Take responsibility**; it becomes `acknowledged` and drops out of the queue. That is the system of record.
+2. If the assignee cannot be reached or cannot sign in, **reach the SENDER next. This is a required action, not an option.**
+   The sender knows the content and is the person who can hand the request on. Ask the sender to name the human they want to
+   hold it (a colleague who is a care-team member for that channel). Then:
+   - the new person is told to stand by and to sign in once the request is reassigned to them (they are **not** the assignee
+     until then, see the script in section 4);
+   - the reassign itself is an **API call** (`POST /api/v1/messaging/escalations/:id/reassign`, needs the sender's or
+     assignee's own session; the sender must still hold `messaging.send` and `messaging.urgent.send`, the new assignee must
+     be a care-team member who can see the channel). It is **not executable from the UI**, and an engineer must not use
+     another person's session, so today it is **not executable by a clinician**. Whether a sender or assignee with API
+     access, or a purpose-built path, is acceptable is **OPEN** (G-6). Until then, record "reassign not executable" as a
+     finding every time it is needed, and use step 3's follow-up;
+   - the new assignee signs in and presses **Take responsibility**.
+3. **If BOTH the sender and the assignee are unreachable, the request cannot be moved at all today.** No supervisor
+   override exists. For an `important` request the supervisor keeps following up (step 5 below). For `critical_symptom`
+   this is a **blocking gap** for the clinical lead (brief section 13): the agency's emergency procedure, not WardenX, must
+   cover the patient; the supervisor escalates the clinical question by phone through the tree and records it.
+4. For a `critical_symptom` request, **call the sender first** (they know the content), and state in the log who owns the
+   decision to call 911 / the agency emergency procedure (**OPEN**, provisional: the clinical supervisor on duty, who
+   decides on the sender's verbal account and does not wait for WardenX).
+5. A verbal "I've got it" from someone who has **not seen the content in WardenX does not close anything**. The request is
+   closed only when it is `acknowledged` in the system (by the assignee, or after a reassign by the new assignee). Until
+   then a named supervisor keeps following up every `<N>` minutes (**OPEN**) and the log records each follow-up.
+6. Never ask anyone to sign in as someone else or to share a session. Never acknowledge on behalf of another person.
 
 **OPEN gap (G-1):** an audited "acknowledged out-of-band by `<person>` on behalf of `<assignee>`" action for a supervisor.
-It is not built; it needs a clinical-lead decision first (it weakens the explicit-action rule of ADR-0056) and a new
-transition and permission. Recorded in the brief, section 13.
+It is not built; it needs a clinical-lead decision first (it weakens the explicit-action rule of ADR-0056). Recorded in the
+brief, section 13.
 
 ### 5.4 Degraded-mode behaviour you will see
 
@@ -145,18 +177,21 @@ transition and permission. Recorded in the brief, section 13.
 
 ### 5.5 Stand-down
 
-Stand down when **all** are true: the queue has no row that is overdue for the incident's cause; every affected request
-is `acknowledged`, `resolved` or `cancelled`, or has a named human who took responsibility; the channel outage is over or
-a workaround is communicated; and the gauges read zero or a known, explained number. **OPEN:** who may declare stand-down
-(provisional: the supervisor on duty for clinical matters, operations for the technical cause, both recorded).
+Stand down when **all** are true: every affected request is actually `acknowledged` in the system (by the assignee, or
+reassigned and then acknowledged), `resolved` or `cancelled`, and the queue has no row overdue for the incident's cause; the
+channel outage is over or a workaround is communicated; and the gauges read zero or a known, explained number.
+**A verbal "I've got it" does not satisfy stand-down.** The alternative to stand-down is a named supervisor who keeps
+following up every `<N>` minutes (**OPEN**) until each request is acknowledged, each follow-up recorded in the log. **OPEN:**
+who may declare stand-down (provisional: the supervisor on duty for clinical matters, operations for the technical cause,
+both recorded).
 
 Record the stand-down time on the incident log, tell the people called that the incident is closed, and start the review.
 
 ### 5.6 Rollback
 
-There is nothing to roll back in the product: this runbook changes no flag or data. If the incident was triggered by a
+This runbook changes no product code. Its actions do change data (a reassign, and in a drill disabling test endpoints), and each is recorded in the log. If the incident was triggered by a
 recent change (a flag turned on, a transport configured, a deploy), revert that change through its own runbook. The
-messaging flags are all off for every tenant by default; do not turn one on or off during an incident to "see what happens".
+messaging flags are all off for every tenant by default; do not turn one on or off during an incident to "see what happens", and never turn `messaging.escalation_timers` off while requests are open without the clinical lead's recorded decision.
 
 ## 6. Post-incident review checklist
 
@@ -204,34 +239,50 @@ Participants by role: facilitator, recorder, clinical supervisor, a nurse on cal
 operations. Facilitator reads each inject; the group says out loud what it would do and which screen or number it uses.
 
 1. **Inject 1.** "It is 02:10. An urgent response request was sent to the on-call nurse 20 minutes ago. The queue shows it
-   overdue. The push provider is reported down." Who sees this and how? Walk section 5.1.
-2. **Inject 2.** "The row reads Could not be delivered. The nurse's phone does not answer." Walk the tree steps 1-3.
+   overdue. The tenant has no out-of-band transport configured, so the nurse's only alert was in the app inbox." (A second
+   variant: a transport is configured and its vendor is reported down.) Who sees this and how? Walk section 5.1.
+2. **Inject 2.** "The row reads Could not be delivered. The nurse's phone does not answer." Walk the tree: the sender is
+   called next (5.3 step 2), then steps 2-3 with the stand-by script.
 3. **Inject 3.** "The nurse answers by phone, is in a car, and cannot sign in." What is the record? Walk 5.3 and state the
-   gap out loud.
-4. **Inject 4.** "The router is the deny-stub; the request says ladder exhausted. The clinical lead is unreachable." Who may
+   gaps out loud: no acknowledge-by-phone (G-1) and no reassign screen (G-6).
+4. **Inject 3b.** "The sender and the nurse are both unreachable and the class is critical symptom." Who owns the 911
+   decision? What does the supervisor do when the request cannot be moved?
+5. **Inject 4.** "The router is the deny-stub; the request says ladder exhausted. The clinical lead is unreachable." Who may
    decide, who stands down?
-5. **Inject 5.** "A restricted row appears that you cannot open." What do you do and not do?
-6. **Debrief.** Time to detect and to contact as the group estimates them; gaps; actions.
+6. **Inject 5.** "A restricted row appears that you cannot open." What do you do and not do?
+7. **Debrief.** Time to detect and to contact as the group estimates them; gaps; actions.
 
 ### 7.4 Live drill script (about 60 minutes, test organisation or synthetic data only)
 
-Pre-conditions: a test organisation with the messaging flags the drill needs turned on **by its owner in the test
-environment**, never on a production tenant without the clinical lead's written approval; a synthetic patient channel;
-two test accounts; the tree in place.
+**Test organisation only. A live drill is never run on a production tenant, and never with production patient data.**
+Pre-conditions:
 
-1. Recorder starts the clock. Facilitator raises an `important` or `urgent` request to a test assignee who has agreed to
-   stay silent for the drill, note the time of request.
-2. Facilitator disables the assignee's push/SMS/email endpoints in the test organisation (or uses an assignee with no
-   verified endpoint), so the out-of-band routes fail as in an outage. Do not touch any shared vendor or production
+- A test organisation, a synthetic patient channel, two test accounts, and the tree in place.
+- Flags turned on in the test environment by its owner: `messaging.ack_requests` (to create a request),
+  `messaging.escalation_timers` (needed for `failed_unreachable`, early escalation and its ops notice),
+  `messaging.notification_policy` (with `messaging.urgent_clinical` for an urgent send) **plus a configured transport** for
+  push or SMS to exist and fail at all.
+- **Without a configured transport the drill does not exercise delivery failure.** It exercises only the queue, the overdue
+  gauge and the phone tree; record that in the evidence record as a limit of the drill.
+- Operations are warned beforehand: the gauges (`wardenx_m36_ack_*`) count **all organisations**, and ops notices go to the
+  production `OPS_ALERT_WEBHOOK_URL`, so a drill request can look like a real overdue request. Operations tag or exclude the
+  drill organisation in their alerting (how: **OPEN**, no organisation label exists on the gauges).
+
+1. Facilitator first makes the assignee's out-of-band routes fail: disable the assignee's push/SMS/email endpoints in the
+   test organisation, or use an assignee with no verified endpoint. Do not touch any shared vendor or production
    configuration.
+2. Recorder starts the clock. Facilitator raises an `important` or `urgent` request to that test assignee, who has agreed
+   to stay silent for the drill. Note the time of request.
 3. Supervisor, who has not been told which request, finds it from `/messaging/unacknowledged`. Recorder notes the time.
 4. Operations reads the gauges (or confirms they read `-1`/zero as expected) and any ops notice. Record what fired.
 5. Supervisor works the tree from step 1 with a real phone call to the test assignee. Record each attempt and time.
 6. Assignee signs in and presses **Take responsibility**. Recorder notes the acknowledgment time and that the request left
    the queue.
-7. Repeat once with the assignee unable to sign in: requester reassigns to the second test account who takes
-   responsibility. Record that no acknowledgment-on-behalf was available.
-8. Restore the test endpoints. Stand down and record the time.
+7. Repeat once with the assignee unable to sign in. The supervisor calls the sender (5.3 step 2), who names the second
+   test account. **Reassign has no screen and is not executable by a clinician today (G-6):** record "not executable" as a
+   finding. If the test environment's owner can make the API call with the sender's test session, do so and record it as
+   an engineering action, not as a clinician capability; the second account then takes responsibility.
+8. Restore the test endpoints. Stand down only when the request is acknowledged in the system; record the time.
 
 ### 7.5 Evidence record template
 
@@ -256,8 +307,8 @@ Targets met (detect / contact / acknowledge): <y/n> / <y/n> / <y/n>
 
 Signals observed: queue <y/n>, in-app alert <y/n>, gauges <values or -1>, ops notice <kind or none>, webhook received <y/n>
 Tree check: numbers tested <n of n>, wrong or stale <list by step, no numbers>
-Findings:                          <numbered>
-Actions:                           <action> | <owner role> | <due date>
+Findings:                          <numbered>      (no patient data, no phone numbers, no names)
+Actions:                           <action> | <owner role> | <due date>   (same rule)
 Last quarter's actions closed:     <n of n>
 Sign-off:                          clinical lead <role/name> <date>   operations <role/name> <date>
 ```
@@ -272,11 +323,17 @@ has been run yet**, so no evidence exists today.
 
 ## 8. Incident log (minimal)
 
-Each line: time, who, action, outcome. Roles, not patient details. Example fields: noticed / queue checked / called
-step n / answered / voicemail / assignee signed in / acknowledged / reassigned to role / stood down.
+Each line: time, who (role), action, outcome, and the **request id (the id only, never a patient or message detail)**. The
+outcome is chosen from a fixed, non-clinical set: `answered`, `voicemail`, `no answer`, `will sign in by <time>`, `signed in`,
+`acknowledged in system`, `passed to <role>`, `reassigned to <role> (not executable: recorded)`, `follow-up due <time>`,
+`stood down`. Free text about what the patient needs or what was agreed clinically does not go in the log.
+
+**Where the log is kept: OPEN** (an approved store chosen by the clinical lead and operations; never a ticket system or a
+chat channel, which are not approved for this).
 
 ## 9. Open decisions and gaps
 
+- **Go-live precondition:** a named, signed-off out-of-hours watcher before `messaging.escalation_timers` or the urgent / critical classes are used in production.
 - Drill cadence and the targets of 7.1; tree order and the per-step wait; who watches the queue and gauges out of hours;
   who may stand down; evidence owner, place and retention. All **OPEN** (brief section 13).
 - **G-1:** no audited acknowledge-by-phone / supervisor action (section 5.3).
@@ -284,4 +341,5 @@ step n / answered / voicemail / assignee signed in / acknowledged / reassigned t
 - **G-3:** no automatic page of a supervisor's phone; supervisor alerts are in-app only; no ops notice for
   `ladder_exhausted` / `route_unavailable` alone.
 - **G-4:** no alert rules or stalled-worker check in the repo; per-process, hourly-repeat ops notices.
+- **G-6:** reassign has no screen: it is API-only, so a clinician cannot move a request to another person today (section 5.3). If both the sender and the assignee are unreachable the request cannot be moved at all (blocking for `critical_symptom`).
 - **G-5:** a request that became `failed_unreachable` is not watched by the deadline timer; only a reassign re-arms it.
