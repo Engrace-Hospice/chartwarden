@@ -368,4 +368,95 @@ describe("ack request card - reassign (G-6)", () => {
       (within(dialog).getByRole("radio", { name: "Pat Nurse" }) as HTMLInputElement).checked,
     ).toBe(true);
   });
+
+  it("never leaves focus on the page when the Reassign button left with the re-read: the card, else the result region", async () => {
+    // 409 and the re-read shows the request without the control (it moved on)
+    let after = false;
+    const GETs = vi.fn((path: string, _init?: unknown) =>
+      Promise.resolve(
+        path === CANDIDATES
+          ? candidatesOk()
+          : {
+              data: {
+                requests: [
+                  after
+                    ? request({
+                        viewer_actions: {
+                          can_acknowledge: false,
+                          can_reassign: false,
+                          can_resolve: false,
+                        },
+                      })
+                    : request(),
+                ],
+              },
+              response: { status: 200 },
+            },
+      ),
+    );
+    const POSTs = vi.fn(async () => {
+      after = true;
+      return { error: {}, response: { status: 409 } };
+    });
+    render(
+      <MemoryRouter>
+        <ApiClientProvider client={{ GET: GETs, POST: POSTs } as unknown as ApiClient}>
+          <main>
+            <AckRequestsProvider channelId="c-1" enabled>
+              <AckForMessage messageId="m-1" />
+            </AckRequestsProvider>
+          </main>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    const dialog = await openDialog();
+    await choosePat(dialog);
+
+    fireEvent.click(confirmButton());
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+    expect(screen.queryByRole("button", { name: /^Reassign the request/ })).toBeNull();
+  });
+
+  it("closes the dialog when the provider is turned off, and works where crypto.randomUUID is unavailable", async () => {
+    vi.stubGlobal("crypto", {});
+    try {
+      const post = vi.fn().mockResolvedValue({ data: {}, response: { status: 200 } });
+      const GETs = vi.fn((path: string, _init?: unknown) =>
+        Promise.resolve(
+          path === CANDIDATES
+            ? candidatesOk()
+            : { data: { requests: [request()] }, response: { status: 200 } },
+        ),
+      );
+      const view = (enabled: boolean) => (
+        <MemoryRouter>
+          <ApiClientProvider client={{ GET: GETs, POST: post } as unknown as ApiClient}>
+            <main>
+              <AckRequestsProvider channelId="c-1" enabled={enabled}>
+                <AckForMessage messageId="m-1" />
+              </AckRequestsProvider>
+            </main>
+          </ApiClientProvider>
+        </MemoryRouter>
+      );
+      const { rerender } = render(view(true));
+      const dialog = await openDialog();
+      await choosePat(dialog);
+      fireEvent.click(confirmButton());
+      await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+      const calls0 = post.mock.calls[0] as unknown as [
+        string,
+        { params: { header: Record<string, string> } },
+      ];
+      expect((calls0[1].params.header["Idempotency-Key"] ?? "").length).toBeGreaterThan(8);
+
+      await openDialog().catch(() => undefined);
+      rerender(view(false));
+      expect(screen.queryByRole("dialog")).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

@@ -32,6 +32,7 @@ interface Kit {
     team: string[];
     teamError: boolean;
     walledOff: Set<string>;
+    gateThrows: boolean;
   };
   setNow: (d: Date) => void;
 }
@@ -54,6 +55,7 @@ function kit(): Kit {
     team: [AUTHOR, NURSE, NURSE2, AIDE],
     teamError: false,
     walledOff: new Set(),
+    gateThrows: false,
   };
   const deps: AckServiceDeps = {
     isEnabled: async () => true,
@@ -71,7 +73,10 @@ function kit(): Kit {
     isQualified: async (_o, userId) => knobs.qualified.has(userId),
     stillQualified: async (_o, userId) => knobs.qualified.has(userId),
     canRaise: async (_o, userId) => userId === AUTHOR,
-    part2Admitted: async (_o, userId) => !knobs.walledOff.has(userId),
+    part2Admitted: async (_o, userId) => {
+      if (knobs.gateThrows) throw new Error("consent evaluator down");
+      return !knobs.walledOff.has(userId);
+    },
     displayName: async (_o, userId) => NAMES[userId] ?? null,
     log: () => undefined,
     now: () => now,
@@ -390,5 +395,36 @@ describe("ADR-0078 fix round 1: Part 2, self-assignment, the per-request cap, th
       reason_code: "coverage_change",
     });
     expect(detail.events.filter((e) => e.reason_code)).toHaveLength(1);
+  });
+
+  it("a walled-off supervisor learns nothing about the request's state: same empty list and same 422 for waiting and acknowledged", async () => {
+    const k = kit();
+    const waiting = await pending(k);
+    const taken = await pending(k);
+    await k.service.acknowledge(actor(NURSE), taken);
+    k.knobs.walledOff.add(SUPERVISOR);
+
+    for (const id of [waiting, taken]) {
+      expect(
+        (await k.service.supervisorReassignCandidates(actor(SUPERVISOR), id)).candidates,
+      ).toEqual([]);
+      await expect(
+        k.service.supervisorReassign(actor(SUPERVISOR), id, NURSE2, "workload"),
+      ).rejects.toMatchObject({ code: "ACK_ASSIGNEE_INVALID", statusCode: 422 });
+    }
+  });
+
+  it("fails closed when the Part 2 gate cannot answer: nothing listed, nothing moved", async () => {
+    const k = kit();
+    const id = await pending(k);
+    k.knobs.gateThrows = true;
+
+    expect(
+      (await k.service.supervisorReassignCandidates(actor(SUPERVISOR), id)).candidates,
+    ).toEqual([]);
+    await expect(
+      k.service.supervisorReassign(actor(SUPERVISOR), id, NURSE2, "workload"),
+    ).rejects.toMatchObject({ code: "ACK_ASSIGNEE_INVALID" });
+    expect(k.store.events).toEqual([]);
   });
 });

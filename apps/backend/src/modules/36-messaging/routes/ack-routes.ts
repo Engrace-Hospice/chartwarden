@@ -47,6 +47,8 @@ export interface AckRouteDeps {
   readonly service: AckService;
   /** Per-user / per-org / per-pair limiter (fail closed) on the two routes that notify somebody. */
   readonly rateLimit?: PreHandler;
+  /** ADR-0078: a SEPARATE limiter for the two candidate reads (own bucket); falls back to `rateLimit` when absent. */
+  readonly candidatesRateLimit?: PreHandler;
 }
 
 /** The guards `registerMessagingRoutes` already built (passed in to avoid an import cycle). */
@@ -101,6 +103,8 @@ export function registerAckRoutes(
 ): void {
   const { service, rateLimit } = deps;
   const limited = rateLimit ? [rateLimit] : [];
+  const pickerLimit = deps.candidatesRateLimit ?? rateLimit;
+  const pickerLimited = pickerLimit ? [pickerLimit] : [];
   const urgentSend = requirePermission(URGENT_SEND_PERMISSION) as PreHandler;
   const urgentReceive = requirePermission(URGENT_RECEIVE_PERMISSION) as PreHandler;
   const review = requirePermission(REVIEW_PERMISSION) as PreHandler;
@@ -190,7 +194,7 @@ export function registerAckRoutes(
   app.get(
     "/api/v1/messaging/escalations/:id/reassign-candidates",
     {
-      preHandler: [idParam, guards.read, ...limited],
+      preHandler: [idParam, guards.read, ...pickerLimited],
       schema: { response: { 200: AckReassignCandidatesResponseSchema } },
       // It discloses colleague names for a patient's request: read-audited against the request (the response carries no patient id).
       config: { auditRead: CANDIDATES_AUDIT },
@@ -203,7 +207,7 @@ export function registerAckRoutes(
   app.get(
     "/api/v1/messaging/escalations/:id/supervisor-reassign-candidates",
     {
-      preHandler: [idParam, guards.read, review, ...limited],
+      preHandler: [idParam, guards.read, review, ...pickerLimited],
       schema: { response: { 200: AckReassignCandidatesResponseSchema } },
       config: { auditRead: CANDIDATES_AUDIT },
     },

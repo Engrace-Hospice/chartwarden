@@ -74,8 +74,8 @@ export interface AckServiceDeps {
   /** Does the user hold the keys to raise a request (`messaging.send` + `messaging.urgent.send`) right now? A throw propagates. */
   readonly canRaise: (orgId: string, userId: string) => Promise<boolean>;
   /** The display name of a colleague for the reassign pickers; absent or a throw reads as "no name" (the id still identifies them). */
-  /** ADR-0078: is this user admitted by the Part 2 gate for the patient? A supervisor who is not is shown no candidates. Absent = admitted. */
-  readonly part2Admitted?: (orgId: string, userId: string, patientId: string) => Promise<boolean>;
+  /** ADR-0078: is this user admitted by the Part 2 gate for the patient? A supervisor who is not is shown no candidates. REQUIRED: a missing gate must never admit anyone. */
+  readonly part2Admitted: (orgId: string, userId: string, patientId: string) => Promise<boolean>;
   readonly displayName?: (orgId: string, userId: string) => Promise<string | null>;
   /** Warn-level, ids and a constraint name only (never a name, patient or text). Defaults to console.warn. */
   readonly log?: (message: string, context: Record<string, string>) => void;

@@ -4,7 +4,7 @@
 // opened it. It names no patient, no message text and no id.
 import { ACK_SUPERVISOR_REASON_CODES } from "@wardenx/types";
 import { Button, Modal } from "@wardenx/ui";
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import {
   REASSIGN_CANCEL_LABEL,
@@ -59,14 +59,22 @@ export function AckReassignDialog({
 
   const formRef = useRef<HTMLFormElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
-  const errorRef = useRef<HTMLParagraphElement>(null);
+  const [availableText, setAvailableText] = useState("");
+  // The count region is mounted empty and filled afterwards, so assistive technology announces the change.
+  useEffect(() => {
+    if (candidates.status === "ready")
+      setAvailableText(reassignAvailableText(candidates.colleagues.length));
+    else setAvailableText("");
+  }, [candidates]);
   // Focus never falls to the page inside the modal: when the control that had it left (Retry while loading, a refusal), it goes to the
   // refusal text when there is one, else to the heading.
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the dialog's state settles
   useEffect(() => {
     const active = document.activeElement;
     if (active && active !== document.body && formRef.current?.contains(active)) return;
-    (state.error ? errorRef.current : headingRef.current)?.focus();
+    // A refusal is announced by its role=alert; focus goes to Confirm (inert, not disabled) so it is not read twice.
+    const confirmButton = formRef.current?.querySelector<HTMLElement>('button[type="submit"]');
+    (state.error ? confirmButton : headingRef.current)?.focus();
   }, [candidates.status, state.error, submitting]);
 
   async function confirm(): Promise<void> {
@@ -126,11 +134,7 @@ export function AckReassignDialog({
             </Button>
           </div>
         ) : null}
-        {candidates.status === "ready" ? (
-          <output className="wx-reassign-sr">
-            {reassignAvailableText(candidates.colleagues.length)}
-          </output>
-        ) : null}
+        <output className="wx-reassign-sr">{availableText}</output>
         {candidates.status === "ready" && candidates.colleagues.length === 0 ? (
           <p className="wx-reassign-hint">{REASSIGN_EMPTY_TEXT}</p>
         ) : null}
@@ -151,7 +155,7 @@ export function AckReassignDialog({
           </fieldset>
         ) : null}
         {state.error ? (
-          <p className="wx-reassign-error" role="alert" ref={errorRef} tabIndex={-1}>
+          <p className="wx-reassign-error" role="alert">
             {state.error}
           </p>
         ) : null}

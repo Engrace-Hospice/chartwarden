@@ -18,6 +18,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX, MouseEvent } from "react";
 import { Link } from "react-router-dom";
 import { AckReassignDialog } from "./ack-reassign-dialog";
+import { localTime } from "./ack-request-card";
 import {
   OVERDUE_FILTER_LABEL,
   QUEUE_BREADCRUMB,
@@ -130,7 +131,8 @@ function QueueRow({
         aria-label={queueReassignName(
           who,
           item.requester_display_name,
-          overdue ? overdueText(overdueSeconds) : dueText(item.deadline_at, now),
+          // A fixed clock time, not "in 5 min": the name must not change on every tick of the screen's clock.
+          `due ${localTime(item.deadline_at)}`,
         )}
         onClick={(event) => onReassign(item.request_ref, event.currentTarget)}
       >
@@ -158,6 +160,8 @@ export function UnacknowledgedQueue(): JSX.Element {
   const [outcome, setOutcome] = useState<{ text: string; failure: boolean } | null>(null);
   // The view object at the moment a dialog closed: focus is re-checked on the NEXT view change, once the refresh has actually landed.
   const focusLostCheck = useRef<unknown>(null);
+  const viewRef = useRef(view);
+  viewRef.current = view;
   const trigger = useRef<HTMLElement | null>(null);
   const closedRef = useRef(false);
   const openReassign = (requestRef: string, button: HTMLElement): void => {
@@ -399,7 +403,8 @@ export function UnacknowledgedQueue(): JSX.Element {
           requestId={reassignRef}
           run={runReassign}
           onClose={() => {
-            focusLostCheck.current = view;
+            // The LATEST view, not the one this render closed over: a poll that landed during the POST must not disarm the check.
+            focusLostCheck.current = viewRef.current;
             closedRef.current = true;
             setReassignRef(null);
           }}

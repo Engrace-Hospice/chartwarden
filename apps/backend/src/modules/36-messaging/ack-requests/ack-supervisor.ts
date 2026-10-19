@@ -33,7 +33,7 @@ export interface SupervisorContext {
     readonly canViewChannel: (orgId: string, userId: string, channelId: string) => Promise<boolean>;
     readonly careTeamMembers: (orgId: string, patientId: string) => Promise<readonly string[]>;
     readonly isQualified: (orgId: string, userId: string, patientId: string) => Promise<boolean>;
-    readonly part2Admitted?: (orgId: string, userId: string, patientId: string) => Promise<boolean>;
+    readonly part2Admitted: (orgId: string, userId: string, patientId: string) => Promise<boolean>;
     readonly displayName?: (orgId: string, userId: string) => Promise<string | null>;
   };
   readonly store: AckStore;
@@ -102,9 +102,7 @@ export function createAckSupervisor(ctx: SupervisorContext) {
 
   /** A supervisor the Part 2 gate walls off from the patient learns nothing about the care team and cannot move the request. */
   const admitted = (actor: Actor, row: AckRow): Promise<boolean> =>
-    deps.part2Admitted
-      ? orElse(() => deps.part2Admitted!(actor.orgId, actor.userId, row.patientId), false)
-      : Promise.resolve(true);
+    orElse(() => deps.part2Admitted(actor.orgId, actor.userId, row.patientId), false);
 
   const recentSupervisorMoves = (
     events: readonly { eventType: string; reasonCode?: string | null; createdAt: Date }[],
@@ -120,8 +118,9 @@ export function createAckSupervisor(ctx: SupervisorContext) {
     requestId: string,
   ): Promise<AckReassignCandidatesResponse> {
     const seen = await supervisedRequest(actor, requestId);
-    if (!isWaiting(seen.status)) throw ackStateInvalid();
+    // The wall comes first: a walled-off supervisor gets the same empty list whatever state the request is in.
     if (!(await admitted(actor, seen))) return { candidates: [] };
+    if (!isWaiting(seen.status)) throw ackStateInvalid();
     return candidatesFor(seen);
   }
 
@@ -141,6 +140,8 @@ export function createAckSupervisor(ctx: SupervisorContext) {
     });
     // A supervisor never assigns a request to themselves: the person who moves it is not the person who takes it.
     if (newAssigneeUserId === actor.userId) throw assigneeInvalid();
+    // The wall comes first: a walled-off supervisor gets the same uniform 422 whatever state the request is in (and no repeat path).
+    if (!(await admitted(actor, seen))) throw assigneeInvalid();
     if (seen.assignedUserId === newAssigneeUserId) {
       // A repeat of the reassign this very supervisor just made (same reason) is a success; anything else names nobody new.
       const last = await store.run(actor, async (tx) => {
@@ -159,7 +160,6 @@ export function createAckSupervisor(ctx: SupervisorContext) {
     }
     if (!isWaiting(seen.status)) throw ackStateInvalid();
     if (
-      !(await admitted(actor, seen)) ||
       newAssigneeUserId === seen.requesterUserId ||
       !(await ctx.assignable(actor.orgId, seen.channelId, seen.patientId, newAssigneeUserId))
     ) {

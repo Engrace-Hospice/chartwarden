@@ -18,6 +18,18 @@ import {
   REASSIGN_TOO_MANY_TEXT,
 } from "./ack-reassign-wording";
 
+/** A fresh Idempotency-Key; falls back to a random string where crypto.randomUUID is unavailable (an insecure context). */
+function newKey(): string {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+  } catch {
+    // fall through
+  }
+  return `k-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
 export type ReassignMode = "party" | "supervisor";
 
 /** `stay`: the dialog stays open and shows `text`. `done`: the dialog closes; the caller announces `text` and refreshes. */
@@ -100,7 +112,8 @@ export function useAckReassign(mode: ReassignMode, requestId: string, run: Reass
   const [reason, setReasonRaw] = useState<AckSupervisorReasonCode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const key = useRef<string>(crypto.randomUUID());
+  const key = useRef<string | null>(null);
+  if (key.current === null) key.current = newKey();
   const inFlight = useRef(false);
   const token = useRef(0);
   // A changed choice clears the last refusal; a choice made while a call is in flight is ignored (the call keeps the one it was sent with).
@@ -157,14 +170,17 @@ export function useAckReassign(mode: ReassignMode, requestId: string, run: Reass
     const perform = async (): Promise<ReassignResult> => {
       try {
         const result = await client.POST(PATHS[mode].post, {
-          params: { path: { id: requestId }, header: { "Idempotency-Key": key.current } },
+          params: {
+            path: { id: requestId },
+            header: { "Idempotency-Key": key.current ?? newKey() },
+          },
           body,
         });
         const status = result?.response?.status;
         if (result?.error || status === undefined || status >= 400) {
           const failure = reassignFailure(status);
           const unknown = status === undefined || status === 408 || status >= 500;
-          if (!unknown) key.current = crypto.randomUUID();
+          if (!unknown) key.current = newKey();
           return failure;
         }
         return {

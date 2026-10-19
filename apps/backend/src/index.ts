@@ -276,7 +276,10 @@ import {
   embedderUnavailable,
   licensedSourceDenyStub,
 } from "@wardenx/terminology-loader";
-import { buildAckRateLimit } from "./bootstrap/plugins/ack-rate-limit";
+import {
+  ACK_PICKER_RATE_LIMIT_KEY_PREFIX,
+  buildAckRateLimit,
+} from "./bootstrap/plugins/ack-rate-limit";
 import { buildGlobalSearchRateLimit } from "./bootstrap/plugins/global-search-rate-limit";
 import { buildUrgentRateLimit } from "./bootstrap/plugins/urgent-rate-limit";
 import {
@@ -4920,6 +4923,11 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
                     service: m36Ack.service,
                     // Fail-closed per-user / per-org / per-pair limiter on create and reassign; per replica on the in-memory store.
                     rateLimit: buildAckRateLimit(rateLimitStore ?? createInMemoryRateLimitStore()),
+                    // ADR-0078: the picker reads have their own buckets.
+                    candidatesRateLimit: buildAckRateLimit(
+                      rateLimitStore ?? createInMemoryRateLimitStore(),
+                      { keyPrefix: ACK_PICKER_RATE_LIMIT_KEY_PREFIX },
+                    ),
                   },
                 }
               : {}),

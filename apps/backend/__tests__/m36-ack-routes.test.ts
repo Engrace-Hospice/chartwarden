@@ -124,7 +124,9 @@ function headerAuth(request: FastifyRequest): void {
   request.context.locationIds = [];
 }
 
-function makeServer(deps: { service: AckService; rateLimit?: Handler } = { service }) {
+function makeServer(
+  deps: { service: AckService; rateLimit?: Handler; candidatesRateLimit?: Handler } = { service },
+) {
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore(
       Object.entries(KEYS).map(([userId, permissionKeys]) => ({
@@ -645,6 +647,27 @@ describe("ADR-0078 reassign candidates and the supervisor reassign", () => {
     expect((await get(app, "reader", `${SUP}-candidates`)).statusCode).toBe(403);
     expect(limited).toBe(2);
     expect(calls).toEqual([]);
+    await app.close();
+  });
+
+  it("gives the candidate reads their own limiter bucket: picker polling never touches the reassign limiter", async () => {
+    let pickerHits = 0;
+    let writeHits = 0;
+    const app = makeServer({
+      service,
+      rateLimit: async () => {
+        writeHits += 1;
+      },
+      candidatesRateLimit: async () => {
+        pickerHits += 1;
+      },
+    });
+
+    await get(app, "nurse", `${BASE}/${REQ}/reassign-candidates`);
+    await get(app, "supervisor", `${SUP}-candidates`);
+    expect([pickerHits, writeHits]).toEqual([2, 0]);
+    await post(app, "supervisor", SUP, body());
+    expect([pickerHits, writeHits]).toEqual([2, 1]);
     await app.close();
   });
 

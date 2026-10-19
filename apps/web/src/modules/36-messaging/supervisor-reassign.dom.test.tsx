@@ -296,4 +296,39 @@ describe("supervisor reassign (G-2)", () => {
       expect(document.body.innerHTML).not.toContain(hidden);
     }
   });
+
+  it("keeps the focus check armed when a poll lands during the POST: focus still reaches the list after the row leaves", async () => {
+    let rows = [item(), RESTRICTED];
+    let finish: (v: unknown) => void = () => undefined;
+    const post = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    mount({ items: () => rows, post });
+    fireEvent.click(await restrictedRowButton());
+    await fillDialog();
+    fireEvent.click(confirm());
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    // a background poll (window focus re-reads) lands while the POST is still in flight, with the row already gone
+    rows = [item()];
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(1));
+
+    await act(async () => finish({ data: {}, response: { status: 200 } }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+  });
+
+  it("does not change the Reassign button's name when the clock ticks (a fixed due time, not a countdown)", async () => {
+    mount();
+    const button = await screen.findAllByRole("button", { name: /^Reassign, assigned to/ });
+
+    expect(button[0]?.getAttribute("aria-label")).toMatch(/, sent by Sam Sender, due /);
+    expect(button[0]?.getAttribute("aria-label")).not.toMatch(/\bin \d+ min|overdue by/i);
+  });
 });

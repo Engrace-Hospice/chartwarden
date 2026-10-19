@@ -24,10 +24,16 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
-import type { AlertEmitter } from "@wardenx/messaging";
+import {
+  type AlertEmitter,
+  PLATFORM_DEFAULT_ALERT_RULES,
+  createAlertEmitter,
+  toNewAlertRuleRows,
+} from "@wardenx/messaging";
 import type { AckQueueResponse } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createDrizzleFeatureFlagReader } from "../src/bootstrap/feature-flag-store";
 import { buildServer } from "../src/bootstrap/index";
 import { buildAckRateLimit } from "../src/bootstrap/plugins/ack-rate-limit";
 import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-store-db";
@@ -36,9 +42,13 @@ import { buildAckDeps } from "../src/modules/36-messaging/ack-requests/deps";
 import { createDbUnacknowledgedReader } from "../src/modules/36-messaging/ack-requests/unacknowledged-reader-db";
 import { createUnacknowledgedService } from "../src/modules/36-messaging/ack-requests/unacknowledged-service";
 import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
-import { CHANNEL_VISIBILITY_PREDICATE } from "../src/modules/36-messaging/index";
+import {
+  CHANNEL_VISIBILITY_PREDICATE,
+  createDrizzleAlertEmitterPorts,
+} from "../src/modules/36-messaging/index";
 import { createMentionActorNameResolver } from "../src/modules/36-messaging/mention-non-member-service-db";
 import { buildM36AckNotificationsConsumer } from "../src/modules/36-messaging/outbox-consumers/ack-notifications";
+import { createPart2ChannelGate } from "../src/modules/36-messaging/part2-channel-gate";
 import { registerMessagingRoutes } from "../src/modules/36-messaging/routes/messaging-routes";
 import {
   type LiveKit,
@@ -73,6 +83,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0078 supervisor reassign - LIVE Postgres", () 
   let kit: LiveKit;
   let app: FastifyInstance;
   let limitedApp: FastifyInstance;
+  let realGateApp: FastifyInstance;
   let ack: ReturnType<typeof buildAckDeps>;
   let nurse: string;
   let rn: string;
@@ -98,7 +109,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0078 supervisor reassign - LIVE Postgres", () 
     return id;
   };
 
-  const makeServer = (limited: boolean) => {
+  const makeServer = (limited: boolean, realGate?: ReturnType<typeof createPart2ChannelGate>) => {
     const server = buildServer({
       db: kit.handle.db,
       authenticate: headerAuth,
@@ -111,7 +122,7 @@ describe.skipIf(!DB_URL)("M36 ADR-0078 supervisor reassign - LIVE Postgres", () 
       outbox: catalogOutbox() as never,
       messaging: kit.service,
       permissionsFor: async (_org, userId) => new Set(keysOf.get(userId) ?? []),
-      part2Gate: {
+      part2Gate: realGate ?? {
         allowedUserIds: async ({ userIds }: { userIds: readonly string[] }) =>
           new Set(userIds.filter((u) => u !== part2Blocked && u !== walled)),
       },
@@ -280,13 +291,53 @@ describe.skipIf(!DB_URL)("M36 ADR-0078 supervisor reassign - LIVE Postgres", () 
       return kit.service.canViewChannel(ctx.organizationId, ctx.userId, channelId);
     });
     registerAbacRegistry(registry);
+    for (const r of toNewAlertRuleRows(PLATFORM_DEFAULT_ALERT_RULES)) {
+      await kit.admin.query(
+        `INSERT INTO alert_rule (organization_id,event_type,category,severity_floor,recipient_resolver,resolver_args,channels_override,system_locked,enabled)
+         VALUES (NULL,$1,$2,$3,$4,$5::jsonb,$6,$7,$8) ON CONFLICT DO NOTHING`,
+        [
+          r.eventType,
+          r.category,
+          r.severityFloor,
+          r.recipientResolver,
+          JSON.stringify(r.resolverArgs),
+          r.channelsOverride,
+          r.systemLocked,
+          r.enabled,
+        ],
+      );
+    }
     app = makeServer(false);
     limitedApp = makeServer(true);
-    await Promise.all([app.ready(), limitedApp.ready()]);
+    // The REAL Part 2 gate logic (createPart2ChannelGate) over a SUD-flagged patient, real membership ids from the database and a
+    // consent evaluator that releases everyone except `walled`: only the M5/M39 lookups are injected.
+    realGateApp = makeServer(
+      false,
+      createPart2ChannelGate({
+        privacyFlags: async () => ["sud"],
+        membershipIds: async (_org, userIds) =>
+          new Map(
+            (
+              await kit.one<{ id: string; user_id: string }>(
+                "SELECT id, user_id FROM membership WHERE user_id = ANY($1::uuid[])",
+                [userIds],
+              )
+            ).map((r) => [r.user_id, r.id] as const),
+          ),
+        evaluateInternalAccess: async ({ membershipId }) => ({
+          redactSubstanceUseDisorderFields:
+            membershipId ===
+            (
+              await kit.one<{ id: string }>("SELECT id FROM membership WHERE user_id=$1", [walled])
+            )[0]?.id,
+        }),
+      }),
+    );
+    await Promise.all([app.ready(), limitedApp.ready(), realGateApp.ready()]);
   }, 240_000);
 
   afterAll(async () => {
-    await Promise.all([app?.close(), limitedApp?.close()]);
+    await Promise.all([app?.close(), limitedApp?.close(), realGateApp?.close()]);
     resetAbacRegistry();
     resetAuthorizationContract();
     resetRbacEngine();
@@ -507,6 +558,76 @@ describe.skipIf(!DB_URL)("M36 ADR-0078 supervisor reassign - LIVE Postgres", () 
       });
       const self = await supervise(await fresh(), supervisor, "workload");
       expect(self.statusCode).toBe(422);
+    });
+  });
+
+  describe("real collaborators (no stubs for the gate logic or the emitter)", () => {
+    it("the REAL Part 2 gate logic walls a SUD-patient supervisor off (empty list, uniform 422, whatever the state) and admits a released one", async () => {
+      const id = await fresh();
+      const taken = await fresh();
+      await post(app, rn, `${BASE}/${taken}/acknowledge`, {}, { key: null });
+
+      for (const rid of [id, taken]) {
+        const list = await get(
+          realGateApp,
+          walled,
+          `${BASE}/${rid}/supervisor-reassign-candidates`,
+        );
+        expect(list.statusCode, list.body).toBe(200);
+        expect(list.json()).toEqual({ candidates: [] });
+        const res = await supervise(rid, rn2, "workload", walled, realGateApp);
+        expect(res.statusCode).toBe(422);
+        expect(errorCode(res)).toBe("ACK_ASSIGNEE_INVALID");
+      }
+      const released = await get(
+        realGateApp,
+        supervisor,
+        `${BASE}/${id}/supervisor-reassign-candidates`,
+      );
+      expect((released.json().candidates as unknown[]).length).toBeGreaterThan(0);
+    });
+
+    it("the REAL Drizzle emitter turns the stored supervisor reassign into real alerts: new assignee, previous assignee and sender, never the supervisor", async () => {
+      const id = await fresh();
+      expect((await supervise(id, rn2, "workload")).statusCode).toBe(200);
+      const [e] = await kit.one<{ id: string; payload: Record<string, unknown> }>(
+        "SELECT id, payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m36.ack.reassigned' ORDER BY created_at DESC LIMIT 1",
+        [id],
+      );
+      const emitter = createAlertEmitter({
+        ...createDrizzleAlertEmitterPorts(kit.handle.db, {
+          flags: createDrizzleFeatureFlagReader(kit.handle.db),
+        }),
+        now: () => new Date(),
+      });
+      const consumer = buildM36AckNotificationsConsumer({
+        alerts: emitter,
+        messaging: kit.service,
+        isWaitingForAssignee: ack.isWaitingForAssignee,
+        stillQualified: ack.stillQualified,
+      });
+
+      await consumer.handle({
+        id: e!.id,
+        eventType: "m36.ack.reassigned",
+        organizationId: ORG_A,
+        payload: e!.payload,
+      } as never);
+
+      const recipients = async (eventType: string) =>
+        await kit.one<{ recipient_user_id: string; channel: string }>(
+          `SELECT d.recipient_user_id, d.channel::text FROM notification_delivery d JOIN alert a ON a.id=d.alert_id
+              WHERE a.organization_id=$1 AND a.event_type=$2 AND a.correlation_id LIKE $3`,
+          [ORG_A, eventType, `ack%:${id}:%`],
+        );
+      const notice = await recipients("m36.ack.supervisor_reassigned");
+      expect(notice.map((r) => r.recipient_user_id).sort()).toEqual([nurse, rn].sort());
+      expect(notice.every((r) => r.channel === "in_app")).toBe(true);
+      expect((await recipients("m36.ack.reassigned")).map((r) => r.recipient_user_id)).toEqual([
+        rn2,
+      ]);
+      const all = [...notice, ...(await recipients("m36.ack.reassigned"))];
+      expect(all.some((r) => r.recipient_user_id === supervisor)).toBe(false);
     });
   });
 
