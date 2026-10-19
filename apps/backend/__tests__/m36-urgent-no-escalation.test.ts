@@ -42,6 +42,8 @@ describe("urgent writer is singular", () => {
     "apps/backend/src/modules/36-messaging/ack-requests/ack-store-db.ts",
     "apps/backend/src/modules/36-messaging/ack-requests/ack-store-memory.ts",
     "apps/backend/src/modules/36-messaging/ack-requests/ack-types.ts",
+    // ADR-0081: the role-replay lookup (moved from urgent/deps.ts) READS the stored recipient of an existing send; it writes nothing.
+    "apps/backend/src/modules/36-messaging/ack-requests/role-replay-lookup.ts",
   ]);
   const scanned = ["apps/backend/src", "packages/messaging/src"].flatMap((d) =>
     walk(join(ROOT, d)).map((f) => relative(ROOT, f)),
