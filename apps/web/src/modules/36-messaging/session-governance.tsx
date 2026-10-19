@@ -1,4 +1,4 @@
-// M36 WP 5.5 (ADR-0082, PROPOSED) - the security officer's page: list and revoke ANOTHER person's sessions in this organization. The person is
+// M36 WP 5.5 (ADR-0083, PROPOSED) - the security officer's page: list and revoke ANOTHER person's sessions in this organization. The person is
 // named by user id (`?user=<uuid>` or pasted): there is no organization-wide user picker yet, so the page never lists everyone. A bad id is said
 // in words before any request. The revoke needs a fresh step-up: the server answers STEP_UP_REQUIRED and the page sends the officer through the
 // step-up screen and back; the list stays as it was. Every look and revoke is audited server-side; the page shows no IP address or user agent.

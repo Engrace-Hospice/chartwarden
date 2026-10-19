@@ -1,4 +1,4 @@
-// M36 WP 5.5 (ADR-0082) - the coarse device label: browser + OS only, no version, no raw user-agent, a fixed fallback.
+// M36 WP 5.5 (ADR-0083) - the coarse device label: browser + OS only, no version, no raw user-agent, a fixed fallback.
 import { describe, expect, it } from "vitest";
 import { UNKNOWN_DEVICE_LABEL, deviceLabel } from "./device-label";
 

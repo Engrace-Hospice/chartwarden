@@ -1475,7 +1475,7 @@ import {
   SearchMessagesQuerySchema as M36SearchMessagesQuerySchema,
   SearchMessagesResponseSchema as M36SearchMessagesResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/search-typebox";
-// M36 WP 5.5 device and session manager (ADR-0082, PROPOSED).
+// M36 WP 5.5 device and session manager (ADR-0083, PROPOSED).
 import {
   DeviceListResponseSchema as M36DeviceListResponseSchema,
   DeviceRevokeResponseSchema as M36DeviceRevokeResponseSchema,
@@ -10105,7 +10105,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "DELETE /api/v1/notifications/endpoints/:id": { summary: "Remove a delivery endpoint (204)" },
 
-  // device and session manager (WP 5.5, ADR-0082 PROPOSED)
+  // device and session manager (WP 5.5, ADR-0083 PROPOSED)
   "GET /api/v1/devices": {
     summary:
       "The caller's OWN staff sessions as devices (any authenticated organisation-bound caller; own sessions only). Each has a coarse label (browser and operating system only), created and last-used times, `push_registered` (a verified push endpoint is linked to the session) and `current` (the session making this request, listed first). Never returns the session token, the IP address, the raw user agent or an endpoint value. Not cached",

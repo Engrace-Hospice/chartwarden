@@ -1,5 +1,5 @@
 /**
- * M36 WP 5.5 (ADR-0082, PROPOSED) - session and device controls, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role and a LIVE Valkey.
+ * M36 WP 5.5 (ADR-0083, PROPOSED) - session and device controls, LIVE Postgres as the NOBYPASSRLS `wardenx_app` role and a LIVE Valkey.
  *
  * The production composition, not a shim: REAL Better Auth sessions behind the REAL Fastify bridge and authenticate hook, the REAL DB permission
  * resolver and session-context store (so the REAL step-up predicate reads the session row), the REAL device routes, the REAL endpoint

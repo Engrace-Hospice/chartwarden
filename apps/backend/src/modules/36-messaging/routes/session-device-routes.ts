@@ -1,4 +1,4 @@
-// apps/backend/src/modules/36-messaging/routes/session-device-routes.ts - WP 5.5 (ADR-0082, PROPOSED): the device and session manager.
+// apps/backend/src/modules/36-messaging/routes/session-device-routes.ts - WP 5.5 (ADR-0083, PROPOSED): the device and session manager.
 //
 //   GET    /api/v1/devices                              the caller's OWN staff sessions ("devices"); the current one is marked
 //   DELETE /api/v1/devices/:id                          revoke one of the caller's own sessions (the current one signs the caller out)

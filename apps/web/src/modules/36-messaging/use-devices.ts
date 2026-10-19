@@ -1,4 +1,4 @@
-// M36 WP 5.5 (ADR-0082, PROPOSED) - reads and revokes sessions ("devices"): the caller's own (GET/DELETE /devices) or, for a security officer, one
+// M36 WP 5.5 (ADR-0083, PROPOSED) - reads and revokes sessions ("devices"): the caller's own (GET/DELETE /devices) or, for a security officer, one
 // person's in this organization (the governance routes). The list is the server's answer; a revoke removes the row only AFTER the server says it
 // is revoked (a failed revoke leaves it listed with a retry). After a 401/403 no further request is made. Nothing here stores or logs an id.
 import type { DeviceDto, DeviceListDto, DeviceRevokeDto } from "@wardenx/types";

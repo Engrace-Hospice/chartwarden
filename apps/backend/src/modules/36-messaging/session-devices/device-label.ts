@@ -1,4 +1,4 @@
-// M36 WP 5.5 (ADR-0082) - a COARSE device label from the stored user agent: browser family and operating system, nothing else (no version,
+// M36 WP 5.5 (ADR-0083) - a COARSE device label from the stored user agent: browser family and operating system, nothing else (no version,
 // no model, no raw string). A person recognises "Chrome · macOS"; the exact agent is a fingerprint and is never returned by the API.
 export const UNKNOWN_DEVICE_LABEL = "Unknown device";
 

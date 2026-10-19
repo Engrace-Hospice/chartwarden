@@ -74,7 +74,7 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       screen: OnCallDirectory,
     },
     {
-      // WP 5.5 (ADR-0082): the caller's own sessions and a Revoke for each. Self-service: no permission key (the API returns only the caller's own).
+      // WP 5.5 (ADR-0083): the caller's own sessions and a Revoke for each. Self-service: no permission key (the API returns only the caller's own).
       id: "messaging.devices",
       path: "/messaging/devices",
       title: "Devices and sessions",
@@ -82,7 +82,7 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       screen: DeviceManager,
     },
     {
-      // WP 5.5 (ADR-0082): a security officer lists and revokes another person's sessions; the revoke also needs a fresh step-up.
+      // WP 5.5 (ADR-0083): a security officer lists and revokes another person's sessions; the revoke also needs a fresh step-up.
       id: "messaging.session-governance",
       path: "/messaging/governance/sessions",
       title: "Sessions",

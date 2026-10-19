@@ -1,4 +1,4 @@
-// M36 WP 5.5 (ADR-0082, PROPOSED) - the device and session manager screens: the owner's list (current marked in words, push state in words, one
+// M36 WP 5.5 (ADR-0083, PROPOSED) - the device and session manager screens: the owner's list (current marked in words, push state in words, one
 // Revoke per row that names its device), revoke of another device (row leaves only after the server confirms, polite announcement, failure
 // stays listed with a retry, already-gone is not a failure), the REQUIRED confirm step before revoking the current session (cancel does nothing,
 // confirm revokes then signs out), the 401/403/error/empty states, no IP / user agent / id in the page, axe clean; and the security officer's

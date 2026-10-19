@@ -1,7 +1,7 @@
--- M36 WP 5.5 (ADR-0082, PROPOSED) - session and device controls. One permission, one nullable link column, one partial index.
+-- M36 WP 5.5 (ADR-0083, PROPOSED) - session and device controls. One permission, one nullable link column, one partial index.
 --   1. messaging.sessions.manage: lets a security officer list and revoke ANOTHER user's sessions in the organisation (the revoke also demands
 --      a fresh step-up in the route). Granted to the two full-catalog admin roles only, like messaging.global_search.manage (1092); the tenant's
---      security officer role is named by SEC (ADR-0082 open question).
+--      security officer role is named by SEC (ADR-0083 open question).
 --   2. delivery_endpoint.session_id: the session that registered the endpoint (the Better Auth session id, text). Deliberately NO foreign key:
 --      `session` is M2's table and a hard FK would make session deletion (sign-out, idle timeout, this revoke) depend on a user-RLS'd row; the
 --      revoke expires the linked endpoints in the SAME transaction as it deletes the session, and nothing else reads this column. NULL for an

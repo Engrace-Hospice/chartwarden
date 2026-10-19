@@ -350,7 +350,7 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "admin",
     abac: "none",
   },
-  // --- WP 5.5 (ADR-0082, PROPOSED): list and revoke ANOTHER user's sessions in the organisation (security officer). The revoke route also
+  // --- WP 5.5 (ADR-0083, PROPOSED): list and revoke ANOTHER user's sessions in the organisation (security officer). The revoke route also
   //     demands a fresh step-up; migration 1130 grants it to the full-catalog admin roles only. Self-service needs no key (own sessions only). ---
   "messaging.sessions.manage": {
     resource: "session_device",

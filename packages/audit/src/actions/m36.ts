@@ -122,7 +122,7 @@ export const M36_ACTION_CATALOG: ModuleActionCatalog = [
     isPartTwoEligible: false,
   },
   {
-    action: "m36.session.revoked", // WP 5.5 (ADR-0082) - a staff session was revoked by its owner or by a security officer
+    action: "m36.session.revoked", // WP 5.5 (ADR-0083) - a staff session was revoked by its owner or by a security officer
     moduleOwner: "m36",
     defaultRetentionClass: "compliance",
     description:
@@ -131,7 +131,7 @@ export const M36_ACTION_CATALOG: ModuleActionCatalog = [
     isPartTwoEligible: false,
   },
   {
-    action: "m36.session.admin_listed", // WP 5.5 (ADR-0082) - a security officer listed another user's sessions
+    action: "m36.session.admin_listed", // WP 5.5 (ADR-0083) - a security officer listed another user's sessions
     moduleOwner: "m36",
     defaultRetentionClass: "compliance",
     description:

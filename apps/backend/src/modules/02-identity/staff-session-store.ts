@@ -1,5 +1,5 @@
 // apps/backend/src/modules/02-identity — the M2-owned `session` reads and the one delete behind the M36 device and session manager (WP 5.5,
-// ADR-0082). The `session` table is M2's, so M36 reaches it only through this store; the caller supplies the transaction, which lets M36 expire
+// ADR-0083). The `session` table is M2's, so M36 reaches it only through this store; the caller supplies the transaction, which lets M36 expire
 // its own linked endpoints and write its audit row in the SAME transaction as the delete.
 //
 // Staff-class sessions only: portal, auditor and external sessions belong to other modules' lifecycles and have no realtime channel. The select

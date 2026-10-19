@@ -1,4 +1,4 @@
-// M36 WP 5.5 (ADR-0082) - the device and session manager. A "device" is one signed-in staff SESSION (M2 `session` row) as its owner or a security
+// M36 WP 5.5 (ADR-0083) - the device and session manager. A "device" is one signed-in staff SESSION (M2 `session` row) as its owner or a security
 // officer sees it: a coarse label, when it was made and last used, whether it has a push endpoint, and whether it is the one making the request.
 // Never returned: the session token, the IP address, the raw user agent, a push endpoint value or any other secret.
 

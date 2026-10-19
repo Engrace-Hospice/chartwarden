@@ -299,7 +299,7 @@ const ROUTES: Record<string, Verdict> = {
     kind: "excluded",
     reason: GLOBAL_SEARCH_SETTINGS_SUITE,
   },
-  // WP 5.5 (ADR-0082): a session is acted on by its own owner (or, for the officer, within the officer's organisation); a foreign, other-tenant,
+  // WP 5.5 (ADR-0083): a session is acted on by its own owner (or, for the officer, within the officer's organisation); a foreign, other-tenant,
   // unknown and already-revoked id are one 404, asserted with real Better Auth sessions as wardenx_app in m36-session-device-controls.live.
   "GET /api/v1/devices": { kind: "excluded", reason: SESSION_DEVICES_SUITE },
   "DELETE /api/v1/devices/:id": { kind: "excluded", reason: SESSION_DEVICES_SUITE },

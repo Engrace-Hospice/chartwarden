@@ -1,4 +1,4 @@
-// M36 WP 5.5 (ADR-0082, PROPOSED) - every word the device and session manager shows, in one place. PROVISIONAL pending SEC review of the
+// M36 WP 5.5 (ADR-0083, PROPOSED) - every word the device and session manager shows, in one place. PROVISIONAL pending SEC review of the
 // session policy. Device names are coarse labels ("Chrome · macOS"); the screen never shows an IP address, a raw user agent or a token.
 
 export const DEVICES_TITLE = "Devices and sessions";

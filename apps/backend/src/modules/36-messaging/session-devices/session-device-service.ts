@@ -1,4 +1,4 @@
-// M36 WP 5.5 (ADR-0082) - list and revoke staff sessions ("devices"), as the owner (self-service) or as a security officer in the same
+// M36 WP 5.5 (ADR-0083) - list and revoke staff sessions ("devices"), as the owner (self-service) or as a security officer in the same
 // organisation.
 //
 //  * Revoke is ONE transaction: delete the session row (the next request carrying it is a 401: `getSession` finds nothing), expire every endpoint

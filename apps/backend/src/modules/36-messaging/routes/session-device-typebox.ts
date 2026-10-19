@@ -1,4 +1,4 @@
-// apps/backend/src/modules/36-messaging/routes/session-device-typebox.ts - WP 5.5 (ADR-0082, PROPOSED) schemas for the device and session manager.
+// apps/backend/src/modules/36-messaging/routes/session-device-typebox.ts - WP 5.5 (ADR-0083, PROPOSED) schemas for the device and session manager.
 // The response carries only the coarse, safe fields (see packages/types messaging-devices.ts): no token, no IP address, no raw user agent.
 import { Type } from "@sinclair/typebox";
 import { UUID_PATTERN } from "./messaging-typebox";

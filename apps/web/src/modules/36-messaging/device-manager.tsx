@@ -1,4 +1,4 @@
-// M36 WP 5.5 (ADR-0082, PROPOSED) - "Devices and sessions": every place the caller is signed in, with a Revoke for each. Revoking ANOTHER device
+// M36 WP 5.5 (ADR-0083, PROPOSED) - "Devices and sessions": every place the caller is signed in, with a Revoke for each. Revoking ANOTHER device
 // acts at once (the row leaves the list only after the server confirms, and "<device> revoked" is announced politely). Revoking THIS device asks
 // first, because it signs the caller out: the confirm names what will happen, and only after the server says the session is revoked does the page
 // leave for the sign-in screen (drafts and the remembered deep link are cleared, like the account menu's sign-out).

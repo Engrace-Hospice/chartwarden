@@ -87,7 +87,7 @@ states, accessibility, PHI rules and acceptance for WP 4.5–4.11, 5.1–5.10, 6
 | On-call "who is covering now" directory, role-based send | Absent; real M19 router not bound | 4.12 (proposed) |
 | Snooze, fallback card, drill log, deep-link landing | Deep-link landing (ADR-0075) and snooze/reminders (ADR-0077) built; fallback card and drill-log screens absent (runbook only) | 4.8, 4.10, 4.11 |
 | Offline outbox states, reconnect chip, camera capture | `use-outbox` exists; no IndexedDB queue, chip or camera | 5.1–5.3 |
-| Device/session manager | Built (ADR-0082, proposed): `/messaging/devices` and `/messaging/governance/sessions`; no app lock, no bulk "sign out everywhere", the officer page takes a user id (no user picker) | 5.5 |
+| Device/session manager | Built (ADR-0083, proposed): `/messaging/devices` and `/messaging/governance/sessions`; no app lock, no bulk "sign out everywhere", the officer page takes a user id (no user picker) | 5.5 |
 | Retention and legal-hold admin | Absent (`/legal-holds` generic route only) | 5.6 |
 | Export approval, break-glass review, offboarding workflow | Absent | 5.7–5.9 |
 | Recovery rehearsal report | CLI drill only | 5.10 |

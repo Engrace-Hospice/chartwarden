@@ -4912,7 +4912,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             alerts: getSeam("AlertEmitter") as M39AlertPort,
           }); // M39 — immutable consent lifecycle + transactional outbox/render
           mountMessagingRoutes(app, dbHandle.db, {
-            // WP 5.5 (ADR-0082) - device and session manager. Revoking a session closes its sockets on every api node through the Valkey
+            // WP 5.5 (ADR-0083) - device and session manager. Revoking a session closes its sockets on every api node through the Valkey
             // emitter; with realtime off there are no sockets to close. Always on: a security control has no tenant flag.
             sessionDevices: {
               ...(realtimeEmitter

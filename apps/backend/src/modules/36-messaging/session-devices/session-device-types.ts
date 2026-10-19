@@ -1,4 +1,4 @@
-// M36 WP 5.5 (ADR-0082) - the ports of the device and session manager. The `session` table is M2's (a Better Auth row) and `delivery_endpoint` is
+// M36 WP 5.5 (ADR-0083) - the ports of the device and session manager. The `session` table is M2's (a Better Auth row) and `delivery_endpoint` is
 // M36's, so neither side touches the other's table: the service below orchestrates them inside ONE transaction through these ports, and the
 // composition (./binding.ts) supplies the database-backed ones. Unit tests supply fakes.
 import type { DbClient } from "@wardenx/db";

@@ -201,7 +201,7 @@ export function startRealtimeServer(options: RealtimeOptions): RealtimeHandle {
       return;
     }
     mine.add(socket.id);
-    // WP 5.5 (ADR-0082): the session's own room, joined BEFORE the (async) room set resolves, so a revoke that lands while the rooms are still
+    // WP 5.5 (ADR-0083): the session's own room, joined BEFORE the (async) room set resolves, so a revoke that lands while the rooms are still
     // being computed still finds this socket. A revoke closes the room on every node (`disconnectRoom(sessionRoom(id))`).
     void socket.join(sessionRoom(principal.sessionId));
     options

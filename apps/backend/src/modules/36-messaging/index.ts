@@ -247,7 +247,7 @@ export function mountMessagingRoutes(
     promotions?: _PromotionRouteDeps;
     /** WP 3.6: IDG discussions (tenant flags + read-only store). Omitted => flag off. */
     idgDiscussions?: ReturnType<typeof _buildIdgDiscussionDeps>;
-    /** WP 5.5 (ADR-0082): the device and session manager; `disconnectSession` closes a session's sockets on every api node. Always mounted. */
+    /** WP 5.5 (ADR-0083): the device and session manager; `disconnectSession` closes a session's sockets on every api node. Always mounted. */
     sessionDevices?: Pick<_SessionDeviceBindingInput, "disconnectSession" | "warn">;
   } = {},
 ): void {
@@ -336,7 +336,7 @@ export function mountMessagingRoutes(
       }),
     }),
   });
-  // WP 5.5 (ADR-0082) - list/revoke staff sessions (self-service and the security officer's variant). No tenant flag: a security control.
+  // WP 5.5 (ADR-0083) - list/revoke staff sessions (self-service and the security officer's variant). No tenant flag: a security control.
   _registerSessionDeviceRoutes(app, {
     service: _buildSessionDeviceService({ db, ...(opts.sessionDevices ?? {}) }),
   });

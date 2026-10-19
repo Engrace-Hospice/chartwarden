@@ -1,11 +1,11 @@
-# ADR-0082 — Session and device controls: revoke is one transaction, kills the session, its sockets and its push endpoint, and never says who exists
+# ADR-0083 — Session and device controls: revoke is one transaction, kills the session, its sockets and its push endpoint, and never says who exists
 
 - **Status:** **Proposed** (2026-10-19). Built and always on (a security control has no tenant flag). **OPEN for SEC (the security architect): the session policy that goes with it (see "Open questions"); everything marked "conservative default" below is an engineering proposal, not a decision.**
 - **Date:** 2026-10-19
 - **Phase:** Messaging Hub Phase 5, WP 5.5 (`docs/messaging-hub/04-phases-4-to-6.md` row 5.5; UI spec §5.5; capability SG-12).
 - **Extends:** [ADR-0054](ADR-0054-realtime-transport-socketio-valkey.md) (the realtime server and its rooms), [ADR-0010](ADR-0010-tenancy-rls-invariants.md) (RLS three-column rule; user-owned tables), [ADR-0005](ADR-0005-manifest-single-source-of-truth.md) (module ownership: `session` is M2's, `delivery_endpoint` is M36's).
 - **Related:** [ADR-0073](ADR-0073-messaging-notification-policy.md) (an endpoint must be `verified` to be a delivery target), [ADR-0072](ADR-0072-separate-react-native-expo-mobile-app.md) (native push, WP 5.11, not built), the M2 session lifecycle (`SESSION_POLICY`, GAP-002).
-- **Numbering note:** 0081 is the last ADR on `origin/main` (38909a670) and no branch claims 0082; migration 1130 is the next free ordinal (`arch:migration-numbering`).
+- **Numbering note:** this branch started from 38909a670, where 0081 was the last ADR. While it was open, `origin/main` took **0082** (`ADR-0082-messaging-after-hours-triage-routing`, WP 4.13, merged in #510), so this ADR is **0083** and nothing here should be read as superseding or depending on 0082. Migration 1130 is the next free ordinal on `origin/main` (5d727ccb1, last 1129; `arch:migration-numbering`). A later merge must re-check both numbers.
 
 ## Context
 
