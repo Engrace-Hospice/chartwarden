@@ -22,6 +22,7 @@ import {
   createAlertEmitter,
   toNewAlertRuleRows,
 } from "@wardenx/messaging";
+import { withOrgContext } from "@wardenx/tenancy";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -65,6 +66,12 @@ describe.skipIf(!DB_URL)("M36 WP 4.6 notification policy - LIVE Postgres", () =>
       );
     }
   };
+  const readBad = (ids: unknown) =>
+    withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, async (tx) =>
+      tx.execute(
+        sql`SELECT * FROM delivery_endpoint_verified_channels_for_org_users(${ORG_A}, ${JSON.stringify(ids)}::jsonb)`,
+      ),
+    );
   const emitRequest = async (
     org: string,
     userId: string,
@@ -276,14 +283,33 @@ describe.skipIf(!DB_URL)("M36 WP 4.6 notification policy - LIVE Postgres", () =>
   it("tenant isolation: a user of another tenant named in this tenant's alert gets no row and no endpoint is read for them", async () => {
     const { alertId } = await emitRequest(ORG_A, ORG_B_USER, "urgent");
     expect(await rows(alertId)).toEqual([]);
-    const read = await handle.db.execute<{ user_id: string; channel: string }>(
-      sql`SELECT * FROM delivery_endpoint_verified_channels_for_org_users(${ORG_A}, ${JSON.stringify([ORG_B_USER])}::jsonb)`,
-    );
-    expect(read.rows).toEqual([]);
-    const own = await handle.db.execute<{ user_id: string; channel: string }>(
+    const readAs = async (sessionOrg: string, argOrg: string, ids: unknown) =>
+      withOrgContext(
+        handle.db,
+        { organizationId: sessionOrg, userId: "" },
+        async (tx) =>
+          (
+            await tx.execute<{ user_id: string; channel: string }>(
+              sql`SELECT * FROM delivery_endpoint_verified_channels_for_org_users(${argOrg}, ${JSON.stringify(ids)}::jsonb)`,
+            )
+          ).rows,
+      );
+    // A tenant-A session naming tenant B (or B's user under A's id) reads nothing.
+    expect(await readAs(ORG_A, ORG_B, [ORG_B_USER])).toEqual([]);
+    expect(await readAs(ORG_A, ORG_A, [ORG_B_USER])).toEqual([]);
+    expect(await readAs(ORG_B, ORG_B, [ORG_B_USER])).toEqual([
+      { user_id: ORG_B_USER, channel: "push" },
+    ]);
+    // No tenant context at all reads nothing either.
+    const bare = await handle.db.execute<{ user_id: string }>(
       sql`SELECT * FROM delivery_endpoint_verified_channels_for_org_users(${ORG_B}, ${JSON.stringify([ORG_B_USER])}::jsonb)`,
     );
-    expect(own.rows).toEqual([{ user_id: ORG_B_USER, channel: "push" }]);
+    expect(bare.rows).toEqual([]);
+  });
+
+  it("the reader refuses a non-array or oversized id list", async () => {
+    await expect(readBad({ not: "array" })).rejects.toThrow();
+    await expect(readBad(Array.from({ length: 501 }, () => ORG_B_USER))).rejects.toThrow();
   });
 
   it("the reader returns channel names only (no endpoint value) and is not executable by PUBLIC", async () => {

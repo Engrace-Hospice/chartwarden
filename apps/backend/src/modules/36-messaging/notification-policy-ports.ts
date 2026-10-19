@@ -7,6 +7,7 @@
 // safety route into "no route".
 import type { DbClient } from "@wardenx/db";
 import type { NotificationChannel } from "@wardenx/messaging";
+import { withOrgContext } from "@wardenx/tenancy";
 import {
   ACK_REQUESTS_FLAG_KEY,
   NOTIFICATION_POLICY_FLAG_KEY,
@@ -48,13 +49,17 @@ export function createVerifiedChannelsPort(
   return async (orgId, userIds) => {
     const byUser = new Map<string, Set<NotificationChannel>>();
     if (userIds.length === 0) return byUser;
-    const result = await db.execute<{ user_id: string; channel: string }>(sql`
-      SELECT * FROM delivery_endpoint_verified_channels_for_org_users(
-        ${orgId},
-        ${JSON.stringify(userIds)}::jsonb
-      )
-    `);
-    for (const row of result.rows) {
+    // The reader enforces the SESSION tenant (`app.org_id`), so the read runs inside the tenant's own context.
+    const rows = await withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
+      const result = await tx.execute<{ user_id: string; channel: string }>(sql`
+        SELECT * FROM delivery_endpoint_verified_channels_for_org_users(
+          ${orgId},
+          ${JSON.stringify(userIds)}::jsonb
+        )
+      `);
+      return result.rows;
+    });
+    for (const row of rows) {
       if (!ENDPOINT_CHANNELS.has(row.channel)) continue;
       const set = byUser.get(row.user_id) ?? new Set<NotificationChannel>();
       set.add(row.channel as NotificationChannel);

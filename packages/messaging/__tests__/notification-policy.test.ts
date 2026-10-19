@@ -14,6 +14,7 @@ import {
   type QuietHoursConfig,
   type RecipientPreferences,
   type ShiftState,
+  createAlertEmitter,
   createInMemoryAlertEmitter,
   decideChannels,
   designatedClassOf,
@@ -475,5 +476,97 @@ describe("AlertEmitter wiring (in-memory ports)", () => {
         reasons: ["designated_floor", "no_verified_endpoint"],
       },
     ]);
+  });
+});
+
+describe("AlertEmitter hardening (review findings)", () => {
+  const baseRule = {
+    category: "operational" as const,
+    severityFloor: "info" as const,
+    recipientResolver: "role_set" as const,
+    resolverArgs: { roleKeys: [], userIdPaths: ["recipientUserId"] },
+    channelsOverride: null,
+  };
+  const build = (
+    rules: ReturnType<typeof Array.of<typeof baseRule>>,
+    policyEnabledFor?: () => Promise<boolean>,
+  ) => {
+    const persisted: Array<{
+      payload: Record<string, unknown>;
+      deliveries: readonly PlannedDelivery[];
+    }> = [];
+    const emitter = createAlertEmitter({
+      recipients: {
+        careTeamMembers: async () => [],
+        onCallMembers: async () => [],
+        disciplineMembers: async () => [],
+        roleSetMembers: async () => [],
+        tenantAdmins: async () => [],
+        orgMembers: async () => [],
+      },
+      rulesFor: async () => rules,
+      preferencesFor: async () => new Map(),
+      persist: async (r) => {
+        persisted.push(r);
+        return { alertId: "a-1" };
+      },
+      now: () => NIGHT_INSTANT,
+      ...(policyEnabledFor ? { policyEnabledFor } : {}),
+      verifiedChannelsFor: async () => VERIFIED,
+    });
+    return { emitter, persisted };
+  };
+
+  it("a non-designated alert never reads the flag (a throwing flag reader cannot break it)", async () => {
+    const { emitter, persisted } = build([baseRule], async () => {
+      throw new Error("flag store down");
+    });
+    await expect(
+      emitter.emit("org-1", {
+        eventType: "m10.hope.sfv_created",
+        severity: "info",
+        correlationId: "c",
+        payload: { recipientUserId: "u-1" },
+      }),
+    ).resolves.toMatchObject({ alertId: "a-1" });
+    expect(persisted).toHaveLength(1);
+  });
+
+  it("a designated alert fails loudly when the flag cannot be read", async () => {
+    const { emitter } = build([baseRule], async () => {
+      throw new Error("flag store down");
+    });
+    await expect(
+      emitter.emit("org-1", {
+        eventType: "m36.ack.requested",
+        severity: "warn",
+        correlationId: "c",
+        payload: { recipientUserId: "u-1", ackClass: "urgent" },
+      }),
+    ).rejects.toThrow("flag store down");
+  });
+
+  it("a tenant rule cannot re-aim a designated alert: the platform recipients are used", async () => {
+    const hijack = { ...baseRule, resolverArgs: { roleKeys: [], userIdPaths: ["attackerUserId"] } };
+    const { emitter, persisted } = build([hijack]);
+    await emitter.emit("org-1", {
+      eventType: "m36.ack.requested",
+      severity: "warn",
+      correlationId: "c",
+      payload: { recipientUserId: "u-1", attackerUserId: "u-evil", ackClass: "urgent" },
+    });
+    const who = new Set(persisted[0]?.deliveries.map((d) => d.recipientUserId));
+    expect([...who]).toEqual(["u-1"]);
+  });
+
+  it("a caller-supplied policyTrail is dropped", async () => {
+    const { emitter, persisted } = build([baseRule]);
+    await emitter.emit("org-1", {
+      eventType: "m10.hope.sfv_created",
+      severity: "info",
+      correlationId: "c",
+      payload: { recipientUserId: "u-1", policyTrail: [{ forged: true }] },
+    });
+    expect(persisted[0]?.payload).not.toHaveProperty("policyTrail");
   });
 });

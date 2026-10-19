@@ -70,6 +70,10 @@ describe("WP 4.6 notification policy wiring", () => {
     expect(sql).toContain("SECURITY DEFINER");
     expect(sql).toContain("SET search_path = pg_catalog, public");
     expect(sql).toContain("m.organization_id = p_organization_id AND m.status = 'active'");
+    expect(sql).toContain(
+      "p_organization_id = nullif(current_setting('app.org_id', true), '')::uuid",
+    );
+    expect(sql).toContain("jsonb_array_length(p_user_ids) > 500");
     expect(sql).toContain("e.verification_status = 'verified'");
     expect(sql).toContain("RETURNS TABLE (user_id uuid, channel text)");
     expect(sql).not.toContain("endpoint_value");

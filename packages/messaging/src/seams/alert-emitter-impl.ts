@@ -15,6 +15,7 @@
 import type { AlertEmitter } from "../interfaces/alert-emitter";
 import type { AlertCategory, AlertSeverity, NotificationChannel } from "../interfaces/kinds";
 import {
+  DESIGNATED_EVENT_TYPES,
   type PlannedDelivery,
   type PolicyTrailEntry,
   type RecipientPreferences,
@@ -101,6 +102,22 @@ export interface AlertEmitterPorts {
 }
 
 /**
+ * WP 4.6: a tenant `alert_rule` row may shadow a platform rule, but for the four DESIGNATED events the recipients are the platform
+ * rule's, always: a tenant row cannot re-aim a safety alert at someone else (it may still add channels). Not designated = unchanged.
+ */
+function pinDesignatedRule(rule: EmitAlertRule, eventType: string): EmitAlertRule {
+  if (!DESIGNATED_EVENT_TYPES.has(eventType)) return rule;
+  const platform = PLATFORM_DEFAULT_ALERT_RULES.find((r) => r.eventType === eventType);
+  if (!platform) return rule;
+  return {
+    ...rule,
+    category: platform.category,
+    recipientResolver: platform.recipientResolver,
+    resolverArgs: platform.resolverArgs,
+  };
+}
+
+/**
  * Compose the {@link AlertEmitter} seam over the given ports. `emit()`:
  *   1. loads the firing rules for `eventType` (no rule → a no-op alert, recipientCount 0);
  *   2. for each rule resolves recipients NOW (§2.1.3) and plans the fan-out at the effective
@@ -114,14 +131,22 @@ export function createAlertEmitter(ports: AlertEmitterPorts): AlertEmitter {
 
   return {
     async emit(orgId, input) {
-      const rules = await ports.rulesFor(orgId, input.eventType);
+      const rules = (await ports.rulesFor(orgId, input.eventType)).map((r) =>
+        pinDesignatedRule(r, input.eventType),
+      );
+      const { policyTrail: _callerTrail, ...callerPayload } = input.payload; // a caller cannot forge the trail
       const at = ports.now();
 
       const deliveries: PlannedDelivery[] = [];
       const trail: PolicyTrailEntry[] = [];
       const recipientUnion = new Set<string>();
-      const policyOn = (await ports.policyEnabledFor?.(orgId, input.eventType)) === true;
-      const designated = policyOn ? designatedClassOf(input.eventType, input.payload) : null;
+      // Only a designated event ever reads the flag: every other alert is exactly as before the policy existed.
+      const designatedClass = designatedClassOf(input.eventType, input.payload);
+      const designated =
+        designatedClass !== null &&
+        (await ports.policyEnabledFor?.(orgId, input.eventType)) === true
+          ? designatedClass
+          : null;
 
       for (const rule of rules) {
         const recipientUserIds = await resolveRecipients(
@@ -167,7 +192,7 @@ export function createAlertEmitter(ports: AlertEmitterPorts): AlertEmitter {
         severity: input.severity,
         correlationId: input.correlationId,
         // WP 4.6: the explained policy decisions of a designated route ride on the alert (ids and codes only).
-        payload: trail.length > 0 ? { ...input.payload, policyTrail: trail } : input.payload,
+        payload: trail.length > 0 ? { ...callerPayload, policyTrail: trail } : callerPayload,
         deliveries,
         ...(input.countRepeats ? { countRepeats: true } : {}),
       });
