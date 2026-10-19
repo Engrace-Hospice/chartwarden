@@ -785,6 +785,7 @@ import { evvVisitProviderEntityForOrg } from "./modules/18-evv/seams/evv-visit-p
 import {
   M19_OUTBOX_EVENTS,
   M19_PLATFORM_JOB_ID,
+  buildDrizzleEscalationRouterReads,
   buildDrizzleM19ReadService,
   buildDrizzleM19WriteService,
   buildDrizzleOncallAbacResolver,
@@ -799,6 +800,7 @@ import {
   gipProposalsForOrg,
   idgTriageCarePlanChangesForOrg,
   mountM19Routes,
+  registerEscalationRouterForAllowlist,
   registerM19CronWorkers,
   registerM19Tier1CronWorkers,
   registerM19TriageCronWorkers,
@@ -2030,6 +2032,22 @@ export function wireModuleSeams(
   // watchdog act on. A DB-less boot must not manufacture a coverage gap; a throwing stub says "M19 cannot
   // answer", which is the truth.
   if (deps.db) registerOncallSeams({ store: buildDrizzleOncallSeamStore(deps.db) });
+  // ADR-0057 item 12 - the real M19 EscalationRouter (tier 1 only), UNBOUND unless `ESCALATION_ROUTER_ORGS` names orgs. Other orgs keep the
+  // deny-stub's exact answer; with the variable empty nothing is registered and behaviour is identical to before.
+  if (deps.db) {
+    registerEscalationRouterForAllowlist({
+      store: buildDrizzleOncallSeamStore(deps.db),
+      reads: buildDrizzleEscalationRouterReads({
+        db: deps.db,
+        patientReader: () => getSeam("PatientReader"),
+        siteReader: buildFoundationSiteReader(),
+        listProviderEntityIds: buildOrgProviderEntityLister(deps.db),
+      }),
+      fallback: getEscalationRouter,
+      allowlistRaw: process.env.ESCALATION_ROUTER_ORGS,
+      warn: (message) => console.warn(message),
+    });
+  }
   // M20-T05 — the SEVEN §4.3 seams M20 publishes: `SafetyDashboardProvider` (the supervisor
   // live-awareness board, also embedded by M17's visit-day view), `SafetyContextReader` (M8's "was there
   // an incident during the visit I am documenting?"), `SafetyIncidentReader` (M32's §8.6
