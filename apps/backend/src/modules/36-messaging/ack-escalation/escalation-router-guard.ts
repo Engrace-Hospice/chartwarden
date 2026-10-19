@@ -68,9 +68,9 @@ export function guardEscalationRouter(
             ranks.length !== ids.length ||
             !ranks.every((r) => (ESCALATION_RANKS as readonly unknown[]).includes(r)))
         ) {
-          throw new EscalationRouterAnswerError(
-            "ranks must pair one known rank with each recipient",
-          );
+          // A cosmetic field must never stop an escalation: drop the skewed list (no rank claim, nobody is labelled primary).
+          const { ranks: _skewed, ...withoutRanks } = answer;
+          return withoutRanks;
         }
       }
       if (answer.kind !== "unavailable" && !validNextTier(answer.nextTier, request.tier)) {

@@ -143,9 +143,13 @@ describe("RoleSendService.resolve", () => {
     expect(out.people.map((p) => p.rank)).toEqual(["backup", "backup"]);
   });
 
-  it("refuses a rank list that does not pair with the recipients (the guard)", async () => {
+  it("drops a rank list that does not pair with the recipients (the guard): the people stay, nobody is primary", async () => {
     const { service } = build({ tier1: coveredRanked([U2, U1], ["primary"]) });
-    await expect(service.resolve(actor, target)).rejects.toThrow(/ranks must pair/);
+    const out = await service.resolve(actor, target);
+    expect(out.people.map((p) => [p.user_id, p.rank])).toEqual([
+      [U2, "backup"],
+      [U1, "backup"],
+    ]);
   });
 
   it("de-duplicates, lower-casing ids: a user who is backup then primary is the primary", async () => {

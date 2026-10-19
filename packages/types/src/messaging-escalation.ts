@@ -61,7 +61,7 @@ export interface EscalationResolved extends EscalationAnswerBase {
    * OPTIONAL (ADR-0057 item 12, ADR-0081): the explicit rank of `userIds[i]`, same length and order. The order of `userIds` is for the
    * escalation walk and carries NO rank meaning. A user who is primary on one covering shift and backup on another is `primary`; a
    * primary seat that does not resolve to an active user leaves the backup a `backup` (nobody is promoted). A router that omits the
-   * field makes no rank claim: consumers label nobody `primary`. A malformed value (other length, unknown word) is refused by the guard.
+   * field makes no rank claim: consumers label nobody `primary`. A malformed value (other length, unknown word) is dropped by the guard (the answer is otherwise used as is, so a cosmetic field never stops an escalation).
    */
   readonly ranks?: readonly EscalationRank[];
   /** `tier + 1` when that tier exists, else null. */
