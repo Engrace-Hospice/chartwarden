@@ -59,7 +59,9 @@ function Tiers({ coverage }: { readonly coverage: OnCallCoverageDto }): JSX.Elem
                 {tier.people
                   .map(
                     (p) =>
-                      `${p.display_name?.trim() || ONCALL_NAME_UNKNOWN} (${RANK_LABELS[p.rank]})`,
+                      `${p.display_name?.trim() || ONCALL_NAME_UNKNOWN}${
+                        tier.tier === 1 ? ` (${RANK_LABELS[p.rank]})` : ""
+                      }`,
                   )
                   .join(", ")}
               </span>

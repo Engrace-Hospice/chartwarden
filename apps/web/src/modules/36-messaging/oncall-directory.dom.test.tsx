@@ -103,7 +103,7 @@ describe("OnCallDirectory", () => {
     // 02:00Z on 2 June is 7:00 PM on 1 June in Los Angeles, the same day as 21:07Z (2:07 PM): no date shown
     expect(within(rows[0] as HTMLElement).getByText("until 7:00 PM PDT")).toBeTruthy();
     expect(screen.getByText(/as of 2:07 PM PDT \(America\/Los_Angeles\)/)).toBeTruthy();
-    expect(within(rows[1] as HTMLElement).getByText("Name not available (Primary)")).toBeTruthy();
+    expect(within(rows[1] as HTMLElement).getByText("Name not available")).toBeTruthy();
     expect(within(rows[1] as HTMLElement).getByText(ONCALL_SHIFT_END_UNKNOWN)).toBeTruthy();
     expect(GET.mock.calls[0]?.[1]).toEqual({
       params: { query: { role: "rn", patient_id: PATIENT } },

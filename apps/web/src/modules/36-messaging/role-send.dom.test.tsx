@@ -260,8 +260,8 @@ describe("role send: the dialog", () => {
     mount({
       resolution: () =>
         covered([
-          { user_id: DANA, display_name: "Dana K.", rank: "primary" },
-          { user_id: SAM, display_name: "Sam R.", rank: "backup" },
+          { user_id: DANA, display_name: "Zed Z.", rank: "primary" },
+          { user_id: SAM, display_name: "Abe A.", rank: "backup" },
         ]),
     });
     await open();
@@ -270,21 +270,15 @@ describe("role send: the dialog", () => {
       name: "Send urgent message",
     })) as HTMLButtonElement;
     expect(send.disabled).toBe(true);
-    // rank is said in words and the primary is listed first, in the server's order; nothing is preselected
+    // rank is said in words; the primary stays first even though the backup sorts first by name; nothing is preselected
     const radios = screen.getAllByRole("radio") as HTMLInputElement[];
-    expect(radios.map((r) => r.getAttribute("aria-labelledby"))).toHaveLength(2);
-    expect(screen.getByText(/Primary: Dana K\., on call RN/)).toBeTruthy();
-    expect(screen.getByText(/Backup: Sam R\., on call RN/)).toBeTruthy();
     expect(radios.map((r) => r.checked)).toEqual([false, false]);
-    expect(
-      screen
-        .getByText(/Primary: Dana K\./)
-        .compareDocumentPosition(screen.getByText(/Backup: Sam R\./)) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    await userEvent.click(screen.getByRole("radio", { name: /Sam R\./ }));
+    expect(screen.getByRole("radio", { name: /^Primary: Zed Z\., on call RN/ })).toBe(radios[0]);
+    expect(screen.getByRole("radio", { name: /^Backup: Abe A\., on call RN/ })).toBe(radios[1]);
+    await userEvent.click(radios[1] as HTMLInputElement);
     expect(((await sendButton()) as HTMLButtonElement).disabled).toBe(false);
-    expect((await sendButton()).textContent).toBe("Send urgent message to Sam R.");
+    expect((await sendButton()).textContent).toBe("Send urgent message to Abe A.");
+    expect(screen.getByText(/This goes to Abe A\. \(Backup\)/)).toBeTruthy();
   });
 
   it.each([

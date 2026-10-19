@@ -83,10 +83,12 @@ export function createOnCallCoverageService(deps: OnCallCoverageDeps): OnCallCov
         const people =
           answer.kind === "resolved"
             ? await Promise.all(
-                rankedIds(answer.userIds).map(async ({ id, rank }) => ({
-                  display_name: await deps.displayName(actor.orgId, id),
-                  rank,
-                })),
+                rankedIds(answer.userIds.map((id) => id.toLowerCase())).map(
+                  async ({ id, rank }) => ({
+                    display_name: await deps.displayName(actor.orgId, id),
+                    rank,
+                  }),
+                ),
               )
             : [];
         tiers.push({
