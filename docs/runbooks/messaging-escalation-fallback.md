@@ -33,7 +33,7 @@ Nothing here has been signed off.
 |---|---|
 | A request has a class (`important`, `urgent`, `critical_symptom`) with a deadline (provisional 60 / 15 / 5 minutes). States: `pending`, `acknowledged`, `escalated`, `failed_unreachable`, `resolved`, `cancelled`. | ADR-0069; `packages/messaging/src/ack-requests/ack-rules.ts` |
 | Only the **assigned user**, signed in and still qualified, can acknowledge or resolve (explicit "Take responsibility" button). Opening or reading never acknowledges. **There is no supervisor override and no "acknowledged by phone" write.** | ADR-0069 decision 6 |
-| Reassign: **only** the current assignee (any open state) or the requester **before the request is taken**; the route acts as the caller's own signed-in session and there is **no supervisor override** (`reassignDenied` in `apps/backend/src/modules/36-messaging/ack-requests/ack-service.ts`; ADR-0069 decision 6). Only when the **requester** is the one reassigning must they still hold `messaging.send` and `messaging.urgent.send`. The **new** assignee must be a care-team member who can see the channel, holding `messaging.urgent.receive`, passing the Part 2 gate, not the requester and not the current assignee. Refusals differ: `403 ACK_NOT_PARTY` (caller is neither sender nor assignee), `403 ACK_NOT_ASSIGNEE` (the request is already taken, so the sender can no longer reassign), `403` "You can no longer send response requests" (sender lost the send keys), `409 ACK_STATE_INVALID` (request closed), `404` (caller cannot see the channel), `422 ACK_ASSIGNEE_INVALID` (the new assignee is not acceptable; no reason is given, so only then try a differently qualified nurse, not the sender or an aide), and a rate limit of 5 per 5 minutes per (actor, colleague) pair (ADR-0069 decision 13). **Reassign has no screen:** it exists only as `POST /api/v1/messaging/escalations/:id/reassign`. The request card offers only "Take responsibility" and "Close this request" (ADR-0069 decision 14) and the queue screen never reassigns (`apps/web/src/modules/36-messaging/unacknowledged-queue.tsx`). **So today no request can be moved from a screen by anyone.** | ADR-0069 decisions 5-6, 13-14 |
+| Reassign: **only** the current assignee (any open state) or the requester **before the request is taken**; the route acts as the caller's own signed-in session and there is **no supervisor override** (`reassignDenied` in `apps/backend/src/modules/36-messaging/ack-requests/ack-service.ts`; ADR-0069 decision 6). Only when the **requester** is the one reassigning must they still hold `messaging.send` and `messaging.urgent.send`. The **new** assignee must be a care-team member who can see the channel, holding `messaging.urgent.receive`, passing the Part 2 gate, not the requester and not the current assignee. Refusals differ: `403 ACK_NOT_PARTY` (caller is neither sender nor assignee), `403 ACK_NOT_ASSIGNEE` (the request is already taken, so the sender can no longer reassign), `403` "You can no longer send response requests" (sender lost the send keys), `403` (caller lacks `messaging.read`), `409 ACK_STATE_INVALID` (request closed, or taken or handed on between read and lock, often the assignee just acknowledged), `404` (caller cannot see the channel), `422 ACK_ASSIGNEE_INVALID` (the new assignee is not acceptable; no reason is given, so only then try a differently qualified nurse, not the sender or an aide), and a `429` rate-limit refusal (5 per 5 minutes per (actor, colleague) pair, ADR-0069 decision 13). **Reassign has no screen:** it exists only as `POST /api/v1/messaging/escalations/:id/reassign`. The request card offers only "Take responsibility" and "Close this request" (ADR-0069 decision 14) and the queue screen never reassigns (`apps/web/src/modules/36-messaging/unacknowledged-queue.tsx`). **So today no request can be moved from a screen by anyone.** | ADR-0069 decisions 5-6, 13-14 |
 | The escalation action (next tier at the deadline, early escalation on delivery failure) runs only where the ops flag `messaging.escalation_timers` is on for the tenant (default off). Flag off means requests are left exactly as they are. | ADR-0070, ADR-0071 decision 8 |
 | At the deadline the system asks the EscalationRouter (M19 on-call) for the next tier. No tier / no router: the request stays open with its assignee and a `route_unavailable` or `ladder_exhausted` history row; the router is asked again on a backoff (1 h up to 24 h). Production's router is a deny-stub until M19 binds one (ADR-0057 is still Proposed). | `apps/backend/src/modules/36-messaging/ack-escalation/escalation-service.ts` (header) |
 | When every out-of-band delivery of the request alerts to the assignee has terminally failed, the request escalates now, or becomes `failed_unreachable` (written by the system only). `failed_unreachable` is open, not closed, and the deadline timer **stops watching it**. | ADR-0071 decisions 2-6 |
@@ -112,7 +112,7 @@ Rules for the tree:
 
 - Script for A (the assignee): "WardenX shows a response request waiting for you; please sign in and open Messages."
 - Script for S (the sender): "Your WardenX request is still unanswered. Can you reach the assignee, or tell me who else
-  should be told?" Do not ask the sender to reassign during the call: there is no screen for it, and the only route is the sender's own signed-in API call while the request is not yet taken (section 5.3 step 3, G-6).
+  should be told?" Do not ask the sender to reassign during the call (if the assignee cannot sign in, the supervisor arranges the step-3 call with the sender and engineering **after** the call): there is no screen for it, and the only route is the sender's own signed-in API call while the request is not yet taken (section 5.3 step 3, G-6).
 - Script for T, C, D, L: these people are **not** the assignee and cannot see or act on the request. Say: "You may be asked
   to take over a WardenX request. Please stand by." Never tell them a request is waiting for them unless it has been
   reassigned to them.
@@ -150,7 +150,7 @@ Rules for the tree:
    logs; a channel with no configured transport fails closed by design (`transport_not_configured`).
 3. Tell the supervisor in one line whether any out-of-band channel is configured for the tenant at all (today usually none,
    so the in-app inbox is the only route) and, if one is, whether its vendor is down. Flag rule: **never turn
-   `messaging.escalation_timers` off while requests are open without the clinical lead's recorded decision**, and do not
+   `messaging.escalation_timers` off while requests are waiting (`pending`, `escalated` or `failed_unreachable`) without the clinical lead's recorded decision**, and do not
    change any other flag mid-incident unless the clinical lead asks (see 5.6).
 
 ### 5.3 Reaching a human and recording that they have it
@@ -162,11 +162,11 @@ request acknowledged, and only by signing in and pressing "Take responsibility".
 1. Follow the tree for the class (section 4). Reach the **assignee** and ask them to sign in, open Messages and press
    **Take responsibility**. The request becomes `acknowledged` and leaves the queue. That is the system of record.
 2. If the assignee cannot be reached, call the **sender** (unless unknown, which counts as unreachable) to find a way to
-   reach the assignee, or to learn the content. The sender cannot move the request.
+   reach the assignee, or to learn the content. The sender cannot move it from a screen.
 3. **If the assignee cannot sign in, nobody can move the request from a screen.** The assignee can still act whenever
    they sign in. The **only** escape is the **sender, signed in as themselves**, calling the reassign API
-   (`POST /api/v1/messaging/escalations/:id/reassign`) with engineering help to **construct** the call (not their
-   credentials), and only while the request is **not yet taken** and only if the sender still holds `messaging.send` and
+   (`POST /api/v1/messaging/escalations/:id/reassign`) with engineering help to **construct** the call (the sender runs it in their own session; the engineer never sees
+   their token or credentials), and only while the request is **not yet taken** and only if the sender still holds `messaging.send` and
    `messaging.urgent.send`. The new assignee must meet the preconditions in section 1; a `422 ACK_ASSIGNEE_INVALID` means try
    a differently qualified nurse. **Forbidden, always:** direct database writes (including system-actor writes) and handling
    any person's session, token or password. There is no other hatch, and the clinical lead must not be told otherwise.
@@ -210,7 +210,7 @@ outage is over or a workaround is communicated; and the gauges read zero or a kn
 **A verbal "I've got it" does not satisfy stand-down.** A request that became `cancelled` (the sender deleted the message,
 ADR-0069 decision 10) is **not** accepted silently: stand-down needs the clinical lead's recorded decision that the
 cancellation is clinically fine. The alternative to stand-down is a named supervisor who keeps following up (section 5.3
-step 4, with its hand-up limit) until each request is acknowledged, each follow-up recorded. **OPEN:** who may declare
+steps 4 and 5, with their hand-up limits) until each request is acknowledged, each follow-up recorded. **OPEN:** who may declare
 stand-down (provisional: the supervisor on duty for clinical matters, operations for the technical cause, both recorded).
 
 Record the stand-down time on the incident log, tell the people called that the incident is closed, and start the review.
@@ -219,7 +219,7 @@ Record the stand-down time on the incident log, tell the people called that the 
 
 This runbook changes no product code. Its actions do change data (a reassign, and in a drill disabling test endpoints), and each is recorded in the log. If the incident was triggered by a
 recent change (a flag turned on, a transport configured, a deploy), revert that change through its own runbook. The
-messaging flags are all off for every tenant by default; do not turn one on or off during an incident to "see what happens", and never turn `messaging.escalation_timers` off while requests are open without the clinical lead's recorded decision.
+messaging flags are all off for every tenant by default; do not turn one on or off during an incident to "see what happens", and never turn `messaging.escalation_timers` off while requests are waiting without the clinical lead's recorded decision.
 
 ## 6. Post-incident review checklist
 
@@ -305,11 +305,15 @@ Pre-conditions:
   production `OPS_ALERT_WEBHOOK_URL`, so a drill request can look like a real overdue request. Operations tag or exclude the
   drill organisation in their alerting (how: **OPEN**, no organisation label exists on the gauges).
 
-1. Facilitator first makes the assignee's out-of-band route fail: the assignee needs a **verified** endpoint (in the test
-   organisation) whose delivery then fails, which it does when no transport is configured (`transport_not_configured`). An assignee
-   with **no** verified endpoint gets no out-of-band row at all, which is not a failure and does **not** produce
-   `failed_unreachable` (ADR-0073 decision 4, ADR-0071 decision 2). Do not touch any shared vendor or production
-   configuration.
+1. First make the assignee's out-of-band route fail. Without a transport only a **push** endpoint can be verified
+   (`registerEndpoint` in `apps/backend/src/modules/36-messaging/messaging-route-service-db.ts` marks push verified at
+   insert and refuses SMS and email with a 503); SMS and email cannot be verified and nobody may configure a transport to
+   change that. Endpoints are self-only (`notifications.endpoint.manage`), so the **test assignee registers a push endpoint
+   (any target) in their own session** through the admin screen, not the facilitator. That verified endpoint then fails with
+   `transport_not_configured`. Note the endpoint id (id only) at registration: the screen has no list route, so the
+   endpoint can be removed only from the session that created it. An assignee with **no** verified endpoint gets no
+   out-of-band row at all, which is not a failure and does **not** produce `failed_unreachable` (ADR-0073 decision 4,
+   ADR-0071 decision 2). Do not touch any shared vendor or production configuration.
 2. Recorder starts the clock. Facilitator raises an `urgent` request (the urgent composer; `important` can only be raised through the API) to that test assignee, who has agreed
    to stay silent for the drill. Note the time of request.
 3. Supervisor, who has not been told which request, finds it from `/messaging/unacknowledged`. Recorder notes the time.
@@ -319,10 +323,10 @@ Pre-conditions:
    the queue.
 7. Repeat once with the assignee unable to sign in, and the request not yet taken. The supervisor calls the sender
    (5.3 step 2). The **test sender** then runs the reassign call **themselves, in their own session** (with engineering help
-   building the call, never using their credentials), to the distinct target account, which takes responsibility. Record
+   building the call; the engineer never sees their token or credentials), to the distinct target account, which takes responsibility. Record
    that no screen exists (G-6), that no supervisor action exists, and how long it took. Nobody may use a borrowed session or
    write to the database.
-8. Restore the test endpoints. Stand down only when the request is acknowledged in the system; record the time.
+8. Close every drill request ("Close this request" / resolve, so none remains `acknowledged`-open) before switching the flags off, and have the test assignee delete their push endpoint from their own session using the noted id. Stand down only when the request is acknowledged in the system; record the time.
 
 ### 7.5 Evidence record template
 
