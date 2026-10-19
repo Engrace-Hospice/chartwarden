@@ -43,6 +43,18 @@ export function SnoozeControl({ channelId }: { readonly channelId: string }): JS
     }
   });
 
+  // When a refusal re-read flips the conversation to "cannot snooze", the trigger is replaced by the note: focus lands on the note, not body.
+  const snoozable = view.status === "ready" ? view.snooze.snoozable : null;
+  const prevSnoozable = useRef<boolean | null>(null);
+  useEffect(() => {
+    const was = prevSnoozable.current;
+    prevSnoozable.current = snoozable;
+    const active = document.activeElement;
+    if (was === true && snoozable === false && (!active || active === document.body)) {
+      noteRef.current?.focus();
+    }
+  }, [snoozable]);
+
   // Loading, off and a failed first read render nothing: the control is a convenience, so it fails closed and silent (the server decides).
   if (view.status !== "ready") return null;
 
@@ -52,17 +64,7 @@ export function SnoozeControl({ channelId }: { readonly channelId: string }): JS
     </output>
   );
   const { snooze: state } = view;
-  if (!state.snoozable) {
-    return (
-      <span className="wx-snooze">
-        <span ref={noteRef} tabIndex={-1} className="wx-snooze-note">
-          <Glyph name="lock" size={14} /> {SNOOZE_UNSNOOZABLE_SHORT}
-          <span className="sr-only">. {SNOOZE_UNSNOOZABLE_TEXT}</span>
-        </span>
-        {live}
-      </span>
-    );
-  }
+  const unsnoozable = !state.snoozable;
 
   // Compared with the clock at render: a snooze that has run out reads as not snoozed (no timer, no polling).
   const until = state.snoozed_until;
@@ -102,7 +104,13 @@ export function SnoozeControl({ channelId }: { readonly channelId: string }): JS
 
   return (
     <span className="wx-snooze">
-      {active ? (
+      {/* One stable tree: main control, error text, live region, dialog - the live region keeps its position across the branches. */}
+      {unsnoozable ? (
+        <span ref={noteRef} tabIndex={-1} className="wx-snooze-note">
+          <Glyph name="lock" size={14} /> {SNOOZE_UNSNOOZABLE_SHORT}
+          <span className="sr-only">. {SNOOZE_UNSNOOZABLE_TEXT}</span>
+        </span>
+      ) : active ? (
         <>
           <span className="wx-snooze-note">
             <Glyph name="bell" size={14} /> Snoozed until {localTime(until)}
@@ -125,6 +133,7 @@ export function SnoozeControl({ channelId }: { readonly channelId: string }): JS
           aria-haspopup="dialog"
           onClick={() => {
             setError(null);
+            setAnnounce("");
             keys.current = new Map();
             setOpen(true);
           }}

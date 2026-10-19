@@ -49,6 +49,8 @@ export function useChannelSnooze(channelId: string) {
   );
   const [tick, setTick] = useState(0);
   const generation = useRef(0);
+  const channelRef = useRef(channelId);
+  channelRef.current = channelId;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `tick` is the manual re-read trigger
   useEffect(() => {
@@ -82,11 +84,15 @@ export function useChannelSnooze(channelId: string) {
       if (answer.data === undefined) {
         return { ok: false, status: answer.response?.status, code: answer.error?.error?.code };
       }
-      // A channel switch or a newer read since the write started owns the view; this answer must not overwrite it.
-      if (next && started === generation.current) setView({ status: "ready", snooze: next });
+      // The write succeeded. Show its result unless the channel changed meanwhile; if a re-read overtook it (the generation moved), read
+      // again so the control cannot keep a state older than the one just announced.
+      if (next && channelRef.current === channelId) {
+        setView({ status: "ready", snooze: next });
+        if (started !== generation.current) setTick((value) => value + 1);
+      }
       return { ok: true };
     },
-    [setView],
+    [setView, channelId],
   );
 
   const snooze = useCallback(

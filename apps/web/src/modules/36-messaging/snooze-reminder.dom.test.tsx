@@ -3,7 +3,7 @@ import { join } from "node:path";
 // M36 WP 4.10 (ADR-0077): the header snooze control and the message "Remind me" control. A conversation that cannot be snoozed offers no
 // button and says why; presets are within the hard bounds; every write carries an Idempotency-Key; focus returns to the trigger;
 // results are announced; a refusal is words; nothing polls.
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SNOOZE_MAX_MINUTES, SNOOZE_MIN_MINUTES } from "@wardenx/types";
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
@@ -19,6 +19,7 @@ import {
   reminderPresets,
 } from "./snooze-reminder-wording";
 import { ThreadHeader } from "./thread-header";
+import { useChannelSnooze } from "./use-channel-snooze";
 
 const SNOOZE_PATH = "/api/v1/messaging/channels/{id}/snooze";
 const REMINDERS_PATH = "/api/v1/messaging/reminders";
@@ -120,6 +121,40 @@ describe("SnoozeControl", () => {
     await waitFor(() =>
       expect(document.activeElement?.textContent ?? "").toContain(SNOOZE_UNSNOOZABLE_SHORT),
     );
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement?.getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("a write that succeeds while a re-read overtook it still shows its result", async () => {
+    let resolvePut: (v: unknown) => void = () => undefined;
+    const putPromise = new Promise((r) => {
+      resolvePut = r;
+    });
+    const until = iso(3_600_000);
+    const GET = vi.fn(() => Promise.resolve(ready()));
+    const PUT = vi.fn(() => putPromise);
+    const client = { GET, PUT, DELETE: vi.fn() } as unknown as ApiClient;
+    const { result } = renderHook(() => useChannelSnooze("c1"), {
+      wrapper: ({ children }) => <ApiClientProvider client={client}>{children}</ApiClientProvider>,
+    });
+    await waitFor(() => expect(result.current.view.status).toBe("ready"));
+    let done: Promise<unknown> = Promise.resolve();
+    act(() => {
+      done = result.current.snooze(60, "k");
+    });
+    act(() => result.current.reload()); // a re-read starts (and bumps the generation) while the write is in flight
+    await waitFor(() => expect(GET.mock.calls.length).toBeGreaterThanOrEqual(2));
+    GET.mockResolvedValue({
+      data: { channel_id: "c1", snoozed_until: until, snoozable: true },
+    } as never);
+    await act(async () => {
+      resolvePut({ data: { channel_id: "c1", snoozed_until: until, snoozable: true } });
+      await done;
+    });
+    await waitFor(() => {
+      const v = result.current.view;
+      expect(v.status === "ready" && v.snooze.snoozed_until).toBe(until);
+    });
   });
 
   it("a failed re-read keeps the last good view (the control is not unmounted by a reload)", async () => {
@@ -261,7 +296,7 @@ describe("MessageReminderButton", () => {
         list([{ id: "r1", channel_id: "c1", message_id: "m1", remind_at: iso(3_600_000) }]),
       DELETE: () => ({ data: { cleared: true } }),
     });
-    expect(await screen.findByText(/^Reminder /)).toBeTruthy();
+    expect(await screen.findByText(/^Reminder [A-Z][a-z]{2} \d/)).toBeTruthy();
     await userEvent.click(
       screen.getByRole("button", { name: "Cancel reminder, message from Nora" }),
     );
@@ -317,6 +352,24 @@ describe("MessageReminderButton: a failed re-read after a successful write", () 
     expect(await screen.findByText("Reminder set.")).toBeTruthy();
     // the re-read failed: the trigger is still there
     expect(screen.getByRole("button", { name: /Remind me/ })).toBeTruthy();
+  });
+});
+
+describe("MessageReminderButton: optimistic fallback", () => {
+  it("shows the chip from the known result when the re-read after a set fails", async () => {
+    const answers: unknown[] = [
+      { data: { reminders: [], max_pending: 25 } },
+      { error: {}, response: { status: 500 } },
+    ];
+    mount(<MessageReminderButton messageId="m1" authorName="Nora" />, {
+      GET: () => answers.shift() ?? { error: {}, response: { status: 500 } },
+      PUT: () => ({
+        data: { id: "r1", channel_id: "c1", message_id: "m1", remind_at: iso(3_600_000) },
+      }),
+    });
+    await userEvent.click(await screen.findByRole("button", { name: /Remind me/ }));
+    await userEvent.click(screen.getByRole("button", { name: "In 1 hour" }));
+    expect(await screen.findByText(/^Reminder [A-Z][a-z]{2} \d/)).toBeTruthy();
   });
 });
 

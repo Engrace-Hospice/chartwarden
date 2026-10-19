@@ -180,6 +180,8 @@ CREATE TRIGGER "trg_audit_message_reminder" AFTER INSERT OR UPDATE OR DELETE ON 
 CREATE POLICY "message_reminder_due_lister" ON "message_reminder"
   FOR SELECT TO wardenx_admin USING (remind_at <= now());--> statement-breakpoint
 GRANT SELECT ("id", "organization_id", "user_id", "channel_id", "message_id", "remind_at") ON "message_reminder" TO wardenx_admin;--> statement-breakpoint
+-- A dev database that ran the earlier 1125 still has the 2-argument overload; remove it so only the paged one exists.
+DROP FUNCTION IF EXISTS message_reminder_due(uuid, integer);--> statement-breakpoint
 CREATE OR REPLACE FUNCTION message_reminder_due(p_organization_id uuid, p_limit integer, p_offset integer DEFAULT 0)
 RETURNS TABLE (id uuid, user_id uuid, channel_id uuid, message_id uuid, remind_at timestamptz)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
