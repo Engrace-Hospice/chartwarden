@@ -445,7 +445,6 @@ function ConversationThreadView({
     setLoadError(null);
     setLoadCorrelationId(null);
     setRefreshError(false);
-    setContextOpen(false);
     panelReset();
     jumpReset();
     setNewMessageCount(0);
@@ -463,6 +462,14 @@ function ConversationThreadView({
     };
     // loadLatest changes identity only with the channel (or client); every other input is read through a ref.
   }, [loadLatest, resetSender, resetMention, jumpReset, panelReset, clearDraftLinks]);
+
+  // The patient-context panel closes on a channel switch and ONLY then. It used to be reset by the effect above, which
+  // re-runs whenever any of its callback dependencies changes identity (e.g. the API client after a token refresh), so
+  // a toggle could be undone by an unrelated re-run.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the channel on purpose
+  useEffect(() => {
+    setContextOpen(false);
+  }, [channel.channelId]);
 
   // A new anchor on the same channel re-reads around it without touching the draft, chips or an in-flight send.
   useEffect(() => {

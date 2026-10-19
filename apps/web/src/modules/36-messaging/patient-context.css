@@ -2,6 +2,8 @@
 
 .wx-messaging-patient-context {
   width: min(19rem, 40%);
+  min-height: 0;
+  overflow-y: auto; /* tiles scroll inside the pane instead of being clipped by the thread body */
   padding: 1rem;
   border-left: 1px solid var(--color-card-border);
   background: var(--color-surface-lowest);
