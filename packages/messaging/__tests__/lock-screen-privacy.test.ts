@@ -5,7 +5,7 @@
 // outside the audited files, so a new out-of-band template cannot ship without this test seeing it).
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   type Alert,
   type AlertCategory,
@@ -15,6 +15,7 @@ import {
   renderOutOfBand,
   sanitizeForEmergencyContactCall,
   sanitizeForOutOfBand,
+  setOutOfBandFallbackObserver,
 } from "../src/index";
 
 const CATEGORIES: readonly AlertCategory[] = [
@@ -78,7 +79,7 @@ describe("WP 4.7 - every category x channel renders PHI-free", () => {
         });
         const r = renderOutOfBand(n, channel);
         expectNoPhi(surface(r), `${category}/${channel}`);
-        expect(r.link === "" || r.link === `${BASE}/n/nd-abc-123`).toBe(true);
+        expect(r.link).toBe(`${BASE}/n/nd-abc-123`);
         if (channel === "sms") expect(r.body.length).toBeLessThanOrEqual(SMS_SEGMENT);
       });
     }
@@ -177,6 +178,57 @@ describe("WP 4.7 - fail safe: unproven text is replaced by the generic wording",
     });
   }
 
+  const sos = () =>
+    sanitizeForEmergencyContactCall({
+      idempotencyKey: "k-1",
+      agencyName: "Harbor Hospice",
+      subjectDisplayName: "Sam Nurse",
+    });
+  for (const channel of ["push", "sms", "email"] as const) {
+    it(`the SOS script handed to ${channel} renders generic: no names, no link, still sent`, () => {
+      const r = renderOutOfBand(sos(), channel);
+      expect(surface(r)).not.toContain("harbor");
+      expect(surface(r)).not.toContain("sam nurse");
+      expect(r.body).toContain("Sign in to view.");
+      expect(r.link).toBe("");
+    });
+  }
+
+  describe("fallback observability", () => {
+    afterEach(() => setOutOfBandFallbackObserver(undefined));
+    it("reports a stable reason code and channel only, for unissued and wrong-channel notifications", () => {
+      const seen: unknown[] = [];
+      setOutOfBandFallbackObserver((e) => seen.push(e));
+      renderOutOfBand(
+        { notificationDeliveryId: "x", short: PHI[0] as string, deepLink: "" },
+        "sms",
+      );
+      renderOutOfBand(sos(), "push");
+      renderOutOfBand(sos(), "voice");
+      expect(seen).toEqual([
+        { reason: "unissued_notification", channel: "sms" },
+        { reason: "channel_not_bound", channel: "push" },
+      ]);
+    });
+    it("a throwing observer never breaks the render", () => {
+      setOutOfBandFallbackObserver(() => {
+        throw new Error("boom");
+      });
+      expect(renderOutOfBand(sos(), "sms").body).toContain("Sign in to view.");
+    });
+  });
+
+  it("voice with a non-opaque idempotencyKey still speaks the script but correlates with no id", () => {
+    const n = sanitizeForEmergencyContactCall({
+      idempotencyKey: "Jane Patient/../x",
+      agencyName: "Harbor Hospice",
+      subjectDisplayName: "Sam Nurse",
+    });
+    const r = renderOutOfBand(n, "voice");
+    expect(r.body).toContain("Harbor Hospice");
+    expect(r.id).toBe("");
+  });
+
   it("the SOS emergency-contact call (a designated safety route) still speaks its issued script", () => {
     const n = sanitizeForEmergencyContactCall({
       idempotencyKey: "k-1",
@@ -240,6 +292,29 @@ describe("WP 4.7 - coverage guard: no unaudited out-of-band sender", () => {
       expect(src, f).toContain("renderOutOfBand(");
       expect(src, f).not.toMatch(/notification\.(short|deepLink)/);
     }
+  });
+
+  it("no dispatch/notification file other than sanitize.ts touches .short / .deepLink", () => {
+    const dirs = ["dispatch", "notification"].map((d) => join(root, "packages/messaging/src", d));
+    const reads =
+      /\.\s*(short|deepLink)\b|\[\s*["'`](short|deepLink)["'`]\s*\]|\{[^}]*\b(short|deepLink)\b[^}]*\}\s*=\s*(notification|n)\b/;
+    for (const f of dirs.flatMap((d) => walk(d)).filter((f) => !f.endsWith("sanitize.ts")))
+      expect(readFileSync(f, "utf8"), relative(root, f)).not.toMatch(reads);
+  });
+
+  it("no raw fetch / vendor SDK / dynamic import outside the audited senders", () => {
+    const sdk =
+      /\b(?:from\s+|import\s*\(\s*|require\s*\(\s*)["'](?:twilio|web-push|nodemailer|postmark|@aws-sdk\/client-(?:ses|sesv2|sns)|aws-sdk)[^"']*["']/;
+    const rawFetch = /(?<![\w.])fetch\s*\(|globalThis\.fetch\s*\(/;
+    const dirs = ["dispatch", "notification"].map((d) => join(root, "packages/messaging/src", d));
+    for (const f of dirs.flatMap((d) => walk(d))) {
+      const rel = relative(root, f);
+      const src = readFileSync(f, "utf8");
+      expect(src, `${rel} imports a vendor SDK`).not.toMatch(sdk);
+      if (!(rel in AUDITED_SENDERS))
+        expect(src, `${rel} calls fetch directly`).not.toMatch(rawFetch);
+    }
+    for (const f of files) expect(readFileSync(f, "utf8"), relative(root, f)).not.toMatch(sdk);
   });
 
   it("the dispatch and notification surfaces import no template, composer or payload module (tenant-edited templates cannot reach a vendor)", () => {

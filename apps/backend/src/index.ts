@@ -49,6 +49,7 @@ import {
   accountRoom,
   computeRoomSet,
   createAlertPayloadRegistry,
+  setOutOfBandFallbackObserver,
   userRoom,
 } from "@wardenx/messaging";
 import {
@@ -8731,6 +8732,26 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       jobId: M36_DELIVERY_PLATFORM_JOB_ID,
       reason: "M36 §4.4 send_* delivery sweep (active-org enumeration)",
     });
+    // WP 4.7: an out-of-band alert whose base URL is unusable ships with generic wording and NO link.
+    // Warn at boot in production-like envs, and log (reason code + channel only, no content) each generic fallback.
+    if (process.env.NODE_ENV === "production" || process.env.NODE_ENV === "staging") {
+      let baseUrlUsable = false;
+      try {
+        baseUrlUsable = /^https?:$/.test(new URL(webAppBaseUrl ?? "").protocol);
+      } catch {
+        baseUrlUsable = false;
+      }
+      if (!baseUrlUsable)
+        app.log.warn(
+          "WEB_APP_URL / BETTER_AUTH_URL is empty or not a valid http(s) URL: out-of-band alerts will ship without a link",
+        );
+    }
+    setOutOfBandFallbackObserver((event) =>
+      app.log.warn(
+        { reason: event.reason, channel: event.channel },
+        "M36 out-of-band alert rendered with generic wording (unproven or wrong-channel notification)",
+      ),
+    );
     const m36DeliveryWorkers = registerM36DeliveryWorkers({
       connection: queueConnection,
       store: createDrizzleDeliveryDispatchStore(dbHandle.db, m36OutboxPublisher),

@@ -253,8 +253,11 @@ export {
   sanitizeForOutOfBand,
   sanitizeForEmergencyContactCall,
   renderOutOfBand,
+  setOutOfBandFallbackObserver,
   OUT_OF_BAND_CHANNELS,
   type RenderedOutOfBand,
+  type OutOfBandFallbackEvent,
+  type OutOfBandFallbackReason,
 } from "./notification";
 export type {
   Alert,

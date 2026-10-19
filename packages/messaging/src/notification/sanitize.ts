@@ -58,16 +58,38 @@ export type OutOfBandChannel = "sms" | "email" | "push" | "voice";
 export const OUT_OF_BAND_CHANNELS: readonly OutOfBandChannel[] = ["sms", "email", "push", "voice"];
 
 /**
- * WP 4.7 provenance: only the two sanitizers below mint a notification, and they register it here. The
- * renderer ({@link renderOutOfBand}) trusts a notification only if it is in this set, so a hand-built object,
- * or a spread copy with a swapped `short`, can never put its own text on a lock screen. Module-private.
+ * WP 4.7 provenance: only the two sanitizers below mint a notification, and they register it here together with
+ * the channels its text is valid for. The renderer ({@link renderOutOfBand}) trusts a notification only for those
+ * channels, so a hand-built object, a spread copy with a swapped `short`, or the SOS call script handed to a
+ * push/SMS/email transport can never put its own text on a lock screen. Module-private.
  */
-const issuedNotifications = new WeakSet<object>();
+const issuedNotifications = new WeakMap<object, ReadonlySet<OutOfBandChannel>>();
 
-function issue(n: SanitizedNotification): SanitizedNotification {
+function issue(
+  n: SanitizedNotification,
+  channels: readonly OutOfBandChannel[],
+): SanitizedNotification {
   const frozen = Object.freeze(n);
-  issuedNotifications.add(frozen);
+  issuedNotifications.set(frozen, new Set(channels));
   return frozen;
+}
+
+/** Stable, content-free reason codes for a generic-wording fallback (log / metric keys). */
+export type OutOfBandFallbackReason = "unissued_notification" | "channel_not_bound";
+
+export interface OutOfBandFallbackEvent {
+  readonly reason: OutOfBandFallbackReason;
+  readonly channel: OutOfBandChannel;
+}
+
+let fallbackObserver: ((event: OutOfBandFallbackEvent) => void) | undefined;
+
+/** Install (or clear) the observer called whenever the renderer substitutes generic wording. It receives a
+ *  reason code and the channel only - never text, ids or recipients. A throwing observer is ignored. */
+export function setOutOfBandFallbackObserver(
+  observer: ((event: OutOfBandFallbackEvent) => void) | undefined,
+): void {
+  fallbackObserver = observer;
 }
 
 /** SMS hard cap (§4.7) — the `short` is truncated to fit one segment with the signed deep link. */
@@ -108,16 +130,19 @@ export function sanitizeForEmergencyContactCall(input: {
 }): SanitizedNotification {
   const agency = cleanSpokenName(input.agencyName, CONTACT_CALL_AGENCY_FALLBACK);
   const subject = cleanSpokenName(input.subjectDisplayName, CONTACT_CALL_SUBJECT_FALLBACK);
-  return issue({
-    notificationDeliveryId: input.idempotencyKey,
-    short: [
-      `This is an automated safety call from ${agency}. ${subject} listed you as an emergency contact,`,
-      "and a safety alert they raised has not been answered. Please try to reach them now.",
-      "If you cannot reach them and you are concerned for their safety, contact your local emergency services.",
-      "This call does not involve any patient.",
-    ].join(" "),
-    deepLink: "",
-  });
+  return issue(
+    {
+      notificationDeliveryId: input.idempotencyKey,
+      short: [
+        `This is an automated safety call from ${agency}. ${subject} listed you as an emergency contact,`,
+        "and a safety alert they raised has not been answered. Please try to reach them now.",
+        "If you cannot reach them and you are concerned for their safety, contact your local emergency services.",
+        "This call does not involve any patient.",
+      ].join(" "),
+      deepLink: "",
+    },
+    ["voice"],
+  );
 }
 
 /** The one generic line (WP 4.7). Names no patient, no clinical content and no sender; the link, when
@@ -193,11 +218,14 @@ export function sanitizeForOutOfBand(input: {
   const short =
     channel === "voice" ? VOICE_SCRIPT : channel === "sms" ? clampForSms(baseShort) : baseShort;
 
-  return issue({
-    notificationDeliveryId,
-    short,
-    deepLink: deepLinkFor(baseUrl, notificationDeliveryId),
-  });
+  return issue(
+    {
+      notificationDeliveryId,
+      short,
+      deepLink: deepLinkFor(baseUrl, notificationDeliveryId),
+    },
+    OUT_OF_BAND_CHANNELS,
+  );
 }
 
 /** What a vendor transport puts on the wire, per channel. Every field is generic or opaque. */
@@ -219,7 +247,7 @@ const EMAIL_SUBJECT = "WardenX notification";
 
 /**
  * WP 4.7 render-time guard: the ONLY place out-of-band subject / title / body text is composed. A notification
- * that did not come out of a sanitizer above (hand-built, or a modified copy) is replaced by the generic wording
+ * that did not come out of a sanitizer above for this channel (hand-built, a modified copy, or minted for another channel) is replaced by the generic wording
  * and no link, so a future caller, template or payload field cannot leak. Never throws and never drops the send:
  * the fallback is still a deliverable alert.
  */
@@ -227,7 +255,18 @@ export function renderOutOfBand(
   notification: SanitizedNotification,
   channel: OutOfBandChannel,
 ): RenderedOutOfBand {
-  const proven = issuedNotifications.has(notification);
+  const bound = issuedNotifications.get(notification);
+  const proven = bound?.has(channel) === true;
+  if (!proven) {
+    try {
+      fallbackObserver?.({
+        reason: bound === undefined ? "unissued_notification" : "channel_not_bound",
+        channel,
+      });
+    } catch {
+      // an observer must never break a send
+    }
+  }
   const short = proven ? notification.short : channel === "voice" ? VOICE_SCRIPT : GENERIC_SHORT;
   const link = proven ? notification.deepLink : "";
   const id =
