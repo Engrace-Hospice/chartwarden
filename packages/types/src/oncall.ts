@@ -494,6 +494,9 @@ export const M19_SUBSCRIBED_EVENT_NAMES = [
   // ADR-0082 slice S2 - routed AND bound (`consumers/bindings.ts`): M36 catalogues it (slice S1), declares `m19`.
   "m36.afterhours_triage.requested",
   "m8.encounter.signed",
+  // ADR-0082 slice S1 - declared by M36 on the catalog entry; the D10 consumer is slice S2 (unbound until then, see
+  // `scripts/outbox-deferred-consumers.ts`).
+  "m36.afterhours_triage.requested",
   // Subscribed and NOT routed here — each registered in `scripts/outbox-subscription-exceptions.ts`.
   "m11.order.verbal_expired_unsigned",
   "m5.patient.deceased",
