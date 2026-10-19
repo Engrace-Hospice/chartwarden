@@ -2255,6 +2255,14 @@
       "app": "web",
       "module": "36-messaging",
       "moduleId": 36,
+      "id": "messaging.preferences",
+      "path": "/messaging/preferences",
+      "permission": "messaging.read"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
       "id": "messaging.saved-replies",
       "path": "/messaging/saved-replies",
       "permission": "messaging.send"
