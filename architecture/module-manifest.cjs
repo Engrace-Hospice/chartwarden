@@ -242,6 +242,7 @@ exports.MODULES = [
       "clinical_handoff_event",
       "message_acknowledgment_request",
       "message_acknowledgment_event",
+      "message_thread_access_grant",
       "messaging_review_item",
       "chart_promotion_request",
       "tenant_handoff_policy",
