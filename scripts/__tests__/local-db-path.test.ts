@@ -61,6 +61,15 @@ describe("one local provisioning path", () => {
     }
   });
 
+  it("db:seed:all runs the portal seed after an admission is activated", () => {
+    // seed-portal-user picks a patient with provider_entity_id, which only the m6.admission.activated consumer sets.
+    const all = PKG.scripts["db:seed:all"] ?? "";
+    expect(all.indexOf("db:seed:portal")).toBeGreaterThan(
+      all.indexOf("db:seed:scenario-admissions"),
+    );
+    expect(all.indexOf("db:seed:scenario-admissions")).toBeGreaterThan(-1);
+  });
+
   it("db:reset proves the reset happened rather than assuming it", () => {
     // The whole defect was a reset that silently did not reset. `--expect-empty` asserts zero
     // tables before migrations replay, so the mismatch fails loudly instead.
