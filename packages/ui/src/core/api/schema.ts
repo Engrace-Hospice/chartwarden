@@ -14813,6 +14813,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/oncall/coverage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who is covering now for a role (WP 4.12, ADR-0080; messaging.read + messaging.oncall.read + patient.read with caseload_or_scope on `patient_id` (no break-glass), otherwise 403; a patient the caller cannot see or outside the organisation is the uniform 404 and the router is never asked; the uniform 404 while the tenant flag `messaging.oncall_directory` is off). Read-only: nothing is paged or sent. Asks the M19 EscalationRouter tier by tier (at most 4) for the role and the given patient's team, as of the server clock. `status` is covered, coverage_gap (the ladder has tier 1 and nobody covers it now: stated, never silent), roster_not_connected (no M19 router is bound: coverage is UNKNOWN, not empty) or not_configured (no ladder for the role). Each tier has display names only (null when a name cannot be found; no user id, contact detail or patient data), the roster's IANA `time_zone` (render times in it), and `shift_ends_at` only when the roster supplied a valid future instant, else null. A role outside the closed list, a malformed patient id or an unknown key is a 422. Responses are never cached. Read-audited against `patient_id` (it discloses the patient's care-team coverage) */
+        get: operations["getApiV1MessagingOncallCoverage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/patients/{patientId}/care-team-channel": {
         parameters: {
             query?: never;
@@ -68885,6 +68902,43 @@ export interface operations {
                 content: {
                     "application/json": {
                         cleared: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingOncallCoverage: {
+        parameters: {
+            query: {
+                role: "rn" | "physician";
+                patient_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        role: "rn" | "physician";
+                        /** Format: date-time */
+                        as_of: string;
+                        status: "covered" | "coverage_gap" | "roster_not_connected" | "not_configured";
+                        tiers: {
+                            tier: number;
+                            state: "covering" | "coverage_gap";
+                            people: (string | null)[];
+                            shift_ends_at: string | null;
+                            time_zone: string;
+                        }[];
                     };
                 };
             };
