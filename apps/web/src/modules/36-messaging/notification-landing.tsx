@@ -66,8 +66,10 @@ export function NotificationLanding(): JSX.Element {
           setState({ kind: "found", channelId: data.channel_id, messageId: data.message_id });
           return;
         }
-        // Any 4xx is the server saying "no" (uniform 404/403); only a non-4xx failure is retryable.
-        setState({ kind: response && response.status < 500 ? "gone" : "failed" });
+        // A 4xx is the server saying "no" (uniform 404/403); a timeout, rate limit or 5xx is transient and retryable.
+        const transient =
+          !response || response.status === 408 || response.status === 429 || response.status >= 500;
+        setState({ kind: transient ? "failed" : "gone" });
       })
       .catch(() => {
         if (!cancelled) setState({ kind: "failed" });

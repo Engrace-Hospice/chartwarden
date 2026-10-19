@@ -168,6 +168,8 @@ describe("signed in", () => {
 
   it.each([
     ["500", () => new Response("boom", { status: 500 })],
+    ["429", () => new Response("slow down", { status: 429 })],
+    ["408", () => new Response("timeout", { status: 408 })],
     ["rejected promise", () => Promise.reject(new TypeError("offline")) as unknown as Response],
   ])("a %s is a retryable failure, not 'no longer available'", async (_name, make) => {
     const { container, calls } = mount(`/n/${DELIVERY}`, SESSION, make);
