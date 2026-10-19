@@ -26,7 +26,7 @@ export type UrgentDepsInput = Omit<
 const MSG = schema.messages;
 
 /** The recipient of the urgent message this author already sent in this channel under this client id, or null. */
-function createDbReplayLookup(
+export function createDbReplayLookup(
   db: DbClient,
 ): NonNullable<UrgentBindingInput["findReplayRecipient"]> {
   return (orgId, authorUserId, channelId, clientMessageId) =>

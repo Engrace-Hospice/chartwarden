@@ -90,7 +90,8 @@ aggregate (analytics, ladder, drills) carry **ids and counts only**.
 | 4.9 | Unacknowledged-urgent queue + ladder | `/messaging/unacknowledged` | web | `messaging.review` (built) | — (ADR-0076: no flag) | `GET /escalations/unacknowledged` built; `…/supervisor-reassign` built; `GET /escalations/:id` built | partial. `unacknowledged-queue.tsx` at `/messaging/unacknowledged`, permission `messaging.review` (not the proposed `…escalation.supervise`), `GET /escalations/unacknowledged`, "Showing N of M", supervisor Reassign; no ladder visualiser, no Call, no take-over, read-only detail panel absent (flat list) |
 | 4.10 | Reminders and snooze | inbox row, notification row | web | `messaging.read` | `notification_policy` (route 404s when tenant flag `messaging.notification_policy` is off) | `GET/PUT/DELETE /channels/:id/snooze`, `GET /reminders`, `PUT/DELETE /messages/:id/reminder` built; digest in preferences unverified | built. `snooze-control.tsx`, `message-reminder-button.tsx`, `use-channel-snooze.ts`; routes `…/channels/:id/snooze`, `/messages/:id/reminder`, `/reminders` (shape differs from `/alerts/:id/snooze`); ADR-0077. Digest switch: unverified |
 | 4.11 | Drill log + fallback card | `/messaging/fallback`; `/messaging/governance/drills` | web | `messaging.read`; `messaging.drill.manage` **new** | — | `GET/POST /messaging/drills` **new** | partial. Runbook `docs/runbooks/messaging-escalation-fallback.md` only; no fallback card or drill-log screen |
-| 4.12+ | On-call "who covers now" directory | `/messaging/on-call` | web | `messaging.oncall.read` **new** | `oncall_directory`+ | `GET /oncall/coverage` **new** (via `EscalationRouter`, real M19 router needed) | partial (read-only slice, ADR-0080, flag off). `GET /oncall/coverage?role&patient_id` over the guarded `EscalationRouter` (deny-stub on main, so the screen says "roster not connected"), `oncall-directory.tsx` at `/messaging/on-call?patient=`, `messaging.oncall.read` (migration 1128), flag `messaging.oncall_directory`; coverage gap explicit; shift end only if M19 supplies it; **no role-based send, no availability status, no patient-less view** |
+| 4.12+ | On-call "who covers now" directory | `/messaging/on-call` | web | `messaging.oncall.read` **new** | `oncall_directory`+ | `GET /oncall/coverage` **new** (via `EscalationRouter`, real M19 router needed) | partial (read-only slice, ADR-0080, flag off). `GET /oncall/coverage?role&patient_id` over the guarded `EscalationRouter` (deny-stub on main, so the screen says "roster not connected"), `oncall-directory.tsx` at `/messaging/on-call?patient=`, `messaging.oncall.read` (migration 1128), flag `messaging.oncall_directory`; coverage gap explicit; shift end only if M19 supplies it; **no availability status, no patient-less view**; role-based send is the next row |
+| 4.12b | Role-based send ("message the on-call RN") | care-team composer, **Message on-call role** next to Urgent clinical and Needs a response | web | `messaging.oncall.send` **new** (granted to no tenant role) + `messaging.urgent.send` + `messaging.send` | `role_send` (flag `messaging.role_send`, off) | `GET /channels/:id/role-send/resolution`, `POST /channels/:id/role-send` **new** (guarded `EscalationRouter` tier 1, then the ordinary urgent send; `addressed_role` on the request, migration 1129) | partial (ADR-0081 PROPOSED, flag off, fail closed). Sender picks `rn` or `physician`, writes SBAR, the server names who covers tier 1 now, the sender **confirms** that person, the server re-checks at send (409 if changed), a gap / not connected / no ladder is a refusal with the telephone-procedure wording and nothing is sent; **no fallback to a backup tier, another role or a guess**; the real M19 router and the clinical-lead decisions are still open |
 | 5.1 | Offline outbox | (composer, drawer) | web | `messaging.send` | — | `POST /channels/:id/messages` (`clientMessageId`) built | partial. `use-outbox.ts`, `pending-message-row.tsx` ("Not sent", Retry), `offline-banner.tsx`; IndexedDB encryption and the never-queue-urgent rule: unverified |
 | 5.2 | Reconnect sync | (header chip) | web | `messaging.read` | — | `GET /channels/:id/messages?after=` built | partial. `realtime-banner.tsx` ("Live updates paused"); no Live / Catching up chip; `after` cursor use in `use-thread.ts` unverified |
 | 5.3 | Camera capture | (composer sheet) | web | `messaging.send` | — | attachments routes built | missing (no `capture` input in `attachment-composer.tsx`) |
@@ -289,6 +290,62 @@ On call now (Team A)  as of 14:07 (America/Los_Angeles)    [Role ▾ RN]
 - **A11y/PHI:** table with a time-zone caption; availability by text and icon. Shows staff and roles only; no patient data on this screen.
 - **Acceptance:** axe + keyboard; live: shift-boundary and DST cases through the real router. **Blockers:** a real M19 router and a named M19 owner
   ([`brief-m19-owner.md`](./brief-m19-owner.md)); an ADR for role recipients; clinical-lead sign-off on who may be addressed by role.
+
+#### 4.12b Role-based send ("Message on-call role"), PROPOSED in [ADR-0081](../adr/ADR-0081-messaging-role-send.md)
+
+```
+Composer (care-team conversation)      [Poll] [Urgent clinical] [Message on-call role]   [ ] Needs a response
+
+Message the on-call role                                   Step 1 of 2: write it
+  Not the emergency path. Sending does not page or escalate anyone; the person on call is told in the app only.
+  Which role? (required)   (o) RN   ( ) Physician
+  Situation / Background / Assessment / Recommendation      (the same four SBAR sections as Urgent clinical)
+  [Cancel]                                                  [Check who is on call]
+
+Message the on-call role                                   Step 2 of 2: confirm who
+  Confirm who is on call (required)
+  (o) Dana K., on call RN    until 7:00 PM PDT (as of 2:07 PM PDT)
+  This goes to Dana K., the on-call RN right now, and is marked urgent. It cannot be edited after sending.
+  [Back]                                    [Send urgent message to Dana K.]
+```
+- **Flow:** choose a role, write SBAR, **Check who is on call** (the server resolves tier 1 for that patient's team), **confirm the named person** (the send
+  button names them and stays off until one person is chosen), send. The server re-resolves at send time. The stored request keeps the role
+  (`addressed_role`) and the resolved person (`assigned_user_id`); the message is the ordinary urgent message to that one person.
+- **Offered when (all):** tenant flag `messaging.role_send` on (no flag provider reads as off), the person holds `messaging.send`, `messaging.urgent.send` and
+  `messaging.oncall.send`, the conversation is a patient care-team conversation, the Urgent clinical options route allows it, and response tracking
+  (`messaging.ack_requests`) is on (the server refuses a role send it cannot record). The server is the authority; the web hides, never grants.
+- **States and wording (provisional, `role-send-wording.ts`; the clinical lead approves):**
+
+| State | Shown | Can send? |
+|---|---|---|
+| Checking | "Finding who is on call..." (status) | No |
+| Covered, one person | The person, role, shift end in the roster's zone ("Shift end not provided" when the roster gave none), the confirm line | Yes, to that person |
+| Covered, several | A radio group; the send names the chosen person | Only after one is chosen |
+| Covered, name unavailable | "Someone is on call but their name could not be shown, so they cannot be confirmed. Nothing was sent. Use the agency telephone procedure." | No |
+| Coverage gap | "Nobody is confirmed on call for this role right now. Use the agency telephone procedure; no message was sent." (alert) | No |
+| Roster not connected | "The on-call roster is not connected, so who is on call is unknown. Nothing was sent. Use the agency telephone procedure." | No |
+| No schedule for the role | "No on-call schedule is set up for this role. Nothing was sent. Use the agency telephone procedure." | No |
+| Lookup failed | "Could not find out who is on call. Nothing was sent. Try again, or use the agency telephone procedure." + Try again | No |
+| Not available (401/403/404, flag off) | "Messaging a role is not available here. Nothing was sent. Use the agency telephone procedure." | No |
+| Changed since the check (409 `ROLE_SEND_RESOLUTION_CHANGED`) | "Who is on call changed. Nothing was sent. Check the name below and confirm again." The roster is re-read and the confirmation cleared | Only after a new confirmation |
+| Gap at send (422 `ROLE_SEND_NO_COVERAGE`) | The telephone-procedure wording; the roster is re-read | No |
+| Cannot track the response (503 `ROLE_SEND_UNAVAILABLE`) | "Messaging a role is unavailable right now. Nothing was sent. Use the agency telephone procedure." | Retry is safe |
+| Sent | Status line "Urgent message sent to Dana K., the on-call RN. They have been told in the app. This is not a page." (focusable, clears after 20 s or when the composer text changes); replay: "That message was already sent. It was not sent again." | n/a |
+| May have been stored (5xx / no response / untyped 409) | "It may not have been sent. Check the conversation before trying again; sending the same message again will not duplicate it." | Retry is idempotent |
+
+- **A11y:** one portalled dialog (the composer's `<form>` is never submitted by it: the dialog's submit stops propagation), the role and the person are radio
+  groups with legends, focus moves to the step-2 region and back to the trigger on close, refusals are `role="alert"`, the restated recipient is a polite
+  live region, the discard prompt is an `alertdialog`. axe clean in every state (dom test).
+- **PHI:** the resolution names staff only and reads the patient only as the selector; it is read-audited against the patient. Logs carry the role and a status
+  word, never the patient, a name or message text.
+- **Acceptance:**
+  1. Flag off, a missing key, a non-care-team channel or a missing patient: no control (web) and the uniform 404 / 403 (server); a patient the caller cannot see, an
+     other-organisation or nonexistent patient and a patient that is not the conversation's are one identical 404 and the router is never asked.
+  2. Only tier 1 is asked. A gap, "roster not connected" (the real deny-stub), "no ladder" and a router test source are refusals; **no message and no request exist** after one.
+  3. A confirmed person who no longer covers at send time is a 409 and nothing is sent; a retry of a send that already committed to the same person replays (200) without re-resolving.
+  4. The stored request has `addressed_role` and the resolved person as `assigned_user_id`; the role cannot be changed afterwards (database trigger).
+  5. Axe + keyboard on the dialog states above; the Idempotency-Key is required; the urgent limiter applies.
+  6. Live (private database): migration 1129 applies, the request stores the role, RLS and the role guard hold. **Still open:** shift-boundary and DST cases through the real M19 router, and the clinical-lead decisions in ADR-0081 (who may address a role, which roles, whether a gap may ever fall back, the wording, confirm staleness).
 
 ## 6. Phase 5 screens
 
@@ -495,7 +552,7 @@ the next request. **Needs:** ADR, BAA/legal review, clinical-lead sign-off on wh
 
 | Area | TigerConnect (marketing, unverified) | Parity target | Hospice-specific advantage we add | Pri | WP |
 |---|---|---|---|---|---|
-| Role-based messaging | Message a role or on-call person, not a phone | Address "on-call RN" and get a person | Server resolves at send time with schedule zone, **sender confirms the resolved person**, request stores role + person; coverage gap is explicit, never silent | P0 | 4.3 (built seam) + **4.12** |
+| Role-based messaging | Message a role or on-call person, not a phone | Address "on-call RN" and get a person | Server resolves at send time with schedule zone, **sender confirms the resolved person**, request stores role + person; coverage gap is explicit, never silent | P0 | 4.3 (built seam) + **4.12** (**4.12b**, ADR-0081 PROPOSED: built flag-off, fail-closed; real M19 router still required) |
 | Priority alerts | Priority levels with distinct alerting | Routine / important / urgent / Critical, distinct tone | **Closed-loop acknowledgment with audit**: opened ≠ taken; aide = receipt only; permanent "not the emergency path" | P0 | 4.1, 4.2 (built), G1, G2 |
 | Escalation | Auto-escalate unanswered alerts | Timed tier escalation, backup routing | Visible **ladder visualiser**, supervisor queue with "shown N of M", `failed_unreachable`, restart-safe timers, exactly-once | P0 | 4.4 (built), 4.5, 4.9 |
 | Scheduling | On-call schedules integrated | Read M19 roster | Honest "who covers now" with shift/time-zone correctness; **after-hours triage line routing** into M19 `triage_call` | P0 | **4.12**, **4.13** |
@@ -521,7 +578,7 @@ calls, family notification, equipment pickup, bereavement referral, each owned a
 |---|---|---|
 | Reassign limits; supervisor override and take-over (G1, 4.9) | Clinical lead | Open in brief §3 and §5 |
 | Safety-floor list and locked quiet-hours rows (4.6) | Clinical lead | Decides what can never be silenced |
-| Role-based recipients and who may address a role (4.12) | Clinical lead + **new ADR** + M19 owner | Not built; changes who is paged |
+| Role-based recipients and who may address a role (4.12) | Clinical lead + ADR-0081 (PROPOSED) + M19 owner | Built flag-off and fail-closed (ADR-0081); changes who is paged; no tenant role holds `messaging.oncall.send` until the clinical lead decides |
 | Message retention classes and legal-hold overlay (5.6) | **New ADR** (ADR-0051 pattern) + compliance | Plan 02 §8 |
 | Export format and approval roles (5.7) | Compliance + **new ADR** | |
 | Break-glass eligibility, durations, review SLA (5.8) | Compliance + clinical lead | Matrix says "conditional" |

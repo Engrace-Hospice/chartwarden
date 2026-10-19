@@ -23,6 +23,8 @@ export interface AckRow {
   readonly resolvedByUserId: string | null;
   readonly cancelledAt: Date | null;
   readonly version: number;
+  /** ADR-0081: the role the sender addressed, null when a person was named. Fixed once set. */
+  readonly addressedRole?: string | null;
   /** Last write (the instant a `failed_unreachable` request became so, while it stays so). Optional: older fixtures omit it. */
   readonly updatedAt?: Date;
 }
@@ -37,6 +39,8 @@ export interface NewAckRequest {
   readonly assignedUserId: string;
   readonly requestedAt: Date;
   readonly deadlineAt: Date;
+  /** ADR-0081: set only by a role-based send. */
+  readonly addressedRole?: string | undefined;
 }
 
 /** The columns a transition may change (everything else is immutable; the DB trigger refuses the rest). */

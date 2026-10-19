@@ -28,6 +28,7 @@ import {
 } from "./needs-response-control";
 import { NonMemberMentionPrompt } from "./non-member-mention-prompt";
 import { PollCreateButton } from "./poll-create-button";
+import { RoleSendButton } from "./role-send-button";
 import { SbarFormDialog } from "./sbar-form-dialog";
 import { sbarAllowedInChannel, sbarOfferedInChannel } from "./sbar-utils";
 import { ScheduleSendButton } from "./schedule-send-button";
@@ -329,6 +330,13 @@ export function ThreadComposer({
             onSent={onPollCreated}
           />
           <UrgentMessageButton
+            channelId={channel.channelId}
+            kind={channel.kind}
+            disabled={sending}
+            onThreadChanged={onPollCreated}
+            statusResetKey={draft}
+          />
+          <RoleSendButton
             channelId={channel.channelId}
             kind={channel.kind}
             disabled={sending}
