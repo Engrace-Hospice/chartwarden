@@ -14518,6 +14518,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/escalations/unacknowledged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 400 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses */
+        get: operations["getApiV1MessagingEscalationsUnacknowledged"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/global-search/settings": {
         parameters: {
             query?: never;
@@ -67674,6 +67691,64 @@ export interface operations {
                             };
                         };
                         changed: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingEscalationsUnacknowledged: {
+        parameters: {
+            query?: {
+                status?: "pending" | "escalated" | "failed_unreachable";
+                overdue?: boolean;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            restricted: boolean;
+                            id: string | null;
+                            channel_id: string | null;
+                            message_id: string | null;
+                            patient_id: string | null;
+                            ack_class: "important" | "urgent" | "critical_symptom";
+                            status: "pending" | "escalated" | "failed_unreachable";
+                            assigned_user_id: string | null;
+                            assigned_display_name: string | null;
+                            /** Format: date-time */
+                            requested_at: string;
+                            /** Format: date-time */
+                            deadline_at: string;
+                            overdue: boolean;
+                            overdue_seconds: number;
+                            current_tier: number;
+                            escalation_note: ("route_unavailable" | "ladder_exhausted") | null;
+                            delivery_failed: boolean;
+                        }[];
+                        next_cursor: string | null;
+                        audit_request_id: string | null;
+                        complete: boolean;
+                        filtered: boolean;
+                        counts: {
+                            unfiltered: number;
+                            matching: number;
+                            overdue: number;
+                            failed_unreachable: number;
+                        };
                     };
                 };
             };

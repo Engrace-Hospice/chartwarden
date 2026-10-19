@@ -86,6 +86,18 @@ const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
     "WP 4.8 the deep-link landing: it names the open acknowledgment request to focus and states that opening a link never acknowledges (a read, never a receipt)",
   "apps/web/src/modules/36-messaging/notification-landing.tsx":
     "WP 4.8 the deep-link landing: it names the open acknowledgment request to focus and states that opening a link never acknowledges (a read, never a receipt)",
+  "apps/backend/src/modules/36-messaging/routes/unacknowledged-routes.ts":
+    "WP 4.9 the supervisor's queue of requests still waiting for someone to take responsibility: it lists and counts what is NOT acknowledged and never acknowledges (a read, never a receipt)",
+  "apps/backend/src/modules/36-messaging/routes/unacknowledged-typebox.ts":
+    "WP 4.9 the supervisor's queue of requests still waiting for someone to take responsibility: it lists and counts what is NOT acknowledged and never acknowledges (a read, never a receipt)",
+  "apps/web/src/modules/36-messaging/screens.ts":
+    "WP 4.9 the supervisor's queue of requests still waiting for someone to take responsibility: it lists and counts what is NOT acknowledged and never acknowledges (a read, never a receipt)",
+  "apps/web/src/modules/36-messaging/unacknowledged-queue.tsx":
+    "WP 4.9 the supervisor's queue of requests still waiting for someone to take responsibility: it lists and counts what is NOT acknowledged and never acknowledges (a read, never a receipt)",
+  "apps/web/src/modules/36-messaging/unacknowledged-wording.ts":
+    "WP 4.9 the supervisor's queue of requests still waiting for someone to take responsibility: it lists and counts what is NOT acknowledged and never acknowledges (a read, never a receipt)",
+  "apps/web/src/modules/36-messaging/use-unacknowledged-queue.ts":
+    "WP 4.9 the supervisor's queue of requests still waiting for someone to take responsibility: it lists and counts what is NOT acknowledged and never acknowledges (a read, never a receipt)",
   "apps/web/src/modules/36-messaging/reaction-palette.ts":
     "WP 2.4 user-facing copy that NEGATES the word: a reaction does not mean a message was read, acknowledged or acted on",
 };

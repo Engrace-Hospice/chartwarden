@@ -14,6 +14,9 @@ const GlobalSearchSettings = lazy(() =>
 const StaffMessaging = lazy(() =>
   import("./staff-messaging").then((m) => ({ default: m.StaffMessaging })),
 );
+const UnacknowledgedQueue = lazy(() =>
+  import("./unacknowledged-queue").then((m) => ({ default: m.UnacknowledgedQueue })),
+);
 const NotificationLanding = lazy(() =>
   import("./notification-landing").then((m) => ({ default: m.NotificationLanding })),
 );
@@ -29,6 +32,15 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "General",
       requiredPermission: "messaging.read",
       screen: StaffMessaging,
+    },
+    {
+      // WP 4.9 (ADR-0076): the supervisor's queue of requests still waiting for a human; the API demands messaging.review as well.
+      id: "messaging.unacknowledged",
+      path: "/messaging/unacknowledged",
+      title: "Unacknowledged urgent requests",
+      navGroup: "General",
+      requiredPermission: "messaging.review",
+      screen: UnacknowledgedQueue,
     },
     {
       id: "messaging.saved-replies",

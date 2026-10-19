@@ -171684,6 +171684,314 @@
         }
       }
     },
+    "/api/v1/messaging/escalations/unacknowledged": {
+      "get": {
+        "operationId": "getApiV1MessagingEscalationsUnacknowledged",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 400 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "pending",
+                  "type": "string"
+                },
+                {
+                  "const": "escalated",
+                  "type": "string"
+                },
+                {
+                  "const": "failed_unreachable",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "overdue",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "next_cursor",
+                    "audit_request_id",
+                    "complete",
+                    "filtered",
+                    "counts"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "restricted",
+                          "id",
+                          "channel_id",
+                          "message_id",
+                          "patient_id",
+                          "ack_class",
+                          "status",
+                          "assigned_user_id",
+                          "assigned_display_name",
+                          "requested_at",
+                          "deadline_at",
+                          "overdue",
+                          "overdue_seconds",
+                          "current_tier",
+                          "escalation_note",
+                          "delivery_failed"
+                        ],
+                        "properties": {
+                          "restricted": {
+                            "type": "boolean"
+                          },
+                          "id": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "channel_id": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "message_id": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "patient_id": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "ack_class": {
+                            "anyOf": [
+                              {
+                                "const": "important",
+                                "type": "string"
+                              },
+                              {
+                                "const": "urgent",
+                                "type": "string"
+                              },
+                              {
+                                "const": "critical_symptom",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "escalated",
+                                "type": "string"
+                              },
+                              {
+                                "const": "failed_unreachable",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "assigned_user_id": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "assigned_display_name": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "requested_at": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "deadline_at": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "overdue": {
+                            "type": "boolean"
+                          },
+                          "overdue_seconds": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "current_tier": {
+                            "type": "integer"
+                          },
+                          "escalation_note": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "route_unavailable",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "ladder_exhausted",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "delivery_failed": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "next_cursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "audit_request_id": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "complete": {
+                      "type": "boolean"
+                    },
+                    "filtered": {
+                      "type": "boolean"
+                    },
+                    "counts": {
+                      "type": "object",
+                      "required": [
+                        "unfiltered",
+                        "matching",
+                        "overdue",
+                        "failed_unreachable"
+                      ],
+                      "properties": {
+                        "unfiltered": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "matching": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "overdue": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "failed_unreachable": {
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/global-search/settings": {
       "get": {
         "operationId": "getApiV1MessagingGlobalsearchSettings",

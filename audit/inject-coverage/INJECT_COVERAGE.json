@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1656,
-    "coveredRoutes": 1656,
-    "directRoutesReferenced": 1546
+    "routes": 1657,
+    "coveredRoutes": 1657,
+    "directRoutesReferenced": 1547
   },
   "modules": [
     {
@@ -503,7 +503,7 @@
     },
     {
       "module": "36-messaging",
-      "routes": 114,
+      "routes": 115,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
@@ -558,6 +558,8 @@
         "apps/backend/__tests__/m36-tenant-idor.live.test.ts",
         "apps/backend/__tests__/m36-tranche-b-review.live.test.ts",
         "apps/backend/__tests__/m36-transactional-email.live.test.ts",
+        "apps/backend/__tests__/m36-unacknowledged.live.test.ts",
+        "apps/backend/__tests__/m36-unacknowledged.test.ts",
         "apps/backend/__tests__/m36-urgency.live.test.ts",
         "apps/backend/__tests__/m36-urgent-routes.test.ts",
         "apps/backend/__tests__/messaging-member-admin.test.ts",
@@ -565,7 +567,7 @@
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 114
+      "directRoutesReferenced": 115
     },
     {
       "module": "37-ipu",

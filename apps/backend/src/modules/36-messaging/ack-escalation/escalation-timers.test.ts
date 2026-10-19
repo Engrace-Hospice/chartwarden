@@ -97,6 +97,37 @@ describe("the worker bodies", () => {
     ).rejects.toThrow();
   });
 
+  it("WP 4.9: observes every org after its sweep, and a failing observation is reported but never fails the tick", async () => {
+    const sweep = vi.fn().mockResolvedValue({ escalated: 0, notRouted: 0, skipped: 0, failed: 0 });
+    const observeOrg = vi.fn().mockRejectedValue(new Error("stats down"));
+    const onError = vi.fn();
+    const activeOrgs = { listActiveOrgs: async () => [{ organizationId: ORG }] };
+
+    await sweepTick({ service: { sweep, processDue: vi.fn() }, activeOrgs, observeOrg, onError });
+
+    expect(observeOrg).toHaveBeenCalledWith(ORG);
+    expect(onError).toHaveBeenCalledWith(
+      { organizationId: ORG, job: "ack_queue_observe" },
+      expect.any(Error),
+    );
+    expect(sweep.mock.invocationCallOrder[0]).toBeLessThan(
+      observeOrg.mock.invocationCallOrder[0] as number,
+    );
+  });
+
+  it("WP 4.9: still observes an org whose sweep throws, and the sweep error still fails the tick", async () => {
+    const sweep = vi.fn().mockRejectedValue(new Error("sweep down"));
+    const observeOrg = vi.fn().mockResolvedValue(undefined);
+    const onError = vi.fn();
+    const activeOrgs = { listActiveOrgs: async () => [{ organizationId: ORG }] };
+
+    await expect(
+      sweepTick({ service: { sweep, processDue: vi.fn() }, activeOrgs, observeOrg, onError }),
+    ).rejects.toThrow();
+
+    expect(observeOrg).toHaveBeenCalledWith(ORG);
+  });
+
   it("a dead timer job is copied to the DLQ queue and audited with a hashed payload, never verbatim", async () => {
     const add = vi.fn().mockResolvedValue({});
     const recordDlq = vi.fn().mockResolvedValue(undefined);

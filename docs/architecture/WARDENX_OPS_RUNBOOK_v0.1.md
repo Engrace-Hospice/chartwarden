@@ -2140,6 +2140,10 @@ M18 decides each capture's geofence from the distance between the device fix and
 
 The gauge counts active patients whose current primary address has no coordinate; a visit pinned to a different, non-primary address is approximated by the primary one. New addresses added after the back-fill stay un-geocoded until the job (or an operator) fills them, so keep the gauge on an alert.
 
+### 16.8 M36 acknowledgment queue: overdue and latency gauges (WP 4.9, ADR-0076)
+
+`/metrics` exposes the supervisors' unacknowledged queue as platform-wide numbers (no tenant, user, request or patient label): `wardenx_m36_ack_overdue_total` (waiting requests past their deadline), `wardenx_m36_ack_failed_unreachable_total`, `wardenx_m36_ack_oldest_overdue_seconds`, `wardenx_m36_ack_latency_samples` and `wardenx_m36_ack_latency_seconds{stat="mean"|"max"}` (acknowledgment latency over the trailing 24 h). `-1` means not measured (no `DATABASE_PLATFORM_URL`, or an organisation could not be counted); it is never reported as 0. The repo ships no alert rules: scrape them and alert on, for example, `wardenx_m36_ack_oldest_overdue_seconds > 900` or `wardenx_m36_ack_latency_seconds{stat="mean"} > 900`. Independently, the per-minute `messaging.ack_escalation_sweep` raises an ops notice (the log line `platform-ops notice [m36.ack.queue_overdue|m36.ack.latency_high]` and the optional `OPS_ALERT_WEBHOOK_URL` webhook) per organisation, once per breach and at most hourly while it lasts (per process: a restart or a different worker re-notifies), whether or not `messaging.escalation_timers` is on. The notice names the organisation id and counts only. `/metrics` is unauthenticated in the app and the production nginx config returns 404 for it, so scrape it on the internal backend port. Look at the requests themselves in the app at `/messaging/unacknowledged` (needs `messaging.review`).
+
 ---
 
 ## 17. Document Maintenance

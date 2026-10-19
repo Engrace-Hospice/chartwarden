@@ -1480,6 +1480,11 @@ import {
   TemplateViewSchema as M36TemplateViewSchema,
   UpdateTemplateBodySchema as M36UpdateTemplateBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/template-typebox";
+// M36 WP 4.9 supervisor unacknowledged queue.
+import {
+  UnacknowledgedQuerySchema as M36UnacknowledgedQuerySchema,
+  UnacknowledgedResponseSchema as M36UnacknowledgedResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/unacknowledged-typebox";
 // M36 WP 4.1 urgent clinical message.
 import {
   SendUrgentMessageBodySchema as M36SendUrgentMessageBodySchema,
@@ -9734,6 +9739,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Who can receive an urgent clinical message in this channel (WP 4.1; messaging.read + channel visibility): up to 30 qualified care-team colleagues who can see the channel (names only), never the caller. 200 {enabled:false} while the feature flags are off; a hidden channel is the uniform 404. Read-audited (it discloses care-team names)",
     response: M36UrgentMessageOptionsResponseSchema,
+  },
+  "GET /api/v1/messaging/escalations/unacknowledged": {
+    summary:
+      "The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 400 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses",
+    query: M36UnacknowledgedQuerySchema,
+    response: M36UnacknowledgedResponseSchema,
   },
   "GET /api/v1/messaging/deliveries/:id/target": {
     summary:

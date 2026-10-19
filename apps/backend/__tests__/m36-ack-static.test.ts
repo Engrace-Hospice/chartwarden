@@ -113,6 +113,8 @@ describe("only an explicit transition writes an acknowledgment", () => {
         "apps/backend/src/modules/36-messaging/outbox-consumers/ack-notifications.ts",
         "apps/backend/src/modules/36-messaging/outbox-consumers/ack-timer-arming.ts",
         "apps/backend/src/modules/36-messaging/routes/ack-routes.ts",
+        // WP 4.9 (ADR-0076): the supervisor queue route types its service from the aggregate's directory; the service and reader live inside it.
+        "apps/backend/src/modules/36-messaging/routes/unacknowledged-routes.ts",
         "packages/messaging/src/index.ts",
       ].sort(),
     );
@@ -125,6 +127,8 @@ describe("one writer of the aggregate's tables", () => {
       "packages/db/src/schema/messaging/message-acknowledgments.ts",
       // The audit resource kind of the read audit, a label and not a table access.
       "apps/backend/src/modules/36-messaging/routes/ack-routes.ts",
+      // WP 4.9: the same label for the supervisor queue's read audit; the route reads through the aggregate's own service, never a table.
+      "apps/backend/src/modules/36-messaging/routes/unacknowledged-routes.ts",
       // WP 4.4: the audit resource kind of a dead timer job's `m36.dlq_job` row, again a label and not a table access.
       "apps/backend/src/modules/36-messaging/ack-escalation/dlq-audit.ts",
     ]);

@@ -103,6 +103,11 @@ import {
 } from "./sbar-routes";
 import { registerMessageSearchRoutes } from "./search-routes";
 import { DISABLED_TASKS, type TaskRouteDeps, registerTaskRoutes } from "./task-routes";
+import {
+  DISABLED_UNACKNOWLEDGED,
+  type UnacknowledgedRouteDeps,
+  registerUnacknowledgedRoutes,
+} from "./unacknowledged-routes";
 import { DISABLED_URGENT, type UrgentRouteDeps, registerUrgentRoutes } from "./urgent-routes";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
@@ -141,6 +146,8 @@ export interface MessagingRouteDeps {
   urgent?: UrgentRouteDeps;
   /** WP 4.2: the acknowledgment-request aggregate (service + limiter). Omitted => every route is the uniform 404. */
   ackRequests?: AckRouteDeps;
+  /** WP 4.9: the supervisor's unacknowledged queue (read-only). Omitted => an empty queue. */
+  unacknowledged?: UnacknowledgedRouteDeps;
   /** WP 4.8: resolve an out-of-band link's opaque delivery id to its in-app target. Omitted => the uniform 404. */
   deliveryTarget?: DeliveryTargetRouteDeps;
   /** WP 3.6: IDG discussions (flag + read-only store). Omitted => flag off: the list answers disabled. */
@@ -442,6 +449,11 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     viewChannel: VIEW_CHANNEL,
     send: SEND,
     requireIdempotencyKey: REQUIRE_IDEMPOTENCY_KEY,
+  });
+
+  // --- WP 4.9: the supervisor's unacknowledged-urgent queue (registered beside the ack routes; the static path wins over `/escalations/:id`) ---
+  registerUnacknowledgedRoutes(app, deps.unacknowledged ?? DISABLED_UNACKNOWLEDGED, {
+    read: READ,
   });
 
   // --- WP 4.8: the deep-link landing (an opaque delivery id -> channel + message + ack request, for the signed-in recipient only) ---
