@@ -115,6 +115,19 @@ describe("the worker bodies", () => {
     );
   });
 
+  it("WP 4.9: still observes an org whose sweep throws, and the sweep error still fails the tick", async () => {
+    const sweep = vi.fn().mockRejectedValue(new Error("sweep down"));
+    const observeOrg = vi.fn().mockResolvedValue(undefined);
+    const onError = vi.fn();
+    const activeOrgs = { listActiveOrgs: async () => [{ organizationId: ORG }] };
+
+    await expect(
+      sweepTick({ service: { sweep, processDue: vi.fn() }, activeOrgs, observeOrg, onError }),
+    ).rejects.toThrow();
+
+    expect(observeOrg).toHaveBeenCalledWith(ORG);
+  });
+
   it("a dead timer job is copied to the DLQ queue and audited with a hashed payload, never verbatim", async () => {
     const add = vi.fn().mockResolvedValue({});
     const recordDlq = vi.fn().mockResolvedValue(undefined);

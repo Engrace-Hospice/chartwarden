@@ -125,3 +125,9 @@
   justify-items: start;
   gap: 0.5rem;
 }
+
+.wx-queue:focus-visible,
+.wx-queue-row:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}

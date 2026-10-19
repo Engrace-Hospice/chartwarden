@@ -33,6 +33,11 @@ export interface AckQueuePorts {
 
 export type AckQueueSampler = () => Promise<AckQueueSample | null>;
 
+/** Organisations read in parallel at a time. */
+export const ORG_CHUNK = 4;
+/** A scrape never waits longer than this for the whole sample; on timeout every gauge reads -1. */
+export const SAMPLE_TIMEOUT_MS = 8_000;
+
 /** Combine per-organisation figures: counts and sums add, maxima take the maximum. `null` when the org list cannot be read. */
 export async function sampleAckQueue(ports: AckQueuePorts): Promise<AckQueueSample | null> {
   let orgs: readonly { readonly organizationId: string }[];
@@ -41,14 +46,21 @@ export async function sampleAckQueue(ports: AckQueuePorts): Promise<AckQueueSamp
   } catch {
     return null;
   }
-  const results = await Promise.all(
-    orgs.map((o) =>
-      ports.statsForOrg(o.organizationId).then(
-        (s) => s,
-        () => null,
-      ),
-    ),
-  );
+  // A small bounded fan-out: one slow or hung organisation must not open a connection per organisation at once.
+  const results: (AckQueueOrgStats | null)[] = [];
+  for (let i = 0; i < orgs.length; i += ORG_CHUNK) {
+    const chunk = orgs.slice(i, i + ORG_CHUNK);
+    results.push(
+      ...(await Promise.all(
+        chunk.map((o) =>
+          ports.statsForOrg(o.organizationId).then(
+            (s) => s,
+            () => null,
+          ),
+        ),
+      )),
+    );
+  }
   const measured = results.filter((r): r is AckQueueOrgStats => r !== null);
   return {
     orgsChecked: measured.length,
@@ -75,7 +87,16 @@ export function registerAckQueueMetrics(
   let cached: { readonly at: number; readonly read: Promise<AckQueueSample | null> } | null = null;
   const sample = (): Promise<AckQueueSample | null> => {
     if (!cached || now() - cached.at >= SAMPLE_TTL_MS) {
-      cached = { at: now(), read: sampler().catch(() => null) };
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), SAMPLE_TIMEOUT_MS);
+      });
+      cached = {
+        at: now(),
+        read: Promise.race([sampler().catch(() => null), timeout]).finally(() =>
+          clearTimeout(timer),
+        ),
+      };
     }
     return cached.read;
   };

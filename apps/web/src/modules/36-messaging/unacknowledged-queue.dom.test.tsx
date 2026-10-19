@@ -109,6 +109,8 @@ afterEach(() => {
 
 describe("UnacknowledgedQueue", () => {
   it("shows a loading state, then every row with words for its state, overdue time, assignee and a thread link", async () => {
+    // the screen derives "overdue by" from the deadline and its own clock: pin the clock 12 minutes after the fixture's deadline
+    vi.useFakeTimers({ now: new Date("2026-10-18T11:57:00.000Z"), toFake: ["Date"] });
     const { GET, writes } = mount(() => page([item(), RESTRICTED, FAILED]));
     expect(screen.getByLabelText("Loading")).toBeTruthy();
     const rows = await screen.findAllByRole("listitem");
@@ -306,5 +308,213 @@ describe("UnacknowledgedQueue", () => {
     const results = await axe.run(document.body);
     expect(results.violations).toEqual([]);
     expect(screen.getAllByRole("link", { name: new RegExp(QUEUE_OPEN_LABEL) })).toHaveLength(2);
+  });
+
+  describe("races, focus and states", () => {
+    const deferred = <T,>() => {
+      let resolve: (value: T) => void = () => undefined;
+      const promise = new Promise<T>((r) => {
+        resolve = r;
+      });
+      return { promise, resolve };
+    };
+    const FIRST = item({
+      id: "cccccccc-cccc-4ccc-8ccc-0000000000f1",
+      assigned_display_name: "First Person",
+    });
+    const OLD_ONLY = item({
+      id: "cccccccc-cccc-4ccc-8ccc-0000000000f2",
+      assigned_display_name: "Old Filter Person",
+    });
+    const SECOND = item({
+      id: "cccccccc-cccc-4ccc-8ccc-0000000000f3",
+      assigned_display_name: "Second Person",
+    });
+    const withMore = (items: AckQueueItemDto[]) =>
+      page(items, {
+        next_cursor: "CUR",
+        complete: false,
+        counts: { unfiltered: 2, matching: 2, overdue: 2, failed_unreachable: 0 },
+      });
+
+    it("ignores a late answer for the OLD filter after the new filter's rows are shown", async () => {
+      const old = deferred<unknown>();
+      mount((query) => {
+        if (query.overdue === true) return page([SECOND], { filtered: true });
+        return query.status === "pending" ? old.promise : page([FIRST]);
+      });
+      await screen.findByText("Assigned to First Person.");
+      fireEvent.click(screen.getByRole("button", { name: "Waiting" }));
+      fireEvent.click(screen.getByRole("button", { name: "Overdue only" }));
+      await screen.findByText("Assigned to Second Person.");
+      await act(async () => old.resolve(page([OLD_ONLY])));
+      expect(screen.queryByText("Assigned to Old Filter Person.")).toBeNull();
+      expect(screen.getByText("Assigned to Second Person.")).toBeTruthy();
+    });
+
+    it("clicking the already-active filter is a no-op: no read and no spinner", async () => {
+      const { GET } = mount(() => page([item()]));
+      await screen.findAllByRole("listitem");
+      const reads = GET.mock.calls.length;
+      fireEvent.click(screen.getByRole("button", { name: "Everything waiting" }));
+      expect(screen.queryByLabelText("Loading")).toBeNull();
+      expect(GET.mock.calls.length).toBe(reads);
+    });
+
+    it("shows an alert when Show more fails and keeps the rows already shown", async () => {
+      mount((query) =>
+        query.cursor === "CUR" ? { error: {}, response: { status: 500 } } : withMore([FIRST]),
+      );
+      await screen.findAllByRole("listitem");
+      fireEvent.click(screen.getByRole("button", { name: QUEUE_MORE_LABEL }));
+      expect((await screen.findByRole("alert")).textContent).toContain("Could not load more");
+      expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    });
+
+    it("keeps the appended rows through the next poll (the refresh re-reads the whole loaded span)", async () => {
+      vi.useFakeTimers({
+        toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+      });
+      const { GET } = mount((query) =>
+        query.cursor === "CUR"
+          ? page([SECOND], {
+              counts: { unfiltered: 2, matching: 2, overdue: 2, failed_unreachable: 0 },
+            })
+          : withMore([FIRST]),
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      fireEvent.click(screen.getByRole("button", { name: QUEUE_MORE_LABEL }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getAllByRole("listitem")).toHaveLength(2);
+      const before = GET.mock.calls.length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+      expect(GET.mock.calls.length).toBeGreaterThan(before);
+      expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    });
+
+    it("does not poll while Show more is in flight, and drops nothing when it lands", async () => {
+      vi.useFakeTimers({
+        toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+      });
+      const more = deferred<unknown>();
+      const { GET } = mount((query) => (query.cursor === "CUR" ? more.promise : withMore([FIRST])));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      fireEvent.click(screen.getByRole("button", { name: QUEUE_MORE_LABEL }));
+      const during = GET.mock.calls.length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      expect(GET.mock.calls.length).toBe(during);
+      await act(async () => more.resolve(page([SECOND])));
+      expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    });
+
+    it("drops a Show more page that belongs to the previous filter", async () => {
+      const more = deferred<unknown>();
+      mount((query) => {
+        if (query.cursor === "CUR") return more.promise;
+        return query.status === "escalated"
+          ? page([SECOND], { filtered: true })
+          : withMore([FIRST]);
+      });
+      await screen.findAllByRole("listitem");
+      fireEvent.click(screen.getByRole("button", { name: QUEUE_MORE_LABEL }));
+      fireEvent.click(screen.getByRole("button", { name: "Escalated" }));
+      await screen.findByText("Assigned to Second Person.");
+      await act(async () => more.resolve(page([OLD_ONLY])));
+      expect(screen.queryByText("Assigned to Old Filter Person.")).toBeNull();
+      expect(screen.getAllByRole("listitem")).toHaveLength(1);
+      // the busy state belonged to the old filter: the new list's Show more (none here) is not stuck disabled
+      expect(screen.queryByRole("button", { name: QUEUE_MORE_LABEL })).toBeNull();
+    });
+
+    it("unmounting with a request in flight raises no React warning", async () => {
+      const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const slow = deferred<unknown>();
+      const { unmount } = mount(() => slow.promise);
+      unmount();
+      await act(async () => slow.resolve(page([item()])));
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it("moves focus to the first appended row when Show more disappears, and to the list after a Retry", async () => {
+      mount((query) => (query.cursor === "CUR" ? page([SECOND]) : withMore([FIRST])));
+      await screen.findAllByRole("listitem");
+      fireEvent.click(screen.getByRole("button", { name: QUEUE_MORE_LABEL }));
+      await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(2));
+      await waitFor(() => expect(document.activeElement).toBe(screen.getAllByRole("listitem")[1]));
+    });
+
+    it("moves focus to the list section after a successful Retry removed the button", async () => {
+      let fail = true;
+      mount(() => (fail ? { error: {}, response: { status: 500 } } : page([item()])));
+      const retry = await screen.findByRole("button", { name: "Retry" });
+      fail = false;
+      fireEvent.click(retry);
+      await screen.findAllByRole("listitem");
+      await waitFor(() => expect(document.activeElement?.tagName).toBe("SECTION"));
+    });
+
+    it("clears the stale alert on a later successful refresh and stops polling after a 403", async () => {
+      vi.useFakeTimers({
+        toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+      });
+      let mode: "ok" | "fail" | "denied" = "ok";
+      const { GET } = mount(() =>
+        mode === "ok"
+          ? page([item()])
+          : { error: {}, response: { status: mode === "fail" ? 503 : 403 } },
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      mode = "fail";
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+      expect(screen.getByText(QUEUE_STALE)).toBeTruthy();
+      mode = "ok";
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(screen.queryByText(QUEUE_STALE)).toBeNull();
+      mode = "denied";
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(screen.getByText(QUEUE_DENIED)).toBeTruthy();
+      const reads = GET.mock.calls.length;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600_000);
+      });
+      expect(GET.mock.calls.length).toBe(reads);
+    });
+
+    it("has no accessibility violations in the error, stale, denied and empty states", async () => {
+      const first = mount(() => ({ error: {}, response: { status: 500 } }));
+      await screen.findByRole("alert");
+      expect((await axe.run(document.body)).violations).toEqual([]);
+      first.unmount();
+
+      const empty = mount(() =>
+        page([], { counts: { unfiltered: 0, matching: 0, overdue: 0, failed_unreachable: 0 } }),
+      );
+      await screen.findByText(QUEUE_EMPTY_TITLE);
+      expect((await axe.run(document.body)).violations).toEqual([]);
+      empty.unmount();
+
+      const denied = mount(() => ({ error: {}, response: { status: 403 } }));
+      await screen.findByText(QUEUE_DENIED);
+      expect((await axe.run(document.body)).violations).toEqual([]);
+      denied.unmount();
+    });
   });
 });

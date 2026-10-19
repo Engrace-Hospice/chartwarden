@@ -1434,6 +1434,7 @@ import { createNameExclusions } from "./modules/36-messaging/global-search/name-
 import { registerM36GlobalSearch } from "./modules/36-messaging/global-search/register";
 import { createRingSearchKeyProvider } from "./modules/36-messaging/global-search/search-key-provider";
 import {
+  M36_ACK_QUEUE_METRICS_PLATFORM_JOB_ID,
   M36_DELIVERY_PLATFORM_JOB_ID,
   M36_INTEGRITY_PLATFORM_JOB_ID,
   M36_OUTBOX_EVENTS,
@@ -6059,7 +6060,7 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     const activeOrgs = buildActiveOrgEnumerator({
       platformDb: platformDbHandle.db,
       auditBypass: m34PlatformBypassAuditor,
-      jobId: M36_INTEGRITY_PLATFORM_JOB_ID,
+      jobId: M36_ACK_QUEUE_METRICS_PLATFORM_JOB_ID,
       reason: "M36 WP 4.9 ack-queue gauges: active-org list",
     });
     const statsForOrg = createDbAckQueueStatsReader(dbHandle.db);

@@ -1,7 +1,10 @@
 // M36 WP 4.9 (ADR-0076) - reads the supervisor's unacknowledged queue. The first page and "show more" pages are appended; the safety-net
-// poll (the thread's own timer: backs off after failures, pauses in a hidden tab, re-reads on focus) re-reads the loaded span in ONE
-// call (at most the server's maximum), so rows already on screen are refreshed rather than lost, and a failed refresh keeps the last
-// list and says it may be stale. A monotonic request id lets only the newest answer write. Read-only.
+// poll (the thread's own timer: backs off after failures, pauses in a hidden tab, re-reads on focus) re-reads the WHOLE loaded span
+// (page after page, so a list the person extended is not shrunk) and a failed refresh keeps the last list and says it may be stale.
+// Two tokens keep answers honest: `generation` changes with the filter (and on unmount), so an answer for an old filter is dropped as
+// superseded (never a failure); a "show more" answer is applied only if the list it extends is still the one it was asked for, and
+// otherwise says so (`moreFailed`) instead of vanishing. A poll waits while a "show more" is in flight. A 401/403/404 stops all
+// further reads. Read-only.
 import type {
   AckQueueCounts,
   AckQueueItemDto,
@@ -29,12 +32,15 @@ export type QueueView =
       readonly counts: AckQueueCounts;
       readonly filtered: boolean;
       readonly nextCursor: string | null;
-      /** The last refresh or "show more" failed; the list is the last good one. */
+      /** The last refresh failed; the list is the last good one. */
       readonly stale: boolean;
+      /** "Show more" failed, or its page no longer fitted the list (a refresh replaced it): ask again. */
       readonly moreFailed: boolean;
     };
 
 const DENIED = new Set([401, 403, 404]);
+/** Most pages a refresh chains to rebuild a long span (10 x 100 rows); beyond it the list restarts from the top and says "Show more". */
+const MAX_SPAN_PAGES = 10;
 
 const queryOf = (filter: QueueFilter, limit: number, cursor?: string) => ({
   limit,
@@ -43,110 +49,144 @@ const queryOf = (filter: QueueFilter, limit: number, cursor?: string) => ({
   ...(cursor ? { cursor } : {}),
 });
 
-export function useUnacknowledgedQueue(filter: QueueFilter) {
+export function useUnacknowledgedQueue({ status, overdueOnly }: QueueFilter) {
   const client = useOptionalApiClient();
   const [view, setView] = useState<QueueView>({ status: "loading" });
   const [busyMore, setBusyMore] = useState(false);
-  const latest = useRef(0);
-  const loaded = useRef(0);
+  const generation = useRef(0);
+  const seq = useRef(0);
+  const moreBusy = useRef(false);
   const viewRef = useRef(view);
   viewRef.current = view;
 
+  const get = useCallback(
+    (cursor: string | undefined, limit: number) =>
+      (client as NonNullable<typeof client>).GET("/api/v1/messaging/escalations/unacknowledged", {
+        params: { query: queryOf({ status, overdueOnly }, limit, cursor) },
+      }),
+    [client, status, overdueOnly],
+  );
+
+  /** Re-reads at least `target` rows from the top (pages chained by cursor). Returns false only for a real failure. */
   const read = useCallback(
-    async (limit: number): Promise<boolean> => {
-      if (!client) return false;
-      const id = ++latest.current;
+    async (target: number): Promise<boolean> => {
+      if (!client || viewRef.current.status === "denied") return true;
+      const gen = generation.current;
+      const id = ++seq.current;
+      const current = (): boolean => gen === generation.current && id === seq.current;
       try {
-        const { data, response } = await client.GET(
-          "/api/v1/messaging/escalations/unacknowledged",
-          {
-            params: { query: queryOf(filter, limit) },
-          },
-        );
-        if (id !== latest.current) return true;
-        if (data) {
-          loaded.current = data.items.length;
-          const page = data as AckQueueResponse;
-          setView({
-            status: "ready",
-            items: page.items,
-            counts: page.counts,
-            filtered: page.filtered,
-            nextCursor: page.next_cursor,
-            stale: false,
-            moreFailed: false,
-          });
-          return true;
+        let items: AckQueueItemDto[] = [];
+        let last: AckQueueResponse | null = null;
+        let cursor: string | undefined;
+        for (let page = 0; page < MAX_SPAN_PAGES; page += 1) {
+          const want = Math.min(
+            ACK_QUEUE_LIMIT_MAX,
+            Math.max(ACK_QUEUE_LIMIT_DEFAULT, target - items.length),
+          );
+          const { data, response } = await get(cursor, want);
+          if (!current()) return true; // superseded: not a failure
+          if (!data) {
+            const code = response?.status ?? 0;
+            if (DENIED.has(code)) {
+              setView({ status: "denied", signedOut: code === 401 });
+              return true; // nothing more to ask; stop the back-off
+            }
+            setView((prev) =>
+              prev.status === "ready" ? { ...prev, stale: true } : { status: "error" },
+            );
+            return false;
+          }
+          last = data as AckQueueResponse;
+          items = [...items, ...last.items];
+          cursor = last.next_cursor ?? undefined;
+          if (!cursor || items.length >= target) break;
         }
-        const code = response?.status ?? 0;
-        if (DENIED.has(code)) setView({ status: "denied", signedOut: code === 401 });
-        else
-          setView((prev) =>
-            prev.status === "ready" ? { ...prev, stale: true } : { status: "error" },
-          );
-        return false;
+        if (!last) return true;
+        const final = last;
+        setView({
+          status: "ready",
+          items,
+          counts: final.counts,
+          filtered: final.filtered,
+          nextCursor: final.next_cursor,
+          stale: false,
+          moreFailed: false,
+        });
+        return true;
       } catch {
-        if (id === latest.current)
-          setView((prev) =>
-            prev.status === "ready" ? { ...prev, stale: true } : { status: "error" },
-          );
+        if (!current()) return true;
+        setView((prev) =>
+          prev.status === "ready" ? { ...prev, stale: true } : { status: "error" },
+        );
         return false;
       }
     },
-    [client, filter],
+    [client, get],
   );
 
-  // A new filter starts from a clean slate: the other filter's rows are never shown under this one.
+  // A new filter starts from a clean slate: the other filter's rows, in-flight answers and "show more" are all dropped.
   useEffect(() => {
+    generation.current += 1;
+    moreBusy.current = false;
+    setBusyMore(false);
     setView({ status: "loading" });
-    loaded.current = 0;
-    void read(ACK_QUEUE_LIMIT_DEFAULT);
+    void read(1); // one page: the server fills it whenever more exist
     return () => {
-      latest.current += 1;
+      generation.current += 1;
     };
   }, [read]);
 
+  const loadedCount = useCallback((): number => {
+    const v = viewRef.current;
+    return v.status === "ready" ? v.items.length : 1;
+  }, []);
+
   const refresh = useCallback(
-    () => read(Math.min(ACK_QUEUE_LIMIT_MAX, Math.max(ACK_QUEUE_LIMIT_DEFAULT, loaded.current))),
-    [read],
+    () => (moreBusy.current ? Promise.resolve(true) : read(loadedCount())),
+    [read, loadedCount],
   );
   useLatestPolling(refresh, false);
 
   const retry = useCallback(() => {
     setView((prev) => (prev.status === "ready" ? prev : { status: "loading" }));
-    void read(ACK_QUEUE_LIMIT_DEFAULT);
-  }, [read]);
+    void read(loadedCount());
+  }, [read, loadedCount]);
 
   const showMore = useCallback(async () => {
     const current = viewRef.current;
-    if (!client || current.status !== "ready" || !current.nextCursor || busyMore) return;
-    const id = ++latest.current;
+    if (!client || current.status !== "ready" || !current.nextCursor || moreBusy.current) return;
+    const gen = generation.current;
+    const asked = current.nextCursor;
+    moreBusy.current = true;
     setBusyMore(true);
     try {
-      const { data } = await client.GET("/api/v1/messaging/escalations/unacknowledged", {
-        params: { query: queryOf(filter, ACK_QUEUE_LIMIT_DEFAULT, current.nextCursor) },
-      });
-      if (id !== latest.current) return;
-      if (!data) {
-        setView({ ...current, moreFailed: true });
-        return;
-      }
-      const page = data as AckQueueResponse;
-      loaded.current = current.items.length + page.items.length;
-      setView({
-        ...current,
-        items: [...current.items, ...page.items],
-        counts: page.counts,
-        nextCursor: page.next_cursor,
-        stale: false,
-        moreFailed: false,
+      const { data } = await get(asked, ACK_QUEUE_LIMIT_DEFAULT);
+      if (gen !== generation.current) return; // another filter owns the screen now
+      setView((prev) => {
+        if (prev.status !== "ready") return prev;
+        // The list moved on (a refresh replaced it): the page no longer extends it. Say so instead of dropping it silently.
+        if (!data || prev.nextCursor !== asked) return { ...prev, moreFailed: true };
+        const page = data as AckQueueResponse;
+        return {
+          ...prev,
+          items: [...prev.items, ...page.items],
+          counts: page.counts,
+          nextCursor: page.next_cursor,
+          stale: false,
+          moreFailed: false,
+        };
       });
     } catch {
-      if (id === latest.current) setView({ ...current, moreFailed: true });
+      if (gen === generation.current) {
+        setView((prev) => (prev.status === "ready" ? { ...prev, moreFailed: true } : prev));
+      }
     } finally {
-      setBusyMore(false);
+      if (gen === generation.current) {
+        moreBusy.current = false;
+        setBusyMore(false);
+      }
     }
-  }, [client, filter, busyMore]);
+  }, [client, get]);
 
   return { view, retry, showMore, busyMore };
 }

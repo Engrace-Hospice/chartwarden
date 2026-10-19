@@ -1,12 +1,14 @@
 // WP 4.9 (ADR-0076) - the ops view of the unacknowledged queue: aggregation across organisations, the gauges (unmeasured = -1, never 0,
 // no organisation/user/request label), and the threshold notice (first breach notifies, a lasting breach repeats hourly, recovery re-arms).
 import { Registry } from "prom-client";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   type AckQueueOrgStats,
   LATENCY_NOTICE_MEAN_SECONDS,
   NOTICE_REPEAT_MS,
+  ORG_CHUNK,
   OVERDUE_NOTICE_SECONDS,
+  SAMPLE_TIMEOUT_MS,
   SAMPLE_TTL_MS,
   breachedKinds,
   createAckQueueNoticeEvaluator,
@@ -79,7 +81,43 @@ describe("sampleAckQueue", () => {
   });
 });
 
+describe("sampleAckQueue bounds", () => {
+  it("never reads more than ORG_CHUNK organisations at once", async () => {
+    let running = 0;
+    let peak = 0;
+    const orgs = Array.from({ length: 11 }, (_, i) => ({ organizationId: `o${i}` }));
+    await sampleAckQueue({
+      listOrgs: async () => orgs,
+      statsForOrg: async () => {
+        running += 1;
+        peak = Math.max(peak, running);
+        await new Promise((r) => setTimeout(r, 2));
+        running -= 1;
+        return calm;
+      },
+    });
+    expect(peak).toBeLessThanOrEqual(ORG_CHUNK);
+    expect(peak).toBeGreaterThan(1);
+  });
+});
+
 describe("registerAckQueueMetrics", () => {
+  it("reads -1 when the sampler hangs past the timeout instead of hanging the scrape", async () => {
+    vi.useFakeTimers();
+    try {
+      const registry = new Registry();
+      registerAckQueueMetrics(registry, () => new Promise(() => undefined));
+      const pending = registry.getMetricsAsJSON();
+      await vi.advanceTimersByTimeAsync(SAMPLE_TIMEOUT_MS + 1);
+      const all = await pending;
+      const values = all.flatMap((m) => m.values.map((v) => v.value));
+      expect(values.length).toBeGreaterThan(0);
+      expect(values.every((v) => v === -1)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   const values = async (registry: Registry) => {
     const out: Record<string, number> = {};
     for (const metric of await registry.getMetricsAsJSON()) {

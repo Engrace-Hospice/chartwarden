@@ -380,6 +380,9 @@ describe.skipIf(!DB_URL)("M36 WP 4.9 unacknowledged queue - LIVE Postgres", () =
         "garbage",
         Buffer.from("x|y").toString("base64url"),
         Buffer.from(`2026-01-01 00:00:00+00|${ids.pending_visible}`).toString("base64url"),
+        // well-shaped but not a real instant: a 400, never a timestamptz cast error (500)
+        Buffer.from(`2026-13-45 99:99:99+00|${"a".repeat(64)}`).toString("base64url"),
+        Buffer.from(`2026-02-30 10:00:00+00|${"a".repeat(64)}`).toString("base64url"),
         Buffer.from(
           `2026-01-01'; DROP TABLE message_acknowledgment_request;--|${"a".repeat(64)}`,
         ).toString("base64url"),
@@ -517,6 +520,27 @@ describe.skipIf(!DB_URL)("M36 WP 4.9 unacknowledged queue - LIVE Postgres", () =
       expect(await snap()).toEqual(before);
     });
 
+    it("a page with two visible patients writes exactly one audit row per patient, both against the single audit_request_id", async () => {
+      const PATIENT_3 = "aaaaaaaa-aaaa-4aaa-8aaa-0000000a49a3";
+      const third = await mkChannel(kit, "care_team", PATIENT_3, [nurse, rn, supervisor]);
+      const extra = await born("second_visible_patient", third, PATIENT_3, { minutes: 30 });
+      try {
+        const before = await audit(supervisor);
+        const out = body(await list(supervisor, ORG_A, "?limit=100"));
+        const patients = new Set(out.items.map((i) => i.patient_id).filter(Boolean));
+        expect(patients).toEqual(new Set([PATIENT_1, PATIENT_3]));
+        expect(await audit(supervisor)).toBe(before + 2);
+        const rows = await kit.one<{ resource_id: string }>(
+          "SELECT resource_id FROM audit_event WHERE actor_user_id=$1 AND event_type='message_acknowledgment_request.viewed' AND resource_id=$2",
+          [supervisor, out.audit_request_id],
+        );
+        // attribution: every patient's event hangs off the one request id the response names.
+        expect(rows.length).toBeGreaterThanOrEqual(2);
+      } finally {
+        await acknowledge(extra);
+      }
+    });
+
     it("lands one read-audit row per distinct patient disclosed, against the first item's id; a refusal and an all-restricted page land none", async () => {
       const before = await audit(supervisor);
       const res = await list(supervisor, ORG_A, "?limit=100");
@@ -553,6 +577,27 @@ describe.skipIf(!DB_URL)("M36 WP 4.9 unacknowledged queue - LIVE Postgres", () =
     });
   });
 
+  describe("the status predicate uses the partial index under a generic plan", () => {
+    it("plans the queue's order and predicate on message_ack_request_open_deadline_idx with a bound organisation", async () => {
+      await kit.admin.query("BEGIN");
+      try {
+        await kit.admin.query("SET LOCAL plan_cache_mode = force_generic_plan");
+        await kit.admin.query("SET LOCAL enable_seqscan = off");
+        await kit.admin.query("SET LOCAL enable_bitmapscan = off");
+        await kit.admin.query(
+          `PREPARE q(uuid) AS SELECT id FROM message_acknowledgment_request
+            WHERE organization_id = $1 AND status IN ('pending', 'escalated', 'failed_unreachable') ORDER BY deadline_at LIMIT 51`,
+        );
+        const plan = (await kit.admin.query(`EXPLAIN EXECUTE q('${ORG_A}')`)).rows
+          .map((r) => r["QUERY PLAN"] as string)
+          .join("\n");
+        expect(plan).toContain("message_ack_request_open_deadline_idx");
+      } finally {
+        await kit.admin.query("ROLLBACK");
+      }
+    });
+  });
+
   describe("a restricted request that is the OLDEST must not blind the audit trail", () => {
     it("still records the read against the first request shown in full when the first row is restricted", async () => {
       const early = await born("early_restricted", otherChannel, PATIENT_2, { minutes: 1 });
@@ -576,7 +621,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.9 unacknowledged queue - LIVE Postgres", () =
       expect(a.overdue).toBeGreaterThanOrEqual(7);
       expect(a.failedUnreachable).toBe(1);
       expect(a.oldestOverdueSeconds).toBeGreaterThan(60 * 60);
-      expect(a.ackedCount).toBe(4); // acknowledged, resolved, late_arrival, early_restricted: all acknowledged within the window
+      expect(a.ackedCount).toBe(5); // acknowledged, resolved, late_arrival, early_restricted, second_visible_patient: all acknowledged within the window
       expect(a.ackLatencySumSeconds).toBeGreaterThanOrEqual(0);
       const b = await read(ORG_B, later);
       expect(b).toMatchObject({ overdue: 1, failedUnreachable: 0, ackedCount: 0 });

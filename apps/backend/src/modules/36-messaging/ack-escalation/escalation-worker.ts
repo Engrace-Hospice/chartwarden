@@ -69,16 +69,20 @@ export async function sweepTick(
 ): Promise<SweepSummary> {
   const totals = { escalated: 0, notRouted: 0, skipped: 0, failed: 0 };
   await fanOutOrgs(deps, "ack_escalation_sweep", async (organizationId) => {
-    const summary = await deps.service.sweep(organizationId);
-    await deps
-      .observeOrg?.(organizationId)
-      .catch((error) => deps.onError?.({ organizationId, job: "ack_queue_observe" }, error));
-    totals.escalated += summary.escalated;
-    totals.notRouted += summary.notRouted;
-    totals.skipped += summary.skipped;
-    totals.failed += summary.failed;
-    if (summary.failed > 0)
-      throw new Error(`ack escalation sweep: ${summary.failed} request(s) failed`);
+    // The ops look runs even when the sweep itself throws for this org: a broken sweep is exactly when an overdue request needs reporting.
+    try {
+      const summary = await deps.service.sweep(organizationId);
+      totals.escalated += summary.escalated;
+      totals.notRouted += summary.notRouted;
+      totals.skipped += summary.skipped;
+      totals.failed += summary.failed;
+      if (summary.failed > 0)
+        throw new Error(`ack escalation sweep: ${summary.failed} request(s) failed`);
+    } finally {
+      await deps
+        .observeOrg?.(organizationId)
+        .catch((error) => deps.onError?.({ organizationId, job: "ack_queue_observe" }, error));
+    }
   });
   return { flagOff: false, ...totals };
 }

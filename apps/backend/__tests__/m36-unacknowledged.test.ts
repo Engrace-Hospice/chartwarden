@@ -324,6 +324,9 @@ describe("queue cursor", () => {
     ["three parts", b64(`2026-10-18 11:45:00+00|${TIE}|x`)],
     ["a sql-ish time", b64(`2026'; drop table x;--|${TIE}`)],
     ["a short tie", b64("2026-10-18 11:45:00+00|abc")],
+    ["a well-shaped but impossible month/day/time", b64(`2026-13-45 99:99:99+00|${TIE}`)],
+    ["a 30th of February", b64(`2026-02-30 10:00:00+00|${TIE}`)],
+    ["an impossible zone", b64(`2026-10-18 10:00:00+99|${TIE}`)],
     ["an uppercase tie", b64(`2026-10-18 11:45:00+00|${"A".repeat(64)}`)],
     ["a uuid instead of a tie", b64("2026-10-18 11:45:00+00|aaaaaaaa-aaaa-4aaa-8aaa-000000000001")],
   ])("refuses %s with a 400, never a first page", (_name, cursor) => {

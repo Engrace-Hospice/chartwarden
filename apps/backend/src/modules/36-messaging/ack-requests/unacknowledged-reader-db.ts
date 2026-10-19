@@ -9,7 +9,6 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import {
-  ACK_QUEUE_STATUSES,
   type AckEscalationNote,
   type AckQueueCounts,
   type AckQueueStatus,
@@ -20,6 +19,12 @@ import type { AckRow } from "./ack-types";
 
 const R = schema.messageAckRequests;
 const E = schema.messageAckEvents;
+
+/**
+ * The queue's status predicate as an inline literal list, never bound parameters: under a generic plan the planner can only prove the
+ * partial index `message_ack_request_open_deadline_idx` applies when the predicate text matches its own (ADR-0076).
+ */
+export const WAITING = sql`${R.status} IN ('pending', 'escalated', 'failed_unreachable')`;
 
 const TIE = sql<string>`encode(sha256(convert_to(${R.id}::text, 'UTF8')), 'hex')`;
 
@@ -50,6 +55,25 @@ export type UnacknowledgedReader = (
 
 const CURSOR_TIME = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?[+-]\d{2}(:?\d{2})?$/;
 const CURSOR_TIE = /^[0-9a-f]{64}$/;
+const CURSOR_PARTS =
+  /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(?:\.\d{1,6})?([+-])(\d{2})(?::?(\d{2}))?$/;
+/** A well-shaped but impossible time (month 13, 99:99:99) would reach the timestamptz cast and be a 500; it is the caller's mistake. */
+function isRealTime(text: string): boolean {
+  const m = CURSOR_PARTS.exec(text);
+  if (!m) return false;
+  const [y, mo, d, h, mi, sec, , oh, om] = m.slice(1).map((v) => (v === undefined ? 0 : Number(v)));
+  const probe = new Date(Date.UTC(y as number, (mo as number) - 1, d as number));
+  return (
+    probe.getUTCFullYear() === y &&
+    probe.getUTCMonth() === (mo as number) - 1 &&
+    probe.getUTCDate() === d &&
+    (h as number) < 24 &&
+    (mi as number) < 60 &&
+    (sec as number) < 60 &&
+    (oh as number) <= 15 &&
+    (om as number) < 60
+  );
+}
 const invalidCursor = (): WardenXError =>
   new WardenXError("INVALID_CURSOR", "the cursor is not valid", 400);
 
@@ -66,6 +90,7 @@ export function decodeQueueCursor(cursor: string): { deadlineAt: string; tie: st
     !deadlineAt ||
     !tie ||
     !CURSOR_TIME.test(deadlineAt) ||
+    !isRealTime(deadlineAt) ||
     !CURSOR_TIE.test(tie)
   ) {
     throw invalidCursor();
@@ -144,7 +169,7 @@ export function createDbUnacknowledgedReader(db: DbClient): UnacknowledgedReader
     const nowIso = q.now.toISOString();
     const filters = [
       eq(R.organizationId, orgId),
-      inArray(R.status, [...ACK_QUEUE_STATUSES]),
+      WAITING,
       ...(q.status ? [eq(R.status, q.status)] : []),
       ...(q.overdueOnly ? [lte(R.deadlineAt, q.now)] : []),
     ];
@@ -157,7 +182,7 @@ export function createDbUnacknowledgedReader(db: DbClient): UnacknowledgedReader
           failed: sql<number>`(count(*) FILTER (WHERE ${R.status} = 'failed_unreachable'))::int`,
         })
         .from(R)
-        .where(and(eq(R.organizationId, orgId), inArray(R.status, [...ACK_QUEUE_STATUSES])));
+        .where(and(eq(R.organizationId, orgId), WAITING));
       const rows = await tx
         .select({ r: R, deadlineText: sql<string>`${R.deadlineAt}::text`, tie: TIE })
         .from(R)

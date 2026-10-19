@@ -14,7 +14,7 @@ import {
   type StatusTone,
   WorkQueueLayout,
 } from "@wardenx/ui";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -63,11 +63,19 @@ export const threadLink = (item: AckQueueItemDto): string | null =>
     ? `/messaging?channelId=${encodeURIComponent(item.channel_id)}&messageId=${encodeURIComponent(item.message_id)}`
     : null;
 
+/** Overdue is derived from the deadline and the screen's clock, so a row turns overdue between polls (the server's count lags until the next read). */
+const overdueSecondsAt = (item: AckQueueItemDto, now: number): number =>
+  Math.max(0, Math.floor((now - Date.parse(item.deadline_at)) / 1000));
+
 function QueueRow({ item, now }: { item: AckQueueItemDto; now: number }): JSX.Element {
   const link = threadLink(item);
+  const overdueSeconds = overdueSecondsAt(item, now);
+  const overdue = Number.isNaN(Date.parse(item.deadline_at))
+    ? item.overdue
+    : overdueSeconds > 0 || Date.parse(item.deadline_at) <= now;
   const who = item.assigned_display_name ?? QUEUE_UNASSIGNED_NAME;
   return (
-    <li className="wx-queue-row">
+    <li className="wx-queue-row" tabIndex={-1}>
       <div className="wx-queue-badges">
         <StatusPill
           label={QUEUE_STATUS_TEXT[item.status]}
@@ -75,8 +83,8 @@ function QueueRow({ item, now }: { item: AckQueueItemDto; now: number }): JSX.El
           glyph={item.status === "failed_unreachable" ? "alert" : undefined}
         />
         <StatusPill
-          label={item.overdue ? overdueText(item.overdue_seconds) : dueText(item.deadline_at, now)}
-          tone={item.overdue ? "error" : "neutral"}
+          label={overdue ? overdueText(overdueSeconds) : dueText(item.deadline_at, now)}
+          tone={overdue ? "error" : "neutral"}
         />
         <span className="wx-queue-tag">{QUEUE_CLASS_TEXT[item.ack_class]}</span>
         {item.current_tier > 0 ? (
@@ -106,6 +114,28 @@ function QueueRow({ item, now }: { item: AckQueueItemDto; now: number }): JSX.El
 export function UnacknowledgedQueue(): JSX.Element {
   const [filter, setFilter] = useState<QueueFilter>(ALL);
   const { view, retry, showMore, busyMore } = useUnacknowledgedQueue(filter);
+  const sectionRef = useRef<HTMLElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  // Where focus goes when the control that had it (Show more, Retry) leaves the page: the first row it appended, else the section.
+  const focusAfter = useRef<{ readonly row: number } | "section" | null>(null);
+  const rowCount = view.status === "ready" ? view.items.length : -1;
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the list grows or the view settles
+  useEffect(() => {
+    const target = focusAfter.current;
+    if (target === null || view.status === "loading" || busyMore) return;
+    focusAfter.current = null;
+    const row = target === "section" ? undefined : listRef.current?.children[target.row];
+    ((row as HTMLElement | undefined) ?? sectionRef.current)?.focus();
+  }, [view, rowCount, busyMore]);
+  const retryWithFocus = (): void => {
+    focusAfter.current = "section";
+    retry();
+  };
+  const moreWithFocus = (): void => {
+    focusAfter.current = { row: rowCount };
+    void showMore();
+  };
   // Minute-grained "due in" text re-renders itself; the data poll is the hook's.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -126,7 +156,11 @@ export function UnacknowledgedQueue(): JSX.Element {
             key={option.value}
             type="button"
             aria-pressed={filter.status === option.value}
-            onClick={() => setFilter((prev) => ({ ...prev, status: option.value }))}
+            onClick={() =>
+              setFilter((prev) =>
+                prev.status === option.value ? prev : { ...prev, status: option.value },
+              )
+            }
           >
             {option.label}
           </button>
@@ -157,7 +191,7 @@ export function UnacknowledgedQueue(): JSX.Element {
     body = (
       <div className="wx-queue-error" role="alert">
         <p>{QUEUE_LOAD_FAILED}</p>
-        <Button type="button" tone="secondary" size="sm" onClick={retry}>
+        <Button type="button" tone="secondary" size="sm" onClick={retryWithFocus}>
           {QUEUE_RETRY_LABEL}
         </Button>
       </div>
@@ -182,15 +216,19 @@ export function UnacknowledgedQueue(): JSX.Element {
         {view.stale ? (
           <div className="wx-queue-error" role="alert">
             <p>{QUEUE_STALE}</p>
-            <Button type="button" tone="secondary" size="sm" onClick={retry}>
+            <Button type="button" tone="secondary" size="sm" onClick={retryWithFocus}>
               {QUEUE_RETRY_LABEL}
             </Button>
           </div>
         ) : null}
-        <ul className="wx-queue-rows" aria-label={QUEUE_TITLE}>
+        <ul className="wx-queue-rows" aria-label={QUEUE_TITLE} ref={listRef}>
           {view.items.map((item, index) => (
             // A restricted row has no id: its position and deadline are its key within this ordered, append-only page.
-            <QueueRow key={item.id ?? `${index}-${item.deadline_at}`} item={item} now={now} />
+            <QueueRow
+              key={item.id ?? `r-${item.requested_at}-${item.deadline_at}-${index}`}
+              item={item}
+              now={now}
+            />
           ))}
         </ul>
         {view.nextCursor ? (
@@ -205,7 +243,7 @@ export function UnacknowledgedQueue(): JSX.Element {
               tone="secondary"
               size="sm"
               loading={busyMore}
-              onClick={() => void showMore()}
+              onClick={moreWithFocus}
             >
               {QUEUE_MORE_LABEL}
             </Button>
@@ -227,7 +265,7 @@ export function UnacknowledgedQueue(): JSX.Element {
       }
       filters={filters}
       table={
-        <section className="wx-queue" aria-label={QUEUE_TITLE}>
+        <section className="wx-queue" aria-label={QUEUE_TITLE} ref={sectionRef} tabIndex={-1}>
           {body}
         </section>
       }

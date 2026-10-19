@@ -4,8 +4,8 @@
 // never leaves this function.
 import { type DbClient, schema } from "@wardenx/db";
 import { systemOrgContext, withOrgContext } from "@wardenx/tenancy";
-import { ACK_QUEUE_STATUSES } from "@wardenx/types";
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
+import { WAITING } from "./unacknowledged-reader-db";
 
 const R = schema.messageAckRequests;
 
@@ -37,7 +37,7 @@ export function createDbAckQueueStatsReader(db: DbClient): AckQueueStatsReader {
           oldest: sql<number>`coalesce(max(extract(epoch FROM (${nowIso}::timestamptz - ${R.deadlineAt}))) FILTER (WHERE ${R.deadlineAt} <= ${nowIso}::timestamptz), 0)::float8`,
         })
         .from(R)
-        .where(and(eq(R.organizationId, orgId), inArray(R.status, [...ACK_QUEUE_STATUSES])));
+        .where(and(eq(R.organizationId, orgId), WAITING));
       const since = new Date(now.getTime() - ACK_LATENCY_WINDOW_MS);
       const [acked] = await tx
         .select({
