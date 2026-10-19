@@ -293,8 +293,7 @@ Pre-conditions:
   used, so the gauges and the webhook below are shared.
 - Flags turned on for the test organisation only: `messaging.ack_requests` (to create a request),
   `messaging.urgent_clinical` (for an urgent send), `messaging.escalation_timers` (needed for `failed_unreachable`, early
-  escalation and its ops notice) and `messaging.notification_policy`. Who may set them per tenant is **OPEN** (section 2
-  exception note); drill participants act as the watchers, and the flags are switched **off again** after the drill.
+  escalation and its ops notice) and `messaging.notification_policy`. Who may set them per tenant is **OPEN** (the go-live note at the top); drill participants act as the watchers, and the flags are switched **off again** after the drill.
 - **Do not configure or change any transport or vendor credential (Twilio, VAPID, Postmark) for a drill in the production
   deployment.** Transports are deployment-wide, not per organisation. You do not need one: per ADR-0073 a verified endpoint
   with no transport settles `failed` / `transport_not_configured`, and with the timers on the request becomes escalated or
