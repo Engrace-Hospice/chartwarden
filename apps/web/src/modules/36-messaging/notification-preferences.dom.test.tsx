@@ -36,7 +36,13 @@ function mount(opts: { flag?: number; get?: unknown; put?: unknown } = {}) {
     ),
   );
   const PUT = vi.fn(() =>
-    Promise.resolve(opts.put ?? { data: prefs(), response: { status: 200 } }),
+    // The real PUT answers { id, updatedAt } only (messaging-route-service-db.ts), never the preferences.
+    Promise.resolve(
+      opts.put ?? {
+        data: { id: "pref-1", updatedAt: "2026-10-19T00:00:00.000Z" },
+        response: { status: 200 },
+      },
+    ),
   );
   const view = render(
     <ApiClientProvider client={{ GET, PUT } as unknown as ApiClient}>
@@ -90,6 +96,10 @@ describe("NotificationPreferences", () => {
     expect(call[0]).toBe(PREFS_PATH);
     expect((call[1].body.quietHours as { ranges: unknown[] }).ranges).toEqual([]);
     expect(await screen.findByText("Preferences saved.")).toBeTruthy();
+    // The form survives the save (a PUT answer without the preferences once crashed the page).
+    expect(screen.getByRole("switch", { name: "Quiet hours" }).getAttribute("aria-checked")).toBe(
+      "false",
+    );
   });
 
   it("keeps the draft and names the server's refusal, linked to the Save button", async () => {

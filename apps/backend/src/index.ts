@@ -120,6 +120,7 @@ import {
   assertProductionEnv,
   buildServer,
   createSessionAuthenticate,
+  escalationRouterDenyStub,
   getSeam,
   integrationEnabled,
   noteInMemoryBinding,
@@ -785,6 +786,7 @@ import { evvVisitProviderEntityForOrg } from "./modules/18-evv/seams/evv-visit-p
 import {
   M19_OUTBOX_EVENTS,
   M19_PLATFORM_JOB_ID,
+  buildDrizzleEscalationRouterReads,
   buildDrizzleM19ReadService,
   buildDrizzleM19WriteService,
   buildDrizzleOncallAbacResolver,
@@ -799,6 +801,7 @@ import {
   gipProposalsForOrg,
   idgTriageCarePlanChangesForOrg,
   mountM19Routes,
+  registerEscalationRouterForAllowlist,
   registerM19CronWorkers,
   registerM19Tier1CronWorkers,
   registerM19TriageCronWorkers,
@@ -2030,7 +2033,25 @@ export function wireModuleSeams(
   // seam is a REAL answer meaning "nobody is covering" — the fact M36's escalation routing and the §4.8
   // watchdog act on. A DB-less boot must not manufacture a coverage gap; a throwing stub says "M19 cannot
   // answer", which is the truth.
-  if (deps.db) registerOncallSeams({ store: buildDrizzleOncallSeamStore(deps.db) });
+  const oncallSeamStore = deps.db ? buildDrizzleOncallSeamStore(deps.db) : undefined;
+  if (oncallSeamStore) registerOncallSeams({ store: oncallSeamStore });
+  // ADR-0057 item 12 - the real M19 EscalationRouter (tier 1 only), UNBOUND unless `ESCALATION_ROUTER_ORGS` names orgs. Other orgs keep the
+  // deny-stub's exact answer; with the variable empty nothing is registered and behaviour is identical to before.
+  let m19RouterBoundOrgCount = 0;
+  if (deps.db && oncallSeamStore) {
+    m19RouterBoundOrgCount = registerEscalationRouterForAllowlist({
+      store: oncallSeamStore,
+      reads: buildDrizzleEscalationRouterReads({
+        db: deps.db,
+        patientReader: () => getSeam("PatientReader"),
+        siteReader: buildFoundationSiteReader(),
+        listProviderEntityIds: buildOrgProviderEntityLister(deps.db),
+      }),
+      fallback: escalationRouterDenyStub,
+      allowlistRaw: process.env.ESCALATION_ROUTER_ORGS,
+      warn: (message) => console.warn(message),
+    }).size;
+  }
   // M20-T05 — the SEVEN §4.3 seams M20 publishes: `SafetyDashboardProvider` (the supervisor
   // live-awareness board, also embedded by M17's visit-day view), `SafetyContextReader` (M8's "was there
   // an incident during the visit I am documenting?"), `SafetyIncidentReader` (M32's §8.6
@@ -6230,7 +6251,8 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         asOf: new Date().toISOString(),
       })
       .then((answer) => {
-        if (answer.source === "deny_stub") {
+        // The probe asks about a nil org, which is never allowlisted: with orgs bound it would always read "deny-stub" and contradict the bound-for-N warning.
+        if (answer.source === "deny_stub" && m19RouterBoundOrgCount === 0) {
           app.log.warn(
             "M36 EscalationRouter is the deny-stub (no M19 router is bound): unacknowledged requests cannot be escalated to a tier; they stay open with their assignee and the sender is told",
           );
