@@ -152,15 +152,16 @@ function failure(status: number | undefined, body: unknown): WriteResult<never> 
         ? "Adjourning is a commit point and needs a fresh re-authentication (§2.2 D13). Re-authenticate, then adjourn again."
         : code === 412
           ? (detail ?? "These data changed after you opened them. Refresh before trying again.")
-        : code === 403
-          ? (detail ?? "Your role is not permitted to take this action on this meeting.")
-          : code === 409
-            ? (detail ?? "This meeting changed before your action was applied. Reload the surface.")
-            : code === 404
-              ? "That meeting is no longer available to you."
-              : code === 422
-                ? (detail ?? "The server rejected the details supplied.")
-                : (detail ?? "The action could not be completed.");
+          : code === 403
+            ? (detail ?? "Your role is not permitted to take this action on this meeting.")
+            : code === 409
+              ? (detail ??
+                "This meeting changed before your action was applied. Reload the surface.")
+              : code === 404
+                ? "That meeting is no longer available to you."
+                : code === 422
+                  ? (detail ?? "The server rejected the details supplied.")
+                  : (detail ?? "The action could not be completed.");
   return { ok: false, status: code, code: errCode, message };
 }
 

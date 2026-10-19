@@ -1,6 +1,7 @@
 import { PatientWorkspaceLayout } from "@wardenx/ui";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { PatientConversationLink } from "./open-patient-conversation";
 // apps/web/src/shell — the patient-chart tab strip, shared by every patient-scoped workspace screen
 // (Care Plan, Orders, Assessments, …) so it is defined once. 2026-09-25 redesign: the mockups replace
 // the vertical module rail with a horizontal tab bar under the patient banner (Overview · Clinical ·
@@ -110,7 +111,7 @@ const TABS: {
     route: (id) => `/patients/${id}/documents`,
   },
   { key: "claims", label: "Claims", route: (id) => `/patients/${id}/claims` },
-  // Communication is an organization workspace today (no patient-scoped route yet).
+  // Rendered as PatientConversationLink (opens this patient's care-team conversation); route is the href fallback.
   { key: "communication", label: "Communication", route: () => "/messaging" },
 ];
 
@@ -129,13 +130,23 @@ export function ChartModuleRail({
           const isActive = tab.key === active;
           return (
             <li key={tab.key}>
-              <Link
-                to={tab.route(patientId)}
-                className={isActive ? "wx-chart-tab active" : "wx-chart-tab"}
-                aria-current={isActive ? "page" : undefined}
-              >
-                {tab.label}
-              </Link>
+              {tab.key === "communication" ? (
+                <PatientConversationLink
+                  patientId={patientId}
+                  className={isActive ? "wx-chart-tab active" : "wx-chart-tab"}
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  {tab.label}
+                </PatientConversationLink>
+              ) : (
+                <Link
+                  to={tab.route(patientId)}
+                  className={isActive ? "wx-chart-tab active" : "wx-chart-tab"}
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  {tab.label}
+                </Link>
+              )}
             </li>
           );
         })}

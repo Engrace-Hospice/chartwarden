@@ -35,6 +35,7 @@ import {
   sexLabel,
 } from "../../shell/patient-context";
 import { PatientIntakeSummaries, SHOWS_INTAKE_SUMMARIES } from "../../shell/prospect-summary";
+import { PatientConversationLink } from "../../shell/open-patient-conversation";
 import { useSession } from "../../shell/session";
 import { WristbandAction } from "./wristband-action";
 
@@ -687,6 +688,8 @@ function ChartActions({
 
     to: string;
 
+    conversation?: boolean;
+
     disabled?: boolean;
 
     hint?: string;
@@ -751,7 +754,7 @@ function ChartActions({
       to: `/patients/${patientId}/discipline-plans`,
     },
 
-    { label: "Message care team", to: "/messaging" },
+    { label: "Message care team", to: "/messaging", conversation: true },
   ];
 
   return (
@@ -775,6 +778,15 @@ function ChartActions({
                 >
                   {it.label} — {it.hint}
                 </span>
+              ) : it.conversation ? (
+                // Stays mounted (menu open) while the request runs: closing it would unmount the hook and drop the response.
+                <PatientConversationLink
+                  key={it.to}
+                  patientId={patientId}
+                  className="wx-actor-menu-item"
+                >
+                  {it.label}
+                </PatientConversationLink>
               ) : (
                 <Link
                   key={it.to}
@@ -1151,9 +1163,12 @@ function CareTeamPanel({
                     </a>
                   ) : null}
 
-                  <Link to="/messaging" aria-label={`Message ${name ?? roleLabel(a.role)}`}>
+                  <PatientConversationLink
+                    patientId={patientId}
+                    aria-label={`Message ${name ?? roleLabel(a.role)}`}
+                  >
                     <Glyph name="message-square" size={16} strokeWidth={1.75} />
-                  </Link>
+                  </PatientConversationLink>
                 </span>
               </li>
             );
@@ -1551,7 +1566,7 @@ export function OverviewRail({
   const privacyTo = session?.permissions?.includes("privacy.admin")
     ? `/patients/${patientId}/privacy`
     : `/patients/${patientId}?view=privacy`;
-  const links: { label: string; icon: GlyphName; to: string }[] = [
+  const links: { label: string; icon: GlyphName; to: string; conversation?: boolean }[] = [
     {
       label: "Election & Certification",
 
@@ -1600,7 +1615,7 @@ export function OverviewRail({
       to: `/patients/${patientId}/documents`,
     },
 
-    { label: "Send Message", icon: "message-square", to: "/messaging" },
+    { label: "Send Message", icon: "message-square", to: "/messaging", conversation: true },
 
     {
       label: "Coverage / Payers",
@@ -1681,15 +1696,24 @@ export function OverviewRail({
         <ul className="wx-rail-links">
           {links.map((l) => (
             <li key={l.label}>
-              <Link to={l.to}>
-                <span style={{ color: t.primary }}>
-                  <Glyph name={l.icon} size={17} strokeWidth={1.75} />
-                </span>
+              {(() => {
+                const body = (
+                  <>
+                    <span style={{ color: t.primary }}>
+                      <Glyph name={l.icon} size={17} strokeWidth={1.75} />
+                    </span>
 
-                <span style={{ flex: 1 }}>{l.label}</span>
+                    <span style={{ flex: 1 }}>{l.label}</span>
 
-                <Glyph name="chevron-right" size={16} strokeWidth={1.75} />
-              </Link>
+                    <Glyph name="chevron-right" size={16} strokeWidth={1.75} />
+                  </>
+                );
+                return l.conversation ? (
+                  <PatientConversationLink patientId={patientId}>{body}</PatientConversationLink>
+                ) : (
+                  <Link to={l.to}>{body}</Link>
+                );
+              })()}
             </li>
           ))}
         </ul>

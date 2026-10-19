@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider } from "@wardenx/ui";
+import { ApiClientProvider, ToastProvider } from "@wardenx/ui";
 import type { ApiClient } from "@wardenx/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -102,11 +102,13 @@ function renderPatient(client: ApiClient): void {
   render(
     <MemoryRouter initialEntries={[`/patients/${patientId}/documents`]}>
       <ApiClientProvider client={client}>
-        <SessionProvider session={session}>
-          <Routes>
-            <Route path="/patients/:patientId/documents" element={<PatientDocuments />} />
-          </Routes>
-        </SessionProvider>
+        <ToastProvider>
+          <SessionProvider session={session}>
+            <Routes>
+              <Route path="/patients/:patientId/documents" element={<PatientDocuments />} />
+            </Routes>
+          </SessionProvider>
+        </ToastProvider>
       </ApiClientProvider>
     </MemoryRouter>,
   );
@@ -116,11 +118,13 @@ function renderReferral(client: ApiClient): void {
   render(
     <MemoryRouter initialEntries={[`/referrals/${referralId}`]}>
       <ApiClientProvider client={client}>
-        <SessionProvider session={session}>
-          <Routes>
-            <Route path="/referrals/:id" element={<ReferralDetail />} />
-          </Routes>
-        </SessionProvider>
+        <ToastProvider>
+          <SessionProvider session={session}>
+            <Routes>
+              <Route path="/referrals/:id" element={<ReferralDetail />} />
+            </Routes>
+          </SessionProvider>
+        </ToastProvider>
       </ApiClientProvider>
     </MemoryRouter>,
   );
