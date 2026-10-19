@@ -153,7 +153,12 @@ describe.skipIf(!DB_URL)("M19 after-hours triage request - LIVE Postgres as ward
         await admin.query(
           `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
            VALUES ($1,$2,$3,$4,'enc','12-31') RETURNING id`,
-          [org, `CCN-A47-${org.slice(0, 4)}`, `A47 ${org.slice(0, 4)}`, `NPI-A47-${org.slice(0, 4)}`],
+          [
+            org,
+            `CCN-A47-${org.slice(0, 4)}`,
+            `A47 ${org.slice(0, 4)}`,
+            `NPI-A47-${org.slice(0, 4)}`,
+          ],
         )
       ).rows[0].id as string;
       const mkPatient = async (tag: string) =>
@@ -292,7 +297,9 @@ describe.skipIf(!DB_URL)("M19 after-hours triage request - LIVE Postgres as ward
       "m19.afterhours_triage.outcome",
       "m19.oncall_shift.coverage_gap",
     ]);
-    expect(published.find((e) => e.event_type === "m19.afterhours_triage.outcome")?.payload).toEqual({
+    expect(
+      published.find((e) => e.event_type === "m19.afterhours_triage.outcome")?.payload,
+    ).toEqual({
       sourceOutboxEventId: eventId,
       triageCallId: null,
       outcome: "no_coverage",

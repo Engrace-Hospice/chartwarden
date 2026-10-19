@@ -1,6 +1,8 @@
 // ADR-0082 decision 4 / slice S2 — the pure decider behind M19's `m36.afterhours_triage.requested` consumer.
+import { Value } from "@sinclair/typebox/value";
 import type { OrgId, PatientId, ProviderEntityId, TriageCallId } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
+import type { CoveringShiftCandidate } from "../src/modules/19-oncall/consumers/inbound-trigger";
 import {
   AFTERHOURS_CALL_CHANNEL,
   AFTERHOURS_CALL_SOURCE,
@@ -11,8 +13,9 @@ import {
   parseAfterHoursRequested,
   resolveAfterHoursFacts,
 } from "../src/modules/19-oncall/consumers/m36-afterhours-requested";
-import type { CoveringShiftCandidate } from "../src/modules/19-oncall/consumers/inbound-trigger";
 import type { InboundTriggerPorts } from "../src/modules/19-oncall/consumers/trigger-context";
+import { M19_OUTBOX_EVENTS } from "../src/modules/19-oncall/index";
+import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/index";
 
 const ORG = "0a000000-0000-4000-8000-000000000001" as OrgId;
 const PE = "0b000000-0000-4000-8000-000000000002" as ProviderEntityId;
@@ -62,6 +65,33 @@ const decide = (f: AfterHoursFacts) =>
     facts: f,
     at: AT as never,
   });
+
+describe("the frozen contracts agree with the catalog", () => {
+  const entry = (list: typeof M36_OUTBOX_EVENTS, name: string) =>
+    list.find((e) => e.eventName === name);
+
+  it("M36's request payload (S1) is exactly what the parser reads", () => {
+    const requested = entry(M36_OUTBOX_EVENTS, "m36.afterhours_triage.requested");
+    expect(requested?.declaredConsumers).toContain("m19");
+    expect(Value.Check(requested?.payloadSchema as never, payload)).toBe(true);
+    expect(() => parseAfterHoursRequested(payload)).not.toThrow();
+  });
+
+  it("M19's outcome payload validates for all three outcomes and refuses extras", () => {
+    const outcome = entry(M19_OUTBOX_EVENTS, "m19.afterhours_triage.outcome");
+    expect(outcome?.declaredConsumers).toEqual(["m36"]);
+    const schema = outcome?.payloadSchema as never;
+    const base = { sourceOutboxEventId: EVENT, triageCallId: OPEN };
+    expect(Value.Check(schema, { ...base, outcome: "opened" })).toBe(true);
+    expect(Value.Check(schema, { ...base, outcome: "coalesced" })).toBe(true);
+    expect(Value.Check(schema, { ...base, triageCallId: null, outcome: "no_coverage" })).toBe(true);
+    expect(Value.Check(schema, { ...base, outcome: "refused" })).toBe(false);
+    expect(Value.Check(schema, { ...base, outcome: "opened", body: "text" })).toBe(false);
+    expect(Value.Check(schema, { ...base, triageCallId: "not-a-uuid", outcome: "opened" })).toBe(
+      false,
+    );
+  });
+});
 
 describe("parseAfterHoursRequested", () => {
   it("keeps only the three id fields, whatever else the payload carries", () => {

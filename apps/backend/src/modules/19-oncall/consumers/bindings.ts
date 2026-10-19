@@ -63,12 +63,6 @@ import { resolveCoveringShift } from "./inbound-trigger";
 import { decideNoShowTrigger } from "./m17-no-show";
 import { decideLateCheckoutTrigger } from "./m18-late-checkout";
 import {
-  type DeliveryFailureAction,
-  type DeliveryFailureFacts,
-  type M36DeliveryFailedPayload,
-  decideDeliveryFailureTrigger,
-} from "./m36-delivery-failed";
-import {
   type AfterHoursAction,
   type AfterHoursOutcome,
   type AfterHoursReads,
@@ -78,6 +72,12 @@ import {
   parseAfterHoursRequested,
   resolveAfterHoursFacts,
 } from "./m36-afterhours-requested";
+import {
+  type DeliveryFailureAction,
+  type DeliveryFailureFacts,
+  type M36DeliveryFailedPayload,
+  decideDeliveryFailureTrigger,
+} from "./m36-delivery-failed";
 import type { DeliveryFailureTriggerPorts, InboundTriggerPorts } from "./trigger-context";
 import { resolveInboundTriggerFacts } from "./trigger-context";
 
