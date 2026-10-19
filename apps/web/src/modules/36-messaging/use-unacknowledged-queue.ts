@@ -188,6 +188,8 @@ export function useUnacknowledgedQueue({ status, overdueOnly }: QueueFilter) {
     seq.current += 1; // supersede any read already in flight: it must not overwrite the page about to be appended
     setBusyMore(true);
     let timer: ReturnType<typeof setTimeout> | undefined;
+    // The length the list has once this settles (known here, not read back from a render): what a queued refresh must ask for.
+    let settledLength = current.items.length;
     try {
       const timeout = new Promise<null>((resolve) => {
         timer = setTimeout(() => resolve(null), SHOW_MORE_TIMEOUT_MS);
@@ -195,6 +197,9 @@ export function useUnacknowledgedQueue({ status, overdueOnly }: QueueFilter) {
       const answer = await Promise.race([get(asked, ACK_QUEUE_LIMIT_DEFAULT), timeout]);
       if (gen !== generation.current || token !== moreToken.current) return; // another filter owns the screen / given up on
       const data = answer?.data;
+      if (data) {
+        settledLength = current.items.length + (data as AckQueueResponse).items.length;
+      }
       setView((prev) => {
         if (prev.status !== "ready") return prev;
         // The list moved on (a refresh replaced it): the page no longer extends it. Say so instead of dropping it silently.
@@ -220,12 +225,11 @@ export function useUnacknowledgedQueue({ status, overdueOnly }: QueueFilter) {
         setBusyMore(false);
         if (retryPending.current) {
           retryPending.current = false;
-          // after the render that shows the appended rows, so the refresh asks for the span the person now has
-          setTimeout(() => void read(loadedCount()), 0);
+          void read(settledLength);
         }
       }
     }
-  }, [client, get, read, loadedCount]);
+  }, [client, get, read]);
 
   return { view, retry, showMore, busyMore };
 }

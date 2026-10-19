@@ -737,6 +737,12 @@ describe("UnacknowledgedQueue", () => {
       expect(GET.mock.calls.length).toBe(during);
       await act(async () => more.resolve(page([SECOND])));
       expect(screen.getAllByRole("listitem")).toHaveLength(2);
+      // and a poll DOES run after the append, re-reading the two rows held
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+      expect(GET.mock.calls.length).toBeGreaterThan(during);
+      expect(screen.getAllByRole("listitem")).toHaveLength(2);
     });
 
     it("hands focus on when a mouse click did not focus the button (Safari, Firefox)", async () => {
@@ -745,6 +751,128 @@ describe("UnacknowledgedQueue", () => {
       (document.activeElement as HTMLElement | null)?.blur();
       fireEvent.click(screen.getByRole("button", { name: QUEUE_MORE_LABEL })); // focus stays on the page
       await waitFor(() => expect(document.activeElement).toBe(screen.getAllByRole("listitem")[1]));
+    });
+
+    it("keeps the user's place when they Tab away while Show more is in flight", async () => {
+      const more = deferred<unknown>();
+      mount((query) => (query.cursor === "CUR" ? more.promise : withMore([FIRST])));
+      await screen.findAllByRole("listitem");
+      const button = screen.getByRole("button", { name: QUEUE_MORE_LABEL });
+      button.focus();
+      fireEvent.click(button);
+      const elsewhere = screen.getByRole("button", { name: "Overdue only" });
+      elsewhere.focus(); // Tab away during the request
+      await act(async () => more.resolve(page([SECOND])));
+      expect(screen.getAllByRole("listitem")).toHaveLength(2);
+      expect(document.activeElement).toBe(elsewhere);
+    });
+
+    it("a Retry clicked during Show more keeps Show more's row focus target", async () => {
+      vi.useFakeTimers(FAKE);
+      const more = deferred<unknown>();
+      let moreCalls = 0;
+      let mode: "ok" | "fail" = "ok";
+      mount((query) => {
+        if (query.cursor === "CUR") {
+          moreCalls += 1;
+          return moreCalls === 1 ? more.promise : page([SECOND]);
+        }
+        return mode === "fail" ? { error: {}, response: { status: 503 } } : withMore([FIRST]);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      mode = "fail";
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+      mode = "ok";
+      const showMore = screen.getByRole("button", { name: QUEUE_MORE_LABEL });
+      showMore.focus();
+      fireEvent.click(showMore);
+      const retry = screen.getByRole("button", { name: "Retry" });
+      retry.focus();
+      fireEvent.click(retry);
+      await act(async () => more.resolve(page([SECOND])));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getAllByRole("listitem")).toHaveLength(2);
+      expect(screen.queryByText(QUEUE_STALE)).toBeNull();
+      // the Retry button unmounted with focus on it: focus is not lost to the page
+      expect(document.activeElement).not.toBe(document.body);
+      expect(document.activeElement?.closest("section") ?? document.activeElement).toBeTruthy();
+    });
+
+    it("a refresh queued behind Show more asks for the length the append produced, never the pre-append count", async () => {
+      vi.useFakeTimers(FAKE);
+      const more = deferred<unknown>();
+      const THIRD = item({
+        id: "cccccccc-cccc-4ccc-8ccc-0000000000f4",
+        assigned_display_name: "Third Person",
+      });
+      let cursorCalls = 0;
+      let mode: "ok" | "fail" = "ok";
+      mount((query) => {
+        if (query.cursor === "CUR") {
+          cursorCalls += 1;
+          return cursorCalls === 1 ? more.promise : page([SECOND, THIRD]);
+        }
+        return mode === "fail" ? { error: {}, response: { status: 503 } } : withMore([FIRST]); // a first page that holds one row, whatever the span asked for
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      mode = "fail";
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000); // stale banner with Retry
+      });
+      mode = "ok";
+      fireEvent.click(screen.getByRole("button", { name: QUEUE_MORE_LABEL }));
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      await act(async () => more.resolve(page([SECOND, THIRD])));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getAllByRole("listitem")).toHaveLength(3);
+    });
+
+    it("drops a queued refresh when the filter changes or the screen unmounts", async () => {
+      const more = deferred<unknown>();
+      const { GET, unmount } = mount((query) => {
+        if (query.cursor === "CUR") return more.promise;
+        return query.status === "escalated"
+          ? page([SECOND], { filtered: true })
+          : withMore([FIRST]);
+      });
+      await screen.findAllByRole("listitem");
+      fireEvent.click(screen.getByRole("button", { name: QUEUE_MORE_LABEL }));
+      fireEvent.click(screen.getByRole("button", { name: "Escalated" }));
+      await screen.findByText("Assigned to Second Person.");
+      const reads = GET.mock.calls.length;
+      await act(async () => more.resolve(page([OLD_ONLY])));
+      expect(GET.mock.calls.length).toBe(reads);
+      expect(screen.queryByText("Assigned to Old Filter Person.")).toBeNull();
+      unmount();
+      expect(GET.mock.calls.length).toBe(reads);
+    });
+
+    it("ignores an answer that arrives after Show more already timed out", async () => {
+      vi.useFakeTimers(FAKE);
+      const late = deferred<unknown>();
+      mount((query) => (query.cursor === "CUR" ? late.promise : withMore([FIRST])));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      fireEvent.click(screen.getByRole("button", { name: QUEUE_MORE_LABEL }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(SHOW_MORE_TIMEOUT_MS + 1);
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByRole("alert").textContent).toContain("Could not load more");
+      await act(async () => late.resolve(page([SECOND])));
+      expect(screen.getAllByRole("listitem")).toHaveLength(1);
+      expect(screen.queryByText("Assigned to Second Person.")).toBeNull();
     });
   });
 });

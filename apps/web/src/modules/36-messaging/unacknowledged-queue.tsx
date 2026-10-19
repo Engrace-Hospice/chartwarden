@@ -126,35 +126,58 @@ export function UnacknowledgedQueue(): JSX.Element {
   const sectionRef = useRef<HTMLElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   // Where focus goes when the control that had it (Show more, Retry) leaves the page: the first row it appended, else the section.
-  const focusAfter = useRef<{ readonly row: number } | "section" | null>(null);
+  // `control` is the button that was clicked: focus is re-checked against it when the request SETTLES, not only at click time.
+  type Pending =
+    | { readonly kind: "row"; readonly row: number; readonly control: HTMLElement }
+    | { readonly kind: "section"; readonly control: HTMLElement };
+  const focusAfter = useRef<Pending | null>(null);
+  // A Retry clicked while Show more was in flight: keep Show more's row target, and once the queued refresh has cleared the stale
+  // state, put focus on the section only if it has been lost to the page.
+  const sectionFallback = useRef(false);
   const rowCount = view.status === "ready" ? view.items.length : -1;
 
   // A new filter makes any pending focus target meaningless.
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the filter primitives
   useEffect(() => {
     focusAfter.current = null;
+    sectionFallback.current = false;
   }, [filter.status, filter.overdueOnly]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the list grows or the view settles
   useEffect(() => {
+    if (view.status === "loading" || busyMore) return;
     const target = focusAfter.current;
-    if (target === null || view.status === "loading" || busyMore) return;
-    focusAfter.current = null;
-    // The control that had focus is still there when the action failed (its alert and button stay): do not move focus then.
-    if (view.status === "error" || view.status === "denied") return;
-    if (view.status === "ready" && (view.moreFailed || (target === "section" && view.stale)))
-      return;
-    const row = target === "section" ? undefined : listRef.current?.children[target.row];
-    if (target !== "section" && !row) return;
-    ((row as HTMLElement | undefined) ?? sectionRef.current)?.focus();
+    if (target !== null) {
+      focusAfter.current = null;
+      // The control that had focus is still there when the action failed (its alert and button stay): do not move focus then.
+      const failed =
+        view.status === "error" ||
+        view.status === "denied" ||
+        (view.status === "ready" && (view.moreFailed || (target.kind === "section" && view.stale)));
+      if (!failed && personStillHere(target.control)) {
+        const row = target.kind === "row" ? listRef.current?.children[target.row] : undefined;
+        if (target.kind === "section" || row)
+          ((row as HTMLElement | undefined) ?? sectionRef.current)?.focus();
+      }
+    }
+    if (sectionFallback.current && view.status === "ready" && !view.stale) {
+      sectionFallback.current = false;
+      const active = document.activeElement;
+      if (active === null || active === document.body) sectionRef.current?.focus();
+    }
   }, [view, rowCount, busyMore]);
-  // Focus is only handed on when it is still on the control that was clicked (the person has not moved on).
   const retryWithFocus = (event: MouseEvent<HTMLButtonElement>): void => {
-    focusAfter.current = personStillHere(event.currentTarget) ? "section" : null;
+    if (busyMore) sectionFallback.current = true;
+    else
+      focusAfter.current = personStillHere(event.currentTarget)
+        ? { kind: "section", control: event.currentTarget }
+        : null;
     retry();
   };
   const moreWithFocus = (event: MouseEvent<HTMLButtonElement>): void => {
-    focusAfter.current = personStillHere(event.currentTarget) ? { row: rowCount } : null;
+    focusAfter.current = personStillHere(event.currentTarget)
+      ? { kind: "row", row: rowCount, control: event.currentTarget }
+      : null;
     void showMore();
   };
   // Minute-grained "due in" text re-renders itself; the data poll is the hook's.
