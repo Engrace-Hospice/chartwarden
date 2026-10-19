@@ -1,15 +1,19 @@
 # M36 messaging hub: decision sheet (open sign-offs)
 
-**Status:** draft, 2026-10-19. **Nothing here is decided.** Every "Default" below is an engineering placeholder that the built code
+**Status:** draft, 2026-10-19. **Nothing here is decided, except B7**, which records a decision already taken (see the row). Every "Default" below is an engineering placeholder that the built code
 or the runbook already uses; it is not a clinical, compliance or legal position. Fill the last column, then the answers are written
 into the ADRs and the brief as decided (the brief keeps the full wording of each question: section numbers in the Source column).
 
 **How to use:** one row per decision. Write the answer in *Decision* (accept the default, edit it, or reject it), add your name,
-role and date. A blank row stays OPEN and the default stays provisional. Rows in section A block turning the messaging flags
-on for any real tenant. Rows in section E gate work that has not started.
+role and date. A blank row stays OPEN and the default stays provisional. Row A1 is the stated go-live precondition (A2 to A4 support it). Rows in section E gate work that has not started.
 
 Owners: **CL** clinical lead / medical director, **COMP** compliance or Part 2 review, **OPS** operations, **M19** the (not yet named)
 owner of on-call and the `EscalationRouter` seam, **SEC** security architect, **PO** product owner.
+
+**This sheet is a subset.** It lists the main decisions only. The full set of open questions, with their exact wording, stays in
+`brief-clinical-lead-signoff.md` (§3, §7, §8, §11, §13) and `brief-m19-owner.md`; items not listed here (for example the emergency
+carve-out, the incident-log location, the flag-off rule, the offboarding inheritor, vacation forwarding, urgent-class SMS timing and
+the M19 role-level lookup) are still OPEN there.
 
 ## A. Before any tenant turns the flags on (go-live)
 
@@ -25,12 +29,12 @@ owner of on-call and the `EscalationRouter` seam, **SEC** security architect, **
 | # | Decision | Owner | Default | What the default means | Source | Decision |
 |---|---|---|---|---|---|---|
 | B1 | Who is paged about a request nobody can reach | CL | roles `clinical_supervisor` and `don` | In-app alert now; push (and SMS for critical) to their verified endpoints once a transport exists. A tenant can re-aim the rule; the "unpaged" notice does not detect re-aiming | ADR-0079; brief §13 | |
-| B2 | Reminder schedule for an undeliverable request nobody reassigns | CL | 8 reminders: at the deadline, then +1, +3, +7, +15, +31, +55, +79 h; then only the queue shows it | About 103 hours of reminders, then silence except the queue and gauges | ADR-0079 | |
+| B2 | Reminder schedule for an undeliverable request nobody reassigns | CL | 8 reminders measured from the later of the deadline and the moment it became undeliverable (if it failed after its deadline, the first reminder is skipped and the next comes an hour later): at the deadline, then +1, +3, +7, +15, +31, +55, +79 h; then only the queue shows it | About 103 hours of reminders, then silence except the queue and gauges | ADR-0079 | |
 | B3 | May an undeliverable request ever escalate by itself | CL | never | The database guard forbids `failed_unreachable` to `escalated`; a person must reassign | ADR-0079 | |
-| B4 | Stalled-worker threshold for the operations notice | OPS | 5 minutes past deadline | Notice to operations only; clinicians are not alerted | ADR-0079 | |
+| B4 | Thresholds for the operations notices | OPS | stalled worker: 5 minutes past deadline; queue overdue: a request more than 15 minutes past its deadline; slow response: average time to take responsibility over 24 h above 15 minutes | Notices to operations only; clinicians are not alerted | ADR-0079; brief §11 | |
 | B5 | Supervisor reassign: audience, reason codes, cap | CL | `messaging.review` holders; six fixed non-clinical reason codes; 5 reassigns per request per rolling 24 h (409 after) | A supervisor can move a waiting request without reading the conversation. One supervisor can use the cap, so the 409 names the clinical lead | ADR-0078; brief §13 | |
-| B6 | Reassign limits, supervisor override and take-over | CL | no supervisor acknowledge, resolve or cancel | Only the assigned person takes responsibility | brief §3, §13 | |
-| B7 | G-1: an audited "acknowledged by phone on behalf of" action | CL | **rejected** | Would weaken the explicit-acknowledgment rule (ADR-0056, ADR-0069 decision 6). The supported path is B5 | brief §13 | |
+| B6 | Supervisor override and take-over (the reassign limit itself is B5) | CL | no supervisor acknowledge, resolve or cancel | Only the assigned person takes responsibility | brief §3, §13 | |
+| B7 | G-1: an audited "acknowledged by phone on behalf of" action | CL (may reopen) | **closed by product decision, rejected** (ADR-0078 decision 8) | Would weaken the explicit-acknowledgment rule (ADR-0056, ADR-0069 decision 6). The supported path is B5 | brief §13 | |
 | B8 | Safety-floor list and locked quiet-hours rows | CL | per ADR-0073 platform floor | What can never be silenced | brief §8; UI spec §9 | |
 
 ## C. What a restricted row may show (compliance)
@@ -45,10 +49,10 @@ owner of on-call and the `EscalationRouter` seam, **SEC** security architect, **
 
 | # | Decision | Owner | Default | What the default means | Source | Decision |
 |---|---|---|---|---|---|---|
-| D1 | Telephone-tree order and wait per step | CL | assignee, sender, next on-call tier, supervisor, director of nursing, clinical lead, operations; 5 min for urgent and critical, 10 for important | Used by the runbook and drills only | brief §13 | |
+| D1 | Telephone-tree order and wait per step | CL | assignee, sender, next on-call tier, supervisor, director of nursing, clinical lead, operations (critical symptom: sender first, then assignee; a sender the row does not identify counts as unreachable); 5 min for urgent and critical, 10 for important | Used by the runbook and drills only | brief §13 | |
 | D2 | Drill cadence; must a new organisation drill before going live | CL | quarterly, one tabletop and one live; yes before go-live | No drill has been run, so acceptance evidence does not exist | brief §13 | |
 | D3 | Drill targets | CL | 10 min to notice, 10 more to reach a person, acknowledged within the deadline plus 15 min | | brief §13 | |
-| D4 | Evidence owner, store and retention | CL + COMP | clinical lead; the agency's compliance store (never this repository); six years | | brief §13 | |
+| D4 | Evidence owner, store and retention | CL + COMP | clinical lead; the agency's compliance store (never this repository); the agency's policy period (six years is the usual documentation period) | | brief §13 | |
 | D5 | Who may stand down an incident; cancelled-request rule | CL + OPS | supervisor on duty (clinical) and operations (technical), both recorded; a cancellation needs the clinical lead's recorded decision first | | brief §13 | |
 | D6 | Follow-up limit before handing an unanswered request up | CL | to be set (important and urgent separately) | | brief §13 | |
 | D7 | A verbal "I've got it" and verbal handoff of content | CL | does not close a request; no content on the call | | brief §13 | |
@@ -67,9 +71,11 @@ owner of on-call and the `EscalationRouter` seam, **SEC** security architect, **
 ## F. Later phases (not blocking anything now)
 
 Listed for completeness, with owners from the UI spec §9: retention classes and legal hold (5.6, compliance, new ADR), export format and
-approval roles (5.7), break-glass eligibility and review SLA (5.8), app-lock and device policy (5.5, SEC), dictation PHI boundary (6.3),
-machine translation of clinical content (6.4, off by default), AI summaries (6.5, hazard H-08), external partner share (6.6, BAA),
-family messaging without an app (6.7, privacy officer), individual-level analytics (6.2, forbidden by default), the self-destruct
+approval roles (5.7, compliance, new ADR), break-glass eligibility and review SLA (5.8, compliance + clinical lead), app-lock and device
+policy (5.5, SEC), dictation PHI boundary (6.3, new ADR + compliance), machine translation of clinical content (6.4, clinical lead, off
+by default), AI summaries (6.5, clinical lead + compliance + new ADR, hazard H-08), external partner share (6.6, legal BAA + clinical
+lead + new ADR), family messaging without an app (6.7, privacy officer + new ADR), individual-level analytics (6.2, HR/compliance,
+forbidden by default), the self-destruct
 question (UI spec §8; recommended to decline for clinical content), and reconciling native push with ADR-0072 (5.11).
 
 ## What happens with the answers
