@@ -101,13 +101,15 @@ function ok(data: unknown) {
 function renderPatient(client: ApiClient): void {
   render(
     <MemoryRouter initialEntries={[`/patients/${patientId}/documents`]}>
-      <ApiClientProvider client={client}><ToastProvider>
-        <SessionProvider session={session}>
-          <Routes>
-            <Route path="/patients/:patientId/documents" element={<PatientDocuments />} />
-          </Routes>
-        </SessionProvider>
-      </ToastProvider></ApiClientProvider>
+      <ApiClientProvider client={client}>
+        <ToastProvider>
+          <SessionProvider session={session}>
+            <Routes>
+              <Route path="/patients/:patientId/documents" element={<PatientDocuments />} />
+            </Routes>
+          </SessionProvider>
+        </ToastProvider>
+      </ApiClientProvider>
     </MemoryRouter>,
   );
 }
@@ -115,13 +117,15 @@ function renderPatient(client: ApiClient): void {
 function renderReferral(client: ApiClient): void {
   render(
     <MemoryRouter initialEntries={[`/referrals/${referralId}`]}>
-      <ApiClientProvider client={client}><ToastProvider>
-        <SessionProvider session={session}>
-          <Routes>
-            <Route path="/referrals/:id" element={<ReferralDetail />} />
-          </Routes>
-        </SessionProvider>
-      </ToastProvider></ApiClientProvider>
+      <ApiClientProvider client={client}>
+        <ToastProvider>
+          <SessionProvider session={session}>
+            <Routes>
+              <Route path="/referrals/:id" element={<ReferralDetail />} />
+            </Routes>
+          </SessionProvider>
+        </ToastProvider>
+      </ApiClientProvider>
     </MemoryRouter>,
   );
 }

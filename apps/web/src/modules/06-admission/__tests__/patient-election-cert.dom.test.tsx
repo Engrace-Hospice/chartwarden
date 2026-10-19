@@ -210,16 +210,18 @@ function clientFor(
 function renderWorkspace(client: ApiClient): void {
   render(
     <MemoryRouter initialEntries={["/patients/patient-1/election-certification"]}>
-      <ApiClientProvider client={client}><ToastProvider>
-        <SessionProvider session={session}>
-          <Routes>
-            <Route
-              path="/patients/:patientId/election-certification"
-              element={<PatientElectionCert />}
-            />
-          </Routes>
-        </SessionProvider>
-      </ToastProvider></ApiClientProvider>
+      <ApiClientProvider client={client}>
+        <ToastProvider>
+          <SessionProvider session={session}>
+            <Routes>
+              <Route
+                path="/patients/:patientId/election-certification"
+                element={<PatientElectionCert />}
+              />
+            </Routes>
+          </SessionProvider>
+        </ToastProvider>
+      </ApiClientProvider>
     </MemoryRouter>,
   );
 }

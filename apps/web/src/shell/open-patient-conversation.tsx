@@ -24,6 +24,46 @@ export interface PatientConversation {
   opening: boolean;
 }
 
+type Client = ReturnType<typeof useApiClient>;
+type Outcome = { channelId: string } | { failure: "unavailable" | "error" };
+interface SharedRequest {
+  promise: Promise<Outcome>;
+  applied: boolean;
+}
+
+// One request per patient across every hook instance (tab, banner menu, care-team tile), so clicking
+// two entry points before the first response sends one POST and navigates once.
+const sharedRequests = new Map<string, SharedRequest>();
+
+async function resolveChannel(client: Client, patientId: string): Promise<Outcome> {
+  try {
+    const result = await client.POST("/api/v1/messaging/patients/{patientId}/care-team-channel", {
+      params: { path: { patientId } },
+    });
+    const data = result.data;
+    // A response for another patient must never be followed.
+    if (result.error || !data?.channelId || (data.patientId && data.patientId !== patientId)) {
+      return { failure: "unavailable" };
+    }
+    return { channelId: data.channelId };
+  } catch {
+    return { failure: "error" };
+  }
+}
+
+function sharedRequestFor(client: Client, patientId: string): SharedRequest {
+  const existing = sharedRequests.get(patientId);
+  if (existing) return existing;
+  const entry: SharedRequest = {
+    applied: false,
+    promise: resolveChannel(client, patientId).finally(() => {
+      if (sharedRequests.get(patientId) === entry) sharedRequests.delete(patientId);
+    }),
+  };
+  sharedRequests.set(patientId, entry);
+  return entry;
+}
+
 export function useOpenPatientConversation(patientId: string): PatientConversation {
   const client = useApiClient();
   const toast = useToast();
@@ -33,6 +73,7 @@ export function useOpenPatientConversation(patientId: string): PatientConversati
   const inFlight = useRef(false);
 
   // A patient/client change or unmount invalidates any pending response and frees the guard.
+  // `client` must be stable (created once at module scope in main.tsx) or this resets every render.
   useEffect(
     () => () => {
       void client;
@@ -49,21 +90,18 @@ export function useOpenPatientConversation(patientId: string): PatientConversati
     inFlight.current = true;
     setOpening(true);
     const mine = ++request.current;
+    const shared = sharedRequestFor(client, patientId);
+    const outcome = await shared.promise;
     try {
-      const result = await client.POST("/api/v1/messaging/patients/{patientId}/care-team-channel", {
-        params: { path: { patientId } },
-      });
       if (mine !== request.current) return;
-      const data = result.data;
-      // A response for another patient must never be followed.
-      if (result.error || !data?.channelId || (data.patientId && data.patientId !== patientId)) {
-        toast.show(UNAVAILABLE, { tone: "error" });
-        return;
+      // The first live instance applies the outcome; the others only stop showing "opening".
+      if (shared.applied) return;
+      shared.applied = true;
+      if ("channelId" in outcome) {
+        navigate("/messaging", { state: { messagingChannelId: outcome.channelId } });
+      } else {
+        toast.show(outcome.failure === "error" ? FAILED : UNAVAILABLE, { tone: "error" });
       }
-      navigate("/messaging", { state: { messagingChannelId: data.channelId } });
-    } catch {
-      if (mine !== request.current) return;
-      toast.show(FAILED, { tone: "error" });
     } finally {
       if (mine === request.current) {
         inFlight.current = false;
@@ -79,7 +117,9 @@ export function useOpenPatientConversation(patientId: string): PatientConversati
  * Link-looking entry point for a patient's care-team conversation. Every primary or modified click
  * (and middle click) runs `open` in the same tab. The href is the patient's chart, never /messaging:
  * a browser-menu "open in new tab" cannot be intercepted and /messaging would select another
- * patient's thread. The caller owns the hook so it outlives menus that unmount on close.
+ * patient's thread. The caller owns the hook so it outlives menus that unmount on close. Only the
+ * clicked link renders the status region (outside the anchor, so the link's name never changes), so
+ * links sharing one hook announce "opening" once.
  */
 export function PatientConversationLink({
   patientId,
@@ -98,28 +138,34 @@ export function PatientConversationLink({
   "aria-current"?: "page";
 }): JSX.Element {
   const { open, opening } = conversation;
+  const [clicked, setClicked] = useState(false);
+  useEffect(() => {
+    if (!opening) setClicked(false);
+  }, [opening]);
   const run = (event: MouseEvent<HTMLAnchorElement>): void => {
     event.preventDefault();
     onClick?.();
-    if (!opening) void open();
+    if (opening) return;
+    setClicked(true);
+    void open();
   };
   return (
-    <Link
-      to={`/patients/${patientId}`}
-      onClick={(event) => {
-        if (event.button === 0) run(event);
-      }}
-      onAuxClick={(event) => {
-        if (event.button === 1) run(event);
-      }}
-      aria-busy={opening || undefined}
-      aria-disabled={opening || undefined}
-      {...rest}
-    >
-      {children}
-      <span className="wx-sr-only" role="status">
-        {opening ? OPENING_STATUS : ""}
-      </span>
-    </Link>
+    <>
+      <Link
+        to={`/patients/${patientId}`}
+        onClick={(event) => {
+          if (event.button === 0) run(event);
+        }}
+        onAuxClick={(event) => {
+          if (event.button === 1) run(event);
+        }}
+        aria-busy={opening || undefined}
+        aria-disabled={opening || undefined}
+        {...rest}
+      >
+        {children}
+      </Link>
+      {clicked ? <output className="wx-sr-only">{opening ? OPENING_STATUS : ""}</output> : null}
+    </>
   );
 }

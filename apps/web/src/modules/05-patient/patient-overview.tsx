@@ -28,6 +28,10 @@ import { type JSX, type ReactNode, useEffect, useMemo, useRef, useState } from "
 import { Link } from "react-router-dom";
 
 import {
+  PatientConversationLink,
+  useOpenPatientConversation,
+} from "../../shell/open-patient-conversation";
+import {
   ChartBanner,
   fmtDate,
   maskTail,
@@ -35,10 +39,6 @@ import {
   sexLabel,
 } from "../../shell/patient-context";
 import { PatientIntakeSummaries, SHOWS_INTAKE_SUMMARIES } from "../../shell/prospect-summary";
-import {
-  PatientConversationLink,
-  useOpenPatientConversation,
-} from "../../shell/open-patient-conversation";
 import { useSession } from "../../shell/session";
 import { WristbandAction } from "./wristband-action";
 

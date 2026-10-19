@@ -1269,21 +1269,24 @@ describe("M36 clinical messenger workspace", () => {
   });
 });
 
-describe("M36 requested conversation that is not in the list", () => {
-  it("does not fall back to another conversation's thread", async () => {
+describe("M36 requested conversation", () => {
+  const messageCalls = (get: ReturnType<typeof vi.fn>) =>
+    get.mock.calls.filter(([path]) => path === "/api/v1/messaging/channels/{id}/messages");
+
+  function setup(entry: string | { pathname: string; state: unknown }) {
     const get = vi.fn((path: string) =>
       Promise.resolve(
         path === "/api/v1/messaging/channels"
-          ? { data: { channels: [channel("dm-1", "Other Patient Team")] }, error: undefined }
+          ? {
+              data: { channels: [channel("dm-1", "First Team"), channel("dm-2", "Second Team")] },
+              error: undefined,
+            }
           : { data: { messages: [] }, error: undefined },
       ),
     );
     const api = { GET: get, POST: vi.fn() } as unknown as ApiClient;
-
     render(
-      <MemoryRouter
-        initialEntries={[{ pathname: "/messaging", state: { messagingChannelId: "gone" } }]}
-      >
+      <MemoryRouter initialEntries={[entry]}>
         <ApiClientProvider client={api}>
           <SessionProvider session={ORG_ONE}>
             <StaffMessaging />
@@ -1291,11 +1294,33 @@ describe("M36 requested conversation that is not in the list", () => {
         </ApiClientProvider>
       </MemoryRouter>,
     );
+    return get;
+  }
 
-    await screen.findAllByText("Other Patient Team");
-    await act(async () => {});
-    expect(
-      get.mock.calls.filter(([path]) => path === "/api/v1/messaging/channels/{id}/messages"),
-    ).toHaveLength(0);
+  const idOf = (call: unknown[] | undefined) =>
+    (call?.[1] as { params: { path: { id: string } } } | undefined)?.params.path.id;
+
+  it("shows the empty state, not another thread, when the requested channel is missing", async () => {
+    const get = setup({ pathname: "/messaging", state: { messagingChannelId: "gone" } });
+    await screen.findByText("This conversation is not available.");
+    expect(screen.getAllByText("First Team").length).toBeGreaterThan(0);
+    expect(messageCalls(get)).toHaveLength(0);
+  });
+
+  it("selects a present requested channel from router state", async () => {
+    const get = setup({ pathname: "/messaging", state: { messagingChannelId: "dm-2" } });
+    await waitFor(() => expect(idOf(messageCalls(get)[0])).toBe("dm-2"));
+    expect(screen.queryByText("This conversation is not available.")).toBeNull();
+  });
+
+  it("selects a present requested channel from the ?channelId= URL", async () => {
+    const get = setup("/messaging?channelId=dm-2");
+    await waitFor(() => expect(idOf(messageCalls(get)[0])).toBe("dm-2"));
+  });
+
+  it("shows the empty state for a missing ?channelId= URL too", async () => {
+    const get = setup("/messaging?channelId=gone");
+    await screen.findByText("This conversation is not available.");
+    expect(messageCalls(get)).toHaveLength(0);
   });
 });

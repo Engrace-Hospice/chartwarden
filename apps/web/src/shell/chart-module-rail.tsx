@@ -27,7 +27,8 @@ export type ChartSection =
   | "documents"
   | "election"
   | "idg"
-  | "claims";
+  | "claims"
+  | "communication";
 
 type ChartTabKey =
   | "overview"
@@ -65,6 +66,7 @@ const SECTION_TAB: Record<ChartSection, ChartTabKey> = {
   idg: "idg",
   documents: "documents",
   claims: "claims",
+  communication: "communication",
 };
 
 const TABS: {

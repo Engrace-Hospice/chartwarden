@@ -2,16 +2,15 @@
 // (POST care-team-channel, then router state), never plain /messaging (first conversation in the list).
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
-import type { ReactElement } from "react";
+import { type ReactElement, useEffect, useState } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
+import { ChartModuleRail } from "../../shell/chart-module-rail";
 import {
   PatientConversationLink,
   useOpenPatientConversation,
 } from "../../shell/open-patient-conversation";
-import { useState } from "react";
-import { ChartModuleRail } from "../../shell/chart-module-rail";
-import { PatientChartHeader, OverviewRail, OverviewTab } from "./patient-overview";
+import { OverviewRail, OverviewTab, PatientChartHeader } from "./patient-overview";
 
 const PATIENT = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
 const CHANNEL = "care-team-channel-1";
@@ -42,7 +41,10 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
       return json({ channelId: CHANNEL, kind: "care_team", patientId: "other", archived: false });
     }
     if (mode === "denied") return json({ error: { code: "FORBIDDEN", message: "no" } }, 403);
-    if (mode === "hang") await new Promise<void>((r) => (release = r));
+    if (mode === "hang")
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
     return json({
       channelId: CHANNEL,
       kind: "care_team",
@@ -53,8 +55,16 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   return json({}, 404);
 }
 
+let navigations = 0;
+
 function Destination() {
-  const state = useLocation().state as { messagingChannelId?: string } | null;
+  const location = useLocation();
+  const state = location.state as { messagingChannelId?: string } | null;
+  // Each navigate() produces a new location key, so this counts navigations.
+  useEffect(() => {
+    void location.key;
+    navigations += 1;
+  }, [location.key]);
   return <div>Messaging destination {state?.messagingChannelId ?? "none"}</div>;
 }
 
@@ -78,6 +88,7 @@ function mount(ui: ReactElement) {
 const channelPosts = () => calls.filter((c) => c.endsWith("/care-team-channel")).length;
 
 beforeEach(() => {
+  navigations = 0;
   calls = [];
   mode = "ok";
   release = null;
@@ -87,7 +98,7 @@ const entryPoints: [string, () => ReactElement, () => Promise<HTMLElement> | HTM
   [
     "Communication tab",
     () => <ChartModuleRail patientId={PATIENT} current="summary" />,
-    () => screen.getByRole("link", { name: /Communication/ }),
+    () => screen.getByRole("link", { name: "Communication" }),
   ],
   [
     "Send Message quick link",
@@ -159,7 +170,7 @@ describe.each(entryPoints)("%s", (_name, ui, getLink) => {
 });
 
 const UNAVAILABLE = "The care team conversation is unavailable or your access has changed.";
-const rail = () => screen.getByRole("link", { name: /Communication/ });
+const rail = () => screen.getByRole("link", { name: "Communication" });
 
 function LinkHarness({ patientId, current }: { patientId: string; current?: "page" }) {
   const conversation = useOpenPatientConversation(patientId);
@@ -186,6 +197,51 @@ function Toggle({ children }: { children: ReactElement }) {
   );
 }
 
+function SharedHarness() {
+  const conversation = useOpenPatientConversation(PATIENT);
+  return (
+    <>
+      {["One", "Two", "Three"].map((label) => (
+        <PatientConversationLink key={label} patientId={PATIENT} conversation={conversation}>
+          {label}
+        </PatientConversationLink>
+      ))}
+    </>
+  );
+}
+
+describe("shared hook and cross-instance behaviour", () => {
+  it("announces opening once and keeps every link name stable", async () => {
+    mode = "hang";
+    mount(<SharedHarness />);
+    fireEvent.click(screen.getByRole("link", { name: "Two" }));
+    await waitFor(() => expect(screen.getAllByRole("status")).toHaveLength(1));
+    expect(screen.getByRole("status").textContent).toBe("Opening care team conversation…");
+    for (const name of ["One", "Two", "Three"]) {
+      expect(screen.getByRole("link", { name }).getAttribute("aria-busy")).toBe("true");
+    }
+    await act(async () => release?.());
+    await screen.findByText(`Messaging destination ${CHANNEL}`);
+  });
+
+  it("sends one POST and one navigation for two hook instances of the same patient", async () => {
+    mode = "hang";
+    mount(
+      <>
+        <LinkHarness patientId={PATIENT} />
+        <ChartModuleRail patientId={PATIENT} current="summary" />
+      </>,
+    );
+    fireEvent.click(screen.getByRole("link", { name: "Chat" }));
+    fireEvent.click(rail());
+    await waitFor(() => expect(channelPosts()).toBe(1));
+    await act(async () => release?.());
+    await screen.findByText(`Messaging destination ${CHANNEL}`);
+    expect(channelPosts()).toBe(1);
+    expect(navigations).toBe(1);
+  });
+});
+
 describe("Communication tab semantics", () => {
   it("is a link whose href never points at /messaging", () => {
     mount(<ChartModuleRail patientId={PATIENT} current="summary" />);
@@ -193,9 +249,10 @@ describe("Communication tab semantics", () => {
     expect(rail().getAttribute("aria-current")).toBeNull();
   });
 
-  it("keeps aria-current when active", () => {
-    mount(<LinkHarness patientId={PATIENT} current="page" />);
-    expect(screen.getByRole("link", { name: "Chat" }).getAttribute("aria-current")).toBe("page");
+  it("sets aria-current on the real rail when Communication is the active section", () => {
+    mount(<ChartModuleRail patientId={PATIENT} current="communication" />);
+    expect(rail().getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("link", { name: "Overview" }).getAttribute("aria-current")).toBeNull();
   });
 
   it.each([
@@ -231,6 +288,8 @@ describe("Communication tab semantics", () => {
     await waitFor(() => expect(rail().getAttribute("aria-busy")).toBe("true"));
     expect(rail().getAttribute("aria-disabled")).toBe("true");
     expect(screen.getByRole("status").textContent).toBe("Opening care team conversation…");
+    // The name stays stable mid-flight (exact match).
+    expect(screen.getByRole("link", { name: "Communication" })).toBeTruthy();
     fireEvent.click(rail());
     expect(channelPosts()).toBe(1);
     await act(async () => release?.());
@@ -316,6 +375,7 @@ describe("Communication tab semantics", () => {
     fireEvent.click(actions);
     fireEvent.click(screen.getByRole("link", { name: "Message care team" }));
     await waitFor(() => expect(channelPosts()).toBe(1));
+    expect(screen.getByRole("link", { name: "Message care team" })).toBeTruthy();
     fireEvent.click(actions);
     await act(async () => release?.());
     await screen.findByText(`Messaging destination ${CHANNEL}`);
