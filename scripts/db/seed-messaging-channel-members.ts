@@ -11,6 +11,9 @@
  *   minus identities holding a patient_family / external_auditor / platform_staff role (member-category-gate.ts F6);
  *   a patient with an active SUD privacy flag is SKIPPED (the real sync defers to M39's Part 2 release per user,
  *   which a SQL seed cannot honestly mirror);
+ *   a patient with NO privacy snapshot row is treated as not SUD-flagged (the sync would throw and change nothing; the
+ *   seeds write snapshots for only some patients, so requiring one would leave most demo patients without a channel);
+ *   a clinician also needs an active membership row (stricter than the sync, harmless);
  *   archived channels take no new members; only role 'member', source 'auto' rows are written.
  * Missing channels are opened exactly as the sync does (retention_class care_related, title "Care team") for patients
  * with an open roster; pass --no-create to only add members to channels that already exist.
@@ -78,6 +81,7 @@ async function main(): Promise<void> {
          SELECT $1, r.channel_id, r.user_id, 'member', 'auto' FROM roster r
           WHERE NOT EXISTS (SELECT 1 FROM channel_member cm
                              WHERE cm.channel_id = r.channel_id AND cm.user_id = r.user_id AND cm.removed_at IS NULL)
+         ON CONFLICT DO NOTHING
          RETURNING channel_id, user_id
        )
        SELECT u.email, p.mrn FROM added a
@@ -86,14 +90,14 @@ async function main(): Promise<void> {
         ORDER BY p.mrn, u.email`,
       [orgId, patients.rows.map((r) => r.patient_id), EXCLUDED_CATEGORIES],
     );
-    await db.query("COMMIT");
-
-    for (const r of ins.rows) console.log(`  + ${r.email} -> care_team channel of ${r.mrn}`);
     const noChannel = await db.query<{ n: string }>(
       `SELECT count(*) AS n FROM unnest($2::uuid[]) p
         WHERE NOT EXISTS (SELECT 1 FROM channel c WHERE c.organization_id = $1 AND c.channel_kind = 'care_team' AND c.subject_id = p)`,
       [orgId, patients.rows.map((r) => r.patient_id)],
     );
+    await db.query("COMMIT");
+
+    for (const r of ins.rows) console.log(`  + ${r.email} -> care_team channel of ${r.mrn}`);
     console.log(
       `✓ messaging channel members: ${ins.rowCount ?? 0} added, ${created} channel(s) created; ${noChannel.rows[0]?.n ?? 0} patient(s) with an open care team have no channel yet${CREATE_MISSING ? "" : " (--no-create)"}.`,
     );
