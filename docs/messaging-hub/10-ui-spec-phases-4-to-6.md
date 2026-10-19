@@ -273,7 +273,7 @@ Content is tenant-authored, contains no patient data, and is the page the flag-o
 - **A11y:** printable (`@media print`), high contrast, large type. **PHI:** none.
 - **Acceptance:** axe + keyboard; offline render test; live: drill create is audited. Evidence = runbook `docs/runbooks/messaging-escalation-fallback.md`.
 
-### 4.12 (proposed) On-call "who is covering now" directory with role-based send
+### 4.12 (built flag-off; ADRs proposed) On-call "who is covering now" directory with role-based send
 
 ```
 On call now (Team A)  as of 14:07 (America/Los_Angeles)    [Role ▾ RN]
