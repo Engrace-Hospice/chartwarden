@@ -1,3 +1,4 @@
+import { WardenXError } from "@wardenx/types";
 // @wardenx/messaging — message body envelope crypto (M36 §3.4 / FB-T05).
 import { describe, expect, it } from "vitest";
 import {
@@ -17,6 +18,19 @@ describe("message body crypto (FB-T05)", () => {
     expect(loadMessagingKek(KEK_B64).length).toBe(32);
     expect(() => loadMessagingKek(undefined)).toThrow(/required/);
     expect(() => loadMessagingKek(Buffer.alloc(16).toString("base64"))).toThrow(/32 bytes/);
+  });
+
+  it("throws a typed 503 WardenXError (not a bare Error) when the key is missing or malformed", () => {
+    for (const raw of [undefined, Buffer.alloc(16).toString("base64")]) {
+      let thrown: unknown;
+      try {
+        loadMessagingKek(raw);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(WardenXError);
+      expect(thrown).toMatchObject({ code: "MESSAGING_ENCRYPTION_UNAVAILABLE", statusCode: 503 });
+    }
   });
 
   it("round-trips a body under the same tenant DEK", () => {

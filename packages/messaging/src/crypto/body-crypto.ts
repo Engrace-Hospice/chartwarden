@@ -15,6 +15,7 @@
 // `body_sha256` (the §164.312(c) integrity digest) is the SHA-256 of the PLAINTEXT computed
 // PRE-encryption (the §4.4 hash-verify job decrypts and re-checks it), so it lives here too.
 import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes } from "node:crypto";
+import { WardenXError } from "@wardenx/types";
 
 const VERSION = 1;
 const NONCE_LEN = 12;
@@ -23,16 +24,30 @@ const KEY_LEN = 32;
 const MIN_LEN = 1 + NONCE_LEN + TAG_LEN; // header + tag, even with an empty ciphertext
 const DEK_INFO_PREFIX = "wardenx-message-dek:"; // HKDF `info` label, org-bound
 
+/**
+ * Typed 503 code for a missing/malformed master key. It is a server misconfiguration, not a caller error, so the
+ * error handler renders the standard envelope (not an untyped 500) and the web composer can say so.
+ */
+export const MESSAGING_KEY_UNAVAILABLE = "MESSAGING_ENCRYPTION_UNAVAILABLE";
+
 /** Load the 32-byte master KEK from MESSAGING_ENCRYPTION_KEY (base64). Fail-closed. */
 export function loadMessagingKek(
   raw: string | undefined = process.env.MESSAGING_ENCRYPTION_KEY,
 ): Buffer {
   if (!raw) {
-    throw new Error("MESSAGING_ENCRYPTION_KEY is required (message body encryption — fail-closed)");
+    throw new WardenXError(
+      MESSAGING_KEY_UNAVAILABLE,
+      "MESSAGING_ENCRYPTION_KEY is required (message body encryption — fail-closed)",
+      503,
+    );
   }
   const key = Buffer.from(raw, "base64");
   if (key.length !== KEY_LEN) {
-    throw new Error(`MESSAGING_ENCRYPTION_KEY must decode to ${KEY_LEN} bytes (got ${key.length})`);
+    throw new WardenXError(
+      MESSAGING_KEY_UNAVAILABLE,
+      `MESSAGING_ENCRYPTION_KEY must decode to ${KEY_LEN} bytes (got ${key.length})`,
+      503,
+    );
   }
   return key;
 }

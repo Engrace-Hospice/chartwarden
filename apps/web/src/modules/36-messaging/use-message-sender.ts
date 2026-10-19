@@ -21,6 +21,8 @@ import type { SendAttempt } from "./messaging-utils";
 import { SBAR_SEND_ERRORS, sbarIssuesFromError } from "./sbar-utils";
 import type { AttachmentUploads } from "./use-attachment-upload";
 
+const MESSAGING_UNAVAILABLE_MESSAGE =
+  "Messaging is temporarily unavailable because message encryption is not configured on the server. Your draft has been preserved; please contact your administrator.";
 const SEND_FAILED_MESSAGE = "Message could not be sent. Your draft has been preserved.";
 /** The server answers every refused link (missing, forbidden, erased, flag off) with the same generic code. */
 const CLINICAL_LINK_REFUSED_MESSAGE = "That record can't be linked.";
@@ -247,7 +249,9 @@ export function useMessageSender({
             ? ATTACHMENT_NOT_BINDABLE_MESSAGE
             : code === "CLINICAL_LINK_NOT_AVAILABLE"
               ? CLINICAL_LINK_REFUSED_MESSAGE
-              : apiErrorMessage(error, SEND_FAILED_MESSAGE)),
+              : code === "MESSAGING_ENCRYPTION_UNAVAILABLE"
+                ? MESSAGING_UNAVAILABLE_MESSAGE
+                : apiErrorMessage(error, SEND_FAILED_MESSAGE)),
       );
       // Flag which chips went bad (blocked, gone) so the user knows what to remove; the others stay.
       if (notBindable) void uploads.recheck();
