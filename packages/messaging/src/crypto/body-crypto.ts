@@ -29,6 +29,8 @@ const DEK_INFO_PREFIX = "wardenx-message-dek:"; // HKDF `info` label, org-bound
  * error handler renders the standard envelope (not an untyped 500) and the web composer can say so.
  */
 export const MESSAGING_KEY_UNAVAILABLE = "MESSAGING_ENCRYPTION_UNAVAILABLE";
+/** Sent to clients; names no env var and no key length. The cause is in the server log. */
+const MESSAGING_KEY_UNAVAILABLE_MESSAGE = "Message encryption is unavailable";
 
 /** Load the 32-byte master KEK from MESSAGING_ENCRYPTION_KEY (base64). Fail-closed. */
 export function loadMessagingKek(
@@ -37,17 +39,14 @@ export function loadMessagingKek(
   if (!raw) {
     throw new WardenXError(
       MESSAGING_KEY_UNAVAILABLE,
-      "MESSAGING_ENCRYPTION_KEY is required (message body encryption — fail-closed)",
+      MESSAGING_KEY_UNAVAILABLE_MESSAGE,
       503,
     );
   }
   const key = Buffer.from(raw, "base64");
   if (key.length !== KEY_LEN) {
-    throw new WardenXError(
-      MESSAGING_KEY_UNAVAILABLE,
-      `MESSAGING_ENCRYPTION_KEY must decode to ${KEY_LEN} bytes (got ${key.length})`,
-      503,
-    );
+    // Generic client text: the expected length is not echoed back (no key-length oracle).
+    throw new WardenXError(MESSAGING_KEY_UNAVAILABLE, MESSAGING_KEY_UNAVAILABLE_MESSAGE, 503);
   }
   return key;
 }

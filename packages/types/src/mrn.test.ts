@@ -3,11 +3,11 @@ import { formatMrn, mrnValue } from "./mrn";
 
 describe("formatMrn", () => {
   it.each([
-    ["MRN-E6FBB3B470FD", "MRN E6FBB3B470FD"],
+    ["MRN-E6FBB3B470FD", "MRN-E6FBB3B470FD"],
     ["123", "MRN 123"],
-    ["mrn 123", "MRN 123"],
-    ["MRN: 123", "MRN 123"],
-    ["  mrn#123 ", "MRN 123"],
+    ["mrn 123", "mrn 123"],
+    ["MRN: 123", "MRN: 123"],
+    ["  mrn#123 ", "mrn#123"],
     ["MRNX-1", "MRN MRNX-1"],
   ])("renders %s as %s", (raw, expected) => {
     expect(formatMrn(raw)).toBe(expected);

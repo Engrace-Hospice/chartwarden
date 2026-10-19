@@ -16,8 +16,8 @@ const ORG_B = "org-b";
 describe("message body crypto (FB-T05)", () => {
   it("loads a 32-byte KEK from base64 and fails closed on absent/short keys", () => {
     expect(loadMessagingKek(KEK_B64).length).toBe(32);
-    expect(() => loadMessagingKek(undefined)).toThrow(/required/);
-    expect(() => loadMessagingKek(Buffer.alloc(16).toString("base64"))).toThrow(/32 bytes/);
+    expect(() => loadMessagingKek(undefined)).toThrow(/unavailable/);
+    expect(() => loadMessagingKek(Buffer.alloc(16).toString("base64"))).toThrow(/unavailable/);
   });
 
   it("throws a typed 503 WardenXError (not a bare Error) when the key is missing or malformed", () => {

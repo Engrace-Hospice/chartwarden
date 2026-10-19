@@ -1,4 +1,4 @@
-# ADR-0069 — Mobile is a separate React Native/Expo application consuming versioned WardenX APIs
+# ADR-0072 — Mobile is a separate React Native/Expo application consuming versioned WardenX APIs
 
 - **Status:** **Proposed for formal architecture ratification.** The product direction was fixed on
   2026-10-16 for Mobile PR B, but the Frontend/Architecture Owner ratification required by ADR-0030 and

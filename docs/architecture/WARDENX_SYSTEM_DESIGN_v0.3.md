@@ -22,7 +22,7 @@
 flowchart TB
   subgraph clients["Clients"]
     web["Web (apps/web)<br/>Vite + react-router"]
-    mobile["Mobile<br/>Separate React Native/Expo app (ADR-0069)"]
+    mobile["Mobile<br/>Separate React Native/Expo app (ADR-0072)"]
     admin["Admin (apps/admin)<br/>WardenX ops console"]
     portal["Portal (apps/portal)<br/>Patient/Caregiver PWA"]
   end

@@ -8,8 +8,14 @@ export function mrnValue(raw: string | null | undefined): string {
   return (raw ?? "").replace(LEADING_MRN_LABEL, "").trim();
 }
 
-/** "MRN <value>" with the label exactly once; empty string when there is no value. */
+/**
+ * The stored identifier verbatim ("MRN-E6FBB3B470FD" stays "MRN-E6FBB3B470FD"), so what is shown
+ * matches what is stored and searched. A bare value ("123") gets the "MRN " label so the field is
+ * still identifiable. The label never appears twice. Empty string when there is no value.
+ */
 export function formatMrn(raw: string | null | undefined): string {
   const value = mrnValue(raw);
-  return value === "" ? "" : `MRN ${value}`;
+  if (value === "") return "";
+  const stored = (raw ?? "").trim();
+  return LEADING_MRN_LABEL.test(stored) ? stored : `MRN ${value}`;
 }
