@@ -57,7 +57,7 @@ export interface EscalationRouterBindingDeps {
   readonly warn?: (message: string) => void;
 }
 
-/** Register the allowlisted router over the seam's current occupant. Returns the orgs bound (empty = nothing registered). */
+/** Register the allowlisted router over the injected fallback (the boot deny-stub). Returns the orgs bound (empty = nothing registered). */
 export function registerEscalationRouterForAllowlist(
   deps: EscalationRouterBindingDeps,
 ): ReadonlySet<string> {
