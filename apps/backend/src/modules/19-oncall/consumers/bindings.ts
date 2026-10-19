@@ -68,6 +68,16 @@ import {
   type M36DeliveryFailedPayload,
   decideDeliveryFailureTrigger,
 } from "./m36-delivery-failed";
+import {
+  type AfterHoursAction,
+  type AfterHoursOutcome,
+  type AfterHoursReads,
+  M19_AFTERHOURS_OUTCOME_EVENT,
+  M36_AFTERHOURS_REQUESTED_EVENT,
+  decideAfterHoursRequested,
+  parseAfterHoursRequested,
+  resolveAfterHoursFacts,
+} from "./m36-afterhours-requested";
 import type { DeliveryFailureTriggerPorts, InboundTriggerPorts } from "./trigger-context";
 import { resolveInboundTriggerFacts } from "./trigger-context";
 
@@ -83,6 +93,8 @@ export interface OncallTriggerConsumerDeps {
   readonly ports: InboundTriggerPorts;
   /** §4.8 M36 delivery-failure trigger's one extra read. */
   readonly deliveryPorts: DeliveryFailureTriggerPorts;
+  /** ADR-0082 — the patient reads the after-hours request needs (the router's `patientProviderEntity`). */
+  readonly afterHoursReads?: AfterHoursReads;
   readonly outbox: WriteOutboxPort;
   /** §4.9 — best-effort by construction; absent means the board is the only surfacing. */
   readonly alerts?: AlertPort;
@@ -134,8 +146,12 @@ export function stateHistoryPort(): StateHistoryPort {
 /** Insert the machine-opened call and run its §2.4 effects, in one transaction. */
 async function openMachineCall(
   deps: OncallTriggerConsumerDeps,
-  draft: MachineOpenedCallDraft,
+  draft: Omit<MachineOpenedCallDraft, "admissionId"> & {
+    readonly admissionId: MachineOpenedCallDraft["admissionId"] | null;
+  },
   at: Date,
+  /** Runs in the SAME transaction as the insert, only when this delivery created the row. */
+  alongside?: (tx: DbClient, callId: TriageCallId) => Promise<void>,
 ): Promise<void> {
   await withOrgContext(
     deps.db,
@@ -214,6 +230,7 @@ async function openMachineCall(
           `m19 inbound trigger: a machine-opened call declared column effect(s) [${Object.keys(patch).join(", ")}]; a machine open has no responder and must set none`,
         );
       }
+      await alongside?.(tx, call.id as TriageCallId);
     },
   );
 }
@@ -236,6 +253,8 @@ async function publishCoverageGap(
     readonly gapEndsAt: IsoInstant;
     readonly discipline: "clinical_rn";
   },
+  /** Runs in the SAME transaction as the gap event. */
+  alongside?: (tx: DbClient) => Promise<void>,
 ): Promise<void> {
   await withOrgContext(
     deps.db,
@@ -255,6 +274,7 @@ async function publishCoverageGap(
           discipline: gap.discipline,
         },
       });
+      await alongside?.(tx as DbClient);
     },
   );
   await deps.alerts
@@ -509,6 +529,115 @@ async function applyAction(
   }
 }
 
+// ── ADR-0082 after-hours triage request (M36 asks by id; M19 decides and always answers) ───────────────
+
+/** Publish `m19.afterhours_triage.outcome` on the caller's tx, so the answer commits with the decision. */
+async function publishAfterHoursOutcome(
+  deps: OncallTriggerConsumerDeps,
+  tx: DbClient,
+  input: {
+    readonly organizationId: OrgId;
+    readonly messageId: string;
+    readonly sourceOutboxEventId: string;
+    readonly triageCallId: TriageCallId | null;
+    readonly outcome: AfterHoursOutcome;
+  },
+): Promise<void> {
+  await deps.outbox.publish(tx, {
+    eventName: M19_AFTERHOURS_OUTCOME_EVENT,
+    organizationId: input.organizationId,
+    // The request's own aggregate (the message) - correlation only; M36 matches on `sourceOutboxEventId`.
+    aggregateKind: "message",
+    aggregateId: input.messageId,
+    payload: {
+      sourceOutboxEventId: input.sourceOutboxEventId,
+      triageCallId: input.triageCallId,
+      outcome: input.outcome,
+    },
+  });
+}
+
+/** Execute whichever of the four outcomes the after-hours decider chose; every non-skip answers M36. */
+async function applyAfterHoursAction(
+  deps: OncallTriggerConsumerDeps,
+  action: AfterHoursAction,
+  ctx: {
+    readonly organizationId: OrgId;
+    readonly messageId: string;
+    readonly sourceOutboxEventId: string;
+    readonly at: Date;
+  },
+): Promise<void> {
+  const answer = (
+    tx: DbClient,
+    triageCallId: TriageCallId | null,
+    outcome: AfterHoursOutcome,
+  ): Promise<void> => publishAfterHoursOutcome(deps, tx, { ...ctx, triageCallId, outcome });
+
+  switch (action.kind) {
+    case "idempotent_skip":
+      // The first delivery published its outcome in the insert's transaction; a second would be noise.
+      return;
+    case "open_call":
+      return openMachineCall(deps, action.draft, ctx.at, (tx, callId) =>
+        answer(tx, callId, "opened"),
+      );
+    case "coalesced":
+      return withOrgContext(
+        deps.db,
+        { organizationId: ctx.organizationId, userId: CONSUMER_USER_ID },
+        (tx) => answer(tx as DbClient, action.intoTriageCallId, "coalesced"),
+      );
+    case "no_coverage":
+      return publishCoverageGap(deps, action.gap, (tx) => answer(tx, null, "no_coverage"));
+  }
+}
+
+/**
+ * ADR-0082 decision 4 - the `m36.afterhours_triage.requested` binding. The organization comes from the
+ * ENVELOPE (never the payload); the payload is parsed down to three ids; no message text is read.
+ */
+export function buildAfterHoursRequestedConsumer(
+  deps: OncallTriggerConsumerDeps & { readonly afterHoursReads: AfterHoursReads },
+): OutboxConsumerBinding {
+  const clock = deps.now ?? (() => new Date());
+  return {
+    consumerName: "m19.m36-afterhours-requested",
+    consumerModule: "m19",
+    eventTypes: [M36_AFTERHOURS_REQUESTED_EVENT],
+    async handle(event) {
+      const organizationId = event.organizationId as OrgId;
+      const payload = parseAfterHoursRequested(event.payload);
+      const at = clock();
+      const atIso = at.toISOString() as IsoInstant;
+
+      await runWithRequestContext({ organizationId, userId: CONSUMER_USER_ID }, async () => {
+        const facts = await resolveAfterHoursFacts({
+          organizationId,
+          sourceOutboxEventId: event.id,
+          payload,
+          at: atIso,
+          ports: deps.ports,
+          reads: deps.afterHoursReads,
+        });
+        const action = decideAfterHoursRequested({
+          organizationId,
+          sourceOutboxEventId: event.id,
+          payload,
+          facts,
+          at: atIso,
+        });
+        await applyAfterHoursAction(deps, action, {
+          organizationId,
+          messageId: payload.messageId,
+          sourceOutboxEventId: event.id,
+          at,
+        });
+      });
+    },
+  };
+}
+
 /**
  * The live M19 D10 inbound-trigger bindings (§4.8 / §7.6).
  *
@@ -645,5 +774,10 @@ export function buildOncallTriggerConsumers(
         });
       },
     },
+    // ADR-0082 - M36 asks for a triage call by id; M19 decides and always answers. Present only when the
+    // composition root supplies the patient reads (flag-off: M36 publishes nothing, so this never fires).
+    ...(deps.afterHoursReads
+      ? [buildAfterHoursRequestedConsumer({ ...deps, afterHoursReads: deps.afterHoursReads })]
+      : []),
   ];
 }

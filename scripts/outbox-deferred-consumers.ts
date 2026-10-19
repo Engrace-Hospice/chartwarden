@@ -398,4 +398,11 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
   // on role/permission changes). Dropped at the source; no `seamConsumers` replacement needed since the
   // relationship the event's own description gestured at ("cache rebind") is already covered by the
   // live `ConsentEvaluator` seam regardless of this declaration.
+  {
+    module: "m36",
+    kind: "no-consumer-surface",
+    reason:
+      "ADR-0082 slice S2 publishes `m19.afterhours_triage.outcome` and declares m36 as its consumer; the M36 side that records the outcome on the link row and posts the fixed-text thread line is slice S3, which also needs the S1 link table. M36 has no handler for this event yet (a forward declaration against nothing), and nothing publishes it while `messaging.afterhours_triage` is off, so no row can sit pending. Slice S3 binds it and deletes this entry.",
+    events: ["m19.afterhours_triage.outcome"],
+  },
 ];

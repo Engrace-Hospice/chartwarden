@@ -114,6 +114,7 @@ const MIRRORS = [
       "inbound_visit_failure",
       "inbound_evv_anomaly",
       "inbound_alert_failure",
+      "inbound_afterhours_request",
     ] satisfies TriageCallInboundChannel[],
   ],
   [
@@ -126,6 +127,7 @@ const MIRRORS = [
       "geofence_anomaly",
       "m36_delivery_failure",
       "paper_origin",
+      "m36_afterhours_request",
     ] satisfies TriageCallSource[],
   ],
   [
@@ -267,9 +269,9 @@ describe("§4.10 outbox catalog", () => {
     }
   });
 
-  it("publishes sixteen topics with no duplicates", () => {
-    expect(M19_EVENT_NAMES).toHaveLength(16);
-    expect(new Set(M19_EVENT_NAMES).size).toBe(16);
+  it("publishes seventeen topics with no duplicates", () => {
+    expect(M19_EVENT_NAMES).toHaveLength(17);
+    expect(new Set(M19_EVENT_NAMES).size).toBe(17);
   });
 
   it("keeps the two topics M33's reporting catalog ALREADY subscribes to", () => {

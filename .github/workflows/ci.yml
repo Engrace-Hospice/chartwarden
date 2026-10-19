@@ -373,6 +373,7 @@ jobs:
           # ADR-0057 item 12 - the real tier-1 EscalationRouter as wardenx_app: real shift read, patient/policy/zone reads, two-org isolation, the 2026-11-01 New York repeated hour on absolute instants, back-to-back shifts, pure read.
           - { name: "M19 Escalation router", scripts: "test:m19:escalation-router:live" }
           - { name: "M19 Inbound triggers", scripts: "test:m19:inbound-triggers:live" }
+          - { name: "M19 After-hours request", scripts: "test:m19:afterhours-requested:live" }
           # F-155 (#248): the m19 `handlers-unbound` group's own finding, now built — §4.5 path 1 / §4.8
           # `m19.shift-sync.debounced` had no jobs/ tier anywhere in this module. Live because the true
           # reset-the-delay debounce is an `ON CONFLICT ... DO UPDATE` against a partial-unique index and

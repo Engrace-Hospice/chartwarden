@@ -115,7 +115,8 @@ export type TriageCallInboundChannel =
   | "portal_message"
   | "inbound_visit_failure"
   | "inbound_evv_anomaly"
-  | "inbound_alert_failure";
+  | "inbound_alert_failure"
+  | "inbound_afterhours_request";
 
 /**
  * `triage_call_source` — what caused the row to exist.
@@ -131,7 +132,8 @@ export type TriageCallSource =
   | "late_checkout"
   | "geofence_anomaly"
   | "m36_delivery_failure"
-  | "paper_origin";
+  | "paper_origin"
+  | "m36_afterhours_request";
 
 /** `triage_disposition` — D6. The enumerable commitment that ends the call. */
 export type TriageDisposition =
@@ -436,6 +438,8 @@ export const M19_EVENT_NAMES = [
   // its `m19.triage.*_sla_breached` page (`36-messaging/outbox-consumers/oncall-alerts.ts`).
   "m19.triage_call.callback_sla_breached",
   "m19.triage_call.escalation_sla_breached",
+  // ADR-0082 slice S2 — the id-only answer to `m36.afterhours_triage.requested`; M36 declares the consumer.
+  "m19.afterhours_triage.outcome",
 ] as const;
 
 /** One §4.10 outbox event name. */
@@ -487,6 +491,8 @@ export const M19_SUBSCRIBED_EVENT_NAMES = [
   "m18.evv.late_check_out_detected",
   // GAP-058 — routed AND bound (`consumers/m8-encounter-signed-binding.ts`): M8 declares `m19` on it.
   "m36.notification.delivery_failed",
+  // ADR-0082 slice S2 - routed AND bound (`consumers/bindings.ts`): M36 catalogues it (slice S1), declares `m19`.
+  "m36.afterhours_triage.requested",
   "m8.encounter.signed",
   // Subscribed and NOT routed here — each registered in `scripts/outbox-subscription-exceptions.ts`.
   "m11.order.verbal_expired_unsigned",
@@ -645,6 +651,14 @@ export interface M19TriageCallEscalationSlaBreachedPayload extends M19TriageCall
   readonly minutesOpen: number;
 }
 
+/** `m19.afterhours_triage.outcome` (ADR-0082) — id-only. `triageCallId` is null unless the outcome is
+ *  `opened` or `coalesced`; `no_coverage` rides alongside the existing `m19.oncall_shift.coverage_gap`. */
+export interface M19AfterHoursTriageOutcomePayload {
+  readonly sourceOutboxEventId: string;
+  readonly triageCallId: TriageCallId | null;
+  readonly outcome: "opened" | "coalesced" | "no_coverage";
+}
+
 /** The §4.10 topic → payload map every emitter and consumer type-checks against. */
 export interface M19EventPayloadMap {
   "m19.triage_call.opened": M19TriageCallOpenedPayload;
@@ -663,6 +677,7 @@ export interface M19EventPayloadMap {
   "m19.triage.summary_requested": M19TriageSummaryRequestedPayload;
   "m19.triage_call.callback_sla_breached": M19TriageCallCallbackSlaBreachedPayload;
   "m19.triage_call.escalation_sla_breached": M19TriageCallEscalationSlaBreachedPayload;
+  "m19.afterhours_triage.outcome": M19AfterHoursTriageOutcomePayload;
 }
 
 // ── §4.9 typed M36 alert payloads ────────────────────────────────────────────────────────────────────

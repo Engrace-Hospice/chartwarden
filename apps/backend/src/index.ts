@@ -10723,6 +10723,14 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
             db: dbHandle.db,
             ports: m19TriggerPorts,
             deliveryPorts: m19TriggerPorts,
+            // ADR-0082 - `m36.afterhours_triage.requested`: the same patient reads the tier-1 router uses
+            // (patient-in-org + provider entity), over the M5 PatientReader seam resolved lazily.
+            afterHoursReads: buildDrizzleEscalationRouterReads({
+              db: dbHandle.db,
+              patientReader: () => getPatientReader(),
+              siteReader: buildFoundationSiteReader(),
+              listProviderEntityIds: buildOrgProviderEntityLister(dbHandle.db),
+            }),
             outbox: m19OutboxPublisher,
             // No `alerts` port, matching M19's own route path: the §4.9 pages ride the outbox events,
             // which M36 resolves through its seam. Binding one here and not there would give the same
