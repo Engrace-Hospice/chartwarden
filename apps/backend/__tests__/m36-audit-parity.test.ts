@@ -94,7 +94,7 @@ describe("M36 read-audit declarations", () => {
     expect(blocks.length).toBeGreaterThanOrEqual(6);
   });
 
-  it("every emission config is a list read or names a resource id (a param, or a payload path for a POST that creates or answers the resource); every waiver has a reason", () => {
+  it("every emission config is a list read or names a resource id (a param, a payload path for a POST that creates or answers the resource, or the patient via patientIdParam/patientIdQueryParam); every waiver has a reason", () => {
     for (const { file, body } of blocks) {
       if (/\bnone:/.test(body)) {
         expect(body, `${file}: empty waiver`).toMatch(/none:\s*\n?\s*"[^"]{10,}/);
