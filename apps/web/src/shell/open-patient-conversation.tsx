@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useSession } from "./session";
 
 // apps/web/src/shell — open THIS patient's care-team conversation. Plain /messaging lands on the first
 // conversation in the list (another patient's), so every patient-scoped "message" entry point resolves
@@ -17,6 +18,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 const UNAVAILABLE = "The care team conversation is unavailable or your access has changed.";
 const FAILED = "The care team conversation could not be opened. Try again.";
+const REQUEST_TIMEOUT_MS = 15_000;
 const OPENING_STATUS = "Opening care team conversation…";
 
 export interface PatientConversation {
@@ -31,11 +33,29 @@ interface SharedRequest {
   applied: boolean;
 }
 
-// One request per patient across every hook instance (tab, banner menu, care-team tile), so clicking
+// One request per user, organisation and patient across every hook instance (tab, banner menu, care-team tile), so clicking
 // two entry points before the first response sends one POST and navigates once.
 const sharedRequests = new Map<string, SharedRequest>();
 
+/** Test-only: drop every shared in-flight request so tests do not depend on order. */
+export function resetSharedConversationRequests(): void {
+  sharedRequests.clear();
+}
+
 async function resolveChannel(client: Client, patientId: string): Promise<Outcome> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  // A request that never settles must not capture every later click for the page lifetime.
+  const timeout = new Promise<Outcome>((resolve) => {
+    timer = setTimeout(() => resolve({ failure: "error" }), REQUEST_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([requestChannel(client, patientId), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function requestChannel(client: Client, patientId: string): Promise<Outcome> {
   try {
     const result = await client.POST("/api/v1/messaging/patients/{patientId}/care-team-channel", {
       params: { path: { patientId } },
@@ -51,16 +71,17 @@ async function resolveChannel(client: Client, patientId: string): Promise<Outcom
   }
 }
 
-function sharedRequestFor(client: Client, patientId: string): SharedRequest {
-  const existing = sharedRequests.get(patientId);
+function sharedRequestFor(client: Client, patientId: string, scope: string): SharedRequest {
+  const key = `${scope}:${patientId}`;
+  const existing = sharedRequests.get(key);
   if (existing) return existing;
   const entry: SharedRequest = {
     applied: false,
     promise: resolveChannel(client, patientId).finally(() => {
-      if (sharedRequests.get(patientId) === entry) sharedRequests.delete(patientId);
+      if (sharedRequests.get(key) === entry) sharedRequests.delete(key);
     }),
   };
-  sharedRequests.set(patientId, entry);
+  sharedRequests.set(key, entry);
   return entry;
 }
 
@@ -68,6 +89,8 @@ export function useOpenPatientConversation(patientId: string): PatientConversati
   const client = useApiClient();
   const toast = useToast();
   const navigate = useNavigate();
+  const session = useSession();
+  const scope = `${session?.organizationId ?? ""}:${session?.userId ?? ""}`;
   const [opening, setOpening] = useState(false);
   const request = useRef(0);
   const inFlight = useRef(false);
@@ -90,7 +113,7 @@ export function useOpenPatientConversation(patientId: string): PatientConversati
     inFlight.current = true;
     setOpening(true);
     const mine = ++request.current;
-    const shared = sharedRequestFor(client, patientId);
+    const shared = sharedRequestFor(client, patientId, scope);
     const outcome = await shared.promise;
     try {
       if (mine !== request.current) return;
@@ -108,7 +131,7 @@ export function useOpenPatientConversation(patientId: string): PatientConversati
         setOpening(false);
       }
     }
-  }, [client, navigate, patientId, toast]);
+  }, [client, navigate, patientId, scope, toast]);
 
   return { open, opening };
 }

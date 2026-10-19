@@ -1323,4 +1323,30 @@ describe("M36 requested conversation", () => {
     await screen.findByText("This conversation is not available.");
     expect(messageCalls(get)).toHaveLength(0);
   });
+
+  it.each([
+    ["is still loading", () => new Promise(() => {})],
+    ["failed to load", () => Promise.resolve({ data: undefined, error: { message: "boom" } })],
+  ])("does not claim the conversation is unavailable while the list %s", async (_n, respond) => {
+    const get = vi.fn((path: string) =>
+      path === "/api/v1/messaging/channels"
+        ? respond()
+        : Promise.resolve({ data: { messages: [] }, error: undefined }),
+    );
+    const api = { GET: get, POST: vi.fn() } as unknown as ApiClient;
+    render(
+      <MemoryRouter
+        initialEntries={[{ pathname: "/messaging", state: { messagingChannelId: "gone" } }]}
+      >
+        <ApiClientProvider client={api}>
+          <SessionProvider session={ORG_ONE}>
+            <StaffMessaging />
+          </SessionProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(get).toHaveBeenCalled());
+    await screen.findAllByText(/Select a conversation|temporarily unavailable|Loading/i);
+    expect(screen.queryByText("This conversation is not available.")).toBeNull();
+  });
 });

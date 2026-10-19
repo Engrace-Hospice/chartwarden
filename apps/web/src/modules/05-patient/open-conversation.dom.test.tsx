@@ -4,10 +4,11 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { ApiClientProvider, ToastProvider, createApiClient } from "@wardenx/ui";
 import { type ReactElement, useEffect, useState } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
 import {
   PatientConversationLink,
+  resetSharedConversationRequests,
   useOpenPatientConversation,
 } from "../../shell/open-patient-conversation";
 import { OverviewRail, OverviewTab, PatientChartHeader } from "./patient-overview";
@@ -100,9 +101,15 @@ function mount(ui: ReactElement) {
   );
 }
 
+afterEach(() => {
+  resetSharedConversationRequests();
+  vi.useRealTimers();
+});
+
 const channelPosts = () => calls.filter((c) => c.endsWith("/care-team-channel")).length;
 
 beforeEach(() => {
+  resetSharedConversationRequests();
   navigations = 0;
   spy.navigateCalls = 0;
   calls = [];
@@ -256,6 +263,25 @@ describe("shared hook and cross-instance behaviour", () => {
     expect(channelPosts()).toBe(1);
     expect(navigations).toBe(1);
     expect(spy.navigateCalls).toBe(1);
+  });
+});
+
+describe("hung requests", () => {
+  it("fails after the timeout and the next click sends a fresh POST", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mode = "hang";
+    mount(<ChartModuleRail patientId={PATIENT} current="summary" />);
+    fireEvent.click(rail());
+    await waitFor(() => expect(channelPosts()).toBe(1));
+    await act(async () => {
+      vi.advanceTimersByTime(15_000);
+    });
+    await screen.findByText("The care team conversation could not be opened. Try again.");
+    await waitFor(() => expect(rail().getAttribute("aria-busy")).toBeNull());
+    mode = "ok";
+    fireEvent.click(rail());
+    await screen.findByText(`Messaging destination ${CHANNEL}`);
+    expect(channelPosts()).toBe(2);
   });
 });
 

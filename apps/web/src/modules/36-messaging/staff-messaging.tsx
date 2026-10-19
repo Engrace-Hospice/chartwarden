@@ -527,7 +527,9 @@ function OrganizationStaffMessaging({
                 <EmptyState
                   title="Select a conversation"
                   description={
-                    requestedChannelId && !channels?.some((c) => c.channelId === requestedChannelId)
+                    requestedChannelId &&
+                    channels !== null &&
+                    !channels.some((c) => c.channelId === requestedChannelId)
                       ? "This conversation is not available."
                       : "Choose a secure conversation from the inbox to view its messages."
                   }
