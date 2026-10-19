@@ -67,6 +67,12 @@ export const ADDRESSED_ROLE_TEXT: Readonly<Record<AckAddressedRole, string>> = {
   physician: "Sent to the on-call physician",
 };
 
+/** The role line, or null for no role or a code this client does not know (a newer server): never "undefined", never an empty line. */
+export const addressedRoleText = (role: string | null | undefined): string | null =>
+  role && Object.hasOwn(ADDRESSED_ROLE_TEXT, role)
+    ? ADDRESSED_ROLE_TEXT[role as AckAddressedRole]
+    : null;
+
 export const waitingFor = (forViewer: boolean): string =>
   forViewer ? "Waiting for you" : "Waiting for the person it was sent to";
 

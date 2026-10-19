@@ -134,14 +134,24 @@ describe("ack request card", () => {
     expect(results.violations).toEqual([]);
   });
 
-  it("names the addressed role in words, and shows nothing for a request to a named person", async () => {
+  it("names the addressed role in words", async () => {
     mount({ get: () => ok([request({ addressed_role: "physician" })]) });
     await takeButton();
     expect(screen.getByText(ADDRESSED_ROLE_TEXT.physician)).toBeTruthy();
-    cleanup();
+  });
+
+  it("shows no role line for a request to a named person", async () => {
     mount({});
     await takeButton();
+    expect(document.querySelectorAll(".wx-ack-detail")).toHaveLength(1);
     expect(screen.queryByText(/on-call/)).toBeNull();
+  });
+
+  it("shows no role line, and no empty paragraph, for a role code this client does not know", async () => {
+    mount({ get: () => ok([request({ addressed_role: "chaplain" as never })]) });
+    await takeButton();
+    expect(document.querySelectorAll(".wx-ack-detail")).toHaveLength(1);
+    expect(document.body.textContent).not.toMatch(/undefined|chaplain/);
   });
 
   it.each([
