@@ -20,6 +20,9 @@ const UnacknowledgedQueue = lazy(() =>
 const NotificationPreferences = lazy(() =>
   import("./notification-preferences").then((m) => ({ default: m.NotificationPreferences })),
 );
+const OnCallDirectory = lazy(() =>
+  import("./oncall-directory").then((m) => ({ default: m.OnCallDirectory })),
+);
 const NotificationLanding = lazy(() =>
   import("./notification-landing").then((m) => ({ default: m.NotificationLanding })),
 );
@@ -54,6 +57,15 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "General",
       requiredPermission: "messaging.read",
       screen: NotificationPreferences,
+    },
+    {
+      // WP 4.12 (ADR-0080): the read-only "who is covering now" directory; the API demands messaging.read as well and the tenant flag.
+      id: "messaging.on-call",
+      path: "/messaging/on-call",
+      title: "On call now",
+      navGroup: "General",
+      requiredPermission: "messaging.oncall.read",
+      screen: OnCallDirectory,
     },
     {
       id: "messaging.saved-replies",

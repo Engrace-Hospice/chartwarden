@@ -166,6 +166,7 @@ import type { buildIdgDiscussionDeps as _buildIdgDiscussionDeps } from "./idg/bi
 import { createMentionActorNameResolver as _createMentionActorNameResolver } from "./mention-non-member-service-db";
 import { createDbMessagingRouteService as _createDbMessagingRouteService } from "./messaging-route-service-db";
 import type { MessagingOutboxPort } from "./messaging-route-service-db";
+import type { buildOnCallDirectoryDeps as _buildOnCallDirectoryDeps } from "./oncall-directory/binding";
 import { createDbPollService as _createDbPollService } from "./polls/poll-service-db";
 import type { AckRouteDeps as _AckRouteDeps } from "./routes/ack-routes";
 import {
@@ -235,6 +236,8 @@ export function mountMessagingRoutes(
     ackRequests?: _AckRouteDeps;
     /** WP 4.10: snooze and reminders (service). Omitted => every route is the uniform 404. */
     snoozeReminders?: _SnoozeReminderRouteDeps;
+    /** WP 4.12: the on-call directory (read-only). Omitted => the uniform 404. */
+    oncall?: ReturnType<typeof _buildOnCallDirectoryDeps>;
     /** WP 3.7: chart promotion (tenant flag + service). Omitted => flag off. */
     promotions?: _PromotionRouteDeps;
     /** WP 3.6: IDG discussions (tenant flags + read-only store). Omitted => flag off. */
@@ -263,6 +266,7 @@ export function mountMessagingRoutes(
     ...(opts.urgent ? { urgent: opts.urgent } : {}),
     ...(opts.ackRequests ? { ackRequests: opts.ackRequests } : {}),
     ...(opts.snoozeReminders ? { snoozeReminders: opts.snoozeReminders } : {}),
+    ...(opts.oncall ? { oncall: opts.oncall } : {}),
     // WP 4.9: the supervisor's unacknowledged queue (read-only; self-contained over `db`, no flag: with no requests it is empty).
     unacknowledged: {
       service: _createUnacknowledgedService({
@@ -358,6 +362,7 @@ export {
 } from "./ack-escalation/escalation-worker";
 export { buildPromotionDeps } from "./promotions/deps";
 export { buildIdgDiscussionDeps } from "./idg/deps";
+export { buildOnCallDirectoryDeps } from "./oncall-directory/binding";
 export {
   type M36HandoffExpiryWorkerDeps,
   handoffExpiryTick,

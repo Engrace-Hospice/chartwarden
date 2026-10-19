@@ -86,6 +86,7 @@ import {
   VerifyEndpointBodySchema,
   parse,
 } from "./messaging-typebox";
+import { DISABLED_ONCALL, type OnCallRouteDeps, registerOnCallRoutes } from "./oncall-routes";
 import { registerPatientContextRoutes, seamPatientContextPorts } from "./patient-context-routes";
 import { type PresenceRouteDeps, registerPresenceRoutes } from "./presence-routes";
 import {
@@ -155,6 +156,8 @@ export interface MessagingRouteDeps {
   unacknowledged?: UnacknowledgedRouteDeps;
   /** WP 4.10: snooze and reminders (service). Omitted => every route is the uniform 404. */
   snoozeReminders?: SnoozeReminderRouteDeps;
+  /** WP 4.12: the on-call "who is covering now" directory (read-only). Omitted => the uniform 404. */
+  oncall?: OnCallRouteDeps;
   /** WP 4.8: resolve an out-of-band link's opaque delivery id to its in-app target. Omitted => the uniform 404. */
   deliveryTarget?: DeliveryTargetRouteDeps;
   /** WP 3.6: IDG discussions (flag + read-only store). Omitted => flag off: the list answers disabled. */
@@ -462,6 +465,9 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   registerUnacknowledgedRoutes(app, deps.unacknowledged ?? DISABLED_UNACKNOWLEDGED, {
     read: READ,
   });
+
+  // --- WP 4.12: the on-call directory (read-only; flag-gated in the service) ---
+  registerOnCallRoutes(app, deps.oncall ?? DISABLED_ONCALL, { read: READ });
 
   // --- WP 4.10: snooze (non-urgent only) and reminders; the caller's own rows, flag-gated ---
   registerSnoozeReminderRoutes(app, deps.snoozeReminders ?? DISABLED_SNOOZE_REMINDER, {

@@ -1416,6 +1416,11 @@ import {
   ThreadResponseSchema as M36ThreadResponseSchema,
   VerifyEndpointBodySchema as M36VerifyEndpointBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/messaging-typebox";
+// M36 WP 4.12 on-call directory.
+import {
+  OnCallCoverageQuerySchema as M36OnCallCoverageQuerySchema,
+  OnCallCoverageResponseSchema as M36OnCallCoverageResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/oncall-typebox";
 import { PatientContextResponseSchema as M36PatientContextResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/patient-context-typebox";
 import {
   CreatePollBodySchema as M36CreatePollBodySchema,
@@ -9757,6 +9762,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 400 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), the sender's display name (`requester_display_name`, also on a restricted row, ADR-0078), `request_ref` (the request's own id, the handle the supervisor reassign acts on, also on a restricted row), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses",
     query: M36UnacknowledgedQuerySchema,
     response: M36UnacknowledgedResponseSchema,
+  },
+  "GET /api/v1/messaging/oncall/coverage": {
+    summary:
+      "Who is covering now for a role (WP 4.12, ADR-0080; messaging.read + messaging.oncall.read + patient.read with caseload_or_scope on `patient_id` (no break-glass), otherwise 403; a patient the caller cannot see or outside the organisation is the uniform 404 and the router is never asked; the uniform 404 while the tenant flag `messaging.oncall_directory` is off). Read-only: nothing is paged or sent. Asks the M19 EscalationRouter tier by tier (at most 4) for the role and the given patient's team, as of the server clock. `status` is covered, coverage_gap (the ladder has tier 1 and nobody covers it now: stated, never silent), roster_not_connected (no M19 router is bound: coverage is UNKNOWN, not empty) or not_configured (no ladder for the role). Each tier has display names only (null when a name cannot be found; no user id, contact detail or patient data), the roster's IANA `time_zone` (render times in it), and `shift_ends_at` only when the roster supplied a valid future instant, else null. A role outside the closed list, a malformed patient id or an unknown key is a 422. Responses are never cached. Read-audited against `patient_id` (it discloses the patient's care-team coverage)",
+    query: M36OnCallCoverageQuerySchema,
+    response: M36OnCallCoverageResponseSchema,
   },
   "GET /api/v1/messaging/channels/:id/snooze": {
     summary:
