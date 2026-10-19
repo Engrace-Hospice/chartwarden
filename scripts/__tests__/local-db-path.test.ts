@@ -70,6 +70,13 @@ describe("one local provisioning path", () => {
     expect(all.indexOf("db:seed:scenario-admissions")).toBeGreaterThan(-1);
   });
 
+  it("db:seed:all seeds care-team channel members after the portal seed (the last assignment/channel writer)", () => {
+    // Direct-SQL assignments emit no outbox events, so the sync never adds the personas; this seed must see final assignments.
+    const all = PKG.scripts["db:seed:all"] ?? "";
+    expect(all.indexOf("db:seed:messaging-members")).toBeGreaterThan(all.indexOf("db:seed:portal"));
+    expect(all.indexOf("db:seed:portal")).toBeGreaterThan(-1);
+  });
+
   it("db:reset proves the reset happened rather than assuming it", () => {
     // The whole defect was a reset that silently did not reset. `--expect-empty` asserts zero
     // tables before migrations replay, so the mismatch fails loudly instead.
