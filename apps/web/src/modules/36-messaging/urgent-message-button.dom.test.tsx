@@ -752,3 +752,19 @@ describe("a refetch while the dialog is open", () => {
     expect(screen.getAllByRole("radio")).toHaveLength(1);
   });
 });
+
+describe("UrgentMessageButton inside the composer form", () => {
+  it("portals the dialog out of the composer form so a submit cannot reload the page", async () => {
+    const onComposerSubmit = vi.fn((event: { preventDefault: () => void }) => event.preventDefault());
+    mountWithClient(
+      <form className="wx-message-composer" onSubmit={onComposerSubmit}>
+        <UrgentMessageButton channelId="c1" kind="care_team" />
+      </form>,
+    );
+    await open();
+    expect(screen.getByRole("dialog").closest("form.wx-message-composer")).toBeNull();
+    await fill();
+    fireEvent.submit(screen.getByRole("dialog").querySelector("form") as HTMLFormElement);
+    expect(onComposerSubmit).not.toHaveBeenCalled();
+  });
+});
