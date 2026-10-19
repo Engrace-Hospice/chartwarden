@@ -4,7 +4,7 @@
 import type { DeviceDto, DeviceListDto, DeviceRevokeDto } from "@wardenx/types";
 import { isStepUpRequired } from "@wardenx/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { revokeFailedText, revokedAnnouncement } from "./devices-wording";
+import { notFoundAnnouncement, revokeFailedText, revokedAnnouncement } from "./devices-wording";
 import { useOptionalApiClient } from "./use-handoffs-enabled";
 
 export type DevicesView =
@@ -83,13 +83,26 @@ export function useDevices(scope: DevicesScope): UseDevices {
       if (!client) return { kind: "failed" };
       const gen = generation.current;
       setRowState((prev) => ({ ...prev, [device.id]: "revoking" }));
-      const fail = (error?: unknown): RevokeResult => {
+      const clearRow = (): void =>
+        setRowState((prev) => {
+          const { [device.id]: _gone, ...rest } = prev;
+          return rest;
+        });
+      const fail = (status?: number, error?: unknown): RevokeResult => {
         if (gen !== generation.current) return { kind: "failed" };
+        // A step-up refusal is not a failure of the row: the screen sends the person to verify, so no "could not revoke" alert.
+        if (error !== undefined && isStepUpRequired(error)) {
+          clearRow();
+          return { kind: "step_up", error };
+        }
+        // 401/403 is terminal (the session ended or the permission was removed): say so instead of offering endless retries.
+        if (status === 401 || status === 403) {
+          setView({ status: "denied", code: status });
+          return { kind: "failed" };
+        }
         setRowState((prev) => ({ ...prev, [device.id]: "failed" }));
         setAnnouncement(revokeFailedText(device.label));
-        return error !== undefined && isStepUpRequired(error)
-          ? { kind: "step_up", error }
-          : { kind: "failed" };
+        return { kind: "failed" };
       };
       try {
         const { data, error, response } = userId
@@ -97,8 +110,17 @@ export function useDevices(scope: DevicesScope): UseDevices {
               params: { path: { id: device.id } },
             })
           : await client.DELETE("/api/v1/devices/{id}", { params: { path: { id: device.id } } });
-        // A 404 on a revoke means the session is already gone (revoked elsewhere, or expired): the list is stale, not the revoke failed.
-        if (!data && response?.status !== 404) return fail(error);
+        // A 404 is one answer for "already gone", "not yours" and "not in your organization": never announce a revoke. Re-read the list
+        // so it shows what is true, and say the session was not found.
+        if (!data && response?.status === 404) {
+          if (gen === generation.current) {
+            clearRow();
+            setAnnouncement(notFoundAnnouncement(device.label));
+            void read();
+          }
+          return { kind: "failed" };
+        }
+        if (!data) return fail(response?.status, error);
         const current = (data as DeviceRevokeDto | undefined)?.current ?? false;
         if (gen === generation.current) {
           setView((prev) =>
@@ -117,7 +139,7 @@ export function useDevices(scope: DevicesScope): UseDevices {
         return fail();
       }
     },
-    [client, userId],
+    [client, userId, read],
   );
 
   const retry = useCallback(() => {

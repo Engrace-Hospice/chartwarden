@@ -156,18 +156,6 @@ describe("DeviceManager (self-service)", () => {
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
   });
 
-  it("a revoke answered 404 (already gone) is not a failure: the stale row leaves", async () => {
-    mount(<DeviceManager onSignedOut={vi.fn()} />, {
-      get: () => ok(MINE),
-      del: () => ({ error: { error: { code: "NOT_FOUND" } }, response: { status: 404 } }),
-    });
-    fireEvent.click(await screen.findByRole("button", { name: "Revoke Chrome · Android" }));
-    await waitFor(() =>
-      expect(screen.queryByRole("button", { name: "Revoke Chrome · Android" })).toBeNull(),
-    );
-    expect(screen.queryByRole("alert")).toBeNull();
-  });
-
   it("revoking THIS device asks first; Cancel changes nothing", async () => {
     const { DELETE } = mount(<DeviceManager onSignedOut={vi.fn()} />, {
       get: () => ok(MINE),
@@ -214,6 +202,59 @@ describe("DeviceManager (self-service)", () => {
     expect(DELETE).toHaveBeenCalledWith("/api/v1/devices/{id}", {
       params: { path: { id: "s-current" } },
     });
+  });
+
+  it("moves focus to the list heading after a revoke removes the focused row", async () => {
+    mount(<DeviceManager onSignedOut={vi.fn()} />, {
+      get: () => ok(MINE),
+      del: () => revoked(false),
+    });
+    const button = await screen.findByRole("button", { name: "Revoke Safari · iOS" });
+    button.focus();
+    fireEvent.click(button);
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Revoke Safari · iOS" })).toBeNull(),
+    );
+    expect(document.activeElement).toBe(
+      screen.getByRole("heading", { name: "Your signed-in devices" }),
+    );
+  });
+
+  it("a 401 on a revoke is terminal: the page says the session ended, with no endless Try again", async () => {
+    mount(<DeviceManager onSignedOut={vi.fn()} />, {
+      get: () => ok(MINE),
+      del: () => ({ error: {}, response: { status: 401 } }),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Revoke Safari · iOS" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Sign in again");
+    expect(screen.queryByRole("button", { name: "Revoke Safari · iOS" })).toBeNull();
+  });
+
+  it("a 404 on a revoke is NOT announced as revoked: the list is re-read and the session reported not found", async () => {
+    const { GET } = mount(<DeviceManager onSignedOut={vi.fn()} />, {
+      get: () => ok(MINE),
+      del: () => ({ error: {}, response: { status: 404 } }),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Revoke Safari · iOS" }));
+    expect(await screen.findByText(/was not found/)).toBeTruthy();
+    expect(screen.queryByText("Safari · iOS revoked")).toBeNull();
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(2));
+  });
+
+  it("Cancel returns focus to the button that opened the confirm", async () => {
+    mount(<DeviceManager onSignedOut={vi.fn()} />, {
+      get: () => ok(MINE),
+      del: () => revoked(true),
+    });
+    const trigger = await screen.findByRole("button", {
+      name: "Revoke Chrome · macOS (this device)",
+    });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(document.activeElement).toBe(trigger);
   });
 
   it("does not sign out when the server refuses to revoke the current session", async () => {
@@ -323,6 +364,56 @@ describe("SessionGovernance (security officer)", () => {
     await waitFor(() =>
       expect(screen.getByTestId("where").textContent).toContain("/step-up?returnTo="),
     );
+  });
+
+  it("focuses the heading after a revoke, and a step-up refusal shows one alert, not a failed row", async () => {
+    mount(
+      <SessionGovernance />,
+      {
+        get: () =>
+          ok([
+            device({ id: "s-x", label: "Safari · iOS" }),
+            device({ id: "s-y", label: "Chrome · macOS" }),
+          ]),
+        del: (id) =>
+          id === "s-x"
+            ? revoked(false)
+            : { error: { error: { code: "STEP_UP_REQUIRED" } }, response: { status: 403 } },
+      },
+      `/messaging/governance/sessions?user=${USER}`,
+    );
+    const first = await screen.findByRole("button", {
+      name: "Revoke Safari · iOS for this person",
+    });
+    first.focus();
+    fireEvent.click(first);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Revoke Safari · iOS for this person" }),
+      ).toBeNull(),
+    );
+    expect(document.activeElement).toBe(
+      screen.getByRole("heading", { name: "Sessions of the selected person" }),
+    );
+  });
+
+  it("an invalid ?user= says so, and Show sessions for the same person reads again", async () => {
+    const bad = mount(
+      <SessionGovernance />,
+      { get: () => ok([]) },
+      "/messaging/governance/sessions?user=nope",
+    );
+    expect((await screen.findByRole("alert")).textContent).toContain("valid user id");
+    expect(bad.GET).not.toHaveBeenCalled();
+    cleanup();
+    const { GET } = mount(
+      <SessionGovernance />,
+      { get: () => ok([device({ id: "s-x", label: "Safari · iOS" })]) },
+      `/messaging/governance/sessions?user=${USER}`,
+    );
+    await screen.findByRole("list", { name: "Sessions of the selected person" });
+    fireEvent.click(screen.getByRole("button", { name: "Show sessions" }));
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(2));
   });
 
   it("has no axe violations", async () => {

@@ -55,7 +55,9 @@ const blocked = {
 
 describe("ScheduleSendButton inside the composer form", () => {
   it("portals the dialog out of the composer form so Enter in the date input cannot send the draft", async () => {
-    const onComposerSubmit = vi.fn((event: { preventDefault: () => void }) => event.preventDefault());
+    const onComposerSubmit = vi.fn((event: { preventDefault: () => void }) =>
+      event.preventDefault(),
+    );
     render(
       provide(
         api({}),

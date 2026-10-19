@@ -42,10 +42,8 @@ export const CONFIRM_CURRENT_TITLE = "Sign out of this device?";
 export const CONFIRM_CURRENT_TEXT =
   "You are revoking the session you are using now. You will be signed out and will need to sign in again. Anything you have not sent will be lost.";
 export const CONFIRM_CURRENT_ACTION = "Revoke and sign out";
-export const CONFIRM_OTHER_TITLE = "Revoke this session?";
-export const confirmOtherText = (label: string): string =>
-  `${label} will be signed out immediately and will stop receiving push notifications.`;
-export const CONFIRM_OTHER_ACTION = "Revoke session";
+export const notFoundAnnouncement = (label: string): string =>
+  `${label} was not found: it may already be revoked. The list was refreshed.`;
 export const CONFIRM_CANCEL = "Cancel";
 
 // The security officer's variant (messaging.sessions.manage; the revoke also needs a fresh step-up).

@@ -4,11 +4,12 @@
 // step-up screen and back; the list stays as it was. Every look and revoke is audited server-side; the page shows no IP address or user agent.
 import type { DeviceDto } from "@wardenx/types";
 import { Button, PageHeader } from "@wardenx/ui";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { stepUpRedirectFor } from "../../shell/step-up-redirect";
 import { DeviceList } from "./device-list";
+import { leaveForSignIn } from "./device-manager";
 import {
   DEVICES_DENIED,
   DEVICES_LOAD_FAILED,
@@ -37,10 +38,18 @@ function PersonSessions({ userId }: { readonly userId: string }): JSX.Element {
   const [stepUpNeeded, setStepUpNeeded] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const headingRef = useRef<HTMLHeadingElement>(null);
 
   const run = async (device: DeviceDto): Promise<void> => {
     setStepUpNeeded(false);
     const result = await revoke(device);
+    if (result.kind === "revoked") {
+      // An officer who named their own id revoked their own session: leave, like the self-service page. Otherwise the row that held
+      // focus is gone, so focus the heading.
+      if (result.current) leaveForSignIn();
+      else headingRef.current?.focus();
+      return;
+    }
     if (result.kind !== "step_up") return;
     const to = stepUpRedirectFor(result.error, `${location.pathname}${location.search}`);
     if (to) navigate(to);
@@ -49,6 +58,9 @@ function PersonSessions({ userId }: { readonly userId: string }): JSX.Element {
 
   return (
     <>
+      <h2 ref={headingRef} tabIndex={-1} className="wx-devices-heading">
+        {GOVERNANCE_LIST_LABEL}
+      </h2>
       <output className="wx-devices-status" aria-live="polite">
         {announcement}
       </output>
@@ -79,21 +91,23 @@ function PersonSessions({ userId }: { readonly userId: string }): JSX.Element {
 export function SessionGovernance(): JSX.Element {
   const [params, setParams] = useSearchParams();
   const fromUrl = params.get("user") ?? "";
+  // The URL is the single source of truth for who is shown (Back and Forward work); `refresh` re-reads the same person.
+  const showing = UUID.test(fromUrl) ? fromUrl : "";
   const [text, setText] = useState(fromUrl);
-  const [showing, setShowing] = useState(UUID.test(fromUrl) ? fromUrl : "");
-  const [invalid, setInvalid] = useState(false);
+  const [badInput, setBadInput] = useState(false);
+  const [refresh, setRefresh] = useState(0);
+  const invalid = badInput || (fromUrl !== "" && showing === "");
   const inputId = useId();
 
   const show = (): void => {
     const id = text.trim();
     if (!UUID.test(id)) {
-      setInvalid(true);
-      setShowing("");
+      setBadInput(true);
       return;
     }
-    setInvalid(false);
-    setShowing(id);
-    setParams({ user: id }, { replace: true });
+    setBadInput(false);
+    if (id === showing) setRefresh((n) => n + 1);
+    else setParams({ user: id }, { replace: true });
   };
 
   return (
@@ -133,7 +147,7 @@ export function SessionGovernance(): JSX.Element {
             </p>
           ) : null}
         </form>
-        {showing ? <PersonSessions key={showing} userId={showing} /> : null}
+        {showing ? <PersonSessions key={`${showing}:${refresh}`} userId={showing} /> : null}
       </section>
     </>
   );

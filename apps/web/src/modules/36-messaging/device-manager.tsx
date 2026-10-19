@@ -30,7 +30,7 @@ import { useDevices } from "./use-devices";
 import "./devices.css";
 
 /** Where the browser goes once the current session is revoked: the same exit as the account menu's sign-out. */
-function leaveForSignIn(): void {
+export function leaveForSignIn(): void {
   clearAllDrafts();
   clearPendingNotificationLink();
   window.location.href = "/login";
