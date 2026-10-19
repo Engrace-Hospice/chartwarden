@@ -79,6 +79,7 @@ function mount(opts: {
   channelId?: string;
   refreshKey?: string | null;
   landOnMessageId?: string | null;
+  onLanded?: () => void;
 }) {
   const GET = vi.fn((path: string, init: { params: { path: { id: string } } }) =>
     Promise.resolve(opts.get ? opts.get(path, init.params.path.id) : ok([request()])),
@@ -94,6 +95,7 @@ function mount(opts: {
             enabled
             refreshKey={refreshKey}
             landOnMessageId={opts.landOnMessageId ?? null}
+            onLanded={opts.onLanded}
           >
             <AckForMessage messageId="m-1" />
           </AckRequestsProvider>
@@ -1143,6 +1145,14 @@ describe("ack request card - notification-link landing (WP 4.8)", () => {
     await waitFor(() => expect(document.activeElement).toBe(status.closest("p")));
 
     expect(POST).not.toHaveBeenCalled();
+  });
+
+  it("reports the landing exactly once, and never for another message", async () => {
+    const onLanded = vi.fn();
+    mount({ landOnMessageId: "m-1", onLanded });
+    const status = await screen.findByText(ACK_STATUS_TEXT.pending);
+    await waitFor(() => expect(document.activeElement).toBe(status.closest("p")));
+    expect(onLanded).toHaveBeenCalledTimes(1);
   });
 
   it("does not focus again after the person moves on, and not for another message", async () => {

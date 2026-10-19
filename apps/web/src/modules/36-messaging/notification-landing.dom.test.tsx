@@ -2,10 +2,10 @@
 //   signed out : nothing is rendered or asked of the API; the visitor goes to sign-in and only the opaque id is remembered
 //   signed in  : one resolve call, then the thread route with the ids the server named; the /n/ entry is replaced
 //   any failure: the SAME generic page (404, 403, 500, a network error, a malformed id) with no id-derived text anywhere
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createApiClient } from "@wardenx/ui";
 import axe from "axe-core";
-import type { JSX } from "react";
+import { type JSX, StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "../../shell/app";
 import { takePendingNotificationLink } from "../../shell/pending-deep-link";
@@ -13,6 +13,8 @@ import { createScreenRegistry } from "../../shell/screen-registry";
 import type { Session } from "../../shell/session";
 import { systemScreens } from "../../shell/system-pages";
 import {
+  LANDING_FAILED_ACTION,
+  LANDING_FAILED_HEADLINE,
   LANDING_GONE_ACTION,
   LANDING_GONE_HEADLINE,
   LANDING_OPENING_TEXT,
@@ -35,7 +37,7 @@ const SESSION: Session = {
 
 const Stub = (label: string) => (): JSX.Element => <p>{label}</p>;
 
-function mount(path: string, session: Session | null, answer?: () => Response) {
+function mount(path: string, session: Session | null, answer?: () => Response, strict = false) {
   window.history.pushState({}, "", path);
   const registry = createScreenRegistry();
   registry.register(systemScreens);
@@ -72,13 +74,14 @@ function mount(path: string, session: Session | null, answer?: () => Response) {
     if (url.includes("/deliveries/")) return resolveAnswer();
     return respond(404, { error: { code: "NOT_FOUND" } });
   };
-  const view = render(
+  const shell = (
     <AppShell
       registry={registry}
       client={createApiClient({ baseUrl: "http://localhost", fetch: fetchStub })}
       session={session}
-    />,
+    />
   );
+  const view = render(strict ? <StrictMode>{shell}</StrictMode> : shell);
   return { ...view, calls };
 }
 
@@ -125,36 +128,67 @@ describe("signed in", () => {
     expect(window.location.pathname).not.toContain("/n/");
   });
 
-  it("says only a generic line while resolving", async () => {
+  it("says only a generic opening line while the answer is pending", async () => {
     const { container } = mount(
       `/n/${DELIVERY}`,
       SESSION,
-      () => new Response(null, { status: 404 }),
+      () => new Promise<Response>(() => {}) as unknown as Response,
     );
+
+    await screen.findByText(LANDING_OPENING_TEXT);
+
     expect(container.textContent).not.toContain(DELIVERY);
-    await screen.findByText(LANDING_GONE_HEADLINE);
+    expect(screen.queryByText(LANDING_GONE_HEADLINE)).toBeNull();
+    expect(screen.queryByText(LANDING_FAILED_HEADLINE)).toBeNull();
     expect(LANDING_OPENING_TEXT).not.toMatch(/patient|message from|urgent/i);
   });
 
   it.each([
     ["404", () => new Response(JSON.stringify({ error: { code: "NOT_FOUND" } }), { status: 404 })],
     ["403", () => new Response(JSON.stringify({ error: { code: "FORBIDDEN" } }), { status: 403 })],
+  ])(
+    "shows the one generic gone page for a %s and moves focus to its headline",
+    async (_name, make) => {
+      const { container } = mount(`/n/${DELIVERY}`, SESSION, make);
+
+      const headline = await screen.findByText(LANDING_GONE_HEADLINE);
+
+      expect(document.activeElement).toBe(headline);
+      expect(screen.getByRole("link", { name: LANDING_GONE_ACTION }).getAttribute("href")).toBe(
+        "/messaging",
+      );
+      expect(container.textContent).not.toContain(DELIVERY);
+      expect(where()).toBe(`/n/${DELIVERY}`);
+      expect(document.title).not.toContain(DELIVERY);
+      expect(container.querySelector("[role=alert]")).toBeNull();
+      const results = await axe.run(container, { rules: { region: { enabled: false } } });
+      expect(results.violations).toEqual([]);
+    },
+  );
+
+  it.each([
     ["500", () => new Response("boom", { status: 500 })],
-    ["network error", () => Promise.reject(new TypeError("offline")) as unknown as Response],
-  ])("shows the one generic page for a %s", async (_name, make) => {
-    const { container } = mount(`/n/${DELIVERY}`, SESSION, make);
+    ["rejected promise", () => Promise.reject(new TypeError("offline")) as unknown as Response],
+  ])("a %s is a retryable failure, not 'no longer available'", async (_name, make) => {
+    const { container, calls } = mount(`/n/${DELIVERY}`, SESSION, make);
 
-    await screen.findByText(LANDING_GONE_HEADLINE);
+    const headline = await screen.findByText(LANDING_FAILED_HEADLINE);
 
-    expect(screen.getByRole("link", { name: LANDING_GONE_ACTION }).getAttribute("href")).toBe(
-      "/messaging",
-    );
+    expect(document.activeElement).toBe(headline);
+    expect(screen.queryByText(LANDING_GONE_HEADLINE)).toBeNull();
     expect(container.textContent).not.toContain(DELIVERY);
-    expect(where()).toBe(`/n/${DELIVERY}`);
-    expect(document.title).not.toContain(DELIVERY);
-    expect(container.querySelector("[role=alert]")).toBeNull();
-    const results = await axe.run(container, { rules: { region: { enabled: false } } });
-    expect(results.violations).toEqual([]);
+    expect(resolveCalls(calls)).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: LANDING_FAILED_ACTION }));
+    await waitFor(() => expect(resolveCalls(calls)).toHaveLength(2));
+    await screen.findByText(LANDING_FAILED_HEADLINE);
+  });
+
+  it("works under StrictMode: resolves and lands on the thread", async () => {
+    mount(`/n/${DELIVERY}`, SESSION, undefined, true);
+
+    await screen.findByText("THREAD SCREEN");
+
+    expect(where()).toBe(`/messaging?channelId=${CHANNEL}&messageId=${MESSAGE}`);
   });
 
   it("answers a malformed id with the same page and never calls the API", async () => {

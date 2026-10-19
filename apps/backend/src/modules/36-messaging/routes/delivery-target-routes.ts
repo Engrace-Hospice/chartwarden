@@ -9,6 +9,7 @@
 import { NotFoundError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { DeliveryTargetService } from "../delivery-target/delivery-target-service";
+import { DeliveryTargetResponseSchema } from "./delivery-target-typebox";
 
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
@@ -34,6 +35,7 @@ export function registerDeliveryTargetRoutes(
     "/api/v1/messaging/deliveries/:id/target",
     {
       preHandler: [guards.read],
+      schema: { response: { 200: DeliveryTargetResponseSchema } },
       config: { auditRead: { resourceKind: "notification_delivery", resourceIdParam: "id" } },
     },
     async (request) => {

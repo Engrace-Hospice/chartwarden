@@ -34,7 +34,7 @@ import {
 } from "./global-response-signal";
 import { AppLayout } from "./layout";
 import { OfflineBanner } from "./offline-banner";
-import { rememberPendingNotificationLink } from "./pending-deep-link";
+import { RedirectRememberingLink } from "./redirect-remembering-link";
 import { RoleHome } from "./role-home";
 import type { WebScreen } from "./screen-registry";
 import { ActorSessionProvider, useSessionState } from "./session";
@@ -78,8 +78,7 @@ function RequireChrome({ children }: { children: ReactNode }): JSX.Element {
   if (outcome === "loading") return <LoadingSpinner label="Loading workspace…" />;
   if (outcome === "redirect") {
     // WP 4.8: a notification link opened signed out finishes after sign-in (only its opaque id is kept).
-    rememberPendingNotificationLink(pathname);
-    return <Navigate to="/login" replace />;
+    return <RedirectRememberingLink to="/login" pathname={pathname} />;
   }
   if (outcome === "outage") return <Navigate to="/offline" replace />;
   return <>{children}</>;

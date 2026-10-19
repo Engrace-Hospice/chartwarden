@@ -5,11 +5,13 @@
 // shell remembers only the opaque id and brings the visitor back after sign-in). Once signed in, one read asks the server where the
 // id leads; the server answers only for the signed-in recipient's own delivery in their organisation and while they can still see
 // the channel. The screen never shows, stores or logs the id, a channel, a message or a patient: while resolving it says only
-// "Opening your notification", and every failure (unknown, someone else's, deleted, access lost, server error) is the SAME
-// "This notification is no longer available" page. On success it replaces itself with the thread (`/messaging?channelId=&messageId=`),
+// "Opening your notification", and every answer that says "no" (404, 403, any other 4xx, a malformed id) is the SAME
+// "This notification is no longer available" page. A server or network failure is NOT "gone": it gets its own generic
+// "Couldn't open this notification" page with a Retry button (still no id-derived content). The headline takes focus when a page
+// replaces the resolving line, so a screen reader announces the change. On success it replaces itself with the thread (`/messaging?channelId=&messageId=`),
 // which scrolls to the message and, for an acknowledgment request, focuses its card. Nothing here acknowledges anything.
 import { CenteredStatusLayout, Glyph, useApiClient } from "@wardenx/ui";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { notificationIdFromPath } from "../../shell/pending-deep-link";
@@ -19,6 +21,10 @@ export const LANDING_GONE_HEADLINE = "This notification is no longer available";
 export const LANDING_GONE_EXPLANATION =
   "It may have been removed, or you may no longer have access. Your messages are still in WardenX.";
 export const LANDING_GONE_ACTION = "Go to messages";
+export const LANDING_FAILED_HEADLINE = "Couldn't open this notification";
+export const LANDING_FAILED_EXPLANATION =
+  "Something went wrong on our side or with your connection. Try again in a moment.";
+export const LANDING_FAILED_ACTION = "Retry";
 
 interface Target {
   readonly channelId: string;
@@ -27,6 +33,7 @@ interface Target {
 type State =
   | { readonly kind: "resolving" }
   | { readonly kind: "gone" }
+  | { readonly kind: "failed" }
   | (Target & { readonly kind: "found" });
 
 /** The thread route for a resolved target; both ids are server-supplied uuids, encoded anyway. */
@@ -40,7 +47,10 @@ export function NotificationLanding(): JSX.Element {
   // The same shape the link is minted with; anything else never reaches the server.
   const id = notificationIdFromPath(`/n/${rawId}`);
   const [state, setState] = useState<State>({ kind: "resolving" });
+  const [attempt, setAttempt] = useState(0);
+  const headlineRef = useRef<HTMLSpanElement>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `attempt` is the Retry trigger; the effect must re-run when it changes.
   useEffect(() => {
     if (id === null) {
       setState({ kind: "gone" });
@@ -50,30 +60,49 @@ export function NotificationLanding(): JSX.Element {
     setState({ kind: "resolving" });
     client
       .GET("/api/v1/messaging/deliveries/{id}/target", { params: { path: { id } } })
-      .then(({ data }) => {
+      .then(({ data, response }) => {
         if (cancelled) return;
-        setState(
-          data
-            ? { kind: "found", channelId: data.channel_id, messageId: data.message_id }
-            : { kind: "gone" },
-        );
+        if (data) {
+          setState({ kind: "found", channelId: data.channel_id, messageId: data.message_id });
+          return;
+        }
+        // Any 4xx is the server saying "no" (uniform 404/403); only a non-4xx failure is retryable.
+        setState({ kind: response && response.status < 500 ? "gone" : "failed" });
       })
       .catch(() => {
-        if (!cancelled) setState({ kind: "gone" });
+        if (!cancelled) setState({ kind: "failed" });
       });
     return () => {
       cancelled = true;
     };
-  }, [client, id]);
+  }, [client, id, attempt]);
+
+  const settled = state.kind === "gone" || state.kind === "failed";
+  useEffect(() => {
+    if (settled) headlineRef.current?.focus();
+  }, [settled]);
 
   if (state.kind === "found") return <Navigate to={threadPathFor(state)} replace />;
-  if (state.kind === "gone") {
+  if (settled) {
+    const failed = state.kind === "failed";
     return (
       <CenteredStatusLayout
         icon={<Glyph name="info" size={24} />}
-        headline={LANDING_GONE_HEADLINE}
-        explanation={LANDING_GONE_EXPLANATION}
-        actions={<Link to="/messaging">{LANDING_GONE_ACTION}</Link>}
+        headline={
+          <span ref={headlineRef} tabIndex={-1}>
+            {failed ? LANDING_FAILED_HEADLINE : LANDING_GONE_HEADLINE}
+          </span>
+        }
+        explanation={failed ? LANDING_FAILED_EXPLANATION : LANDING_GONE_EXPLANATION}
+        actions={
+          failed ? (
+            <button type="button" onClick={() => setAttempt((n) => n + 1)}>
+              {LANDING_FAILED_ACTION}
+            </button>
+          ) : (
+            <Link to="/messaging">{LANDING_GONE_ACTION}</Link>
+          )
+        }
       />
     );
   }

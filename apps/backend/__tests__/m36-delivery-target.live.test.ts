@@ -8,7 +8,8 @@
  *   1. RESOLVES     the recipient's own delivery -> three ids; the open acknowledgment request is named; nothing is written.
  *   2. ONE 404      random, malformed, someone else's, another tenant's, a crafted cross-tenant payload, a payload with no target,
  *                   a deleted message, a user who left the channel, an alert in another org: the identical status and body.
- *   3. AUDIT        a successful resolve lands a read-audit row with the delivery id; a refusal lands none.
+ *   3. AUDIT        a successful resolve lands exactly one `notification_delivery.viewed` row carrying the delivery id; a refusal
+ *                   lands no audit row of any kind for the actor.
  *
  *   WARDENX_TEST_DATABASE_URL=postgres://... bun run test:m36:delivery-target:live
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the wardenx_* roles.
@@ -109,6 +110,10 @@ describe.skipIf(!DB_URL)("M36 WP 4.8 deep-link resolver - LIVE Postgres", () => 
       )
     ).rows[0].id as string;
   };
+
+  /** Every audit row written for this actor, whatever the resource kind: a refusal must leave this unchanged. */
+  const auditRows = (user: string) =>
+    kit.count("SELECT count(*)::int AS n FROM audit_event WHERE actor_user_id=$1", [user]);
 
   const resolve = (user: string, org: string, id: string) =>
     app.inject({ method: "GET", url: URL_OF(id), headers: as(user, org) });
@@ -221,16 +226,71 @@ describe.skipIf(!DB_URL)("M36 WP 4.8 deep-link resolver - LIVE Postgres", () => 
       expect(after).toMatchObject({ status: "pending", version: 0 });
     });
 
-    it("lands a read-audit row with the delivery id", async () => {
+    it("lands exactly one read-audit row with the exact event type, kind and delivery id", async () => {
       const messageId = await message();
       const delivery = await seedDelivery(ORG_A, rn, await realPayload(channel, messageId, rn));
-      await resolve(rn, ORG_A, delivery);
-      expect(
-        await kit.count(
-          "SELECT count(*)::int AS n FROM audit_event WHERE organization_id=$1 AND resource_id=$2 AND actor_user_id=$3 AND event_type LIKE '%.viewed'",
-          [ORG_A, delivery, rn],
-        ),
-      ).toBeGreaterThanOrEqual(1);
+      const before = await auditRows(rn);
+
+      const res = await resolve(rn, ORG_A, delivery);
+
+      expect(res.statusCode, res.body).toBe(200);
+      const rows = await kit.one<{
+        event_type: string;
+        resource_kind: string;
+        resource_id: string;
+      }>(
+        "SELECT event_type, resource_kind, resource_id FROM audit_event WHERE organization_id=$1 AND actor_user_id=$2 AND resource_id=$3",
+        [ORG_A, rn, delivery],
+      );
+      expect(rows).toEqual([
+        {
+          event_type: "notification_delivery.viewed",
+          resource_kind: "notification_delivery",
+          resource_id: delivery,
+        },
+      ]);
+      expect(await auditRows(rn)).toBe(before + 1);
+    });
+
+    it.each([
+      [
+        "resolved",
+        "UPDATE message_acknowledgment_request SET status='resolved', resolved_at=now(), resolved_by_user_id=assigned_user_id, version=2 WHERE id='{request}';",
+      ],
+      [
+        "cancelled",
+        "SELECT set_config('app.user_id', '{nurse}', true); UPDATE message_acknowledgment_request SET status='cancelled', cancelled_at=now(), version=2 WHERE id='{request}';",
+      ],
+    ])("names no request once it is %s", async (_status, closeSet) => {
+      const messageId = await message();
+      const request = (
+        await kit.admin.query(
+          `INSERT INTO message_acknowledgment_request
+             (organization_id, message_id, channel_id, patient_id, ack_class, requester_user_id, assigned_user_id, requested_at, window_started_at, deadline_at)
+           VALUES ($1,$2,$3,$4,'important',$5,$6,now(),now(), now() + interval '60 minutes') RETURNING id`,
+          [ORG_A, messageId, channel, PATIENT, nurse, rn],
+        )
+      ).rows[0].id as string;
+      // The aggregate's trigger lets only the assignee acknowledge/resolve and only the sender (or a system write) cancel.
+      await kit.admin.query(`BEGIN;
+        SELECT set_config('app.user_id', '${rn}', true);
+        UPDATE message_acknowledgment_request SET status='acknowledged', acknowledged_at=now(), acknowledged_by_user_id=assigned_user_id, version=1 WHERE id='${request}';
+        ${closeSet.replace("{request}", request).replace("{nurse}", nurse)}
+        COMMIT;`);
+      const delivery = await seedDelivery(
+        ORG_A,
+        rn,
+        await realPayload(channel, messageId, rn, request),
+      );
+
+      const res = await resolve(rn, ORG_A, delivery);
+
+      expect(res.statusCode, res.body).toBe(200);
+      expect(res.json()).toEqual({
+        channel_id: channel,
+        message_id: messageId,
+        ack_request_id: null,
+      });
     });
   });
 
@@ -271,6 +331,9 @@ describe.skipIf(!DB_URL)("M36 WP 4.8 deep-link resolver - LIVE Postgres", () => 
         leaver,
       ]);
 
+      const actors = [rn, nurse, outsider, leaver, orgBUser];
+      const auditBefore = await Promise.all(actors.map(auditRows));
+      // (the promises below start as the array is built, so the baseline is taken first)
       const cases: Array<[string, Promise<{ statusCode: number; json(): unknown; body: string }>]> =
         [
           ["a random uuid", resolve(rn, ORG_A, randomUUID())],
@@ -319,20 +382,15 @@ describe.skipIf(!DB_URL)("M36 WP 4.8 deep-link resolver - LIVE Postgres", () => 
         expect(res.body, name).not.toContain(messageId);
         expect(res.body, name).not.toContain(SECRET);
       }
+      // no refusal wrote an audit row of any kind for anyone who asked
+      expect(await Promise.all(actors.map(auditRows))).toEqual(auditBefore);
     });
 
-    it("lands no read-audit row for a refusal", async () => {
-      const before = await kit.count(
-        "SELECT count(*)::int AS n FROM audit_event WHERE actor_user_id=$1 AND event_type LIKE '%.viewed' AND resource_kind='notification_delivery'",
-        [outsider],
-      );
-      await resolve(outsider, ORG_A, randomUUID());
-      expect(
-        await kit.count(
-          "SELECT count(*)::int AS n FROM audit_event WHERE actor_user_id=$1 AND event_type LIKE '%.viewed' AND resource_kind='notification_delivery'",
-          [outsider],
-        ),
-      ).toBe(before);
+    it("lands no audit row of any kind for a refusal", async () => {
+      const before = await auditRows(outsider);
+      const res = await resolve(outsider, ORG_A, randomUUID());
+      expect(res.statusCode).toBe(404);
+      expect(await auditRows(outsider)).toBe(before);
     });
   });
 });

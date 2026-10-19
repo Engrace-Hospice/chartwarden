@@ -7,6 +7,7 @@ export type OpenRequestLookup = (orgId: string, messageId: string) => Promise<st
 
 export function createOpenRequestLookup(store: AckStore): OpenRequestLookup {
   return (orgId, messageId) =>
+    // System read on purpose: the caller (the resolver) has already proven the recipient and channel access; this only names the open request id.
     store.readAsSystem(orgId, async (tx) => {
       const row = await tx.findByMessage(messageId, false);
       return row && (ACK_OPEN_STATUSES as readonly string[]).includes(row.status) ? row.id : null;

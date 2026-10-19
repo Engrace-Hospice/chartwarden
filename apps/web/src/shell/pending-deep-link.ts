@@ -44,3 +44,12 @@ export function takePendingNotificationLink(): string | null {
     return null;
   }
 }
+
+/** Forget any remembered link (sign-out): the next person on this browser must not be sent to the previous visitor's link. */
+export function clearPendingNotificationLink(): void {
+  try {
+    window.sessionStorage.removeItem(KEY);
+  } catch {
+    // Blocked storage: nothing was stored.
+  }
+}
