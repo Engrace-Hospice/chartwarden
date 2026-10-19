@@ -2255,15 +2255,17 @@
       "app": "web",
       "module": "36-messaging",
       "moduleId": 36,
-<<<<<<< HEAD
       "id": "messaging.preferences",
       "path": "/messaging/preferences",
       "permission": "messaging.read"
-=======
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
       "id": "messaging.on-call",
       "path": "/messaging/on-call",
       "permission": "messaging.oncall.read"
->>>>>>> 845966fa0 (feat(m36): WP 4.12 read-only on-call coverage directory (ADR-0080, proposed))
     },
     {
       "app": "web",
