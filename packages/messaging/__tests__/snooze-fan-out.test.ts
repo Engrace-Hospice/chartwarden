@@ -182,19 +182,24 @@ describe("through the emitter", () => {
       rulesFor: async (_org, eventType) => rules(eventType),
       preferencesFor: async () => new Map([["u-1", prefs()]]),
       persist: async () => ({ alertId: "a-1" }),
-      snoozedUsersFor: async (_org, channelId) => {
-        asked.push(channelId);
+      snoozedUsersFor: async (_org, channelId, _users, messageId) => {
+        asked.push(`${channelId}/${messageId}`);
         return new Set();
       },
       now: () => AT,
     });
     const emit = (eventType: string, payload: Record<string, unknown>, n: number) =>
       emitter.emit("org", { eventType, severity: "info", correlationId: `c-${n}`, payload });
-    await emit("m36.message.mentioned", { recipientUserId: "u-1", channelId: "ch-1" }, 1);
-    await emit("m36.message.mentioned", { recipientUserId: "u-1" }, 2); // no channel id
+    await emit(
+      "m36.message.mentioned",
+      { recipientUserId: "u-1", channelId: "ch-1", messageId: "m-1" },
+      1,
+    );
+    await emit("m36.message.mentioned", { recipientUserId: "u-1", messageId: "m-1" }, 2); // no channel id
+    await emit("m36.message.mentioned", { recipientUserId: "u-1", channelId: "ch-1" }, 5); // no message id: never snoozed
     await emit("m36.task.created", { recipientUserId: "u-1", channelId: "ch-2" }, 3); // not allowlisted
     await emit("m36.ack.requested", { recipientUserId: "u-1", channelId: "ch-3" }, 4); // designated
-    expect(asked).toEqual(["ch-1"]);
+    expect(asked).toEqual(["ch-1/m-1"]);
   });
 
   it("quiets the snoozed user's push and email, not their in-app row", async () => {
@@ -208,7 +213,7 @@ describe("through the emitter", () => {
       eventType: "m36.message.mentioned",
       severity: "info",
       correlationId: "c-2",
-      payload: { recipientUserId: "u-1", channelId: "ch-1" },
+      payload: { recipientUserId: "u-1", channelId: "ch-1", messageId: "m-1" },
     });
     const byChannel = Object.fromEntries(
       (recorded[0]?.deliveries ?? []).map((d) => [d.channel, d.status]),
@@ -233,6 +238,8 @@ describe("through the emitter", () => {
       correlationId: "c-3",
       payload: { recipientUserId: "u-1" },
     });
-    expect((recorded[0]?.deliveries ?? []).every((d) => d.status === "pending")).toBe(true);
+    const deliveries = recorded[0]?.deliveries ?? [];
+    expect(deliveries.length).toBeGreaterThan(0);
+    expect(deliveries.every((d) => d.status === "pending")).toBe(true);
   });
 });

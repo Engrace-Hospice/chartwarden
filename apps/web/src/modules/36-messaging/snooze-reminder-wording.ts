@@ -18,7 +18,7 @@ export const SNOOZE_PRESETS: readonly DurationPreset[] = [
 export const SNOOZE_TRIGGER_LABEL = "Snooze";
 export const SNOOZE_TITLE = "Snooze this conversation";
 export const SNOOZE_EXPLANATION =
-  "Snooze pauses push, text and email notices from this conversation. Messages still appear here, and urgent items always notify you.";
+  "If you get push, text or email copies of ordinary notices from this conversation, snooze pauses those copies. Nothing is hidden here, and urgent items always notify you.";
 export const SNOOZE_UNSNOOZABLE_SHORT = "Urgent item - cannot snooze";
 export const SNOOZE_UNSNOOZABLE_TEXT =
   "This conversation has an urgent or response-required item, so it cannot be snoozed. Urgent items always notify you.";

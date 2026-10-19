@@ -233,7 +233,7 @@ export interface DueReminder extends ReminderRow {
 /** What the reminder sweep needs; the sweep itself (reminder-sweep.ts) is pure over this. */
 export interface ReminderSweepStore {
   /** Due rows of one organisation, oldest first, ids and instants only. */
-  listDue(orgId: string, limit: number): Promise<readonly DueReminder[]>;
+  listDue(orgId: string, limit: number, offset?: number): Promise<readonly DueReminder[]>;
   /** Is the message still there (not deleted) and in the same channel? */
   messageLive(orgId: string, row: DueReminder): Promise<boolean>;
   /** Delete one reminder under its owner's context. */
@@ -250,10 +250,10 @@ type DueSqlRow = {
 
 export function createDbReminderSweepStore(db: DbClient): ReminderSweepStore {
   return {
-    listDue: (orgId, limit) =>
+    listDue: (orgId, limit, offset = 0) =>
       withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
         const result = await tx.execute<DueSqlRow>(
-          sql`SELECT * FROM message_reminder_due(${orgId}, ${limit})`,
+          sql`SELECT * FROM message_reminder_due(${orgId}, ${limit}, ${offset})`,
         );
         return result.rows.map((r) => ({
           id: r.id,

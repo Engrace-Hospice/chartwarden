@@ -55,7 +55,7 @@ GRANT UPDATE ("snoozed_at", "snoozed_until", "updated_at") ON "message_snooze" T
 -- Urgent / acknowledgment-bound conversations cannot be snoozed, whoever writes the row. Invoker rights: it reads the request table
 -- under the caller's own org policy (message_ack_request_org_isolation).
 CREATE OR REPLACE FUNCTION message_snooze_no_open_request() RETURNS trigger
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
 BEGIN
   IF EXISTS (
     SELECT 1 FROM message_acknowledgment_request r
@@ -152,7 +152,7 @@ GRANT UPDATE ("set_at", "remind_at", "updated_at") ON "message_reminder" TO ward
 -- A reminder is for a NON-URGENT message: `routine`, and no open acknowledgment request on it. Fail closed: a message the caller's
 -- policy cannot read is refused too.
 CREATE OR REPLACE FUNCTION message_reminder_non_urgent() RETURNS trigger
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE v_urgency text;
 BEGIN
   SELECT m.urgency::text INTO v_urgency
@@ -180,7 +180,7 @@ CREATE TRIGGER "trg_audit_message_reminder" AFTER INSERT OR UPDATE OR DELETE ON 
 CREATE POLICY "message_reminder_due_lister" ON "message_reminder"
   FOR SELECT TO wardenx_admin USING (remind_at <= now());--> statement-breakpoint
 GRANT SELECT ("id", "organization_id", "user_id", "channel_id", "message_id", "remind_at") ON "message_reminder" TO wardenx_admin;--> statement-breakpoint
-CREATE OR REPLACE FUNCTION message_reminder_due(p_organization_id uuid, p_limit integer)
+CREATE OR REPLACE FUNCTION message_reminder_due(p_organization_id uuid, p_limit integer, p_offset integer DEFAULT 0)
 RETURNS TABLE (id uuid, user_id uuid, channel_id uuid, message_id uuid, remind_at timestamptz)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
   SELECT r.id, r.user_id, r.channel_id, r.message_id, r.remind_at
@@ -189,11 +189,11 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_te
     AND p_organization_id = NULLIF(current_setting('app.org_id', true), '')::uuid
     AND r.remind_at <= now()
   ORDER BY r.remind_at, r.id
-  LIMIT LEAST(GREATEST(p_limit, 0), 500);
+  LIMIT LEAST(GREATEST(p_limit, 0), 500) OFFSET LEAST(GREATEST(p_offset, 0), 10000);
 $$;--> statement-breakpoint
-ALTER FUNCTION message_reminder_due(uuid, integer) OWNER TO wardenx_admin;--> statement-breakpoint
-REVOKE ALL ON FUNCTION message_reminder_due(uuid, integer) FROM PUBLIC;--> statement-breakpoint
-GRANT EXECUTE ON FUNCTION message_reminder_due(uuid, integer) TO wardenx_app;--> statement-breakpoint
+ALTER FUNCTION message_reminder_due(uuid, integer, integer) OWNER TO wardenx_admin;--> statement-breakpoint
+REVOKE ALL ON FUNCTION message_reminder_due(uuid, integer, integer) FROM PUBLIC;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION message_reminder_due(uuid, integer, integer) TO wardenx_app;--> statement-breakpoint
 
 GRANT SELECT, DELETE ON "message_reminder" TO wardenx_destruction;--> statement-breakpoint
 CREATE POLICY "message_reminder_destruction" ON "message_reminder"

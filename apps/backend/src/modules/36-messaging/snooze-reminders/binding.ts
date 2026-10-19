@@ -5,7 +5,11 @@ import type { DbClient } from "@wardenx/db";
 import type { AlertEmitter } from "@wardenx/messaging";
 import { SNOOZE_REMINDER_FLAG_KEY } from "@wardenx/types";
 import { cacheFlagRead } from "../presence/binding";
-import { type ReminderSweepSummary, sweepRemindersForOrg } from "./reminder-sweep";
+import {
+  type ReminderSweepDeps,
+  type ReminderSweepSummary,
+  sweepRemindersForOrg,
+} from "./reminder-sweep";
 import { type SnoozeReminderService, createSnoozeReminderService } from "./snooze-reminder-service";
 import {
   createDbReminderSweepStore,
@@ -27,6 +31,7 @@ export interface SnoozeReminderBinding {
   /** The per-org sweep body, over the platform's AlertEmitter. */
   readonly sweep: (
     alerts: Pick<AlertEmitter, "emit">,
+    onDropped?: ReminderSweepDeps["onDropped"],
   ) => (orgId: string) => Promise<ReminderSweepSummary>;
 }
 
@@ -48,12 +53,13 @@ export function buildSnoozeReminderBinding(
   return {
     service,
     isEnabled,
-    sweep: (alerts) => (orgId) =>
+    sweep: (alerts, onDropped) => (orgId) =>
       sweepRemindersForOrg(
         {
           isEnabled,
           store,
           alerts,
+          ...(onDropped ? { onDropped } : {}),
           canViewChannel: input.messaging.canViewChannel,
           ...(input.now ? { now: input.now } : {}),
         },

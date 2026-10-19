@@ -59,7 +59,7 @@ describe("migration 1125 agrees with the constants", () => {
   it("the two system readers are tenant-pinned, bounded and not executable by PUBLIC", () => {
     for (const fn of [
       "message_snoozed_users_for_channel(uuid, uuid, jsonb)",
-      "message_reminder_due(uuid, integer)",
+      "message_reminder_due(uuid, integer, integer)",
     ]) {
       expect(migration).toContain(`REVOKE ALL ON FUNCTION ${fn} FROM PUBLIC`);
       expect(migration).toContain(`GRANT EXECUTE ON FUNCTION ${fn} TO wardenx_app`);

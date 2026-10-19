@@ -71,6 +71,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.10 snooze and reminders - LIVE Postgres", () 
   let carol: string;
   let dan: string;
   let channel: string;
+  let routineMsg: string;
   let seq = 0;
   let flagOn = true;
   const sweepStore = () => createDbReminderSweepStore(kit.handle.db);
@@ -182,7 +183,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.10 snooze and reminders - LIVE Postgres", () 
     }>;
   const mention = async (
     user: string,
-    payload: Record<string, unknown> = { channelId: channel },
+    payload: Record<string, unknown> = { channelId: channel, messageId: routineMsg },
   ) => {
     seq += 1;
     return emitter().emit(ORG_A, {
@@ -233,6 +234,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.10 snooze and reminders - LIVE Postgres", () 
       [bob],
     );
     await setFlag(ORG_A, true);
+    routineMsg = await send(channel, alice);
 
     const service = createSnoozeReminderService({
       isEnabled: async () => flagOn,
@@ -377,7 +379,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.10 snooze and reminders - LIVE Postgres", () 
       expect(await due(ORG_B, ORG_A)).toEqual([]);
       for (const fn of [
         "message_snoozed_users_for_channel(uuid,uuid,jsonb)",
-        "message_reminder_due(uuid,integer)",
+        "message_reminder_due(uuid,integer,integer)",
       ]) {
         const priv = await kit.admin.query(
           `SELECT has_function_privilege('public', '${fn}', 'EXECUTE') AS pub, has_function_privilege('wardenx_app', '${fn}', 'EXECUTE') AS app`,
@@ -427,13 +429,13 @@ describe.skipIf(!DB_URL)("M36 WP 4.10 snooze and reminders - LIVE Postgres", () 
       const port = createSnoozedUsersPort(kit.handle.db, {
         forOrg: async () => ({ [POLICY]: true }),
       });
-      expect([...(await port(ORG_A, channel, [alice, bob]))]).toEqual([bob]);
+      expect([...(await port(ORG_A, channel, [alice, bob], routineMsg))]).toEqual([bob]);
       const { id } = await openRequest(alice, bob);
-      expect([...(await port(ORG_A, channel, [alice, bob]))]).toEqual([]);
+      expect([...(await port(ORG_A, channel, [alice, bob], routineMsg))]).toEqual([]);
       // Re-snoozing is refused and ending the snooze is still allowed.
       expect((await put(snoozePath(), bob, { duration_minutes: 60 })).statusCode).toBe(409);
       await closeRequest(id);
-      expect([...(await port(ORG_A, channel, [alice, bob]))]).toEqual([bob]);
+      expect([...(await port(ORG_A, channel, [alice, bob], routineMsg))]).toEqual([bob]);
       const del = await app.inject({
         method: "DELETE",
         url: snoozePath(),
@@ -446,7 +448,7 @@ describe.skipIf(!DB_URL)("M36 WP 4.10 snooze and reminders - LIVE Postgres", () 
       await reset();
       await put(snoozePath(), bob, { duration_minutes: 60 });
       const off = createSnoozedUsersPort(kit.handle.db, { forOrg: async () => ({}) });
-      expect([...(await off(ORG_A, channel, [bob]))]).toEqual([]);
+      expect([...(await off(ORG_A, channel, [bob], routineMsg))]).toEqual([]);
     });
 
     it("an urgent item arriving while snoozed still gets its push", async () => {
@@ -517,6 +519,34 @@ describe.skipIf(!DB_URL)("M36 WP 4.10 snooze and reminders - LIVE Postgres", () 
       expect(await pushOf((await mention(bob)).alertId)).toBe("pending");
       await setFlag(ORG_A, true);
       expect(await pushOf((await mention(bob)).alertId)).toBe("skipped_quiet_hours");
+    });
+  });
+
+  describe("a mention on an urgent-priority message", () => {
+    it("is never quieted by a snooze, even with no request on it", async () => {
+      await reset();
+      const urgentMsg = await send(channel, alice);
+      await kit.admin.query("ALTER TABLE message DISABLE TRIGGER trg_message_urgency_immutable");
+      try {
+        await kit.admin.query(
+          "UPDATE message SET urgency='urgent', urgent_recipient_user_id=$2 WHERE id=$1",
+          [urgentMsg, bob],
+        );
+      } finally {
+        await kit.admin.query("ALTER TABLE message ENABLE TRIGGER trg_message_urgency_immutable");
+      }
+      await put(snoozePath(), bob, { duration_minutes: 60 });
+      const push = async (messageId: string) =>
+        (await deliveries((await mention(bob, { channelId: channel, messageId })).alertId)).find(
+          (r) => r.channel === "push",
+        )?.status;
+      expect(await push(urgentMsg)).toBe("pending");
+      // the same snooze still quiets a routine message, and a mention naming no message is never quieted
+      expect(await push(routineMsg)).toBe("skipped_quiet_hours");
+      const noMessage = await mention(bob, { channelId: channel });
+      expect((await deliveries(noMessage.alertId)).find((r) => r.channel === "push")?.status).toBe(
+        "pending",
+      );
     });
   });
 

@@ -8993,7 +8993,9 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
       });
       const m36ReminderWorkers = registerM36ReminderSweepWorker({
         connection: queueConnection,
-        sweep: m36SnoozeReminders.sweep(getSeam("AlertEmitter") as AlertEmitter),
+        sweep: m36SnoozeReminders.sweep(getSeam("AlertEmitter") as AlertEmitter, (event) =>
+          app.log.warn(event, "M36 reminder dropped without a recipient"),
+        ),
         activeOrgs: m36ReminderOrgs,
         // Ids and the error class only: a database error can carry statement parameters.
         onError: (context, err) =>

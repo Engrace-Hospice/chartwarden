@@ -1,6 +1,5 @@
 // M36 WP 4.10 (ADR-0077) - the caller's own pending reminders. ONE read per API client (`GET /reminders`) serves every message row:
-// its success is the signal that the feature is on (a 404 reads as OFF) and its rows feed the per-message "Reminder set" state. Fails
-// closed on any error (a failure is cached only briefly; an "off" answer is cached). A set or cancel calls `refreshReminders` so the rows
+// its success is the signal that the feature is on (a 404 reads as OFF; any other failure keeps the last good index and shows OFF only when there was none) and its rows feed the per-message "Reminder set" state. A failure is cached only briefly; a 404 ("off") is cached. A set or cancel calls `refreshReminders` so the rows
 // re-read. No polling. The server stays the authority: with the flag off its routes answer 404.
 import type { ReminderDto } from "@wardenx/types";
 import type { ApiClient } from "@wardenx/ui";
@@ -13,31 +12,31 @@ export interface RemindersIndex {
 }
 
 const OFF: RemindersIndex = { enabled: false, reminders: [] };
-const sharedReads = new WeakMap<ApiClient, Promise<RemindersIndex>>();
+/** `null` = the read FAILED (not the same as OFF): a re-read that fails keeps the last good index on screen. */
+const sharedReads = new WeakMap<ApiClient, Promise<RemindersIndex | null>>();
 const listeners = new Set<() => void>();
 /** A failed read is remembered this long so a screen full of rows does not re-fire it on every mount. */
 const FAILURE_TTL_MS = 30_000;
 
-function readIndex(client: ApiClient): Promise<RemindersIndex> {
+function readIndex(client: ApiClient): Promise<RemindersIndex | null> {
   const cached = sharedReads.get(client);
   if (cached) return cached;
-  const forget = (): RemindersIndex => {
+  const fail = (): null => {
     setTimeout(() => {
       if (sharedReads.get(client) === read) sharedReads.delete(client);
     }, FAILURE_TTL_MS);
-    return OFF;
+    return null;
   };
   // Deferred a tick so a client that throws (not just rejects) also fails closed.
   const read = Promise.resolve()
     .then(() => client.GET("/api/v1/messaging/reminders"))
-    .then(
-      // Anything that is not the list shape (a failure, an unexpected body) fails closed to OFF.
-      (result) =>
-        result?.data && Array.isArray(result.data.reminders)
-          ? { enabled: true, reminders: result.data.reminders }
-          : forget(),
-      forget,
-    );
+    .then((result) => {
+      if (result?.data && Array.isArray(result.data.reminders)) {
+        return { enabled: true, reminders: result.data.reminders };
+      }
+      // Only a 404 means the feature is off for the tenant (cached for the client's life). Anything else is a failed read.
+      return result?.response?.status === 404 ? OFF : fail();
+    }, fail);
   sharedReads.set(client, read);
   return read;
 }
@@ -58,8 +57,8 @@ export function useRemindersIndex(skip = false): RemindersIndex {
     const load = (): void => {
       const id = ++latestRead.current;
       void readIndex(client).then((value) => {
-        // A superseded read (a refresh overtook it) or an unmounted row must not write state.
-        if (current && id === latestRead.current) setIndex(value);
+        // A superseded read (a refresh overtook it) or an unmounted row must not write state; a failed read keeps what is shown.
+        if (current && id === latestRead.current && value) setIndex(value);
       });
     };
     listeners.add(load);
@@ -97,14 +96,14 @@ export function useReminderActions() {
     [client],
   );
   const set = useCallback(
-    async (messageId: string, remindAt: Date): Promise<ReminderResult> => {
+    async (messageId: string, remindAt: Date, idempotencyKey?: string): Promise<ReminderResult> => {
       if (!client) return NETWORK_FAILURE;
       try {
         return finish(
           await client.PUT("/api/v1/messaging/messages/{id}/reminder", {
             params: {
               path: { id: messageId },
-              header: { "Idempotency-Key": crypto.randomUUID() },
+              header: { "Idempotency-Key": idempotencyKey ?? crypto.randomUUID() },
             },
             body: { remind_at: remindAt.toISOString() },
           }),

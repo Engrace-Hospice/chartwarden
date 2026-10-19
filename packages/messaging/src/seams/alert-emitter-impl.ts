@@ -101,6 +101,7 @@ export interface AlertEmitterPorts {
     orgId: string,
     channelId: string,
     userIds: readonly string[],
+    messageId: string,
   ): Promise<ReadonlySet<string>>;
   /** Evaluation clock — explicit so quiet-hours/vacation are deterministic in tests. */
   now(): Date;
@@ -149,8 +150,11 @@ export function createAlertEmitter(ports: AlertEmitterPorts): AlertEmitter {
   ): Promise<ReadonlySet<string> | undefined> {
     if (!ports.snoozedUsersFor || !isSnoozableEvent(input.eventType)) return undefined;
     const channelId = input.payload.channelId;
+    const messageId = input.payload.messageId;
     if (typeof channelId !== "string" || channelId.length === 0) return undefined;
-    return ports.snoozedUsersFor(orgId, channelId, userIds);
+    // No message id = nothing to prove routine = no snooze (fail safe: the notice goes out).
+    if (typeof messageId !== "string" || messageId.length === 0) return undefined;
+    return ports.snoozedUsersFor(orgId, channelId, userIds, messageId);
   }
 
   return {

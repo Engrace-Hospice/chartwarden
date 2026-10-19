@@ -18,7 +18,14 @@ const row = (over: Partial<DueReminder> = {}): DueReminder => ({
 
 function harness(
   rows: DueReminder[],
-  opts: { enabled?: boolean; live?: boolean; canView?: boolean; emitFails?: boolean } = {},
+  opts: {
+    enabled?: boolean;
+    live?: boolean;
+    canView?: boolean;
+    emitFails?: boolean;
+    failIds?: string[];
+    recipients?: number;
+  } = {},
 ) {
   const emitted: Array<{
     eventType: string;
@@ -27,7 +34,8 @@ function harness(
   }> = [];
   const removed: string[] = [];
   const store: ReminderSweepStore = {
-    listDue: async () => rows,
+    listDue: async (_org, _limit, offset = 0) =>
+      rows.filter((r) => !removed.includes(r.id)).slice(offset),
     messageLive: async () => opts.live !== false,
     remove: async (_org, r) => {
       removed.push(r.id);
@@ -40,9 +48,14 @@ function harness(
     now: () => NOW,
     alerts: {
       emit: async (_org: string, input: (typeof emitted)[number] & { severity: string }) => {
-        if (opts.emitFails) throw new Error("emitter down");
+        if (
+          opts.emitFails ||
+          opts.failIds?.includes((input.payload as { messageId: string }).messageId)
+        ) {
+          throw new Error("emitter down");
+        }
         emitted.push(input);
-        return { alertId: "a-1", resolvedRecipientCount: 1 };
+        return { alertId: "a-1", resolvedRecipientCount: opts.recipients ?? 1 };
       },
     },
   };
@@ -143,5 +156,33 @@ describe("the reminder sweep", () => {
   it("an empty tick is a no-op", async () => {
     const h = harness([]);
     expect(await sweepRemindersForOrg(h.deps, ORG)).toEqual({ raised: 0, dropped: 0, failed: 0 });
+  });
+
+  it("a row that fails every tick does not starve newer due rows (failures are skipped within the tick)", async () => {
+    const day = 60_000;
+    const stuck = Array.from({ length: 205 }, (_, i) =>
+      row({
+        id: `stuck-${i}`,
+        messageId: `bad-${i}`,
+        remindAt: new Date(NOW.getTime() - 10 * day - i),
+      }),
+    );
+    const fresh = row({ id: "fresh", messageId: "good", remindAt: new Date(NOW.getTime() - day) });
+    const h = harness([...stuck, fresh], { failIds: stuck.map((r) => r.messageId) });
+    const summary = await sweepRemindersForOrg(h.deps, ORG);
+    expect(summary).toEqual({ raised: 1, dropped: 0, failed: 205 });
+    expect(h.removed).toEqual(["fresh"]);
+  });
+
+  it("an alert that reached nobody is a counted, logged drop and the row is deleted", async () => {
+    const h = harness([row()], { recipients: 0 });
+    const dropped: unknown[] = [];
+    const summary = await sweepRemindersForOrg(
+      { ...h.deps, onDropped: (e) => dropped.push(e) },
+      ORG,
+    );
+    expect(summary).toEqual({ raised: 0, dropped: 1, failed: 0 });
+    expect(dropped).toEqual([{ organizationId: ORG, reminderId: "r-1", reason: "no_recipient" }]);
+    expect(h.removed).toEqual(["r-1"]);
   });
 });

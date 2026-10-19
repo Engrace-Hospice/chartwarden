@@ -1,7 +1,8 @@
-// M36 WP 4.10 (ADR-0077) - the conversation header's snooze control. It pauses push / text / email notices for the NON-URGENT alerts of
-// this conversation (1 to 24 hours); it never hides anything here. When the server says the conversation cannot be snoozed (the viewer
-// is the sender or assignee of an open acknowledgment request) no control is offered: a short note and a full sentence say why. Nothing
-// renders while loading or when the tenant has the feature off. Results are announced in a persistent polite live region.
+// M36 WP 4.10 (ADR-0077) - the conversation header's snooze control. It pauses the push / text / email copies of the NON-URGENT notices of
+// this conversation (1 to 24 hours); it never hides anything here. Where the server says the conversation cannot be snoozed (the viewer
+// is the sender or assignee of an open acknowledgment request) no button is offered: a short note and a full sentence say why. Nothing
+// renders while loading, when the tenant has the feature off, or when the first read failed. Results and refusals are announced in a
+// persistent polite live region; a refusal closes the dialog, keeps the error on screen and puts focus on a real element.
 import { Button, Glyph, Modal } from "@wardenx/ui";
 import { type JSX, useEffect, useRef, useState } from "react";
 import {
@@ -30,26 +31,35 @@ export function SnoozeControl({ channelId }: { readonly channelId: string }): JS
   const [announce, setAnnounce] = useState("");
   const inFlight = useRef(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  // The trigger changes element when the snooze starts or ends, so focus is handed back after the render that swaps it.
+  const noteRef = useRef<HTMLSpanElement>(null);
+  // One idempotency key per (dialog open, chosen length): a retry of the same choice replays, another choice is a new request.
+  const keys = useRef(new Map<number, string>());
+  // The trigger changes element when the snooze starts or ends (or turns into the note), so focus is handed back after the render.
   const refocus = useRef(false);
   useEffect(() => {
     if (refocus.current && !open) {
       refocus.current = false;
-      triggerRef.current?.focus();
+      (triggerRef.current ?? noteRef.current)?.focus();
     }
   });
 
-  // Loading, off and a failed read all render nothing: the control is a convenience, so it fails closed and silent (the server decides).
+  // Loading, off and a failed first read render nothing: the control is a convenience, so it fails closed and silent (the server decides).
   if (view.status !== "ready") return null;
 
+  const live = (
+    <output className="sr-only" aria-live="polite">
+      {announce}
+    </output>
+  );
   const { snooze: state } = view;
   if (!state.snoozable) {
     return (
       <span className="wx-snooze">
-        <span className="wx-snooze-note">
+        <span ref={noteRef} tabIndex={-1} className="wx-snooze-note">
           <Glyph name="lock" size={14} /> {SNOOZE_UNSNOOZABLE_SHORT}
           <span className="sr-only">. {SNOOZE_UNSNOOZABLE_TEXT}</span>
         </span>
+        {live}
       </span>
     );
   }
@@ -69,16 +79,26 @@ export function SnoozeControl({ channelId }: { readonly channelId: string }): JS
     const result = await action();
     inFlight.current = false;
     setBusy(false);
+    refocus.current = true;
+    setOpen(false);
     if (result.ok) {
-      setOpen(false);
       setAnnounce(done);
-      refocus.current = true;
-    } else {
-      setError(snoozeErrorText(result.status, result.code));
-      // A refusal says the conversation changed (an urgent item arrived): read the truth again.
-      if (result.code) reload();
+      return;
     }
+    const text = snoozeErrorText(result.status, result.code);
+    setError(text);
+    setAnnounce(text);
+    // A typed refusal says the conversation changed (an urgent item arrived): read the truth again, keeping this view on screen meanwhile.
+    if (result.code) reload();
   }
+
+  const keyFor = (minutes: number): string => {
+    const existing = keys.current.get(minutes);
+    if (existing) return existing;
+    const created = crypto.randomUUID();
+    keys.current.set(minutes, created);
+    return created;
+  };
 
   return (
     <span className="wx-snooze">
@@ -105,6 +125,7 @@ export function SnoozeControl({ channelId }: { readonly channelId: string }): JS
           aria-haspopup="dialog"
           onClick={() => {
             setError(null);
+            keys.current = new Map();
             setOpen(true);
           }}
         >
@@ -112,9 +133,8 @@ export function SnoozeControl({ channelId }: { readonly channelId: string }): JS
           <span className="wx-messaging-context-label">{SNOOZE_TRIGGER_LABEL}</span>
         </button>
       )}
-      <output className="sr-only" aria-live="polite">
-        {announce}
-      </output>
+      {error ? <span className="wx-snooze-error">{error}</span> : null}
+      {live}
       {open ? (
         <Modal
           open
@@ -133,17 +153,17 @@ export function SnoozeControl({ channelId }: { readonly channelId: string }): JS
                   type="button"
                   tone="secondary"
                   disabled={busy}
-                  onClick={() => void run(() => snooze(preset.minutes), SNOOZE_STARTED_TEXT)}
+                  onClick={() =>
+                    void run(
+                      () => snooze(preset.minutes, keyFor(preset.minutes)),
+                      SNOOZE_STARTED_TEXT,
+                    )
+                  }
                 >
                   {preset.label}
                 </Button>
               ))}
             </fieldset>
-            {error ? (
-              <p className="wx-snooze-error" role="alert">
-                {error}
-              </p>
-            ) : null}
             <div className="wx-snooze-actions">
               <Button type="button" tone="secondary" disabled={busy} onClick={() => setOpen(false)}>
                 Close

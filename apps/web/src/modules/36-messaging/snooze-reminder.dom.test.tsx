@@ -7,8 +7,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SNOOZE_MAX_MINUTES, SNOOZE_MIN_MINUTES } from "@wardenx/types";
 import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MessageReminderButton } from "./message-reminder-button";
+import { MessageRow } from "./message-row";
 import { SnoozeControl } from "./snooze-control";
 import {
   SNOOZE_PRESETS,
@@ -16,6 +18,7 @@ import {
   SNOOZE_UNSNOOZABLE_TEXT,
   reminderPresets,
 } from "./snooze-reminder-wording";
+import { ThreadHeader } from "./thread-header";
 
 const SNOOZE_PATH = "/api/v1/messaging/channels/{id}/snooze";
 const REMINDERS_PATH = "/api/v1/messaging/reminders";
@@ -99,16 +102,76 @@ describe("SnoozeControl", () => {
     );
   });
 
-  it("shows a refusal in words, keeps the dialog, and reads the truth again", async () => {
+  it("a typed refusal closes the dialog, keeps the words on screen and moves focus to the note (GET now says not snoozable)", async () => {
+    const answers = [ready(), ready({ snoozable: false })];
     const { GET } = mount(<SnoozeControl channelId="c1" />, {
-      GET: () => ready(),
+      GET: () => answers.shift() ?? ready({ snoozable: false }),
       PUT: () => refusal(409, "SNOOZE_URGENT_NOT_ALLOWED"),
     });
     await userEvent.click(await screen.findByRole("button", { name: "Snooze" }));
     await userEvent.click(screen.getByRole("button", { name: "1 hour" }));
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toBe(SNOOZE_UNSNOOZABLE_TEXT);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     await waitFor(() => expect(GET.mock.calls.length).toBeGreaterThanOrEqual(2));
+    // the explanation survives the re-read in the live region and the visible text, and focus is on a real element
+    expect(await screen.findByText(SNOOZE_UNSNOOZABLE_SHORT, { exact: false })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /snooze/i })).toBeNull();
+    const live = document.querySelector("output[aria-live=polite]");
+    expect(live?.textContent).toBe(SNOOZE_UNSNOOZABLE_TEXT);
+    await waitFor(() =>
+      expect(document.activeElement?.textContent ?? "").toContain(SNOOZE_UNSNOOZABLE_SHORT),
+    );
+  });
+
+  it("a failed re-read keeps the last good view (the control is not unmounted by a reload)", async () => {
+    const answers: unknown[] = [ready(), { error: {}, response: { status: 500 } }];
+    mount(<SnoozeControl channelId="c1" />, {
+      GET: () => answers.shift() ?? { error: {}, response: { status: 500 } },
+      PUT: () => refusal(422, "SNOOZE_DURATION_INVALID"),
+    });
+    await userEvent.click(await screen.findByRole("button", { name: "Snooze" }));
+    await userEvent.click(screen.getByRole("button", { name: "1 hour" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByRole("button", { name: "Snooze" })).toBeTruthy();
+    expect(document.querySelector("output[aria-live=polite]")?.textContent).toBe(
+      "That did not work. Try again.",
+    );
+  });
+
+  it("a rapid double click sends one request, and a retry of the same choice reuses its key", async () => {
+    const keysSeen: string[] = [];
+    const answers = [
+      refusal(500, "X"),
+      { data: { channel_id: "c1", snoozed_until: iso(3_600_000), snoozable: true } },
+    ];
+    const { PUT } = mount(<SnoozeControl channelId="c1" />, {
+      GET: () => ready(),
+      PUT: (_p, init) => {
+        keysSeen.push(init.params.header["Idempotency-Key"]);
+        return answers.shift();
+      },
+    });
+    await userEvent.click(await screen.findByRole("button", { name: "Snooze" }));
+    const one = screen.getByRole("button", { name: "1 hour" });
+    await userEvent.dblClick(one);
+    await waitFor(() => expect(PUT).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // reopening is a new dialog: a new key
+    await userEvent.click(await screen.findByRole("button", { name: "Snooze" }));
+    await userEvent.click(screen.getByRole("button", { name: "1 hour" }));
+    await waitFor(() => expect(PUT).toHaveBeenCalledTimes(2));
+    expect(keysSeen[0]).not.toBe(keysSeen[1]);
+  });
+
+  it("a rejected client call renders nothing and does not throw", async () => {
+    const GET = vi.fn(() => Promise.reject(new Error("network")));
+    const client = { GET, PUT: vi.fn(), DELETE: vi.fn() } as unknown as ApiClient;
+    const { container } = render(
+      <ApiClientProvider client={client}>
+        <SnoozeControl channelId="c1" />
+      </ApiClientProvider>,
+    );
+    await waitFor(() => expect(GET).toHaveBeenCalled());
+    expect(container.textContent).toBe("");
   });
 
   it("a snooze that has already run out reads as not snoozed; an active one can be ended", async () => {
@@ -237,14 +300,96 @@ describe("MessageReminderButton", () => {
   });
 });
 
-describe("where the controls appear", () => {
-  const src = (p: string) => readFileSync(join(__dirname, p), "utf8");
+describe("MessageReminderButton: a failed re-read after a successful write", () => {
+  it("keeps the last good index (only a 404 means off)", async () => {
+    const answers: unknown[] = [
+      { data: { reminders: [], max_pending: 25 } },
+      { error: {}, response: { status: 500 } },
+    ];
+    mount(<MessageReminderButton messageId="m1" authorName="Nora" />, {
+      GET: () => answers.shift() ?? { error: {}, response: { status: 500 } },
+      PUT: () => ({
+        data: { id: "r1", channel_id: "c1", message_id: "m1", remind_at: iso(3_600_000) },
+      }),
+    });
+    await userEvent.click(await screen.findByRole("button", { name: /Remind me/ }));
+    await userEvent.click(screen.getByRole("button", { name: "In 1 hour" }));
+    expect(await screen.findByText("Reminder set.")).toBeTruthy();
+    // the re-read failed: the trigger is still there
+    expect(screen.getByRole("button", { name: /Remind me/ })).toBeTruthy();
+  });
+});
 
-  it("an urgent or important message offers no reminder control", () => {
-    const row = src("message-row.tsx");
-    const at = row.indexOf("<MessageReminderButton");
-    expect(at).toBeGreaterThan(0);
-    expect(row.slice(Math.max(0, at - 200), at)).toContain("!message.urgency");
+describe("where the controls appear (real renders)", () => {
+  const baseMessage = {
+    messageId: "m-1",
+    channelId: "c-1",
+    authorUserId: "u-2",
+    authorDisplayName: "Nurse Two",
+    body: "Situation: pain",
+    bodyKind: "plain",
+    createdAt: "2026-10-10T10:00:00.000Z",
+    parentMessageId: null,
+    references: [],
+  };
+  const row = (over: Record<string, unknown>) =>
+    mount(
+      <MemoryRouter>
+        <MessageRow
+          message={{ ...baseMessage, ...over } as never}
+          previous={undefined}
+          meId="u-1"
+          anchorMessageId={null}
+        />
+      </MemoryRouter>,
+      {
+        GET: (path) =>
+          path === REMINDERS_PATH
+            ? { data: { reminders: [], max_pending: 25 } }
+            : { error: {}, response: { status: 404 } },
+      },
+    );
+
+  it("a routine message offers Remind me; an urgent or important one does not", async () => {
+    const routine = row({});
+    expect(await screen.findByRole("button", { name: /Remind me/ })).toBeTruthy();
+    routine.unmount();
+    for (const urgency of ["urgent", "important"]) {
+      const view = row({ urgency });
+      await waitFor(() => expect(view.GET).toHaveBeenCalled());
+      expect(screen.queryByRole("button", { name: /Remind me/ })).toBeNull();
+      view.unmount();
+    }
+  });
+
+  it("the conversation header carries the snooze control for its channel", async () => {
+    const { GET } = mount(
+      <MemoryRouter>
+        <ThreadHeader
+          channel={{
+            channelId: "c-9",
+            kind: "dm",
+            title: "T",
+            subjectId: null,
+            archivedAt: null,
+            unreadCount: 0,
+            mentionCount: 0,
+            participantRoles: [],
+            lastActivityAt: "2026-10-10T10:00:00.000Z",
+            lastMessage: null,
+          }}
+          title="T"
+          subtitle="s"
+          patient={null}
+          contextOpen={false}
+          onBack={() => undefined}
+          onToggleContext={() => undefined}
+        />
+      </MemoryRouter>,
+      { GET: () => ({ data: { channel_id: "c-9", snoozed_until: null, snoozable: true } }) },
+    );
+    expect(await screen.findByRole("button", { name: "Snooze" })).toBeTruthy();
+    expect(GET).toHaveBeenCalledWith(SNOOZE_PATH, { params: { path: { id: "c-9" } } });
   });
 
   it("nothing polls: no interval or timeout in the snooze or reminder code", () => {
@@ -253,12 +398,9 @@ describe("where the controls appear", () => {
       "snooze-control.tsx",
       "message-reminder-button.tsx",
     ]) {
-      expect(src(file), file).not.toMatch(/setInterval|setTimeout|useLatestPolling/);
+      expect(readFileSync(join(__dirname, file), "utf8"), file).not.toMatch(
+        /setInterval|setTimeout|useLatestPolling/,
+      );
     }
-    expect(src("use-reminders.ts")).not.toMatch(/setInterval|useLatestPolling/);
-  });
-
-  it("the conversation header carries the snooze control for the channel", () => {
-    expect(src("thread-header.tsx")).toContain("<SnoozeControl channelId={channel.channelId} />");
   });
 });

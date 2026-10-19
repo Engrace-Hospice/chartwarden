@@ -11,6 +11,7 @@ import { REMINDER_ALERT_EVENT, REMINDER_STALE_AFTER_DAYS } from "@wardenx/types"
 import type { DueReminder, ReminderSweepStore } from "./snooze-reminder-store-db";
 
 export const SWEEP_LIMIT = 200;
+const MAX_PAGES = 5;
 const STALE_MS = REMINDER_STALE_AFTER_DAYS * 24 * 60 * 60 * 1000;
 export const REMINDER_ALERT_TEXT = "You asked to be reminded about a message in a conversation";
 
@@ -26,6 +27,12 @@ export interface ReminderSweepDeps {
   readonly alerts: Pick<AlertEmitter, "emit">;
   readonly canViewChannel: (orgId: string, userId: string, channelId: string) => Promise<boolean>;
   readonly now?: () => Date;
+  /** Ids and a reason code only. */
+  readonly onDropped?: (event: {
+    organizationId: string;
+    reminderId: string;
+    reason: "no_recipient";
+  }) => void;
 }
 
 export const reminderDeepLink = (row: Pick<DueReminder, "channelId" | "messageId">): string =>
@@ -38,40 +45,57 @@ export async function sweepRemindersForOrg(
   // Off: the rows wait (nothing is raised, nothing is deleted); turning the flag back on resumes them.
   if (!(await deps.isEnabled(orgId))) return { raised: 0, dropped: 0, failed: 0 };
   const now = (deps.now ?? (() => new Date()))();
-  const due = await deps.store.listDue(orgId, SWEEP_LIMIT);
-  let raised = 0;
-  let dropped = 0;
-  let failed = 0;
-  for (const row of due) {
-    try {
-      const stale = now.getTime() - row.remindAt.getTime() > STALE_MS;
-      const live =
-        !stale &&
-        (await deps.canViewChannel(orgId, row.userId, row.channelId)) &&
-        (await deps.store.messageLive(orgId, row));
-      if (!live) {
-        await deps.store.remove(orgId, row);
-        dropped += 1;
-        continue;
-      }
-      await deps.alerts.emit(orgId, {
-        eventType: REMINDER_ALERT_EVENT,
-        severity: "info",
-        correlationId: `reminder:${row.id}`,
-        payload: {
-          recipientUserId: row.userId,
-          channelId: row.channelId,
-          messageId: row.messageId,
-          message: REMINDER_ALERT_TEXT,
-          deepLink: reminderDeepLink(row),
-        },
-      });
-      await deps.store.remove(orgId, row);
-      raised += 1;
-    } catch {
-      // Isolated per row: the row stays and the next tick asks again. The summary tells the worker to fail the tick visibly.
-      failed += 1;
+  const totals = { raised: 0, dropped: 0, failed: 0 };
+  // A row that fails stays at the front of the oldest-first list. Each page skips the failures of the pages before it (offset), so a
+  // permanently failing row cannot starve newer due ones; a few pages per tick bound the work (ponytail: MAX_PAGES x SWEEP_LIMIT per minute).
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const due = await deps.store.listDue(orgId, SWEEP_LIMIT, totals.failed);
+    for (const row of due) {
+      const outcome = await sweepOne(deps, orgId, row, now);
+      totals[outcome] += 1;
     }
+    if (due.length < SWEEP_LIMIT) break;
   }
-  return { raised, dropped, failed };
+  return totals;
+}
+
+async function sweepOne(
+  deps: ReminderSweepDeps,
+  orgId: string,
+  row: DueReminder,
+  now: Date,
+): Promise<"raised" | "dropped" | "failed"> {
+  try {
+    const stale = now.getTime() - row.remindAt.getTime() > STALE_MS;
+    const live =
+      !stale &&
+      (await deps.canViewChannel(orgId, row.userId, row.channelId)) &&
+      (await deps.store.messageLive(orgId, row));
+    if (!live) {
+      await deps.store.remove(orgId, row);
+      return "dropped";
+    }
+    const { resolvedRecipientCount } = await deps.alerts.emit(orgId, {
+      eventType: REMINDER_ALERT_EVENT,
+      severity: "info",
+      correlationId: `reminder:${row.id}`,
+      payload: {
+        recipientUserId: row.userId,
+        channelId: row.channelId,
+        messageId: row.messageId,
+        message: REMINDER_ALERT_TEXT,
+        deepLink: reminderDeepLink(row),
+      },
+    });
+    await deps.store.remove(orgId, row);
+    if (resolvedRecipientCount === 0) {
+      // The alert reached nobody (the owner is no longer an active member): a counted, logged drop, not a delivered reminder.
+      deps.onDropped?.({ organizationId: orgId, reminderId: row.id, reason: "no_recipient" });
+      return "dropped";
+    }
+    return "raised";
+  } catch {
+    // Isolated per row: the row stays and the next tick asks again. The summary tells the worker to fail the tick visibly.
+    return "failed";
+  }
 }
