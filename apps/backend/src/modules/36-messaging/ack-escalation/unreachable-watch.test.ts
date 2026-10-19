@@ -242,6 +242,31 @@ describe("createUnreachableWatch", () => {
     expect(set).toHaveBeenCalledTimes(1); // one Valkey call: rows with no stage cost none
   });
 
+  it("a throwing ops sink cannot lose the stage: the alert still goes, the error is reported, the stage completes", async () => {
+    const errors: unknown[] = [];
+    const ctx = await setup();
+    ctx.opsNotice.mockImplementation(() => {
+      throw new Error("sink down");
+    });
+    const watch = createUnreachableWatch({
+      store: ctx.store,
+      isEnabled: async () => true,
+      claims: ctx.claims,
+      attention: { alerts: { emit: ctx.emit } as never, opsNotice: ctx.opsNotice },
+      now: () => new Date(T0.getTime() + 16 * 60_000),
+      onError: (_c, e) => errors.push(e),
+    });
+    expect(await watch.watch(ORG)).toEqual({ raised: 1, failed: 0 });
+    expect(ctx.emit).toHaveBeenCalledOnce();
+    expect(errors).toHaveLength(1);
+  });
+
+  it("a request that fails BEFORE its deadline anchors on the deadline: stage 0 fires at the deadline", async () => {
+    const ctx = await setup({ failedAt: new Date(T0.getTime() + 5 * MIN) }); // deadline is T0+15 min
+    expect(await ctx.watch.watch(ORG)).toEqual({ raised: 1, failed: 0 }); // now = T0+16 min
+    expect(ctx.emit).toHaveBeenCalledOnce();
+  });
+
   it("M3: a request that fails 5 h after its deadline is paged once (the failure alert), not twice: nothing at the failure, stage 1 an hour later", async () => {
     const failedAt = new Date(T0.getTime() + 15 * 60_000 + 5 * HOUR);
     const ctx = await setup({ failedAt, now: failedAt });

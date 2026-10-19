@@ -165,7 +165,7 @@ export function buildM36AckEscalationNotificationsConsumer(deps: {
         }
         await raiseSupervisorAttention(deps, event.organizationId, row, reason, correlationId);
       }
-      if (recipients.length === 0 && occurrence > 1) return skip("no_recipient_can_view_channel");
+      if (recipients.length === 0) skip("no_recipient_can_view_channel");
     },
   };
 }

@@ -39,6 +39,9 @@ export function createOpsNoticeClaims(
   const breakerMs = options.breakerMs ?? BREAKER_MS;
   const local = new Map<string, number>(); // key -> expiry instant
   let brokenUntil = 0;
+  // Releases that could not reach Valkey (breaker open or error): retried once it answers again, so a recovery is not forgotten for the ttl.
+  const pendingRelease = new Set<string>();
+  const PENDING_CAP = 100;
 
   const claimLocal = (key: string, ttlMs: number): boolean => {
     const t = now();
@@ -68,6 +71,11 @@ export function createOpsNoticeClaims(
 
   return {
     async claim(key, ttlMs) {
+      for (const k of [...pendingRelease]) {
+        if ((await guarded(() => (redis as ClaimRedis).del(`${KEY_PREFIX}${k}`))) === undefined)
+          break;
+        pendingRelease.delete(k);
+      }
       const result = await guarded(() =>
         (redis as ClaimRedis).set(`${KEY_PREFIX}${key}`, "1", "PX", ttlMs, "NX"),
       );
@@ -75,8 +83,8 @@ export function createOpsNoticeClaims(
     },
     async release(key) {
       local.delete(key);
-      // A missed release only delays the next notice by at most its ttl.
-      await guarded(() => (redis as ClaimRedis).del(`${KEY_PREFIX}${key}`));
+      const done = await guarded(() => (redis as ClaimRedis).del(`${KEY_PREFIX}${key}`));
+      if (redis && done === undefined && pendingRelease.size < PENDING_CAP) pendingRelease.add(key);
     },
   };
 }

@@ -106,10 +106,22 @@ export function createUnreachableWatch(deps: UnreachableWatchDeps): UnreachableW
         // The version bumps on every write, so a request that was reassigned and failed again starts a new schedule.
         const correlationId = `ack-unwatched:${row.id}:${row.version}:${due.stage}`;
         if (emitted.has(correlationId)) continue; // this process already finished the stage: no alert, no Valkey call
+        // A throwing sink must not lose the stage (the alert still goes) nor leave it half-done: it is reported and the stage continues.
+        const ctx = { organizationId: orgId, requestId: row.id };
+        const attention: SupervisorAttentionDeps = {
+          ...deps.attention,
+          opsNotice: (notice) => {
+            try {
+              deps.attention.opsNotice(notice);
+            } catch (error) {
+              deps.onError?.(ctx, error);
+            }
+          },
+        };
         try {
           if (await deps.claims.claim(`notice:${correlationId}`, due.windowMs)) {
             // The notice before the alert: a failing alert must not lose it.
-            deps.attention.opsNotice({
+            attention.opsNotice({
               kind: UNWATCHED_OPS_KIND,
               summary:
                 "An unreachable acknowledgment request is still open past its deadline and needs a human",
@@ -122,13 +134,8 @@ export function createUnreachableWatch(deps: UnreachableWatchDeps): UnreachableW
               correlationId,
             });
           }
-          await raiseSupervisorAttention(
-            deps.attention,
-            orgId,
-            row,
-            "unwatched",
-            correlationId,
-            () => deps.claims.claim(`unpaged:${correlationId}`, due.windowMs),
+          await raiseSupervisorAttention(attention, orgId, row, "unwatched", correlationId, () =>
+            deps.claims.claim(`unpaged:${correlationId}`, due.windowMs),
           );
           if (emitted.size >= EMITTED_CAP) emitted.clear();
           emitted.add(correlationId);

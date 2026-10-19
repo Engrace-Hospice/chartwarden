@@ -78,6 +78,31 @@ describe("ops notice claims", () => {
     expect(await claims.claim("k0", 10)).toBe(true);
   });
 
+  it("a release skipped while the breaker is open is retried once Valkey answers again", async () => {
+    let now = 0;
+    let down = true;
+    const dels: string[] = [];
+    const redis: ClaimRedis = {
+      set: async () => {
+        if (down) throw new Error("down");
+        return "OK";
+      },
+      del: async (key) => {
+        if (down) throw new Error("down");
+        dels.push(key);
+        return 1;
+      },
+    };
+    const claims = createOpsNoticeClaims(redis, { now: () => now, breakerMs: 1000 });
+    await claims.claim("x", 10_000); // fails -> breaker opens
+    await claims.release("breach-over"); // skipped: remembered
+    expect(dels).toEqual([]);
+    down = false;
+    now = 1000;
+    await claims.claim("y", 10_000);
+    expect(dels).toEqual(["wardenx:ops-notice:breach-over"]);
+  });
+
   it("falls back to per-process (fail open: notify) when Valkey errors, and honours the ttl", async () => {
     let now = 0;
     const broken: ClaimRedis = {
@@ -182,8 +207,15 @@ describe("watchdog tick", () => {
     expect(await tick()).toBe("ok");
     now += TICK_CLAIM_MS;
     s = null;
+    // The hourly notice claim is held until released; advance past it so only the counter (restarted from zero) can gate the notice.
+    now += STALLED_REPEAT_MS;
     expect(await tick()).toBe("unmeasured");
-    expect(notices).toHaveLength(1); // counter restarted from zero
+    now += TICK_CLAIM_MS;
+    expect(await tick()).toBe("unmeasured");
+    expect(notices).toHaveLength(1); // two unmeasured ticks after the reset: no notice yet
+    now += TICK_CLAIM_MS;
+    expect(await tick()).toBe("unmeasured");
+    expect(notices).toHaveLength(2); // the third consecutive one notifies again
   });
 
   it("never throws when the sampler does", async () => {

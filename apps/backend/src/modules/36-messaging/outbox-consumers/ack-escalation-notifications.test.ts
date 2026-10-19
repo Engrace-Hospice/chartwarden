@@ -253,6 +253,20 @@ describe("M36 ack escalation notifications consumer", () => {
     });
   });
 
+  it("no party can see the channel at the first record: the warning is logged and the supervisors are still told", async () => {
+    const { emit, warn, consumer } = setup({
+      request: row({ status: "pending", version: 0 }),
+      canView: async () => false,
+    });
+    await consumer.handle(event("m36.ack.route_unavailable", { requestVersion: 0 }));
+    expect(alertsOf(emit, "m36.ack.supervisor_attention")).toHaveLength(1);
+    expect(alertsOf(emit, "m36.ack.route_unavailable")).toHaveLength(0);
+    expect(warn).toHaveBeenCalledWith(
+      "escalation notification not delivered",
+      expect.objectContaining({ reason: "no_recipient_can_view_channel" }),
+    );
+  });
+
   it("emits the parties' alert BEFORE the supervisor alert, so a supervisor-side failure cannot delay or lose it (a retry re-emits idempotently)", async () => {
     const { emit, consumer } = setup({ request: row({ status: "pending", version: 0 }) });
     emit.mockImplementation(async (_org: string, a: { eventType: string }) => {
