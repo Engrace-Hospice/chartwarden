@@ -93,6 +93,18 @@ Nothing here fires until out-of-band delivery exists (WP 4.6): today every ackno
 - **Not decided here:** a named fallback recipient when the on-call lookup itself fails (ADR-0057 item 5). It needs the M19 owner; today the supervisors are told by alert, which is not an assignment.
 - **Not yet:** the flag `messaging.escalation_timers` also gates this, and stays off for every tenant.
 
+## 8. Notification policy (WP 4.6, ADR-0073) - provisional readings to approve
+
+Nothing here reaches a phone until a tenant's flags are on AND a push or SMS transport exists (none does today). These are the rules the system will follow.
+
+- **Quiet hours never hold back a request alert.** The four alerts that tell the assigned person about an urgent or acknowledgment-bound message are delivered at once on every channel in the table below that the person has verified, whatever their quiet hours, notification settings, vacation setting or shift. Their settings can add channels, never remove one. Everything else (routine alerts) still respects the person's own quiet hours and channel choices.
+- **Channels at once, by class (provisional):** Important = push; Urgent = push; Critical = push and text message. Voice stays reserved for the field-safety SOS. Note: the first alert of an urgent message is always the Urgent class (push only); no Critical request can be raised yet, so the text message for Critical is not reachable until the Critical writer exists. Is push alone right for Urgent? The earlier table said "text message after 5 minutes unopened": that step needs a timer and is not built; say whether you want it, and after how long.
+- **Only to verified phones and numbers.** A person with no verified push or text endpoint gets the in-app alert only; the system records why ("no verified endpoint") so the gap is visible. Should a person with no endpoint be flagged to a supervisor at assignment time?
+- **No vacation forwarding for these alerts.** The named person is the only target; if they are away, the escalation timer moves the request on. Confirm.
+- **Wording unchanged:** the out-of-band text is the content-free text of the existing sanitiser ("you have a notification"), never patient or message content (WP 4.7 owns the templates).
+- **Shift:** "off shift" will be treated like quiet hours for routine alerts only once on-shift data is available from scheduling; until then nobody is treated as off shift. Which system owns on-shift state (M17 scheduling or M19 on-call)?
+- **Not yet:** the flag `messaging.notification_policy` stays off for every tenant; the three earlier flags too.
+
 ## What happens with the answers
 
 ADR-0056 is updated with the signed numbers and role map, then accepted by the product owner. Numbers live as platform

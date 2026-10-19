@@ -367,6 +367,12 @@ export {
   suppressedByQuietHours,
   // fan-out planner + outcome roll-up (§2.4.3, §2.4.4)
   planFanOut,
+  planFanOutDetailed,
+  // WP 4.6 notification policy (ADR-0073)
+  DESIGNATED_EVENT_TYPES,
+  PLATFORM_CHANNEL_FLOOR,
+  decideChannels,
+  designatedClassOf,
   computeOutcome,
   // F-109 — the live-delivery-set roll-up `computeOutcome` never had a caller for.
   rollUpAlertOutcome,
@@ -384,6 +390,14 @@ export type {
   AlertContext,
   PlannedDelivery,
   FanOutInput,
+  FanOutPolicy,
+  FanOutResult,
+  PolicyTrailEntry,
+  ChannelDecision,
+  PolicyAckClass,
+  PolicyInput,
+  PolicyReason,
+  ShiftState,
   DeliverySettlement,
   DeliveryRollupRow,
 } from "./resolution";

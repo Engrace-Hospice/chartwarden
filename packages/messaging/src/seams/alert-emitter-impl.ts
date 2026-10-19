@@ -15,13 +15,16 @@
 import type { AlertEmitter } from "../interfaces/alert-emitter";
 import type { AlertCategory, AlertSeverity, NotificationChannel } from "../interfaces/kinds";
 import {
+  DESIGNATED_EVENT_TYPES,
   type PlannedDelivery,
+  type PolicyTrailEntry,
   type RecipientPreferences,
   type RecipientResolverFn,
   type RecipientSourcePorts,
   type ResolverArgs,
   createRecipientResolverRegistry,
-  planFanOut,
+  designatedClassOf,
+  planFanOutDetailed,
   resolveRecipients,
   severityAtLeast,
 } from "../resolution";
@@ -73,6 +76,20 @@ export interface AlertEmitterPorts {
    * the alert's occurrence count after this call (1 for the first, +1 per absorbed repeat) — F-199.
    */
   persist(record: PersistedAlert): Promise<{ alertId: string; occurrences?: number }>;
+  /**
+   * WP 4.6 (ADR-0073) — is the notification policy on for this tenant and this event (its ops flag AND the flag of the event's
+   * family)? Absent = off = the engine exactly as before (the seeded in-app-only rules stay in-app only). A throw propagates:
+   * the emit fails and the outbox retries; a flag we could not read never silently downgrades a safety route.
+   */
+  policyEnabledFor?(orgId: string, eventType: string): Promise<boolean>;
+  /**
+   * WP 4.6 — per user, the channels on which they have a VERIFIED endpoint (voice rides on `sms`). A user absent from the map has
+   * none. Never returns an endpoint value. A throw propagates (retry), for the same reason.
+   */
+  verifiedChannelsFor?(
+    orgId: string,
+    userIds: readonly string[],
+  ): Promise<ReadonlyMap<string, ReadonlySet<NotificationChannel>>>;
   /** Evaluation clock — explicit so quiet-hours/vacation are deterministic in tests. */
   now(): Date;
   /**
@@ -82,6 +99,22 @@ export interface AlertEmitterPorts {
    * construction, after the seven built-ins are in place.
    */
   readonly extendResolvers?: (registry: Map<string, RecipientResolverFn>) => void;
+}
+
+/**
+ * WP 4.6: a tenant `alert_rule` row may shadow a platform rule, but for the four DESIGNATED events the recipients are the platform
+ * rule's, always: a tenant row cannot re-aim a safety alert at someone else (it may still add channels). Not designated = unchanged.
+ */
+function pinDesignatedRule(rule: EmitAlertRule, eventType: string): EmitAlertRule {
+  if (!DESIGNATED_EVENT_TYPES.has(eventType)) return rule;
+  const platform = PLATFORM_DEFAULT_ALERT_RULES.find((r) => r.eventType === eventType);
+  if (!platform) return rule;
+  return {
+    ...rule,
+    category: platform.category,
+    recipientResolver: platform.recipientResolver,
+    resolverArgs: platform.resolverArgs,
+  };
 }
 
 /**
@@ -98,11 +131,22 @@ export function createAlertEmitter(ports: AlertEmitterPorts): AlertEmitter {
 
   return {
     async emit(orgId, input) {
-      const rules = await ports.rulesFor(orgId, input.eventType);
+      const { policyTrail: _callerTrail, ...callerPayload } = input.payload; // a caller cannot forge the trail
       const at = ports.now();
 
       const deliveries: PlannedDelivery[] = [];
+      const trail: PolicyTrailEntry[] = [];
       const recipientUnion = new Set<string>();
+      // Only a designated event ever reads the flag: every other alert is exactly as before the policy existed.
+      const designatedClass = designatedClassOf(input.eventType, input.payload);
+      const designated =
+        designatedClass !== null &&
+        (await ports.policyEnabledFor?.(orgId, input.eventType)) === true
+          ? designatedClass
+          : null;
+      // The pin is part of the policy: with the flag off, stored rules apply exactly as before.
+      const stored = await ports.rulesFor(orgId, input.eventType);
+      const rules = designated ? stored.map((r) => pinDesignatedRule(r, input.eventType)) : stored;
 
       for (const rule of rules) {
         const recipientUserIds = await resolveRecipients(
@@ -121,15 +165,25 @@ export function createAlertEmitter(ports: AlertEmitterPorts): AlertEmitter {
           : rule.severityFloor;
 
         const preferences = await ports.preferencesFor(orgId, recipientUserIds);
-        deliveries.push(
-          ...planFanOut({
-            alert: { eventType: input.eventType, category: rule.category, severity },
-            channelsOverride: rule.channelsOverride,
-            recipientUserIds,
-            preferences,
-            at,
-          }),
-        );
+        const planned = planFanOutDetailed({
+          alert: { eventType: input.eventType, category: rule.category, severity },
+          channelsOverride: rule.channelsOverride,
+          recipientUserIds,
+          preferences,
+          at,
+          ...(designated
+            ? {
+                policy: {
+                  ackClass: designated.ackClass,
+                  classDefaulted: designated.defaulted,
+                  verifiedChannels:
+                    (await ports.verifiedChannelsFor?.(orgId, recipientUserIds)) ?? new Map(),
+                },
+              }
+            : {}),
+        });
+        deliveries.push(...planned.plan);
+        trail.push(...planned.trail);
       }
 
       const { alertId, occurrences } = await ports.persist({
@@ -137,7 +191,8 @@ export function createAlertEmitter(ports: AlertEmitterPorts): AlertEmitter {
         eventType: input.eventType,
         severity: input.severity,
         correlationId: input.correlationId,
-        payload: input.payload,
+        // WP 4.6: the explained policy decisions of a designated route ride on the alert (ids and codes only).
+        payload: trail.length > 0 ? { ...callerPayload, policyTrail: trail } : callerPayload,
         deliveries,
         ...(input.countRepeats ? { countRepeats: true } : {}),
       });
@@ -167,6 +222,10 @@ export interface InMemoryAlertEmitterOptions {
   readonly preferences?: ReadonlyMap<string, RecipientPreferences>;
   /** Fixed evaluation clock for deterministic tests. */
   readonly now?: () => Date;
+  /** WP 4.6: the notification policy is ON for these event types (default: off everywhere). */
+  readonly policyEnabledEventTypes?: ReadonlySet<string>;
+  /** WP 4.6: verified-endpoint channels per user (default: none). */
+  readonly verifiedChannels?: ReadonlyMap<string, ReadonlySet<NotificationChannel>>;
 }
 
 const EMPTY_RECIPIENT_PORTS: RecipientSourcePorts = {
@@ -213,6 +272,9 @@ export function createInMemoryAlertEmitter(options: InMemoryAlertEmitterOptions 
     rulesFor: async (_orgId, eventType) =>
       options.rulesFor ? options.rulesFor(_orgId, eventType) : platformRulesFor(eventType),
     preferencesFor: async () => preferences,
+    policyEnabledFor: async (_orgId, eventType) =>
+      options.policyEnabledEventTypes?.has(eventType) === true,
+    verifiedChannelsFor: async () => options.verifiedChannels ?? new Map(),
     persist: async (record) => {
       const key = `${record.orgId}|${record.correlationId}`;
       const seen = record.countRepeats ? counted.get(key) : undefined;

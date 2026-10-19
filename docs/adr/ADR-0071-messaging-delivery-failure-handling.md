@@ -65,4 +65,4 @@ Unit: the service over the in-memory store (early escalation, `failed_unreachabl
 
 - Clinical lead: is "every out-of-band route failed" the right trigger, or should one failed route to an urgent request already count? Is the supervisor audience right (roles, and told at once or after a delay)? Wording of the card and the alert.
 - M19 owner (ADR-0057): the named fallback recipient when the router throws; whether `m19.oncall_shift.coverage_gap` should also feed `failed_unreachable`.
-- WP 4.6: the channel policy decides which routes exist; revisit "parallel fan-out" if it becomes sequential.
+- WP 4.6 (ADR-0073, now built): the policy keeps fan-out parallel and plans only on verified endpoints, so the "no verified endpoint" failure no longer manufactures routes; revisit "parallel fan-out" if the deferred SMS-after-N-minutes step makes it sequential.
