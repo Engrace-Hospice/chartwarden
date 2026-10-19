@@ -199,7 +199,7 @@ describe("Held Transmissions (M11 F-201, GAP-125)", () => {
     const row = table.querySelector("tbody tr") as HTMLElement;
     const link = await within(row).findByRole("link", { name: "Lovelace, Ada" });
     expect(link.getAttribute("href")).toBe(`/patients/${PATIENT}`);
-    expect(within(row).getByText("MRN MRN-0042")).toBeTruthy();
+    expect(within(row).getByText("MRN 0042")).toBeTruthy();
     expect(within(row).queryByText(/cccccccc/)).toBeNull();
 
     fireEvent.click(row);

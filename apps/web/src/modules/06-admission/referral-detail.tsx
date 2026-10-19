@@ -1,4 +1,4 @@
-import { isValidMedicaidNumber, isValidMedicareNumber } from "@wardenx/types";
+import { formatMrn, isValidMedicaidNumber, isValidMedicareNumber } from "@wardenx/types";
 import {
   Button,
   CodeSearchInput,
@@ -401,7 +401,7 @@ export function ReferralDetail(): JSX.Element {
                             </strong>
                             <span style={muted}>
                               {c.dob ? `DOB ${formatDate(c.dob)}` : "DOB not shown"}
-                              {c.mrn ? ` · MRN ${c.mrn}` : ""}
+                              {c.mrn ? ` · ${formatMrn(c.mrn)}` : ""}
                               {c.phoneLast4 ? ` · Phone ending ${c.phoneLast4}` : ""}
                             </span>
                             <span style={muted}>

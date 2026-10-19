@@ -1,3 +1,4 @@
+import { formatMrn } from "@wardenx/types";
 import {
   Button,
   EmptyState,
@@ -210,7 +211,7 @@ export function GlobalSearchResults(): JSX.Element {
         title: `${patient.lastName}, ${patient.firstName}`,
         meta: (
           <>
-            MRN <span className="wx-data-md">{patient.mrn}</span> · DOB{" "}
+            <span className="wx-data-md">{formatMrn(patient.mrn)}</span> · DOB{" "}
             <span className="tabular-nums">{patient.dob}</span>
           </>
         ),

@@ -1,3 +1,17 @@
+// apps/web/src/modules/11-orders — HELD TRANSMISSIONS (GAP-125; F-201 worklist, F-187/F-188 attested recovery, F-202
+// two-person control). The lab orders whose outbound HL7 message dead-ended — retries exhausted with delivery
+// unconfirmed, rejected by the lab interface, or a blocked recovery. A message may already be at the lab, so nothing
+// here is retried automatically: an operator calls the lab, then ATTESTS what the lab holds.
+//
+//   • "Lab did not receive it" (`not_received_by_lab`) FILES a request a different person must co-sign before the order
+//     is re-sent once (F-202); "Lab already has it" (`received_by_lab`) marks it transmitted and sends nothing.
+//   • Both need the lab contact's name and the lab's own reference — fields shaped so they cannot carry a patient
+//     identifier — and a fresh step-up; a stale session is sent through `/step-up` with the typed evidence kept.
+//
+// Layout follows the redesign's list + right drawer (the Hospice Rates / Admissions pattern): KPI tiles, the flat
+// `wx-list-table`, and an `aside.wx-admission-drawer` for the selected order. Visibility of the recovery controls follows
+// the session's grants as a UX cue only; the server is the only enforcement point (ADR-0030).
+import { formatMrn } from "@wardenx/types";
 import {
   Button,
   EmptyState,
@@ -12,19 +26,6 @@ import {
   useApiClient,
   useDrawerA11y,
 } from "@wardenx/ui";
-// apps/web/src/modules/11-orders — HELD TRANSMISSIONS (GAP-125; F-201 worklist, F-187/F-188 attested recovery, F-202
-// two-person control). The lab orders whose outbound HL7 message dead-ended — retries exhausted with delivery
-// unconfirmed, rejected by the lab interface, or a blocked recovery. A message may already be at the lab, so nothing
-// here is retried automatically: an operator calls the lab, then ATTESTS what the lab holds.
-//
-//   • "Lab did not receive it" (`not_received_by_lab`) FILES a request a different person must co-sign before the order
-//     is re-sent once (F-202); "Lab already has it" (`received_by_lab`) marks it transmitted and sends nothing.
-//   • Both need the lab contact's name and the lab's own reference — fields shaped so they cannot carry a patient
-//     identifier — and a fresh step-up; a stale session is sent through `/step-up` with the typed evidence kept.
-//
-// Layout follows the redesign's list + right drawer (the Hospice Rates / Admissions pattern): KPI tiles, the flat
-// `wx-list-table`, and an `aside.wx-admission-drawer` for the selected order. Visibility of the recovery controls follows
-// the session's grants as a UX cue only; the server is the only enforcement point (ADR-0030).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -251,7 +252,7 @@ function PatientCell({
       >
         {entry.name}
       </Link>
-      {entry.mrn ? <span className="wx-row-sub wx-data-md">MRN {entry.mrn}</span> : null}
+      {entry.mrn ? <span className="wx-row-sub wx-data-md">{formatMrn(entry.mrn)}</span> : null}
     </>
   );
 }

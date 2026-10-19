@@ -1,3 +1,13 @@
+// apps/web/src/modules/06-admission — Admissions (M6 §5.2.12 entry, Track B / ADR-0030; 2026-09-25
+// redesign, mockup "Admissions"). Spec: docs/design/screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md.
+// KPI cards, a labeled filter bar, the admissions table (patient · MRN · admission date · status ·
+// source · hospice physician) and a right drawer for the selected admission: its intake workflow and
+// task checklist from the M6 readiness read, and its key facts. The list route carries only
+// id/state/patient, so each loaded row's admission date, referral link and physician come from the
+// admission detail read; names from the patient read. Admission type, assigned nurse and payer
+// eligibility are not on these reads, so they are not drawn. The server enforces every scope
+// (ADR-0030 — no authz on the frontend).
+import { formatMrn } from "@wardenx/types";
 import {
   EmptyState,
   Glyph,
@@ -10,15 +20,6 @@ import {
   useApiClient,
   useDrawerA11y,
 } from "@wardenx/ui";
-// apps/web/src/modules/06-admission — Admissions (M6 §5.2.12 entry, Track B / ADR-0030; 2026-09-25
-// redesign, mockup "Admissions"). Spec: docs/design/screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md.
-// KPI cards, a labeled filter bar, the admissions table (patient · MRN · admission date · status ·
-// source · hospice physician) and a right drawer for the selected admission: its intake workflow and
-// task checklist from the M6 readiness read, and its key facts. The list route carries only
-// id/state/patient, so each loaded row's admission date, referral link and physician come from the
-// admission detail read; names from the patient read. Admission type, assigned nurse and payer
-// eligibility are not on these reads, so they are not drawn. The server enforces every scope
-// (ADR-0030 — no authz on the frontend).
 import { useEffect, useMemo, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -450,7 +451,7 @@ export function AdmissionCensus(): JSX.Element {
                       </td>
                       <td
                         className="wx-nums"
-                        title={patient?.mrn ? `MRN ${patient.mrn}` : undefined}
+                        title={patient?.mrn ? formatMrn(patient.mrn) : undefined}
                       >
                         {maskMrn(patient?.mrn)}
                       </td>
