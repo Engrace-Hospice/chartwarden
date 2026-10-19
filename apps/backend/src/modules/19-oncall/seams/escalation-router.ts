@@ -24,6 +24,7 @@
 import { isKnownTimeZone, parseStrictInstant } from "@wardenx/messaging";
 import {
   ESCALATION_MAX_TIER,
+  type EscalationRank,
   type EscalationRouteAnswer,
   type EscalationRouteRequest,
   type EscalationRouter,
@@ -110,21 +111,34 @@ function covers(shift: OnCallShiftDto, discipline: OncallShiftDiscipline, asOfMs
   );
 }
 
-/** Primary then backup per shift (active shifts first, as the store orders them), de-duplicated; unresolved memberships dropped. */
-async function userIdsOf(
+/**
+ * The covering users and their EXPLICIT rank, taken from the shift columns (`primary_on_call_membership_id` = primary,
+ * `backup_membership_id` = backup), never from list position. `userIds` keeps the order the escalation walk has always seen (per shift,
+ * primary then backup; active shifts first as the store orders them; first occurrence wins). A user who holds the primary seat on any
+ * covering shift is `primary`, whatever else they hold; a seat whose membership does not resolve to an active user is dropped and
+ * promotes nobody (the backup stays `backup`).
+ */
+async function rosterOf(
   store: OncallSeamStore,
   shifts: readonly OnCallShiftDto[],
-): Promise<readonly string[]> {
-  const membershipIds = shifts.flatMap((s) =>
-    [s.primaryOnCallMembershipId, s.backupMembershipId].filter((id): id is string => id !== null),
-  );
-  if (membershipIds.length === 0) return [];
-  const byMembership = await store.userIdsForMemberships(membershipIds);
-  const userIds = membershipIds.flatMap((id) => {
-    const userId = byMembership.get(id);
-    return userId === undefined ? [] : [userId];
-  });
-  return [...new Set(userIds)];
+): Promise<{ readonly userIds: readonly string[]; readonly ranks: readonly EscalationRank[] }> {
+  const seats = shifts.flatMap((s) => [
+    ...(s.primaryOnCallMembershipId === null
+      ? []
+      : [{ membershipId: s.primaryOnCallMembershipId, rank: "primary" as const }]),
+    ...(s.backupMembershipId === null
+      ? []
+      : [{ membershipId: s.backupMembershipId, rank: "backup" as const }]),
+  ]);
+  if (seats.length === 0) return { userIds: [], ranks: [] };
+  const byMembership = await store.userIdsForMemberships(seats.map((seat) => seat.membershipId));
+  // A Map keeps the position of a key's first insertion when its value is replaced.
+  const rankOf = new Map<string, EscalationRank>();
+  for (const { membershipId, rank } of seats) {
+    const userId = byMembership.get(membershipId);
+    if (userId !== undefined && rankOf.get(userId) !== "primary") rankOf.set(userId, rank);
+  }
+  return { userIds: [...rankOf.keys()], ranks: [...rankOf.values()] };
 }
 
 export function createEscalationRouter(
@@ -171,9 +185,17 @@ export function createEscalationRouter(
       const shifts = (
         await store.shiftsCoveringForProviderEntity(providerEntityId, asOfIso)
       ).filter((s) => covers(s, discipline, asOfMs));
-      const [head, ...rest] = await userIdsOf(store, shifts);
+      const { userIds, ranks } = await rosterOf(store, shifts);
+      const [head, ...rest] = userIds;
       if (head === undefined) return { kind: "coverage_gap", nextTier: null, timeZone, ...base };
-      return { kind: "resolved", userIds: [head, ...rest], nextTier: null, timeZone, ...base };
+      return {
+        kind: "resolved",
+        userIds: [head, ...rest],
+        ranks,
+        nextTier: null,
+        timeZone,
+        ...base,
+      };
     },
   };
 }

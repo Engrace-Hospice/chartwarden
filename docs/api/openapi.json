@@ -168228,7 +168228,7 @@
         "tags": [
           "36-messaging"
         ],
-        "summary": "Who covers a role NOW, for the sender to confirm (role-based send, ADR-0081 PROPOSED; messaging.read + messaging.urgent.send + messaging.oncall.send + channel visibility + patient.read with caseload_or_scope on `patient_id` (no break-glass), otherwise 403; a patient the caller cannot see, outside the organisation or not this conversation's patient is the uniform 404 and the router is never asked; the uniform 404 while the tenant flag `messaging.role_send` is off). Read-only: nothing is paged or sent. Asks the guarded M19 EscalationRouter seam for TIER 1 only. `status` is covered (`people` are the user ids and display names to choose from), coverage_gap, roster_not_connected (no M19 router is bound: coverage is UNKNOWN) or not_configured: in every status but covered `people` is empty and the sender must use the agency telephone procedure (there is NO fall-back to a backup tier or another role). `time_zone` is the roster's IANA zone; `shift_ends_at` only when the roster supplied a valid future instant. A role outside the closed list, a malformed patient id or an unknown key is a 422. Never cached. Read-audited against the patient",
+        "summary": "Who covers a role NOW, for the sender to confirm (role-based send, ADR-0081 PROPOSED; messaging.read + messaging.urgent.send + messaging.oncall.send + channel visibility + patient.read with caseload_or_scope on `patient_id` (no break-glass), otherwise 403; a patient the caller cannot see, outside the organisation or not this conversation's patient is the uniform 404 and the router is never asked; the uniform 404 while the tenant flag `messaging.role_send` is off). Read-only: nothing is paged or sent. Asks the guarded M19 EscalationRouter seam for TIER 1 only. `status` is covered (`people` are the user ids, display names and `rank`, the router's explicit primary or backup, primaries listed first, to choose from), coverage_gap, roster_not_connected (no M19 router is bound: coverage is UNKNOWN) or not_configured: in every status but covered `people` is empty and the sender must use the agency telephone procedure (there is NO fall-back to a backup tier or another role). `time_zone` is the roster's IANA zone; `shift_ends_at` only when the roster supplied a valid future instant. A role outside the closed list, a malformed patient id or an unknown key is a 422. Never cached. Read-audited against the patient",
         "parameters": [
           {
             "name": "id",
@@ -168323,7 +168323,8 @@
                         "type": "object",
                         "required": [
                           "user_id",
-                          "display_name"
+                          "display_name",
+                          "rank"
                         ],
                         "properties": {
                           "user_id": {
@@ -168337,6 +168338,18 @@
                               },
                               {
                                 "type": "null"
+                              }
+                            ]
+                          },
+                          "rank": {
+                            "anyOf": [
+                              {
+                                "const": "primary",
+                                "type": "string"
+                              },
+                              {
+                                "const": "backup",
+                                "type": "string"
                               }
                             ]
                           }
@@ -176710,14 +176723,35 @@
                           "people": {
                             "type": "array",
                             "items": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
+                              "type": "object",
+                              "required": [
+                                "display_name",
+                                "rank"
+                              ],
+                              "properties": {
+                                "display_name": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
                                 },
-                                {
-                                  "type": "null"
+                                "rank": {
+                                  "anyOf": [
+                                    {
+                                      "const": "primary",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "backup",
+                                      "type": "string"
+                                    }
+                                  ]
                                 }
-                              ]
+                              }
                             }
                           },
                           "shift_ends_at": {

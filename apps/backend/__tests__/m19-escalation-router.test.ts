@@ -99,12 +99,13 @@ const req = (over: Partial<EscalationRouteRequest> = {}): EscalationRouteRequest
 });
 
 describe("M19 EscalationRouter tier 1", () => {
-  it("resolves primary then backup user ids, stamped source m19, with the location zone", async () => {
+  it("resolves primary then backup user ids with EXPLICIT ranks from the shift seats, stamped source m19, with the location zone", async () => {
     const { router } = build();
     const answer = await router.resolveTier(ORG, req());
     expect(answer).toMatchObject({
       kind: "resolved",
       userIds: ["user-primary", "user-backup"],
+      ranks: ["primary", "backup"],
       nextTier: null,
       timeZone: ZONE,
       source: "m19",
@@ -174,6 +175,7 @@ describe("M19 EscalationRouter tier 1", () => {
     expect(await some.router.resolveTier(ORG, req())).toMatchObject({
       kind: "resolved",
       userIds: ["user-backup"],
+      ranks: ["backup"],
     });
     const none = build({ users: {} });
     expect(await none.router.resolveTier(ORG, req())).toMatchObject({ kind: "coverage_gap" });
@@ -184,9 +186,48 @@ describe("M19 EscalationRouter tier 1", () => {
     expect(await some.router.resolveTier(ORG, req())).toMatchObject({
       kind: "resolved",
       userIds: ["user-backup"],
+      ranks: ["backup"],
     });
     const none = build({ inactive: ["m-primary", "m-backup"] });
     expect(await none.router.resolveTier(ORG, req())).toMatchObject({ kind: "coverage_gap" });
+  });
+
+  it("ranks from the shift seats: an unresolved primary promotes nobody, overlapping shifts keep each person's own rank, primary wins", async () => {
+    // overlapping covering shifts: s1 (P1, B1) and s2 (P2, B2): the list order is unchanged, each person keeps the seat of their own shift
+    const overlap = build({
+      shifts: [
+        shift({ id: "s1", primaryOnCallMembershipId: "m-p1", backupMembershipId: "m-b1" }),
+        shift({ id: "s2", primaryOnCallMembershipId: "m-p2", backupMembershipId: "m-b2" }),
+      ],
+      users: { "m-p1": "u-p1", "m-b1": "u-b1", "m-p2": "u-p2", "m-b2": "u-b2" },
+    });
+    expect(await overlap.router.resolveTier(ORG, req())).toMatchObject({
+      userIds: ["u-p1", "u-b1", "u-p2", "u-b2"],
+      ranks: ["primary", "backup", "primary", "backup"],
+    });
+    // primary on one shift and backup on another: primary, at the position of the first occurrence
+    const both = build({
+      shifts: [
+        shift({ id: "s1", primaryOnCallMembershipId: "m-p1", backupMembershipId: "m-x" }),
+        shift({ id: "s2", primaryOnCallMembershipId: "m-x2", backupMembershipId: "m-p1b" }),
+      ],
+      users: { "m-p1": "u-1", "m-x": "u-2", "m-x2": "u-2", "m-p1b": "u-1" },
+    });
+    expect(await both.router.resolveTier(ORG, req())).toMatchObject({
+      userIds: ["u-1", "u-2"],
+      ranks: ["primary", "primary"],
+    });
+    // an unresolved or inactive primary: the backup stays a backup
+    const noPrimary = build({ inactive: ["m-primary"] });
+    expect(await noPrimary.router.resolveTier(ORG, req())).toMatchObject({
+      userIds: ["user-backup"],
+      ranks: ["backup"],
+    });
+    const unknownPrimary = build({ users: { "m-backup": "user-backup" } });
+    expect(await unknownPrimary.router.resolveTier(ORG, req())).toMatchObject({
+      userIds: ["user-backup"],
+      ranks: ["backup"],
+    });
   });
 
   it("answers tier 2 and above with tier_not_configured, whatever the patient", async () => {

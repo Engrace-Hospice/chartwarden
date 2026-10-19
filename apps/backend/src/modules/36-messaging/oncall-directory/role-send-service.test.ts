@@ -1,6 +1,6 @@
 // ADR-0081: the role-based send decisions, over a FAKE router (and the REAL deny-stub for the unconnected path), with the real
 // escalation-router guard in front so a test source is refused as it is in production.
-import type { EscalationRouteAnswer, EscalationRouter } from "@wardenx/types";
+import type { EscalationRank, EscalationRouteAnswer, EscalationRouter } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 import { escalationRouterDenyStub } from "../../../bootstrap/seams/providers";
 import { guardEscalationRouter } from "../ack-escalation/escalation-router-guard";
@@ -68,11 +68,18 @@ function build(over: Over = {}) {
   });
   return { service, calls, sends, logs };
 }
-const covered =
-  (...ids: string[]): (() => EscalationRouteAnswer) =>
+/** Test convenience: the first id holds the primary seat, the rest the backup seat. */
+const covered = (...ids: string[]) =>
+  coveredRanked(
+    ids,
+    ids.map((_, i) => (i === 0 ? "primary" : "backup")),
+  );
+const coveredRanked =
+  (ids: string[], ranks: EscalationRank[]): (() => EscalationRouteAnswer) =>
   () => ({
     kind: "resolved",
     userIds: ids as [string, ...string[]],
+    ranks,
     nextTier: 2,
     timeZone: "America/Los_Angeles",
     shiftEndsAt: "2026-06-02T02:00:00Z",
@@ -107,10 +114,60 @@ describe("RoleSendService.resolve", () => {
       time_zone: "America/Los_Angeles",
       shift_ends_at: "2026-06-02T02:00:00.000Z",
       people: [
-        { user_id: U1, display_name: "Dana K." },
-        { user_id: U2, display_name: null },
+        { user_id: U2, display_name: null, rank: "primary" },
+        { user_id: U1, display_name: "Dana K.", rank: "backup" },
       ],
     });
+  });
+
+  it("uses the explicit ranks and lists primaries first, whatever the router's list order", async () => {
+    const { service } = build({ tier1: coveredRanked([U2, U1], ["backup", "primary"]) });
+    const out = await service.resolve(actor, target);
+    expect(out.people.map((p) => [p.user_id, p.rank])).toEqual([
+      [U1, "primary"],
+      [U2, "backup"],
+    ]);
+  });
+
+  it("labels nobody primary when the router supplies no ranks (position is never a rank)", async () => {
+    const { service } = build({
+      tier1: () => {
+        const { ranks: _ranks, ...bare } = covered(U2, U1)() as Extract<
+          EscalationRouteAnswer,
+          { kind: "resolved" }
+        >;
+        return bare;
+      },
+    });
+    const out = await service.resolve(actor, target);
+    expect(out.people.map((p) => p.rank)).toEqual(["backup", "backup"]);
+  });
+
+  it("drops a rank list that does not pair with the recipients (the guard): the people stay, nobody is primary", async () => {
+    const { service } = build({ tier1: coveredRanked([U2, U1], ["primary"]) });
+    const out = await service.resolve(actor, target);
+    expect(out.people.map((p) => [p.user_id, p.rank])).toEqual([
+      [U2, "backup"],
+      [U1, "backup"],
+    ]);
+  });
+
+  it("de-duplicates, lower-casing ids: a user who is backup then primary is the primary", async () => {
+    const { service } = build({
+      tier1: coveredRanked([U2, U1, U2.toUpperCase()], ["backup", "backup", "primary"]),
+    });
+    const out = await service.resolve(actor, target);
+    expect(out.people.map((p) => [p.user_id, p.rank])).toEqual([
+      [U2, "primary"],
+      [U1, "backup"],
+    ]);
+  });
+
+  it("still sends to a backup (the sender confirms one person) and to the same person if only their rank changed", async () => {
+    const asBackup = build({ tier1: covered(U2, U1) });
+    await expect(send(asBackup.service, U1)).resolves.toMatchObject({ recipient_user_id: U1 });
+    const nowPrimary = build({ tier1: covered(U1, U2) });
+    await expect(send(nowPrimary.service, U1)).resolves.toMatchObject({ recipient_user_id: U1 });
   });
 
   it("reports a coverage gap as a state with nobody to confirm (never a backup tier)", async () => {

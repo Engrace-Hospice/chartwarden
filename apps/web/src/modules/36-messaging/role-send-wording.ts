@@ -3,10 +3,11 @@
 // NOT the emergency path; a gap or an unconnected roster is said in words and nothing is sent, never a guessed person.
 import {
   type OnCallDirectoryRole,
+  type OnCallRank,
   ROLE_SEND_ERROR_CODES,
   ROLE_SEND_TELEPHONE_PROCEDURE,
 } from "@wardenx/types";
-import { asOfText, untilText } from "./oncall-directory-wording";
+import { RANK_LABELS, asOfText, untilText } from "./oncall-directory-wording";
 
 export const ROLE_SEND_BUTTON_LABEL = "Message on-call role";
 export const ROLE_SEND_DIALOG_TITLE = "Message the on-call role";
@@ -58,8 +59,11 @@ export const DISCARD_PROMPT = "Close this message? You can keep what you typed, 
 export const SBAR_LOADING_TEXT = "Loading the message form...";
 export const SBAR_UNAVAILABLE_TEXT = "The SBAR form is not available. Nothing was sent.";
 
-export const personLine = (role: OnCallDirectoryRole, name: string | null): string =>
-  `${name ?? NAME_UNKNOWN_TEXT}, on call ${ROLE_NAMES[role]}`;
+export const personLine = (
+  role: OnCallDirectoryRole,
+  name: string | null,
+  rank: OnCallRank,
+): string => `${RANK_LABELS[rank]}: ${name ?? NAME_UNKNOWN_TEXT}, on call ${ROLE_NAMES[role]}`;
 
 /** "until 7:00 PM PDT (as of 2:07 PM PDT)" in the ROSTER's zone; "Shift end not provided" when the roster gave none. */
 export function shiftLine(
@@ -74,8 +78,8 @@ export function shiftLine(
     : `Shift end not provided (${asOfPart})`;
 }
 
-export const confirmLine = (role: OnCallDirectoryRole, name: string): string =>
-  `This goes to ${name}, the on-call ${ROLE_NAMES[role]} right now, and is marked urgent. It cannot be edited after sending.`;
+export const confirmLine = (role: OnCallDirectoryRole, name: string, rank: OnCallRank): string =>
+  `This goes to ${name} (${RANK_LABELS[rank]}), the on-call ${ROLE_NAMES[role]} right now, and is marked urgent. It cannot be edited after sending.`;
 export const sendLabel = (name: string): string => `Send urgent message to ${name}`;
 
 /** The refusal text for a resolution that is not a covered role (never an empty list). */

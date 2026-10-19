@@ -19,6 +19,8 @@ import {
 
 export interface FakeRotation extends ShiftSchedule {
   readonly userIds: readonly string[];
+  /** Users of this rotation that hold the BACKUP seat; every other user of the rotation is primary. */
+  readonly backupUserIds?: readonly string[];
 }
 export interface FakeTier {
   readonly tier: number;
@@ -131,12 +133,21 @@ export function createInMemoryEscalationRouter(
           throw bad("ESCALATION_LADDER_INVALID", "a tier has no rotation");
         return { kind: "coverage_gap", nextTier, timeZone: tierZone, ...base };
       }
-      const [head, ...rest] = [...new Set(covering.flatMap((r) => r.userIds))];
+      // First occurrence keeps its place; primary on any covering rotation wins over backup.
+      const rankOf = new Map<string, "primary" | "backup">();
+      for (const rotation of covering) {
+        for (const id of rotation.userIds) {
+          const rank = rotation.backupUserIds?.includes(id) ? "backup" : "primary";
+          if (rankOf.get(id) !== "primary") rankOf.set(id, rank);
+        }
+      }
+      const [head, ...rest] = [...rankOf.keys()];
       if (head === undefined)
         throw bad("ESCALATION_LADDER_INVALID", "a covering rotation has no users");
       return {
         kind: "resolved",
         userIds: [head, ...rest],
+        ranks: [...rankOf.values()],
         nextTier,
         timeZone: first.timeZone,
         ...base,

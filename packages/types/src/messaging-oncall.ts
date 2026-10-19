@@ -1,5 +1,6 @@
 // M36 WP 4.12 (ADR-0080) - the read-only on-call "who is covering now" directory. It answers a question; it never addresses anyone
 // (role-based SEND is a separate, undecided change, ADR-0080). Names and roles only: no patient data, no contact details.
+import { ESCALATION_RANKS, type EscalationRank } from "./messaging-escalation";
 
 /** Tenant flag (ops flag, tenant row wins, absent = off). Off is the uniform 404. */
 export const ONCALL_DIRECTORY_FLAG_KEY = "messaging.oncall_directory";
@@ -25,13 +26,26 @@ export const ONCALL_DIRECTORY_STATUSES = [
 ] as const;
 export type OnCallDirectoryStatus = (typeof ONCALL_DIRECTORY_STATUSES)[number];
 
+/**
+ * Who within a covering tier is the PRIMARY and who the BACKUP (hazard H-02). It is the router's EXPLICIT `ranks` (ADR-0057 item 12),
+ * never inferred from position; a router that supplies none labels nobody primary. A text label in the UI, never colour alone.
+ */
+export const ONCALL_RANKS = ESCALATION_RANKS;
+export type OnCallRank = EscalationRank;
+
 export type OnCallTierState = "covering" | "coverage_gap";
+
+export interface OnCallPersonDto {
+  /** Null when the name cannot be found (never an id in its place). */
+  readonly display_name: string | null;
+  readonly rank: OnCallRank;
+}
 
 export interface OnCallTierDto {
   readonly tier: number;
   readonly state: OnCallTierState;
-  /** Display names of who covers this tier now (empty on a gap). A user the name lookup cannot find is `null`, never an id. */
-  readonly people: readonly (string | null)[];
+  /** Who covers this tier now, primary first (empty on a gap). A user the name lookup cannot find has a `null` name, never an id. */
+  readonly people: readonly OnCallPersonDto[];
   /** Strict ISO instant when the covering shift ends, only when the roster supplied one; otherwise null (never guessed). */
   readonly shift_ends_at: string | null;
   /** IANA zone the roster evaluated this tier in. Render times in THIS zone, never the viewer's or the server's. */
@@ -76,9 +90,11 @@ export interface RoleSendPersonDto {
   readonly user_id: string;
   /** Null when the name cannot be found (never an id in its place). */
   readonly display_name: string | null;
+  /** The router's explicit rank of this person (see `ONCALL_RANKS`); primaries are listed first. */
+  readonly rank: OnCallRank;
 }
 
-/** What the sender confirms: tier 1 only. `people` is non-empty only when `status` is `covered`. */
+/** What the sender confirms: tier 1 only. `people` is non-empty only when `status` is `covered` and is in router order (primary first). */
 export interface RoleSendResolutionDto {
   readonly role: OnCallDirectoryRole;
   readonly as_of: string;

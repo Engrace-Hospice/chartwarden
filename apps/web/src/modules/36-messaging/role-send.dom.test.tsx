@@ -40,8 +40,10 @@ const session: Session = {
   permissions: ["messaging.send", "messaging.urgent.send", "messaging.oncall.send"],
 };
 
-type Person = { user_id: string; display_name: string | null };
-const covered = (people: Person[] = [{ user_id: DANA, display_name: "Dana K." }]) => ({
+type Person = { user_id: string; display_name: string | null; rank: "primary" | "backup" };
+const covered = (
+  people: Person[] = [{ user_id: DANA, display_name: "Dana K.", rank: "primary" }],
+) => ({
   data: {
     role: "rn",
     as_of: "2026-06-01T21:07:00.000Z",
@@ -223,9 +225,11 @@ describe("role send: the dialog", () => {
     await review();
     const confirm = await sendButton();
     expect(confirm.textContent).toBe("Send urgent message to Dana K.");
-    expect(screen.getByText(/Dana K\., on call RN/)).toBeTruthy();
+    expect(screen.getByText(/Primary: Dana K\., on call RN/)).toBeTruthy();
     expect(screen.getByText(/until .*PDT/)).toBeTruthy();
-    expect(screen.getByText(/This goes to Dana K\., the on-call RN right now/)).toBeTruthy();
+    expect(
+      screen.getByText(/This goes to Dana K\. \(Primary\), the on-call RN right now/),
+    ).toBeTruthy();
     expect(GET.mock.calls.find(([p]) => p === RES_PATH)?.[1]).toMatchObject({
       params: { query: { role: "rn", patient_id: "p1" } },
     });
@@ -256,8 +260,8 @@ describe("role send: the dialog", () => {
     mount({
       resolution: () =>
         covered([
-          { user_id: DANA, display_name: "Dana K." },
-          { user_id: SAM, display_name: "Sam R." },
+          { user_id: DANA, display_name: "Zed Z.", rank: "primary" },
+          { user_id: SAM, display_name: "Abe A.", rank: "backup" },
         ]),
     });
     await open();
@@ -266,9 +270,15 @@ describe("role send: the dialog", () => {
       name: "Send urgent message",
     })) as HTMLButtonElement;
     expect(send.disabled).toBe(true);
-    await userEvent.click(screen.getByRole("radio", { name: /Sam R\./ }));
+    // rank is said in words; the primary stays first even though the backup sorts first by name; nothing is preselected
+    const radios = screen.getAllByRole("radio") as HTMLInputElement[];
+    expect(radios.map((r) => r.checked)).toEqual([false, false]);
+    expect(screen.getByRole("radio", { name: /^Primary: Zed Z\., on call RN/ })).toBe(radios[0]);
+    expect(screen.getByRole("radio", { name: /^Backup: Abe A\., on call RN/ })).toBe(radios[1]);
+    await userEvent.click(radios[1] as HTMLInputElement);
     expect(((await sendButton()) as HTMLButtonElement).disabled).toBe(false);
-    expect((await sendButton()).textContent).toBe("Send urgent message to Sam R.");
+    expect((await sendButton()).textContent).toBe("Send urgent message to Abe A.");
+    expect(screen.getByText(/This goes to Abe A\. \(Backup\)/)).toBeTruthy();
   });
 
   it.each([
@@ -287,7 +297,7 @@ describe("role send: the dialog", () => {
   });
 
   it("does not offer a person whose name cannot be shown", async () => {
-    mount({ resolution: () => covered([{ user_id: DANA, display_name: null }]) });
+    mount({ resolution: () => covered([{ user_id: DANA, display_name: null, rank: "primary" }]) });
     await open();
     await review();
     expect(await screen.findByText(NAMES_UNAVAILABLE_TEXT)).toBeTruthy();
@@ -319,7 +329,9 @@ describe("role send: the dialog", () => {
     mount({
       post,
       resolution: () =>
-        ++calls === 1 ? covered() : covered([{ user_id: SAM, display_name: "Sam R." }]),
+        ++calls === 1
+          ? covered()
+          : covered([{ user_id: SAM, display_name: "Sam R.", rank: "primary" }]),
     });
     await open();
     await review();
