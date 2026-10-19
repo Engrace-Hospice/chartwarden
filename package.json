@@ -533,6 +533,7 @@
     "test:m36:urgency:live": "vitest run apps/backend/__tests__/m36-urgency.live.test.ts",
     "test:m36:ack-requests:live": "vitest run apps/backend/__tests__/m36-ack-requests.live.test.ts",
     "test:m36:role-send:live": "vitest run apps/backend/__tests__/m36-role-send.live.test.ts",
+    "test:m36:session-devices:live": "vitest run apps/backend/__tests__/m36-session-device-controls.live.test.ts",
     "test:m36:ack-escalation:live": "vitest run apps/backend/__tests__/m36-ack-escalation.live.test.ts",
     "test:m36:delivery-target:live": "vitest run apps/backend/__tests__/m36-delivery-target.live.test.ts",
     "test:m36:ack-supervisor-reassign:live": "vitest run apps/backend/__tests__/m36-ack-supervisor-reassign.live.test.ts",

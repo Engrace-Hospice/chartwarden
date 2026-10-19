@@ -188,12 +188,17 @@ import type { PresenceRouteDeps } from "./routes/presence-routes";
 import type { PromotionRouteDeps as _PromotionRouteDeps } from "./routes/promotion-routes";
 import type { ReviewRouteDeps as _ReviewRouteDeps } from "./routes/review-routes";
 import { registerScheduledSendRoutes as _registerScheduledSendRoutes } from "./routes/scheduled-send-routes";
+import { registerSessionDeviceRoutes as _registerSessionDeviceRoutes } from "./routes/session-device-routes";
 import type { SnoozeReminderRouteDeps as _SnoozeReminderRouteDeps } from "./routes/snooze-reminder-routes";
 import type { TaskRouteDeps as _TaskRouteDeps } from "./routes/task-routes";
 import { registerTemplateRoutes as _registerTemplateRoutes } from "./routes/template-routes";
 import type { UrgentRouteDeps as _UrgentRouteDeps } from "./routes/urgent-routes";
 import type { buildSbarDeps as _buildSbarDeps } from "./sbar/binding";
 import { createDbScheduledSendService as _createDbScheduledSendService } from "./scheduled/scheduled-send-service-db";
+import {
+  type SessionDeviceBindingInput as _SessionDeviceBindingInput,
+  buildSessionDeviceService as _buildSessionDeviceService,
+} from "./session-devices/binding";
 import { createDbTemplateService as _createDbTemplateService } from "./templates/template-service-db";
 
 /**
@@ -242,6 +247,8 @@ export function mountMessagingRoutes(
     promotions?: _PromotionRouteDeps;
     /** WP 3.6: IDG discussions (tenant flags + read-only store). Omitted => flag off. */
     idgDiscussions?: ReturnType<typeof _buildIdgDiscussionDeps>;
+    /** WP 5.5 (ADR-0082): the device and session manager; `disconnectSession` closes a session's sockets on every api node. Always mounted. */
+    sessionDevices?: Pick<_SessionDeviceBindingInput, "disconnectSession" | "warn">;
   } = {},
 ): void {
   // GAP-063 — the §4.2 OTP sender; with none bound, sms/email endpoint registration answers 503.
@@ -328,6 +335,10 @@ export function mountMessagingRoutes(
         rateLimitActive: opts.globalSearchRateLimitActive === true,
       }),
     }),
+  });
+  // WP 5.5 (ADR-0082) - list/revoke staff sessions (self-service and the security officer's variant). No tenant flag: a security control.
+  _registerSessionDeviceRoutes(app, {
+    service: _buildSessionDeviceService({ db, ...(opts.sessionDevices ?? {}) }),
   });
   // GAP-165 — the platform-ops cross-tenant delivery drill (§4.1 `messaging.admin.read`): own predicate, own
   // SECURITY DEFINER reader (0474), audited per read. Not tenant-scoped, so it takes the pooled handle directly.

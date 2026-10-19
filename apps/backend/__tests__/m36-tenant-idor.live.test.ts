@@ -90,6 +90,7 @@ import {
   registerMessagingRoutes,
 } from "../src/modules/36-messaging/routes/messaging-routes";
 import { registerScheduledSendRoutes } from "../src/modules/36-messaging/routes/scheduled-send-routes";
+import { registerSessionDeviceRoutes } from "../src/modules/36-messaging/routes/session-device-routes";
 import { registerTemplateRoutes } from "../src/modules/36-messaging/routes/template-routes";
 import { registerMessagingWebhookRoutes } from "../src/modules/36-messaging/routes/webhook-routes";
 import { createDbSbarPolicyStore } from "../src/modules/36-messaging/sbar/sbar-policy-store-db";
@@ -121,6 +122,8 @@ const TEMPLATE_SUITE =
   "WP 2.8: org/owner isolation, random-id 404 parity and RLS are asserted in m36-message-templates.live";
 const GLOBAL_SEARCH_SETTINGS_SUITE =
   "WP 2.7b C4: org-scoped singleton (no id), permission + step-up + cross-tenant isolation are asserted in m36-global-search-settings.live";
+const SESSION_DEVICES_SUITE =
+  "WP 5.5: own-session scope, foreign / other-tenant / repeat revoke is one 404, officer bounded to the organisation: asserted in m36-session-device-controls.live";
 const ROUTES: Record<string, Verdict> = {
   "GET /api/v1/messaging/channels": { kind: "scoped" },
   "GET /api/v1/messaging/channels/:id": { kind: "idor" },
@@ -296,6 +299,15 @@ const ROUTES: Record<string, Verdict> = {
     kind: "excluded",
     reason: GLOBAL_SEARCH_SETTINGS_SUITE,
   },
+  // WP 5.5 (ADR-0082): a session is acted on by its own owner (or, for the officer, within the officer's organisation); a foreign, other-tenant,
+  // unknown and already-revoked id are one 404, asserted with real Better Auth sessions as wardenx_app in m36-session-device-controls.live.
+  "GET /api/v1/devices": { kind: "excluded", reason: SESSION_DEVICES_SUITE },
+  "DELETE /api/v1/devices/:id": { kind: "excluded", reason: SESSION_DEVICES_SUITE },
+  "GET /api/v1/messaging/governance/sessions": { kind: "excluded", reason: SESSION_DEVICES_SUITE },
+  "DELETE /api/v1/messaging/governance/sessions/:id": {
+    kind: "excluded",
+    reason: SESSION_DEVICES_SUITE,
+  },
   "POST /webhooks/twilio/sms-status": {
     kind: "excluded",
     reason: "vendor-signed, no tenant principal; unsigned call refused (asserted below)",
@@ -363,6 +375,8 @@ const REGISTRAR_FILES = [
   "patient-context-typebox.ts", // schemas only
   "template-routes.ts",
   "template-typebox.ts", // schemas only
+  "session-device-routes.ts", // WP 5.5 device and session manager (own sessions; officer variant bounded to the organisation)
+  "session-device-typebox.ts", // schemas only
   "uuid-params.ts", // preHandler helper, no routes
   "webhook-routes.ts",
 ];
@@ -383,6 +397,7 @@ function registeredRoutes(): string[] {
   registerTemplateRoutes(probe, { service: {} as never });
   registerGlobalSearchSettingsRoutes(probe, { service: {} as never });
   registerMessagingWebhookRoutes(probe, { publicBaseUrl: "https://x.test" } as never);
+  registerSessionDeviceRoutes(probe, { service: {} as never });
   return [...seen].sort();
 }
 

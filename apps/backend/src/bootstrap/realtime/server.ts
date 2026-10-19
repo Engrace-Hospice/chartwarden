@@ -19,6 +19,11 @@ export interface RealtimePrincipal {
   readonly sessionId: string;
 }
 
+/** The room every socket of one session joins (WP 5.5): revoking the session closes this room on every api node. Plain string, no org: a session is one user's. */
+export function sessionRoom(sessionId: string): string {
+  return `session:${sessionId}`;
+}
+
 export type RealtimeLog = (event: string, context: Record<string, string | number>) => void;
 
 export interface RealtimeOptions {
@@ -196,6 +201,9 @@ export function startRealtimeServer(options: RealtimeOptions): RealtimeHandle {
       return;
     }
     mine.add(socket.id);
+    // WP 5.5 (ADR-0082): the session's own room, joined BEFORE the (async) room set resolves, so a revoke that lands while the rooms are still
+    // being computed still finds this socket. A revoke closes the room on every node (`disconnectRoom(sessionRoom(id))`).
+    void socket.join(sessionRoom(principal.sessionId));
     options
       .resolveRooms(principal)
       .then((rooms) => socket.join([...rooms]))

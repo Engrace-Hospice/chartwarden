@@ -73,7 +73,7 @@ the M19 role-level lookup) are still OPEN there.
 
 Listed for completeness, with owners from the UI spec §9: retention classes and legal hold (5.6, compliance, new ADR), export format and
 approval roles (5.7, compliance, new ADR), break-glass eligibility and review SLA (5.8, compliance + clinical lead), app-lock and device
-policy (5.5, SEC), dictation PHI boundary (6.3, new ADR + compliance), machine translation of clinical content (6.4, clinical lead, off
+policy (5.5, SEC; interim built and recorded as proposed in ADR-0082: immediate revoke, current session revocable with a confirm, officer limited to their own organisation with a fresh step-up, no app lock and no bulk sign-out), dictation PHI boundary (6.3, new ADR + compliance), machine translation of clinical content (6.4, clinical lead, off
 by default), AI summaries (6.5, clinical lead + compliance + new ADR, hazard H-08), external partner share (6.6, legal BAA + clinical
 lead + new ADR), family messaging without an app (6.7, privacy officer + new ADR), individual-level analytics (6.2, HR/compliance,
 forbidden by default), the self-destruct

@@ -1475,6 +1475,12 @@ import {
   SearchMessagesQuerySchema as M36SearchMessagesQuerySchema,
   SearchMessagesResponseSchema as M36SearchMessagesResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/search-typebox";
+// M36 WP 5.5 device and session manager (ADR-0082, PROPOSED).
+import {
+  DeviceListResponseSchema as M36DeviceListResponseSchema,
+  DeviceRevokeResponseSchema as M36DeviceRevokeResponseSchema,
+  SessionAdminListQuerySchema as M36SessionAdminListQuerySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/session-device-typebox";
 // M36 WP 4.10 snooze and reminders.
 import {
   ClearedResponseSchema as M36ClearedResponseSchema,
@@ -10098,6 +10104,29 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M36DeliveryEndpointResponseSchema,
   },
   "DELETE /api/v1/notifications/endpoints/:id": { summary: "Remove a delivery endpoint (204)" },
+
+  // device and session manager (WP 5.5, ADR-0082 PROPOSED)
+  "GET /api/v1/devices": {
+    summary:
+      "The caller's OWN staff sessions as devices (any authenticated organisation-bound caller; own sessions only). Each has a coarse label (browser and operating system only), created and last-used times, `push_registered` (a verified push endpoint is linked to the session) and `current` (the session making this request, listed first). Never returns the session token, the IP address, the raw user agent or an endpoint value. Not cached",
+    response: M36DeviceListResponseSchema,
+  },
+  "DELETE /api/v1/devices/:id": {
+    summary:
+      "Revoke one of the caller's own sessions, in one transaction: the session is deleted (its next REST call is 401 and a socket handshake with it is refused), every endpoint linked to it is expired, and an `m36.session.revoked` audit row is written; then the session's live sockets are closed on every api node. `current:true` means the caller revoked the session making this request and must sign in again. A session that is not the caller's, an unknown id and one already revoked are the same 404 (no existence oracle; a repeat is a 404). If closing the sockets fails the revoke still stands and the realtime re-check ends the socket within a minute",
+    response: M36DeviceRevokeResponseSchema,
+  },
+  "GET /api/v1/messaging/governance/sessions": {
+    summary:
+      "Security officer: another user's staff sessions bound to the officer's organisation (messaging.sessions.manage). Same fields as GET /devices. A user with no sessions in this organisation, an unknown user and another tenant's user are all an empty list (never an error, never another tenant's data). Audited as m36.session.admin_listed. Not cached",
+    query: M36SessionAdminListQuerySchema,
+    response: M36DeviceListResponseSchema,
+  },
+  "DELETE /api/v1/messaging/governance/sessions/:id": {
+    summary:
+      "Security officer: revoke one staff session bound to the officer's organisation (messaging.sessions.manage + a fresh step-up for `messaging.sessions.revoke`, else 403 STEP_UP_REQUIRED). Same transaction and socket close as DELETE /devices/{id}, with the owner's endpoints expired under the owner's scope; audited with actor and target (severity warn). A session of another organisation, a pre-organisation session, an unknown id and one already revoked are the same 404",
+    response: M36DeviceRevokeResponseSchema,
+  },
 
   // alerts (§4.2)
   "GET /api/v1/alerts/inbox": {

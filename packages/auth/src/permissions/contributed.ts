@@ -350,6 +350,14 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "admin",
     abac: "none",
   },
+  // --- WP 5.5 (ADR-0082, PROPOSED): list and revoke ANOTHER user's sessions in the organisation (security officer). The revoke route also
+  //     demands a fresh step-up; migration 1130 grants it to the full-catalog admin roles only. Self-service needs no key (own sessions only). ---
+  "messaging.sessions.manage": {
+    resource: "session_device",
+    action: "manage",
+    category: "admin",
+    abac: "none",
+  },
   // --- the caller's OWN alert inbox + mark-read (SELF only: both routes filter on recipient_user_id = the actor).
   //     Held by the zero-authority platform_alert_audience role (migration 1097) so a bound platform operator can
   //     read the alerts addressed to them; the routes also accept `messaging.read`, which every tenant role has. ---
