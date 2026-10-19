@@ -1,3 +1,15 @@
+// apps/web/src/modules/05-patient — the Privacy Officer screen for one patient (M5 §5.1 "Privacy flags
+// (`/patients/:id/privacy`) — read-only summary of current snapshot + capture time + staleness indicator +
+// 'Resync from consent' button (Privacy Officer only). Below: timeline of flag changes drawn from Module 4
+// audit events"). Reads GET /api/v1/patients/:id/privacy and posts the §4.2 resync; both are
+// `privacy.admin`, the SERVER is the only enforcer (ADR-0030).
+//
+// Shows each restriction with its origin and since-when, the 42 CFR Part 2 consent state, the WardenLens
+// intake packets holding a detection (ids, dates and page counts — never content), drift between the
+// snapshot and its sources, the change timeline, and who can clear what. The officer does NOT confirm or
+// reject a detection here — that is the licensed reviewer's act in the intake review (M22 §7.4 step 6),
+// so each packet links there.
+import { formatMrn } from "@wardenx/types";
 import {
   Button,
   Card,
@@ -10,17 +22,6 @@ import {
   t,
   useApiClient,
 } from "@wardenx/ui";
-// apps/web/src/modules/05-patient — the Privacy Officer screen for one patient (M5 §5.1 "Privacy flags
-// (`/patients/:id/privacy`) — read-only summary of current snapshot + capture time + staleness indicator +
-// 'Resync from consent' button (Privacy Officer only). Below: timeline of flag changes drawn from Module 4
-// audit events"). Reads GET /api/v1/patients/:id/privacy and posts the §4.2 resync; both are
-// `privacy.admin`, the SERVER is the only enforcer (ADR-0030).
-//
-// Shows each restriction with its origin and since-when, the 42 CFR Part 2 consent state, the WardenLens
-// intake packets holding a detection (ids, dates and page counts — never content), drift between the
-// snapshot and its sources, the change timeline, and who can clear what. The officer does NOT confirm or
-// reject a detection here — that is the licensed reviewer's act in the intake review (M22 §7.4 step 6),
-// so each packet links there.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -212,8 +213,8 @@ export function PatientPrivacy(): JSX.Element {
           }
         >
           <div style={muted}>
-            MRN {view.patient.mrn} · re-sync re-reads the patient's consent state. It never lifts a
-            WardenLens detection.
+            {formatMrn(view.patient.mrn)} · re-sync re-reads the patient's consent state. It never
+            lifts a WardenLens detection.
           </div>
         </PageHeader>
       }

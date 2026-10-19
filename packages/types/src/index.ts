@@ -63,3 +63,4 @@ export * from "./messaging-handoff";
 export * from "./messaging-review";
 export * from "./messaging-promotion";
 export * from "./messaging-xss-corpus";
+export * from "./mrn";

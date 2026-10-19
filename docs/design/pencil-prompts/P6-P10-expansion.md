@@ -171,7 +171,7 @@ revoking session banner, no edit. SYSTEMS: persistent "read-only survey session 
 ### 9.1 Mobile Field Suite — M17·M18·M22 · `Dashboard + Mobile Task Flow`
 [spec](../screens/mobile/WARDENX_UI_MOBILE_FIELD_SUITE.md)
 ```
-Phone frame set (separate React Native/Expo renderer, ADR-0069), one action per screen: patient list+day schedule ·
+Phone frame set (separate React Native/Expo renderer, ADR-0072), one action per screen: patient list+day schedule ·
 offline visit doc (queued) · EVV check-in/out (geofence advisory) · tasks · messages · offline-queue/
 sync indicator · mobile telehealth. 44px targets; offline badges; same PHI masking/consent as desktop.
 ```

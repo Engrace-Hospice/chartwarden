@@ -12,12 +12,12 @@ aucun composant DOM depuis `apps/web` ou `packages/ui/src/web`.
 
 ## Lot 0.5 / PR B — décision et contrat backend
 
-**État au 2026-10-16 : implémenté, ratification d’ADR-0069 et preuves sur appareils en attente.**
+**État au 2026-10-16 : implémenté, ratification d’ADR-0072 et preuves sur appareils en attente.**
 
 ### Entrée
 
 - demande produit Expo/RN documentée par ce Lot 0 ;
-- ADR-0035 conservé comme historique ; ADR-0069 proposé comme supersession.
+- ADR-0035 conservé comme historique ; ADR-0072 proposé comme supersession.
 
 ### Travail documentaire
 
@@ -32,7 +32,7 @@ aucun composant DOM depuis `apps/web` ou `packages/ui/src/web`.
 
 ### Sortie mesurable
 
-- ADR-0069 nomme la stack, le propriétaire, les frontières et la stratégie ; son acceptation formelle reste à enregistrer ;
+- ADR-0072 nomme la stack, le propriétaire, les frontières et la stratégie ; son acceptation formelle reste à enregistrer ;
 - aucun document autoritaire ne prescrit encore la stack opposée ;
 - les gates documentaires et manifest sont prévus avant tout scaffold.
 
@@ -199,7 +199,7 @@ aucun composant DOM depuis `apps/web` ou `packages/ui/src/web`.
 ## Décision d’entrée Lot 1
 
 **GO sous conditions pour PR C.** Le plugin Better Auth Expo, la séparation des origines, le bootstrap
-CSRF et le contrat backend sont en place. Avant diffusion, les propriétaires doivent ratifier ADR-0069
+CSRF et le contrat backend sont en place. Avant diffusion, les propriétaires doivent ratifier ADR-0072
 et choisir les schemes/app links. PR C doit prouver SecureStore, cookies, CSRF et Socket.IO sur iOS et
 Android. Push natif, passkey natif et EVV offline restent des lots ultérieurs ; leurs UI ne doivent pas
 simuler une disponibilité.

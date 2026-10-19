@@ -543,7 +543,7 @@ describe("M36 patient care-team conversations", () => {
     const search = screen.getByRole("searchbox", { name: "Search authorized patients" });
     fireEvent.change(search, { target: { value: "Ada" } });
     await screen.findByText("Ada Lovelace");
-    expect(screen.getByText("MRN MRN-1001")).toBeTruthy();
+    expect(screen.getByText("MRN-1001")).toBeTruthy();
     fireEvent.keyDown(search, { key: "Enter" });
     fireEvent.click(screen.getByRole("button", { name: "Open conversation" }));
 

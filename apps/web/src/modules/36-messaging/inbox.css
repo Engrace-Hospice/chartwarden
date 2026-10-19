@@ -90,13 +90,8 @@
 
 .wx-messaging-filters {
   display: flex;
+  flex-wrap: wrap; /* a hidden-scrollbar overflow clipped "Archived" at narrow widths; wrapping keeps every tab reachable */
   gap: 0.2rem;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.wx-messaging-filters::-webkit-scrollbar {
-  display: none;
 }
 
 .wx-messaging-filters button,

@@ -57,7 +57,7 @@ describe("care-team patient header", () => {
       POST: vi.fn(),
     };
     render(tree(api, careTeam("c-1", "p-1")));
-    expect(await screen.findByText("MRN MRN-77")).toBeTruthy();
+    expect(await screen.findByText("MRN-77")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Patient context/ })).toBeTruthy();
   });
 
@@ -80,11 +80,11 @@ describe("care-team patient header", () => {
     const { rerender } = render(tree(api, careTeam("c-1", "p-1")));
     await waitFor(() => expect(api.GET).toHaveBeenCalledWith(PATIENT_PATH, expect.anything()));
     rerender(tree(api, careTeam("c-2", "p-2")));
-    expect(await screen.findByText("MRN MRN-2")).toBeTruthy();
+    expect(await screen.findByText("MRN-2")).toBeTruthy();
     resolveFirst({ data: { id: "p-1", firstName: "Margaret", lastName: "Brandt", mrn: "MRN-1" } });
     await new Promise((r) => setTimeout(r, 20));
-    expect(screen.queryByText("MRN MRN-1")).toBeNull();
-    expect(screen.getByText("MRN MRN-2")).toBeTruthy();
+    expect(screen.queryByText("MRN-1")).toBeNull();
+    expect(screen.getByText("MRN-2")).toBeTruthy();
   });
 
   it("keeps the header across a rerender that only changes callback identities", async () => {
@@ -99,10 +99,10 @@ describe("care-team patient header", () => {
       POST: vi.fn(),
     };
     const { rerender } = render(tree(api, careTeam("c-1", "p-1")));
-    await screen.findByText("MRN MRN-77");
+    await screen.findByText("MRN-77");
     const patientCalls = api.GET.mock.calls.filter(([p]) => p === PATIENT_PATH).length;
     rerender(tree(api, careTeam("c-1", "p-1")));
-    expect(screen.getByText("MRN MRN-77")).toBeTruthy();
+    expect(screen.getByText("MRN-77")).toBeTruthy();
     expect(api.GET.mock.calls.filter(([p]) => p === PATIENT_PATH).length).toBe(patientCalls);
   });
 
@@ -118,9 +118,9 @@ describe("care-team patient header", () => {
       POST: vi.fn(),
     };
     const { rerender } = render(tree(api, careTeam("c-1", "p-1")));
-    await screen.findByText("MRN MRN-77");
+    await screen.findByText("MRN-77");
     rerender(tree(api, { ...careTeam("c-1", "p-1"), kind: "dm", subjectId: null }));
-    await waitFor(() => expect(screen.queryByText("MRN MRN-77")).toBeNull());
+    await waitFor(() => expect(screen.queryByText("MRN-77")).toBeNull());
   });
 
   it("survives a rejected patient request without an unhandled rejection", async () => {
@@ -138,6 +138,6 @@ describe("care-team patient header", () => {
     await new Promise((r) => setTimeout(r, 30));
     process.off("unhandledRejection", unhandled);
     expect(unhandled).not.toHaveBeenCalled();
-    expect(screen.queryByText(/^MRN /)).toBeNull();
+    expect(screen.queryByText(/^MRN/)).toBeNull();
   });
 });

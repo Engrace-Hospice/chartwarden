@@ -567,7 +567,7 @@ accessibility/compassion constraints:
 | Staff / clinical web | `apps/web` | The bulk of the corpus; dense data, full Guardrail/Provenance/Sensitivity systems |
 | Internal admin / ops | `apps/admin` | Admin Console/Hierarchy/Split/Settings patterns; same tokens |
 | Patient / family portal | `apps/portal` | Portal family: AA→AAA, single-column, Fraunces warmth, safety affordance |
-| Mobile (field) | Separate `wardenx-mobile` React Native/Expo renderer (ADR-0069) | Mobile Task Flow; offline/EVV targets require native implementation evidence; 44px targets are doubly load-bearing |
+| Mobile (field) | Separate `wardenx-mobile` React Native/Expo renderer (ADR-0072) | Mobile Task Flow; offline/EVV targets require native implementation evidence; 44px targets are doubly load-bearing |
 
 ---
 
