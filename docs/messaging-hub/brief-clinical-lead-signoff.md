@@ -124,6 +124,18 @@ What happens when someone taps the link in a push, text or email.
 - **Anyone else, or an alert that no longer applies** (removed message, lost access, wrong person, forwarded link): one plain page, the same for every case: "This notification is no longer available. It may have been removed, or you may no longer have access. Your messages are still in WardenX." with a link to the messages. It deliberately does not say which case it was.
 - **Please approve or edit** that wording, and confirm that a clinician who lost access to a conversation should get this plain page rather than an "access removed" explanation (provisional answer: the plain page, because telling them more would confirm the conversation exists).
 
+## 11. The supervisor's unacknowledged queue (WP 4.9, ADR-0076) - provisional readings to approve
+
+A list for supervisors of every request still waiting for someone to take responsibility. It only reads: it never takes responsibility, reassigns or closes anything, and it does not page anyone.
+
+- **Who counts as a supervisor:** whoever holds the existing "review" permission, which today is clinical supervisor, director of nursing and clinical lead, the same people the "could not be delivered" and "no one further to pass it to" alerts already reach. Administrators do not have it by default. Confirm, and say whether the medical director or on-call lead should see it too.
+- **What is listed:** waiting, escalated and could-not-be-delivered requests, the late and the not yet late, oldest deadline first. Not listed: a request someone has taken responsibility for, a closed one, a withdrawn one (message deleted). Confirm the order (alternative: could-not-be-delivered first, or urgent before important).
+- **Nothing is hidden by a filter:** the two filters (state, overdue only) only narrow, and the page always says how many are waiting in all.
+- **A request the supervisor cannot open** (they are not on that patient's care team, or the patient is under the substance-use-disorder confidentiality rules and they are not released): it is still listed, without a link and without the patient or the message. It shows who it is assigned to, how late it is and its class, so the supervisor can phone that person. **Please decide** whether the assignee's name and the class are acceptable on those rows (provisional: yes, no patient is named) or whether those rows should show only "a request is overdue". Separately, whether supervisors should get a way into the conversation to act (today they cannot; that is a larger decision).
+- **Wording** of the page, the note that it does not page anyone and is not the emergency path, and "Could not be delivered". Approve or edit.
+- **Alert to operations (not clinicians):** a notice goes to the platform operations channel when a request is more than **15 minutes** past its deadline, and when the average time to take responsibility over the last 24 hours is more than **15 minutes** (at least five requests). Confirm or change both numbers; they are not clinical decisions about a patient, but they say when the agency's loop is too slow.
+- **Not yet:** percentiles, a dashboard with history, a supervisor action to reassign from the list.
+
 ## What happens with the answers
 
 ADR-0056 is updated with the signed numbers and role map, then accepted by the product owner. Numbers live as platform

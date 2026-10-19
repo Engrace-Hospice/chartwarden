@@ -84,6 +84,11 @@ import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import Redis, { type RedisOptions } from "ioredis";
 import { parseTrustedProxies } from "./bootstrap";
+import {
+  createAckQueueNoticeEvaluator,
+  registerAckQueueMetrics,
+  sampleAckQueue,
+} from "./bootstrap/ack-queue-metrics";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
 import {
   bindPlatformStaffToOrg,
@@ -1451,6 +1456,7 @@ import {
   buildUrgentDeps,
   createAttachmentService,
   createBullmqTimerPort,
+  createDbAckQueueStatsReader,
   createDbMessagingProvider,
   createDbMessagingRouteService,
   createDlqAuditRecorder,
@@ -6046,6 +6052,22 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
     });
   };
   registerGeocodeCoverageMetrics(metricsRegistry, geocodeCoverageSampler);
+  // M36 WP 4.9 (ADR-0076) — overdue count and acknowledgment latency of the unacknowledged queue. Aggregated over the active orgs
+  // (audited platform read of the org list only; the figures are counts under each org's RLS); -1 when it cannot be measured.
+  registerAckQueueMetrics(metricsRegistry, async () => {
+    if (!dbHandle || !platformDbHandle) return null;
+    const activeOrgs = buildActiveOrgEnumerator({
+      platformDb: platformDbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M36_INTEGRITY_PLATFORM_JOB_ID,
+      reason: "M36 WP 4.9 ack-queue gauges: active-org list",
+    });
+    const statsForOrg = createDbAckQueueStatsReader(dbHandle.db);
+    return sampleAckQueue({
+      listOrgs: () => activeOrgs.listActiveOrgs(),
+      statsForOrg: (organizationId) => statsForOrg(organizationId, new Date()),
+    });
+  });
   if (dbHandle) {
     void warnOnGeocodeCoverageGap(geocodeCoverageSampler, {
       warn: (fields, message) => app.log.warn(fields, message),
@@ -8960,6 +8982,15 @@ export async function bootWardenX(requestedRole: ProcessRole = "all"): Promise<v
         service: m36AckEscalation.service,
         activeOrgs: m36AckEscalationOrgs,
         recordDlq: createDlqAuditRecorder(dbHandle.db),
+        // WP 4.9 (ADR-0076): the threshold notice (log line + optional OPS_ALERT_WEBHOOK_URL) per organisation per tick.
+        observeOrg: createAckQueueNoticeEvaluator({
+          statsForOrg: (organizationId) =>
+            createDbAckQueueStatsReader(dbHandle.db)(organizationId, new Date()),
+          notify: buildPlatformOpsNoticeSink({
+            webhookUrl: process.env.OPS_ALERT_WEBHOOK_URL,
+            log: (m) => app.log.warn(m),
+          }),
+        }),
         // Ids and the error class only: a database error can carry statement parameters.
         onError: (context, err) =>
           app.log.error(

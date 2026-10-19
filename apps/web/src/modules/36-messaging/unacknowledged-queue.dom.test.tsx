@@ -1,0 +1,310 @@
+// M36 WP 4.9 (ADR-0076) - the supervisor's unacknowledged queue screen: loading, empty, error-with-retry, denied, a flat list with
+// words for every state, a restricted row with no link or patient, filters that only narrow (the total stays), "show more", the
+// safety-net poll (and its cleanup on unmount), no write of any kind, axe clean.
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { AckQueueItemDto, AckQueueResponse } from "@wardenx/types";
+import { type ApiClient, ApiClientProvider } from "@wardenx/ui";
+import axe from "axe-core";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { UnacknowledgedQueue, threadLink } from "./unacknowledged-queue";
+import {
+  QUEUE_DENIED,
+  QUEUE_EMPTY_TITLE,
+  QUEUE_FILTER_EMPTY_TITLE,
+  QUEUE_LOAD_FAILED,
+  QUEUE_MORE_LABEL,
+  QUEUE_NOTE_TEXT,
+  QUEUE_OPEN_LABEL,
+  QUEUE_RESTRICTED_TEXT,
+  QUEUE_SIGN_IN,
+  QUEUE_STALE,
+  QUEUE_UNREACHABLE_TEXT,
+} from "./unacknowledged-wording";
+
+const PATH = "/api/v1/messaging/escalations/unacknowledged";
+const CH = "aaaaaaaa-aaaa-4aaa-8aaa-000000000001";
+const MSG = "bbbbbbbb-bbbb-4bbb-8bbb-000000000001";
+
+const item = (over: Partial<AckQueueItemDto> = {}): AckQueueItemDto => ({
+  restricted: false,
+  id: "cccccccc-cccc-4ccc-8ccc-000000000001",
+  channel_id: CH,
+  message_id: MSG,
+  patient_id: "99999999-9999-4999-8999-000000000001",
+  ack_class: "urgent",
+  status: "pending",
+  assigned_user_id: "dddddddd-dddd-4ddd-8ddd-000000000001",
+  assigned_display_name: "Nina Nurse",
+  requested_at: "2026-10-18T11:30:00.000Z",
+  deadline_at: "2026-10-18T11:45:00.000Z",
+  overdue: true,
+  overdue_seconds: 12 * 60,
+  current_tier: 0,
+  escalation_note: null,
+  delivery_failed: false,
+  ...over,
+});
+const RESTRICTED: AckQueueItemDto = item({
+  restricted: true,
+  id: null,
+  channel_id: null,
+  message_id: null,
+  patient_id: null,
+  assigned_user_id: null,
+  status: "escalated",
+  current_tier: 1,
+  escalation_note: "ladder_exhausted",
+  assigned_display_name: "Rae Responder",
+});
+const FAILED = item({
+  id: "cccccccc-cccc-4ccc-8ccc-000000000003",
+  status: "failed_unreachable",
+  delivery_failed: true,
+  overdue: false,
+  overdue_seconds: 0,
+  deadline_at: "2099-01-01T00:00:00.000Z",
+});
+
+const page = (
+  items: AckQueueItemDto[],
+  over: Partial<AckQueueResponse> = {},
+): { data: AckQueueResponse } => ({
+  data: {
+    items,
+    next_cursor: null,
+    audit_request_id: null,
+    complete: true,
+    filtered: false,
+    counts: { unfiltered: items.length, matching: items.length, overdue: 2, failed_unreachable: 1 },
+    ...over,
+  },
+});
+
+function mount(handler: (query: Record<string, unknown>) => unknown) {
+  const GET = vi.fn((path: string, init?: { params?: { query?: Record<string, unknown> } }) => {
+    expect(path).toBe(PATH);
+    return Promise.resolve(handler(init?.params?.query ?? {}));
+  });
+  const POST = vi.fn();
+  const PUT = vi.fn();
+  const PATCH = vi.fn();
+  const DELETE = vi.fn();
+  const view = render(
+    <MemoryRouter>
+      <ApiClientProvider client={{ GET, POST, PUT, PATCH, DELETE } as unknown as ApiClient}>
+        <main>
+          <UnacknowledgedQueue />
+        </main>
+      </ApiClientProvider>
+    </MemoryRouter>,
+  );
+  return { GET, writes: [POST, PUT, PATCH, DELETE], ...view };
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+describe("UnacknowledgedQueue", () => {
+  it("shows a loading state, then every row with words for its state, overdue time, assignee and a thread link", async () => {
+    const { GET, writes } = mount(() => page([item(), RESTRICTED, FAILED]));
+    expect(screen.getByLabelText("Loading")).toBeTruthy();
+    const rows = await screen.findAllByRole("listitem");
+    expect(rows).toHaveLength(3);
+    expect(within(rows[0] as HTMLElement).getByText("Waiting")).toBeTruthy();
+    expect(within(rows[0] as HTMLElement).getByText("Overdue by 12 min")).toBeTruthy();
+    expect(within(rows[0] as HTMLElement).getByText("Urgent")).toBeTruthy();
+    expect(within(rows[0] as HTMLElement).getByText("Assigned to Nina Nurse.")).toBeTruthy();
+    const link = within(rows[0] as HTMLElement).getByRole("link");
+    expect(link.getAttribute("href")).toBe(`/messaging?channelId=${CH}&messageId=${MSG}`);
+    expect(within(rows[2] as HTMLElement).getByText("Could not be delivered")).toBeTruthy();
+    expect(within(rows[2] as HTMLElement).getByText(QUEUE_UNREACHABLE_TEXT)).toBeTruthy();
+    expect(GET).toHaveBeenCalledTimes(1);
+    expect(GET.mock.calls[0]?.[1]).toEqual({ params: { query: { limit: 50 } } });
+    for (const w of writes) expect(w).not.toHaveBeenCalled();
+  });
+
+  it("lists a restricted row with its note and assignee but no link, no patient and no message", async () => {
+    mount(() => page([RESTRICTED]));
+    const row = await screen.findByRole("listitem");
+    expect(within(row).getByText("Escalated")).toBeTruthy();
+    expect(within(row).getByText(QUEUE_NOTE_TEXT.ladder_exhausted)).toBeTruthy();
+    expect(within(row).getByText("Assigned to Rae Responder.")).toBeTruthy();
+    expect(within(row).getByText(QUEUE_RESTRICTED_TEXT)).toBeTruthy();
+    expect(within(row).queryByRole("link")).toBeNull();
+    expect(row.textContent).not.toMatch(/99999999|aaaaaaaa|bbbbbbbb/);
+    expect(threadLink(RESTRICTED)).toBeNull();
+  });
+
+  it("states the total beside the list, and 'showing x of y' when a filter narrows it, with the unfiltered total unchanged", async () => {
+    const { GET } = mount((query) =>
+      query.status === "failed_unreachable"
+        ? page([FAILED], {
+            filtered: true,
+            counts: { unfiltered: 5, matching: 1, overdue: 2, failed_unreachable: 1 },
+          })
+        : page([item(), RESTRICTED, FAILED], {
+            counts: { unfiltered: 3, matching: 3, overdue: 2, failed_unreachable: 1 },
+          }),
+    );
+    expect(
+      await screen.findByText(/3 waiting, 2 overdue, 1 could not be delivered\. Showing 3 of 3\./),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Could not be delivered" }));
+    await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(1));
+    expect(
+      screen.getByText(/5 waiting, 2 overdue.*Showing 1 of 1 that match the filters\./),
+    ).toBeTruthy();
+    expect(GET.mock.calls.at(-1)?.[1]).toEqual({
+      params: { query: { limit: 50, status: "failed_unreachable" } },
+    });
+    expect(
+      screen.getByRole("button", { name: "Could not be delivered" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("never shows the other filter's rows while a new filter loads, and 'overdue only' sends overdue=true", async () => {
+    let release: (value: unknown) => void = () => undefined;
+    const { GET } = mount((query) =>
+      query.overdue === true
+        ? new Promise((resolve) => {
+            release = resolve;
+          })
+        : page([item(), FAILED]),
+    );
+    await screen.findAllByRole("listitem");
+    fireEvent.click(screen.getByRole("button", { name: "Overdue only" }));
+    await waitFor(() => expect(screen.queryAllByRole("listitem")).toHaveLength(0));
+    expect(GET.mock.calls.at(-1)?.[1]).toEqual({ params: { query: { limit: 50, overdue: true } } });
+    await act(async () => release(page([item()], { filtered: true })));
+    expect(await screen.findAllByRole("listitem")).toHaveLength(1);
+  });
+
+  it("explains an empty list and, for an empty filter, offers to show everything that is waiting", async () => {
+    const { unmount } = mount(() =>
+      page([], { counts: { unfiltered: 0, matching: 0, overdue: 0, failed_unreachable: 0 } }),
+    );
+    expect(await screen.findByText(QUEUE_EMPTY_TITLE)).toBeTruthy();
+    expect(screen.getByText("Nothing is waiting.")).toBeTruthy();
+    unmount();
+
+    mount((query) =>
+      query.status === "escalated"
+        ? page([], {
+            filtered: true,
+            counts: { unfiltered: 4, matching: 0, overdue: 1, failed_unreachable: 0 },
+          })
+        : page([item()], {
+            counts: { unfiltered: 4, matching: 4, overdue: 1, failed_unreachable: 0 },
+          }),
+    );
+    await screen.findAllByRole("listitem");
+    fireEvent.click(screen.getByRole("button", { name: "Escalated" }));
+    expect(await screen.findByText(QUEUE_FILTER_EMPTY_TITLE)).toBeTruthy();
+    expect(screen.getByText("4 waiting in all.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Show everything waiting" }));
+    expect(await screen.findAllByRole("listitem")).toHaveLength(1);
+  });
+
+  it("shows an error with Retry when the first load fails, and recovers", async () => {
+    let fail = true;
+    const { GET } = mount(() => (fail ? { error: {}, response: { status: 500 } } : page([item()])));
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByText(QUEUE_LOAD_FAILED)).toBeTruthy();
+    fail = false;
+    fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+    expect(await screen.findAllByRole("listitem")).toHaveLength(1);
+    expect(GET).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    [403, QUEUE_DENIED],
+    [401, QUEUE_SIGN_IN],
+    [404, QUEUE_DENIED],
+  ])("fails closed on a %i with no list and no retry", async (status, text) => {
+    mount(() => ({ error: {}, response: { status } }));
+    expect((await screen.findByRole("alert")).textContent).toBe(text);
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.queryAllByRole("listitem")).toEqual([]);
+  });
+
+  it("keeps the last list and says it may be stale when a refresh fails", async () => {
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+    });
+    let fail = false;
+    mount(() => (fail ? { error: {}, response: { status: 503 } } : page([item()])));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    fail = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    expect(screen.getByText(QUEUE_STALE)).toBeTruthy();
+  });
+
+  it("polls on a timer and stops when the screen unmounts", async () => {
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+    });
+    const { GET, unmount } = mount(() => page([item()]));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(GET).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(GET).toHaveBeenCalledTimes(2);
+    unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+    expect(GET).toHaveBeenCalledTimes(2);
+  });
+
+  it("appends the next page on 'Show more' with the server's cursor and keeps the rows already shown", async () => {
+    const second = item({
+      id: "cccccccc-cccc-4ccc-8ccc-000000000002",
+      assigned_display_name: "Sam Second",
+    });
+    const { GET } = mount((query) =>
+      query.cursor === "CUR"
+        ? page([second], {
+            counts: { unfiltered: 2, matching: 2, overdue: 2, failed_unreachable: 0 },
+          })
+        : page([item()], {
+            next_cursor: "CUR",
+            complete: false,
+            counts: { unfiltered: 2, matching: 2, overdue: 2, failed_unreachable: 0 },
+          }),
+    );
+    await screen.findAllByRole("listitem");
+    expect(screen.getByText(/Showing 1 of 2\./)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: QUEUE_MORE_LABEL }));
+    await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(2));
+    expect(GET.mock.calls.at(-1)?.[1]).toEqual({ params: { query: { limit: 50, cursor: "CUR" } } });
+    expect(screen.getByText(/Showing 2 of 2\./)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: QUEUE_MORE_LABEL })).toBeNull();
+  });
+
+  it("renders names as text, never as markup", async () => {
+    mount(() => page([item({ assigned_display_name: "<img src=x onerror=alert(1)>" })]));
+    const row = await screen.findByRole("listitem");
+    expect(row.querySelector("img")).toBeNull();
+    expect(row.textContent).toContain("<img src=x onerror=alert(1)>");
+  });
+
+  it("has no accessibility violations with a mixed list, a filter row and a live summary", async () => {
+    mount(() => page([item(), RESTRICTED, FAILED], { next_cursor: "CUR", complete: false }));
+    await screen.findAllByRole("listitem");
+    const results = await axe.run(document.body);
+    expect(results.violations).toEqual([]);
+    expect(screen.getAllByRole("link", { name: new RegExp(QUEUE_OPEN_LABEL) })).toHaveLength(2);
+  });
+});

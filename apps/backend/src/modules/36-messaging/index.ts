@@ -49,6 +49,8 @@ export {
   getMessagingProvider,
   getEscalationRouter,
 } from "./seams";
+// WP 4.9 (ADR-0076) — the per-organisation numbers behind the ops gauges and threshold notice (counts only).
+export { createDbAckQueueStatsReader } from "./ack-requests/ack-queue-stats-db";
 // §8.1.2 / #205 — M36's one cross-module outbox event. See events-by-m36.ts's header for why it
 // has no producer yet.
 export { M36_OUTBOX_EVENTS } from "./events-by-m36";
@@ -144,6 +146,8 @@ import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import { createDbAckStore as _createDbAckStore } from "./ack-requests/ack-store-db";
 import { createOpenRequestLookup as _createOpenRequestLookup } from "./ack-requests/open-request-lookup";
+import { createDbUnacknowledgedReader as _createDbUnacknowledgedReader } from "./ack-requests/unacknowledged-reader-db";
+import { createUnacknowledgedService as _createUnacknowledgedService } from "./ack-requests/unacknowledged-service";
 import { createDbAnnouncementService as _createDbAnnouncementService } from "./announcement-service-db";
 import type { AttachmentStoragePort, ScanPort } from "./attachments/attachment-ports";
 import { createAttachmentService as _createAttachmentService } from "./attachments/attachment-service-db";
@@ -159,6 +163,7 @@ import {
 import { createGlobalSearchPrerequisites as _createGlobalSearchPrerequisites } from "./global-search/prerequisites";
 import { createGlobalSearchSettingsService as _createGlobalSearchSettingsService } from "./global-search/settings-service";
 import type { buildIdgDiscussionDeps as _buildIdgDiscussionDeps } from "./idg/binding";
+import { createMentionActorNameResolver as _createMentionActorNameResolver } from "./mention-non-member-service-db";
 import { createDbMessagingRouteService as _createDbMessagingRouteService } from "./messaging-route-service-db";
 import type { MessagingOutboxPort } from "./messaging-route-service-db";
 import { createDbPollService as _createDbPollService } from "./polls/poll-service-db";
@@ -254,6 +259,14 @@ export function mountMessagingRoutes(
     ...(opts.medicationQuestions ? { medicationQuestions: opts.medicationQuestions } : {}),
     ...(opts.urgent ? { urgent: opts.urgent } : {}),
     ...(opts.ackRequests ? { ackRequests: opts.ackRequests } : {}),
+    // WP 4.9: the supervisor's unacknowledged queue (read-only; self-contained over `db`, no flag: with no requests it is empty).
+    unacknowledged: {
+      service: _createUnacknowledgedService({
+        read: _createDbUnacknowledgedReader(db),
+        canViewChannel: service.canViewChannel,
+        displayName: _createMentionActorNameResolver(db),
+      }),
+    },
     deliveryTarget: {
       service: _createDeliveryTargetService({
         read: _createDbDeliveryTargetReader(db),

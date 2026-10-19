@@ -56,6 +56,8 @@ import {
 import { createDbAckStore } from "../src/modules/36-messaging/ack-requests/ack-store-db";
 import { buildAckDeps } from "../src/modules/36-messaging/ack-requests/deps";
 import { createOpenRequestLookup } from "../src/modules/36-messaging/ack-requests/open-request-lookup";
+import { createDbUnacknowledgedReader } from "../src/modules/36-messaging/ack-requests/unacknowledged-reader-db";
+import { createUnacknowledgedService } from "../src/modules/36-messaging/ack-requests/unacknowledged-service";
 import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import type { AttachmentStoragePort } from "../src/modules/36-messaging/attachments/attachment-ports";
 import { createBuiltinScanner } from "../src/modules/36-messaging/attachments/attachment-scanners";
@@ -214,6 +216,8 @@ const ROUTES: Record<string, Verdict> = {
   // a random id) is the 404 a random id gets and nothing is written (also attacked in m36-ack-requests.live).
   // WP 4.8 deep link: the id is a delivery's; another user's, another org's and a random id answer identically (also attacked in m36-delivery-target.live).
   "GET /api/v1/messaging/deliveries/:id/target": { kind: "idor" },
+  // WP 4.9 supervisor queue: no id to guess - the caller's organisation is the only scope (proved below and in m36-unacknowledged.live).
+  "GET /api/v1/messaging/escalations/unacknowledged": { kind: "scoped" },
   "POST /api/v1/messaging/escalations": { kind: "idor" },
   "GET /api/v1/messaging/escalations/:id": { kind: "idor" },
   "GET /api/v1/messaging/channels/:id/escalations": { kind: "idor" },
@@ -330,6 +334,8 @@ const REGISTRAR_FILES = [
   "urgent-routes.ts", // WP 4.1 urgent clinical message, mounted by registerMessagingRoutes
   "delivery-target-routes.ts", // WP 4.8 deep-link resolver, mounted by registerMessagingRoutes
   "delivery-target-typebox.ts", // schemas only
+  "unacknowledged-routes.ts", // WP 4.9 supervisor unacknowledged queue, mounted by registerMessagingRoutes
+  "unacknowledged-typebox.ts", // schemas only
   "ack-routes.ts", // WP 4.2 acknowledgment requests, mounted by registerMessagingRoutes
   "ack-typebox.ts", // schemas only
   "urgent-typebox.ts", // schemas only
@@ -794,6 +800,13 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
           new Set(["messaging.read", "messaging.send", "patient.read", "messaging.urgent.receive"]),
         careTeamMembers: async () => [],
       }),
+      unacknowledged: {
+        service: createUnacknowledgedService({
+          read: createDbUnacknowledgedReader(handle.db),
+          canViewChannel: service.canViewChannel,
+          displayName: async () => null,
+        }),
+      },
       deliveryTarget: {
         service: createDeliveryTargetService({
           read: createDbDeliveryTargetReader(handle.db),
@@ -2111,6 +2124,40 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
         message_id: sent.messageId,
         ack_request_id: null,
       });
+    });
+    it("WP 4.9: the supervisor queue lists A's waiting request to A's reviewer only; org B's reviewer and every non-reviewer get none of it", async () => {
+      const route = "GET /api/v1/messaging/escalations/unacknowledged";
+      const sent = await service.sendMessage(orgA, {
+        channelId: careTeamA,
+        authorUserId: u1.userId,
+        body: `${SECRET_BODY} queue`,
+      });
+      const requestId = (
+        await admin.query(
+          `INSERT INTO message_acknowledgment_request
+             (organization_id, message_id, channel_id, patient_id, ack_class, requester_user_id, assigned_user_id, requested_at, window_started_at, deadline_at)
+           VALUES ($1,$2,$3,$4,'important',$5,$6,now(),now(), now() + interval '60 minutes') RETURNING id`,
+          [orgA, sent.messageId, careTeamA, patientA, u1.userId, u2.userId],
+        )
+      ).rows[0].id as string;
+      // the legitimate reviewer lists it (the attacks are not vacuous): a row is there, restricted or not.
+      const own = await call(route, u1);
+      expect(own.statusCode, own.body).toBe(200);
+      expect(own.json().counts.unfiltered).toBeGreaterThanOrEqual(1);
+      expect(own.body).not.toContain(SECRET_BODY);
+      // org B's reviewer holds the permission and sees only org B's (empty) queue; the rest lack it.
+      for (const attacker of [reviewerB, bUser, adminB, outsider]) {
+        const res = await call(route, attacker);
+        expect(res.statusCode, `${attacker.name}: ${res.body}`).toBe(
+          attacker === reviewerB ? 200 : 403,
+        );
+        if (attacker === reviewerB) {
+          expect(res.json().items).toEqual([]);
+          expect(res.json().counts.unfiltered).toBe(0);
+        }
+        expectNoLeak(res.body, attacker, `${attacker.name} unacknowledged queue`);
+        expect(res.body).not.toContain(requestId);
+      }
     });
     it("WP 3.4: org B and an in-org non-member get a random id's answer for A's task and A's message, and list none of it", async () => {
       const convertRoute = "POST /api/v1/messaging/channels/:id/messages/:messageId/tasks";

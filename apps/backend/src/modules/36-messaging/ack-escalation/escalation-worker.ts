@@ -42,6 +42,11 @@ export interface M36AckEscalationWorkerDeps
     Pick<WorkerOptions, "lockDuration" | "stalledInterval" | "maxStalledCount">
   >;
   readonly onDlqError?: (context: { jobId: string }, error: unknown) => void;
+  /**
+   * WP 4.9 (ADR-0076): looked at once per organisation per sweep tick, AFTER the sweep, whatever the escalation flag says (an overdue
+   * request while the action is off is exactly when ops should hear of it). A failure is reported through `onError`; it never fails the tick.
+   */
+  readonly observeOrg?: (organizationId: string) => Promise<void>;
   readonly now?: () => Date;
 }
 
@@ -60,11 +65,14 @@ export async function timerJobTick(
 
 /** One sweep tick over every active org; an org-level failure fails the tick (visible in the failed set and the DLQ). */
 export async function sweepTick(
-  deps: Pick<M36AckEscalationWorkerDeps, "activeOrgs" | "onError" | "service">,
+  deps: Pick<M36AckEscalationWorkerDeps, "activeOrgs" | "onError" | "service" | "observeOrg">,
 ): Promise<SweepSummary> {
   const totals = { escalated: 0, notRouted: 0, skipped: 0, failed: 0 };
   await fanOutOrgs(deps, "ack_escalation_sweep", async (organizationId) => {
     const summary = await deps.service.sweep(organizationId);
+    await deps
+      .observeOrg?.(organizationId)
+      .catch((error) => deps.onError?.({ organizationId, job: "ack_queue_observe" }, error));
     totals.escalated += summary.escalated;
     totals.notRouted += summary.notRouted;
     totals.skipped += summary.skipped;

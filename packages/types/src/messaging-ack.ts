@@ -194,3 +194,67 @@ export interface AckChannelListResponse {
  * family (`messaging.urgent_clinical` for urgent_sent, `messaging.ack_requests` for ack.*); with it off the seeded in-app-only rules apply.
  */
 export const NOTIFICATION_POLICY_FLAG_KEY = "messaging.notification_policy";
+
+// ---- WP 4.9 (ADR-0076): the supervisor's unacknowledged-urgent queue -------------------------------------------------------------
+// A read-only list of every request in the organisation that still waits for a human: `pending`, `escalated` or `failed_unreachable`
+// (an `acknowledged` request is open but has an owner; a `resolved` / `cancelled` one is closed). The only filters narrow by a field
+// every row shows (`status`, `overdue`); a request whose thread the viewer cannot open is still listed, as a `restricted` row with no ids.
+
+/** The statuses the queue lists: still waiting for a human. */
+export const ACK_QUEUE_STATUSES = [
+  "pending",
+  "escalated",
+  "failed_unreachable",
+] as const satisfies readonly AckStatus[];
+export type AckQueueStatus = (typeof ACK_QUEUE_STATUSES)[number];
+
+export const ACK_QUEUE_LIMIT_DEFAULT = 50;
+export const ACK_QUEUE_LIMIT_MAX = 100;
+
+export interface AckQueueItemDto {
+  /** True when the viewer cannot open the request's channel (not a member, or a Part 2 patient they are not released to): the ids below are withheld. */
+  readonly restricted: boolean;
+  /** Null on a restricted row (it names no request, channel, message or patient). */
+  readonly id: string | null;
+  readonly channel_id: string | null;
+  readonly message_id: string | null;
+  /** Id only, for the read-audit accounting; the screen never shows it. Null on a restricted row. */
+  readonly patient_id: string | null;
+  readonly ack_class: AckClass;
+  readonly status: AckQueueStatus;
+  /** Null on a restricted row; the display name stays so the supervisor can chase the assignee. */
+  readonly assigned_user_id: string | null;
+  readonly assigned_display_name: string | null;
+  readonly requested_at: string;
+  readonly deadline_at: string;
+  /** Past the deadline of the current window. */
+  readonly overdue: boolean;
+  /** Whole seconds past the deadline; 0 when not overdue. */
+  readonly overdue_seconds: number;
+  readonly current_tier: number;
+  /** WP 4.4: why an overdue request has not moved on. */
+  readonly escalation_note: AckEscalationNote | null;
+  /** WP 4.5: every route failed (`failed_unreachable`). */
+  readonly delivery_failed: boolean;
+}
+
+export interface AckQueueCounts {
+  /** Every waiting request in the organisation, whatever the filters (restricted ones included). */
+  readonly unfiltered: number;
+  /** How many the active filters match; equals `unfiltered` with none. */
+  readonly matching: number;
+  readonly overdue: number;
+  readonly failed_unreachable: number;
+}
+
+export interface AckQueueResponse {
+  readonly items: readonly AckQueueItemDto[];
+  readonly next_cursor: string | null;
+  /** The id of the first request this page shows in full (null when it shows none): the resource the read-audit row is recorded against. */
+  readonly audit_request_id: string | null;
+  /** True when `next_cursor` is null: this page is the end of the matching list. */
+  readonly complete: boolean;
+  /** True when a status or overdue filter was applied. */
+  readonly filtered: boolean;
+  readonly counts: AckQueueCounts;
+}
