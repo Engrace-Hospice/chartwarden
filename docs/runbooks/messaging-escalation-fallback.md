@@ -15,8 +15,13 @@ never be filled in with any.
 > the clinical lead. Nothing pages a supervisor's phone today (G-3), and requests sit unseen at night **even when the timers
 > are off, which is the default** (the queue and gauges still show them but nobody is told). The creation flags are gated as
 > well as the timers because a request that exists with no watcher is the hazard. (`critical_symptom` has no writer today,
-> ADR-0069 decision 3 / ADR-0056 D7, so that class is latent until the clinical lead decides who may raise it.) The clinical
-> lead decides who; this is not decided.
+> ADR-0069 decision 3 / ADR-0056 D7, so that class is latent until the clinical lead decides who may raise it.) **A further hazard:** a tenant that turns on `messaging.notification_policy` and the timers
+> with no vendor transport configured (all environments today) gets every delivery to a verified endpoint failing
+> (`transport_not_configured`), so its requests become `failed_unreachable` and the deadline timer stops watching them (G-5).
+> **Drill exception:** a live drill in a test organisation (section 7.4) may switch these flags on for that organisation
+> only, with the drill participants acting as the watchers, and the flags are switched off again after the drill; otherwise
+> use a separate environment. Who can set these flags per tenant (the tenant, or the platform owner) is not verified here
+> and is **OPEN**: confirm before the drill rather than assuming. The clinical lead decides who watches; this is not decided.
 
 Decisions in this document marked **OPEN** are provisional and listed for the clinical lead and operations in
 [`brief-clinical-lead-signoff.md` section 13](../messaging-hub/brief-clinical-lead-signoff.md#13-fallback-runbook-and-drills-wp-411---provisional-readings-to-approve-all-open).
@@ -28,7 +33,7 @@ Nothing here has been signed off.
 |---|---|
 | A request has a class (`important`, `urgent`, `critical_symptom`) with a deadline (provisional 60 / 15 / 5 minutes). States: `pending`, `acknowledged`, `escalated`, `failed_unreachable`, `resolved`, `cancelled`. | ADR-0069; `packages/messaging/src/ack-requests/ack-rules.ts` |
 | Only the **assigned user**, signed in and still qualified, can acknowledge or resolve (explicit "Take responsibility" button). Opening or reading never acknowledges. **There is no supervisor override and no "acknowledged by phone" write.** | ADR-0069 decision 6 |
-| Reassign: the current assignee (any open state) or the requester (until the request is taken). Preconditions on the **new** assignee: a care-team member who can see the channel, holding `messaging.urgent.receive`, passing the Part 2 gate, not the requester and not the current assignee; the requester must still hold `messaging.send` and `messaging.urgent.send`. Any refusal returns the same `422 ACK_ASSIGNEE_INVALID` with no reason (`apps/backend/src/modules/36-messaging/ack-requests/ack-service.ts`), so an operator who is refused should try a differently qualified nurse, not the sender or an aide. **Reassign has no screen:** it exists only as `POST /api/v1/messaging/escalations/:id/reassign`. The request card offers only "Take responsibility" and "Close this request" (ADR-0069 decision 14) and the queue screen never reassigns (`apps/web/src/modules/36-messaging/unacknowledged-queue.tsx`). **So today no request can be moved by a clinician.** | ADR-0069 decisions 5-6, 14 |
+| Reassign: **only** the current assignee (any open state) or the requester **before the request is taken**; the route acts as the caller's own signed-in session and there is **no supervisor override** (`reassignDenied` in `apps/backend/src/modules/36-messaging/ack-requests/ack-service.ts`; ADR-0069 decision 6). Only when the **requester** is the one reassigning must they still hold `messaging.send` and `messaging.urgent.send`. The **new** assignee must be a care-team member who can see the channel, holding `messaging.urgent.receive`, passing the Part 2 gate, not the requester and not the current assignee. Refusals differ: `403 ACK_NOT_PARTY` (caller is neither sender nor assignee), `403 ACK_NOT_ASSIGNEE` (the request is already taken, so the sender can no longer reassign), `403` "You can no longer send response requests" (sender lost the send keys), `409 ACK_STATE_INVALID` (request closed), `404` (caller cannot see the channel), `422 ACK_ASSIGNEE_INVALID` (the new assignee is not acceptable; no reason is given, so only then try a differently qualified nurse, not the sender or an aide), and a rate limit of 5 per 5 minutes per (actor, colleague) pair (ADR-0069 decision 13). **Reassign has no screen:** it exists only as `POST /api/v1/messaging/escalations/:id/reassign`. The request card offers only "Take responsibility" and "Close this request" (ADR-0069 decision 14) and the queue screen never reassigns (`apps/web/src/modules/36-messaging/unacknowledged-queue.tsx`). **So today no request can be moved from a screen by anyone.** | ADR-0069 decisions 5-6, 13-14 |
 | The escalation action (next tier at the deadline, early escalation on delivery failure) runs only where the ops flag `messaging.escalation_timers` is on for the tenant (default off). Flag off means requests are left exactly as they are. | ADR-0070, ADR-0071 decision 8 |
 | At the deadline the system asks the EscalationRouter (M19 on-call) for the next tier. No tier / no router: the request stays open with its assignee and a `route_unavailable` or `ladder_exhausted` history row; the router is asked again on a backoff (1 h up to 24 h). Production's router is a deny-stub until M19 binds one (ADR-0057 is still Proposed). | `apps/backend/src/modules/36-messaging/ack-escalation/escalation-service.ts` (header) |
 | When every out-of-band delivery of the request alerts to the assignee has terminally failed, the request escalates now, or becomes `failed_unreachable` (written by the system only). `failed_unreachable` is open, not closed, and the deadline timer **stops watching it**. | ADR-0071 decisions 2-6 |
@@ -63,7 +68,7 @@ Nothing here pages a clinician. These are signals for a **supervisor** and for *
 | Ops notice `m36.ack.latency_high` | Operations | Same sink | Mean time to take responsibility is 15 minutes or more (at least 5 samples). |
 | Ops notice `m36.ack.failed_unreachable` | Operations | Same sink | A request became `failed_unreachable` (ids and class only). Needs `messaging.escalation_timers` on. |
 
-The queue row carries the assignee's id and display name but **no requester (sender) field** (`apps/backend/src/modules/36-messaging/routes/unacknowledged-typebox.ts`, `Item`). On a row the supervisor can open, the sender is the author of the message in the thread. On a `restricted` row (`id` null, no thread) the sender cannot be found at all.
+The queue row carries the assignee's id (null on a restricted row) and display name (kept on a restricted row, `unacknowledged-service.ts`) but **no requester (sender) field** (`apps/backend/src/modules/36-messaging/routes/unacknowledged-typebox.ts`, `Item`). On a row the supervisor can open, the sender is the author of the message in the thread. On a `restricted` row (`id` null, no thread) the sender cannot be found at all.
 
 What does **not** exist: Alertmanager rules in the repo (the operator scrapes the gauges and writes their own, see
 [`WARDENX_OPS_RUNBOOK_v0.1.md` section 16.8](../architecture/WARDENX_OPS_RUNBOOK_v0.1.md)), percentiles, an ops notice for
@@ -89,12 +94,12 @@ already addresses; the order is **OPEN** (brief section 13).
 | L. Clinical lead / medical director | `<name>` | `<on file>` | `<on file>` |
 | O. Operations on call (platform) | `<name>` | `<on file>` | `<on file>` |
 
-**Sequence by start point.** Wait `<N>` minutes between steps (**OPEN**, provisional 5 for `urgent`, 10 for `important`).
+**Sequence by start point.** Wait `<N>` minutes between steps (**OPEN**, provisional 5 for `urgent` and `critical_symptom`, 10 for `important`).
 
 | Start | Order of calls |
 |---|---|
 | Non-critical classes (`important`, `urgent`): assignee first | A, then S, then T, then C, then D, then L, then O |
-| `critical_symptom` (latent today): sender first | S, then A, then C, then D, then L, then O |
+| `critical_symptom` (latent today): sender first | S, then A, then T, then C, then D, then L, then O |
 
 Each person is called once; if a person was already reached, skip to the next. **"Sender unknown" is treated exactly like
 "sender unreachable"**: skip S and go on.
@@ -107,7 +112,7 @@ Rules for the tree:
 
 - Script for A (the assignee): "WardenX shows a response request waiting for you; please sign in and open Messages."
 - Script for S (the sender): "Your WardenX request is still unanswered. Can you reach the assignee, or tell me who else
-  should be told?" Do not ask the sender to reassign: they cannot do it from the screen (G-6).
+  should be told?" Do not ask the sender to reassign during the call: there is no screen for it, and the only route is the sender's own signed-in API call while the request is not yet taken (section 5.3 step 3, G-6).
 - Script for T, C, D, L: these people are **not** the assignee and cannot see or act on the request. Say: "You may be asked
   to take over a WardenX request. Please stand by." Never tell them a request is waiting for them unless it has been
   reassigned to them.
@@ -131,7 +136,7 @@ Rules for the tree:
    `ladder_exhausted` or `route_unavailable`. Clear any filter first (filters only narrow).
 2. Start the incident log (section 8): time noticed, how, your role.
 3. For each affected row, read the assignee, tier and class. A `restricted` row has no link or patient by design; you can
-   still see who it is assigned to and how late it is. Call the assignee (tree step 1).
+   still see who it is assigned to and how late it is. Start the tree for the class (section 4: assignee first for non-critical, sender first for `critical_symptom`).
 4. If you cannot tell whether push/SMS/email is down for everyone or just one person, ask operations (5.2) while you
    continue calling; do not wait for the answer.
 5. Work the list oldest first, `critical_symptom` before `urgent` before `important`.
@@ -158,22 +163,28 @@ request acknowledged, and only by signing in and pressing "Take responsibility".
    **Take responsibility**. The request becomes `acknowledged` and leaves the queue. That is the system of record.
 2. If the assignee cannot be reached, call the **sender** (unless unknown, which counts as unreachable) to find a way to
    reach the assignee, or to learn the content. The sender cannot move the request.
-3. **If the assignee cannot sign in, the request cannot be moved by a clinician.** It stays with the assignee until the
-   assignee signs in or an engineer with API access reassigns it (`POST /api/v1/messaging/escalations/:id/reassign`, run
-   with the sender's or assignee's own authorization, never a borrowed session; the new assignee must satisfy the
-   preconditions in section 1; a refusal is one `422 ACK_ASSIGNEE_INVALID` with no reason, so try a differently qualified
-   nurse). Who may do this, and how, is **OPEN** (G-6). Record "reassign not executable by a clinician" as a finding every
-   time it is needed.
+3. **If the assignee cannot sign in, nobody can move the request from a screen.** The assignee can still act whenever
+   they sign in. The **only** escape is the **sender, signed in as themselves**, calling the reassign API
+   (`POST /api/v1/messaging/escalations/:id/reassign`) with engineering help to **construct** the call (not their
+   credentials), and only while the request is **not yet taken** and only if the sender still holds `messaging.send` and
+   `messaging.urgent.send`. The new assignee must meet the preconditions in section 1; a `422 ACK_ASSIGNEE_INVALID` means try
+   a differently qualified nurse. **Forbidden, always:** direct database writes (including system-actor writes) and handling
+   any person's session, token or password. There is no other hatch, and the clinical lead must not be told otherwise.
+   Whether even this is acceptable in an incident is **OPEN** (G-6). Record "reassign not executable from a screen" as a
+   finding every time it is needed.
 4. For `important` requests, the supervisor keeps following up every `<N>` minutes (**OPEN**) and **hands up to the
    clinical lead after `<M>` minutes** (**OPEN**) rather than following up without end.
-5. For `critical_symptom` (latent: no writer today), call the sender first (section 4) and state in the log who owns the
+5. For `urgent` requests, the supervisor follows up the same way, **hands up to the clinical lead after `<M2>` minutes**
+   (**OPEN**) and asks someone with Part 2 access to the channel to open the row and identify the sender, when the row is
+   restricted.
+6. For `critical_symptom` (latent: no writer today), call the sender first (section 4) and state in the log who owns the
    decision to call 911 / the agency emergency procedure (**OPEN**, provisional: the clinical supervisor on duty, acting on
    the sender's verbal account; they do not wait for WardenX). If both the sender and the assignee are unreachable or
    unknown, the request cannot be moved at all, and the patient is the agency emergency procedure's, not WardenX's. This is a
    **blocking gap for the clinical lead** (brief section 13).
-6. A verbal "I've got it" from someone who has **not seen the content in WardenX does not close anything**. The request is
+7. A verbal "I've got it" from someone who has **not seen the content in WardenX does not close anything**. The request is
    closed only when it is `acknowledged` in the system.
-7. Never ask anyone to sign in as someone else or to share a session. Never acknowledge on behalf of another person.
+8. Never ask anyone to sign in as someone else or to share a session. Never acknowledge on behalf of another person.
 
 **OPEN gap (G-1):** an audited "acknowledged out-of-band by `<person>` on behalf of `<assignee>`" action for a supervisor.
 It is not built; it needs a clinical-lead decision first (it weakens the explicit-action rule of ADR-0056). Recorded in the
@@ -224,7 +235,7 @@ Within `<N>` working days (**OPEN**, provisional 5):
 - [ ] Did any step need a capability the product lacks (acknowledge by phone, supervisor reassign, a way into a
       conversation)? Add it to the open gaps.
 - [ ] Which runbook text was wrong or unclear? Change it in a reviewed commit.
-- [ ] Sign-off by the clinical lead and operations; file the record (section 7.4).
+- [ ] Sign-off by the clinical lead and operations; file the record (section 7.5).
 
 ## 7. Quarterly drills
 
@@ -280,20 +291,23 @@ Pre-conditions:
   distinct reassign target (a care-team nurse with `messaging.urgent.receive`) and a supervisor with `messaging.review`; and
   the tree in place. Note that the test organisation lives **in the production deployment** unless a separate environment is
   used, so the gauges and the webhook below are shared.
-- Flags turned on for the test organisation by its owner: `messaging.ack_requests` (to create a request),
+- Flags turned on for the test organisation only: `messaging.ack_requests` (to create a request),
   `messaging.urgent_clinical` (for an urgent send), `messaging.escalation_timers` (needed for `failed_unreachable`, early
-  escalation and its ops notice) and `messaging.notification_policy`, **plus a configured transport** for push or SMS to
-  exist and fail at all.
-- **If a transport is configured, real SMS or push reaches participants' real phones.** The test organisation's supervisor
-  audience (roles `clinical_supervisor`, `don`) must contain only drill participants.
-- **Without a configured transport the drill does not exercise delivery failure.** It exercises only the queue, the overdue
-  gauge and the phone tree; record that as a limit of the drill.
+  escalation and its ops notice) and `messaging.notification_policy`. Who may set them per tenant is **OPEN** (section 2
+  exception note); drill participants act as the watchers, and the flags are switched **off again** after the drill.
+- **Do not configure or change any transport or vendor credential (Twilio, VAPID, Postmark) for a drill in the production
+  deployment.** Transports are deployment-wide, not per organisation. You do not need one: per ADR-0073 a verified endpoint
+  with no transport settles `failed` / `transport_not_configured`, and with the timers on the request becomes escalated or
+  `failed_unreachable`. That is the failure path under test.
+- If a transport happens to be configured already, real SMS or push reaches participants' real phones, so the test
+  organisation's supervisor audience (roles `clinical_supervisor`, `don`) must contain only drill participants.
+
 - Operations are warned beforehand: the gauges (`wardenx_m36_ack_*`) count **all organisations**, and ops notices go to the
   production `OPS_ALERT_WEBHOOK_URL`, so a drill request can look like a real overdue request. Operations tag or exclude the
   drill organisation in their alerting (how: **OPEN**, no organisation label exists on the gauges).
 
-1. Facilitator first makes the assignee's out-of-band route fail: the assignee needs a **verified** endpoint whose delivery
-   then fails (for example a transport that is not configured, which fails closed as `transport_not_configured`). An assignee
+1. Facilitator first makes the assignee's out-of-band route fail: the assignee needs a **verified** endpoint (in the test
+   organisation) whose delivery then fails, which it does when no transport is configured (`transport_not_configured`). An assignee
    with **no** verified endpoint gets no out-of-band row at all, which is not a failure and does **not** produce
    `failed_unreachable` (ADR-0073 decision 4, ADR-0071 decision 2). Do not touch any shared vendor or production
    configuration.
@@ -304,10 +318,11 @@ Pre-conditions:
 5. Supervisor works the tree from step 1 with a real phone call to the test assignee. Record each attempt and time.
 6. Assignee signs in and presses **Take responsibility**. Recorder notes the acknowledgment time and that the request left
    the queue.
-7. Repeat once with the assignee unable to sign in. The supervisor calls the sender (5.3 step 2), who cannot move the
-   request. **No clinician can reassign today (G-6):** record "not executable" as a finding. If the test environment's owner
-   can make the API call with the sender's test authorization, do so and record it as an engineering action, not a
-   clinician capability; the distinct target account then takes responsibility.
+7. Repeat once with the assignee unable to sign in, and the request not yet taken. The supervisor calls the sender
+   (5.3 step 2). The **test sender** then runs the reassign call **themselves, in their own session** (with engineering help
+   building the call, never using their credentials), to the distinct target account, which takes responsibility. Record
+   that no screen exists (G-6), that no supervisor action exists, and how long it took. Nobody may use a borrowed session or
+   write to the database.
 8. Restore the test endpoints. Stand down only when the request is acknowledged in the system; record the time.
 
 ### 7.5 Evidence record template
@@ -368,5 +383,5 @@ chat channel, which are not approved for this).
   `ladder_exhausted` / `route_unavailable` alone.
 - **G-4:** no alert rules or stalled-worker check in the repo; per-process, hourly-repeat ops notices.
 - **G-5:** a request that became `failed_unreachable` is not watched by the deadline timer; only a reassign re-arms it, and reassign is rarely possible today.
-- **G-6:** today no request can be moved by a clinician: reassign is API-only. If the assignee cannot sign in, the request stays stuck until an engineer with API access reassigns it or the assignee signs in, even when the sender answers. If both are unreachable it cannot be moved at all (blocking for `critical_symptom`, which is latent).
+- **G-6:** today no request can be moved from a screen by anyone: reassign is API-only and acts as the caller's own session (only the sender before it is taken, or the assignee; no supervisor override). If the assignee cannot sign in, the request stays stuck until the assignee signs in or the sender, signed in as themselves, makes the API call; direct database writes and borrowed sessions are forbidden. If both are unreachable it cannot be moved at all (blocking for `critical_symptom`, which is latent).
 - **G-7:** the queue does not show the requester (sender); on a restricted row the sender cannot be found. A small product change (add the requester's display name to the row) would fix it.
