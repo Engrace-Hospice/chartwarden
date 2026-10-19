@@ -40,7 +40,7 @@ Each row is one decision on the sheet ([`11-decision-sheet.md`](./11-decision-sh
 
 - **Proposed default:** no automatic fallback. If no one is confirmed on call, or the lookup fails, the sender is told to use the agency telephone procedure, nothing is sent and no triage call is opened. Administrators and clinical supervisors are alerted through the existing coverage-gap alert, which is an alert and not an assignment.
 - **If you accept:** a gap is always visible to the sender, never silent, and nobody is paged who was not confirmed. The cost is that during a gap the software does not route; the telephone procedure does.
-- **If you want a fallback:** name who (a role or a number) and whether it is fixed or set per tenant. M19 has a draft idea (a per-tenant emergency number) that is not built. It must be a step the sender sees and confirms, not a silent widening.
+- **If you want a fallback:** name who (a role or a number) and whether it is fixed or set per tenant. M19 already has a per-tenant emergency number column (`emergency_contact_e164`, built, per provider entity, used today only for the degraded-alert path); the ladder step that shows it to the sender is not built. It must be a step the sender sees and confirms, not a silent widening.
 
 ### E5 (clinical lead, compliance, security): an escalated assignee who is not in the channel
 
@@ -54,6 +54,6 @@ M19's triage deadlines, escalation rungs and rules do not change. Where a messag
 
 ## What happens with the answers
 
-Accepted answers are recorded as decided, with the decider's role and date, in ADR-0082 (status moves from Proposed once accepted), the decision sheet and [`brief-m19-owner.md`](./brief-m19-owner.md). A rejected default becomes a work item. After that the build is six small slices, all switched off by default (listed in ADR-0082). Related sign-offs: [`brief-clinical-lead-signoff.md`](./brief-clinical-lead-signoff.md) (acknowledgment deadlines, D4 and D7).
+Accepted answers are recorded as decided, with the decider's role and date, in ADR-0082 (status moves from Proposed once accepted), the decision sheet and [`brief-m19-owner.md`](./brief-m19-owner.md). A rejected default becomes a work item. After that the build is a set of small slices (S1 to S6, the ladder L1 to L3, the thread read G1 to G3), all switched off by default (listed in ADR-0082 and ADR-0083). Related sign-offs: [`brief-clinical-lead-signoff.md`](./brief-clinical-lead-signoff.md) (acknowledgment deadlines, D4 and D7).
 
 References: [`04-phases-4-to-6.md`](./04-phases-4-to-6.md) (row 4.13), [`10-ui-spec-phases-4-to-6.md`](./10-ui-spec-phases-4-to-6.md) §5 (4.12) and §9, [ADR-0057](../adr/ADR-0057-escalation-ownership-m19-m36.md), [ADR-0070](../adr/ADR-0070-messaging-escalation-timers.md), [ADR-0081](../adr/ADR-0081-messaging-role-send.md).
